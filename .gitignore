@@ -1,0 +1,36 @@
+# Generated CV files
+*.pdf
+*.docx
+files/
+
+# Google Drive pointers (zero-byte files)
+*.gdoc
+*.gsheet
+
+# Archives
+Old/
+
+# System files
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Optional: Uncomment to exclude sensitive personal data
+# private_contact.json
