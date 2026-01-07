@@ -8,7 +8,8 @@ and user interaction.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
+import readline  # Enable line editing and history for input()
 
 from .llm_client import LLMClient
 from .cv_orchestrator import CVOrchestrator
@@ -27,27 +28,113 @@ class ConversationManager:
         self.conversation_history: List[Dict[str, str]] = []
         self.state = {
             'phase': 'init',  # init, job_analysis, customization, generation, refinement
+            'position_name': None,
             'job_description': None,
             'job_analysis': None,
             'customizations': None,
             'generated_files': None
         }
         self.session_dir: Optional[Path] = None
+        # Readline history file
+        self.history_file: Path = Path("files/.input_history")
+    
+    def _get_multiline_input(self) -> str:
+        """Get multi-line input with terminators (DONE/END) and QUIT.
+
+        DONE/END: finish multi-line entry
+        QUIT: confirm, save session, and exit application
+        """
+        print(
+            "(Enter multiple lines. Type 'DONE' or 'END' on a line by itself; "
+            "type 'QUIT' to exit)"
+        )
+        
+        lines = []
+        
+        while True:
+            try:
+                line = input()
+                
+                # Check for terminator keywords
+                upper = line.strip().upper()
+                if upper in ['DONE', 'END']:
+                    break
+                elif upper == 'QUIT':
+                    confirm = input("\n⚠ Confirm exit? (yes/no): ")
+                    if confirm.lower() in ['yes', 'y']:
+                        self._save_session()
+                        self._save_readline_history()
+                        print("\n✓ Session saved. Goodbye!")
+                        raise SystemExit(0)
+                    else:
+                        print("\n✓ Exit cancelled. Continue entering text.")
+                        continue
+                else:
+                    lines.append(line)
+                    
+            except EOFError:
+                # Ctrl+D pressed
+                break
+        
+        return '\n'.join(lines).strip()
     
     def start_interactive(self):
         """Start interactive conversation loop."""
         self._print_welcome()
+        # Ensure a position is selected or created
+        self._ensure_position_selected()
+        self._setup_readline()
         
         while True:
             try:
-                user_input = input("\n> ").strip()
+                # Check if we're expecting multi-line input (e.g., job description)
+                if self.state['phase'] == 'init' and not self.state['job_description']:
+                    print("\nPlease provide the job description:")
+                    job_text = self._get_multiline_input()
+                    if not job_text:
+                        continue
+                    # Store job description in state and history
+                    self.add_job_description(job_text)
+                    self.conversation_history.append({
+                        'role': 'user',
+                        'content': job_text
+                    })
+                    # Automatically analyze job description to set state
+                    print("\n🔄 Analyzing job description...")
+                    analysis = self.llm.analyze_job_description(
+                        job_text,
+                        self.orchestrator.master_data
+                    )
+                    self.state['job_analysis'] = analysis
+                    self.state['phase'] = 'customization'
+                    print(f"✓ Job analysis complete:\n{json.dumps(analysis, indent=2)}")
+                    # Prompt assistant to ask clarifying questions
+                    response = self._process_message(
+                        "Please ask clarifying questions to customize my CV based on the analysis."
+                    )
+                    print(f"\n{response}")
+                    # Continue to next loop iteration for interactive chat
+                    continue
+                else:
+                    user_input = input("\n> ").strip()
                 
                 if not user_input:
                     continue
                 
                 # Handle commands
-                if user_input.lower() in ['quit', 'exit', 'q']:
+                if user_input == 'QUIT':
+                    confirm = input("\n⚠ Confirm exit? (yes/no): ")
+                    if confirm.lower() in ['yes', 'y']:
+                        self._save_session()
+                        self._save_readline_history()
+                        print("\n✓ Session saved. Goodbye!")
+                        break
+                    else:
+                        print("\n✓ Exit cancelled.")
+                        continue
+                elif user_input.lower() in ['quit', 'exit', 'q']:
                     self._save_session()
+                    self._save_readline_history()
                     print("\n✓ Session saved. Goodbye!")
                     break
                 elif user_input.lower() == 'help':
@@ -122,9 +209,9 @@ Your role is to:
 5. Help refine and iterate on generated content
 
 You can request actions by including JSON in your response:
-{"action": "analyze_job", "job_text": "..."}
-{"action": "recommend_customizations"}
-{"action": "generate_cv"}
+{{"action": "analyze_job", "job_text": "..."}}
+{{"action": "recommend_customizations"}}
+{{"action": "generate_cv"}}
 
 Current conversation phase: {phase}
 """
@@ -221,6 +308,7 @@ Current conversation phase: {phase}
         print("\nCommands:")
         print("  • 'help' - Show available commands")
         print("  • 'status' - Check current progress")
+        print("  • 'QUIT' - Save and exit (with confirmation)")
         print("  • 'quit' - Save and exit")
         print("\n" + "-"*70)
         
@@ -240,6 +328,7 @@ Current conversation phase: {phase}
         print("\n  help     - Show this help message")
         print("  status   - Show current conversation state and progress")
         print("  reset    - Start over with a new CV generation")
+        print("  QUIT     - Save session and exit (with confirmation)")
         print("  quit     - Save session and exit")
         print("\nConversation Flow:")
         print("  1. Provide job description")
@@ -285,7 +374,8 @@ Current conversation phase: {phase}
         """Save conversation session."""
         if not self.session_dir:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.session_dir = Path(f"files/sessions/session_{timestamp}")
+            pos = self.state.get('position_name') or 'unnamed'
+            self.session_dir = Path(f"files/sessions/{pos}/session_{timestamp}")
             self.session_dir.mkdir(parents=True, exist_ok=True)
         
         session_data = {
@@ -299,6 +389,86 @@ Current conversation phase: {phase}
             json.dump(session_data, f, indent=2)
         
         print(f"✓ Session saved to: {session_file}")
+
+    def _ensure_position_selected(self):
+        """Prompt user to create or open a position name."""
+        while not self.state.get('position_name'):
+            print("\nPosition Setup:")
+            existing = self._list_positions()
+            if existing:
+                print("Existing positions:")
+                for name in existing:
+                    print(f"  • {name}")
+            print("\nEnter a position name to create/open, or type 'open <name>' to load latest session, or 'list' to reprint.")
+            inp = input("Position> ").strip()
+            if not inp:
+                continue
+            if inp.lower() == 'list':
+                # loop will reprint
+                continue
+            if inp.lower().startswith('open '):
+                name = inp[5:].strip()
+                if not name:
+                    print("Please provide a name after 'open'.")
+                    continue
+                self.state['position_name'] = name
+                loaded = self._load_latest_session_for_position(name)
+                if loaded:
+                    print(f"\n✓ Loaded latest session for position '{name}'.")
+                else:
+                    print(f"\n✓ Position set to '{name}'. No previous session found.")
+                break
+            else:
+                # treat input as position name
+                self.state['position_name'] = inp
+                print(f"\n✓ Position set to '{inp}'.")
+                break
+
+    def _list_positions(self) -> List[str]:
+        """List known position names from sessions directory."""
+        root = Path("files/sessions")
+        if not root.exists():
+            return []
+        names = []
+        for child in root.iterdir():
+            if child.is_dir():
+                names.append(child.name)
+        return sorted(names)
+
+    def _load_latest_session_for_position(self, name: str) -> bool:
+        """Load the most recent session for a given position, if any."""
+        base = Path(f"files/sessions/{name}")
+        if not base.exists():
+            return False
+        candidates = sorted(base.glob("session_*/session.json"), reverse=True)
+        if not candidates:
+            return False
+        session_file = str(candidates[0])
+        try:
+            self.load_session(session_file)
+            return True
+        except Exception:
+            return False
+
+    def _setup_readline(self):
+        """Configure readline and load input history."""
+        try:
+            # Ensure parent exists
+            self.history_file.parent.mkdir(parents=True, exist_ok=True)
+            # Load history if available
+            if self.history_file.exists():
+                readline.read_history_file(str(self.history_file))
+            readline.set_history_length(1000)
+        except Exception:
+            # Silently ignore if readline is unavailable or fails
+            pass
+
+    def _save_readline_history(self):
+        """Persist readline input history to file."""
+        try:
+            readline.write_history_file(str(self.history_file))
+        except Exception:
+            pass
     
     def load_session(self, session_file: str):
         """Load previous session."""

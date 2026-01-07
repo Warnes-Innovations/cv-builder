@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CV Generator — Minimal Web UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: #f6f7f9; }
+    header { background: #1f2937; color: #fff; padding: 16px 24px; }
+    main.layout { display: flex; gap: 16px; margin: 24px auto; padding: 0 16px; max-width: 1200px; }
+    section, aside { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
+    aside.nav { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
+    section.interaction { flex: 1; display: flex; flex-direction: column; }
+    h1 { font-size: 20px; margin: 0; }
+    h2 { font-size: 18px; margin: 0 0 12px; }
+    textarea, input[type=text] { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+    button { background: #2563eb; color: #fff; border: none; padding: 10px 14px; border-radius: 6px; cursor: pointer; }
+    button.secondary { background: #374151; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .messages { flex: 1; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fafafa; }
+    .msg { margin-bottom: 12px; }
+    .user { color: #111827; }
+    .assistant { color: #0f766e; }
+    .system { color: #6b7280; font-style: italic; }
+    .status { font-size: 13px; color: #374151; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>LLM-Driven CV Generator — Web UI</h1>
+  </header>
+  <main class="layout">
+    <aside class="nav">
+      <section>
+        <h2>Position</h2>
+        <div class="status" id="pos-name">Position: —</div>
+        <div class="row" style="margin-top:8px">
+          <input type="text" id="pos-input" placeholder="New position name" />
+          <button id="pos-set">Set</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <select id="pos-select" style="flex:1"></select>
+          <button id="pos-open">Open</button>
+        </div>
+      </section>
+      <section>
+        <h2>Workflow</h2>
+        <div id="wf-phase" class="status">Phase: loading…</div>
+        <ul id="wf-list" style="list-style:none; padding-left:0; margin-top:8px">
+          <li id="wf-job">• Job description: —</li>
+          <li id="wf-analysis">• Job analysis: —</li>
+          <li id="wf-custom">• Customizations: —</li>
+          <li id="wf-files">• Generated files: —</li>
+        </ul>
+      </section>
+      <section>
+        <h2>Actions</h2>
+        <button id="submitJob">Analyze Job</button>
+        <button id="runRecommend" class="secondary">Recommend Customizations</button>
+        <button id="runGenerate" class="secondary">Generate CV</button>
+        <button id="save" class="secondary">Save Session</button>
+        <button id="reset" class="secondary">Reset</button>
+      </section>
+      <section>
+        <h2>Job Description</h2>
+        <textarea id="job" rows="8" placeholder="Paste the job description here..."></textarea>
+      </section>
+    </aside>
+    <section class="interaction">
+      <h2>Conversation</h2>
+      <div class="messages" id="messages"></div>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="message" placeholder="Type a message (e.g., 'generate_cv')" />
+        <button id="send">Send</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    async function fetchStatus() {
+      const res = await fetch('/api/status');
+      const s = await res.json();
+      updateNav(s);
+    }
+
+    async function fetchPositions() {
+      const res = await fetch('/api/positions');
+      const out = await res.json();
+      const sel = document.getElementById('pos-select');
+      sel.innerHTML = '';
+      for (const name of out.positions || []) {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name;
+        sel.appendChild(opt);
+      }
+    }
+    function updateNav(s) {
+      const phase = s.phase || 'init';
+      const position = s.position_name || '—';
+      const job = s.job_description ? '✓ Loaded' : '✗ Not provided';
+      const analysis = s.job_analysis ? '✓ Complete' : '✗ Pending';
+      const custom = s.customizations ? '✓ Ready' : '✗ Pending';
+      const files = s.generated_files ? '✓ Created' : '✗ Not generated';
+      document.getElementById('pos-name').textContent = `Position: ${position}`;
+      document.getElementById('wf-phase').textContent = `Phase: ${phase}`;
+      document.getElementById('wf-job').textContent = `• Job description: ${job}`;
+      document.getElementById('wf-analysis').textContent = `• Job analysis: ${analysis}`;
+      document.getElementById('wf-custom').textContent = `• Customizations: ${custom}`;
+      document.getElementById('wf-files').textContent = `• Generated files: ${files}`;
+    }
+
+    async function fetchHistory() {
+      const res = await fetch('/api/history');
+      const out = await res.json();
+      const messages = out.history || [];
+      const box = document.getElementById('messages');
+      box.innerHTML = '';
+      for (const m of messages) {
+        const role = m.role;
+        const text = m.content;
+        if (role === 'user') appendUser(text);
+        else if (role === 'assistant') appendAssistant(text);
+        else appendSystem(text);
+      }
+    }
+
+    async function submitJob() {
+      const jobText = document.getElementById('job').value.trim();
+      if (!jobText) return;
+      // Store the job description and add it to history
+      const resStore = await fetch('/api/job', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_text: jobText })
+      });
+      const stored = await resStore.json();
+      appendSystem(stored.message || 'Job description submitted.');
+      // Trigger analysis action and display assistant result
+      appendSystem('Analyzing job description...');
+      const resAnalyze = await fetch('/api/action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'analyze_job' })
+      });
+      const analyzed = await resAnalyze.json();
+      if (analyzed.error) {
+        appendSystem('Error: ' + analyzed.error);
+      } else {
+        appendAssistant(analyzed.result);
+      }
+      await fetchStatus();
+      await fetchHistory();
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('message');
+      const text = input.value.trim();
+      if (!text) return;
+      appendUser(text);
+      input.value = '';
+      const res = await fetch('/api/message', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text })
+      });
+      const out = await res.json();
+      if (out.error) {
+        appendSystem('Error: ' + out.error);
+      } else {
+        appendAssistant(out.response);
+        await fetchStatus();
+      }
+    }
+
+    async function sendMessageWithText(text) {
+      appendUser(text);
+      const res = await fetch('/api/message', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text })
+      });
+      const out = await res.json();
+      if (out.error) {
+        appendSystem('Error: ' + out.error);
+      } else {
+        appendAssistant(out.response);
+      }
+    }
+
+    async function reset() {
+      const res = await fetch('/api/reset', { method: 'POST' });
+      const out = await res.json();
+      appendSystem(out.message || 'Conversation reset.');
+      await fetchStatus();
+    }
+
+    async function save() {
+      const res = await fetch('/api/save', { method: 'POST' });
+      const out = await res.json();
+      appendSystem(out.ok ? 'Session saved.' : ('Error: ' + out.error));
+    }
+
+    async function runCommand() {
+      const cmd = document.getElementById('cmd').value;
+      if (cmd === 'show_status') {
+        const res = await fetch('/api/status');
+        const s = await res.json();
+        appendSystem(`Phase: ${s.phase}; Job: ${s.job_description ? 'loaded' : 'not loaded'}; ` +
+          `Analysis: ${s.job_analysis ? 'done' : 'pending'}; Customizations: ${s.customizations ? 'ready' : 'pending'}`);
+        return;
+      }
+      if (cmd === 'save_session') { await save(); return; }
+      if (cmd === 'reset') { await reset(); return; }
+
+      // LLM-driven actions
+      const payload = { action: cmd };
+      if (cmd === 'analyze_job') {
+        // Optionally pass current textarea content if present
+        const jobText = document.getElementById('job').value.trim();
+        if (jobText) payload.job_text = jobText;
+      }
+      const res = await fetch('/api/action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const out = await res.json();
+      if (out.error) {
+        appendSystem('Error: ' + out.error);
+      } else {
+        appendAssistant(out.result);
+        await fetchStatus();
+      }
+    }
+
+    function appendUser(text) { append('user', text); }
+    function appendAssistant(text) { append('assistant', text); }
+    function appendSystem(text) { append('system', text); }
+    function append(cls, text) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + cls;
+      div.textContent = text;
+      const box = document.getElementById('messages');
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    document.getElementById('submitJob').addEventListener('click', submitJob);
+    document.getElementById('pos-set').addEventListener('click', async () => {
+      const name = document.getElementById('pos-input').value.trim();
+      if (!name) return;
+      const res = await fetch('/api/position', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      const out = await res.json();
+      appendSystem(out.ok ? `Position set to ${name}.` : ('Error: ' + out.error));
+      await fetchPositions();
+      await fetchStatus();
+    });
+    document.getElementById('pos-open').addEventListener('click', async () => {
+      const sel = document.getElementById('pos-select');
+      const name = sel.value;
+      if (!name) return;
+      const res = await fetch('/api/position', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, open_latest: true })
+      });
+      const out = await res.json();
+      if (out.error) {
+        appendSystem('Error: ' + out.error);
+      } else {
+        appendSystem(out.loaded ? `Loaded latest session for ${name}.` : `Position set to ${name}.`);
+        await fetchHistory();
+        await fetchStatus();
+      }
+    });
+    document.getElementById('runRecommend').addEventListener('click', async () => {
+      const res = await fetch('/api/action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'recommend_customizations' })
+      });
+      const out = await res.json();
+      if (out.error) appendSystem('Error: ' + out.error); else appendAssistant(out.result);
+      await fetchStatus();
+      await fetchHistory();
+    });
+    document.getElementById('runGenerate').addEventListener('click', async () => {
+      const res = await fetch('/api/action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'generate_cv' })
+      });
+      const out = await res.json();
+      if (out.error) appendSystem('Error: ' + out.error); else appendAssistant(out.result);
+      await fetchStatus();
+      await fetchHistory();
+    });
+    document.getElementById('send').addEventListener('click', sendMessage);
+    document.getElementById('reset').addEventListener('click', reset);
+    document.getElementById('save').addEventListener('click', save);
+
+    document.getElementById('message').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+
+    fetchPositions();
+    fetchStatus();
+    fetchHistory();
+  </script>
+</body>
+</html>

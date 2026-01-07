@@ -29,3 +29,6 @@ beautifulsoup4>=4.12.0
 
 # Standard Libraries
 requests>=2.31.0
+
+# Web UI
+flask>=2.3.0

@@ -1,0 +1,27 @@
+{
+	"folders": [
+		{
+			"path": "../../Library/CloudStorage/GoogleDrive-greg@warnes.net/My Drive/CV"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"terminal.integrated.defaultProfile.osx": "zsh",
+		"terminal.integrated.profiles.osx": {
+			"zsh": {
+				"path": "zsh",
+				"args": [
+					"-l",
+					"-c",
+					"source .vscode/terminal_init.sh 2>/dev/null; exec zsh"
+				]
+			}
+		},
+		"terminal.integrated.env.osx": {
+			"VIRTUAL_ENV": "${workspaceFolder}/venv",
+			"PATH": "${workspaceFolder}/venv/bin:${env:PATH}"
+		}
+	}
+}

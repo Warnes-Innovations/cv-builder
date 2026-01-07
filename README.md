@@ -144,6 +144,19 @@ For automation/testing:
 python scripts/llm_cv_generator.py --job-file job.txt --non-interactive
 ```
 
+### Minimal Web UI
+
+Serve a simple web interface instead of the terminal UI:
+
+```bash
+conda activate cvgen
+pip install -r scripts/requirements-pip.txt  # ensure Flask is installed
+python scripts/web_app.py --llm-provider github
+# Open http://localhost:5000
+```
+
+In the browser, paste a job description, send messages (e.g., `recommend_customizations`, `generate_cv`), check status, and save the session.
+
 ## Project Structure
 
 ```

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/local/Caskroom/miniconda/base/envs/cvgen/bin/python
 """
 LLM-Driven CV Generation System
 
@@ -36,8 +36,16 @@ from utils.cv_orchestrator import CVOrchestrator
 from utils.conversation_manager import ConversationManager
 
 
+def clear_console():
+    """Clear the console screen."""
+    os.system('clear' if os.name != 'nt' else 'cls')
+
+
 def main():
     """Main entry point for LLM-driven CV generation."""
+    # Clear console at startup
+    clear_console()
+    
     parser = argparse.ArgumentParser(
         description='LLM-Driven CV Generation System - Interactive CV customization',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -149,7 +157,7 @@ Examples:
             print(f"\n✓ Generation complete: {result['output_dir']}")
         else:
             print("Starting interactive conversation...")
-            print("(Type 'help' for commands, 'quit' to exit)\n")
+            print("(Type 'help' for commands, 'quit' to exit, 'QUIT' for confirm)\n")
             conversation.start_interactive()
     
     except KeyboardInterrupt:
