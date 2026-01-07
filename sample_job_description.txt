@@ -1,0 +1,31 @@
+Senior Data Scientist - Machine Learning
+
+We are seeking an experienced Data Scientist to join our team and lead machine learning initiatives in the biotech industry.
+
+Requirements:
+- Ph.D. in Statistics, Biostatistics, Computer Science, or related field
+- 10+ years of experience in statistical analysis and machine learning
+- Strong programming skills in Python and R
+- Experience with bioinformatics and genomics data analysis
+- Proven track record of developing and deploying ML models in production
+- Experience with cloud platforms (AWS, GCP, Azure)
+- Strong publication record in peer-reviewed journals
+- Experience leading cross-functional teams
+- Excellent communication skills
+
+Preferred Qualifications:
+- Experience with drug discovery or clinical trials
+- Knowledge of regulatory requirements (FDA, EMA)
+- Experience with next-generation sequencing data
+- Contributions to open-source software projects
+- Experience with Shiny app development
+- Knowledge of Docker and containerization
+
+Responsibilities:
+- Design and implement machine learning models for drug discovery
+- Analyze complex genomics and clinical data
+- Collaborate with biologists and chemists to drive research initiatives
+- Mentor junior data scientists
+- Present findings to stakeholders and leadership
+- Develop reproducible analysis pipelines
+- Contribute to scientific publications

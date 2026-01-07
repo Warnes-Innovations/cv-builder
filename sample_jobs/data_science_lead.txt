@@ -1,0 +1,52 @@
+Senior Data Scientist - Biotech/Pharma
+---
+
+Company: BioTech Innovations
+
+About Us:
+We are a leading biotechnology company focused on precision medicine and drug discovery using cutting-edge computational biology and machine learning approaches.
+
+Position Overview:
+We are seeking a Senior Data Scientist with strong experience in biostatistics, computational biology, and machine learning to lead data analysis initiatives supporting drug discovery programs. The ideal candidate will have extensive experience with R, Python, and statistical genomics.
+
+Required Qualifications:
+- PhD in Biostatistics, Bioinformatics, Statistics, or related quantitative field
+- 7+ years of experience in data science, biostatistics, or computational biology
+- Expert-level proficiency in R and Python for statistical analysis
+- Strong background in statistical modeling, experimental design, and clinical trial analysis
+- Experience with genomics data analysis (RNA-seq, variant calling, GWAS)
+- Proven track record of publications in peer-reviewed journals
+- Experience leading cross-functional teams and mentoring junior scientists
+- Strong communication skills and ability to present complex results to diverse audiences
+
+Preferred Qualifications:
+- Experience with machine learning frameworks (scikit-learn, TensorFlow, PyTorch)
+- Knowledge of cloud computing platforms (AWS, GCP, Azure)
+- Familiarity with microarray data analysis
+- Experience developing and maintaining R packages or Python libraries
+- Background in pharmaceutical or biotech industry
+- Knowledge of regulatory requirements for clinical trials
+
+Key Responsibilities:
+- Design and implement statistical analysis plans for clinical studies
+- Analyze genomics and biomarker data to support drug discovery
+- Develop predictive models for patient stratification and drug response
+- Lead data science team and mentor junior scientists
+- Collaborate with biologists, clinicians, and software engineers
+- Communicate findings to executive leadership and scientific advisory boards
+- Contribute to regulatory submissions and scientific publications
+
+Technical Skills:
+- Statistical programming: R, Python, SAS
+- Data visualization: ggplot2, matplotlib, plotly, Tableau
+- Machine learning: classification, regression, clustering, feature selection
+- Genomics: NGS data analysis, variant calling, RNA-seq, GWAS
+- Version control: Git, GitHub
+- High-performance computing and cloud platforms
+
+We Offer:
+- Competitive salary ($180K-$240K based on experience)
+- Comprehensive benefits package
+- Opportunities for professional development and conference attendance
+- Collaborative and innovative work environment
+- Flexible work arrangements

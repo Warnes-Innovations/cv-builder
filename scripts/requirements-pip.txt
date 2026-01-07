@@ -1,4 +1,9 @@
-# Requirements for CV Generation System
+# Requirements for CV Generation System (pip-only, conda manages spacy/blis)
+
+# LLM API Clients
+openai>=1.0.0
+anthropic>=0.18.0
+sentence-transformers>=2.2.0
 
 # Google Drive API
 google-api-python-client>=2.100.0
@@ -11,10 +16,8 @@ weasyprint>=60.0
 pypandoc>=1.11
 mammoth>=1.6.0
 
-# Text Processing & NLP
+# Text Processing & NLP (exclude spacy/blis; installed via conda)
 transformers>=4.30.0
-spacy>=3.6.0
-blis==0.7.9
 nltk>=3.8
 
 # BibTeX Processing

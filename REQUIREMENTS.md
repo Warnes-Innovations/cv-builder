@@ -63,7 +63,7 @@ The system will use VSCode as the UI with GitHub Copilot acting as the conversat
 - No abbreviations without spelling out first: "Master of Business Administration (MBA)"
 
 **Content Structure:**
-- Contact info: Name, City/State, Phone, Email, LinkedIn URL (optional)
+- Contact info: Name, City/State, Phone, Email, LinkedIn URL
 - Each job entry: Job Title | Company Name | Location | Dates
 - Use bullet points for achievements (not paragraphs)
 - Include both acronyms AND full terms: "Machine Learning (ML)"
