@@ -33,9 +33,9 @@ class CVOrchestrator:
         output_dir: str,
         llm_client: LLMClient
     ):
-        self.master_data_path = Path(master_data_path)
-        self.publications_path = Path(publications_path)
-        self.output_dir = Path(output_dir)
+        self.master_data_path = Path(master_data_path).expanduser()
+        self.publications_path = Path(publications_path).expanduser()
+        self.output_dir = Path(output_dir).expanduser()
         self.llm = llm_client
         
         # Load master data
@@ -173,6 +173,7 @@ class CVOrchestrator:
             job_analysis.get('must_have_requirements', []) +
             job_analysis.get('nice_to_have_requirements', [])
         )
+        domain = job_analysis.get('domain', '')
         
         # Score experiences
         scored_experiences = []
@@ -183,10 +184,15 @@ class CVOrchestrator:
             llm_score = 10.0 if exp_id in recommended_exp_ids else 0.0
             
             # Keyword score
-            exp_text = json.dumps(exp)
-            keyword_score = calculate_relevance_score(exp_text, job_keywords)
+            keyword_score = calculate_relevance_score(
+                exp,
+                job_keywords,
+                job_requirements,
+                domain
+            )
             
             # Semantic score from LLM
+            exp_text = json.dumps(exp)
             semantic_score = self.llm.semantic_match(exp_text, job_requirements) * 10
             
             # Combined score
@@ -204,8 +210,13 @@ class CVOrchestrator:
             ach_id = ach.get('id', '')
             
             llm_score = 10.0 if ach_id in recommended_achievement_ids else 0.0
+            keyword_score = calculate_relevance_score(
+                ach,
+                job_keywords,
+                job_requirements,
+                domain
+            )
             ach_text = json.dumps(ach)
-            keyword_score = calculate_relevance_score(ach_text, job_keywords)
             semantic_score = self.llm.semantic_match(ach_text, job_requirements) * 10
             
             total_score = llm_score + keyword_score + semantic_score

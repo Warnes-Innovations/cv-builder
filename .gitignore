@@ -16,3 +16,4 @@ archive/
 
 # OS artifacts
 .DS_Store
+.env

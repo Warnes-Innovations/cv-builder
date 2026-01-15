@@ -26,6 +26,12 @@ pybtex>=0.24.0
 # Data Validation
 pydantic>=2.0.0
 
+# Environment Variables
+python-dotenv>=1.0.0
+
+# Web Interface
+flask>=2.3.0
+
 # HTML/Template Processing
 jinja2>=3.1.2
 beautifulsoup4>=4.12.0

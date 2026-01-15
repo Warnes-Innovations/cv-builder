@@ -1,0 +1,52 @@
+# CV Builder Configuration
+# This file contains paths and default settings for the CV generation system
+
+# Data File Locations
+# These can be absolute paths or relative to your home directory (~)
+data:
+  master_cv: "~/CV/Master_CV_Data.json"
+  publications: "~/CV/publications.bib"
+  output_dir: "./files"
+
+# LLM Provider Settings
+llm:
+  default_provider: "github"  # Options: github, openai, anthropic, local
+  default_model: null  # null uses provider default (gpt-4o for github, etc.)
+  temperature: 0.7
+  max_tokens: null  # null uses provider default
+
+# CV Generation Defaults
+generation:
+  max_experiences: 4
+  max_skills: 20
+  max_achievements: 5
+  max_publications: 10
+  
+  # Output formats to generate
+  formats:
+    ats_docx: true       # ATS-optimized DOCX (machine-parseable)
+    human_pdf: true      # Human-readable PDF (styled)
+    human_docx: true     # Human-readable DOCX (styled)
+
+# Session Management
+session:
+  auto_save: true
+  session_dir: "./files/sessions"
+  history_file: "./files/.input_history"
+
+# Google Drive Integration (optional)
+google_drive:
+  enabled: false
+  credentials_path: "~/.credentials/google_drive_credentials.json"
+  token_path: "~/.credentials/google_drive_token.pickle"
+
+# Web UI Settings
+web:
+  host: "127.0.0.1"
+  port: 5000
+  debug: false
+
+# Logging
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+  file: null     # null logs to console only

@@ -27,12 +27,20 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(env_path)
 
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+from utils.config import get_config
 from utils.llm_client import LLMClient, get_llm_provider
 from utils.cv_orchestrator import CVOrchestrator
+from utils.conversation_manager import ConversationManager
 from utils.conversation_manager import ConversationManager
 
 
@@ -43,8 +51,8 @@ def clear_console():
 
 def main():
     """Main entry point for LLM-driven CV generation."""
-    # Clear console at startup
-    clear_console()
+    # Load configuration
+    config = get_config()
     
     parser = argparse.ArgumentParser(
         description='LLM-Driven CV Generation System - Interactive CV customization',
@@ -71,24 +79,24 @@ Examples:
     )
     parser.add_argument(
         '--master-data',
-        default='Master_CV_Data.json',
-        help='Path to Master_CV_Data.json (default: Master_CV_Data.json)'
+        default=config.master_cv_path,
+        help='Path to Master_CV_Data.json'
     )
     parser.add_argument(
         '--publications',
-        default='publications.bib',
-        help='Path to publications.bib (default: publications.bib)'
+        default=config.publications_path,
+        help='Path to publications.bib'
     )
     parser.add_argument(
         '--output-dir',
-        default='files',
-        help='Output directory for generated files (default: files/)'
+        default=config.output_dir,
+        help='Output directory for generated files'
     )
     parser.add_argument(
         '--llm-provider',
         choices=['github', 'openai', 'anthropic', 'local'],
-        default='github',
-        help='LLM provider to use (default: github - uses your GitHub Copilot subscription)'
+        default=config.llm_provider,
+        help='LLM provider to use'
     )
     parser.add_argument(
         '--model',
@@ -106,6 +114,17 @@ Examples:
     
     args = parser.parse_args()
     
+    # Args already have config defaults, just use them directly
+    master_data  = args.master_data
+    publications = args.publications
+    output_dir   = args.output_dir
+    llm_provider = args.llm_provider
+    llm_model    = args.model or config.llm_model
+    
+    # Clear console only in interactive mode
+    if not args.non_interactive:
+        clear_console()
+    
     # Print banner
     print("\n" + "="*70)
     print("   LLM-Driven CV Generation System")
@@ -114,18 +133,18 @@ Examples:
     
     try:
         # Initialize LLM client
-        print(f"Initializing LLM ({args.llm_provider})...")
+        print(f"Initializing LLM ({llm_provider})...")
         llm_client = get_llm_provider(
-            provider=args.llm_provider,
-            model=args.model
+            provider=llm_provider,
+            model=llm_model
         )
         print("✓ LLM initialized\n")
         
         # Initialize orchestrator
         orchestrator = CVOrchestrator(
-            master_data_path=args.master_data,
-            publications_path=args.publications,
-            output_dir=args.output_dir,
+            master_data_path=master_data,
+            publications_path=publications,
+            output_dir=output_dir,
             llm_client=llm_client
         )
         

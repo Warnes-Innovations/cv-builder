@@ -5,23 +5,32 @@
 		},
 		{
 			"path": "."
+		},
+		{
+			"path": "../warnes-innovations-website"
 		}
 	],
 	"settings": {
+		"python.defaultInterpreterPath": "/usr/local/Caskroom/miniconda/base/envs/cvgen/bin/python",
+		"python.terminal.activateEnvironment": true,
 		"terminal.integrated.defaultProfile.osx": "zsh",
+		"terminal.integrated.env.osx": {
+			"CONDA_DEFAULT_ENV": "cvgen"
+		},
 		"terminal.integrated.profiles.osx": {
 			"zsh": {
 				"path": "zsh",
 				"args": [
 					"-l",
 					"-c",
-					"source .vscode/terminal_init.sh 2>/dev/null; exec zsh"
+					"eval \"$(conda shell.zsh hook)\" && conda activate cvgen 2>/dev/null; source .vscode/terminal_init.sh 2>/dev/null; exec zsh"
 				]
 			}
 		},
 		"terminal.integrated.env.osx": {
 			"VIRTUAL_ENV": "${workspaceFolder}/venv",
 			"PATH": "${workspaceFolder}/venv/bin:${env:PATH}"
-		}
+		},
+		"liveServer.settings.multiRootWorkspaceName": "warnes-innovations-website"
 	}
 }

@@ -21,9 +21,17 @@
     .messages { flex: 1; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fafafa; }
     .msg { margin-bottom: 12px; }
     .user { color: #111827; }
-    .assistant { color: #0f766e; }
+    .assistant { color: #0f766e; white-space: pre-wrap; }
     .system { color: #6b7280; font-style: italic; }
     .status { font-size: 13px; color: #374151; }
+    .loading { color: #2563eb; font-style: italic; }
+    .loading::after { content: ''; animation: dots 1.5s steps(5, end) infinite; }
+    @keyframes dots { 0%, 20% { content: ''; } 40% { content: '.'; } 60% { content: '..'; } 80%, 100% { content: '...'; } }
+    button:disabled { opacity: 0.6; cursor: not-allowed; background: #9ca3af; }
+    .job-analysis { background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 12px; margin: 8px 0; border-radius: 6px; }
+    .job-analysis h3 { margin: 0 0 8px; color: #0c4a6e; }
+    .job-analysis ul { margin: 8px 0; padding-left: 20px; }
+    .job-analysis li { margin: 4px 0; }
   </style>
 </head>
 <body>
@@ -108,6 +116,12 @@
       document.getElementById('wf-analysis').textContent = `• Job analysis: ${analysis}`;
       document.getElementById('wf-custom').textContent = `• Customizations: ${custom}`;
       document.getElementById('wf-files').textContent = `• Generated files: ${files}`;
+      
+      // Populate job description textarea if loaded
+      const jobTextarea = document.getElementById('job');
+      if (s.job_description_text && !jobTextarea.value) {
+        jobTextarea.value = s.job_description_text;
+      }
     }
 
     async function fetchHistory() {
@@ -128,6 +142,10 @@
     async function submitJob() {
       const jobText = document.getElementById('job').value.trim();
       if (!jobText) return;
+      
+      const submitBtn = document.getElementById('submitJob');
+      submitBtn.disabled = true;
+      
       // Store the job description and add it to history
       const resStore = await fetch('/api/job', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -135,18 +153,28 @@
       });
       const stored = await resStore.json();
       appendSystem(stored.message || 'Job description submitted.');
+      
       // Trigger analysis action and display assistant result
-      appendSystem('Analyzing job description...');
-      const resAnalyze = await fetch('/api/action', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'analyze_job' })
-      });
-      const analyzed = await resAnalyze.json();
-      if (analyzed.error) {
-        appendSystem('Error: ' + analyzed.error);
-      } else {
-        appendAssistant(analyzed.result);
+      const loadingDiv = appendLoading('Analyzing job description');
+      try {
+        const resAnalyze = await fetch('/api/action', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'analyze_job' })
+        });
+        const analyzed = await resAnalyze.json();
+        removeLoading(loadingDiv);
+        
+        if (analyzed.error) {
+          appendSystem('Error: ' + analyzed.error);
+        } else {
+          appendFormattedAnalysis(analyzed.result);
+        }
+      } catch (error) {
+        removeLoading(loadingDiv);
+        appendSystem('Error: ' + error.message);
       }
+      
+      submitBtn.disabled = false;
       await fetchStatus();
       await fetchHistory();
     }
@@ -155,19 +183,34 @@
       const input = document.getElementById('message');
       const text = input.value.trim();
       if (!text) return;
+      
+      const sendBtn = document.getElementById('send');
+      sendBtn.disabled = true;
+      
       appendUser(text);
       input.value = '';
-      const res = await fetch('/api/message', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
-      });
-      const out = await res.json();
-      if (out.error) {
-        appendSystem('Error: ' + out.error);
-      } else {
-        appendAssistant(out.response);
-        await fetchStatus();
+      
+      const loadingDiv = appendLoading('Processing message');
+      try {
+        const res = await fetch('/api/message', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text })
+        });
+        const out = await res.json();
+        removeLoading(loadingDiv);
+        
+        if (out.error) {
+          appendSystem('Error: ' + out.error);
+        } else {
+          appendFormattedResponse(out.response);
+          await fetchStatus();
+        }
+      } catch (error) {
+        removeLoading(loadingDiv);
+        appendSystem('Error: ' + error.message);
       }
+      
+      sendBtn.disabled = false;
     }
 
     async function sendMessageWithText(text) {
@@ -239,6 +282,80 @@
       const box = document.getElementById('messages');
       box.appendChild(div);
       box.scrollTop = box.scrollHeight;
+      return div;
+    }
+
+    function appendLoading(text) {
+      const div = document.createElement('div');
+      div.className = 'msg loading';
+      div.textContent = text;
+      const box = document.getElementById('messages');
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+      return div;
+    }
+
+    function removeLoading(div) {
+      if (div && div.parentNode) {
+        div.parentNode.removeChild(div);
+      }
+    }
+
+    function appendFormattedAnalysis(result) {
+      try {
+        const data = typeof result === 'string' ? JSON.parse(result) : result;
+        
+        if (data && typeof data === 'object') {
+          const div = document.createElement('div');
+          div.className = 'msg assistant job-analysis';
+          
+          let html = '<h3>📋 Job Analysis Complete</h3>';
+          
+          if (data.title) html += `<p><strong>Position:</strong> ${data.title} at ${data.company || 'Company'}</p>`;
+          if (data.domain) html += `<p><strong>Domain:</strong> ${data.domain}</p>`;
+          if (data.role_level) html += `<p><strong>Level:</strong> ${data.role_level}</p>`;
+          
+          if (data.required_skills && data.required_skills.length > 0) {
+            html += '<h4>🎯 Required Skills:</h4><ul>';
+            data.required_skills.forEach(skill => html += `<li>${skill}</li>`);
+            html += '</ul>';
+          }
+          
+          if (data.must_have_requirements && data.must_have_requirements.length > 0) {
+            html += '<h4>✅ Must-Have Requirements:</h4><ul>';
+            data.must_have_requirements.forEach(req => html += `<li>${req}</li>`);
+            html += '</ul>';
+          }
+          
+          if (data.preferred_skills && data.preferred_skills.length > 0) {
+            html += '<h4>⭐ Preferred Skills:</h4><ul>';
+            data.preferred_skills.forEach(skill => html += `<li>${skill}</li>`);
+            html += '</ul>';
+          }
+          
+          div.innerHTML = html;
+          const box = document.getElementById('messages');
+          box.appendChild(div);
+          box.scrollTop = box.scrollHeight;
+        } else {
+          appendAssistant(result);
+        }
+      } catch (e) {
+        appendAssistant(result);
+      }
+    }
+
+    function appendFormattedResponse(response) {
+      try {
+        const data = typeof response === 'string' ? JSON.parse(response) : response;
+        if (data && typeof data === 'object' && (data.title || data.required_skills)) {
+          appendFormattedAnalysis(response);
+        } else {
+          appendAssistant(response);
+        }
+      } catch (e) {
+        appendAssistant(response);
+      }
     }
 
     document.getElementById('submitJob').addEventListener('click', submitJob);

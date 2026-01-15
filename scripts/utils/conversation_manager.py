@@ -485,20 +485,25 @@ Current conversation phase: {phase}
             raise ValueError("Job description required for automated mode")
         
         # Analyze job
+        print("Analyzing job description...")
         analysis = self.llm.analyze_job_description(
             self.state['job_description'],
             self.orchestrator.master_data
         )
         self.state['job_analysis'] = analysis
+        print("✓ Job analysis complete")
         
         # Get recommendations
+        print("Getting LLM recommendations...")
         recommendations = self.llm.recommend_customizations(
             analysis,
             self.orchestrator.master_data
         )
         self.state['customizations'] = recommendations
+        print("✓ Recommendations complete")
         
         # Generate
+        print("Generating CV...")
         result = self.orchestrator.generate_cv(analysis, recommendations)
         self.state['generated_files'] = result
         

@@ -18,12 +18,19 @@ import argparse
 import sys
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
 
 from flask import Flask, jsonify, request, send_file
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(env_path)
 
 # Ensure scripts are importable
 sys.path.insert(0, str(Path(__file__).parent))
 
+from utils.config import get_config
 from utils.llm_client import get_llm_provider
 from utils.cv_orchestrator import CVOrchestrator
 from utils.conversation_manager import ConversationManager
@@ -48,6 +55,11 @@ def create_app(args) -> Flask:
         if job_file_path.exists():
             job_text = job_file_path.read_text(encoding="utf-8")
             conversation.add_job_description(job_text)
+            # Also add to conversation history so the AI can see it
+            conversation.conversation_history.append({
+                "role": "user",
+                "content": f"Here is the job description I'm applying for:\n\n{job_text}",
+            })
 
     @app.get("/")
     def index():
@@ -60,6 +72,7 @@ def create_app(args) -> Flask:
             "position_name": conversation.state.get("position_name"),
             "phase": conversation.state.get("phase"),
             "job_description": bool(conversation.state.get("job_description")),
+            "job_description_text": conversation.state.get("job_description"),
             "job_analysis": bool(conversation.state.get("job_analysis")),
             "customizations": bool(conversation.state.get("customizations")),
             "generated_files": conversation.state.get("generated_files"),
@@ -173,21 +186,32 @@ def create_app(args) -> Flask:
 
 
 def parse_args():
+    config = get_config()
+    
     parser = argparse.ArgumentParser(description="Minimal Web UI for CV Generator")
     parser.add_argument("--job-file", help="Path to job description text file")
-    parser.add_argument("--master-data", default="Master_CV_Data.json")
-    parser.add_argument("--publications", default="publications.bib")
-    parser.add_argument("--output-dir", default="files")
-    parser.add_argument("--llm-provider", choices=["github", "openai", "anthropic", "local"], default="github")
+    parser.add_argument("--master-data", default=config.master_cv_path,
+                       help=f"Path to Master_CV_Data.json")
+    parser.add_argument("--publications", default=config.publications_path,
+                       help=f"Path to publications.bib")
+    parser.add_argument("--output-dir", default=config.output_dir,
+                       help=f"Output directory")
+    parser.add_argument("--llm-provider", choices=["github", "openai", "anthropic", "local"],
+                       default=config.llm_provider,
+                       help=f"LLM provider (default: {config.llm_provider})")
     parser.add_argument("--model", help="Specific model to use")
-    parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--port", type=int, default=config.web_port,
+                       help=f"Port to run on (default: {config.web_port})")
+    parser.add_argument("--debug", action="store_true", help="Run Flask in debug mode")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    config = get_config()
+       
     app = create_app(args)
-    app.run(host="127.0.0.1", port=args.port, debug=True)
+    app.run(host=config.web_host, port=args.port, debug=args.debug)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ Supports:
 """
 
 import os
+import json
 from typing import Dict, List, Optional, Any
 from abc import ABC, abstractmethod
 
@@ -120,7 +121,6 @@ Return as JSON with these fields:
         response = self.chat(messages, temperature=0.3)
         
         # Parse JSON response
-        import json
         try:
             return json.loads(response)
         except json.JSONDecodeError:
@@ -166,14 +166,33 @@ Return as JSON with:
         
         response = self.chat(messages, temperature=0.5)
         
-        import json
         try:
             return json.loads(response)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            print(f"Warning: Failed to parse LLM response as JSON: {e}")
+            print(f"Response preview: {response[:500]}...")
+            
+            # Try to extract JSON from markdown code block
             if "```json" in response:
                 json_str = response.split("```json")[1].split("```")[0].strip()
                 return json.loads(json_str)
-            raise
+            elif "```" in response:
+                # Try any code block
+                json_str = response.split("```")[1].split("```")[0].strip()
+                # Remove language identifier if present
+                if json_str.startswith('json\n'):
+                    json_str = json_str[5:]
+                return json.loads(json_str)
+            
+            # Return a default response structure
+            print("Warning: Returning default recommendations")
+            return {
+                "recommended_experiences": [],
+                "recommended_skills": [],
+                "recommended_achievements": [],
+                "summary_focus": "general",
+                "reasoning": "Failed to parse LLM response"
+            }
     
     def semantic_match(
         self,

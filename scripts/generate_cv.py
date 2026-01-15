@@ -16,6 +16,7 @@ import sys
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+from utils.config import get_config
 from utils.bibtex_parser import parse_bibtex_file, format_publication, filter_publications
 from utils.scoring import (
     calculate_relevance_score,
@@ -299,6 +300,8 @@ def generate_cv_data(
 
 def main():
     """Command-line interface."""
+    config = get_config()
+    
     parser = argparse.ArgumentParser(
         description='Generate customized CV from master data based on job description.'
     )
@@ -313,18 +316,18 @@ def main():
     )
     parser.add_argument(
         '--master-data',
-        default='Master_CV_Data.json',
-        help='Path to Master_CV_Data.json (default: Master_CV_Data.json)'
+        default=None,
+        help=f'Path to Master_CV_Data.json (default: {config.master_cv_path})'
     )
     parser.add_argument(
         '--publications',
-        default='publications.bib',
-        help='Path to publications.bib (default: publications.bib)'
+        default=None,
+        help=f'Path to publications.bib (default: {config.publications_path})'
     )
     parser.add_argument(
         '--output', '-o',
-        default='files',
-        help='Output directory (default: files/)'
+        default=None,
+        help=f'Output directory (default: {config.output_dir})'
     )
     parser.add_argument(
         '--max-experiences',
@@ -347,6 +350,11 @@ def main():
     
     args = parser.parse_args()
     
+    # Resolve config values
+    master_data = args.master_data or config.master_cv_path
+    publications = args.publications or config.publications_path
+    output_dir = args.output or config.output_dir
+    
     # Get job data
     if args.job_file:
         # Parse raw job description
@@ -354,9 +362,9 @@ def main():
         job_data = parse_job_description(job_text)
         
         # Save parsed job data
-        output_dir = Path(args.output)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        job_data_file = output_dir / 'job_description.json'
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        job_data_file = output_path / 'job_description.json'
         with open(job_data_file, 'w', encoding='utf-8') as f:
             json.dump(job_data, f, indent=2)
         print(f"Parsed job description saved to: {job_data_file}\n")
@@ -376,18 +384,18 @@ def main():
     print()
     
     cv_data = generate_cv_data(
-        args.master_data,
-        args.publications,
+        master_data,
+        publications,
         job_data,
-        args.output
+        output_dir
     )
     
     print("\n✓ CV generation complete!")
-    print(f"  Output directory: {args.output}")
+    print(f"  Output directory: {output_dir}")
     print(f"  Next steps:")
     print(f"    1. Review cv_data.json")
-    print(f"    2. Generate DOCX: python generate_docx.py {args.output}/cv_data.json")
-    print(f"    3. Generate PDF: python generate_pdf.py {args.output}/cv_data.json")
+    print(f"    2. Generate DOCX: python generate_docx.py {output_dir}/cv_data.json")
+    print(f"    3. Generate PDF: python generate_pdf.py {output_dir}/cv_data.json")
     
     return 0
 
