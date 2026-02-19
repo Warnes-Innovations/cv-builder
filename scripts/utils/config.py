@@ -69,6 +69,13 @@ class Config:
                     path = self._config['google_drive'][key]
                     if isinstance(path, str) and path.startswith('~'):
                         self._config['google_drive'][key] = str(Path(path).expanduser())
+        
+        if 'logging' in self._config:
+            for key in ['log_dir']:
+                if key in self._config['logging']:
+                    path = self._config['logging'][key]
+                    if isinstance(path, str) and path.startswith('~'):
+                        self._config['logging'][key] = str(Path(path).expanduser())
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value with dot notation support."""
@@ -105,7 +112,7 @@ class Config:
     @property
     def llm_provider(self) -> str:
         """Default LLM provider."""
-        return os.getenv('CV_LLM_PROVIDER') or self.get('llm.default_provider', 'github')
+        return os.getenv('CV_LLM_PROVIDER') or self.get('llm.default_provider', 'copilot')
     
     @property
     def llm_model(self) -> Optional[str]:
@@ -238,6 +245,11 @@ class Config:
     def log_file(self) -> Optional[str]:
         """Log file path (None for console only)."""
         return os.getenv('CV_LOG_FILE') or self.get('logging.file')
+    
+    @property
+    def log_dir(self) -> str:
+        """Log directory path."""
+        return os.getenv('CV_LOG_DIR') or self.get('logging.log_dir', './logs')
 
 
 # Global config instance

@@ -833,14 +833,44 @@ class GitHubModelsClient(OpenAIClient):
             )
 
 
+class CopilotClient(OpenAIClient):
+    """GitHub Copilot client - OpenAI-compatible API using GITHUB_TOKEN."""
+
+    def __init__(self, model: str = "claude-sonnet-4-6", api_key: Optional[str] = None):
+        self.model = model
+        self.api_key = api_key or os.getenv("GITHUB_TOKEN") or os.getenv("GITHUB_MODELS_TOKEN")
+
+        if not self.api_key:
+            raise ValueError(
+                "GitHub token not found. Set GITHUB_TOKEN environment variable. "
+                "Requires a GitHub account with Copilot access."
+            )
+
+        try:
+            from openai import OpenAI
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url="https://api.githubcopilot.com"
+            )
+        except ImportError:
+            raise ImportError(
+                "OpenAI package not installed. Run: pip install openai"
+            )
+
+
 def get_llm_provider(
-    provider: str = "github",
+    provider: str = "copilot",
     model: Optional[str] = None,
     api_key: Optional[str] = None
 ) -> LLMClient:
     """Factory function to get LLM client."""
-    
-    if provider == "github":
+
+    if provider == "copilot":
+        return CopilotClient(
+            model=model or "claude-sonnet-4-6",
+            api_key=api_key
+        )
+    elif provider == "github":
         return GitHubModelsClient(
             model=model or "gpt-4o",
             api_key=api_key
@@ -870,4 +900,4 @@ def get_llm_provider(
             model=model or "mistralai/Mistral-7B-Instruct-v0.2"
         )
     else:
-        raise ValueError(f"Unknown provider: {provider}. Choose from: github, openai, anthropic, gemini, groq, local")
+        raise ValueError(f"Unknown provider: {provider}. Choose from: copilot, github, openai, anthropic, gemini, groq, local")

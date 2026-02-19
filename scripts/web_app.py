@@ -714,10 +714,10 @@ def parse_args():
                        help=f"Path to publications.bib")
     parser.add_argument("--output-dir", default=config.output_dir,
                        help=f"Output directory")
-    parser.add_argument("--llm-provider", choices=["github", "openai", "anthropic", "gemini", "groq", "local"],
+    parser.add_argument("--llm-provider", choices=["copilot", "github", "openai", "anthropic", "gemini", "groq", "local"],
                        default=config.llm_provider,
                        help=f"LLM provider (default: {config.llm_provider})")
-    parser.add_argument("--model", help="Specific model to use")
+    parser.add_argument("--model", default=config.llm_model, help="Specific model to use")
     parser.add_argument("--port", type=int, default=config.web_port,
                        help=f"Port to run on (default: {config.web_port})")
     parser.add_argument("--debug", action="store_true", help="Run Flask in debug mode")

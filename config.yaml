@@ -10,8 +10,8 @@ data:
 
 # LLM Provider Settings
 llm:
-  default_provider: "github"  # Options: github, openai, anthropic, gemini, groq, local
-  default_model: null  # null uses provider default (llama-3.3-70b-versatile for groq, gpt-4o for github, etc.)
+  default_provider: "copilot"  # Options: copilot, github, openai, anthropic, gemini, groq, local
+  default_model: "claude-sonnet-4-6"  # copilot default; null uses provider default for other providers
   temperature: 0.7
   max_tokens: null  # null uses provider default
 
