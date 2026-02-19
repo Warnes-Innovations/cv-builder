@@ -1535,18 +1535,18 @@
             helpMessage = data.message;
             
             if (data.instructions && data.instructions.length > 0) {
-              helpMessage += '\\n\\nHow to proceed:\\n' + data.instructions.map((inst, i) => `${i + 1}. ${inst}`).join('\\n');
+              helpMessage += '\n\nHow to proceed:\n' + data.instructions.map((inst, i) => `${i + 1}. ${inst}`).join('\n');
             }
             
             // Show special modal for protected sites
             showProtectedSiteModal(data.site_name, data.message, data.instructions);
           } else if (data.instructions) {
             // General error with instructions
-            helpMessage += '\\n\\nSuggested solutions:\\n' + data.instructions.map((inst, i) => `${i + 1}. ${inst}`).join('\\n');
-            showAlertModal('URL Fetch Error', `${errorMessage}\\n\\n${helpMessage}`);
+            helpMessage += '\n\nSuggested solutions:\n' + data.instructions.map((inst, i) => `${i + 1}. ${inst}`).join('\n');
+            showAlertModal('URL Fetch Error', `${errorMessage}\n\n${helpMessage}`);
           } else {
             // Simple error
-            showAlertModal('Error', `${errorMessage}${helpMessage ? '\\n\\n' + helpMessage : ''}`);
+            showAlertModal('Error', `${errorMessage}${helpMessage ? '\n\n' + helpMessage : ''}`);
           }
           
           appendMessage('system', `❌ ${errorMessage}: ${data.message || 'Please try manual input.'}`);

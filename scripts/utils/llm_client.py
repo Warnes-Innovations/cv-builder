@@ -850,7 +850,7 @@ class CopilotClient(OpenAIClient):
             from openai import OpenAI
             self.client = OpenAI(
                 api_key=self.api_key,
-                base_url="https://api.githubcopilot.com"
+                base_url="https://models.github.ai/inference"
             )
         except ImportError:
             raise ImportError(

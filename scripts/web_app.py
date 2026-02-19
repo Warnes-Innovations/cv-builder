@@ -261,7 +261,33 @@ def create_app(args) -> Flask:
             elif 'text/html' in content_type or 'html' in content_type:
                 # Parse HTML and extract text
                 soup = BeautifulSoup(response.text, 'html.parser')
-                
+
+                # ── Pre-extract structured data BEFORE stripping script tags ──
+                # JS-rendered SPAs (e.g. Workday) have an empty body but rich
+                # JSON-LD structured data and og:description meta tags in <head>.
+                import json as _json
+                json_ld_text = None
+                for script_tag in soup.find_all('script', type='application/ld+json'):
+                    try:
+                        ld_data = _json.loads(script_tag.string or '')
+                        desc = ld_data.get('description') if isinstance(ld_data, dict) else None
+                        if desc and len(desc) > 100:
+                            json_ld_text = desc
+                            print(f"📋 Found JSON-LD job description ({len(json_ld_text)} chars)")
+                            break
+                    except Exception:
+                        pass
+
+                meta_desc_text = None
+                for meta in soup.find_all('meta'):
+                    prop = meta.get('property', '') or meta.get('name', '')
+                    if prop in ('og:description', 'description'):
+                        content = meta.get('content', '')
+                        if len(content) > 100:
+                            meta_desc_text = content
+                            print(f"📋 Found meta description ({len(meta_desc_text)} chars)")
+                            break
+
                 # Remove script and style elements
                 for script in soup(["script", "style", "nav", "header", "footer"]):
                     script.decompose()
@@ -293,7 +319,17 @@ def create_app(args) -> Flask:
                 # Clean up whitespace
                 lines = (line.strip() for line in job_text.splitlines())
                 job_text = '\n'.join(line for line in lines if line)
-                
+
+                # For JS-rendered SPAs body text may be nearly empty — fall back
+                # to structured data extracted before stripping script tags.
+                if len(job_text.strip()) < 200:
+                    if json_ld_text:
+                        job_text = json_ld_text
+                        print(f"ℹ️ Using JSON-LD structured data (body text was too short)")
+                    elif meta_desc_text:
+                        job_text = meta_desc_text
+                        print(f"ℹ️ Using meta description (body text was too short)")
+
                 # Basic validation - check if we got meaningful content
                 if len(job_text.strip()) < 100:
                     return jsonify({
