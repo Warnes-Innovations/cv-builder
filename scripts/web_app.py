@@ -355,6 +355,105 @@ def create_app(args) -> Flask:
                 "technical_details": str(e)
             }), 500
     
+    @app.post("/api/upload-file")
+    def upload_file():
+        """Extract text from an uploaded file (txt, md, html, pdf, docx, etc.)."""
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+
+        f = request.files['file']
+        if not f.filename:
+            return jsonify({"error": "Empty filename"}), 400
+
+        filename_lower = f.filename.lower()
+        raw = f.read()
+
+        try:
+            # ── Plain text / Markdown ─────────────────────────────────────────
+            if any(filename_lower.endswith(ext) for ext in ('.txt', '.md', '.rst', '.text')):
+                text = raw.decode('utf-8', errors='replace')
+
+            # ── HTML ──────────────────────────────────────────────────────────
+            elif any(filename_lower.endswith(ext) for ext in ('.html', '.htm')):
+                soup = BeautifulSoup(raw, 'html.parser')
+                for tag in soup(['script', 'style', 'head', 'nav', 'footer']):
+                    tag.decompose()
+                text = soup.get_text(separator='\n')
+
+            # ── PDF ───────────────────────────────────────────────────────────
+            elif filename_lower.endswith('.pdf'):
+                import io
+                try:
+                    from pypdf import PdfReader
+                    reader = PdfReader(io.BytesIO(raw))
+                    pages = [page.extract_text() or '' for page in reader.pages]
+                    text = '\n\n'.join(pages)
+                except ImportError:
+                    return jsonify({"error": "PDF support not available. Run: pip install pypdf"}), 500
+
+            # ── DOCX ──────────────────────────────────────────────────────────
+            elif filename_lower.endswith('.docx'):
+                import io
+                try:
+                    import mammoth
+                    result = mammoth.extract_raw_text(io.BytesIO(raw))
+                    text = result.value
+                except ImportError:
+                    try:
+                        from docx import Document
+                        doc = Document(io.BytesIO(raw))
+                        text = '\n'.join(p.text for p in doc.paragraphs)
+                    except ImportError:
+                        return jsonify({"error": "DOCX support not available. Run: pip install python-docx"}), 500
+
+            # ── DOC (legacy Word) ─────────────────────────────────────────────
+            elif filename_lower.endswith('.doc'):
+                return jsonify({
+                    "error": "Legacy .doc format not supported",
+                    "message": "Please save the file as .docx or copy-paste the content."
+                }), 400
+
+            # ── RTF ───────────────────────────────────────────────────────────
+            elif filename_lower.endswith('.rtf'):
+                # Strip RTF control words crudely — good enough for job descriptions
+                import re as _re
+                text_bytes = raw.decode('latin-1', errors='replace')
+                text = _re.sub(r'\\[a-z]+\d*\s?|[{}]', ' ', text_bytes)
+
+            else:
+                # Try decoding as UTF-8 fallback for unknown extensions
+                try:
+                    text = raw.decode('utf-8', errors='replace')
+                except Exception:
+                    return jsonify({
+                        "error": f"Unsupported file type: {filename_lower.rsplit('.',1)[-1]}",
+                        "message": "Supported formats: txt, md, html, pdf, docx, rtf"
+                    }), 400
+
+            # Clean up whitespace
+            import re as _re
+            text = _re.sub(r'\n{3,}', '\n\n', text).strip()
+
+            if len(text) < 50:
+                return jsonify({
+                    "error": "Insufficient Content",
+                    "message": "The file appears to be empty or contains no readable text.",
+                    "content_length": len(text)
+                }), 400
+
+            print(f"📎 Uploaded file '{f.filename}': extracted {len(text)} characters")
+            return jsonify({
+                "ok":             True,
+                "text":           text,
+                "filename":       f.filename,
+                "content_length": len(text),
+            })
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": f"Error reading file: {str(e)}"}), 500
+
     @app.post("/api/load-job-file")
     def load_job_file():
         """Load a job description from a file."""

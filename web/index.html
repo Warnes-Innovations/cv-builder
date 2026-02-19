@@ -407,9 +407,11 @@
     .input-method.active {
       display: block;
     }
-    
-    .input-method h3 {
-      margin: 0 0 12px;
+
+    #file-drop-zone.drag-over {
+      background: #eff6ff;
+      border-color: #3b82f6;
+    }
       color: #1e293b;
       font-size: 18px;
     }
@@ -1318,11 +1320,47 @@
             </div>
           </div>
           
-          <!-- File Method -->
+          <!-- File Upload Method -->
           <div class="input-method" id="file-method">
-            <h3>Load from File</h3>
-            <p>Choose from previously saved job descriptions:</p>
-            <button onclick="openModal()" class="btn-primary">📁 Browse Files</button>
+            <h3>Upload a File</h3>
+            <p>Upload a job description file from your computer.</p>
+            <div id="file-drop-zone"
+                 ondragover="event.preventDefault(); this.classList.add('drag-over')"
+                 ondragleave="this.classList.remove('drag-over')"
+                 ondrop="handleFileDrop(event)"
+                 onclick="document.getElementById('job-file-input').click()"
+                 style="
+                   border: 2px dashed var(--border);
+                   border-radius: 8px;
+                   padding: 32px 16px;
+                   text-align: center;
+                   cursor: pointer;
+                   transition: background 0.2s, border-color 0.2s;
+                   margin: 12px 0;
+                 ">
+              <div style="font-size:2rem; margin-bottom:8px;">📄</div>
+              <div style="font-weight:600; margin-bottom:4px;">Drop a file here, or click to browse</div>
+              <div style="font-size:0.8rem; color:var(--text-secondary);">.txt &nbsp;·&nbsp; .md &nbsp;·&nbsp; .html &nbsp;·&nbsp; .pdf &nbsp;·&nbsp; .docx &nbsp;·&nbsp; .rtf</div>
+            </div>
+            <input type="file" id="job-file-input" style="display:none"
+                   accept=".txt,.md,.rst,.text,.html,.htm,.pdf,.docx,.doc,.rtf"
+                   onchange="handleFileSelected(this.files[0])">
+            <div id="file-selected-info" style="display:none; margin:8px 0;">
+              <span id="file-selected-name" style="font-weight:600;"></span>
+              <span id="file-selected-size" style="color:var(--text-secondary); margin-left:8px;"></span>
+              <button onclick="clearSelectedFile()" style="margin-left:8px; background:none; border:none; cursor:pointer; color:var(--text-secondary);">✕</button>
+            </div>
+            <div id="file-upload-error" style="display:none; color:var(--error,#c0392b); margin:8px 0; font-size:0.85rem;"></div>
+            <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+              <button id="file-upload-btn" onclick="uploadJobFile()" class="btn-primary" style="display:none;">
+                📤 Use This File
+              </button>
+              <div id="file-upload-spinner" style="display:none; font-size:0.85rem; color:var(--text-secondary);">⏳ Parsing…</div>
+            </div>
+            <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+              <span style="font-size:0.8rem; color:var(--text-secondary);">Or load from previously saved descriptions: </span>
+              <button onclick="openModal()" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:0.8rem; text-decoration:underline;">Browse saved files</button>
+            </div>
           </div>
         </div>
       `;
@@ -1341,6 +1379,90 @@
       // Show/hide method panels
       document.querySelectorAll('.input-method').forEach(panel => panel.classList.remove('active'));
       document.getElementById(method + '-method').classList.add('active');
+    }
+
+    // ── File Upload helpers ──────────────────────────────────────────────────
+
+    let _pendingUploadFile = null;
+
+    function handleFileDrop(event) {
+      event.preventDefault();
+      document.getElementById('file-drop-zone').classList.remove('drag-over');
+      const file = event.dataTransfer.files[0];
+      if (file) handleFileSelected(file);
+    }
+
+    function handleFileSelected(file) {
+      if (!file) return;
+      _pendingUploadFile = file;
+
+      const sizeKb = (file.size / 1024).toFixed(1);
+      const sizeStr = file.size > 1024 * 1024
+        ? `${(file.size / (1024*1024)).toFixed(1)} MB`
+        : `${sizeKb} KB`;
+
+      document.getElementById('file-selected-name').textContent = file.name;
+      document.getElementById('file-selected-size').textContent = `(${sizeStr})`;
+      document.getElementById('file-selected-info').style.display = 'block';
+      document.getElementById('file-upload-btn').style.display = 'inline-block';
+      document.getElementById('file-upload-error').style.display = 'none';
+    }
+
+    function clearSelectedFile() {
+      _pendingUploadFile = null;
+      document.getElementById('job-file-input').value = '';
+      document.getElementById('file-selected-info').style.display = 'none';
+      document.getElementById('file-upload-btn').style.display = 'none';
+      document.getElementById('file-upload-error').style.display = 'none';
+    }
+
+    async function uploadJobFile() {
+      if (!_pendingUploadFile) return;
+
+      const errEl      = document.getElementById('file-upload-error');
+      const spinner    = document.getElementById('file-upload-spinner');
+      const uploadBtn  = document.getElementById('file-upload-btn');
+
+      errEl.style.display    = 'none';
+      spinner.style.display  = 'inline';
+      uploadBtn.disabled     = true;
+
+      try {
+        const formData = new FormData();
+        formData.append('file', _pendingUploadFile);
+
+        const resp = await fetch('/api/upload-file', { method: 'POST', body: formData });
+        const data = await resp.json();
+
+        if (!resp.ok || data.error) {
+          throw new Error(data.message || data.error || `Server error ${resp.status}`);
+        }
+
+        // Feed extracted text into the job API (same path as paste-text)
+        const jobResp = await fetch('/api/job', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ job_text: data.text })
+        });
+        const jobData = await jobResp.json();
+        if (!jobResp.ok) throw new Error(jobData.error || 'Failed to process job description');
+
+        if (jobData.error) {
+          appendMessage('system', 'Error: ' + jobData.error);
+        } else {
+          tabData.job = data.text;
+          saveTabData();
+          appendMessage('assistant', `✅ Job description loaded from "${data.filename}" (${data.content_length.toLocaleString()} chars). You can now analyze it.`);
+          await populateJobTab();
+          await fetchStatus();
+        }
+      } catch (err) {
+        errEl.textContent   = err.message;
+        errEl.style.display = 'block';
+      } finally {
+        spinner.style.display = 'none';
+        uploadBtn.disabled    = false;
+      }
     }
 
     async function submitJobText() {
