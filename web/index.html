@@ -13,8 +13,27 @@
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #f8fafc; }
     
     /* Header */
-    .header { background: #1e293b; color: #fff; padding: 16px 24px; }
+    .header { background: #1e293b; color: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
     .header h1 { font-size: 20px; font-weight: 600; }
+
+    /* Copilot Auth Badge */
+    .auth-badge { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid rgba(255,255,255,0.25); transition: background 0.2s; }
+    .auth-badge:hover { background: rgba(255,255,255,0.1); }
+    .auth-badge.authenticated { color: #86efac; border-color: #86efac; }
+    .auth-badge.unauthenticated { color: #fca5a5; border-color: #fca5a5; }
+    .auth-badge.polling { color: #fde68a; border-color: #fde68a; }
+
+    /* Auth Modal */
+    .auth-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+    .auth-modal-overlay.visible { display: flex; }
+    .auth-modal { background: #fff; border-radius: 12px; padding: 32px; max-width: 480px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    .auth-modal h2 { font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 12px; }
+    .auth-modal p { color: #475569; margin-bottom: 16px; line-height: 1.5; }
+    .auth-code { font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #1e293b; background: #f1f5f9; padding: 16px 24px; border-radius: 8px; text-align: center; margin: 20px 0; font-family: monospace; }
+    .auth-modal-actions { display: flex; gap: 12px; margin-top: 20px; }
+    .auth-btn-primary { flex: 1; background: #3b82f6; color: #fff; border: none; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; } .auth-btn-primary:hover { background: #2563eb; }
+    .auth-btn-secondary { flex: 1; background: #f1f5f9; color: #475569; border: none; padding: 12px; border-radius: 8px; font-size: 15px; cursor: pointer; } .auth-btn-secondary:hover { background: #e2e8f0; }
+    .auth-status-msg { font-size: 13px; color: #64748b; text-align: center; margin-top: 12px; min-height: 20px; }
     
     /* Position Bar */
     .position-bar { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
@@ -464,6 +483,26 @@
     <div style="display: flex; align-items: center; gap: 16px;">
       <img src="/logo" alt="Warnes Innovations" style="height: 48px; text-align:center;" onerror="this.style.display='none'">
       <h1>AI CV Customizer</h1>
+    </div>
+    <div id="copilot-auth-badge" class="auth-badge unauthenticated" onclick="openCopilotAuthModal()" title="Click to authenticate with GitHub Copilot">
+      <span id="auth-badge-icon">&#x26A0;</span>
+      <span id="auth-badge-label">Not authenticated</span>
+    </div>
+  </div>
+
+  <!-- Copilot Auth Modal -->
+  <div class="auth-modal-overlay" id="auth-modal-overlay">
+    <div class="auth-modal">
+      <h2>&#x1F512; Authenticate with GitHub Copilot</h2>
+      <p id="auth-modal-desc">Sign in to use GitHub Copilot for LLM-powered CV generation.</p>
+      <div class="auth-code" id="auth-user-code">&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;</div>
+      <p style="text-align:center; font-size:13px; color:#64748b;">Enter this code at:</p>
+      <p style="text-align:center;"><a id="auth-verify-link" href="https://github.com/login/device" target="_blank" style="color:#3b82f6; font-weight:600;">github.com/login/device</a></p>
+      <div class="auth-status-msg" id="auth-status-msg">Ready to start &mdash; click "Open GitHub" to begin.</div>
+      <div class="auth-modal-actions">
+        <button class="auth-btn-primary" id="auth-open-btn" onclick="openAuthGitHub()">Open GitHub</button>
+        <button class="auth-btn-secondary" onclick="closeCopilotAuthModal()">Cancel</button>
+      </div>
     </div>
   </div>
 
@@ -3222,9 +3261,92 @@
         const res = await fetch('/api/status');
         const data = await res.json();
         updateWorkflowSteps(data);
+        if (data.copilot_auth) updateAuthBadge(data.copilot_auth);
       } catch (error) {
         console.error('Error fetching status:', error);
       }
+    }
+
+    // ── Copilot Auth ──────────────────────────────────────────────────────────
+
+    let _authPollTimer = null;
+
+    function updateAuthBadge(authStatus) {
+      const badge = document.getElementById('copilot-auth-badge');
+      const icon  = document.getElementById('auth-badge-icon');
+      const label = document.getElementById('auth-badge-label');
+      if (!badge) return;
+      badge.classList.remove('authenticated', 'unauthenticated', 'polling');
+      if (authStatus.authenticated) {
+        badge.classList.add('authenticated');
+        icon.textContent  = '\u2713';
+        label.textContent = 'Copilot ready';
+      } else if (authStatus.polling) {
+        badge.classList.add('polling');
+        icon.textContent  = '\u29D7';
+        label.textContent = 'Waiting for approval…';
+      } else {
+        badge.classList.add('unauthenticated');
+        icon.innerHTML  = '&#x26A0;';
+        label.textContent = 'Not authenticated';
+      }
+    }
+
+    async function openCopilotAuthModal() {
+      // If already authenticated, let user log out instead
+      const statusRes = await fetch('/api/copilot-auth/status').then(r => r.json()).catch(() => ({}));
+      if (statusRes.authenticated) {
+        if (confirm('You are already authenticated with GitHub Copilot. Log out?')) {
+          await fetch('/api/copilot-auth/logout', { method: 'POST' });
+          updateAuthBadge({ authenticated: false });
+        }
+        return;
+      }
+
+      // Start device flow
+      const flowRes = await fetch('/api/copilot-auth/start', { method: 'POST' });
+      if (!flowRes.ok) {
+        alert('Failed to start auth flow: ' + (await flowRes.text()));
+        return;
+      }
+      const flow = await flowRes.json();
+
+      // Show modal
+      document.getElementById('auth-user-code').textContent   = flow.user_code;
+      document.getElementById('auth-verify-link').href         = flow.verification_uri || 'https://github.com/login/device';
+      document.getElementById('auth-verify-link').textContent  = flow.verification_uri || 'github.com/login/device';
+      document.getElementById('auth-status-msg').textContent   = 'Waiting for you to enter the code at GitHub…';
+      document.getElementById('auth-modal-overlay').classList.add('visible');
+
+      // Kick off server-side polling
+      await fetch('/api/copilot-auth/poll', { method: 'POST' });
+      updateAuthBadge({ authenticated: false, polling: true });
+
+      // Client-side status polling
+      _authPollTimer = setInterval(async () => {
+        const st = await fetch('/api/copilot-auth/status').then(r => r.json()).catch(() => ({}));
+        updateAuthBadge(st);
+        if (st.authenticated) {
+          clearInterval(_authPollTimer);
+          document.getElementById('auth-status-msg').textContent = '\u2713 Authenticated! Closing…';
+          document.getElementById('auth-open-btn').disabled = true;
+          setTimeout(closeCopilotAuthModal, 1200);
+        } else if (st.error) {
+          clearInterval(_authPollTimer);
+          document.getElementById('auth-status-msg').textContent = '\u274C ' + st.error;
+          updateAuthBadge({ authenticated: false });
+        }
+      }, 5000);
+    }
+
+    function openAuthGitHub() {
+      const link = document.getElementById('auth-verify-link');
+      window.open(link.href, '_blank');
+    }
+
+    function closeCopilotAuthModal() {
+      document.getElementById('auth-modal-overlay').classList.remove('visible');
+      if (_authPollTimer) { clearInterval(_authPollTimer); _authPollTimer = null; }
     }
 
     function updateWorkflowSteps(status) {

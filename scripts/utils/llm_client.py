@@ -876,14 +876,148 @@ class CopilotClient(OpenAIClient):
             )
 
 
+class CopilotOAuthClient(LLMClient):
+    """
+    GitHub Copilot API client using Device-Flow OAuth.
+
+    Targets https://api.githubcopilot.com — the same endpoint used by VS Code.
+    Tokens are obtained via GitHub Device Flow (no PAT needed) and cached on
+    disk.  The Copilot token auto-refreshes when it expires (~30 min TTL).
+
+    Authentication must be completed before making API calls; call
+    start_device_flow() / complete_device_flow() via the web UI first.
+    """
+
+    # Models known to work on api.githubcopilot.com
+    SUPPORTED_MODELS = [
+        "gpt-4o",
+        "gpt-4o-mini",
+        "claude-3.5-sonnet",
+        "claude-3-7-sonnet",
+        "o1-preview",
+        "o1-mini",
+    ]
+
+    def __init__(
+        self,
+        model: str = "gpt-4o",
+        auth_manager=None,
+    ):
+        self.model = model
+        # Import here to keep top-level imports clean
+        from utils.copilot_auth import CopilotAuthManager
+        self._auth = auth_manager or CopilotAuthManager()
+
+    # ── Internal HTTP helper ──────────────────────────────────────────────────
+
+    def _post(self, payload: dict) -> dict:
+        """POST to Copilot chat completions; refreshes token automatically."""
+        import requests as _req
+        token = self._auth.get_copilot_token()
+        resp = _req.post(
+            "https://api.githubcopilot.com/chat/completions",
+            json=payload,
+            headers={
+                "Authorization":       f"Bearer {token}",
+                "Content-Type":        "application/json",
+                "Accept":              "application/json",
+                "editor-version":      "vscode/1.85.0",
+                "editor-plugin-version": "copilot/1.138.0",
+                "openai-intent":       "conversation-panel",
+                "copilot-integration-id": "vscode-chat",
+            },
+            timeout=120,
+        )
+        if resp.status_code == 401:
+            # Token may have expired mid-flight — force refresh and retry once
+            self._auth._cache.pop("copilot_token", None)
+            self._auth._cache.pop("copilot_expires_at", None)
+            token = self._auth.get_copilot_token()
+            resp = _req.post(
+                "https://api.githubcopilot.com/chat/completions",
+                json=payload,
+                headers={
+                    "Authorization":       f"Bearer {token}",
+                    "Content-Type":        "application/json",
+                    "Accept":              "application/json",
+                    "editor-version":      "vscode/1.85.0",
+                    "editor-plugin-version": "copilot/1.138.0",
+                    "openai-intent":       "conversation-panel",
+                    "copilot-integration-id": "vscode-chat",
+                },
+                timeout=120,
+            )
+        resp.raise_for_status()
+        return resp.json()
+
+    # ── LLMClient interface ───────────────────────────────────────────────────
+
+    def chat(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> str:
+        payload: dict = {
+            "model":       self.model,
+            "messages":    messages,
+            "temperature": temperature,
+        }
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+        data = self._post(payload)
+        return data["choices"][0]["message"]["content"]
+
+    def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
+        """Delegate to OpenAIClient logic (same prompt format)."""
+        from utils.llm_client import OpenAIClient as _OAI
+        dummy = object.__new__(_OAI)
+        dummy.model = self.model
+        dummy.client = None   # not used — we override chat()
+        # Bind our chat method into the dummy so prompts work unchanged
+        import types
+        dummy.chat = types.MethodType(lambda self_, msgs, **kw: self.chat(msgs, **kw), dummy)
+        return _OAI.analyze_job_description(dummy, job_text, master_data)
+
+    def recommend_customizations(
+        self,
+        job_analysis: Dict,
+        master_data: Dict,
+        user_preferences: Dict = None,
+        conversation_history: List[Dict] = None,
+    ) -> Dict:
+        from utils.llm_client import OpenAIClient as _OAI
+        import types
+        dummy = object.__new__(_OAI)
+        dummy.model = self.model
+        dummy.chat = types.MethodType(lambda self_, msgs, **kw: self.chat(msgs, **kw), dummy)
+        return _OAI.recommend_customizations(
+            dummy, job_analysis, master_data, user_preferences, conversation_history
+        )
+
+    def semantic_match(self, content: str, requirements: List[str]) -> float:
+        from utils.llm_client import OpenAIClient as _OAI
+        import types
+        dummy = object.__new__(_OAI)
+        dummy.model = self.model
+        dummy.chat = types.MethodType(lambda self_, msgs, **kw: self.chat(msgs, **kw), dummy)
+        return _OAI.semantic_match(dummy, content, requirements)
+
+
 def get_llm_provider(
     provider: str = "copilot",
     model: Optional[str] = None,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    auth_manager=None,
 ) -> LLMClient:
     """Factory function to get LLM client."""
 
-    if provider == "copilot":
+    if provider == "copilot-oauth":
+        return CopilotOAuthClient(
+            model=model or "gpt-4o",
+            auth_manager=auth_manager,
+        )
+    elif provider == "copilot":
         return CopilotClient(
             model=model or "anthropic/claude-sonnet-4-6",
             api_key=api_key
@@ -918,4 +1052,4 @@ def get_llm_provider(
             model=model or "mistralai/Mistral-7B-Instruct-v0.2"
         )
     else:
-        raise ValueError(f"Unknown provider: {provider}. Choose from: copilot, github, openai, anthropic, gemini, groq, local")
+        raise ValueError(f"Unknown provider: {provider}. Choose from: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local")

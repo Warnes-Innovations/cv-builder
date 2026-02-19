@@ -38,13 +38,18 @@ from utils.config import get_config
 from utils.llm_client import get_llm_provider
 from utils.cv_orchestrator import CVOrchestrator
 from utils.conversation_manager import ConversationManager
+from utils.copilot_auth import CopilotAuthManager
 
 
 def create_app(args) -> Flask:
     app = Flask(__name__, static_folder=None)
 
+    # Copilot OAuth auth manager (shared across all requests)
+    auth_manager = CopilotAuthManager()
+    _auth_poll: dict = {"polling": False, "error": None, "device_code": None, "interval": 5}
+
     # Initialize dependencies
-    llm_client = get_llm_provider(provider=args.llm_provider, model=args.model)
+    llm_client = get_llm_provider(provider=args.llm_provider, model=args.model, auth_manager=auth_manager)
     orchestrator = CVOrchestrator(
         master_data_path=args.master_data,
         publications_path=args.publications,
@@ -135,7 +140,68 @@ def create_app(args) -> Flask:
             "generated_files": conversation.state.get("generated_files"),
             "all_experience_ids": all_experience_ids,  # Add all experience IDs
             "all_skills": all_skills,  # Add all skills
+            "copilot_auth": auth_manager.status,
         })
+
+    # ── Copilot OAuth endpoints ──────────────────────────────────────────────
+
+    @app.post("/api/copilot-auth/start")
+    def copilot_auth_start():
+        """Begin Device Flow: returns user_code + verification_uri for the user to open."""
+        try:
+            flow = auth_manager.start_device_flow()
+            _auth_poll["device_code"] = flow["device_code"]
+            _auth_poll["interval"]    = flow.get("interval", 5)
+            _auth_poll["error"]       = None
+            return jsonify({
+                "user_code":        flow["user_code"],
+                "verification_uri": flow["verification_uri"],
+                "interval":         flow.get("interval", 5),
+                "expires_in":       flow.get("expires_in", 900),
+            })
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/copilot-auth/poll")
+    def copilot_auth_poll():
+        """Start a background thread that polls GitHub until the user approves the device flow."""
+        import threading
+        if _auth_poll["polling"]:
+            return jsonify({"ok": True, "message": "Already polling"})
+        device_code = _auth_poll.get("device_code")
+        interval    = _auth_poll.get("interval", 5)
+        if not device_code:
+            return jsonify({"error": "No device flow in progress — call /start first"}), 400
+
+        def _do_poll():
+            _auth_poll["polling"] = True
+            _auth_poll["error"]   = None
+            try:
+                auth_manager.complete_device_flow(device_code, interval)
+            except Exception as exc:
+                _auth_poll["error"] = str(exc)
+            finally:
+                _auth_poll["polling"] = False
+
+        threading.Thread(target=_do_poll, daemon=True).start()
+        return jsonify({"ok": True})
+
+    @app.get("/api/copilot-auth/status")
+    def copilot_auth_status():
+        """Return current auth state (authenticated, polling, error)."""
+        return jsonify({
+            **auth_manager.status,
+            "polling": _auth_poll["polling"],
+            "error":   _auth_poll["error"],
+        })
+
+    @app.post("/api/copilot-auth/logout")
+    def copilot_auth_logout():
+        """Clear stored credentials."""
+        auth_manager.logout()
+        return jsonify({"ok": True})
+
+    # ── Job / chat endpoints ──────────────────────────────────────────────────
 
     @app.post("/api/job")
     def submit_job():
@@ -849,7 +915,7 @@ def parse_args():
                        help=f"Path to publications.bib")
     parser.add_argument("--output-dir", default=config.output_dir,
                        help=f"Output directory")
-    parser.add_argument("--llm-provider", choices=["copilot", "github", "openai", "anthropic", "gemini", "groq", "local"],
+    parser.add_argument("--llm-provider", choices=["copilot-oauth", "copilot", "github", "openai", "anthropic", "gemini", "groq", "local"],
                        default=config.llm_provider,
                        help=f"LLM provider (default: {config.llm_provider})")
     parser.add_argument("--model", default=config.llm_model, help="Specific model to use")
