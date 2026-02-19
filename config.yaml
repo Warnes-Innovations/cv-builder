@@ -6,7 +6,7 @@
 data:
   master_cv: "~/CV/Master_CV_Data.json"
   publications: "~/CV/publications.bib"
-  output_dir: "./files"
+  output_dir: "~/CV/files"
 
 # LLM Provider Settings
 llm:
@@ -31,7 +31,7 @@ generation:
 # Session Management
 session:
   auto_save: true
-  session_dir: "./files/sessions"
+  session_dir: "~/CV/files/sessions"  # Sessions saved in CV directory
   history_file: "./files/.input_history"
 
 # Google Drive Integration (optional)

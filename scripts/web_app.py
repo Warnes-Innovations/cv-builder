@@ -21,6 +21,10 @@ from typing import Optional
 from dotenv import load_dotenv
 
 from flask import Flask, jsonify, request, send_file
+import requests
+from urllib.parse import urlparse
+import re
+from bs4 import BeautifulSoup
 
 # Load environment variables from .env file
 env_path = Path(__file__).parent.parent / '.env'
@@ -55,27 +59,82 @@ def create_app(args) -> Flask:
         if job_file_path.exists():
             job_text = job_file_path.read_text(encoding="utf-8")
             conversation.add_job_description(job_text)
-            # Also add to conversation history so the AI can see it
-            conversation.conversation_history.append({
-                "role": "user",
-                "content": f"Here is the job description I'm applying for:\n\n{job_text}",
-            })
+            # Extract position name from filename (remove date suffix and extension)
+            position_name = job_file_path.stem
+            # Remove date pattern like _2026-01-14 from end
+            import re
+            position_name = re.sub(r'_\d{4}-\d{2}-\d{2}$', '', position_name)
+            conversation.state["position_name"] = position_name
+            print(f"✓ Position name set to: {position_name}")
+            
+            # Try to load the most recent session for this position
+            try:
+                loaded = conversation._load_latest_session_for_position(position_name)
+                if loaded:
+                    print(f"✓ Restored previous session for: {position_name}")
+                else:
+                    # No existing session, add placeholder to conversation history
+                    conversation.conversation_history.append({
+                        "role": "system",
+                        "content": f"Job description loaded: {job_text.split(chr(10))[0]} at {job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company'}",
+                    })
+            except Exception as e:
+                print(f"⚠ Could not load previous session: {e}")
+                # Add placeholder to conversation history
+                conversation.conversation_history.append({
+                    "role": "system",
+                    "content": f"Job description loaded: {job_text.split(chr(10))[0]} at {job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company'}",
+                })
 
     @app.get("/")
     def index():
         page_path = Path(__file__).parent.parent / "web" / "index.html"
         return send_file(page_path)
 
+    @app.get("/logo")
+    def logo():
+        # Serve white on transparent logo from web/media
+        logo_path = Path(__file__).parent.parent / "web" / "media" / "logo_white_transparent.png"
+        if logo_path.exists():
+            return send_file(logo_path)
+        else:
+            # Return 404 if logo not found
+            return "", 404
+
     @app.get("/api/status")
     def status():
+        # Get all experience IDs from master data
+        all_experience_ids = []
+        all_skills = []
+        if orchestrator and orchestrator.master_data:
+            experiences = orchestrator.master_data.get('experience', [])
+            all_experience_ids = [exp.get('id') for exp in experiences if exp.get('id')]
+            
+            # Get all skills - handle both list and dict formats
+            skills_data = orchestrator.master_data.get('skills', [])
+            if isinstance(skills_data, dict):
+                # If skills is a dict with categories, extract skills from each category
+                for category_data in skills_data.values():
+                    if isinstance(category_data, dict) and 'skills' in category_data:
+                        # Each category has {'category': name, 'skills': [list of skills]}
+                        category_skills = category_data.get('skills', [])
+                        if isinstance(category_skills, list):
+                            all_skills.extend(category_skills)
+                    elif isinstance(category_data, list):
+                        # Handle legacy format where category_data is directly a list
+                        all_skills.extend(category_data)
+            elif isinstance(skills_data, list):
+                all_skills = skills_data
         return jsonify({
             "position_name": conversation.state.get("position_name"),
             "phase": conversation.state.get("phase"),
             "job_description": bool(conversation.state.get("job_description")),
             "job_description_text": conversation.state.get("job_description"),
-            "job_analysis": bool(conversation.state.get("job_analysis")),
-            "customizations": bool(conversation.state.get("customizations")),
+            "job_analysis": conversation.state.get("job_analysis"),  # Return full data, not just bool
+            "customizations": conversation.state.get("customizations"),  # Return full data, not just bool
             "generated_files": conversation.state.get("generated_files"),
+            "all_experience_ids": all_experience_ids,  # Add all experience IDs
+            "all_skills": all_skills,  # Add all skills
         })
 
     @app.post("/api/job")
@@ -91,6 +150,245 @@ def create_app(args) -> Flask:
             "content": job_text,
         })
         return jsonify({"ok": True, "message": "Job description added."})
+    
+    @app.post("/api/fetch-job-url")
+    def fetch_job_url():
+        """Fetch job description from URL with enhanced error handling"""
+        data = request.get_json(silent=True) or {}
+        url = data.get("url")
+        
+        if not url:
+            return jsonify({"error": "Missing URL"}), 400
+        
+        try:
+            # Validate URL format
+            parsed = urlparse(url)
+            if not all([parsed.scheme, parsed.netloc]):
+                return jsonify({"error": "Invalid URL format"}), 400
+            
+            domain = parsed.netloc.lower()
+            
+            # Check for protected job boards that require special handling
+            protected_sites = {
+                'linkedin.com': {
+                    'name': 'LinkedIn',
+                    'message': 'LinkedIn requires login to view job descriptions. Please copy the job text manually from your browser.',
+                    'instructions': [
+                        '1. Open the LinkedIn job posting in your browser',
+                        '2. Log in if needed and scroll to view the full job description', 
+                        '3. Select and copy the job description text',
+                        '4. Use the "Paste Text" tab to submit it directly'
+                    ]
+                },
+                'indeed.com': {
+                    'name': 'Indeed', 
+                    'message': 'Indeed has anti-bot protection. Please copy the job text manually.',
+                    'instructions': [
+                        '1. Open the Indeed job posting in your browser',
+                        '2. Copy the job description text',
+                        '3. Use the "Paste Text" tab to submit it'
+                    ]
+                },
+                'glassdoor.com': {
+                    'name': 'Glassdoor',
+                    'message': 'Glassdoor requires authentication. Please copy the job text manually.',
+                    'instructions': ['Copy job text from browser and use "Paste Text" tab']
+                }
+            }
+            
+            # Check if this is a protected site
+            for site_domain, site_info in protected_sites.items():
+                if site_domain in domain:
+                    return jsonify({
+                        "error": f"{site_info['name']} Protection Detected",
+                        "message": site_info['message'],
+                        "instructions": site_info['instructions'],
+                        "site_name": site_info['name'],
+                        "protected_site": True
+                    }), 400
+            
+            # Enhanced headers to mimic real browser
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Cache-Control': 'max-age=0',
+                'sec-ch-ua': '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"macOS"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1'
+            }
+            
+            # Fetch the URL with timeout and proper error handling
+            print(f"📡 Fetching URL: {url}")
+            response = requests.get(url, timeout=30, headers=headers, allow_redirects=True)
+            
+            # Check response status
+            if response.status_code != 200:
+                if response.status_code == 403:
+                    return jsonify({
+                        "error": "Access Forbidden (403)",
+                        "message": "The website is blocking automated access. Please try copying the job description manually.",
+                        "instructions": [
+                            "1. Open the URL in your browser",
+                            "2. Copy the job description text", 
+                            "3. Use the 'Paste Text' tab to submit it"
+                        ],
+                        "status_code": response.status_code
+                    }), 400
+                elif response.status_code == 404:
+                    return jsonify({
+                        "error": "Page Not Found (404)",
+                        "message": "The job posting may have been removed or the URL is incorrect.",
+                        "status_code": response.status_code
+                    }), 400
+                else:
+                    response.raise_for_status()
+            
+            # Extract text content
+            content_type = response.headers.get('content-type', '').lower()
+            print(f"📄 Content type: {content_type}")
+            
+            if 'text/plain' in content_type:
+                job_text = response.text
+            elif 'text/html' in content_type or 'html' in content_type:
+                # Parse HTML and extract text
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Remove script and style elements
+                for script in soup(["script", "style", "nav", "header", "footer"]):
+                    script.decompose()
+                
+                # Try to find job-specific content first
+                job_selectors = [
+                    '.job-description',
+                    '.job-content', 
+                    '.posting-description',
+                    '.description',
+                    '[data-testid="job-description"]',
+                    '.job-details'
+                ]
+                
+                job_content = None
+                for selector in job_selectors:
+                    elements = soup.select(selector)
+                    if elements:
+                        job_content = elements[0]
+                        break
+                
+                # If no specific job content found, get main content or body
+                if not job_content:
+                    job_content = soup.find('main') or soup.find('article') or soup.find('body') or soup
+                
+                # Get text content
+                job_text = job_content.get_text()
+                
+                # Clean up whitespace
+                lines = (line.strip() for line in job_text.splitlines())
+                job_text = '\n'.join(line for line in lines if line)
+                
+                # Basic validation - check if we got meaningful content
+                if len(job_text.strip()) < 100:
+                    return jsonify({
+                        "error": "Insufficient Content",
+                        "message": "The fetched content appears to be too short or may not contain the job description.",
+                        "instructions": [
+                            "1. Check if the URL is correct",
+                            "2. Try opening the URL in your browser first",
+                            "3. Copy the job description manually and use 'Paste Text' tab"
+                        ],
+                        "content_length": len(job_text)
+                    }), 400
+            else:
+                return jsonify({
+                    "error": f"Unsupported content type: {content_type}",
+                    "message": "The URL does not contain text or HTML content that can be processed."
+                }), 400
+            
+            # Store job description in state
+            conversation.add_job_description(job_text)
+            
+            print(f"✅ Successfully fetched {len(job_text)} characters from {domain}")
+            
+            return jsonify({
+                "ok": True,
+                "job_text": job_text,
+                "message": f"Job description fetched from {domain}",
+                "source_url": url,
+                "content_length": len(job_text)
+            })
+            
+        except requests.Timeout:
+            return jsonify({
+                "error": "Request Timeout",
+                "message": "The website took too long to respond. Please try again or use manual text input.",
+                "instructions": ["Try copying the job description manually and use the 'Paste Text' tab"]
+            }), 500
+        except requests.ConnectionError:
+            return jsonify({
+                "error": "Connection Error", 
+                "message": "Unable to connect to the website. Please check the URL or your internet connection.",
+                "instructions": ["Verify the URL is correct and accessible in your browser"]
+            }), 500
+        except requests.RequestException as e:
+            return jsonify({
+                "error": "Network Error",
+                "message": f"Failed to fetch URL: {str(e)}",
+                "instructions": ["Try copying the job description manually and use the 'Paste Text' tab"],
+                "technical_details": str(e)
+            }), 500
+        except Exception as e:
+            print(f"❌ Error processing URL {url}: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "error": "Processing Error",
+                "message": f"Error processing content: {str(e)}",
+                "instructions": ["Try copying the job description manually and use the 'Paste Text' tab"],
+                "technical_details": str(e)
+            }), 500
+    
+    @app.post("/api/load-job-file")
+    def load_job_file():
+        """Load a job description from a file."""
+        data = request.get_json(silent=True) or {}
+        filename = data.get("filename")
+        if not filename:
+            return jsonify({"error": "Missing filename"}), 400
+        
+        # Look for the file in sample_jobs directory
+        job_file_path = Path(__file__).parent.parent / "sample_jobs" / filename
+        
+        # Also check CV directory for other job files
+        if not job_file_path.exists():
+            cv_path = Path.home() / "CV" / "files" / filename
+            if cv_path.exists():
+                job_file_path = cv_path
+        
+        if not job_file_path.exists():
+            return jsonify({"error": f"File not found: {filename}"}), 404
+        
+        try:
+            with open(job_file_path, 'r', encoding='utf-8') as f:
+                job_text = f.read()
+            
+            # Store job description in state
+            conversation.add_job_description(job_text)
+            
+            return jsonify({
+                "ok": True,
+                "job_text": job_text,
+                "message": f"Loaded job description from {filename}"
+            })
+        except Exception as e:
+            return jsonify({"error": f"Failed to load file: {str(e)}"}), 500
 
     @app.get("/api/positions")
     def positions():
@@ -128,6 +426,16 @@ def create_app(args) -> Flask:
                 "phase": conversation.state.get("phase"),
             })
         except Exception as e:
+            # Comprehensive error logging
+            import traceback
+            print("\n" + "="*60)
+            print("ERROR in /api/message endpoint:")
+            print(f"Message: {msg[:100]}..." if len(msg) > 100 else msg)
+            print(f"Error type: {type(e).__name__}")
+            print(f"Error message: {str(e)}")
+            print("Traceback:")
+            traceback.print_exc()
+            print("="*60 + "\n")
             return jsonify({"error": str(e)}), 500
 
     @app.post("/api/reset")
@@ -158,10 +466,14 @@ def create_app(args) -> Flask:
         action = data.get("action")
         if not action:
             return jsonify({"error": "Missing action"}), 400
-        # Some actions can optionally include job_text
+        
+        # Format the payload correctly for _execute_action
         payload = {"action": action}
         if data.get("job_text"):
             payload["job_text"] = data["job_text"]
+        if data.get("user_preferences"):
+            payload["user_preferences"] = data["user_preferences"]
+            
         try:
             result = conversation._execute_action(payload)
             if not result:
@@ -172,6 +484,7 @@ def create_app(args) -> Flask:
                 "phase": conversation.state.get("phase"),
             })
         except Exception as e:
+            print(f"Action execution error: {e}")
             return jsonify({"error": str(e)}), 500
 
     @app.get("/api/history")
@@ -181,6 +494,158 @@ def create_app(args) -> Flask:
             "history": conversation.conversation_history,
             "phase": conversation.state.get("phase"),
         })
+
+    def normalize_experience_id(exp_id):
+        """Normalize various experience ID formats to match master data."""
+        if not exp_id:
+            return exp_id
+        
+        # Convert to lowercase
+        normalized = exp_id.lower()
+        
+        # Handle formats like "EXP-03" -> "exp_003", "EXP_3" -> "exp_003"
+        if normalized.startswith('exp'):
+            # Extract number part
+            import re
+            match = re.search(r'(\d+)$', normalized.replace('-', '_').replace('_', ''))
+            if match:
+                num = int(match.group(1))
+                normalized = f"exp_{num:03d}"
+        
+        return normalized
+    
+    @app.post("/api/experience-details")
+    def get_experience_details():
+        data = request.get_json(silent=True) or {}
+        experience_id = data.get("experience_id")
+        if not experience_id:
+            return jsonify({"error": "Missing experience_id"}), 400
+            
+        try:
+            # Normalize the ID to match master data format
+            normalized_id = normalize_experience_id(experience_id)
+            
+            # Look up experience details in master data
+            master_data = conversation.orchestrator.master_data
+            experience = None
+            
+            # Search through experiences in master data (check both 'experience' and 'experiences')
+            experiences_list = master_data.get("experiences") or master_data.get("experience", [])
+            if experiences_list:
+                for exp in experiences_list:
+                    if exp.get("id") == normalized_id or exp.get("id") == experience_id:
+                        experience = exp
+                        break
+            
+            if experience:
+                return jsonify({"experience": experience})
+            else:
+                # Log available IDs for debugging
+                available_ids = [exp.get("id") for exp in experiences_list] if experiences_list else []
+                print(f"DEBUG: Experience '{experience_id}' (normalized: '{normalized_id}') not found")
+                print(f"DEBUG: Available IDs: {available_ids[:10]}")
+                return jsonify({"experience": None, "message": f"Experience {experience_id} not found"})
+                
+        except Exception as e:
+            print(f"ERROR in get_experience_details: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/api/review-decisions', methods=['POST'])
+    def save_review_decisions():
+        """Save user's review decisions for experiences/skills"""
+        data = request.json
+        
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        decision_type = data.get('type')  # 'experiences' or 'skills'
+        decisions = data.get('decisions', {})
+        
+        if not decision_type or not decisions:
+            return jsonify({"error": "Missing type or decisions"}), 400
+        
+        try:
+            # Store decisions in conversation state
+            if decision_type == 'experiences':
+                conversation.state['experience_decisions'] = decisions
+                message = f"Saved decisions for {len(decisions)} experiences"
+            elif decision_type == 'skills':
+                conversation.state['skill_decisions'] = decisions
+                message = f"Saved decisions for {len(decisions)} skills"
+            else:
+                return jsonify({"error": f"Invalid type: {decision_type}"}), 400
+            
+            # Save the updated state
+            conversation._save_session()
+            
+            print(f"Saved {decision_type} decisions: {decisions}")
+            return jsonify({"success": True, "message": message})
+            
+        except Exception as e:
+            print(f"ERROR in save_review_decisions: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.get("/api/download/<filename>")
+    def download_file(filename):
+        """Download generated CV files"""
+        try:
+            # Get generated files from conversation state
+            generated_files = conversation.state.get('generated_files', {})
+            
+            # Find the requested file
+            file_path = None
+            
+            # Check if generated_files is the dictionary structure returned by orchestrator
+            if isinstance(generated_files, dict) and 'files' in generated_files:
+                # This is the structure: {'output_dir': 'path', 'files': ['file1', 'file2'], 'metadata': {}}
+                output_dir = Path(generated_files['output_dir'])
+                for file_name in generated_files['files']:
+                    if file_name == filename:
+                        file_path = output_dir / filename
+                        break
+            else:
+                # Legacy structure or other format - search in different ways
+                for file_type, file_data in generated_files.items():
+                    if isinstance(file_data, dict):
+                        # File data is a dict with path info
+                        check_filename = file_data.get('filename') if hasattr(file_data, 'get') else None
+                        if check_filename == filename:
+                            file_path = Path(file_data.get('path', file_data))
+                            break
+                    elif isinstance(file_data, (str, Path)):
+                        # File data is a direct path
+                        if Path(file_data).name == filename:
+                            file_path = Path(file_data)
+                            break
+            
+            if not file_path or not file_path.exists():
+                return jsonify({"error": "File not found on disk"}), 404
+            
+            # Determine MIME type
+            mime_type = 'application/octet-stream'
+            if filename.endswith('.pdf'):
+                mime_type = 'application/pdf'
+            elif filename.endswith('.docx'):
+                mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            elif filename.endswith('.html'):
+                mime_type = 'text/html'
+            
+            return send_file(
+                str(file_path),
+                as_attachment=True,
+                download_name=filename,
+                mimetype=mime_type
+            )
+            
+        except Exception as e:
+            print(f"ERROR in download_file: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
 
     return app
 
