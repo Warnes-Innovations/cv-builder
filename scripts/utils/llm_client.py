@@ -834,23 +834,41 @@ class GitHubModelsClient(OpenAIClient):
 
 
 class CopilotClient(OpenAIClient):
-    """GitHub Copilot client - OpenAI-compatible API using GITHUB_TOKEN."""
+    """GitHub Models client using GITHUB_MODELS_TOKEN PAT.
 
-    def __init__(self, model: str = "claude-sonnet-4-6", api_key: Optional[str] = None):
-        self.model = model
-        self.api_key = api_key or os.getenv("GITHUB_TOKEN") or os.getenv("GITHUB_MODELS_TOKEN")
+    Uses the Azure-hosted GitHub Models inference endpoint which accepts
+    standard GitHub PATs and supports Claude, GPT-4o, and other models.
+    Model IDs use the 'publisher/name' format required by this endpoint.
+    """
+
+    # Map short names → full GitHub Models publisher/model IDs
+    MODEL_ALIASES = {
+        "claude-sonnet-4-6":   "anthropic/claude-sonnet-4-6",
+        "claude-3-7-sonnet":   "anthropic/claude-3-7-sonnet",
+        "claude-3-5-sonnet":   "anthropic/claude-3-5-sonnet",
+        "claude-3-haiku":      "anthropic/claude-3-haiku",
+        "claude-3-opus":       "anthropic/claude-3-opus",
+        "gpt-4o":              "openai/gpt-4o",
+        "gpt-4o-mini":         "openai/gpt-4o-mini",
+    }
+
+    def __init__(self, model: str = "anthropic/claude-sonnet-4-6", api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("GITHUB_MODELS_TOKEN") or os.getenv("GITHUB_TOKEN")
 
         if not self.api_key:
             raise ValueError(
-                "GitHub token not found. Set GITHUB_TOKEN environment variable. "
-                "Requires a GitHub account with Copilot access."
+                "GitHub Models token not found. Set GITHUB_MODELS_TOKEN environment variable. "
+                "Create a PAT at https://github.com/settings/tokens"
             )
+
+        # Expand short alias → full publisher/model ID
+        self.model = self.MODEL_ALIASES.get(model, model)
 
         try:
             from openai import OpenAI
             self.client = OpenAI(
                 api_key=self.api_key,
-                base_url="https://models.github.ai/inference"
+                base_url="https://models.inference.ai.azure.com"
             )
         except ImportError:
             raise ImportError(
@@ -867,7 +885,7 @@ def get_llm_provider(
 
     if provider == "copilot":
         return CopilotClient(
-            model=model or "claude-sonnet-4-6",
+            model=model or "anthropic/claude-sonnet-4-6",
             api_key=api_key
         )
     elif provider == "github":
