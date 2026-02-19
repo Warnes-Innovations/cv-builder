@@ -38,8 +38,9 @@
     /* Position Bar */
     .position-bar { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
     .position-title { font-size: 24px; font-weight: 700; color: #1e293b; }
-    .open-file-btn { background: #3b82f6; color: #fff; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
-    .open-file-btn:hover { background: #2563eb; }
+    .step.clickable { cursor: pointer; }
+    .step.clickable:hover { filter: brightness(0.93); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+    .load-item-row:hover td { background: #f0f9ff !important; }
     
     /* Workflow Steps */
     .workflow { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 20px 24px; }
@@ -253,11 +254,6 @@
     .modal-header h2 { font-size: 20px; font-weight: 600; color: #1e293b; }
     .modal-body { padding: 24px; max-height: 400px; overflow-y: auto; }
     .modal-footer { padding: 16px 24px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px; }
-    .file-list { list-style: none; }
-    .file-item { padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
-    .file-item:hover { background: #f8fafc; }
-    .file-item.selected { background: #eff6ff; border-color: #3b82f6; }
-    
     /* Review Tables */
     .review-section { padding: 12px; background: #fff; }
     .review-section h2 { font-size: 24px; font-weight: 700; margin-bottom: 16px; color: #1e293b; }
@@ -509,15 +505,12 @@
   <!-- Position Bar -->
   <div class="position-bar">
     <div class="position-title" id="position-title">Jackson Lab AI/ML</div>
-    <button class="open-file-btn" id="open-file-btn">
-      📁 Open File
-    </button>
   </div>
 
   <!-- Workflow Steps -->
   <div class="workflow">
     <div class="workflow-steps">
-      <div class="step completed" id="step-job">📋 Job Loaded</div>
+      <div class="step clickable" id="step-job" onclick="showLoadJobPanel()" title="Click to load or switch job">📥 Load Job</div>
       <div class="arrow">→</div>
       <div class="step active" id="step-analysis">🔍 Analysis</div>
       <div class="arrow">→</div>
@@ -584,31 +577,7 @@
     </div>
   </div>
 
-  <!-- File Browser Modal -->
-  <div class="modal-overlay" id="modal-overlay">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>📁 Open File or Session</h2>
-      </div>
-      <div class="modal-body">
-        <h3>Recent Sessions:</h3>
-        <ul class="file-list" id="sessions-list">
-          <li class="file-item">Jackson Lab AI/ML (2026-01-14)</li>
-          <li class="file-item">BioTech Innovations Senior Data Scientist (2026-01-07)</li>
-        </ul>
-        
-        <h3>Available Job Files:</h3>
-        <ul class="file-list" id="files-list">
-          <li class="file-item">jackson_lab_associate_computational_scientist_2026-01-14.txt</li>
-          <li class="file-item">data_science_lead.txt</li>
-        </ul>
-      </div>
-      <div class="modal-footer">
-        <button class="action-btn" id="modal-cancel">Cancel</button>
-        <button class="action-btn primary" id="modal-open">Open Selected</button>
-      </div>
-    </div>
-  </div>
+
 
   <!-- Alert Modal -->
   <div class="modal-overlay" id="alert-modal-overlay" style="display: none;">
@@ -862,85 +831,9 @@
           console.log('Restored CV data from backend memory');
         }
 
-        // Backend is empty (server restarted) — offer to reload most recent session file
-        if (!statusData.job_description && !statusData.job_analysis) {
-          await offerSessionFileRestore();
-        }
       } catch (error) {
         console.warn('Failed to restore backend state:', error);
       }
-    }
-
-    async function offerSessionFileRestore() {
-      try {
-        const res = await fetch('/api/sessions');
-        if (!res.ok) return;
-        const { sessions } = await res.json();
-        if (!sessions || sessions.length === 0) return;
-
-        // Only offer sessions that have at least a job description
-        const useful = sessions.filter(s => s.has_job);
-        if (useful.length === 0) return;
-
-        const recent = useful[0];
-        const ts    = recent.timestamp ? new Date(recent.timestamp).toLocaleString() : 'unknown time';
-        const label = recent.position_name || 'Unnamed';
-        const phase = recent.phase ? ` (${recent.phase})` : '';
-
-        // Show a non-blocking restore banner
-        showRestoreBanner(label, ts, phase, recent.path, useful);
-      } catch (err) {
-        console.warn('Session file listing failed:', err);
-      }
-    }
-
-    function showRestoreBanner(label, ts, phase, path, allSessions) {
-      // Remove any existing banner
-      document.getElementById('restore-banner')?.remove();
-
-      const banner = document.createElement('div');
-      banner.id = 'restore-banner';
-      banner.style.cssText = `
-        position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
-        background: #1e40af; color: #fff; padding: 12px 20px;
-        display: flex; align-items: center; gap: 12px; font-size: 14px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      `;
-
-      const optionsHtml = allSessions.slice(0, 8).map(s => {
-        const slabel = s.position_name || 'Unnamed';
-        const sts    = s.timestamp ? new Date(s.timestamp).toLocaleString() : '';
-        return `<option value="${s.path}">${slabel} — ${sts}</option>`;
-      }).join('');
-
-      banner.innerHTML = `
-        <span style="flex:1">
-          🗂️ Server restarted. Restore session: 
-          <select id="restore-session-select" style="margin:0 8px;padding:4px 8px;border-radius:4px;border:none;color:#1e293b;max-width:320px;">
-            ${optionsHtml}
-          </select>
-        </span>
-        <button id="restore-session-btn"
-          style="background:#3b82f6;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:600;">
-          Restore
-        </button>
-        <button id="restore-dismiss-btn"
-          style="background:transparent;color:#93c5fd;border:1px solid #93c5fd;padding:8px 12px;border-radius:6px;cursor:pointer;">
-          Start Fresh
-        </button>
-      `;
-
-      document.body.prepend(banner);
-
-      document.getElementById('restore-session-btn').addEventListener('click', async () => {
-        const selectedPath = document.getElementById('restore-session-select').value;
-        await loadSessionFile(selectedPath);
-        banner.remove();
-      });
-
-      document.getElementById('restore-dismiss-btn').addEventListener('click', () => {
-        banner.remove();
-      });
     }
 
     async function loadSessionFile(path) {
@@ -1091,25 +984,6 @@
         tab.addEventListener('click', () => switchTab(tab.dataset.tab));
       });
 
-      // Modal controls
-      document.getElementById('open-file-btn').addEventListener('click', openModal);
-      document.getElementById('modal-cancel').addEventListener('click', closeModal);
-      document.getElementById('modal-overlay').addEventListener('click', (e) => {
-        if (e.target.id === 'modal-overlay') closeModal();
-      });
-
-      // File selection in modal
-      document.querySelectorAll('.file-item').forEach(item => {
-        item.addEventListener('click', () => {
-          // Remove previous selection
-          document.querySelectorAll('.file-item').forEach(i => i.classList.remove('selected'));
-          // Select clicked item
-          item.classList.add('selected');
-        });
-      });
-      
-      document.getElementById('modal-open').addEventListener('click', openSelectedFile);
-
       // Message sending
       document.getElementById('send-btn').addEventListener('click', sendMessage);
       document.getElementById('message-input').addEventListener('keypress', (e) => {
@@ -1129,14 +1003,6 @@
         await sendAction('generate_cv');
       });
       document.getElementById('reset-btn').addEventListener('click', resetSession);
-    }
-
-    function openModal() {
-      document.getElementById('modal-overlay').style.display = 'block';
-    }
-
-    function closeModal() {
-      document.getElementById('modal-overlay').style.display = 'none';
     }
 
     function showAlertModal(title, message) {
@@ -1163,50 +1029,6 @@
         viewerArea.classList.add('expanded');
         toggleBtn.textContent = '▶';
       }
-    }
-
-    async function openSelectedFile() {
-      const selected = document.querySelector('.file-item.selected');
-      if (!selected) {
-        appendMessage('system', 'No file selected.');
-        return;
-      }
-      
-      const filename = selected.textContent.trim();
-      appendMessage('system', `Opening file: ${filename}`);
-      closeModal();
-      
-      setLoading(true);
-      
-      try {
-        const res = await fetch('/api/load-job-file', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: filename })
-        });
-        
-        const data = await res.json();
-        
-        if (data.error) {
-          appendMessage('system', `Error loading file: ${data.error}`);
-        } else {
-          // Update tab data
-          tabData.job = data.job_text;
-          saveTabData();
-          
-          // Show success and switch to job tab
-          appendMessage('assistant', `✅ Job description loaded from ${filename}. You can now analyze it or ask me questions about the role.`);
-          switchTab('job');
-          
-          // Refresh status display
-          await fetchStatus();
-        }
-      } catch (error) {
-        console.error('Error loading job file:', error);
-        appendMessage('system', `Error loading file: ${error.message}`);
-      }
-      
-      setLoading(false);
     }
 
     function normalizeText(text) {
@@ -1279,136 +1101,201 @@
           html += '<div style="white-space: pre-wrap; line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + jobText + '</div>';
           
           // Add action button to replace/edit job description
-          html += '<div style="margin-top: 20px;"><button onclick="showJobInput()" class="btn-secondary">📝 Replace Job Description</button></div>';
-          
+          html += '<div style="margin-top:20px;"><button onclick="showLoadJobPanel()" class="btn-secondary">📥 Load Different Job</button></div>';
           content.innerHTML = html;
         } else {
-          content.innerHTML = createJobInputUI();
+          await showLoadJobPanel();
+          return;
         }
       } catch (error) {
         console.error('Error loading job description:', error);
-        content.innerHTML = createJobInputUI();
+        await showLoadJobPanel();
       }
     }
 
-    function createJobInputUI() {
-      return `
-        <div class="job-input-container">
-          <h1>📋 Add Job Description</h1>
-          <p>Choose how you'd like to input the job description:</p>
-          
-          <!-- Input Method Tabs -->
-          <div class="input-method-tabs">
-            <button class="input-tab active" onclick="switchInputMethod('paste')">📝 Paste Text</button>
-            <button class="input-tab" onclick="switchInputMethod('url')">🔗 From URL</button>
-            <button class="input-tab" onclick="switchInputMethod('file')">📁 Load File</button>
-          </div>
-          
-          <!-- Paste Text Method -->
-          <div class="input-method active" id="paste-method">
-            <h3>Paste Job Description Text</h3>
-            <textarea 
-              id="job-text-input" 
-              placeholder="Paste the job description here..."
-              rows="15"
-              style="width: 100%; font-family: inherit; font-size: 14px; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; resize: vertical;"
-            ></textarea>
-            <div style="margin-top: 12px; display: flex; gap: 12px;">
-              <button onclick="submitJobText()" class="btn-primary">Submit Job Description</button>
-              <button onclick="clearJobInput()" class="btn-secondary">Clear</button>
+    // ── Unified Load Job panel ──────────────────────────────────────────────────────
+
+    async function showLoadJobPanel() {
+      switchTab('job');
+      const content = document.getElementById('document-content');
+      content.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading…</p></div>';
+
+      let items = [];
+      try {
+        const res = await fetch('/api/load-items');
+        if (res.ok) ({ items } = await res.json());
+      } catch (e) { /* server offline — show empty table */ }
+
+      // Update the step-job pill to reflect no-job state while panel is open
+      const stepJob = document.getElementById('step-job');
+      stepJob.classList.remove('completed');
+      stepJob.classList.add('active');
+
+      function fmtDate(ts) {
+        if (!ts) return '—';
+        try { return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+        catch { return ts.slice(0, 10); }
+      }
+
+      function phaseLabel(phase) {
+        const map = { init: '📋 Init', analysis: '🔍 Analysis', customization: '⚙️ Custom.', generation: '📄 Generate', refinement: '✅ Done' };
+        return map[phase] || (phase || '—');
+      }
+
+      const rows = items.map(item => {
+        const typeBadge = item.kind === 'session'
+          ? '<span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">💾 Session</span>'
+          : '<span style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">📄 File</span>';
+        const escapedItem = JSON.stringify(item).replace(/"/g, '&quot;');
+        return `<tr class="load-item-row" data-item="${escapedItem}" onclick="loadItemFromRow(this)" style="cursor:pointer;">
+          <td style="padding:10px 12px;">${typeBadge}</td>
+          <td style="padding:10px 12px;font-weight:500;">${item.label}</td>
+          <td style="padding:10px 12px;font-size:13px;color:#64748b;">${fmtDate(item.timestamp)}</td>
+          <td style="padding:10px 12px;font-size:13px;color:#64748b;">${item.kind === 'session' ? phaseLabel(item.phase) : '—'}</td>
+        </tr>`;
+      }).join('');
+
+      const tableBody = rows ||
+        '<tr><td colspan="4" style="padding:20px;text-align:center;color:#64748b;font-style:italic;">No saved sessions or job files found.</td></tr>';
+
+      content.innerHTML = `
+        <div style="max-width:820px;margin:0 auto;padding:24px;">
+          <h1 style="font-size:22px;font-weight:700;color:#1e293b;margin-bottom:6px;">📥 Load Job</h1>
+          <p style="color:#64748b;margin-bottom:20px;">Resume a session, open a server-side file, or add a new job description below.</p>
+
+          <!-- Unified table of sessions + server files -->
+          <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:24px;">
+            <div style="background:#f8fafc;padding:10px 16px;border-bottom:1px solid #e2e8f0;font-weight:600;font-size:13px;color:#475569;display:flex;align-items:center;justify-content:space-between;">
+              <span>Saved Sessions &amp; Job Files</span>
+              <button onclick="showLoadJobPanel()" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:12px;" title="Refresh list">↻ Refresh</button>
             </div>
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="border-bottom:2px solid #e2e8f0;background:#fafafa;">
+                  <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:#64748b;width:100px;">Type</th>
+                  <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:#64748b;">Name</th>
+                  <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:#64748b;width:120px;">Date</th>
+                  <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:#64748b;width:120px;">Progress</th>
+                </tr>
+              </thead>
+              <tbody>${tableBody}</tbody>
+            </table>
           </div>
-          
-          <!-- URL Method -->
-          <div class="input-method" id="url-method">
-            <h3>Fetch from URL</h3>
-            <p>Enter a URL to automatically extract the job description:</p>
-            <input 
-              type="url" 
-              id="job-url-input" 
-              placeholder="https://company.com/job-posting"
-              style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; margin: 8px 0;"
-            />
-            <div style="margin-top: 12px; display: flex; gap: 12px;">
-              <button onclick="fetchJobFromURL()" class="btn-primary">Fetch Job Description</button>
-              <button onclick="clearURLInput()" class="btn-secondary">Clear</button>
-            </div>
-            
-            <div class="url-help" style="margin-top: 16px; font-size: 13px;">
-              <div style="background: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 6px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-weight: 600; color: #0369a1; margin-bottom: 8px;">✅ Works well with:</div>
-                <ul style="margin: 0; padding-left: 16px; color: #0369a1;">
-                  <li>Company career pages</li>
-                  <li>Public job boards (AngelList, RemoteOK)</li>
-                  <li>Government job sites</li>
-                  <li>University career pages</li>
-                </ul>
+
+          <!-- Add new job description -->
+          <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:visible;">
+            <div style="background:#f8fafc;padding:10px 16px;border-bottom:1px solid #e2e8f0;font-weight:600;font-size:13px;color:#475569;">Add New Job Description</div>
+            <div style="padding:20px;">
+
+              <div class="input-method-tabs" style="margin-top:0;">
+                <button class="input-tab active" onclick="switchInputMethod('paste')">📝 Paste Text</button>
+                <button class="input-tab" onclick="switchInputMethod('url')">🔗 From URL</button>
+                <button class="input-tab" onclick="switchInputMethod('file')">📁 Upload File</button>
               </div>
-              
-              <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px;">
-                <div style="font-weight: 600; color: #92400e; margin-bottom: 8px;">⚠️ Requires manual copy for:</div>
-                <ul style="margin: 0; padding-left: 16px; color: #92400e;">
-                  <li><strong>LinkedIn:</strong> Login required - copy job text manually</li>
-                  <li><strong>Indeed:</strong> Anti-bot protection - use manual copy</li>
-                  <li><strong>Glassdoor:</strong> Authentication required</li>
-                </ul>
-                <div style="margin-top: 8px; font-size: 12px; color: #92400e;">
-                  💡 For these sites: Open the URL in your browser, copy the job description, then use the "Paste Text" tab.
+
+              <!-- Paste -->
+              <div class="input-method active" id="paste-method">
+                <textarea id="job-text-input" placeholder="Paste the job description here…" rows="12"
+                  style="width:100%;font-family:inherit;font-size:14px;padding:12px;border:1px solid #d1d5db;border-radius:6px;resize:vertical;margin-top:8px;"></textarea>
+                <div style="margin-top:10px;display:flex;gap:12px;">
+                  <button onclick="submitJobText()" class="btn-primary">Submit Job Description</button>
+                  <button onclick="clearJobInput()" class="btn-secondary">Clear</button>
                 </div>
               </div>
-            </div>
-          </div>
-          
-          <!-- File Upload Method -->
-          <div class="input-method" id="file-method">
-            <h3>Upload a File</h3>
-            <p>Upload a job description file from your computer.</p>
-            <div id="file-drop-zone"
-                 ondragover="event.preventDefault(); this.classList.add('drag-over')"
-                 ondragleave="this.classList.remove('drag-over')"
-                 ondrop="handleFileDrop(event)"
-                 onclick="document.getElementById('job-file-input').click()"
-                 style="
-                   border: 2px dashed var(--border);
-                   border-radius: 8px;
-                   padding: 32px 16px;
-                   text-align: center;
-                   cursor: pointer;
-                   transition: background 0.2s, border-color 0.2s;
-                   margin: 12px 0;
-                 ">
-              <div style="font-size:2rem; margin-bottom:8px;">📄</div>
-              <div style="font-weight:600; margin-bottom:4px;">Drop a file here, or click to browse</div>
-              <div style="font-size:0.8rem; color:var(--text-secondary);">.txt &nbsp;·&nbsp; .md &nbsp;·&nbsp; .html &nbsp;·&nbsp; .pdf &nbsp;·&nbsp; .docx &nbsp;·&nbsp; .rtf</div>
-            </div>
-            <input type="file" id="job-file-input" style="display:none"
-                   accept=".txt,.md,.rst,.text,.html,.htm,.pdf,.docx,.doc,.rtf"
-                   onchange="handleFileSelected(this.files[0])">
-            <div id="file-selected-info" style="display:none; margin:8px 0;">
-              <span id="file-selected-name" style="font-weight:600;"></span>
-              <span id="file-selected-size" style="color:var(--text-secondary); margin-left:8px;"></span>
-              <button onclick="clearSelectedFile()" style="margin-left:8px; background:none; border:none; cursor:pointer; color:var(--text-secondary);">✕</button>
-            </div>
-            <div id="file-upload-error" style="display:none; color:var(--error,#c0392b); margin:8px 0; font-size:0.85rem;"></div>
-            <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
-              <button id="file-upload-btn" onclick="uploadJobFile()" class="btn-primary" style="display:none;">
-                📤 Use This File
-              </button>
-              <div id="file-upload-spinner" style="display:none; font-size:0.85rem; color:var(--text-secondary);">⏳ Parsing…</div>
-            </div>
-            <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
-              <span style="font-size:0.8rem; color:var(--text-secondary);">Or load from previously saved descriptions: </span>
-              <button onclick="openModal()" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:0.8rem; text-decoration:underline;">Browse saved files</button>
+
+              <!-- URL -->
+              <div class="input-method" id="url-method">
+                <p style="margin:8px 0 10px;">Enter a URL to automatically extract the job description:</p>
+                <input type="url" id="job-url-input" placeholder="https://company.com/job-posting"
+                  style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:6px;" />
+                <div style="margin-top:10px;display:flex;gap:12px;">
+                  <button onclick="fetchJobFromURL()" class="btn-primary">Fetch Job Description</button>
+                  <button onclick="clearURLInput()" class="btn-secondary">Clear</button>
+                </div>
+                <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;">
+                  <div style="background:#f0f9ff;border:1px solid #0ea5e9;border-radius:6px;padding:10px;">
+                    <div style="font-weight:600;color:#0369a1;margin-bottom:4px;">✅ Works well with:</div>
+                    <ul style="margin:0;padding-left:16px;color:#0369a1;line-height:1.7;"><li>Company career pages</li><li>AngelList, RemoteOK</li><li>Government &amp; university sites</li></ul>
+                  </div>
+                  <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:10px;">
+                    <div style="font-weight:600;color:#92400e;margin-bottom:4px;">⚠️ Copy manually from:</div>
+                    <ul style="margin:0;padding-left:16px;color:#92400e;line-height:1.7;"><li><strong>LinkedIn</strong> (login required)</li><li><strong>Indeed</strong> (anti-bot)</li><li><strong>Glassdoor</strong> (auth required)</li></ul>
+                  </div>
+                </div>
+              </div>
+
+              <!-- File Upload -->
+              <div class="input-method" id="file-method">
+                <div id="file-drop-zone"
+                     ondragover="event.preventDefault(); this.classList.add('drag-over')"
+                     ondragleave="this.classList.remove('drag-over')"
+                     ondrop="handleFileDrop(event)"
+                     onclick="document.getElementById('job-file-input').click()"
+                     style="border:2px dashed #d1d5db;border-radius:8px;padding:32px 16px;text-align:center;cursor:pointer;transition:background 0.2s,border-color 0.2s;margin:8px 0;">
+                  <div style="font-size:2rem;margin-bottom:8px;">📄</div>
+                  <div style="font-weight:600;margin-bottom:4px;">Drop a file here, or click to browse</div>
+                  <div style="font-size:0.85rem;color:#64748b;">.txt &nbsp;·&nbsp; .md &nbsp;·&nbsp; .html &nbsp;·&nbsp; .pdf &nbsp;·&nbsp; .docx &nbsp;·&nbsp; .rtf</div>
+                </div>
+                <input type="file" id="job-file-input" style="display:none"
+                       accept=".txt,.md,.rst,.text,.html,.htm,.pdf,.docx,.doc,.rtf"
+                       onchange="handleFileSelected(this.files[0])">
+                <div id="file-selected-info" style="display:none;margin:8px 0;">
+                  <span id="file-selected-name" style="font-weight:600;"></span>
+                  <span id="file-selected-size" style="color:#64748b;margin-left:8px;"></span>
+                  <button onclick="clearSelectedFile()" style="margin-left:8px;background:none;border:none;cursor:pointer;color:#64748b;">✕</button>
+                </div>
+                <div id="file-upload-error" style="display:none;color:#c0392b;margin:8px 0;font-size:0.85rem;"></div>
+                <div style="display:flex;gap:8px;margin-top:4px;align-items:center;">
+                  <button id="file-upload-btn" onclick="uploadJobFile()" class="btn-primary" style="display:none;">📤 Use This File</button>
+                  <div id="file-upload-spinner" style="display:none;font-size:0.85rem;color:#64748b;">⏳ Parsing…</div>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
       `;
     }
 
-    function showJobInput() {
-      const content = document.getElementById('document-content');
-      content.innerHTML = createJobInputUI();
+    function loadItemFromRow(row) {
+      document.querySelectorAll('.load-item-row').forEach(r => r.style.background = '');
+      row.style.background = '#eff6ff';
+      const item = JSON.parse(row.dataset.item.replace(/&quot;/g, '"'));
+      if (item.kind === 'session') {
+        loadSessionFile(item.path);
+      } else {
+        _loadServerJobFile(item.filename, item.label);
+      }
     }
+
+    async function _loadServerJobFile(filename, label) {
+      appendMessage('system', `📄 Loading job file: ${label || filename}…`);
+      setLoading(true);
+      try {
+        const res = await fetch('/api/load-job-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename })
+        });
+        const data = await res.json();
+        if (data.error) {
+          appendMessage('system', `❌ ${data.error}`);
+        } else {
+          tabData.job = data.job_text;
+          saveTabData();
+          appendMessage('assistant', `✅ Job description loaded from "${label || filename}". You can now analyze it.`);
+          await populateJobTab();
+          await fetchStatus();
+        }
+      } catch (e) {
+        appendMessage('system', `❌ Network error: ${e.message}`);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // backward-compat shim (called from a few places)
+    function showJobInput() { showLoadJobPanel(); }
 
     function switchInputMethod(method) {
       // Update tab appearance

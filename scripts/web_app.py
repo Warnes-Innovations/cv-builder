@@ -691,6 +691,60 @@ def create_app(args) -> Flask:
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @app.get("/api/load-items")
+    def load_items():
+        """Merged list of saved sessions and server-side job files for the Load Job panel."""
+        items = []
+
+        # ── Sessions ──────────────────────────────────────────────────────────
+        try:
+            from utils.config import get_config as _cfg
+            cfg = _cfg()
+            session_base = Path(cfg.get('session.session_dir', 'files/sessions')).expanduser()
+            if session_base.exists():
+                for session_file in sorted(session_base.rglob("session.json"), reverse=True):
+                    try:
+                        import json as _json
+                        with open(session_file) as f:
+                            data = _json.load(f)
+                        state = data.get('state', {})
+                        items.append({
+                            "kind":         "session",
+                            "path":         str(session_file),
+                            "label":        state.get('position_name') or session_file.parent.parent.name,
+                            "timestamp":    data.get('timestamp', ''),
+                            "phase":        state.get('phase', ''),
+                            "has_job":      bool(state.get('job_description')),
+                            "has_analysis": bool(state.get('job_analysis')),
+                            "has_cv":       bool(state.get('generated_files')),
+                        })
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        items = items[:20]  # cap sessions at 20
+
+        # ── Server-side job files ──────────────────────────────────────────────
+        try:
+            sample_jobs_dir = Path(__file__).parent.parent / "sample_jobs"
+            if sample_jobs_dir.exists():
+                for f in sorted(sample_jobs_dir.iterdir()):
+                    if f.suffix.lower() in {'.txt', '.md', '.html', '.pdf', '.docx', '.rtf'}:
+                        label = f.stem.replace('_', ' ').replace('-', ' ').title()
+                        items.append({
+                            "kind":      "file",
+                            "path":      str(f),
+                            "filename":  f.name,
+                            "label":     label,
+                            "timestamp": "",
+                            "phase":     "",
+                        })
+        except Exception:
+            pass
+
+        return jsonify({"items": items})
+
     @app.post("/api/load-session")
     def load_session_endpoint():
         """Load a saved session file into the running conversation state."""
