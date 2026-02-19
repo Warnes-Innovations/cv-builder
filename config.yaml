@@ -10,8 +10,8 @@ data:
 
 # LLM Provider Settings
 llm:
-  default_provider: "github"  # Options: github, openai, anthropic, local
-  default_model: null  # null uses provider default (gpt-4o for github, etc.)
+  default_provider: "github"  # Options: github, openai, anthropic, gemini, groq, local
+  default_model: null  # null uses provider default (llama-3.3-70b-versatile for groq, gpt-4o for github, etc.)
   temperature: 0.7
   max_tokens: null  # null uses provider default
 
@@ -32,7 +32,7 @@ generation:
 session:
   auto_save: true
   session_dir: "~/CV/files/sessions"  # Sessions saved in CV directory
-  history_file: "./files/.input_history"
+  history_file: "~/CV/files/input_history"
 
 # Google Drive Integration (optional)
 google_drive:
@@ -50,3 +50,4 @@ web:
 logging:
   level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
   file: null     # null logs to console only
+  log_dir: "~/CV/logs"  # Directory for log files

@@ -460,6 +460,59 @@ def create_app(args) -> Flask:
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @app.get("/api/sessions")
+    def list_sessions():
+        """List saved sessions, most recent first."""
+        try:
+            from utils.config import get_config
+            cfg = get_config()
+            session_base = Path(cfg.get('session.session_dir', 'files/sessions')).expanduser()
+            sessions = []
+            if session_base.exists():
+                for session_file in sorted(session_base.rglob("session.json"), reverse=True):
+                    try:
+                        import json as _json
+                        with open(session_file) as f:
+                            data = _json.load(f)
+                        state = data.get('state', {})
+                        sessions.append({
+                            "path":          str(session_file),
+                            "position_name": state.get('position_name') or session_file.parent.parent.name,
+                            "timestamp":     data.get('timestamp', ''),
+                            "phase":         state.get('phase', ''),
+                            "has_job":       bool(state.get('job_description')),
+                            "has_analysis":  bool(state.get('job_analysis')),
+                            "has_customizations": bool(state.get('customizations')),
+                        })
+                    except Exception:
+                        pass
+            return jsonify({"sessions": sessions[:20]})  # cap at 20 most recent
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/load-session")
+    def load_session_endpoint():
+        """Load a saved session file into the running conversation state."""
+        data = request.get_json(silent=True) or {}
+        path = data.get("path")
+        if not path:
+            return jsonify({"error": "Missing path"}), 400
+        session_file = Path(path)
+        if not session_file.exists():
+            return jsonify({"error": f"Session file not found: {path}"}), 404
+        try:
+            conversation.load_session(str(session_file))
+            return jsonify({
+                "ok": True,
+                "position_name": conversation.state.get("position_name"),
+                "phase":         conversation.state.get("phase"),
+                "has_job":       bool(conversation.state.get("job_description")),
+                "has_analysis":  bool(conversation.state.get("job_analysis")),
+                "history_count": len(conversation.conversation_history),
+            })
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     @app.post("/api/action")
     def do_action():
         data = request.get_json(silent=True) or {}
@@ -661,7 +714,7 @@ def parse_args():
                        help=f"Path to publications.bib")
     parser.add_argument("--output-dir", default=config.output_dir,
                        help=f"Output directory")
-    parser.add_argument("--llm-provider", choices=["github", "openai", "anthropic", "local"],
+    parser.add_argument("--llm-provider", choices=["github", "openai", "anthropic", "gemini", "groq", "local"],
                        default=config.llm_provider,
                        help=f"LLM provider (default: {config.llm_provider})")
     parser.add_argument("--model", help="Specific model to use")
