@@ -6,7 +6,7 @@ Create an LLM-driven tool for creating and maintaining a master file of my CV ma
 
 ## User Interface
 
-The system will use VSCode as the UI with GitHub Copilot acting as the conversational interface for all interactions.
+The system will use a simple web UI.
 
 ## Requirements
 

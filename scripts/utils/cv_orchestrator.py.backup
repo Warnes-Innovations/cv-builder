@@ -1,0 +1,808 @@
+"""
+CV Orchestrator - Bridges LLM intelligence with document generation utilities.
+
+This module coordinates between:
+- LLM-driven content selection
+- Traditional utility functions (scoring, formatting)
+- Document generation (DOCX/PDF)
+"""
+
+import json
+from pathlib import Path
+from typing import Dict, List, Optional, Any
+from datetime import datetime
+import subprocess
+import shutil
+import tempfile
+import weasyprint
+from collections import defaultdict
+
+# Import existing utilities
+from .scoring import (
+    calculate_relevance_score,
+    rank_content,
+    select_best_summary,
+    calculate_skill_score
+)
+from .bibtex_parser import parse_bibtex_file, format_publication
+from .llm_client import LLMClient
+
+
+class CVOrchestrator:
+    """Orchestrates CV generation with LLM + utilities."""
+    
+    def __init__(
+        self,
+        master_data_path: str,
+        publications_path: str,
+        output_dir: str,
+        llm_client: LLMClient
+    ):
+        self.master_data_path = Path(master_data_path).expanduser()
+        self.publications_path = Path(publications_path).expanduser()
+        self.output_dir = Path(output_dir).expanduser()
+        self.llm = llm_client
+        
+        # Load master data
+        self.master_data = self._load_master_data()
+        
+        # Load publications if available
+        self.publications = {}
+        if self.publications_path.exists():
+            self.publications = parse_bibtex_file(str(self.publications_path))
+    
+    def _load_master_data(self) -> Dict:
+        """Load Master_CV_Data.json."""
+        if not self.master_data_path.exists():
+            raise FileNotFoundError(
+                f"Master data file not found: {self.master_data_path}\n"
+                "Please create Master_CV_Data.json first."
+            )
+        
+        with open(self.master_data_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    
+    def _prepare_cv_data_for_template(
+        self,
+        selected_content: Dict,
+        job_analysis: Dict,
+        template_variant: str = 'standard'
+    ) -> Dict:
+        """Prepare CV data in the format expected by Quarto template.
+        
+        Args:
+            selected_content: The selected CV content
+            job_analysis: Job analysis data for context
+            template_variant: Template variant to use ('standard', 'academic', 'technical')
+        """
+        # Validate required fields
+        required_fields = ['personal_info', 'experiences', 'education', 'skills']
+        for field in required_fields:
+            if field not in selected_content:
+                print(f"⚠ Warning: Required field '{field}' missing from selected content")
+        
+        # Get personal info from selected content (already included)
+        personal_info = selected_content.get('personal_info', {})
+        
+        # Validate and format contact information
+        contact = personal_info.get('contact', {})
+        self._validate_contact_info(contact)
+        
+        address = contact.get('address', {})
+        if address:
+            address_display = f"{address.get('city', '')}, {address.get('state', '')}"
+            address_display = address_display.strip(', ')  # Clean up empty parts
+            contact['address_display'] = address_display
+        
+        # Get professional summary with job context
+        professional_summary = selected_content.get('summary', '')
+        if not professional_summary.strip():
+            # Generate default summary if missing
+            professional_summary = f"Experienced professional applying for {job_analysis.get('title', 'position')}"
+        
+        # Format skills by category with better organization
+        skills_by_category = self._organize_skills_by_category(
+            selected_content.get('skills', []), 
+            template_variant
+        )
+        
+        # Format publications if available in selected content
+        publications = self._format_publications(selected_content.get('publications', []))
+        
+        # Get awards and certifications from selected content
+        awards = selected_content.get('awards', [])
+        certifications = selected_content.get('certifications', [])
+        
+        # Add template metadata
+        template_metadata = {
+            'variant': template_variant,
+            'generated_date': datetime.now().isoformat(),
+            'job_title': job_analysis.get('title', ''),
+            'company': job_analysis.get('company', '')
+        }
+        
+        cv_data = {
+            'personal_info': personal_info,
+            'professional_summary': professional_summary,
+            'experiences': selected_content.get('experiences', []),
+            'education': selected_content.get('education', []),
+            'skills_by_category': skills_by_category,
+            'awards': awards,
+            'certifications': certifications,
+            'publications': publications,
+            'template_metadata': template_metadata
+        }
+        
+        # Validate the final data structure
+        if not self._validate_cv_data_structure(cv_data):
+            print("⚠ Warning: CV data structure validation failed")
+        
+        return cv_data
+    
+    def _render_cv_with_quarto(
+        self, 
+        cv_data: Dict,
+        output_dir: Path,
+        filename_base: str,
+        template_variant: str = 'standard'
+    ) -> Path:
+        """Render CV using Quarto and convert to PDF.
+        
+        Args:
+            cv_data: Prepared CV data dictionary
+            output_dir: Directory to save the PDF
+            filename_base: Base name for the output file
+            template_variant: Template variant to use
+        """
+        
+        # Get templates directory and select template file
+        template_config = self._get_template_config(template_variant)
+        template_dir = Path(__file__).parent.parent.parent / 'templates'
+        template_file = template_dir / template_config['template_file']
+        css_file = template_dir / template_config['css_file']
+        
+        if not template_file.exists():
+            print(f"⚠ Template {template_file} not found, falling back to standard")
+            template_file = template_dir / 'cv-template.qmd'
+            css_file = template_dir / 'cv-style.css'
+        
+        if not template_file.exists():
+            raise FileNotFoundError(f"No Quarto template found: {template_file}")
+        
+        # Create temporary working directory with better naming
+        with tempfile.TemporaryDirectory(prefix='cv_render_') as temp_dir:
+            temp_path = Path(temp_dir)
+            print(f"🔧 Using temporary directory: {temp_path}")
+            
+            # Setup template environment
+            temp_files = self._setup_template_environment(
+                template_file, css_file, temp_path, cv_data
+            )
+            
+            # Render with Quarto to HTML
+            html_output = self._render_with_quarto_engine(
+                temp_files['template'], temp_path
+            )
+            
+            # Convert HTML to PDF with enhanced error handling
+            pdf_output = output_dir / f"{filename_base}.pdf"
+            self._convert_html_to_pdf_enhanced(html_output, pdf_output, cv_data)
+            
+            return pdf_output
+    
+    def _validate_contact_info(self, contact: Dict) -> bool:
+        \"\"\"Validate contact information structure.\"\"\"
+        required_fields = ['email']
+        for field in required_fields:
+            if not contact.get(field):
+                print(f"⚠ Missing required contact field: {field}")
+                return False
+        return True
+    
+    def _organize_skills_by_category(self, skills: List[Dict], variant: str) -> List[Dict]:
+        \"\"\"Organize skills by category with template-specific ordering.\"\"\"
+        if not skills:
+            return []
+        
+        # Group skills by category
+        category_skills = defaultdict(list)
+        for skill in skills:
+            category = skill.get('category', 'General')
+            category_skills[category].append(skill)
+        
+        # Define category priority based on template variant
+        priority_orders = {
+            'standard': ['Core Expertise', 'Programming', 'Technical', 'Tools', 'General'],
+            'technical': ['Programming', 'Technical', 'Tools', 'Core Expertise', 'General'],
+            'academic': ['Research', 'Technical', 'Programming', 'Core Expertise', 'General']
+        }
+        
+        priority_order = priority_orders.get(variant, priority_orders['standard'])
+        
+        # Sort categories by priority, then alphabetically
+        sorted_categories = []
+        
+        # Add priority categories first
+        for category in priority_order:
+            if category in category_skills:
+                skills_list = sorted(category_skills[category], 
+                                   key=lambda x: (-x.get('years', 0), x.get('name', '')))
+                sorted_categories.append({
+                    'category': category,
+                    'skills': skills_list
+                })
+        
+        # Add remaining categories alphabetically
+        remaining_categories = sorted(set(category_skills.keys()) - set(priority_order))
+        for category in remaining_categories:
+            skills_list = sorted(category_skills[category], 
+                               key=lambda x: (-x.get('years', 0), x.get('name', '')))
+            sorted_categories.append({
+                'category': category,
+                'skills': skills_list
+            })
+        
+        return sorted_categories
+    
+    def _format_publications(self, publications: List) -> List[Dict]:
+        \"\"\"Format publications for template consumption.\"\"\"
+        formatted_pubs = []
+        for pub in publications:
+            if isinstance(pub, dict):
+                if 'formatted' in pub:
+                    formatted_pubs.append({
+                        'formatted_citation': pub['formatted']
+                    })
+                elif 'title' in pub:
+                    # Create basic formatted citation
+                    authors = pub.get('authors', 'Unknown')
+                    title = pub.get('title', '')
+                    journal = pub.get('journal', '')
+                    year = pub.get('year', '')
+                    citation = f\"{authors}. {title}. {journal} ({year}).\".strip()
+                    formatted_pubs.append({
+                        'formatted_citation': citation
+                    })
+        return formatted_pubs
+    
+    def _validate_cv_data_structure(self, cv_data: Dict) -> bool:
+        \"\"\"Validate the cv_data structure before template processing.\"\"\"
+        required_keys = ['personal_info', 'professional_summary', 'experiences', 'education']
+        
+        for key in required_keys:
+            if key not in cv_data:
+                print(f\"❌ Missing required CV data key: {key}\")\n                return False\n        \n        # Validate personal_info structure\n        personal_info = cv_data['personal_info']\n        if not isinstance(personal_info, dict) or 'name' not in personal_info:\n            print(\"❌ Invalid personal_info structure - missing name\")\n            return False\n        \n        # Validate experiences structure\n        experiences = cv_data['experiences']\n        if not isinstance(experiences, list):\n            print(\"❌ Invalid experiences structure - must be list\")\n            return False\n            \n        for i, exp in enumerate(experiences):\n            required_exp_fields = ['company', 'title']\n            for field in required_exp_fields:\n                if not exp.get(field):\n                    print(f\"❌ Experience {i} missing required field: {field}\")\n                    return False\n        \n        return True\n    \n    def _get_template_config(self, variant: str) -> Dict:\n        \"\"\"Get template configuration for the specified variant.\"\"\"        \n        configs = {\n            'standard': {\n                'template_file': 'cv-template.qmd',\n                'css_file': 'cv-style.css',\n                'description': 'Standard professional CV template'\n            },\n            'academic': {\n                'template_file': 'cv-template-academic.qmd',\n                'css_file': 'cv-style-academic.css',\n                'description': 'Academic CV template with publications emphasis'\n            },\n            'technical': {\n                'template_file': 'cv-template-technical.qmd',\n                'css_file': 'cv-style-technical.css',\n                'description': 'Technical CV template with skills emphasis'\n            }\n        }\n        \n        return configs.get(variant, configs['standard'])\n    \n    def _setup_template_environment(self, template_file: Path, css_file: Path, \n                                  temp_path: Path, cv_data: Dict) -> Dict:\n        \"\"\"Setup the template environment in temporary directory.\"\"\"         \n        # Copy template files to temp directory\n        temp_template = temp_path / template_file.name\n        temp_css = temp_path / css_file.name\n        \n        shutil.copy2(template_file, temp_template)\n        if css_file.exists():\n            shutil.copy2(css_file, temp_css)\n        else:\n            print(f\"⚠ CSS file not found: {css_file}, template may lack styling\")\n        \n        # Write CV data to temporary JSON file with unique name\n        data_file = temp_path / f'cv_data_{datetime.now().strftime(\"%Y%m%d_%H%M%S\")}.json'\n        with open(data_file, 'w', encoding='utf-8') as f:\n            json.dump(cv_data, f, indent=2, ensure_ascii=False)\n        \n        # Update template to use the unique data file name\n        template_content = temp_template.read_text(encoding='utf-8')\n        template_content = template_content.replace(\n            \"'temp_cv_data.json'\", \n            f\"'{data_file.name}'\"\n        )\n        temp_template.write_text(template_content, encoding='utf-8')\n        \n        return {\n            'template': temp_template,\n            'css': temp_css,\n            'data': data_file\n        }\n    \n    def _render_with_quarto_engine(self, template_file: Path, work_dir: Path) -> Path:\n        \"\"\"Render template using Quarto engine with enhanced error handling.\"\"\"         \n        html_output = work_dir / f\"{template_file.stem}.html\"\n        \n        try:\n            # Check Quarto availability\n            result = subprocess.run(['quarto', '--version'], \n                                  capture_output=True, text=True, check=True, timeout=10)\n            print(f\"✓ Using Quarto: {result.stdout.strip()}\")\n            \n            # Render to HTML with explicit parameters\n            render_cmd = [\n                'quarto', 'render', str(template_file),\n                '--to', 'html',\n                '--output', str(html_output)\n            ]\n            \n            result = subprocess.run(\n                render_cmd, \n                capture_output=True, \n                text=True, \n                check=True, \n                cwd=work_dir,\n                timeout=60  # 1 minute timeout\n            )\n            \n            if result.stdout:\n                print(f\"Quarto output: {result.stdout}\")\n            if result.stderr:\n                print(f\"Quarto warnings: {result.stderr}\")\n            \n            if not html_output.exists():\n                raise FileNotFoundError(f\"Quarto render succeeded but HTML output not found: {html_output}\")\n            \n            print(f\"✓ Quarto render successful: {html_output.name}\")\n            return html_output\n            \n        except subprocess.TimeoutExpired:\n            print(\"⚠ Quarto render timed out, using fallback\")\n            return self._create_fallback_html_file(work_dir, template_file.stem)\n            \n        except subprocess.CalledProcessError as e:\n            print(f\"⚠ Quarto render failed (exit code {e.returncode}): {e.stderr}\")\n            return self._create_fallback_html_file(work_dir, template_file.stem)\n            \n        except FileNotFoundError:\n            print(\"⚠ Quarto not found in PATH, using fallback HTML generation\")\n            return self._create_fallback_html_file(work_dir, template_file.stem)\n    \n    def _create_fallback_html_file(self, work_dir: Path, base_name: str) -> Path:\n        \"\"\"Create fallback HTML file when Quarto is unavailable.\"\"\" \n        html_output = work_dir / f\"{base_name}.html\"\n        \n        # Read CV data from the JSON file in work_dir\n        json_files = list(work_dir.glob('cv_data_*.json'))\n        if not json_files:\n            json_files = list(work_dir.glob('temp_cv_data.json'))  # Fallback name\n        \n        if json_files:\n            with open(json_files[0], 'r', encoding='utf-8') as f:\n                cv_data = json.load(f)\n        else:\n            print(\"⚠ No CV data file found for fallback HTML\")\n            cv_data = {'personal_info': {'name': 'CV Data Error'}, 'professional_summary': 'Data loading failed'}\n        \n        html_content = self._create_fallback_html(cv_data)\n        html_output.write_text(html_content, encoding='utf-8')\n        print(f\"✓ Created fallback HTML: {html_output.name}\")\n        \n        return html_output\n    \n    def _convert_html_to_pdf_enhanced(self, html_file: Path, pdf_output: Path, cv_data: Dict) -> None:\n        \"\"\"Enhanced HTML to PDF conversion with better error handling and diagnostics.\"\"\" \n        conversion_methods = [\n            ('WeasyPrint', self._try_weasyprint),\n            ('Chrome Headless', self._try_chrome_headless),\n            ('Webkit HTML to PDF', self._try_html2pdf)\n        ]\n        \n        for method_name, conversion_func in conversion_methods:\n            try:\n                print(f\"🔄 Attempting PDF conversion using {method_name}...\")\n                if conversion_func(html_file, pdf_output):\n                    print(f\"✅ Successfully generated PDF using {method_name}: {pdf_output.name}\")\n                    # Validate generated PDF\n                    if pdf_output.exists() and pdf_output.stat().st_size > 1000:  # At least 1KB\n                        print(f\"✓ PDF validation passed: {pdf_output.stat().st_size:,} bytes\")\n                        return\n                    else:\n                        print(f\"⚠ PDF too small ({pdf_output.stat().st_size} bytes), trying next method...\")\n                        continue\n                        \n            except Exception as e:\n                print(f\"⚠ {method_name} failed: {e}\")\n                continue\n        \n        # All methods failed - create diagnostic file\n        print(\"❌ All PDF conversion methods failed\")\n        self._create_conversion_diagnostic(html_file, pdf_output, cv_data)\n    \n    def _try_weasyprint(self, html_file: Path, pdf_output: Path) -> bool:\n        \"\"\"Try WeasyPrint conversion.\"\"\"         \n        weasyprint.HTML(filename=str(html_file)).write_pdf(str(pdf_output))\n        return True\n    \n    def _try_chrome_headless(self, html_file: Path, pdf_output: Path) -> bool:\n        \"\"\"Try Chrome headless conversion.\"\"\"         \n        cmd = [\n            'google-chrome', '--headless', '--disable-gpu', '--virtual-time-budget=5000',\n            '--print-to-pdf=' + str(pdf_output),\n            '--print-to-pdf-no-header',\n            '--no-margins',\n            str(html_file)\n        ]\n        subprocess.run(cmd, check=True, timeout=30)\n        return True\n    \n    def _try_html2pdf(self, html_file: Path, pdf_output: Path) -> bool:\n        \"\"\"Try alternative HTML to PDF tools.\"\"\" \n        # Try wkhtmltopdf if available\n        try:\n            cmd = ['wkhtmltopdf', '--page-size', 'Letter', str(html_file), str(pdf_output)]\n            subprocess.run(cmd, check=True, timeout=30)\n            return True\n        except FileNotFoundError:\n            return False\n    \n    def _create_conversion_diagnostic(self, html_file: Path, pdf_output: Path, cv_data: Dict) -> None:\n        \"\"\"Create diagnostic information when PDF conversion fails.\"\"\" \n        diagnostic_content = f\"\"\"PDF CONVERSION DIAGNOSTIC REPORT\nGenerated: {datetime.now().isoformat()}\n{'='*50}\n\nHTML FILE STATUS:\n- File exists: {html_file.exists()}\n- File size: {html_file.stat().st_size if html_file.exists() else 'N/A'} bytes\n- File path: {html_file}\n\nCV DATA SUMMARY:\n- Personal info: {'✓' if cv_data.get('personal_info', {}).get('name') else '❌'}\n- Experiences: {len(cv_data.get('experiences', []))} items\n- Skills: {len(cv_data.get('skills_by_category', []))} categories\n- Education: {len(cv_data.get('education', []))} items\n\nCONVERSION ATTEMPTS:\n1. WeasyPrint - Failed (ensure 'pip install weasyprint' completed)\n2. Chrome Headless - Failed (ensure Google Chrome installed)\n3. Alternative tools - Failed (wkhtmltopdf not found)\n\nMANUAL CONVERSION STEPS:\n1. Open HTML file in browser: {html_file}\n2. Use browser Print function\n3. Select \"Save as PDF\"\n4. Save to: {pdf_output}\n\nTROUBLESHOOTING:\n- Install WeasyPrint: pip install weasyprint\n- Install Chrome: https://www.google.com/chrome/\n- Check system PATH includes conversion tools\n\nHTML PREVIEW:\n{'-'*30}\n{html_file.read_text(encoding='utf-8')[:1000] if html_file.exists() else 'HTML file not found'}...\n\"\"\"\n        \n        # Write diagnostic report instead of PDF\n        diagnostic_file = pdf_output.with_suffix('.diagnostic.txt')\n        diagnostic_file.write_text(diagnostic_content, encoding='utf-8')\n        print(f\"🔍 Created diagnostic report: {diagnostic_file.name}\")\n        \n        # Also copy HTML to output location for manual conversion\n        output_html = pdf_output.with_suffix('.html')\n        if html_file.exists():\n            shutil.copy2(html_file, output_html)\n            print(f\"📄 Copied HTML for manual conversion: {output_html.name}\")\n\n    def _create_fallback_html(self, cv_data: Dict) -> str:
+        """Create basic HTML if Quarto is not available."""
+        personal_info = cv_data['personal_info']
+        contact = personal_info.get('contact', {})
+        
+        html_parts = [
+            '<!DOCTYPE html>',
+            '<html><head>',
+            '<meta charset="UTF-8">',
+            '<link rel="stylesheet" href="cv-style.css">',
+            '<title>CV</title>',
+            '</head><body>',
+            '<div class="cv-container">',
+            '<div class="cv-header">',
+            f'<h1>{personal_info.get("name", "")}</h1>',
+            f'<h2>{cv_data["professional_summary"]}</h2>',
+            '<div class="contact-info">',
+            f'{contact.get("email", "")} | {contact.get("phone", "")} | {contact.get("address_display", "")}',
+            '</div></div>',
+            '<div class="cv-body">',
+            '<div class="cv-left-column">',
+            '<h2>Professional Experience</h2>'
+        ]
+        
+        # Add experiences
+        for exp in cv_data['experiences']:
+            location = exp.get('location', {})
+            location_str = location.get('city', '')
+            if location.get('state'):
+                location_str += f", {location['state']}"
+                
+            html_parts.extend([
+                '<div class="experience-item">',
+                f'<h3>{exp.get("company", "")} | {exp.get("title", "")}</h3>',
+                '<div class="experience-meta">',
+                f'{location_str} | {exp.get("start_date", "")} - {exp.get("end_date", "")}',
+                '</div>'
+            ])
+            
+            if exp.get('achievements'):
+                for achievement in exp['achievements']:
+                    html_parts.append(f'<p>• {achievement.get("text", "")}</p>')
+            
+            html_parts.append('</div>')
+        
+        # Add education
+        html_parts.append('<h2>Education</h2>')
+        for edu in cv_data['education']:
+            location = edu.get('location', {})
+            location_str = f"{location.get('city', '')}, {location.get('state', '')}"
+            html_parts.extend([
+                '<div class="education-item">',
+                f'<h3>{edu.get("degree", "")} {edu.get("field", "")}</h3>',
+                f'<p><strong>{edu.get("institution", "")}</strong> | {location_str} | {edu.get("end_year", "")}</p>',
+                '</div>'
+            ])
+        
+        html_parts.extend([
+            '</div>',  # cv-left-column
+            '<div class="cv-right-column">',
+            '<h2>Core Skills</h2>'
+        ])
+        
+        # Add skills
+        for category_data in cv_data['skills_by_category']:
+            html_parts.extend([
+                '<div class="skills-category">',
+                f'<h3>{category_data["category"]}</h3>'
+            ])
+            for skill in category_data['skills']:
+                years_text = f" ({skill['years']} years)" if skill.get('years') else ""
+                html_parts.append(f'<p>• {skill["name"]}{years_text}</p>')
+            html_parts.append('</div>')
+            
+        html_parts.extend([
+            '</div>',  # cv-right-column
+            '</div>',  # cv-body
+            '</div>',  # cv-container
+            '</body></html>'
+        ])
+        
+        return '\\n'.join(html_parts)
+    
+    def _convert_html_to_pdf(self, html_file: Path, pdf_output: Path) -> None:
+        """Convert HTML file to PDF using WeasyPrint."""
+        try:
+            # Use WeasyPrint for PDF conversion
+            weasyprint.HTML(filename=str(html_file)).write_pdf(str(pdf_output))
+            print(f"✓ Generated PDF using WeasyPrint: {pdf_output.name}")
+            
+        except Exception as e:
+            print(f"⚠ WeasyPrint failed ({e}), trying alternative approach...")
+            
+            # Alternative: try Chrome headless if available
+            try:
+                subprocess.run([
+                    'google-chrome', '--headless', '--disable-gpu', '--virtual-time-budget=5000',
+                    '--print-to-pdf=' + str(pdf_output),
+                    '--print-to-pdf-no-header',
+                    str(html_file)
+                ], check=True)
+                print(f"✓ Generated PDF using Chrome headless: {pdf_output.name}")
+                
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                # Final fallback: create a text file with instructions
+                fallback_content = f"""
+PDF Generation Failed
+
+The system attempted to generate a PDF but encountered issues:
+1. WeasyPrint error: {e}
+2. Chrome headless not available
+
+To manually create PDF:
+1. Open the HTML file: {html_file}
+2. Print to PDF using your browser
+3. Save as: {pdf_output}
+
+The HTML file contains your formatted CV ready for conversion.
+"""
+                pdf_output.write_text(fallback_content.strip(), encoding='utf-8')
+                print(f"⚠ Created fallback instructions: {pdf_output.name}")
+    
+    def generate_cv(
+        self,
+        job_analysis: Dict,
+        customizations: Dict
+    ) -> Dict:
+        """
+        Generate CV files based on LLM analysis and recommendations.
+        
+        Returns:
+            Dict with output_dir, files created, metadata
+        """
+        # Create output directory
+        company = job_analysis.get('company', 'Company')
+        role = job_analysis.get('title', 'Role')
+        role_slug = role.replace(' ', '')[:20]
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+        
+        output_name = f"{company}_{role_slug}_{timestamp}"
+        job_output_dir = self.output_dir / output_name
+        job_output_dir.mkdir(parents=True, exist_ok=True)
+        
+        print(f"Output directory: {job_output_dir}")
+        
+        # Select content using hybrid approach (LLM + scoring)
+        selected_content = self._select_content_hybrid(
+            job_analysis,
+            customizations
+        )
+        
+        # Generate documents
+        files_created = []
+        
+        # 1. ATS-optimized DOCX
+        ats_file = self._generate_ats_docx(
+            selected_content,
+            job_analysis,
+            job_output_dir
+        )
+        files_created.append(ats_file.name)
+        
+        # 2. Human-readable PDF
+        human_pdf = self._generate_human_pdf(
+            selected_content,
+            job_analysis,
+            job_output_dir
+        )
+        files_created.append(human_pdf.name)
+        
+        # 3. Human-readable DOCX
+        human_docx = self._generate_human_docx(
+            selected_content,
+            job_analysis,
+            job_output_dir
+        )
+        files_created.append(human_docx.name)
+        
+        # Save metadata
+        metadata = {
+            'generation_date': datetime.now().isoformat(),
+            'company': company,
+            'role': role,
+            'job_analysis': job_analysis,
+            'customizations': customizations,
+            'selected_content_summary': {
+                'experiences_count': len(selected_content['experiences']),
+                'skills_count': len(selected_content['skills']),
+                'achievements_count': len(selected_content['achievements'])
+            },
+            'files_generated': files_created
+        }
+        
+        metadata_file = job_output_dir / 'metadata.json'
+        with open(metadata_file, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=2)
+        files_created.append('metadata.json')
+        
+        # Save job description
+        if job_analysis.get('original_text'):
+            job_desc_file = job_output_dir / 'job_description.txt'
+            job_desc_file.write_text(job_analysis['original_text'], encoding='utf-8')
+            files_created.append('job_description.txt')
+        
+        return {
+            'output_dir': str(job_output_dir),
+            'files': files_created,
+            'metadata': metadata
+        }
+    
+    def _select_content_hybrid(
+        self,
+        job_analysis: Dict,
+        customizations: Dict
+    ) -> Dict:
+        """
+        Select content using hybrid LLM + rule-based approach.
+        
+        - LLM provides recommendations
+        - Scoring functions validate and rank
+        - Combine for best results
+        """
+        # Extract recommended IDs from LLM
+        recommended_exp_ids = set(customizations.get('recommended_experiences', []))
+        recommended_achievement_ids = set(customizations.get('recommended_achievements', []))
+        recommended_skills = set(customizations.get('recommended_skills', []))
+        
+        # Get all content
+        all_experiences = self.master_data.get('experience', [])
+        all_achievements = self.master_data.get('selected_achievements', [])
+        all_skills = self.master_data.get('skills', [])
+        
+        # Use LLM semantic matching + keyword scoring
+        job_keywords = set(job_analysis.get('ats_keywords', []))
+        job_requirements = (
+            job_analysis.get('must_have_requirements', []) +
+            job_analysis.get('nice_to_have_requirements', [])
+        )
+        domain = job_analysis.get('domain', '')
+        
+        # Score experiences
+        scored_experiences = []
+        for exp in all_experiences:
+            exp_id = exp.get('id', '')
+            
+            # LLM recommendation bonus
+            llm_score = 10.0 if exp_id in recommended_exp_ids else 0.0
+            
+            # Keyword score
+            keyword_score = calculate_relevance_score(
+                exp,
+                job_keywords,
+                job_requirements,
+                domain
+            )
+            
+            # Semantic score from LLM
+            exp_text = json.dumps(exp)
+            semantic_score = self.llm.semantic_match(exp_text, job_requirements) * 10
+            
+            # Combined score
+            total_score = llm_score + keyword_score + semantic_score
+            
+            scored_experiences.append((exp, total_score))
+        
+        # Sort and select top experiences
+        scored_experiences.sort(key=lambda x: x[1], reverse=True)
+        selected_experiences = [exp for exp, score in scored_experiences[:4]]
+        
+        # Score achievements
+        scored_achievements = []
+        for ach in all_achievements:
+            ach_id = ach.get('id', '')
+            
+            llm_score = 10.0 if ach_id in recommended_achievement_ids else 0.0
+            keyword_score = calculate_relevance_score(
+                ach,
+                job_keywords,
+                job_requirements,
+                domain
+            )
+            ach_text = json.dumps(ach)
+            semantic_score = self.llm.semantic_match(ach_text, job_requirements) * 10
+            
+            total_score = llm_score + keyword_score + semantic_score
+            scored_achievements.append((ach, total_score))
+        
+        scored_achievements.sort(key=lambda x: x[1], reverse=True)
+        selected_achievements = [ach for ach, score in scored_achievements[:5]]
+        
+        # Select skills (prioritize LLM recommendations)
+        selected_skills = []
+        for skill in all_skills:
+            skill_name = skill.get('name', '')
+            if skill_name in recommended_skills:
+                selected_skills.append(skill)
+        
+        # Add additional skills by scoring if needed
+        if len(selected_skills) < 20:
+            for skill in all_skills:
+                if skill not in selected_skills:
+                    skill_score = calculate_skill_score(
+                        skill,
+                        job_keywords,
+                        job_analysis.get('required_skills', [])
+                    )
+                    if skill_score > 5:
+                        selected_skills.append(skill)
+                    if len(selected_skills) >= 20:
+                        break
+        
+        # Select professional summary
+        summaries = self.master_data.get('professional_summaries', {})
+        summary_key = customizations.get('summary_focus', 'default')
+        selected_summary = summaries.get(summary_key) or summaries.get('default', '')
+        
+        # Select publications
+        selected_publications = self._select_publications(job_analysis, max_count=10)
+        
+        return {
+            'personal_info': self.master_data.get('personal_info', {}),
+            'summary': selected_summary,
+            'experiences': selected_experiences,
+            'achievements': selected_achievements,
+            'skills': selected_skills,
+            'education': self.master_data.get('education', []),
+            'publications': selected_publications,
+            'awards': self.master_data.get('awards', [])
+        }
+    
+    def _select_publications(self, job_analysis: Dict, max_count: int = 10) -> List[Dict]:
+        """Select most relevant publications."""
+        if not self.publications:
+            return []
+        
+        domain = job_analysis.get('domain', '')
+        keywords = set(job_analysis.get('ats_keywords', []))
+        
+        scored_pubs = []
+        for key, pub in self.publications.items():
+            score = 0.0
+            
+            # Recent publications score higher
+            try:
+                year = int(pub['year'])
+                if year >= 2020:
+                    score += 30
+                elif year >= 2015:
+                    score += 20
+                elif year >= 2010:
+                    score += 10
+            except (ValueError, KeyError):
+                pass
+            
+            # Type bonus
+            if pub['type'] == 'article':
+                score += 25
+            elif pub['type'] in ['inproceedings', 'conference']:
+                score += 20
+            
+            # Keyword matches
+            title_lower = pub['title'].lower()
+            matches = sum(1 for kw in keywords if kw.lower() in title_lower)
+            score += matches * 5
+            
+            # Domain-specific
+            if domain == 'genomics' and any(
+                term in title_lower for term in ['genom', 'gene', 'dna', 'rna']
+            ):
+                score += 15
+            
+            scored_pubs.append((pub, score))
+        
+        scored_pubs.sort(key=lambda x: x[1], reverse=True)
+        
+        selected = []
+        for pub, score in scored_pubs[:max_count]:
+            formatted = format_publication(pub, style='brief')
+            selected.append({
+                'formatted': formatted,
+                'year': pub['year'],
+                'type': pub['type']
+            })
+        
+        return selected
+    
+    def _generate_ats_docx(
+        self,
+        content: Dict,
+        job_analysis: Dict,
+        output_dir: Path
+    ) -> Path:
+        """Generate ATS-optimized DOCX."""
+        from docx import Document
+        from docx.shared import Pt
+        
+        doc = Document()
+        
+        # Contact info
+        personal = content['personal_info']
+        doc.add_heading(personal.get('name', ''), level=1)
+        
+        contact = personal.get('contact', {})
+        contact_line = f"{contact.get('email', '')} | {contact.get('phone', '')}"
+        if contact.get('linkedin'):
+            contact_line += f" | {contact['linkedin']}"
+        doc.add_paragraph(contact_line)
+        
+        # Professional Summary
+        doc.add_heading('Professional Summary', level=2)
+        doc.add_paragraph(content['summary'])
+        
+        # Work Experience
+        doc.add_heading('Work Experience', level=2)
+        for exp in content['experiences']:
+            title_para = doc.add_paragraph()
+            title_para.add_run(f"{exp['title']} | {exp['company']}").bold = True
+            doc.add_paragraph(f"{exp.get('start_date', '')} – {exp.get('end_date', 'Present')}")
+            
+            for achievement in exp.get('achievements', []):
+                if isinstance(achievement, dict):
+                    doc.add_paragraph(achievement.get('text', achievement.get('description', '')), style='List Bullet')
+                else:
+                    doc.add_paragraph(achievement, style='List Bullet')
+        
+        # Skills
+        doc.add_heading('Skills', level=2)
+        skills_text = ', '.join(skill.get('name', '') for skill in content['skills'])
+        doc.add_paragraph(skills_text)
+        
+        # Education
+        doc.add_heading('Education', level=2)
+        for edu in content['education']:
+            edu_line = f"{edu.get('degree', '')} {edu.get('field', '')} – {edu.get('institution', '')} ({edu.get('end_year', '')})"
+            doc.add_paragraph(edu_line)
+        
+        # Save
+        company = job_analysis.get('company', 'Company').replace(' ', '')
+        role = job_analysis.get('title', 'Role').replace(' ', '')[:20]
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+        
+        filename = f"CV_{company}_{role}_{timestamp}_ATS.docx"
+        filepath = output_dir / filename
+        doc.save(str(filepath))
+        
+        print(f"✓ Generated ATS DOCX: {filename}")
+        return filepath
+    
+    def _generate_human_pdf(
+        self,
+        content: Dict,
+        job_analysis: Dict,
+        output_dir: Path,
+        template_variant: str = 'standard'
+    ) -> Path:
+        """Generate human-readable PDF with styling using Quarto.
+        
+        Args:
+            content: Selected CV content
+            job_analysis: Job analysis data
+            output_dir: Output directory 
+            template_variant: Template variant ('standard', 'academic', 'technical')
+        """
+        company = job_analysis.get('company', 'Company').replace(' ', '')
+        role = job_analysis.get('title', 'Role').replace(' ', '')[:20]
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+        
+        filename_base = f"CV_{company}_{role}_{timestamp}_Human"
+        
+        try:
+            # Prepare data for Quarto template with variant
+            cv_data = self._prepare_cv_data_for_template(
+                content, job_analysis, template_variant
+            )
+            
+            # Render with Quarto and convert to PDF
+            pdf_path = self._render_cv_with_quarto(
+                cv_data, output_dir, filename_base, template_variant
+            )
+            
+            print(f"✅ Generated human-readable PDF ({template_variant}): {pdf_path.name}")
+            return pdf_path
+            
+        except Exception as e:
+            print(f"⚠ PDF generation failed: {e}")
+            # Create enhanced fallback with diagnostic info
+            fallback_file = output_dir / f"{filename_base}.txt"
+            fallback_content = f"""PDF Generation Error: {e}
+
+This indicates an issue with the document generation pipeline.
+Please check:
+1. Quarto installation (quarto --version)
+2. WeasyPrint dependencies (pip install weasyprint)
+3. Template files in templates/ directory
+4. Chrome/Chromium for PDF rendering
+
+Template variant attempted: {template_variant}
+Content data summary:
+- Experiences: {len(content.get('experiences', []))} items
+- Skills: {len(content.get('skills', []))} items
+- Education: {len(content.get('education', []))} items
+
+For manual generation:
+1. Check system requirements
+2. Retry with different template variant
+3. Use browser Print to PDF as fallback
+            """
+            fallback_file.write_text(fallback_content.strip(), encoding='utf-8')
+            print(f"⚠ Created error log: {fallback_file.name}")
+            return fallback_file
+    
+    def _generate_human_docx(
+        self,
+        content: Dict,
+        job_analysis: Dict,
+        output_dir: Path
+    ) -> Path:
+        """Generate human-readable DOCX with styling."""
+        # Similar to ATS but with better formatting
+        # TODO: Implement styled version
+        company = job_analysis.get('company', 'Company').replace(' ', '')
+        role = job_analysis.get('title', 'Role').replace(' ', '')[:20]
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+        
+        filename = f"CV_{company}_{role}_{timestamp}_Human.docx"
+        filepath = output_dir / filename
+        
+        # For now, reuse ATS generation
+        from docx import Document
+        doc = Document()
+        doc.add_paragraph("Human-readable DOCX coming soon")
+        doc.save(str(filepath))
+        
+        print(f"⚠ Human DOCX placeholder: {filename}")
+        return filepath

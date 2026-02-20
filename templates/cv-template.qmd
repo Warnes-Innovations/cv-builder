@@ -1,0 +1,159 @@
+---
+title: "CV"
+format:
+  html:
+    theme: none
+    css: cv-style.css
+    toc: false
+    number-sections: false
+    page-layout: custom
+    margin-left: 0.5in
+    margin-right: 0.5in
+    margin-top: 0.5in
+    margin-bottom: 0.5in
+execute:
+  echo: false
+---
+
+```{python}
+#| echo: false
+# Data will be injected here by Python
+import json
+import os
+
+# Load data from temporary JSON file
+with open('temp_cv_data.json', 'r', encoding='utf-8') as f:
+    cv_data = json.load(f)
+
+personal_info = cv_data['personal_info']
+professional_summary = cv_data['professional_summary']
+experiences = cv_data['experiences']
+education = cv_data['education']
+skills_by_category = cv_data['skills_by_category']
+awards = cv_data.get('awards', [])
+certifications = cv_data.get('certifications', [])
+publications = cv_data.get('publications', [])
+```
+
+::: {.cv-container}
+
+::: {.cv-header}
+# `{python} personal_info['name']`
+## `{python} professional_summary`
+
+::: {.contact-info}
+`{python} personal_info['contact']['email']` | `{python} personal_info['contact']['phone']` | `{python} personal_info['contact'].get('address_display', '')`  
+[LinkedIn](`{python} personal_info['contact']['linkedin']`) | [Website](`{python} personal_info['contact']['website']`)
+:::
+:::
+
+::: {.cv-body}
+
+::: {.cv-left-column}
+
+## Professional Experience
+
+```{python}
+#| echo: false
+#| output: asis
+for exp in experiences:
+    location_str = exp['location']['city']
+    if exp['location'].get('state'):
+        location_str += f", {exp['location']['state']}"
+    
+    print(f"::: {{.experience-item}}")
+    print(f"### {exp['company']} | {exp['title']}")
+    print(f"::: {{.experience-meta}}")
+    print(f"{location_str} | {exp['start_date']} - {exp['end_date']}")
+    print(f":::")
+    print()
+    
+    if exp.get('achievements'):
+        for achievement in exp['achievements']:
+            print(f"• {achievement['text']}")
+    print()
+    print(f":::")
+    print()
+```
+
+## Education
+
+```{python}
+#| echo: false
+#| output: asis
+for edu in education:
+    location_str = f"{edu['location']['city']}, {edu['location']['state']}"
+    print(f"::: {{.education-item}}")
+    print(f"### {edu['degree']} {edu['field']}")
+    print(f"**{edu['institution']}** | {location_str} | {edu['end_year']}")
+    print(f":::")
+    print()
+```
+
+```{python}
+#| echo: false
+#| output: asis
+if publications:
+    print("## Selected Publications")
+    print()
+    for pub in publications:
+        print(f"::: {{.publication-item}}")
+        print(f"{pub['formatted_citation']}")
+        print(f":::")
+        print()
+```
+
+:::
+
+::: {.cv-right-column}
+
+## Core Skills
+
+```{python}
+#| echo: false
+#| output: asis
+for category_data in skills_by_category:
+    print(f"::: {{.skills-category}}")
+    print(f"### {category_data['category']}")
+    for skill in category_data['skills']:
+        years_text = f" ({skill['years']} years)" if skill.get('years') else ""
+        print(f"• {skill['name']}{years_text}")
+    print(f":::")
+    print()
+```
+
+```{python}
+#| echo: false
+#| output: asis
+if awards:
+    print("## Awards & Recognition")
+    print()
+    for award in awards:
+        print(f"::: {{.award-item}}")
+        print(f"**{award['title']}** ({award['year']})")
+        print(f"{award['description']}")
+        print(f":::")
+        print()
+```
+
+```{python}
+#| echo: false
+#| output: asis
+if certifications:
+    print("## Certifications")
+    print()
+    for cert in certifications:
+        year_text = f" ({cert['year']})" if cert.get('year') else ""
+        print(f"::: {{.cert-item}}")
+        print(f"**{cert['name']}**{year_text}")
+        if cert.get('issuer'):
+            print(f"*{cert['issuer']}*")
+        print(f":::")
+        print()
+```
+
+:::
+
+:::
+
+:::

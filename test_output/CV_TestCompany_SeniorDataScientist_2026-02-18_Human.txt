@@ -1,0 +1,9 @@
+PDF Generation Error: string indices must be integers
+
+This indicates an issue with the document generation pipeline.
+Please check:
+1. Quarto installation (quarto --version)
+2. WeasyPrint dependencies
+3. Template files in templates/ directory
+
+Content data was: 2 experiences, 5 skills

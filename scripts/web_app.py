@@ -15,9 +15,10 @@ Then open http://localhost:5000
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
 from flask import Flask, jsonify, request, send_file
@@ -57,6 +58,155 @@ def create_app(args) -> Flask:
         llm_client=llm_client,
     )
     conversation = ConversationManager(orchestrator=orchestrator, llm_client=llm_client)
+
+    def _infer_position_name(job_text: str) -> Optional[str]:
+        """Infer a concise position label from job text."""
+        if not job_text:
+            return None
+
+        lines = [line.strip() for line in job_text.splitlines() if line.strip()]
+        if not lines:
+            return None
+
+        title = lines[0]
+        company = lines[1] if len(lines) > 1 else ""
+
+        if " at " in title.lower() and not company:
+            parts = title.split(" at ", 1)
+            if len(parts) == 2:
+                title, company = parts[0].strip(), parts[1].strip()
+
+        if title and company:
+            label = f"{title} at {company}"
+        else:
+            label = title or company
+
+        return label[:120] if label else None
+
+    def _extract_json_payload(text: str) -> Any:
+        """Best-effort extraction of JSON array/object from model output."""
+        if not text:
+            return None
+
+        try:
+            return json.loads(text)
+        except Exception:
+            pass
+
+        if "```json" in text:
+            try:
+                json_str = text.split("```json", 1)[1].split("```", 1)[0].strip()
+                return json.loads(json_str)
+            except Exception:
+                pass
+
+        object_match = re.search(r"\{[\s\S]*\}", text)
+        if object_match:
+            try:
+                return json.loads(object_match.group(0))
+            except Exception:
+                pass
+
+        array_match = re.search(r"\[[\s\S]*\]", text)
+        if array_match:
+            try:
+                return json.loads(array_match.group(0))
+            except Exception:
+                pass
+
+        return None
+
+    def _fallback_post_analysis_questions(analysis: Dict[str, Any]) -> List[Dict[str, str]]:
+        """Deterministic fallback if LLM question generation fails."""
+        questions: List[Dict[str, str]] = []
+
+        role_level = analysis.get("role_level")
+        if role_level:
+            questions.append({
+                "type": "experience_level",
+                "question": f"This role appears to be at {role_level} level. Should I emphasize your most senior experiences or include a broader range to show career progression?",
+            })
+
+        required_skills = analysis.get("required_skills") or []
+        if isinstance(required_skills, list):
+            skill_text = " ".join(str(s).lower() for s in required_skills)
+            if any(token in skill_text for token in ("leadership", "management", "team")):
+                questions.append({
+                    "type": "leadership_focus",
+                    "question": "This role has leadership components. Would you prefer me to emphasize your management experience or focus more on your technical contributions?",
+                })
+
+        domain = analysis.get("domain")
+        if domain:
+            questions.append({
+                "type": "domain_expertise",
+                "question": f"The role is in {domain}. Do you have particular projects or achievements in this domain that you'd like me to highlight?",
+            })
+
+        company = analysis.get("company")
+        if company:
+            questions.append({
+                "type": "company_culture",
+                "question": f"For {company}, would you like me to tailor emphasis toward their culture and values? If so, what should I prioritize?",
+            })
+
+        return questions[:4]
+
+    def _generate_post_analysis_questions(analysis: Dict[str, Any], job_text: Optional[str]) -> List[Dict[str, str]]:
+        """Generate clarifying questions from the LLM in JSON format."""
+        prompt = f"""You are helping tailor a CV to a specific job.
+
+Create 2-4 concise, high-value clarifying questions for the candidate before generating customization recommendations.
+
+Requirements:
+- Questions must be specific to this role, company, and analysis.
+- Focus on tradeoffs that affect selection/emphasis of experiences and skills.
+- Avoid generic or repetitive questions.
+- Keep each question under 220 characters.
+- Return ONLY valid JSON as an array of objects.
+
+Schema:
+[
+  {{"type": "short_snake_case", "question": "..."}}
+]
+
+Job Analysis:
+{json.dumps(analysis, indent=2)}
+
+Job Description (excerpt):
+{(job_text or '')[:2500]}
+"""
+
+        response = llm_client.chat(
+            messages=[
+                {"role": "system", "content": "You generate targeted CV-optimization clarification questions and respond with strict JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.4,
+            max_tokens=500,
+        )
+
+        payload = _extract_json_payload(response)
+        if isinstance(payload, dict) and isinstance(payload.get("questions"), list):
+            payload = payload.get("questions")
+
+        if not isinstance(payload, list):
+            return []
+
+        cleaned: List[Dict[str, str]] = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            question = str(item.get("question", "")).strip()
+            qtype = str(item.get("type", "clarification")).strip().lower().replace(" ", "_")
+            if not question:
+                continue
+            cleaned.append({
+                "type": qtype[:40] or "clarification",
+                "question": question[:220],
+            })
+
+        return cleaned[:4]
 
     # Preload job description if provided
     if args.job_file:
@@ -136,6 +286,8 @@ def create_app(args) -> Flask:
             "job_description": bool(conversation.state.get("job_description")),
             "job_description_text": conversation.state.get("job_description"),
             "job_analysis": conversation.state.get("job_analysis"),  # Return full data, not just bool
+            "post_analysis_questions": conversation.state.get("post_analysis_questions") or [],
+            "post_analysis_answers": conversation.state.get("post_analysis_answers") or {},
             "customizations": conversation.state.get("customizations"),  # Return full data, not just bool
             "generated_files": conversation.state.get("generated_files"),
             "all_experience_ids": all_experience_ids,  # Add all experience IDs
@@ -211,6 +363,7 @@ def create_app(args) -> Flask:
             return jsonify({"error": "Missing job_text"}), 400
         # Store job description in state and also add to conversation history
         conversation.add_job_description(job_text)
+        conversation.state["position_name"] = _infer_position_name(job_text)
         conversation.conversation_history.append({
             "role": "user",
             "content": job_text,
@@ -416,6 +569,7 @@ def create_app(args) -> Flask:
             
             # Store job description in state
             conversation.add_job_description(job_text)
+            conversation.state["position_name"] = _infer_position_name(job_text)
             
             print(f"✅ Successfully fetched {len(job_text)} characters from {domain}")
             
@@ -582,6 +736,7 @@ def create_app(args) -> Flask:
             
             # Store job description in state
             conversation.add_job_description(job_text)
+            conversation.state["position_name"] = _infer_position_name(job_text)
             
             return jsonify({
                 "ok": True,
@@ -646,12 +801,58 @@ def create_app(args) -> Flask:
         conversation.conversation_history = []
         conversation.state = {
             "phase": "init",
+            "position_name": None,
             "job_description": None,
             "job_analysis": None,
+            "post_analysis_questions": [],
+            "post_analysis_answers": {},
             "customizations": None,
             "generated_files": None,
         }
         return jsonify({"ok": True, "message": "Conversation reset."})
+
+    @app.post("/api/post-analysis-responses")
+    def post_analysis_responses():
+        """Persist generated post-analysis questions and user answers into session state."""
+        data = request.get_json(silent=True) or {}
+        questions = data.get("questions") or []
+        answers = data.get("answers") or {}
+
+        if not isinstance(questions, list):
+            return jsonify({"error": "questions must be a list"}), 400
+        if not isinstance(answers, dict):
+            return jsonify({"error": "answers must be an object"}), 400
+
+        cleaned_questions = []
+        for q in questions[:8]:
+            if not isinstance(q, dict):
+                continue
+            question_text = str(q.get("question", "")).strip()
+            qtype = str(q.get("type", "clarification")).strip().lower().replace(" ", "_")
+            if question_text:
+                cleaned_questions.append({
+                    "type": qtype[:40] or "clarification",
+                    "question": question_text[:260],
+                })
+
+        cleaned_answers = {}
+        for key, value in answers.items():
+            clean_key = str(key).strip().lower().replace(" ", "_")[:40]
+            if not clean_key:
+                continue
+            clean_value = str(value).strip()
+            if clean_value:
+                cleaned_answers[clean_key] = clean_value[:1000]
+
+        conversation.state["post_analysis_questions"] = cleaned_questions
+        conversation.state["post_analysis_answers"] = cleaned_answers
+        conversation._save_session()
+
+        return jsonify({
+            "ok": True,
+            "questions_count": len(cleaned_questions),
+            "answers_count": len(cleaned_answers),
+        })
 
     @app.post("/api/save")
     def save():
@@ -768,6 +969,51 @@ def create_app(args) -> Flask:
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @app.post("/api/delete-session")
+    def delete_session_endpoint():
+        """Delete a saved session file and its directory."""
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        if not session_id:
+            return jsonify({"error": "Missing session_id"}), 400
+            
+        try:
+            # Find and delete the session
+            config = get_config()
+            sessions_dir = Path(config.session_dir).expanduser()
+            
+            # Look for session in all position directories
+            deleted = False
+            for position_dir in sessions_dir.glob("*/"):
+                if position_dir.is_dir():
+                    for session_dir in position_dir.glob("session_*"):
+                        if session_dir.is_dir():
+                            session_file = session_dir / "session.json"
+                            if session_file.exists():
+                                # Check if this is the session we're looking for
+                                # Could match by session_id or directory name
+                                session_name = session_dir.name
+                                if session_id in session_name or session_id == position_dir.name:
+                                    # Delete the entire session directory
+                                    import shutil
+                                    shutil.rmtree(session_dir)
+                                    deleted = True
+                                    print(f"Deleted session: {session_dir}")
+                                    break
+                    if deleted:
+                        break
+            
+            if deleted:
+                return jsonify({"success": True, "message": "Session deleted successfully"})
+            else:
+                return jsonify({"error": f"Session not found: {session_id}"}), 404
+                
+        except Exception as e:
+            print(f"ERROR in delete_session: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
     @app.post("/api/action")
     def do_action():
         data = request.get_json(silent=True) or {}
@@ -794,6 +1040,38 @@ def create_app(args) -> Flask:
         except Exception as e:
             print(f"Action execution error: {e}")
             return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/post-analysis-questions")
+    def post_analysis_questions():
+        """Generate post-analysis clarifying questions, preferably via LLM."""
+        data = request.get_json(silent=True) or {}
+        analysis = data.get("analysis") or conversation.state.get("job_analysis")
+
+        if isinstance(analysis, str):
+            analysis = _extract_json_payload(analysis)
+
+        if not isinstance(analysis, dict):
+            return jsonify({"ok": True, "questions": []})
+
+        questions: List[Dict[str, str]] = []
+        source = "fallback"
+        try:
+            questions = _generate_post_analysis_questions(
+                analysis=analysis,
+                job_text=conversation.state.get("job_description"),
+            )
+            if questions:
+                source = "llm"
+        except Exception as e:
+            print(f"Question generation failed, using fallback: {e}")
+
+        if not questions:
+            questions = _fallback_post_analysis_questions(analysis)
+
+        conversation.state["post_analysis_questions"] = questions
+        conversation._save_session()
+
+        return jsonify({"ok": True, "questions": questions, "source": source})
 
     @app.get("/api/history")
     def history():
@@ -893,6 +1171,106 @@ def create_app(args) -> Flask:
             
         except Exception as e:
             print(f"ERROR in save_review_decisions: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/api/cv-data', methods=['GET'])
+    def get_cv_data():
+        """Get current CV data for editing"""
+        try:
+            # Get CV data from orchestrator's master data
+            cv_data = {
+                'personal_info': {},
+                'summary': '',
+                'experiences': [],
+                'skills': []
+            }
+            
+            if orchestrator and orchestrator.master_data:
+                master_data = orchestrator.master_data
+                
+                # Get personal info
+                personal_info = master_data.get('personal_info', {})
+                cv_data['personal_info'] = {
+                    'name': personal_info.get('name', ''),
+                    'email': personal_info.get('email', ''),
+                    'phone': personal_info.get('phone', ''),
+                    'location': personal_info.get('location', '')
+                }
+                
+                # Get summary
+                cv_data['summary'] = master_data.get('summary', '')
+                
+                # Get experiences
+                experiences = master_data.get('experience', [])
+                cv_data['experiences'] = []
+                for exp in experiences:
+                    exp_data = {
+                        'title': exp.get('title', ''),
+                        'company': exp.get('company', ''),
+                        'start_date': exp.get('start_date', ''),
+                        'end_date': exp.get('end_date', ''),
+                        'current': exp.get('current', False),
+                        'location': exp.get('location', ''),
+                        'achievements': exp.get('achievements', [])
+                    }
+                    cv_data['experiences'].append(exp_data)
+                
+                # Get skills
+                skills_data = master_data.get('skills', [])
+                if isinstance(skills_data, dict):
+                    # Extract skills from categories
+                    all_skills = []
+                    for category_data in skills_data.values():
+                        if isinstance(category_data, dict) and 'skills' in category_data:
+                            category_skills = category_data.get('skills', [])
+                            if isinstance(category_skills, list):
+                                all_skills.extend(category_skills)
+                        elif isinstance(category_data, list):
+                            all_skills.extend(category_data)
+                    cv_data['skills'] = all_skills
+                elif isinstance(skills_data, list):
+                    cv_data['skills'] = skills_data
+                else:
+                    cv_data['skills'] = []
+            
+            return jsonify(cv_data)
+            
+        except Exception as e:
+            print(f"ERROR in get_cv_data: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/api/cv-data', methods=['POST'])
+    def save_cv_data():
+        """Save edited CV data"""
+        try:
+            data = request.json
+            if not data:
+                return jsonify({"error": "No data provided"}), 400
+            
+            # Store the edited CV data in the conversation state for now
+            # In a full implementation, you'd want to update the master data file
+            conversation.state['edited_cv_data'] = data
+            conversation._save_session()
+            
+            # Log the changes
+            print(f"CV data updated:")
+            if 'personal_info' in data:
+                print(f"  - Personal info: {data['personal_info']}")
+            if 'summary' in data:
+                print(f"  - Summary: {len(data.get('summary', ''))} chars")
+            if 'experiences' in data:
+                print(f"  - Experiences: {len(data['experiences'])} items")
+            if 'skills' in data:
+                print(f"  - Skills: {len(data['skills'])} items")
+            
+            return jsonify({"success": True, "message": "CV data saved successfully"})
+            
+        except Exception as e:
+            print(f"ERROR in save_cv_data: {e}")
             import traceback
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500

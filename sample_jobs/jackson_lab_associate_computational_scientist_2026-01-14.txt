@@ -1,0 +1,41 @@
+Associate Computational Scientist - AI/ML
+The Jackson Laboratory
+
+Location: Remote (U.S.) - Farmington, CT or Bar Harbor, ME preferred
+Posted: 16 Days Ago
+Job ID: JR005610
+
+Job Summary
+
+The Jackson Laboratory (JAX) is seeking an Associate Computational Scientist to join the AI/ML group within JAX Data Science. In this role, you will apply and develop advanced artificial intelligence and machine learning methods to analyze imaging and multi-omics data across diverse biomedical research areas, including cancer, aging, longevity, and neurodegenerative disorders. You will collaborate closely with research faculty and Scientific Services to advance JAX's strategic priorities, including bridging human and mouse biology through cellular models.
+
+This is a remote position within the U.S. We welcome applicants from across the country. Candidates located near our Farmington, CT or Bar Harbor, ME campuses will have opportunities for occasional in-person collaboration, which is preferred but not required.
+
+What You'll Contribute
+
+- Process and harmonize multi-omics and imaging datasets; analyze them using existing bioinformatics or AI/ML tools and adapt methods as needed.
+- Develop new approaches for spatial omics analysis and multimodal data integration across species and cell models under supervision.
+- Lead or contribute to multiple grant-funded projects, ensuring progress toward milestones with minimal supervision.
+- Prepare reports and manuscripts for projects you lead and contribute to grant applications.
+
+What You're Good At
+
+- Ph.D. in Bioinformatics, Computer Science, Biostatistics, Machine Learning, or a related field.
+- 2–5 years of experience in bioinformatics, computational biology, or related research, excluding time spent earning a Ph.D.
+- Working knowledge of cancer, aging, longevity, or neurodegenerative disorders preferred.
+- Proficiency in Python required. Familiarity with Numpy and Pandas; R experience is a plus.
+- Proven experience in image analysis. Additional experience in MRI and brain atlas is a plus.
+- Familiarity with deep learning frameworks (TensorFlow/Keras and/or PyTorch); experience with generative AI is a plus.
+- Hands-on experience with bioinformatics tools and single-cell RNA-seq analysis.
+- Demonstrated knowledge of statistical tests and machine learning algorithms, including linear mixed models, SVM, random forest, and gradient boosting.
+- Solid knowledge of Unix OS and version control systems.
+- Ability to effectively present research findings at conferences and workshops.
+- Proven track record of peer-reviewed publications and ability to contribute to grant proposals.
+
+Salary Range: $98,885.00 - $165,554.00 (determined based on qualifications and relevant experience)
+
+About JAX:
+
+The Jackson Laboratory is an independent, nonprofit biomedical research institution with a National Cancer Institute-designated Cancer Center and nearly 3,000 employees in locations across the United States (Maine, Connecticut, California), Japan and China. Its mission is to discover precise genomic solutions for disease and empower the global biomedical community in the shared quest to improve human health.
+
+Founded in 1929, JAX applies over nine decades of expertise in genetics to increase understanding of human disease, advancing treatments and cures for cancer, neurological and immune disorders, diabetes, aging and heart disease. It models and interprets genomic complexity, integrates basic research with clinical application, educates current and future scientists, and provides critical data, tools and services to the global biomedical community.

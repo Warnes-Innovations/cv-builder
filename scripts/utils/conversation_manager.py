@@ -13,6 +13,7 @@ import readline  # Enable line editing and history for input()
 
 from .llm_client import LLMClient
 from .cv_orchestrator import CVOrchestrator
+from .config import get_config
 
 
 class ConversationManager:
@@ -21,22 +22,26 @@ class ConversationManager:
     def __init__(
         self,
         orchestrator: CVOrchestrator,
-        llm_client: LLMClient
+        llm_client: LLMClient,
+        config=None
     ):
         self.orchestrator = orchestrator
         self.llm = llm_client
+        self.config = config or get_config()
         self.conversation_history: List[Dict[str, str]] = []
         self.state = {
             'phase': 'init',  # init, job_analysis, customization, generation, refinement
             'position_name': None,
             'job_description': None,
             'job_analysis': None,
+            'post_analysis_questions': [],
+            'post_analysis_answers': {},
             'customizations': None,
             'generated_files': None
         }
         self.session_dir: Optional[Path] = None
         # Readline history file
-        self.history_file: Path = Path("files/.input_history")
+        self.history_file: Path = Path(self.config.get('session.history_file', 'files/.input_history'))
     
     def _get_multiline_input(self) -> str:
         """Get multi-line input with terminators (DONE/END) and QUIT.
@@ -108,10 +113,25 @@ class ConversationManager:
                     self.state['job_analysis'] = analysis
                     self.state['phase'] = 'customization'
                     print(f"✓ Job analysis complete:\n{json.dumps(analysis, indent=2)}")
-                    # Prompt assistant to ask clarifying questions
-                    response = self._process_message(
-                        "Please ask clarifying questions to customize my CV based on the analysis."
-                    )
+                    # Prompt assistant to ask clarifying questions with specific context
+                    contextual_prompt = f"""I've analyzed the job description. Here are the key findings:
+
+JOB ANALYSIS:
+- Title: {analysis.get('title', 'Not specified')}
+- Company: {analysis.get('company', 'Not specified')}  
+- Domain: {analysis.get('domain', 'Not specified')}
+- Role Level: {analysis.get('role_level', 'Not specified')}
+- Required Skills: {', '.join(analysis.get('required_skills', []))}
+- Key Requirements: {', '.join(analysis.get('must_have_requirements', []))}
+
+Based on this analysis and my CV data, please ask me 2-3 specific clarifying questions to help customize my CV for this role. Focus on:
+1. Which of my experiences should be emphasized/de-emphasized for this specific role
+2. How I'd like to position myself relative to the role level and domain
+3. Any specific achievements or skills I want highlighted for this company/domain
+
+Ask questions that are specific to this job posting, not generic career questions."""
+
+                    response = self._process_message(contextual_prompt)
                     print(f"\n{response}")
                     # Continue to next loop iteration for interactive chat
                     continue
@@ -195,26 +215,124 @@ class ConversationManager:
                 })
                 response += f"\n\n{action_result}"
         
+        # Auto-save after each message exchange
+        self._save_session()
+        
         return response
     
     def _build_system_prompt(self) -> str:
         """Build context-aware system prompt."""
-        base_prompt = """You are an AI assistant helping to generate a customized CV.
+        current_phase = self.state['phase']
+        base_prompt = f"""You are an AI assistant helping to generate a customized CV.
 
 Your role is to:
 1. Analyze job descriptions and understand requirements
-2. Ask clarifying questions to understand user's goals
+2. Ask clarifying questions to understand user's goals and preferences
 3. Recommend customizations based on job requirements
 4. Guide the user through the CV generation process
 5. Help refine and iterate on generated content
+
+CRITICAL - Recommendation Structure:
+Every experience and skill recommendation MUST include ALL THREE components below:
+
+1. RECOMMENDATION LEVEL (choose exactly one - based on JOB RELEVANCE):
+   - Emphasize: Feature prominently with full details (HIGHLY relevant to job)
+   - Include: Standard treatment, include normally (RELEVANT to job)
+   - De-emphasize: Brief mention only (SOMEWHAT relevant to job)
+   - Omit: Exclude from CV entirely (NOT relevant to job)
+   
+   THIS IS ABOUT HOW RELEVANT THE EXPERIENCE IS TO THE JOB, NOT CONFIDENCE.
+
+2. CONFIDENCE LEVEL (5-point scale - based on EVIDENCE STRENGTH):
+   - Very High: Overwhelming evidence FOR the recommendation, virtually no evidence against
+   - High: Strong evidence FOR, minimal evidence against
+   - Medium: Moderate evidence FOR, some evidence against OR limited evidence either way
+   - Low: Weak evidence FOR, significant evidence against OR very limited evidence
+   - Very Low: Minimal evidence FOR, strong evidence against OR almost no relevant evidence
+   
+   THIS IS ABOUT HOW CERTAIN YOU ARE ABOUT YOUR RECOMMENDATION, NOT RELEVANCE.
+   The confidence level reflects the RATIO of supporting evidence to contradicting evidence.
+   More supporting evidence + less contradicting evidence = Higher confidence.
+   Less supporting evidence + more contradicting evidence = Lower confidence.
+   
+   IMPORTANT: These are INDEPENDENT:
+   - You can have "Emphasize" with "Medium" confidence (very relevant but limited info)
+   - You can have "De-emphasize" with "Very High" confidence (clearly not relevant)
+   - You can have "Include" with "Low" confidence (seems relevant but uncertain)
+
+3. REASONING & EVIDENCE (required explanation):
+   Provide a clear, specific explanation that includes:
+   - Which job requirements this experience/skill addresses (or fails to address)
+   - Specific achievements, technologies, or outcomes that match (or don't match)
+   - Evidence FOR the recommendation (matching skills, relevant domain, level alignment)
+   - Evidence AGAINST the recommendation (mismatches, irrelevant aspects, concerns)
+   - Why the confidence level is appropriate given the evidence balance
+   
+   Be specific and concrete. Cite actual requirements from the job description and 
+   actual details from the candidate's experience.
+
+MANDATORY FORMAT - All recommendations must follow this structure:
+"[Experience/Skill Name]"
+- Recommendation: [Emphasize/Include/De-emphasize/Omit]
+- Confidence: [Very High/High/Medium/Low/Very Low]
+- Reasoning: [Detailed explanation with specific evidence from both the job requirements 
+  and candidate's background, explaining both supporting and contradicting factors]
+
+Example:
+"Senior Data Scientist at Pfizer (2018-2022)"
+- Recommendation: Emphasize
+- Confidence: Very High
+- Reasoning: Direct match for 4 of 5 key requirements: ML model development in healthcare, 
+  team leadership, regulatory environment experience, and Python/R expertise. Pfizer 
+  Achievement Award demonstrates exceptional impact. Led 8-person team developing predictive 
+  models for clinical trials - exactly matches job's "lead ML initiatives in life sciences" 
+  requirement. No contradicting evidence. Very high confidence due to multiple strong matches 
+  with zero misalignments.
 
 You can request actions by including JSON in your response:
 {{"action": "analyze_job", "job_text": "..."}}
 {{"action": "recommend_customizations"}}
 {{"action": "generate_cv"}}
 
-Current conversation phase: {phase}
+Current conversation phase: {current_phase}
 """
+        
+        # Add candidate background information
+        if self.orchestrator and self.orchestrator.master_data:
+            master_data = self.orchestrator.master_data
+            
+            # Provide complete CV data to LLM
+            candidate_info = f"""\n\nComplete Candidate CV Data:
+{json.dumps(master_data, indent=2)}
+"""
+            
+            # Add publications from BibTeX file
+            if self.orchestrator.publications:
+                pub_count = len(self.orchestrator.publications)
+                pub_summary = []
+                for key, pub in list(self.orchestrator.publications.items())[:10]:  # Show first 10 as examples
+                    pub_summary.append(f"  - {pub.get('title', 'No title')} ({pub.get('year', 'N/A')})")
+                
+                candidate_info += f"""\n\nPublications ({pub_count} total):
+{chr(10).join(pub_summary)}
+{"... and more" if pub_count > 10 else ""}
+
+Complete publications data available in orchestrator.publications.
+"""
+            
+            candidate_info += """
+You have complete access to the candidate's CV data including:
+- Personal information and contact details
+- All professional experiences with achievements and dates
+- Complete skills inventory
+- Education history
+- Publications and certifications
+
+Do NOT ask the candidate for basic information that's already in this data. Focus questions on preferences, emphasis, and job-specific tailoring.
+
+IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Only reference specific details in natural language when relevant to your response.
+"""
+            base_prompt += candidate_info
         
         # Add phase-specific context
         if self.state['phase'] == 'job_analysis' and self.state['job_analysis']:
@@ -223,7 +341,7 @@ Current conversation phase: {phase}
         if self.state['customizations']:
             base_prompt += f"\n\nRecommended Customizations:\n{json.dumps(self.state['customizations'], indent=2)}"
         
-        return base_prompt.format(phase=self.state['phase'])
+        return base_prompt
     
     def _parse_action_from_response(self, response: str) -> Optional[Dict]:
         """Extract action request from LLM response."""
@@ -256,16 +374,67 @@ Current conversation phase: {phase}
             self.state['job_analysis'] = analysis
             self.state['phase'] = 'customization'
             
-            return f"✓ Job analysis complete:\n{json.dumps(analysis, indent=2)}"
+            # After analysis, prompt for contextual questions  
+            contextual_prompt = f"""I've analyzed the job description. Here are the key findings:
+
+JOB ANALYSIS:
+- Title: {analysis.get('title', 'Not specified')}
+- Company: {analysis.get('company', 'Not specified')}  
+- Domain: {analysis.get('domain', 'Not specified')}
+- Role Level: {analysis.get('role_level', 'Not specified')}
+- Required Skills: {', '.join(analysis.get('required_skills', []))}
+- Key Requirements: {', '.join(analysis.get('must_have_requirements', []))}
+
+Based on this analysis and my CV data, please ask me 2-3 specific clarifying questions to help customize my CV for this role. Focus on:
+1. Which of my experiences should be emphasized/de-emphasized for this specific role
+2. How I'd like to position myself relative to the role level and domain  
+3. Any specific achievements or skills I want highlighted for this company/domain
+
+Ask questions that are specific to this job posting, not generic career questions."""
+            
+            # Get contextual questions from LLM
+            try:
+                # Build context-aware system message
+                system_msg = self._build_system_prompt()
+                messages = [
+                    {'role': 'system', 'content': system_msg},
+                    {'role': 'user', 'content': contextual_prompt}
+                ]
+                questions_response = self.llm.chat(messages, temperature=0.7)
+                
+                # Add the questions to conversation history 
+                self.conversation_history.append({
+                    'role': 'assistant',
+                    'content': questions_response
+                })
+                
+                return f"✓ Job analysis complete:\n\n{questions_response}"
+            except Exception as e:
+                print(f"Error generating contextual questions: {e}")
+                return f"✓ Job analysis complete:\n{json.dumps(analysis, indent=2)}"
         
         elif action_type == 'recommend_customizations':
             if not self.state['job_analysis']:
                 return "❌ Please analyze job description first"
             
             print("\n🔄 Generating customization recommendations...")
+            action_preferences = action.get('user_preferences', {}) or {}
+            state_preferences = self.state.get('post_analysis_answers', {}) or {}
+
+            user_preferences = {}
+            if isinstance(state_preferences, dict):
+                user_preferences.update(state_preferences)
+            if isinstance(action_preferences, dict):
+                user_preferences.update(action_preferences)
+
+            if user_preferences:
+                self.state['post_analysis_answers'] = user_preferences
+
             recommendations = self.llm.recommend_customizations(
                 self.state['job_analysis'],
-                self.orchestrator.master_data
+                self.orchestrator.master_data,
+                user_preferences=user_preferences,
+                conversation_history=self.conversation_history
             )
             self.state['customizations'] = recommendations
             self.state['phase'] = 'generation'
@@ -273,13 +442,89 @@ Current conversation phase: {phase}
             return f"✓ Customization recommendations:\n{json.dumps(recommendations, indent=2)}"
         
         elif action_type == 'generate_cv':
-            if not self.state['customizations']:
-                return "❌ Please approve customizations first"
+            # Check if we have customizations OR user decisions from table review
+            has_customizations = bool(self.state.get('customizations'))
+            has_decisions = bool(self.state.get('experience_decisions') or self.state.get('skill_decisions'))
+            
+            if not has_customizations and not has_decisions:
+                return "❌ Please generate customizations first (click 'Recommend Customizations')"
+            
+            # Ensure job_analysis and customizations are dicts, not strings
+            job_analysis = self.state.get('job_analysis')
+            if isinstance(job_analysis, str):
+                try:
+                    job_analysis = json.loads(job_analysis)
+                    self.state['job_analysis'] = job_analysis
+                except json.JSONDecodeError:
+                    return "❌ Error: job_analysis is corrupted. Please re-analyze the job."
+
+            # Normalize decision payloads (may be persisted as JSON strings)
+            exp_decisions = self.state.get('experience_decisions', {})
+            skill_decisions = self.state.get('skill_decisions', {})
+
+            if isinstance(exp_decisions, str):
+                try:
+                    exp_decisions = json.loads(exp_decisions)
+                    self.state['experience_decisions'] = exp_decisions
+                except json.JSONDecodeError:
+                    exp_decisions = {}
+
+            if isinstance(skill_decisions, str):
+                try:
+                    skill_decisions = json.loads(skill_decisions)
+                    self.state['skill_decisions'] = skill_decisions
+                except json.JSONDecodeError:
+                    skill_decisions = {}
+
+            if not isinstance(exp_decisions, dict):
+                exp_decisions = {}
+            if not isinstance(skill_decisions, dict):
+                skill_decisions = {}
+            
+            # If we have decisions but no customizations, generate a baseline first
+            if has_decisions and not has_customizations:
+                print("\n🔄 Applying user decisions to generate customizations...")
+                if not job_analysis:
+                    return "❌ Please analyze job description first"
+
+                recommendations = self.llm.recommend_customizations(
+                    job_analysis,
+                    self.orchestrator.master_data
+                )
+                self.state['customizations'] = recommendations
+            
+            # Ensure customizations is a dict
+            customizations = self.state.get('customizations')
+            if isinstance(customizations, str):
+                try:
+                    customizations = json.loads(customizations)
+                    self.state['customizations'] = customizations
+                except json.JSONDecodeError:
+                    return "❌ Error: customizations data is corrupted. Please re-generate customizations."
+
+            if customizations is None:
+                return "❌ Please generate customizations first"
+
+            # Always apply collected review decisions before final generation
+            if has_decisions:
+                if exp_decisions:
+                    emphasized = [k for k, v in exp_decisions.items() if v == 'emphasize']
+                    included = [k for k, v in exp_decisions.items() if v == 'include']
+                    deemphasized = [k for k, v in exp_decisions.items() if v == 'de-emphasize']
+                    customizations['recommended_experiences'] = emphasized + included + deemphasized
+
+                if skill_decisions:
+                    emphasized = [k for k, v in skill_decisions.items() if v == 'emphasize']
+                    included = [k for k, v in skill_decisions.items() if v == 'include']
+                    deemphasized = [k for k, v in skill_decisions.items() if v == 'de-emphasize']
+                    customizations['recommended_skills'] = emphasized + included + deemphasized
+
+                self.state['customizations'] = customizations
             
             print("\n🔄 Generating CV files...")
             result = self.orchestrator.generate_cv(
-                self.state['job_analysis'],
-                self.state['customizations']
+                job_analysis,
+                customizations
             )
             self.state['generated_files'] = result
             self.state['phase'] = 'refinement'
@@ -361,8 +606,11 @@ Current conversation phase: {phase}
             self.conversation_history = []
             self.state = {
                 'phase': 'init',
+                'position_name': None,
                 'job_description': None,
                 'job_analysis': None,
+                'post_analysis_questions': [],
+                'post_analysis_answers': {},
                 'customizations': None,
                 'generated_files': None
             }
@@ -372,23 +620,34 @@ Current conversation phase: {phase}
     
     def _save_session(self):
         """Save conversation session."""
-        if not self.session_dir:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            pos = self.state.get('position_name') or 'unnamed'
-            self.session_dir = Path(f"files/sessions/{pos}/session_{timestamp}")
-            self.session_dir.mkdir(parents=True, exist_ok=True)
-        
-        session_data = {
-            'timestamp': datetime.now().isoformat(),
-            'state': self.state,
-            'conversation_history': self.conversation_history
-        }
-        
-        session_file = self.session_dir / "session.json"
-        with open(session_file, 'w', encoding='utf-8') as f:
-            json.dump(session_data, f, indent=2)
-        
-        print(f"✓ Session saved to: {session_file}")
+        try:
+            if not self.session_dir:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                pos = self.state.get('position_name') or 'unnamed'
+                # Use session_dir from config
+                session_base = Path(self.config.get('session.session_dir', 'files/sessions')).expanduser()
+                self.session_dir = session_base / pos / f"session_{timestamp}"
+                print(f"Creating session directory: {self.session_dir}")
+                self.session_dir.mkdir(parents=True, exist_ok=True)
+            
+            session_data = {
+                'timestamp': datetime.now().isoformat(),
+                'state': self.state,
+                'conversation_history': self.conversation_history
+            }
+            
+            session_file = self.session_dir / "session.json"
+            with open(session_file, 'w', encoding='utf-8') as f:
+                json.dump(session_data, f, indent=2)
+            
+            print(f"✓ Session saved to: {session_file}")
+        except Exception as e:
+            import traceback
+            print(f"❌ Error saving session: {e}")
+            print(f"   Session dir: {self.session_dir}")
+            print(f"   Position name: {self.state.get('position_name')}")
+            traceback.print_exc()
+            raise
 
     def _ensure_position_selected(self):
         """Prompt user to create or open a position name."""
@@ -426,7 +685,8 @@ Current conversation phase: {phase}
 
     def _list_positions(self) -> List[str]:
         """List known position names from sessions directory."""
-        root = Path("files/sessions")
+        session_base = Path(self.config.get('session.session_dir', 'files/sessions')).expanduser()
+        root = session_base
         if not root.exists():
             return []
         names = []
@@ -437,7 +697,8 @@ Current conversation phase: {phase}
 
     def _load_latest_session_for_position(self, name: str) -> bool:
         """Load the most recent session for a given position, if any."""
-        base = Path(f"files/sessions/{name}")
+        session_base = Path(self.config.get('session.session_dir', 'files/sessions')).expanduser()
+        base = session_base / name
         if not base.exists():
             return False
         candidates = sorted(base.glob("session_*/session.json"), reverse=True)
@@ -476,6 +737,10 @@ Current conversation phase: {phase}
             session_data = json.load(f)
         
         self.state = session_data['state']
+        if 'post_analysis_questions' not in self.state:
+            self.state['post_analysis_questions'] = []
+        if 'post_analysis_answers' not in self.state:
+            self.state['post_analysis_answers'] = {}
         self.conversation_history = session_data['conversation_history']
         self.session_dir = Path(session_file).parent
     

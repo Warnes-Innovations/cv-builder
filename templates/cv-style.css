@@ -1,0 +1,229 @@
+/* CV Styling for Professional PDF Generation */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.4;
+  color: #333;
+  background: white;
+}
+
+.cv-container {
+  max-width: 8.5in;
+  margin: 0 auto;
+  padding: 0.25in;
+}
+
+/* Header Section */
+.cv-header {
+  border-bottom: 2px solid #2c5aa0;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.cv-header h1 {
+  font-size: 24pt;
+  font-weight: bold;
+  color: #2c5aa0;
+  margin-bottom: 0.25rem;
+}
+
+.cv-header h2 {
+  font-size: 14pt;
+  font-weight: normal;
+  color: #666;
+  margin-bottom: 0.5rem;
+  font-style: italic;
+}
+
+.contact-info {
+  font-size: 10pt;
+  color: #555;
+}
+
+.contact-info a {
+  color: #2c5aa0;
+  text-decoration: none;
+}
+
+/* Two-column layout */
+.cv-body {
+  display: grid;
+  grid-template-columns: 2.8fr 1.2fr;
+  gap: 0.75in;
+  margin-top: 1rem;
+}
+
+/* Left column - Main content */
+.cv-left-column {
+  /* Main experience and education content */
+}
+
+.cv-left-column h2 {
+  font-size: 14pt;
+  color: #2c5aa0;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.1rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.cv-left-column h2:first-child {
+  margin-top: 0;
+}
+
+/* Experience items */
+.experience-item {
+  margin-bottom: 1rem;
+  page-break-inside: avoid;
+}
+
+.experience-item h3 {
+  font-size: 12pt;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 0.1rem;
+}
+
+.experience-meta {
+  font-size: 10pt;
+  color: #666;
+  font-style: italic;
+  margin-bottom: 0.3rem;
+}
+
+.experience-item ul {
+  margin-left: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.experience-item li {
+  margin-bottom: 0.2rem;
+}
+
+/* Education items */
+.education-item {
+  margin-bottom: 0.75rem;
+  page-break-inside: avoid;
+}
+
+.education-item h3 {
+  font-size: 11pt;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 0.1rem;
+}
+
+/* Publication items */
+.publication-item {
+  margin-bottom: 0.5rem;
+  font-size: 10pt;
+  text-indent: -0.5rem;
+  padding-left: 0.5rem;
+}
+
+/* Right column - Skills and supplementary */
+.cv-right-column {
+  /* Skills, awards, certifications */
+}
+
+.cv-right-column h2 {
+  font-size: 12pt;
+  color: #2c5aa0;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.1rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.cv-right-column h2:first-child {
+  margin-top: 0;
+}
+
+/* Skills section */
+.skills-category {
+  margin-bottom: 0.75rem;
+}
+
+.skills-category h3 {
+  font-size: 10pt;
+  font-weight: bold;
+  color: #555;
+  margin-bottom: 0.2rem;
+}
+
+.skills-category li {
+  font-size: 10pt;
+  margin-bottom: 0.1rem;
+  list-style: none;
+  position: relative;
+}
+
+.skills-category li:before {
+  content: "•";
+  color: #2c5aa0;
+  font-weight: bold;
+  position: absolute;
+  left: -0.75rem;
+}
+
+/* Awards */
+.award-item {
+  margin-bottom: 0.5rem;
+  font-size: 10pt;
+}
+
+.award-item strong {
+  color: #2c5aa0;
+}
+
+/* Certifications */
+.cert-item {
+  margin-bottom: 0.4rem;
+  font-size: 10pt;
+}
+
+.cert-item strong {
+  color: #333;
+}
+
+/* Print optimizations */
+@media print {
+  body {
+    font-size: 10pt;
+  }
+  
+  .cv-container {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .cv-header h1 {
+    font-size: 22pt;
+  }
+  
+  .cv-header h2 {
+    font-size: 12pt;
+  }
+}
+
+/* Avoid page breaks within items */
+.experience-item,
+.education-item,
+.skills-category,
+.award-item {
+  page-break-inside: avoid;
+}
+
+/* Ensure proper spacing for PDF generation */
+h1, h2, h3 {
+  page-break-after: avoid;
+}

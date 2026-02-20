@@ -8,6 +8,15 @@
 		},
 		{
 			"path": "../warnes-innovations-website"
+		},
+		{
+			"path": "../vscode-config"
+		},
+		{
+			"path": "../sng/sng-dnra"
+		},
+		{
+			"path": "../bbc/broadbandanalyzer_sng"
 		}
 	],
 	"settings": {

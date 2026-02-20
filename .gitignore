@@ -17,3 +17,5 @@ archive/
 # OS artifacts
 .DS_Store
 .env
+logs/cv_builder.log
+.github/obo_sessions/
