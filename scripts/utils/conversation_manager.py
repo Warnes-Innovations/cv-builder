@@ -31,14 +31,17 @@ class ConversationManager:
         self.config = config or get_config()
         self.conversation_history: List[Dict[str, str]] = []
         self.state = {
-            'phase': 'init',  # init, job_analysis, customization, generation, refinement
-            'position_name': None,
-            'job_description': None,
-            'job_analysis': None,
+            'phase':              'init',  # init, job_analysis, customization, rewrite_review, generation, refinement
+            'position_name':      None,
+            'job_description':    None,
+            'job_analysis':       None,
             'post_analysis_questions': [],
-            'post_analysis_answers': {},
-            'customizations': None,
-            'generated_files': None
+            'post_analysis_answers':   {},
+            'customizations':     None,
+            'generated_files':    None,
+            'pending_rewrites':   None,   # List[Dict] from propose_rewrites
+            'approved_rewrites':  [],     # List[Dict] user-accepted or user-edited
+            'rewrite_audit':      [],     # full record: proposal + outcome for metadata
         }
         self.session_dir: Optional[Path] = None
         # Readline history file
@@ -338,10 +341,23 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
         # Add phase-specific context
         if self.state['phase'] == 'job_analysis' and self.state['job_analysis']:
             base_prompt += f"\n\nJob Analysis Complete:\n{json.dumps(self.state['job_analysis'], indent=2)}"
-        
+
         if self.state['customizations']:
             base_prompt += f"\n\nRecommended Customizations:\n{json.dumps(self.state['customizations'], indent=2)}"
-        
+
+        if self.state['phase'] == 'rewrite_review':
+            pending = self.state.get('pending_rewrites') or []
+            base_prompt += (
+                f"\n\nPhase: Rewrite Review\n"
+                f"There are {len(pending)} pending rewrite proposal(s). "
+                "The user is reviewing before/after diffs of LLM-proposed text rewrites. "
+                "If asked, explain the rationale for a specific proposal, clarify why a "
+                "particular keyword or phrasing change is beneficial, or help the user "
+                "decide whether to accept, edit, or reject a proposal. "
+                "Do NOT propose new rewrites in this phase — only respond to questions "
+                "about the existing proposals."
+            )
+
         return base_prompt
     
     def _parse_action_from_response(self, response: str) -> Optional[Dict]:
@@ -448,6 +464,15 @@ Ask questions that are specific to this job posting, not generic career question
             
             return f"✓ Customization recommendations:\n{json.dumps(recommendations, indent=2)}"
         
+        elif action_type == 'submit_rewrites':
+            decisions = action.get('decisions', [])
+            summary   = self.submit_rewrite_decisions(decisions)
+            return (
+                f"✓ Rewrite decisions recorded: "
+                f"{summary['approved_count']} approved, "
+                f"{summary['rejected_count']} rejected."
+            )
+
         elif action_type == 'generate_cv':
             # Check if we have customizations OR user decisions from table review
             has_customizations = bool(self.state.get('customizations'))
@@ -547,6 +572,60 @@ Ask questions that are specific to this job posting, not generic career question
         
         return None
     
+    def submit_rewrite_decisions(self, decisions: List[Dict]) -> Dict:
+        """Process user decisions on pending rewrite proposals.
+
+        Each decision dict must contain:
+            id         — proposal id (matches a pending_rewrites entry)
+            outcome    — "accept" | "reject" | "edit"
+            final_text — user-edited text (required when outcome == "edit");
+                         None otherwise
+
+        Builds ``approved_rewrites`` (all non-rejected items, with
+        ``proposed`` replaced by ``final_text`` for edits) and
+        ``rewrite_audit`` (every decision merged with its original proposal).
+        Advances phase to ``'generation'`` and persists the session.
+
+        Returns a summary dict: ``{approved_count, rejected_count, phase}``.
+        """
+        pending_index = {
+            r['id']: r
+            for r in (self.state.get('pending_rewrites') or [])
+        }
+
+        approved: List[Dict] = []
+        audit:    List[Dict] = []
+
+        for decision in decisions:
+            pid      = decision.get('id', '')
+            outcome  = decision.get('outcome', 'reject')
+            final    = decision.get('final_text')
+            proposal = pending_index.get(pid, {})
+
+            audit.append({
+                **proposal,
+                'outcome':    outcome,
+                'final_text': final,
+            })
+
+            if outcome != 'reject':
+                approved_entry = dict(proposal)
+                if outcome == 'edit' and final is not None:
+                    approved_entry['proposed'] = final
+                approved.append(approved_entry)
+
+        self.state['approved_rewrites'] = approved
+        self.state['rewrite_audit']     = audit
+        self.state['phase']             = 'generation'
+        self._save_session()
+
+        n_rejected = sum(1 for d in decisions if d.get('outcome') == 'reject')
+        return {
+            'approved_count': len(approved),
+            'rejected_count': n_rejected,
+            'phase':          'generation',
+        }
+
     def add_job_description(self, job_text: str):
         """Add job description to state."""
         self.state['job_description'] = job_text
@@ -618,14 +697,17 @@ Ask questions that are specific to this job posting, not generic career question
         if confirm.lower() in ['yes', 'y']:
             self.conversation_history = []
             self.state = {
-                'phase': 'init',
-                'position_name': None,
-                'job_description': None,
-                'job_analysis': None,
+                'phase':              'init',
+                'position_name':      None,
+                'job_description':    None,
+                'job_analysis':       None,
                 'post_analysis_questions': [],
-                'post_analysis_answers': {},
-                'customizations': None,
-                'generated_files': None
+                'post_analysis_answers':   {},
+                'customizations':     None,
+                'generated_files':    None,
+                'pending_rewrites':   None,
+                'approved_rewrites':  [],
+                'rewrite_audit':      [],
             }
             print("\n✓ Conversation reset. Let's start fresh!")
         else:
@@ -812,6 +894,12 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['post_analysis_questions'] = []
         if 'post_analysis_answers' not in self.state:
             self.state['post_analysis_answers'] = {}
+        if 'pending_rewrites' not in self.state:
+            self.state['pending_rewrites'] = None
+        if 'approved_rewrites' not in self.state:
+            self.state['approved_rewrites'] = []
+        if 'rewrite_audit' not in self.state:
+            self.state['rewrite_audit'] = []
         self.conversation_history = session_data['conversation_history']
         self.session_dir = Path(session_file).parent
     
