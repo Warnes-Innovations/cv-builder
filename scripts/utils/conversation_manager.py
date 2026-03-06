@@ -604,8 +604,8 @@ Ask questions that are specific to this job posting, not generic career question
 
             audit.append({
                 **proposal,
-                'outcome':    outcome,
-                'final_text': final,
+                'outcome': outcome,
+                'final':   final,
             })
 
             if outcome != 'reject':

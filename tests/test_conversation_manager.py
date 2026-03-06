@@ -14,7 +14,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
@@ -173,7 +173,7 @@ class TestSubmitRewriteDecisions(unittest.TestCase):
         self.cm.submit_rewrite_decisions(decisions)
 
         audit = self.cm.state['rewrite_audit']
-        self.assertEqual(audit[0]['final_text'], edited)
+        self.assertEqual(audit[0]['final'], edited)
         self.assertEqual(audit[0]['original'], SAMPLE_PENDING[0]['original'])
 
     # --- mixed ---
