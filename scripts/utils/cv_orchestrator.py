@@ -607,8 +607,6 @@ For manual generation:
         Returns:
             A new content dict with all valid approved rewrites applied.
         """
-        from .llm_client import LLMClient
-
         result = copy.deepcopy(content)
 
         for item in approved:
@@ -669,13 +667,13 @@ For manual generation:
                 skills  = result.get('skills', [])
                 renamed = False
                 if isinstance(skills, list):
-                    for skill in skills:
+                    for i, skill in enumerate(skills):
                         if isinstance(skill, dict) and skill.get('name') == original:
                             skill['name'] = proposed
                             renamed = True
                             break
                         elif isinstance(skill, str) and skill == original:
-                            skills[skills.index(skill)] = proposed
+                            skills[i] = proposed
                             renamed = True
                             break
                 elif isinstance(skills, dict):
