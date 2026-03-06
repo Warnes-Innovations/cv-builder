@@ -563,6 +563,7 @@ Ask questions that are specific to this job posting, not generic career question
                 job_analysis,
                 customizations,
                 output_dir=self.session_dir,
+                approved_rewrites=self.state.get('approved_rewrites') or [],
             )
             self.state['generated_files'] = result
             self.state['phase'] = 'refinement'
@@ -928,7 +929,11 @@ Ask questions that are specific to this job posting, not generic career question
         
         # Generate
         print("Generating CV...")
-        result = self.orchestrator.generate_cv(analysis, recommendations)
+        result = self.orchestrator.generate_cv(
+            analysis,
+            recommendations,
+            approved_rewrites=self.state.get('approved_rewrites') or [],
+        )
         self.state['generated_files'] = result
         
         return result

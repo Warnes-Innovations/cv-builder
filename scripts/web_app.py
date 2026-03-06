@@ -1283,6 +1283,79 @@ Job Description (excerpt):
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
+    @app.get("/api/rewrites")
+    def get_rewrites():
+        """Propose LLM text rewrites aligned with the target job description.
+
+        Calls ``orchestrator.propose_rewrites`` with the master CV data and the
+        stored job analysis, stores the proposals in session state, and returns
+        them for the frontend rewrite-review panel.
+
+        Returns ``phase: 'generation'`` when no proposals are produced (either
+        no LLM is configured or the LLM found nothing to rewrite) so the
+        frontend can fall through gracefully.
+        """
+        try:
+            job_analysis = conversation.state.get('job_analysis')
+            if not job_analysis:
+                return jsonify({"error": "Job analysis not available. Analyse the job first."}), 400
+
+            content = orchestrator.master_data
+            if not content:
+                return jsonify({"error": "CV master data not loaded."}), 400
+
+            rewrites = orchestrator.propose_rewrites(content, job_analysis)
+            conversation.state['pending_rewrites'] = rewrites
+
+            if rewrites:
+                conversation.state['phase'] = 'rewrite_review'
+                phase = 'rewrite_review'
+            else:
+                # No proposals (no LLM or nothing to rewrite) — skip review step
+                phase = 'generation'
+
+            conversation._save_session()
+            return jsonify({"ok": True, "rewrites": rewrites, "phase": phase})
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/rewrites/approve")
+    def approve_rewrites():
+        """Submit accept / edit / reject decisions for pending rewrite proposals.
+
+        Request body::
+
+            {"decisions": [{"id": str, "outcome": "accept"|"reject"|"edit",
+                            "final_text": str|null}, ...]}
+
+        Delegates to :meth:`ConversationManager.submit_rewrite_decisions` which
+        builds ``approved_rewrites``, ``rewrite_audit``, advances the phase to
+        ``'generation'``, and persists the session.
+        """
+        data = request.get_json(silent=True) or {}
+        decisions = data.get('decisions')
+        if decisions is None:
+            return jsonify({"error": "Missing decisions"}), 400
+        if not isinstance(decisions, list):
+            return jsonify({"error": "decisions must be a list"}), 400
+
+        try:
+            summary = conversation.submit_rewrite_decisions(decisions)
+            return jsonify({
+                "ok":             True,
+                "approved_count": summary['approved_count'],
+                "rejected_count": summary['rejected_count'],
+                "phase":          summary['phase'],
+            })
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
     @app.get("/api/download/<filename>")
     def download_file(filename):
         """Download generated CV files"""

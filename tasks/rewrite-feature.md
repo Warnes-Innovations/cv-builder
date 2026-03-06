@@ -162,24 +162,25 @@ Use the hierarchical number (e.g. `1.2.3`) when reporting progress.
 
 ### 4.1 `GET /api/rewrites`
 
-- [ ] 4.1.1 Retrieve `conversation.state['customizations_content']` and `'job_analysis'`
-- [ ] 4.1.2 Call `orchestrator.propose_rewrites(content, job_analysis)` and store in
+- [x] 4.1.1 Retrieve `orchestrator.master_data` (CV content) and `conversation.state['job_analysis']`
+- [x] 4.1.2 Call `orchestrator.propose_rewrites(content, job_analysis)` and store in
       `conversation.state['pending_rewrites']`
-- [ ] 4.1.3 Advance phase to `'rewrite_review'` and save session
-- [ ] 4.1.4 Return `{"ok": true, "rewrites": [...], "phase": "rewrite_review"}`
-- [ ] 4.1.5 Return `{"ok": true, "rewrites": [], "phase": "generation"}` (skip step) when no
+- [x] 4.1.3 Advance phase to `'rewrite_review'` and save session
+- [x] 4.1.4 Return `{"ok": true, "rewrites": [...], "phase": "rewrite_review"}`
+- [x] 4.1.5 Return `{"ok": true, "rewrites": [], "phase": "generation"}` (skip step) when no
       LLM client is configured, so frontend can fall through gracefully
 
 ### 4.2 `POST /api/rewrites/approve`
 
-- [ ] 4.2.1 Accept `{"decisions": [...]}`
-- [ ] 4.2.2 Call `conversation.submit_rewrite_decisions(decisions)`
-- [ ] 4.2.3 Return `{"ok": true, "approved_count": N, "rejected_count": M, "phase": "generation"}`
+- [x] 4.2.1 Accept `{"decisions": [...]}`
+- [x] 4.2.2 Call `conversation.submit_rewrite_decisions(decisions)`
+- [x] 4.2.3 Return `{"ok": true, "approved_count": N, "rejected_count": M, "phase": "generation"}`
 
 ### 4.3 Update `generate_cv` call site
 
-- [ ] 4.3.1 Wherever `orchestrator.generate_cv(...)` is called in `web_app.py`, pass
-      `approved_rewrites=conversation.state.get('approved_rewrites', [])`
+- [x] 4.3.1 Both `orchestrator.generate_cv(...)` call sites in `conversation_manager.py`
+      (`_execute_action` and `run_automated`) updated to pass
+      `approved_rewrites=self.state.get('approved_rewrites') or []`
 
 ---
 
