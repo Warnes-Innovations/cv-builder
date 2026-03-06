@@ -10,5 +10,9 @@
 			"path": "../../Library/CloudStorage/GoogleDrive-greg@warnes.net/My Drive/CV"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"chat.tools.terminal.autoApprove": {
+			"/usr/local/Caskroom/miniconda/base/envs/cvgen/bin/python": true
+		}
+	}
 }
