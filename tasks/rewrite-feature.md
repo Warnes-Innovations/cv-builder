@@ -133,9 +133,9 @@ Use the hierarchical number (e.g. `1.2.3`) when reporting progress.
 
 ### 3.1 State schema
 
-- [ ] 3.1.1 Add `'rewrite_review'` to the phase comment (line ~34):
+- [x] 3.1.1 Add `'rewrite_review'` to the phase comment (line ~34):
       `# init, job_analysis, customization, rewrite_review, generation, refinement`
-- [ ] 3.1.2 Add state keys to `__init__`:
+- [x] 3.1.2 Add state keys to `__init__`:
       ```python
       'pending_rewrites': None,   # List[Dict] from propose_rewrites
       'approved_rewrites': [],    # List[Dict] user-accepted or user-edited
@@ -144,16 +144,16 @@ Use the hierarchical number (e.g. `1.2.3`) when reporting progress.
 
 ### 3.2 Action handler
 
-- [ ] 3.2.1 Handle `action == "submit_rewrites"` in `_execute_action` (or add a new
+- [x] 3.2.1 Handle `action == "submit_rewrites"` in `_execute_action` (or add a new
       `submit_rewrite_decisions(decisions: List[Dict])` method called from there)
-- [ ] 3.2.2 Each decision: `{"id": str, "outcome": "accept"|"reject"|"edit", "final_text": str|None}`
-- [ ] 3.2.3 Build `approved_rewrites` (outcome != "reject") and `rewrite_audit` (all decisions)
-- [ ] 3.2.4 Advance phase to `'generation'`
-- [ ] 3.2.5 Call `_save_session()` so the approval record is persisted
+- [x] 3.2.2 Each decision: `{"id": str, "outcome": "accept"|"reject"|"edit", "final_text": str|None}`
+- [x] 3.2.3 Build `approved_rewrites` (outcome != "reject") and `rewrite_audit` (all decisions)
+- [x] 3.2.4 Advance phase to `'generation'`
+- [x] 3.2.5 Call `_save_session()` so the approval record is persisted
 
 ### 3.3 System prompt update
 
-- [ ] 3.3.1 Add `rewrite_review` case to `_build_system_prompt` describing the review context
+- [x] 3.3.1 Add `rewrite_review` case to `_build_system_prompt` describing the review context
       (user is reviewing before/after diffs; LLM should help clarify rationale if asked)
 
 ---
