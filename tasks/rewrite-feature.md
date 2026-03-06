@@ -37,7 +37,7 @@ Use the hierarchical number (e.g. `1.2.3`) when reporting progress.
 
 ### 1.1 Abstract base class (`LLMClient`)
 
-- [ ] 1.1.1 Add `propose_rewrites(content: Dict, job_analysis: Dict) -> List[Dict]` as an `@abstractmethod`
+- [x] 1.1.1 Add `propose_rewrites(content: Dict, job_analysis: Dict) -> List[Dict]` as an `@abstractmethod`
       with full docstring specifying the return schema:
       ```
       {
@@ -52,33 +52,33 @@ Use the hierarchical number (e.g. `1.2.3`) when reporting progress.
         "rationale":           str
       }
       ```
-- [ ] 1.1.2 Add `apply_rewrite_constraints(original: str, proposed: str) -> bool` as a static
+- [x] 1.1.2 Add `apply_rewrite_constraints(original: str, proposed: str) -> bool` as a static
       helper that returns `False` (invalid) if the proposed text removes any number, date, or
       company name that appears in the original.
 
 ### 1.2 `OpenAIClient` implementation
 
-- [ ] 1.2.1 Write the prompt: supply `original` text blocks by type, job keywords, and the
+- [x] 1.2.1 Write the prompt: supply `original` text blocks by type, job keywords, and the
       constraint rules (preserve metrics/dates/company names; only substitute terminology)
-- [ ] 1.2.2 Parse JSON response into the schema; validate each item with `apply_rewrite_constraints`
-- [ ] 1.2.3 Fall back to empty list (with warning) on parse failure — never raise
-- [ ] 1.2.4 Add unit test covering: (a) a bullet rewrite with keyword substitution, (b) a
+- [x] 1.2.2 Parse JSON response into the schema; validate each item with `apply_rewrite_constraints`
+- [x] 1.2.3 Fall back to empty list (with warning) on parse failure — never raise
+- [x] 1.2.4 Add unit test covering: (a) a bullet rewrite with keyword substitution, (b) a
       skill_add with evidence, (c) a constraint violation that is filtered out
 
 ### 1.3 `AnthropicClient` implementation
 
-- [ ] 1.3.1 Implement `propose_rewrites` using the same prompt strategy as 1.2.1
-- [ ] 1.3.2 Parse and validate with `apply_rewrite_constraints`
+- [x] 1.3.1 Implement `propose_rewrites` using the same prompt strategy as 1.2.1
+- [x] 1.3.2 Parse and validate with `apply_rewrite_constraints`
 
 ### 1.4 `GeminiClient` implementation
 
-- [ ] 1.4.1 Implement `propose_rewrites` — note Gemini-specific message format (see existing
+- [x] 1.4.1 Implement `propose_rewrites` — note Gemini-specific message format (see existing
       `recommend_customizations` in this class for the pattern)
-- [ ] 1.4.2 Parse and validate with `apply_rewrite_constraints`
+- [x] 1.4.2 Parse and validate with `apply_rewrite_constraints`
 
 ### 1.5 Stub implementations (local / copilot fallbacks)
 
-- [ ] 1.5.1 Add `propose_rewrites` returning `[]` to any provider classes that do not have full
+- [x] 1.5.1 Add `propose_rewrites` returning `[]` to any provider classes that do not have full
       LLM capability (local stub, copilot-oauth stub if present) so the abstract contract is satisfied
 
 ---

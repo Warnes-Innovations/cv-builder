@@ -54,6 +54,237 @@ class LLMClient(ABC):
         """Calculate semantic similarity score."""
         pass
 
+    @abstractmethod
+    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+        """Propose targeted text rewrites to align CV terminology with the job.
+
+        Each proposal covers one section: professional summary, an experience
+        bullet, or a skill entry.  Proposals are validated against
+        :meth:`apply_rewrite_constraints`; items that fail are discarded.
+
+        Args:
+            content:      Selected CV content dict (keys: ``summary``,
+                          ``experiences``, ``skills``, …).
+            job_analysis: Output of :meth:`analyze_job_description`, providing
+                          ``ats_keywords``, ``required_skills``, etc.
+
+        Returns:
+            A list of rewrite proposal dicts with the schema::
+
+                {
+                    "id":                  str,   # unique within this batch
+                    "type":                str,   # "summary" | "bullet"
+                                                  # | "skill_rename" | "skill_add"
+                    "location":            str,   # e.g. "summary",
+                                                  # "exp_001.achievements[2]",
+                                                  # "skills.core[1]"
+                    "original":            str,
+                    "proposed":            str,
+                    "keywords_introduced": List[str],
+                    "evidence":            str,   # skill_add only —
+                                                  # comma-sep exp IDs
+                    "evidence_strength":   str,   # "strong" | "weak"
+                                                  # (skill_add only)
+                    "rationale":           str,
+                }
+
+            Always returns ``[]`` on parse/API failure — never raises.
+        """
+        pass
+
+    # ── Concrete helpers shared by all provider implementations ──────────────
+
+    @staticmethod
+    def apply_rewrite_constraints(original: str, proposed: str) -> bool:
+        """Return ``True`` if *proposed* is an acceptable rewrite of *original*.
+
+        Returns ``False`` (invalid) when the proposed text removes any number,
+        date, or company/proper name present in the original.  This guards
+        against rewrites that silently drop metrics, years, or employer names
+        while substituting terminology.
+
+        Args:
+            original: The source text before rewriting.
+            proposed: The candidate replacement text.
+
+        Returns:
+            ``True``  — rewrite is acceptable (no protected tokens removed).
+            ``False`` — rewrite is invalid (at least one protected token lost).
+        """
+        import re
+
+        # Words that may appear Title-Cased but are not proper nouns.
+        _STOP_WORDS = frozenset({
+            'The', 'A', 'An', 'And', 'Or', 'But', 'For', 'Nor', 'So', 'Yet',
+            'At', 'By', 'In', 'Of', 'On', 'To', 'Up', 'As', 'Is', 'It',
+            'This', 'That', 'With', 'From', 'Into', 'Than', 'Over', 'After',
+            'Before', 'While', 'When', 'Where', 'Which', 'Who', 'How', 'What',
+            'All', 'Both', 'Each', 'Few', 'More', 'Most', 'Other', 'Some',
+            'Such', 'No', 'Not', 'Only', 'Same', 'Too', 'Very', 'Also',
+            'Led', 'Used', 'Using', 'Developed', 'Managed', 'Designed',
+            'Built', 'Created', 'Implemented', 'Delivered', 'Improved',
+            'Reduced', 'Increased', 'Achieved', 'Drove', 'Supported',
+            'Collaborated', 'Worked', 'Partnered', 'Helped', 'Ensured',
+        })
+
+        # 1. Numeric tokens — preserve all numbers, metrics, and percentages.
+        nums_orig = set(re.findall(r'\d[\d,\.]*%?', original))
+        nums_prop = set(re.findall(r'\d[\d,\.]*%?', proposed))
+        if not nums_orig.issubset(nums_prop):
+            return False
+
+        # 2. Proper-name tokens — Title-Case words not in the stop-word list.
+        def _extract_proper(text: str) -> set:
+            words = re.findall(r"[A-Z][a-z][a-zA-Z&'\-]*", text)
+            return {w for w in words if w not in _STOP_WORDS}
+
+        proper_orig = _extract_proper(original)
+        proper_prop = _extract_proper(proposed)
+        if not proper_orig.issubset(proper_prop):
+            return False
+
+        return True
+
+    def _parse_json_response(self, response: str) -> Any:
+        """Parse a JSON value from an LLM response, tolerating markdown fences.
+
+        Tries direct ``json.loads``, then extracts the payload from a
+        triple-backtick ``json`` or bare triple-backtick code block.
+        Raises ``ValueError`` when no extractable JSON is found.
+        """
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            pass
+        if '```json' in response:
+            return json.loads(response.split('```json')[1].split('```')[0].strip())
+        if '```' in response:
+            block = response.split('```')[1].split('```')[0].strip()
+            if block.startswith('json\n'):
+                block = block[5:]
+            return json.loads(block)
+        raise ValueError(
+            f"Cannot extract JSON from LLM response: {response[:200]!r}"
+        )
+
+    def _propose_rewrites_via_chat(
+        self, content: Dict, job_analysis: Dict
+    ) -> List[Dict]:
+        """Shared :meth:`propose_rewrites` logic for chat-capable providers.
+
+        Builds a structured prompt from *content* and *job_analysis*, sends it
+        via ``self.chat()``, parses the JSON response, and filters out any
+        proposals that fail :meth:`apply_rewrite_constraints`.
+
+        Provider subclasses delegate to this method from their own
+        :meth:`propose_rewrites` override, satisfying the ABC contract while
+        keeping the prompt logic in one place.
+        """
+        import warnings
+
+        # ── Compact serialisation of CV sections for the prompt ──────────────
+        summary     = content.get('summary') or content.get('professional_summary', '')
+        experiences = content.get('experiences') or content.get('experience', [])
+
+        bullets_lines: List[str] = []
+        for exp in experiences[:10]:
+            exp_id = exp.get('id', '')
+            for i, ach in enumerate(exp.get('achievements', [])[:5]):
+                text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
+                if text.strip():
+                    bullets_lines.append(f"  {exp_id}.achievements[{i}]: {text}")
+
+        skills_raw = content.get('skills', [])
+        if isinstance(skills_raw, dict):
+            skill_names: List[str] = []
+            for cat_data in skills_raw.values():
+                cat_skills = (
+                    cat_data.get('skills', []) if isinstance(cat_data, dict)
+                    else cat_data if isinstance(cat_data, list) else []
+                )
+                skill_names.extend(str(s) for s in cat_skills)
+        else:
+            skill_names = [str(s) for s in (skills_raw or [])]
+
+        keywords = list(dict.fromkeys(
+            job_analysis.get('ats_keywords', []) +
+            job_analysis.get('required_skills', [])
+        ))
+
+        bullets_section = '\n'.join(bullets_lines) or '(none)'
+        skills_section  = ', '.join(skill_names[:30]) or '(none)'
+        keywords_str    = ', '.join(keywords[:25]) or '(none)'
+
+        prompt = (
+            "You are a CV optimization specialist. Propose targeted text rewrites "
+            "so the CV uses terminology from the job description.\n\n"
+            "CONSTRAINTS — every proposal MUST:\n"
+            '1. Preserve all numbers, metrics, and percentages '
+            '(e.g. "40%", "12 engineers", "$2M")\n'
+            '2. Preserve all dates and years (e.g. "2021", "Q3 2022")\n'
+            "3. Preserve all company names and proper nouns\n"
+            "4. Only substitute terminology — do NOT fabricate experience, "
+            "achievements, or roles\n"
+            "5. Keep rewrites concise and professional\n\n"
+            f"JOB KEYWORDS TO INTRODUCE: {keywords_str}\n\n"
+            f"PROFESSIONAL SUMMARY:\n{summary or '(none)'}\n\n"
+            f"EXPERIENCE BULLETS (id.achievements[index]: text):\n{bullets_section}\n\n"
+            f"SKILLS: {skills_section}\n\n"
+            'Return a JSON array of rewrite proposals.  Each item must include '
+            'ALL applicable fields:\n'
+            '{\n'
+            '  "id":                  "<unique label, e.g. \'summary\', '
+            '\'bullet_exp001_0\', \'skill_3\'>",\n'
+            '  "type":                "summary" | "bullet" | "skill_rename" | "skill_add",\n'
+            '  "location":            "<path, e.g. \'summary\', '
+            '\'exp_001.achievements[2]\', \'skills.core[1]\'>",\n'
+            '  "original":            "<exact original text>",\n'
+            '  "proposed":            "<proposed replacement text>",\n'
+            '  "keywords_introduced": ["<kw1>", "<kw2>"],\n'
+            '  "evidence":            "<comma-separated exp IDs, skill_add only>",\n'
+            '  "evidence_strength":   "strong" | "weak",\n'
+            '  "rationale":           "<one sentence explaining the ATS improvement>"\n'
+            '}\n\n'
+            'Only propose rewrites where keyword alignment genuinely improves ATS '
+            'scoring.  Return [] if no meaningful changes are needed.\n'
+            'Return ONLY the JSON array, with no surrounding prose or markdown '
+            'code fences.'
+        )
+
+        messages = [
+            {
+                "role":    "system",
+                "content": (
+                    "You are an expert CV writer focused on ATS keyword optimisation. "
+                    "Return only valid JSON — a bare array, no markdown fences."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ]
+
+        try:
+            response = self.chat(messages, temperature=0.3, max_tokens=4096)
+            raw = self._parse_json_response(response)
+            if not isinstance(raw, list):
+                raw = raw.get('rewrites') or raw.get('proposals') or []
+            valid: List[Dict] = []
+            for item in raw:
+                if self.apply_rewrite_constraints(
+                    item.get('original', ''), item.get('proposed', '')
+                ):
+                    valid.append(item)
+                else:
+                    warnings.warn(
+                        f"propose_rewrites: constraint violation filtered "
+                        f"(id={item.get('id')!r})"
+                    )
+            return valid
+        except Exception as exc:
+            warnings.warn(
+                f"propose_rewrites: failed to produce proposals: {exc}"
+            )
+            return []
+
 
 class OpenAIClient(LLMClient):
     """OpenAI GPT client."""
@@ -369,6 +600,10 @@ Be thorough - provide recommendations for ALL {len(master_data.get('experience',
         matches = sum(1 for req in requirements if req.lower() in content_lower)
         return matches / len(requirements) if requirements else 0.0
 
+    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+        """Propose rewrites via OpenAI chat. Delegates to shared implementation."""
+        return self._propose_rewrites_via_chat(content, job_analysis)
+
 
 class AnthropicClient(LLMClient):
     """Anthropic Claude client."""
@@ -431,6 +666,10 @@ class AnthropicClient(LLMClient):
         """Semantic matching using Claude."""
         # Claude doesn't have native embeddings API, use prompting
         pass
+
+    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+        """Propose rewrites via Anthropic Claude. Delegates to shared implementation."""
+        return self._propose_rewrites_via_chat(content, job_analysis)
 
 
 class GeminiClient(LLMClient):
@@ -628,6 +867,10 @@ Score (0.0-1.0):"""
         except ValueError:
             return 0.5  # Default middle score
 
+    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+        """Propose rewrites via Gemini. Delegates to shared implementation."""
+        return self._propose_rewrites_via_chat(content, job_analysis)
+
 
 class LocalLLMClient(LLMClient):
     """Anthropic Claude client."""
@@ -684,6 +927,10 @@ class LocalLLMClient(LLMClient):
         """Semantic matching using Claude."""
         # Claude doesn't have native embeddings API, use prompting
         pass
+
+    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+        """Propose rewrites not supported by this stub client."""
+        return []
 
 
 class LocalLLMClient(LLMClient):
@@ -778,6 +1025,10 @@ class LocalLLMClient(LLMClient):
         content_lower = content.lower()
         matches = sum(1 for req in requirements if req.lower() in content_lower)
         return matches / len(requirements) if requirements else 0.0
+
+    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+        """Propose rewrites not supported by this local stub client."""
+        return []
 
 
 class GroqClient(OpenAIClient):
@@ -1002,6 +1253,10 @@ class CopilotOAuthClient(LLMClient):
         dummy.model = self.model
         dummy.chat = types.MethodType(lambda self_, msgs, **kw: self.chat(msgs, **kw), dummy)
         return _OAI.semantic_match(dummy, content, requirements)
+
+    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+        """Propose rewrites via Copilot OAuth. Delegates to shared implementation."""
+        return self._propose_rewrites_via_chat(content, job_analysis)
 
 
 def get_llm_provider(
