@@ -87,45 +87,45 @@ Use the hierarchical number (e.g. `1.2.3`) when reporting progress.
 
 ### 2.1 New method `propose_rewrites`
 
-- [ ] 2.1.1 Add `CVOrchestrator.propose_rewrites(content: Dict, job_analysis: Dict) -> List[Dict]`
+- [x] 2.1.1 Add `CVOrchestrator.propose_rewrites(content: Dict, job_analysis: Dict) -> List[Dict]`
       that delegates to `self.llm.propose_rewrites(...)` when an LLM client is available and
       returns `[]` when no LLM (graceful degradation with a logged warning)
 
 ### 2.2 New method `apply_approved_rewrites`
 
-- [ ] 2.2.1 Add `CVOrchestrator.apply_approved_rewrites(content: Dict, approved: List[Dict]) -> Dict`
-- [ ] 2.2.2 Resolve each approved item's `location` path to the correct nested field in `content`
+- [x] 2.2.1 Add `CVOrchestrator.apply_approved_rewrites(content: Dict, approved: List[Dict]) -> Dict`
+- [x] 2.2.2 Resolve each approved item's `location` path to the correct nested field in `content`
       (e.g. `"exp_001.achievements[2]"` → `content['experiences'][idx]['achievements'][2]['text']`)
-- [ ] 2.2.3 For `skill_rename`: update the matching skill's display name in-place
-- [ ] 2.2.4 For `skill_add`: append a new skill entry, flagging `candidate_to_confirm: True` when
+- [x] 2.2.3 For `skill_rename`: update the matching skill's display name in-place
+- [x] 2.2.4 For `skill_add`: append a new skill entry, flagging `candidate_to_confirm: True` when
       `evidence_strength == "weak"`
-- [ ] 2.2.5 Guard: call `apply_rewrite_constraints(original, proposed)` before applying; skip and
+- [x] 2.2.5 Guard: call `apply_rewrite_constraints(original, proposed)` before applying; skip and
       log any item that fails the constraint check
-- [ ] 2.2.6 Add unit tests: bullet apply, skill rename, skill add (strong), skill add (weak flag),
+- [x] 2.2.6 Add unit tests: bullet apply, skill rename, skill add (strong), skill add (weak flag),
       constraint violation skip
 
 ### 2.3 Refactor `_enhance_summary_for_ats` (line ~1055)
 
-- [ ] 2.3.1 Remove the "append tacked-on sentence" mutation
-- [ ] 2.3.2 When LLM is present: log a note that rewrites are handled upstream via `apply_approved_rewrites`; return `summary` unchanged
-- [ ] 2.3.3 When no LLM: log a keyword-gap warning listing missing keywords; return `summary` unchanged
+- [x] 2.3.1 Remove the "append tacked-on sentence" mutation
+- [x] 2.3.2 When LLM is present: log a note that rewrites are handled upstream via `apply_approved_rewrites`; return `summary` unchanged
+- [x] 2.3.3 When no LLM: log a keyword-gap warning listing missing keywords; return `summary` unchanged
 
 ### 2.4 Refactor `_enhance_achievement_for_ats` (line ~1109)
 
-- [ ] 2.4.1 Remove silent `"Successfully "` prefix injection
-- [ ] 2.4.2 Replace with a logged warning when the bullet lacks a strong action verb; do not modify the text
+- [x] 2.4.1 Remove silent `"Successfully "` prefix injection
+- [x] 2.4.2 Replace with a logged warning when the bullet lacks a strong action verb; do not modify the text
 
 ### 2.5 Refactor `_optimize_skills_for_ats` (line ~1080)
 
-- [ ] 2.5.1 Keep score-based ordering/selection logic
-- [ ] 2.5.2 Remove any implicit renaming — terminology changes must come only from `apply_approved_rewrites`
+- [x] 2.5.1 Keep score-based ordering/selection logic
+- [x] 2.5.2 Remove any implicit renaming — terminology changes must come only from `apply_approved_rewrites`
 
 ### 2.6 Update `generate_cv` signature
 
-- [ ] 2.6.1 Add parameter `approved_rewrites: List[Dict] = None` to `generate_cv()`
-- [ ] 2.6.2 After `_select_content_hybrid`, call `apply_approved_rewrites(selected_content, approved_rewrites or [])`
-- [ ] 2.6.3 Pass the resulting modified content to all downstream renderers (ATS DOCX, human PDF)
-- [ ] 2.6.4 Include `approved_rewrites` in the metadata dict written to `metadata.json`
+- [x] 2.6.1 Add parameter `approved_rewrites: List[Dict] = None` to `generate_cv()`
+- [x] 2.6.2 After `_select_content_hybrid`, call `apply_approved_rewrites(selected_content, approved_rewrites or [])`
+- [x] 2.6.3 Pass the resulting modified content to all downstream renderers (ATS DOCX, human PDF)
+- [x] 2.6.4 Include `approved_rewrites` in the metadata dict written to `metadata.json`
 
 ---
 

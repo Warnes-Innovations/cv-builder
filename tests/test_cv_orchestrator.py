@@ -517,5 +517,259 @@ class TestBuildJsonLd(unittest.TestCase):
             self.assertNotIn(key, d, f"Key '{key}' should be absent when data is empty")
 
 
+# ---------------------------------------------------------------------------
+# apply_approved_rewrites  (Phase 2, tasks 2.2.1–2.2.6)
+# ---------------------------------------------------------------------------
+
+#: Minimal selected-content dict used by the rewrite tests.
+_REWRITE_CONTENT = {
+    'summary': 'Experienced data scientist with 8 years of model-building.',
+    'experiences': [
+        {
+            'id': 'exp_001',
+            'title': 'Senior Data Scientist',
+            'company': 'Pfizer',
+            'achievements': [
+                {'text': 'Built a model to predict clinical trial outcomes'},
+                {'text': 'Managed a team of 12 engineers at Pfizer in 2021'},
+            ],
+        },
+        {
+            'id': 'exp_002',
+            'title': 'Data Scientist',
+            'company': 'BioTech',
+            'achievements': [
+                {'text': 'Improved accuracy from 85% to 96% using ensemble methods'},
+            ],
+        },
+    ],
+    'skills': [
+        {'name': 'Python',     'category': 'Programming', 'years': 8},
+        {'name': 'R',          'category': 'Programming', 'years': 5},
+        {'name': 'TensorFlow', 'category': 'ML Frameworks', 'years': 3},
+    ],
+}
+
+
+class TestApplyApprovedRewrites(unittest.TestCase):
+    """Unit tests for CVOrchestrator.apply_approved_rewrites."""
+
+    def setUp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.orch = _make_orchestrator(Path(tmp))
+
+    def _apply(self, approved: list) -> dict:
+        return self.orch.apply_approved_rewrites(_REWRITE_CONTENT, approved)
+
+    # ── 2.2.6 (a) bullet apply ───────────────────────────────────────────
+
+    def test_bullet_rewrite_applied(self):
+        """Approved bullet rewrite replaces the achievement text."""
+        approved = [{
+            'id':       'bullet_exp001_0',
+            'type':     'bullet',
+            'location': 'exp_001.achievements[0]',
+            'original': 'Built a model to predict clinical trial outcomes',
+            'proposed': 'Developed a machine learning pipeline to predict '
+                        'clinical trial outcomes',
+            'keywords_introduced': ['machine learning pipeline'],
+            'evidence': '',
+            'evidence_strength': '',
+            'rationale': 'Adds ML pipeline keyword.',
+        }]
+        result = self._apply(approved)
+        ach_text = result['experiences'][0]['achievements'][0]['text']
+        self.assertIn('machine learning pipeline', ach_text)
+        self.assertNotIn('Built a model', ach_text)
+
+    def test_bullet_rewrite_does_not_mutate_original(self):
+        """apply_approved_rewrites must return a deep copy; original unchanged."""
+        approved = [{
+            'id':       'bullet_exp002_0',
+            'type':     'bullet',
+            'location': 'exp_002.achievements[0]',
+            'original': 'Improved accuracy from 85% to 96% using ensemble methods',
+            'proposed': 'Improved model accuracy from 85% to 96% using MLOps '
+                        'and ensemble methods',
+            'keywords_introduced': ['MLOps'],
+            'evidence': '',
+            'evidence_strength': '',
+            'rationale': 'Adds MLOps keyword while preserving all metrics.',
+        }]
+        _ = self._apply(approved)
+        # Original content must be unchanged
+        self.assertEqual(
+            _REWRITE_CONTENT['experiences'][1]['achievements'][0]['text'],
+            'Improved accuracy from 85% to 96% using ensemble methods',
+        )
+
+    # ── 2.2.6 (b) skill rename ───────────────────────────────────────────
+
+    def test_skill_rename_updates_name(self):
+        """skill_rename changes the matching skill's display name."""
+        approved = [{
+            'id':       'skill_tensorflow',
+            'type':     'skill_rename',
+            'location': 'skills[2]',
+            'original': 'TensorFlow',
+            'proposed': 'TensorFlow / Keras',
+            'keywords_introduced': ['Keras'],
+            'evidence': '',
+            'evidence_strength': '',
+            'rationale': 'More specific to job requirements.',
+        }]
+        result   = self._apply(approved)
+        names    = [s['name'] for s in result['skills']]
+        self.assertIn('TensorFlow / Keras', names)
+        self.assertNotIn('TensorFlow', names)
+
+    def test_skill_rename_missing_original_logs_warning(self):
+        """skill_rename for a non-existent name does not raise; others unaffected."""
+        approved = [{
+            'id':       'skill_nonexistent',
+            'type':     'skill_rename',
+            'location': 'skills[99]',
+            'original': 'NoSuchSkill',
+            'proposed': 'BetterName',
+            'keywords_introduced': [],
+            'evidence': '',
+            'evidence_strength': '',
+            'rationale': 'n/a',
+        }]
+        # Should not raise; original skills untouched
+        result = self._apply(approved)
+        names  = [s['name'] for s in result['skills']]
+        self.assertIn('Python', names)
+        self.assertIn('TensorFlow', names)
+
+    # ── 2.2.6 (c) skill add (strong evidence) ───────────────────────────
+
+    def test_skill_add_strong_no_confirm_flag(self):
+        """skill_add with strong evidence should NOT set candidate_to_confirm."""
+        approved = [{
+            'id':       'skill_mlops',
+            'type':     'skill_add',
+            'location': 'skills.core',
+            'original': '',
+            'proposed': 'MLOps',
+            'keywords_introduced': ['MLOps'],
+            'evidence':           'exp_001, exp_002',
+            'evidence_strength':  'strong',
+            'rationale':          'Demonstrates MLOps in production.',
+        }]
+        result      = self._apply(approved)
+        new_skill   = next(
+            (s for s in result['skills'] if s.get('name') == 'MLOps'), None
+        )
+        self.assertIsNotNone(new_skill, "New skill 'MLOps' should be added")
+        self.assertFalse(
+            new_skill.get('candidate_to_confirm', False),
+            "Strong evidence should not flag candidate_to_confirm",
+        )
+
+    # ── 2.2.6 (d) skill add (weak evidence → candidate flag) ────────────
+
+    def test_skill_add_weak_sets_confirm_flag(self):
+        """skill_add with weak evidence must set candidate_to_confirm: True."""
+        approved = [{
+            'id':       'skill_kubernetes',
+            'type':     'skill_add',
+            'location': 'skills.core',
+            'original': '',
+            'proposed': 'Kubernetes',
+            'keywords_introduced': ['Kubernetes'],
+            'evidence':           'exp_001',
+            'evidence_strength':  'weak',
+            'rationale':          'Limited Kubernetes exposure in exp_001.',
+        }]
+        result    = self._apply(approved)
+        new_skill = next(
+            (s for s in result['skills'] if s.get('name') == 'Kubernetes'), None
+        )
+        self.assertIsNotNone(new_skill, "New skill 'Kubernetes' should be added")
+        self.assertTrue(
+            new_skill.get('candidate_to_confirm'),
+            "Weak evidence should set candidate_to_confirm: True",
+        )
+
+    # ── 2.2.6 (e) constraint violation skip ─────────────────────────────
+
+    def test_constraint_violation_skipped(self):
+        """Rewrite that drops a number/company name is skipped entirely."""
+        # This removes "12" and "Pfizer" and "2021" from the original.
+        approved = [{
+            'id':       'bullet_exp001_1',
+            'type':     'bullet',
+            'location': 'exp_001.achievements[1]',
+            'original': 'Managed a team of 12 engineers at Pfizer in 2021',
+            'proposed': 'Led an engineering team using Agile methodologies',
+            'keywords_introduced': ['Agile'],
+            'evidence': '',
+            'evidence_strength': '',
+            'rationale': 'Introduces Agile keyword.',
+        }]
+        result   = self._apply(approved)
+        ach_text = result['experiences'][0]['achievements'][1]['text']
+        # Text should be UNCHANGED
+        self.assertEqual(
+            ach_text,
+            'Managed a team of 12 engineers at Pfizer in 2021',
+            "Constraint-violating rewrite must not be applied",
+        )
+
+    # ── summary rewrite ──────────────────────────────────────────────────
+
+    def test_summary_rewrite_applied(self):
+        """Summary rewrite replaces content['summary']."""
+        approved = [{
+            'id':       'summary',
+            'type':     'summary',
+            'location': 'summary',
+            'original': 'Experienced data scientist with 8 years of model-building.',
+            'proposed': 'Experienced ML engineer with 8 years of model-building '
+                        'and MLOps expertise.',
+            'keywords_introduced': ['ML engineer', 'MLOps'],
+            'evidence': '',
+            'evidence_strength': '',
+            'rationale': 'Aligns title with job posting.',
+        }]
+        result = self._apply(approved)
+        self.assertIn('MLOps', result['summary'])
+
+    # ── empty approved list ──────────────────────────────────────────────
+
+    def test_empty_approved_returns_deep_copy(self):
+        """No rewrites → content is returned as-is (deep copy, not same object)."""
+        result = self._apply([])
+        self.assertEqual(result['summary'], _REWRITE_CONTENT['summary'])
+        self.assertIsNot(result, _REWRITE_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# CVOrchestrator.propose_rewrites  (Phase 2, task 2.1.1)
+# ---------------------------------------------------------------------------
+
+class TestOrchestratorProposeRewrites(unittest.TestCase):
+    """propose_rewrites delegates to self.llm and degrades when llm is None."""
+
+    def test_delegates_to_llm(self):
+        """When an LLM is configured, propose_rewrites calls llm.propose_rewrites."""
+        with tempfile.TemporaryDirectory() as tmp:
+            orch = _make_orchestrator(Path(tmp))
+            orch.llm.propose_rewrites = MagicMock(return_value=[{'id': 'x'}])
+            result = orch.propose_rewrites(_REWRITE_CONTENT, {'ats_keywords': []})
+        self.assertEqual(result, [{'id': 'x'}])
+        orch.llm.propose_rewrites.assert_called_once()
+
+    def test_returns_empty_when_no_llm(self):
+        """When llm is None, propose_rewrites returns [] without raising."""
+        with tempfile.TemporaryDirectory() as tmp:
+            orch     = _make_orchestrator(Path(tmp))
+            orch.llm = None
+            result   = orch.propose_rewrites(_REWRITE_CONTENT, {'ats_keywords': []})
+        self.assertEqual(result, [])
+
+
 if __name__ == '__main__':
     unittest.main()
+

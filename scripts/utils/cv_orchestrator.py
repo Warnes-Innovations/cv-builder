@@ -7,7 +7,9 @@ This module coordinates between:
 - Document generation (DOCX/PDF)
 """
 
+import copy
 import json
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -547,22 +549,213 @@ For manual generation:
 
         return json.dumps(json_ld, indent=2, ensure_ascii=False)
 
+    # ── Rewrite pipeline ─────────────────────────────────────────────────────
+
+    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+        """Propose targeted text rewrites to align CV terminology with the job.
+
+        Delegates to the LLM provider's ``propose_rewrites`` implementation.
+        Returns ``[]`` (with a logged warning) when no LLM client is configured
+        so the caller can degrade gracefully.
+
+        Args:
+            content:      Selected CV content dict from
+                          :meth:`_select_content_hybrid`.
+            job_analysis: Output of the LLM job-description analysis.
+
+        Returns:
+            List of rewrite proposals (see :meth:`LLMClient.propose_rewrites`
+            for the full schema).  Always ``[]`` on failure or missing LLM.
+        """
+        if not self.llm:
+            print(
+                "Warning: propose_rewrites called but no LLM client is "
+                "configured. Returning empty proposals."
+            )
+            return []
+        return self.llm.propose_rewrites(content, job_analysis)
+
+    def apply_approved_rewrites(
+        self, content: Dict, approved: List[Dict]
+    ) -> Dict:
+        """Apply a list of user-approved rewrite proposals to *content*.
+
+        Each approved item specifies a ``location``, ``original`` text, and
+        ``proposed`` replacement.  Items are applied individually; any item
+        that fails :func:`LLMClient.apply_rewrite_constraints` is skipped
+        (with a logged warning) rather than raising an exception.
+
+        Supported rewrite types
+        -----------------------
+        ``summary``
+            Replaces ``content['summary']``.
+        ``bullet``
+            Resolves ``location`` of the form ``"exp_ID.achievements[N]"``
+            and updates the corresponding achievement's ``text`` field.
+        ``skill_rename``
+            Finds the skill whose name matches ``original`` and renames it
+            to ``proposed``.
+        ``skill_add``
+            Appends a new skill dict to ``content['skills']``.  When
+            ``evidence_strength == "weak"`` the entry is also flagged with
+            ``candidate_to_confirm: True``.
+
+        Args:
+            content:  CV content dict (not mutated — a deep copy is made).
+            approved: List of approved rewrite dicts.
+
+        Returns:
+            A new content dict with all valid approved rewrites applied.
+        """
+        from .llm_client import LLMClient
+
+        result = copy.deepcopy(content)
+
+        for item in approved:
+            loc      = item.get('location', '')
+            original = item.get('original', '')
+            proposed = item.get('proposed', '')
+            kind     = item.get('type', '')
+            item_id  = item.get('id', '<unknown>')
+
+            # Guard: validate constraint — skip if numbers/dates/names lost.
+            if not LLMClient.apply_rewrite_constraints(original, proposed):
+                print(
+                    f"Warning: apply_approved_rewrites: skipping constraint "
+                    f"violation (id={item_id!r}) — protected tokens would be "
+                    f"removed."
+                )
+                continue
+
+            if kind == 'summary' or loc == 'summary':
+                result['summary'] = proposed
+
+            elif kind == 'bullet':
+                # Parse "exp_001.achievements[2]"
+                m = re.match(r'^([^.]+)\.achievements\[(\d+)\]$', loc)
+                if not m:
+                    print(
+                        f"Warning: apply_approved_rewrites: cannot parse bullet "
+                        f"location {loc!r} (id={item_id!r})"
+                    )
+                    continue
+                exp_id  = m.group(1)
+                ach_idx = int(m.group(2))
+                found   = False
+                for exp in result.get('experiences', []):
+                    if exp.get('id') == exp_id:
+                        found = True
+                        achs  = exp.get('achievements', [])
+                        if 0 <= ach_idx < len(achs):
+                            ach = achs[ach_idx]
+                            if isinstance(ach, dict):
+                                ach['text'] = proposed
+                            else:
+                                achs[ach_idx] = proposed
+                        else:
+                            print(
+                                f"Warning: apply_approved_rewrites: achievement "
+                                f"index {ach_idx} out of range for exp "
+                                f"{exp_id!r} (id={item_id!r})"
+                            )
+                        break
+                if not found:
+                    print(
+                        f"Warning: apply_approved_rewrites: experience "
+                        f"{exp_id!r} not found (id={item_id!r})"
+                    )
+
+            elif kind == 'skill_rename':
+                skills  = result.get('skills', [])
+                renamed = False
+                if isinstance(skills, list):
+                    for skill in skills:
+                        if isinstance(skill, dict) and skill.get('name') == original:
+                            skill['name'] = proposed
+                            renamed = True
+                            break
+                        elif isinstance(skill, str) and skill == original:
+                            skills[skills.index(skill)] = proposed
+                            renamed = True
+                            break
+                elif isinstance(skills, dict):
+                    for cat_data in skills.values():
+                        cat_list = (
+                            cat_data.get('skills', [])
+                            if isinstance(cat_data, dict)
+                            else cat_data
+                            if isinstance(cat_data, list)
+                            else []
+                        )
+                        for i, skill in enumerate(cat_list):
+                            if isinstance(skill, dict) and skill.get('name') == original:
+                                skill['name'] = proposed
+                                renamed = True
+                                break
+                            elif isinstance(skill, str) and skill == original:
+                                cat_list[i] = proposed
+                                renamed = True
+                                break
+                        if renamed:
+                            break
+                if not renamed:
+                    print(
+                        f"Warning: apply_approved_rewrites: skill_rename: "
+                        f"original name {original!r} not found (id={item_id!r})"
+                    )
+
+            elif kind == 'skill_add':
+                new_skill: Dict = {
+                    'name':                proposed,
+                    'candidate_to_confirm': item.get('evidence_strength') == 'weak',
+                    'evidence':            item.get('evidence', ''),
+                }
+                skills = result.get('skills', [])
+                if isinstance(skills, list):
+                    skills.append(new_skill)
+                elif isinstance(skills, dict):
+                    first_cat = next(iter(skills.values()), None)
+                    if isinstance(first_cat, dict):
+                        first_cat.setdefault('skills', []).append(new_skill)
+                    elif isinstance(first_cat, list):
+                        first_cat.append(new_skill)
+
+            else:
+                print(
+                    f"Warning: apply_approved_rewrites: unknown rewrite type "
+                    f"{kind!r} (id={item_id!r}), skipping."
+                )
+
+        return result
+
+    # ── CV generation ─────────────────────────────────────────────────────────
+
     def generate_cv(
         self,
         job_analysis: Dict,
         customizations: Dict,
         output_dir: Optional[Path] = None,
+        approved_rewrites: Optional[List[Dict]] = None,
     ) -> Dict:
         """
         Generate CV files based on LLM analysis and recommendations.
 
         Parameters
         ----------
+        job_analysis:
+            Output of :meth:`LLMClient.analyze_job_description`.
+        customizations:
+            Output of :meth:`LLMClient.recommend_customizations`.
         output_dir:
             When provided (e.g. the already-renamed session directory) the CV
             files are written there.  Otherwise a new
             ``{Company}_{RoleSlug}_{date}`` directory is created under
             ``self.output_dir``.
+        approved_rewrites:
+            Optional list of user-approved rewrite proposals produced by
+            :meth:`propose_rewrites`.  Each item is applied via
+            :meth:`apply_approved_rewrites` before content is rendered.
+            Defaults to ``[]`` (no rewrites) when ``None``.
 
         Returns
         -------
@@ -586,6 +779,11 @@ For manual generation:
         selected_content = self._select_content_hybrid(
             job_analysis,
             customizations
+        )
+
+        # Apply any user-approved text rewrites before rendering
+        selected_content = self.apply_approved_rewrites(
+            selected_content, approved_rewrites or []
         )
 
         # Prepare template data once — shared by all format generators.
@@ -627,10 +825,11 @@ For manual generation:
         # Save metadata
         metadata = {
             'generation_date': datetime.now().isoformat(),
-            'company': company,
-            'role': role,
-            'job_analysis': job_analysis,
-            'customizations': customizations,
+            'company':         company,
+            'role':            role,
+            'job_analysis':    job_analysis,
+            'customizations':  customizations,
+            'approved_rewrites': approved_rewrites or [],
             'selected_content_summary': {
                 'experiences_count': len(selected_content['experiences']),
                 'skills_count': len(selected_content['skills']),
@@ -1048,32 +1247,48 @@ For manual generation:
             pass
     
     def _enhance_summary_for_ats(self, summary: str, job_analysis: Dict) -> str:
-        """Enhance professional summary with job-relevant keywords."""
+        """Return the professional summary unchanged.
+
+        Terminology improvements are handled upstream via
+        :meth:`apply_approved_rewrites` before the content reaches this
+        stage.  This method is retained as the call site in the ATS DOCX
+        generator but no longer mutates the text.
+
+        When no LLM is configured a keyword-gap note is logged so the
+        operator is aware of potential ATS misalignment without the output
+        being silently altered.
+        """
         if not summary:
             return summary
-            
-        # Get key terms from job analysis
-        key_skills = job_analysis.get('required_skills', [])
-        key_technologies = job_analysis.get('ats_keywords', [])
-        
-        enhanced_summary = summary
-        
-        # Add domain-specific enhancements if missing critical keywords
-        missing_keywords = []
-        summary_lower = summary.lower()
-        
-        for skill in key_skills[:5]:  # Top 5 required skills
-            if skill.lower() not in summary_lower:
-                missing_keywords.append(skill)
-        
-        if missing_keywords and len(missing_keywords) <= 3:
-            # Subtly integrate missing keywords
-            enhanced_summary += f" Expertise includes {', '.join(missing_keywords[:-1])} and {missing_keywords[-1]}." if len(missing_keywords) > 1 else f" Skilled in {missing_keywords[0]}."
-        
-        return enhanced_summary
+
+        if not self.llm:
+            # Identify missing keywords and log a gap warning.
+            summary_lower    = summary.lower()
+            key_skills       = job_analysis.get('required_skills', [])
+            missing_keywords = [
+                s for s in key_skills[:5] if s.lower() not in summary_lower
+            ]
+            if missing_keywords:
+                print(
+                    f"Warning: _enhance_summary_for_ats: no LLM configured; "
+                    f"summary may be missing keywords: "
+                    f"{', '.join(missing_keywords)}"
+                )
+        else:
+            print(
+                "Info: _enhance_summary_for_ats: summary rewrites are handled "
+                "upstream via apply_approved_rewrites — returning unchanged."
+            )
+
+        return summary
     
     def _optimize_skills_for_ats(self, skills: List[Dict], job_analysis: Dict) -> List[str]:
-        """Optimize skills list for ATS keyword matching."""
+        """Return a score-ordered, deduplicated subset of skill names.
+
+        Only reorders and selects skills — terminology is never renamed here.
+        All vocabulary changes must come via :meth:`apply_approved_rewrites`
+        before content reaches this method.
+        """
         ats_keywords = set(kw.lower() for kw in job_analysis.get('ats_keywords', []))
         required_skills = set(skill.lower() for skill in job_analysis.get('required_skills', []))
         
@@ -1102,27 +1317,29 @@ For manual generation:
         return [skill[0] for skill in skill_scores[:15]]
     
     def _enhance_achievement_for_ats(self, achievement: str, job_analysis: Dict) -> str:
-        """Enhance achievement text for better ATS keyword matching."""
+        """Return the achievement text unchanged.
+
+        Checks whether the text opens with a strong action verb and logs a
+        warning when it does not, but never modifies the text.  Rewrites are
+        handled upstream via :meth:`apply_approved_rewrites`.
+        """
         if not achievement:
             return achievement
-        
-        # Look for quantifiable results and ensure they're prominent
-        enhanced = achievement.strip()
-        
-        # Ensure achievement starts with strong action verb
-        action_verbs = ['Developed', 'Led', 'Implemented', 'Managed', 'Created', 'Improved', 
-                       'Reduced', 'Increased', 'Optimized', 'Designed', 'Built', 'Established']
-        
-        if not any(enhanced.startswith(verb) for verb in action_verbs):
-            # If it doesn't start with action verb, try to find one in the text
-            for verb in action_verbs:
-                if verb.lower() in enhanced.lower():
-                    break
-            else:
-                # Default to adding "Successfully" prefix
-                enhanced = f"Successfully {enhanced.lower()}"
-        
-        return enhanced
+
+        _ACTION_VERBS = {
+            'Developed', 'Led', 'Implemented', 'Managed', 'Created',
+            'Improved', 'Reduced', 'Increased', 'Optimized', 'Designed',
+            'Built', 'Established', 'Delivered', 'Drove', 'Launched',
+            'Deployed', 'Architected', 'Automated', 'Spearheaded',
+        }
+        text = achievement.strip()
+        if not any(text.startswith(v) for v in _ACTION_VERBS):
+            print(
+                f"Warning: _enhance_achievement_for_ats: bullet does not start "
+                f"with a strong action verb: {text[:60]!r}"
+            )
+
+        return text
     
     def _add_ats_additional_sections(self, doc, content: Dict, job_analysis: Dict):
         """Add additional sections that improve ATS scoring."""
