@@ -6,6 +6,7 @@ and user interaction.
 """
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -373,7 +374,13 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
             )
             self.state['job_analysis'] = analysis
             self.state['phase'] = 'customization'
-            
+
+            # Rename the session directory now that company / role are known
+            self._rename_session_dir(
+                analysis.get('company', ''),
+                analysis.get('title', '')
+            )
+
             # After analysis, prompt for contextual questions  
             contextual_prompt = f"""I've analyzed the job description. Here are the key findings:
 
@@ -508,23 +515,29 @@ Ask questions that are specific to this job posting, not generic career question
             # Always apply collected review decisions before final generation
             if has_decisions:
                 if exp_decisions:
-                    emphasized = [k for k, v in exp_decisions.items() if v == 'emphasize']
-                    included = [k for k, v in exp_decisions.items() if v == 'include']
+                    emphasized   = [k for k, v in exp_decisions.items() if v == 'emphasize']
+                    included     = [k for k, v in exp_decisions.items() if v == 'include']
                     deemphasized = [k for k, v in exp_decisions.items() if v == 'de-emphasize']
+                    omitted      = [k for k, v in exp_decisions.items() if v == 'omit']
                     customizations['recommended_experiences'] = emphasized + included + deemphasized
+                    # Explicitly omitted IDs — only these are excluded from the output
+                    customizations['omitted_experiences'] = omitted
 
                 if skill_decisions:
-                    emphasized = [k for k, v in skill_decisions.items() if v == 'emphasize']
-                    included = [k for k, v in skill_decisions.items() if v == 'include']
+                    emphasized   = [k for k, v in skill_decisions.items() if v == 'emphasize']
+                    included     = [k for k, v in skill_decisions.items() if v == 'include']
                     deemphasized = [k for k, v in skill_decisions.items() if v == 'de-emphasize']
+                    omitted      = [k for k, v in skill_decisions.items() if v == 'omit']
                     customizations['recommended_skills'] = emphasized + included + deemphasized
+                    customizations['omitted_skills'] = omitted
 
                 self.state['customizations'] = customizations
             
             print("\n🔄 Generating CV files...")
             result = self.orchestrator.generate_cv(
                 job_analysis,
-                customizations
+                customizations,
+                output_dir=self.session_dir,
             )
             self.state['generated_files'] = result
             self.state['phase'] = 'refinement'
@@ -623,10 +636,11 @@ Ask questions that are specific to this job posting, not generic career question
         try:
             if not self.session_dir:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                pos = self.state.get('position_name') or 'unnamed'
-                # Use session_dir from config
-                session_base = Path(self.config.get('session.session_dir', 'files/sessions')).expanduser()
-                self.session_dir = session_base / pos / f"session_{timestamp}"
+                # Sessions live alongside generated files under the output dir.
+                # Use a placeholder name; _rename_session_dir() will rename it
+                # once company / role are extracted from the job analysis.
+                output_base = Path(self.config.get('data.output_dir', '~/CV/files')).expanduser()
+                self.session_dir = output_base / f"pending_{timestamp}"
                 print(f"Creating session directory: {self.session_dir}")
                 self.session_dir.mkdir(parents=True, exist_ok=True)
             
@@ -648,6 +662,40 @@ Ask questions that are specific to this job posting, not generic career question
             print(f"   Position name: {self.state.get('position_name')}")
             traceback.print_exc()
             raise
+
+    def _rename_session_dir(self, company: str, role: str) -> None:
+        """Rename the session directory from ``pending_<ts>`` to
+        ``{Company}_{RoleSlug}_{date}`` once company and role are known.
+
+        Safe to call multiple times; only acts when the directory name still
+        starts with ``pending_``.  If no session directory exists yet, one is
+        created first.
+        """
+        if not self.session_dir:
+            self._save_session()
+
+        if not (self.session_dir and self.session_dir.name.startswith('pending_')):
+            return  # Already renamed or directory not yet established
+
+        # Build a filesystem-safe slug from the extracted company and role
+        company_slug = re.sub(r'[^\w]', '', company)[:30] or 'Unknown'
+        role_slug    = re.sub(r'[^\w ]', '', role).replace(' ', '')[:20] or 'Role'
+        date_str     = datetime.now().strftime("%Y-%m-%d")
+        new_name     = f"{company_slug}_{role_slug}_{date_str}"
+        new_dir      = self.session_dir.parent / new_name
+
+        # Avoid collision with a pre-existing directory of the same name
+        if new_dir.exists() and new_dir != self.session_dir:
+            counter = 1
+            while new_dir.exists():
+                new_dir = self.session_dir.parent / f"{new_name}_{counter}"
+                counter += 1
+
+        self.session_dir.rename(new_dir)
+        self.session_dir = new_dir
+        print(f"\u2713 Session directory renamed \u2192 {new_dir.name}")
+        # Persist the new path into session.json
+        self._save_session()
 
     def _ensure_position_selected(self):
         """Prompt user to create or open a position name."""
@@ -684,30 +732,53 @@ Ask questions that are specific to this job posting, not generic career question
                 break
 
     def _list_positions(self) -> List[str]:
-        """List known position names from sessions directory."""
-        session_base = Path(self.config.get('session.session_dir', 'files/sessions')).expanduser()
-        root = session_base
-        if not root.exists():
+        """List known position names by scanning the output directory for
+        session.json files and reading their ``state.position_name`` field."""
+        output_base = Path(self.config.get('data.output_dir', '~/CV/files')).expanduser()
+        if not output_base.exists():
             return []
-        names = []
-        for child in root.iterdir():
-            if child.is_dir():
-                names.append(child.name)
+        names: List[str] = []
+        for session_file in output_base.rglob('session.json'):
+            try:
+                with open(session_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                pos_name = data.get('state', {}).get('position_name')
+                if pos_name and pos_name not in names:
+                    names.append(pos_name)
+            except Exception:
+                pass
         return sorted(names)
 
     def _load_latest_session_for_position(self, name: str) -> bool:
-        """Load the most recent session for a given position, if any."""
-        session_base = Path(self.config.get('session.session_dir', 'files/sessions')).expanduser()
-        base = session_base / name
-        if not base.exists():
+        """Load the most recent session for a given position name, if any.
+
+        Searches the output directory for session.json files whose
+        ``state.position_name`` matches *name*, then loads the most recently
+        modified one.
+        """
+        output_base = Path(self.config.get('data.output_dir', '~/CV/files')).expanduser()
+        if not output_base.exists():
             return False
-        candidates = sorted(base.glob("session_*/session.json"), reverse=True)
+        candidates = [
+            sf for sf in output_base.rglob('session.json')
+            if self._session_matches_position(sf, name)
+        ]
         if not candidates:
             return False
-        session_file = str(candidates[0])
+        # Most recently modified first
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         try:
-            self.load_session(session_file)
+            self.load_session(str(candidates[0]))
             return True
+        except Exception:
+            return False
+
+    def _session_matches_position(self, session_file: Path, name: str) -> bool:
+        """Return True if the session.json belongs to the named position."""
+        try:
+            with open(session_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data.get('state', {}).get('position_name') == name
         except Exception:
             return False
 

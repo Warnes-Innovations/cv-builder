@@ -93,6 +93,9 @@ class TestRunner:
         unit_tests = [
             'test_copilot_auth.py',
             'test_url_fetch.py',
+            'tests/test_scoring.py',
+            'tests/test_template_renderer.py',
+            'tests/test_cv_orchestrator.py',
         ]
         
         results = {}

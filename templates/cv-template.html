@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CV - {{ personal_info.name }}</title>
+    <meta name="author"      content="{{ personal_info.name }}">
+    <meta name="description" content="{{ personal_info.name }} – {{ template_metadata.job_title }}">
+    <!-- Schema.org/Person structured data for ATS parsers -->
+    <script type="application/ld+json">
+{{ json_ld_str }}
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2c3e50; /* Dark Blue */
+            --secondary-color: #34495e; /* Slightly lighter blue */
+            --accent-color: #2980b9; /* Bright Blue link/accent */
+            --bg-color: #f4f7f6;
+            --sidebar-bg: #eef2f5;
+            --text-main: #333;
+            --text-muted: #666;
+            --border-color: #d1d8dd;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            color: var(--text-main);
+            background-color: #555; /* Dark background for browser view */
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* Base container for all pages (in browser view) */
+        .page-container {
+            max-width: 215.9mm; /* US Letter Width */
+            margin: 20px auto;
+            background: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        /* --- Page Structure (Browser View) --- */
+        .page {
+            display: flex;
+            flex-direction: row;
+            width: 215.9mm; /* US Letter Width */
+            min-height: 279.4mm; /* Set min-height to visually suggest a page size */
+            background: white;
+            /* Separate pages visually in browser */
+            margin-bottom: 20px; 
+            /* Removed height/overflow to allow content to flow vertically */
+        }
+
+        /* Page 1 MUST remain fixed for correct layout */
+        #page-one {
+            height: 279.4mm;
+            overflow: hidden;
+        }
+        
+        /* Page 2 onwards can flow */
+        #page-two, #page-three {
+            min-height: 279.4mm;
+            height: auto;
+            overflow: visible;
+        }
+
+        /* Page 1: Sidebar on left, Main content on right */
+        #page-one .left-col {
+            width: 32%;
+            background-color: var(--sidebar-bg);
+            padding: 30px 20px;
+            border-right: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        #page-one .right-col {
+            width: 68%;
+            padding: 40px 30px;
+        }
+
+        /* Page 2: Skills on left, Experience continuation on right */
+        #page-two .left-col {
+            width: 32%;
+            background-color: var(--sidebar-bg);
+            padding: 40px 20px;
+            border-right: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        
+        #page-two .right-col {
+            width: 68%;
+            padding: 40px 30px;
+        }
+
+        /* Page 3: Skills continuation on left, Experience continuation on right */
+        #page-three .left-col {
+            width: 32%;
+            background-color: var(--sidebar-bg);
+            padding: 40px 20px; /* Matched padding with page-two skills sidebar */
+            border-right: 1px solid var(--border-color);
+            flex-shrink: 0;
+            min-height: 279.4mm;
+        }
+        
+        #page-three .right-col {
+            width: 68%;
+            padding: 40px 30px;
+        }
+
+
+        /* --- Components & Styles --- */
+
+        .contact-info {
+            margin-bottom: 30px;
+            /* font-size: 0.9rem; - inherited by contact-item now */
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            color: var(--secondary-color);
+            font-size: 0.9rem; /* Standardized size */
+        }
+
+        .contact-item i {
+            width: 20px;
+            margin-right: 10px;
+            color: var(--accent-color);
+        }
+
+        .contact-item a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .sidebar-section {
+            margin-bottom: 30px;
+        }
+
+        .sidebar-title {
+            font-family: 'Inter', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+        }
+
+        /* Education & Awards Styling (Standardized font-size) */
+        .education-item, .award-item {
+            margin-bottom: 15px;
+            font-size: 0.9rem; /* Consistent size */
+        }
+
+        .degree {
+            font-weight: 700;
+            color: var(--text-main);
+            display: block;
+        }
+
+        .university {
+            font-style: italic;
+            color: var(--text-muted);
+            display: block;
+        }
+
+        .year {
+            font-size: 0.85rem; /* Make year slightly smaller than the main degree text */
+            color: var(--text-muted);
+        }
+
+        /* Skills & Languages formatting */
+        .skills-grid {
+            display: flex; 
+            flex-direction: column;
+            gap: 15px;
+            font-size: 0.9rem; /* Consistent size */
+        }
+        
+        .skill-group {
+            margin-bottom: 5px;
+        }
+
+        .skill-group h4 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--secondary-color);
+            margin-bottom: 5px;
+            margin-top: 5px;
+        }
+
+        .skill-list {
+            list-style: disc; 
+            color: var(--text-main);
+            margin-left: 15px; 
+            margin-top: 5px;
+            font-size: 0.9rem; /* Ensures the languages section on Page 1 matches */
+        }
+
+        .skill-list li {
+            margin-bottom: 4px;
+        }
+
+        /* Header */
+        .header {
+            /* ** ADJUSTMENT FOR PAGE 1 SPACING ** */
+            margin-bottom: 15px; /* Reduced from 30px */
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px; /* Reduced from 20px */
+        }
+
+        .name {
+            font-family: 'Merriweather', serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 5px;
+            line-height: 1.2;
+        }
+
+        .job-title {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.1rem;
+            color: var(--accent-color);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .section {
+            margin-bottom: 25px;
+        }
+
+        .section-title {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            text-transform: uppercase;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .section-title i {
+            margin-right: 10px;
+            color: var(--accent-color);
+            font-size: 1rem;
+        }
+
+        .summary-text {
+            font-size: 0.95rem;
+            color: var(--text-main);
+            text-align: justify;
+        }
+        
+        /* New Separator Style */
+        .summary-text .separator {
+            margin: 0 6px; 
+            color: var(--text-muted); 
+            font-weight: 300;
+            display: inline-block;
+        }
+
+        .job-entry {
+            margin-bottom: 20px;
+            page-break-inside: avoid; 
+        }
+
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 5px;
+        }
+
+        .job-role {
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--text-main);
+        }
+
+        .job-company {
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+
+        .job-dates {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .job-details {
+            list-style-type: disc;
+            margin-left: 18px;
+            font-size: 0.9rem;
+            color: var(--text-main);
+        }
+
+        .job-details li {
+            margin-bottom: 6px;
+            padding-left: 5px;
+        }
+
+        .achievement-list {
+            list-style: none;
+        }
+        
+        .achievement-list li {
+            position: relative;
+            padding-left: 20px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .achievement-list li::before {
+            content: "•";
+            color: var(--accent-color);
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+            font-size: 1.2rem;
+            line-height: 1.4rem;
+        }
+
+        /* --- Print Styles --- */
+        @media print {
+            body {
+                background-color: white;
+            }
+            .page-container {
+                box-shadow: none;
+                margin: 0;
+                width: 100%;
+                max-width: 100%;
+                height: auto; 
+            }
+            
+            .page {
+                display: flex; /* Maintain flex for columns on the page */
+                width: 100%;
+                height: auto;
+                page-break-after: always; /* Force a break after each defined page block */
+                margin: 0;
+            }
+
+            /* 1. Force Page 1 to fill exactly one US Letter page */
+            #page-one {
+                height: 279.4mm; /* US Letter Height */
+                overflow: hidden; /* Important: Prevents content from spilling over */
+            }
+
+            /* 2. Page 2 and subsequent flow */
+            #page-two, #page-three {
+                height: 279.4mm; /* Set exact height for print page break */
+                min-height: 279.4mm;
+                page-break-before: always;
+                page-break-after: auto; 
+            }
+
+            /* Columns for Page 1 */
+            #page-one .left-col {
+                width: 32%;
+                flex-shrink: 0;
+                background-color: var(--sidebar-bg) !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            #page-one .right-col {
+                width: 68%;
+            }
+
+            /* Columns for Page 2 */
+            #page-two .left-col {
+                width: 32%;
+                flex-shrink: 0;
+                background-color: var(--sidebar-bg) !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            #page-two .right-col {
+                width: 68%;
+                overflow: visible; 
+            }
+            
+            /* Columns for Page 3 - maintains structure for print */
+            #page-three .left-col {
+                width: 32%;
+                flex-shrink: 0;
+                background-color: var(--sidebar-bg) !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            #page-three .right-col {
+                width: 68%;
+                overflow: visible;
+            }
+
+            a {
+                text-decoration: none;
+                color: inherit;
+            }
+            
+            /* Set print size to US Letter */
+            @page {
+                size: letter; /* Standard CSS property for US Letter */
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    
+    <div class="page-container">
+        <!-- PAGE ONE: Sidebar + Header, Summary, Achievements -->
+        <div id="page-one" class="page">
+            <!-- Left Column (Sidebar: Contact, Education, Awards, Languages) -->
+            <aside class="left-col">
+                <div class="contact-info">
+                    <div class="sidebar-title">Contact</div>
+                    <div class="contact-item">
+                        <i class="fas fa-envelope"></i>
+                        <a href="mailto:{{ personal_info.contact.email }}">{{ personal_info.contact.email }}</a>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fas fa-phone"></i>
+                        <span>{{ personal_info.contact.phone }}</span>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fab fa-linkedin"></i>
+                        <a href="{{ personal_info.contact.linkedin }}">{{ personal_info.contact.linkedin | replace('https://','') }}</a>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fas fa-globe"></i>
+                        <a href="{{ personal_info.contact.website }}">{{ personal_info.contact.website | replace('https://','') }}</a>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-title">Education</div>
+                    {% for edu in education %}
+                    <div class="education-item">
+                        <span class="degree">{{ edu.degree }}{% if edu.field %}, {{ edu.field }}{% endif %}</span>
+                        <span class="university">{{ edu.institution }}</span>
+                        <span class="year">{{ edu.end_year or edu.graduation_date }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-title">Awards</div>
+                    {% for award in awards %}
+                    <div class="award-item">
+                        <span class="degree">{{ award.degree or award.title }}</span>
+                        <span class="year">{{ award.year }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-title">Languages</div>
+                    <ul class="skill-list">
+                        {% for lang in personal_info.languages %}
+                        <li>{{ lang }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </aside>
+
+            <!-- Right Column (Main Content: Header, Summary, Achievements) -->
+            <main class="right-col">
+                <header class="header">
+                    <h1 class="name">{{ personal_info.name }}</h1>
+                    <div class="job-title">{{ template_metadata.job_title }}</div>
+                </header>
+
+                <section class="section">
+                    <h2 class="section-title"><i class="fas fa-user-circle"></i> Summary</h2>
+                    <p class="summary-text">
+                        {{ professional_summary }}
+                    </p>
+                </section>
+
+                <section class="section">
+                    <h2 class="section-title"><i class="fas fa-trophy"></i> Selected Achievements</h2>
+                    <ul class="achievement-list">
+                        {% for ach in achievements %}
+                        <li>{{ ach.text or ach }}</li>
+                        {% endfor %}
+                    </ul>
+                </section>
+            </main>
+        </div>
+
+        <!-- PAGE TWO: Skills + Experience (Continuation) -->
+        <div id="page-two" class="page">
+            <!-- Left Column (Skills) -->
+            <aside class="left-col">
+                <section class="section">
+                    <h2 class="section-title"><i class="fas fa-code"></i> Technical Skills</h2>
+                    <div class="skills-grid">
+                        {% for cat in skills_by_category[:5] %}
+                        <div class="skill-group">
+                            <h4>{{ cat.category }}</h4>
+                            <ul class="skill-list">
+                                {% for skill in cat.skills %}
+                                <li>{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </section>
+            </aside>
+
+            <!-- Right Column (Experience - Retained 4 most recent entries) -->
+            <main class="right-col">
+                <section class="section">
+                    <h2 class="section-title"><i class="fas fa-briefcase"></i> Experience</h2>
+                    {% for exp in experiences %}
+                    <div class="job-entry">
+                        <div class="job-header">
+                            <div class="job-role">{{ exp.title }}</div>
+                            <div class="job-company">{{ exp.company }}</div>
+                        </div>
+                        <div class="job-dates">{{ exp.start_date }} – {{ exp.end_date }}</div>
+                        {% if exp.achievements %}
+                        <ul class="job-details">
+                            {% for ac in exp.achievements %}
+                            <li>{{ ac.text or ac }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </section>
+            </main>
+        </div>
+        
+        <!-- PAGE THREE: Skills Continuation + Experience Continuation -->
+        <div id="page-three" class="page">
+             <!-- Left Column (Skills Continuation) -->
+             <aside class="left-col">
+                <section class="section">
+                    <h2 class="section-title"><i class="fas fa-code"></i> Technical Skills</h2>
+                    <div class="skills-grid">
+                        {% for cat in skills_by_category[5:] %}
+                        <div class="skill-group">
+                            <h4>{{ cat.category }}</h4>
+                            <ul class="skill-list">
+                                {% for skill in cat.skills %}
+                                <li>{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </section>
+             </aside> 
+
+             <!-- Right Column (Experience Continuation - additional entries) -->
+             <main class="right-col">
+                <section class="section">
+                    {% for exp in experiences[4:] %}
+                    <div class="job-entry">
+                        <div class="job-header">
+                            <div class="job-role">{{ exp.title }}</div>
+                            <div class="job-company">{{ exp.company }}</div>
+                        </div>
+                        <div class="job-dates">{{ exp.start_date }} – {{ exp.end_date }}</div>
+                        {% if exp.achievements %}
+                        <ul class="job-details">
+                            {% for ac in exp.achievements %}
+                            <li>{{ ac.text or ac }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </section>
+             </main>
+        </div>
+        <!-- END PAGE THREE -->
+    </div>
+
+    <!-- ================================================================
+         HIDDEN PLAIN-TEXT SECTION
+         Invisible in browser and print.  Included for ATS engines that
+         strip HTML tags and read raw text content.
+    ================================================================ -->
+    <section id="plaintext" style="display:none;visibility:hidden;" aria-hidden="true"><pre>
+================================================================================
+{{ personal_info.name }}
+{{ template_metadata.job_title }}
+================================================================================
+{% if personal_info.contact.email %}Email: {{ personal_info.contact.email }}
+{% endif %}{% if personal_info.contact.phone %}Phone: {{ personal_info.contact.phone }}
+{% endif %}{% if personal_info.contact.get('address_display') %}Location: {{ personal_info.contact.address_display }}
+{% endif %}{% if personal_info.contact.linkedin %}LinkedIn: {{ personal_info.contact.linkedin }}
+{% endif %}
+--------------------------------------------------------------------------------
+PROFESSIONAL SUMMARY
+--------------------------------------------------------------------------------
+{{ professional_summary }}
+
+{% if achievements %}
+--------------------------------------------------------------------------------
+SELECTED ACHIEVEMENTS
+--------------------------------------------------------------------------------
+{% for ach in achievements %}* {{ ach.text if ach is mapping else ach }}
+{% endfor %}{% endif %}
+{% if experiences %}
+--------------------------------------------------------------------------------
+WORK EXPERIENCE
+--------------------------------------------------------------------------------
+{% for exp in experiences %}{{ exp.title }}
+{{ exp.company }}{% if exp.location %} | {{ exp.location.city }}{% if exp.location.state %}, {{ exp.location.state }}{% endif %}{% endif %}
+{{ exp.start_date }} – {{ exp.end_date }}
+{% for ac in exp.achievements %}  * {{ ac.text if ac is mapping else ac }}
+{% endfor %}
+{% endfor %}{% endif %}
+{% if education %}
+--------------------------------------------------------------------------------
+EDUCATION
+--------------------------------------------------------------------------------
+{% for edu in education %}{{ edu.degree }}{% if edu.field %}, {{ edu.field }}{% endif %}
+{{ edu.institution }} ({{ edu.end_year or edu.graduation_date }})
+{% endfor %}{% endif %}
+{% if skills_by_category %}
+--------------------------------------------------------------------------------
+TECHNICAL SKILLS
+--------------------------------------------------------------------------------
+{% for cat in skills_by_category %}{{ cat.category }}: {{ cat.skills | map(attribute='name') | join(', ') }}
+{% endfor %}{% endif %}
+================================================================================
+    </pre></section>
+
+</body>
+</html>

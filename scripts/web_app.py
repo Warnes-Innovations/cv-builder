@@ -868,10 +868,10 @@ Job Description (excerpt):
         try:
             from utils.config import get_config
             cfg = get_config()
-            session_base = Path(cfg.get('session.session_dir', 'files/sessions')).expanduser()
+            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
             sessions = []
-            if session_base.exists():
-                for session_file in sorted(session_base.rglob("session.json"), reverse=True):
+            if output_base.exists():
+                for session_file in sorted(output_base.rglob("session.json"), reverse=True):
                     try:
                         import json as _json
                         with open(session_file) as f:
@@ -879,7 +879,7 @@ Job Description (excerpt):
                         state = data.get('state', {})
                         sessions.append({
                             "path":          str(session_file),
-                            "position_name": state.get('position_name') or session_file.parent.parent.name,
+                            "position_name": state.get('position_name') or session_file.parent.name,
                             "timestamp":     data.get('timestamp', ''),
                             "phase":         state.get('phase', ''),
                             "has_job":       bool(state.get('job_description')),
@@ -901,9 +901,9 @@ Job Description (excerpt):
         try:
             from utils.config import get_config as _cfg
             cfg = _cfg()
-            session_base = Path(cfg.get('session.session_dir', 'files/sessions')).expanduser()
-            if session_base.exists():
-                for session_file in sorted(session_base.rglob("session.json"), reverse=True):
+            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            if output_base.exists():
+                for session_file in sorted(output_base.rglob("session.json"), reverse=True):
                     try:
                         import json as _json
                         with open(session_file) as f:
@@ -912,7 +912,7 @@ Job Description (excerpt):
                         items.append({
                             "kind":         "session",
                             "path":         str(session_file),
-                            "label":        state.get('position_name') or session_file.parent.parent.name,
+                            "label":        state.get('position_name') or session_file.parent.name,
                             "timestamp":    data.get('timestamp', ''),
                             "phase":        state.get('phase', ''),
                             "has_job":      bool(state.get('job_description')),
@@ -971,43 +971,51 @@ Job Description (excerpt):
 
     @app.post("/api/delete-session")
     def delete_session_endpoint():
-        """Delete a saved session file and its directory."""
+        """Delete a session and all associated generated files.
+
+        Accepts a JSON body with either:
+        - ``path``: full path to a ``session.json`` file → deletes its parent
+          directory (the entire job output directory).
+        - ``session_id``: legacy positional identifier (directory name or
+          suffix) → falls back to a name-matching search for backward compat.
+        """
         data = request.get_json(silent=True) or {}
-        session_id = data.get("session_id")
-        if not session_id:
-            return jsonify({"error": "Missing session_id"}), 400
-            
+        path_param  = data.get("path") or data.get("session_id")
+        if not path_param:
+            return jsonify({"error": "Missing path or session_id"}), 400
+
         try:
-            # Find and delete the session
-            config = get_config()
-            sessions_dir = Path(config.session_dir).expanduser()
-            
-            # Look for session in all position directories
+            cfg = get_config()
+            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+
+            # ── Preferred: caller supplies the full session.json path ──────────
+            candidate = Path(path_param)
+            if candidate.exists() and candidate.name == 'session.json':
+                job_dir = candidate.parent
+                # Safety: must be a direct child of output_base
+                if job_dir.parent.resolve() == output_base.resolve():
+                    import shutil as _shutil
+                    _shutil.rmtree(job_dir)
+                    print(f"Deleted job directory: {job_dir}")
+                    return jsonify({"success": True, "message": "Session deleted successfully"})
+                else:
+                    return jsonify({"error": "Path is outside the output directory"}), 400
+
+            # ── Fallback: match by directory name or position name ────────────
             deleted = False
-            for position_dir in sessions_dir.glob("*/"):
-                if position_dir.is_dir():
-                    for session_dir in position_dir.glob("session_*"):
-                        if session_dir.is_dir():
-                            session_file = session_dir / "session.json"
-                            if session_file.exists():
-                                # Check if this is the session we're looking for
-                                # Could match by session_id or directory name
-                                session_name = session_dir.name
-                                if session_id in session_name or session_id == position_dir.name:
-                                    # Delete the entire session directory
-                                    import shutil
-                                    shutil.rmtree(session_dir)
-                                    deleted = True
-                                    print(f"Deleted session: {session_dir}")
-                                    break
-                    if deleted:
-                        break
-            
+            for session_file in output_base.rglob('session.json'):
+                job_dir = session_file.parent
+                if path_param in job_dir.name or job_dir.name == path_param:
+                    import shutil as _shutil
+                    _shutil.rmtree(job_dir)
+                    deleted = True
+                    print(f"Deleted job directory: {job_dir}")
+                    break
+
             if deleted:
                 return jsonify({"success": True, "message": "Session deleted successfully"})
-            else:
-                return jsonify({"error": f"Session not found: {session_id}"}), 404
-                
+            return jsonify({"error": f"Session not found: {path_param}"}), 404
+
         except Exception as e:
             print(f"ERROR in delete_session: {e}")
             import traceback

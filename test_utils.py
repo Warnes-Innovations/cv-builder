@@ -197,6 +197,31 @@ Benefits:
         return True
 
     @staticmethod
+    def validate_html_file(file_path: str, required_snippet: str = None) -> bool:
+        """Validate that an HTML file was generated and optionally contains text."""
+        path = Path(file_path)
+        if not path.exists():
+            print(f"❌ HTML file not found: {file_path}")
+            return False
+
+        if path.stat().st_size == 0:
+            print(f"❌ HTML file is empty: {file_path}")
+            return False
+
+        if required_snippet:
+            try:
+                text = path.read_text(encoding='utf-8')
+                if required_snippet not in text:
+                    print(f"❌ HTML file missing expected text: {required_snippet}")
+                    return False
+            except Exception as e:
+                print(f"❌ Error reading HTML file: {e}")
+                return False
+
+        print(f"✅ HTML validation passed: {file_path}")
+        return True
+
+    @staticmethod
     def cleanup_test_files(pattern: str = "test_output/*"):
         """Clean up generated test files."""
         try:

@@ -12,19 +12,16 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import subprocess
-import shutil
-import tempfile
 import weasyprint
 from collections import defaultdict
 
 # Import existing utilities
 from .scoring import (
     calculate_relevance_score,
-    rank_content,
-    select_best_summary,
     calculate_skill_score
 )
 from .bibtex_parser import parse_bibtex_file, format_publication
+from .config import get_config
 from .llm_client import LLMClient
 
 
@@ -68,7 +65,7 @@ class CVOrchestrator:
         job_analysis: Dict,
         template_variant: str = 'standard'
     ) -> Dict:
-        """Prepare CV data in the format expected by Quarto template."""
+        """Prepare CV data in the format expected by the HTML resume template."""
         
         # Get personal info from selected content
         personal_info = selected_content.get('personal_info', {})
@@ -80,6 +77,10 @@ class CVOrchestrator:
             address_display = f"{address.get('city', '')}, {address.get('state', '')}"
             address_display = address_display.strip(', ')
             contact['address_display'] = address_display
+        
+        # Ensure languages key exists (template expects it)
+        if 'languages' not in personal_info:
+            personal_info['languages'] = []
         
         # Get professional summary
         professional_summary = selected_content.get('summary', '')
@@ -185,48 +186,49 @@ class CVOrchestrator:
                     })
         return formatted_pubs
     
-    def _render_cv_with_quarto(
-        self, 
+    def _render_cv_html_pdf(
+        self,
         cv_data: Dict,
         output_dir: Path,
         filename_base: str,
         template_variant: str = 'standard'
     ) -> Path:
-        """Render CV using Quarto and convert to PDF."""
+        """Render CV using the Jinja2 HTML template and convert to PDF.
+
+        Uses `templates/cv-template.html` with the `cv_data` dictionary
+        produced by ``_prepare_cv_data_for_template``. The rendered HTML is
+        written to `output_dir` and then converted to PDF via WeasyPrint.
+
+        Returns a 2-tuple ``(html_output, pdf_output)``.
+        """
         
-        # Get templates directory
+        # Get templates directory and template file
         template_dir = Path(__file__).parent.parent.parent / 'templates'
-        template_file = template_dir / 'cv-template.qmd'
-        css_file = template_dir / 'cv-style.css'
+        template_file = template_dir / 'cv-template.html'
         
         if not template_file.exists():
-            raise FileNotFoundError(f"Quarto template not found: {template_file}")
+            raise FileNotFoundError(f"HTML template not found: {template_file}")
         
-        # Create temporary working directory
-        with tempfile.TemporaryDirectory(prefix='cv_render_') as temp_dir:
-            temp_path = Path(temp_dir)
-            
-            # Copy template files to temp directory
-            temp_template = temp_path / 'cv-template.qmd'
-            temp_css = temp_path / 'cv-style.css'
-            
-            shutil.copy2(template_file, temp_template)
-            if css_file.exists():
-                shutil.copy2(css_file, temp_css)
-            
-            # Write CV data to temporary JSON file
-            data_file = temp_path / 'temp_cv_data.json'
-            with open(data_file, 'w', encoding='utf-8') as f:
-                json.dump(cv_data, f, indent=2, ensure_ascii=False)
-            
-            # Render with Quarto to HTML
-            html_output = self._render_with_quarto_engine(temp_template, temp_path)
-            
-            # Convert HTML to PDF
-            pdf_output = output_dir / f"{filename_base}.pdf"
-            self._convert_html_to_pdf(html_output, pdf_output)
-            
-            return pdf_output
+        # Render using Jinja2
+        from .template_renderer import load_template, render_template
+        template = load_template(str(template_file))
+
+        # Render the template with cv_data context
+        rendered_html = render_template(template, cv_data)
+
+        # Ensure output directory exists
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write HTML file to output directory
+        html_output = output_dir / f"{filename_base}.html"
+        with open(html_output, 'w', encoding='utf-8') as f:
+            f.write(rendered_html)
+
+        # Convert HTML to PDF
+        pdf_output = output_dir / f"{filename_base}.pdf"
+        self._convert_html_to_pdf(html_output, pdf_output)
+
+        return html_output, pdf_output
     
     def _render_with_quarto_engine(self, template_file: Path, work_dir: Path) -> Path:
         """Render template using Quarto engine."""         
@@ -401,32 +403,32 @@ The HTML file contains your formatted CV ready for conversion.
 
     def _generate_human_pdf(
         self,
-        content: Dict,
+        cv_data: Dict,
         job_analysis: Dict,
         output_dir: Path,
         template_variant: str = 'standard'
-    ) -> Path:
-        """Generate human-readable PDF with styling using Quarto."""
-        
-        company = job_analysis.get('company', 'Company').replace(' ', '')
-        role = job_analysis.get('title', 'Role').replace(' ', '')[:20]
-        timestamp = datetime.now().strftime("%Y-%m-%d")
-        
+    ) -> tuple:
+        """Render the human-readable HTML template and convert to PDF.
+
+        ``cv_data`` must already be prepared via ``_prepare_cv_data_for_template``
+        (done once in ``generate_cv`` and shared across all format generators).
+
+        Returns a 2-tuple ``(html_path, pdf_path)``.  On failure the first
+        element is ``None`` and the second is an error-log ``.txt`` file.
+        """
+        company       = job_analysis.get('company', 'Company').replace(' ', '')
+        role          = job_analysis.get('title', 'Role').replace(' ', '')[:20]
+        timestamp     = datetime.now().strftime("%Y-%m-%d")
         filename_base = f"CV_{company}_{role}_{timestamp}_Human"
-        
+
         try:
-            # Prepare data for Quarto template
-            cv_data = self._prepare_cv_data_for_template(
-                content, job_analysis, template_variant
-            )
-            
-            # Render with Quarto and convert to PDF
-            pdf_path = self._render_cv_with_quarto(
+            # HTML is rendered and written once; PDF is converted from that file
+            html_path, pdf_path = self._render_cv_html_pdf(
                 cv_data, output_dir, filename_base, template_variant
             )
-            
-            print(f"✅ Generated human-readable PDF ({template_variant}): {pdf_path.name}")
-            return pdf_path
+
+            print(f"✅ Generated human-readable HTML + PDF ({template_variant}): {pdf_path.name}")
+            return html_path, pdf_path
             
         except Exception as e:
             print(f"⚠ PDF generation failed: {e}")
@@ -443,9 +445,9 @@ Please check:
 
 Template variant attempted: {template_variant}
 Content data summary:
-- Experiences: {len(content.get('experiences', []))} items
-- Skills: {len(content.get('skills', []))} items
-- Education: {len(content.get('education', []))} items
+- Experiences: {len(cv_data.get('experiences', []))} items
+- Skills: {len(cv_data.get('skills', []))} items
+- Education: {len(cv_data.get('education', []))} items
 
 For manual generation:
 1. Check system requirements
@@ -454,27 +456,128 @@ For manual generation:
             """
             fallback_file.write_text(fallback_content.strip(), encoding='utf-8')
             print(f"⚠ Created error log: {fallback_file.name}")
-            return fallback_file
-    
+            return None, fallback_file
+
+    def _build_json_ld(self, cv_data: Dict, job_analysis: Dict) -> str:
+        """Build a Schema.org/Person JSON-LD string from prepared ``cv_data``.
+
+        The result is embedded in the HTML ``<head>`` so that ATS parsers,
+        search engines, and other structured-data consumers can extract
+        candidate information without parsing the visual layout.
+        """
+        personal_info = cv_data['personal_info']
+        contact       = personal_info.get('contact', {})
+
+        # Work history
+        has_occupation: List[Dict] = []
+        for exp in cv_data.get('experiences', []):
+            entry: Dict[str, Any] = {
+                '@type':     'Role',
+                'name':      exp.get('company', ''),
+                'roleName':  exp.get('title', ''),
+                'startDate': exp.get('start_date', ''),
+                'endDate':   exp.get('end_date', ''),
+            }
+            loc = exp.get('location', {})
+            if loc:
+                entry['locationCreated'] = {
+                    '@type': 'Place',
+                    'address': {
+                        '@type':           'PostalAddress',
+                        'addressLocality': loc.get('city', ''),
+                        'addressRegion':   loc.get('state', ''),
+                    }
+                }
+            ach_texts = [
+                (ac.get('text') if isinstance(ac, dict) else ac)
+                for ac in exp.get('achievements', [])
+            ]
+            if ach_texts:
+                entry['description'] = ' '.join(filter(None, ach_texts))
+            has_occupation.append(entry)
+
+        # Education
+        alumni_of = [
+            {
+                '@type': 'EducationalOrganization',
+                'name':  edu.get('institution', ''),
+                'description': (
+                    edu.get('degree', '')
+                    + (f", {edu.get('field', '')}" if edu.get('field') else '')
+                    + (f" ({edu.get('end_year') or edu.get('graduation_date', '')})"
+                       if (edu.get('end_year') or edu.get('graduation_date')) else '')
+                ),
+            }
+            for edu in cv_data.get('education', [])
+        ]
+
+        all_skill_names = [
+            sk.get('name', '')
+            for cat in cv_data.get('skills_by_category', [])
+            for sk in cat.get('skills', [])
+        ]
+
+        award_strings = [
+            f"{aw.get('degree') or aw.get('title', '')} ({aw.get('year', '')})"
+            for aw in cv_data.get('awards', [])
+        ]
+
+        same_as = [
+            v for v in (contact.get('linkedin'), contact.get('website')) if v
+        ]
+
+        json_ld: Dict[str, Any] = {
+            '@context':   'https://schema.org',
+            '@type':      'Person',
+            'name':       personal_info.get('name', ''),
+            'jobTitle':   job_analysis.get('title', ''),
+            'description': cv_data.get('professional_summary', ''),
+        }
+        if contact.get('email'):           json_ld['email']         = contact['email']
+        if contact.get('phone'):           json_ld['telephone']     = contact['phone']
+        if same_as:                        json_ld['sameAs']        = same_as
+        if contact.get('address_display'): json_ld['address']       = {
+                '@type':           'PostalAddress',
+                'addressLocality': contact['address_display'],
+            }
+        if alumni_of:                      json_ld['alumniOf']      = alumni_of
+        if has_occupation:                 json_ld['hasOccupation'] = has_occupation
+        if all_skill_names:                json_ld['knowsAbout']    = all_skill_names
+        if award_strings:                  json_ld['award']         = award_strings
+
+        return json.dumps(json_ld, indent=2, ensure_ascii=False)
+
     def generate_cv(
         self,
         job_analysis: Dict,
-        customizations: Dict
+        customizations: Dict,
+        output_dir: Optional[Path] = None,
     ) -> Dict:
         """
         Generate CV files based on LLM analysis and recommendations.
-        
-        Returns:
-            Dict with output_dir, files created, metadata
+
+        Parameters
+        ----------
+        output_dir:
+            When provided (e.g. the already-renamed session directory) the CV
+            files are written there.  Otherwise a new
+            ``{Company}_{RoleSlug}_{date}`` directory is created under
+            ``self.output_dir``.
+
+        Returns
+        -------
+        Dict with output_dir, files created, metadata
         """
-        # Create output directory
-        company = job_analysis.get('company', 'Company')
-        role = job_analysis.get('title', 'Role')
+        company   = job_analysis.get('company', 'Company')
+        role      = job_analysis.get('title', 'Role')
         role_slug = role.replace(' ', '')[:20]
         timestamp = datetime.now().strftime("%Y-%m-%d")
-        
-        output_name = f"{company}_{role_slug}_{timestamp}"
-        job_output_dir = self.output_dir / output_name
+
+        if output_dir is not None:
+            job_output_dir = Path(output_dir)
+        else:
+            output_name    = f"{company}_{role_slug}_{timestamp}"
+            job_output_dir = self.output_dir / output_name
         job_output_dir.mkdir(parents=True, exist_ok=True)
         
         print(f"Output directory: {job_output_dir}")
@@ -484,10 +587,17 @@ For manual generation:
             job_analysis,
             customizations
         )
-        
+
+        # Prepare template data once — shared by all format generators.
+        # JSON-LD is built here and embedded directly in cv-template.html,
+        # so the single HTML output is both ATS-compatible and print-ready.
+        cv_data = self._prepare_cv_data_for_template(selected_content, job_analysis)
+        cv_data['achievements'] = selected_content.get('achievements', [])
+        cv_data['json_ld_str']  = self._build_json_ld(cv_data, job_analysis)
+
         # Generate documents
         files_created = []
-        
+
         # 1. ATS-optimized DOCX
         ats_file = self._generate_ats_docx(
             selected_content,
@@ -495,15 +605,17 @@ For manual generation:
             job_output_dir
         )
         files_created.append(ats_file.name)
-        
-        # 2. Human-readable PDF
-        human_pdf = self._generate_human_pdf(
-            selected_content,
+
+        # 2. Single HTML (ATS metadata embedded) + PDF both rendered from it
+        html_path, pdf_path = self._generate_human_pdf(
+            cv_data,
             job_analysis,
             job_output_dir
         )
-        files_created.append(human_pdf.name)
-        
+        if html_path is not None:
+            files_created.append(html_path.name)
+        files_created.append(pdf_path.name)
+
         # 3. Human-readable DOCX
         human_docx = self._generate_human_docx(
             selected_content,
@@ -551,21 +663,43 @@ For manual generation:
     ) -> Dict:
         """
         Select content using hybrid LLM + rule-based approach.
-        
-        - LLM provides recommendations
-        - Scoring functions validate and rank
-        - Combine for best results
+
+        Inclusion rules
+        ---------------
+        Experiences : ALL experiences are included EXCEPT those where the user
+            has explicitly approved an "Omit" decision.  The set is sorted by
+            relevance score (Emphasize items first) so the most relevant
+            content appears first in the generated document.
+        Achievements: same blacklist rule.
+        Skills      : same blacklist rule; LLM-recommended skills are listed
+            first, remaining non-omitted skills follow by score.
         """
-        # Extract recommended IDs from LLM
-        recommended_exp_ids = set(customizations.get('recommended_experiences', []))
-        recommended_achievement_ids = set(customizations.get('recommended_achievements', []))
-        recommended_skills = set(customizations.get('recommended_skills', []))
-        
+        # IDs/names explicitly omitted by the user
+        omitted_exp_ids  = set(customizations.get('omitted_experiences', []))
+        omitted_skill_names = set(customizations.get('omitted_skills', []))
+
+        # IDs carrying an extra relevance boost from user/LLM recommendations
+        recommended_exp_ids          = set(customizations.get('recommended_experiences', []))
+        recommended_achievement_ids  = set(customizations.get('recommended_achievements', []))
+        recommended_skills           = set(customizations.get('recommended_skills', []))
+
+        # Also honour per-item recommendation dicts (LLM structured output)
+        for rec in customizations.get('experience_recommendations', []):
+            if isinstance(rec, dict):
+                if rec.get('recommendation', '').lower() == 'omit':
+                    omitted_exp_ids.add(rec.get('id', ''))
+                elif rec.get('recommendation', '').lower() in ('emphasize', 'include', 'de-emphasize'):
+                    recommended_exp_ids.add(rec.get('id', ''))
+        for rec in customizations.get('skill_recommendations', []):
+            if isinstance(rec, dict):
+                if rec.get('recommendation', '').lower() == 'omit':
+                    omitted_skill_names.add(rec.get('name', ''))
+
         # Get all content
-        all_experiences = self.master_data.get('experience', [])
+        all_experiences  = self.master_data.get('experience', [])
         all_achievements = self.master_data.get('selected_achievements', [])
-        all_skills_raw = self.master_data.get('skills', [])
-        all_skills = []
+        all_skills_raw   = self.master_data.get('skills', [])
+        all_skills: List[Dict] = []
 
         if isinstance(all_skills_raw, dict):
             for category_data in all_skills_raw.values():
@@ -587,89 +721,80 @@ For manual generation:
                     all_skills.append(skill)
                 elif isinstance(skill, str):
                     all_skills.append({'name': skill})
-        
-        # Use LLM semantic matching + keyword scoring
-        job_keywords = set(job_analysis.get('ats_keywords', []))
+
+        # Scoring helpers
+        job_keywords     = set(job_analysis.get('ats_keywords', []))
         job_requirements = (
             job_analysis.get('must_have_requirements', []) +
             job_analysis.get('nice_to_have_requirements', [])
         )
         domain = job_analysis.get('domain', '')
-        
-        # Score experiences
+        cfg    = get_config()
+        max_ach    = cfg.get('generation.max_achievements', 5)
+        max_skills = cfg.get('generation.max_skills', 20)
+
+        # ── Experiences ───────────────────────────────────────────────────────
+        # Include ALL experiences; only exclude those explicitly omitted.
         scored_experiences = []
         for exp in all_experiences:
             exp_id = exp.get('id', '')
-            
-            # LLM recommendation bonus
-            llm_score = 10.0 if exp_id in recommended_exp_ids else 0.0
-            
-            # Keyword score
-            keyword_score = calculate_relevance_score(
-                exp,
-                job_keywords,
-                job_requirements,
-                domain
-            )
-            
-            # Semantic score (mock for now if no LLM client)
+            if exp_id in omitted_exp_ids:
+                continue  # user approved Omit — skip
+
+            # Boost for recommended items
+            llm_score     = 10.0 if exp_id in recommended_exp_ids else 0.0
+            keyword_score = calculate_relevance_score(exp, job_keywords, job_requirements, domain)
             semantic_score = 0.0
             if self.llm:
-                exp_text = json.dumps(exp)
-                semantic_score = self.llm.semantic_match(exp_text, job_requirements) * 10
-            
-            # Combined score
-            total_score = llm_score + keyword_score + semantic_score
-            
-            scored_experiences.append((exp, total_score))
-        
-        # Sort and select top experiences
+                semantic_score = self.llm.semantic_match(json.dumps(exp), job_requirements) * 10
+
+            scored_experiences.append((exp, llm_score + keyword_score + semantic_score))
+
         scored_experiences.sort(key=lambda x: x[1], reverse=True)
-        selected_experiences = [exp for exp, score in scored_experiences[:4]]
-        
-        # Score achievements
+        selected_experiences = [exp for exp, _ in scored_experiences]
+
+        # ── Achievements ──────────────────────────────────────────────────────
         scored_achievements = []
         for ach in all_achievements:
             ach_id = ach.get('id', '')
-            
-            llm_score = 10.0 if ach_id in recommended_achievement_ids else 0.0
-            keyword_score = calculate_relevance_score(
-                ach,
-                job_keywords,
-                job_requirements,
-                domain
-            )
+            if ach_id in omitted_exp_ids:  # achievements share the omit set
+                continue
+
+            llm_score     = 10.0 if ach_id in recommended_achievement_ids else 0.0
+            keyword_score = calculate_relevance_score(ach, job_keywords, job_requirements, domain)
             semantic_score = 0.0
             if self.llm:
-                ach_text = json.dumps(ach)
-                semantic_score = self.llm.semantic_match(ach_text, job_requirements) * 10
-            
-            total_score = llm_score + keyword_score + semantic_score
-            scored_achievements.append((ach, total_score))
-        
+                semantic_score = self.llm.semantic_match(json.dumps(ach), job_requirements) * 10
+
+            scored_achievements.append((ach, llm_score + keyword_score + semantic_score))
+
         scored_achievements.sort(key=lambda x: x[1], reverse=True)
-        selected_achievements = [ach for ach, score in scored_achievements[:5]]
-        
-        # Select skills (prioritize LLM recommendations)
-        selected_skills = []
+        selected_achievements = [ach for ach, _ in scored_achievements[:max_ach]]
+
+        # ── Skills ────────────────────────────────────────────────────────────
+        # Include all non-omitted skills; recommended ones appear first.
+        selected_skills: List[Dict] = []
+        remaining_skills: List[tuple] = []
+
         for skill in all_skills:
             skill_name = skill.get('name', '')
+            if skill_name in omitted_skill_names:
+                continue
             if skill_name in recommended_skills:
                 selected_skills.append(skill)
-        
-        # Add additional skills by scoring if needed
-        if len(selected_skills) < 20:
-            for skill in all_skills:
-                if skill not in selected_skills:
-                    skill_score = calculate_skill_score(
-                        skill,
-                        job_keywords,
-                        job_analysis.get('required_skills', [])
-                    )
-                    if skill_score > 5:
-                        selected_skills.append(skill)
-                    if len(selected_skills) >= 20:
-                        break
+            else:
+                skill_score = calculate_skill_score(
+                    skill,
+                    job_keywords,
+                    job_analysis.get('required_skills', [])
+                )
+                remaining_skills.append((skill, skill_score))
+
+        remaining_skills.sort(key=lambda x: x[1], reverse=True)
+        for skill, _ in remaining_skills:
+            selected_skills.append(skill)
+            if len(selected_skills) >= max_skills:
+                break
         
         # Select professional summary
         summaries = self.master_data.get('professional_summaries', {})

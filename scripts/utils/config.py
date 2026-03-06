@@ -153,11 +153,6 @@ class Config:
     
     # Generation defaults
     @property
-    def max_experiences(self) -> int:
-        """Maximum experience entries."""
-        return self.get('generation.max_experiences', 4)
-    
-    @property
     def max_skills(self) -> int:
         """Maximum skills."""
         return self.get('generation.max_skills', 20)

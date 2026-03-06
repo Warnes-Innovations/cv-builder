@@ -91,7 +91,6 @@ ANTHROPIC_API_KEY=sk-ant-xxxx
 
 ```yaml
 generation:
-  max_experiences: 4
   max_skills: 20
   max_achievements: 5
   max_publications: 10

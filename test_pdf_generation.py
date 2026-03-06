@@ -49,6 +49,14 @@ def run_basic_pdf_test():
         generation_time = time.time() - start_time
         
         # Validate output
+        html_file = Path(pdf_file).with_suffix('.html')
+        if html_file.exists():
+            # validate html file structure and content
+            TestHelpers.validate_html_file(str(html_file), required_snippet='Jane Smith')
+            print(f"✓ HTML template rendered: {html_file.name}")
+        else:
+            print(f"⚠ HTML output missing: {html_file}")
+
         if TestHelpers.validate_pdf_file(pdf_file):
             file_size = Path(pdf_file).stat().st_size
             print(f"✅ Basic PDF test PASSED")
@@ -86,6 +94,13 @@ def run_content_validation_test():
             output_dir=output_dir
         )
         
+        # Check HTML output
+        html_file = Path(pdf_file).with_suffix('.html')
+        if html_file.exists():
+            print(f"✓ Rendered HTML found: {html_file.name}")
+        else:
+            print(f"⚠ No HTML output generated")
+
         # Basic validation
         TestAssertions.assert_file_generated(pdf_file, min_size=10240)  # 10KB minimum
         

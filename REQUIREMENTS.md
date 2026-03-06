@@ -73,13 +73,17 @@ The system will use a simple web UI.
 **For Each Job Application:**
 1. Extract key terms from job description (skills, tools, qualifications)
 2. Identify required vs. preferred qualifications
-3. Map job requirements to candidate's experience
-4. Naturally incorporate keywords into:
-   - Professional Summary (2-3 sentences with top qualifications)
-   - Skills section (exact matches to job posting)
-   - Work Experience bullets (action verb + keyword + result)
-5. Use exact job posting language where truthful
-6. Include variations: "project management" and "project manager"
+3. Map job requirements to candidate's experience using semantic + keyword matching
+4. Select and reorder content based on job relevance
+5. Rewrite selected text to incorporate job-specific terminology (LLM-driven; user-approved before generation):
+   - Professional Summary: rewrite to naturally embed top required keywords
+   - Skills section:
+     * Adjust terminology to match job posting phrasing (e.g., candidate has "scikit-learn" → job uses "Scikit-Learn / sklearn")
+     * Add skills from the job description that are demonstrably present in the candidate's experience but absent from the current skills list
+     * Present all additions and terminology changes for user approval before generation
+   - Work Experience bullets: substitute job-posting terms for semantically equivalent existing text (e.g., "productionizing ML pipelines" → "MLOps pipeline deployment" when job uses "MLOps")
+6. Preserve factual accuracy and quantitative metrics in all rewrites; never invent claims
+7. Use exact job posting language where truthful; include both acronym and full form: "MLOps (ML Operations)"
 
 **Keyword Placement Priority:**
 1. Skills section (for quick scanning)
@@ -108,6 +112,10 @@ The system will use a simple web UI.
 - Group by category if needed: "Technical Skills:", "Leadership Skills:", "Domain Expertise:"
 - Use one or two-word phrases that match job posting
 - Include both hard skills and relevant soft skills
+- **Keyword-driven updates (per job):**
+  * Adjust terminology of existing skills to match job posting phrasing (e.g., "machine learning" → "ML/AI" if job uses that form)
+  * Add skills from the job description that are evidenced in the candidate's experience or work history but are missing from the skills list; flag each addition for user approval
+  * Do not add skills the candidate does not demonstrably have; any uncertain addition must be flagged as "candidate to confirm"
 
 ### What to Avoid
 
@@ -125,12 +133,14 @@ The system will use a simple web UI.
 
 **For each CV request:**
 1. Analyze job description for keywords and requirements
-2. Map requirements to candidate's Master_CV_Data
+2. Map requirements to candidate's Master_CV_Data (semantic + keyword matching)
 3. Select most relevant experiences and achievements
 4. Reorder/emphasize content based on job priorities
-5. Incorporate exact keywords naturally
-6. Generate clean, parseable DOCX
-7. Validate: Can all text be selected/copied as plain text?
+5. Generate proposed text rewrites using LLM to incorporate job-specific terminology
+6. Present rewrites to user as before/after diffs for approval (see Customization Workflow)
+7. Apply approved rewrites; discard or revert rejected ones
+8. Generate clean, parseable DOCX from finalized content
+9. Validate: Can all text be selected/copied as plain text?
 
 **Success Criteria:**
 - ATS can extract all section content correctly
@@ -269,19 +279,28 @@ The system will use a simple web UI.
 **Keyword vs. Semantic Understanding:**
 - **Keyword Matching:** Identify exact phrases from job description for ATS optimization
 - **Semantic Understanding:** Recognize related concepts (e.g., "MLOps" ≈ "productionizing ML pipelines")
-- **Approach:** Use semantic matching to find relevant content, then optimize with exact keywords
-- **User Interaction:** Suggest paraphrasing options: "Job requires 'MLOps'—emphasize your Torqata productionization work?"
+- **Approach:** Use semantic matching to find relevant content, then use LLM to rewrite selected text with the job's exact terminology
+- **User Interaction:** Present proposed rewrites as diffs for approval: "Job uses 'MLOps'—proposed change: 'productionizing ML pipelines' → 'MLOps pipeline deployment'. Accept / Edit / Reject?"
+- **Rewrite Constraints:** LLM must preserve all factual content, metrics, dates, and company names; only terminology may change
 
 **Customization Workflow:**
 1. Extract and categorize job requirements (must-have vs. nice-to-have)
 2. Map to Master_CV_Data using semantic similarity + keyword matching
 3. Generate relevance scores for each experience/skill
-4. Present suggested customizations for approval:
+4. Present suggested content customizations for approval:
    - Reordered experience bullets
    - Emphasized skills sections
-   - Tailored professional summary
    - Recommended content additions/omissions
-5. Allow iterative refinement before generation
+5. Generate LLM-proposed text rewrites and present for approval as before/after diffs:
+   - Professional summary rewrite with job-targeted keywords
+   - Individual experience bullet rewrites substituting job terminology
+   - Skills list updates:
+     * Terminology adjustments: existing skill renamed to match job posting phrasing
+     * Additions: new skill entry derived from job description, with citation of the experience(s) that evidence it
+     * Each proposed addition flags whether evidence is strong (clearly demonstrated) or weak (candidate to confirm)
+   - Each rewrite shows: original text, proposed text, keywords introduced, and rationale
+6. User accepts, edits, or rejects each proposed rewrite individually
+7. Allow iterative refinement before generation
 
 ### 2. Archive & Storage Strategy
 
@@ -630,21 +649,28 @@ Which would you like to emphasize?
    - Highlight what's included/excluded
    - Allow adjustments
 
-5. **Generation:**
-   - Generate all formats (ATS DOCX, Human PDF/DOCX)
+5. **Text Rewrite Review:**
+   - LLM generates proposed rewrites for summary, experience bullets, and skills
+   - Present each proposed change as a before/after diff
+   - User accepts, edits, or rejects each rewrite
+   - No rewritten text enters generation without explicit approval
+
+6. **Generation:**
+   - Generate all formats (ATS DOCX, Human PDF/DOCX) from approved content
    - Run validation checks
    - Present output files
 
-6. **Review & Refinement:**
+7. **Review & Refinement:**
    - Open generated files in preview
    - User reviews and provides feedback
    - Iterative edits:
      * "Make professional summary more technical"
      * "Add more ML keywords to skills"
      * "Reorder experience bullets for Job X"
+     * Re-enter Text Rewrite Review step for any new proposed changes
 
-7. **Finalization:**
-   - Save to archive with metadata
+8. **Finalization:**
+   - Save to archive with metadata (including record of all accepted/rejected rewrites)
    - Commit to Git
    - Mark status (draft/ready/sent)
 
@@ -693,12 +719,14 @@ Which would you like to emphasize?
 **Quality Criteria for Generated Content:**
 1. **Keyword Optimization:**
    - 80%+ of required job keywords present
+   - Keywords appear via rewritten text using job's own terminology, not only appended sentences
    - Natural integration (no keyword stuffing detected)
    - Variations included (e.g., "ML" and "Machine Learning")
+   - All rewrites traceable to user-approved changes
 2. **Relevance Scoring:**
    - Selected experiences have 85%+ relevance to job
    - Bullets reordered to prioritize matches
-   - Professional summary targets job requirements
+   - Professional summary rewritten to target job requirements using job-specific language
 3. **Completeness:**
    - All required sections present
    - No missing data or placeholders

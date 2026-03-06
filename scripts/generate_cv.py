@@ -37,7 +37,6 @@ def load_master_data(filepath: str) -> Dict:
 def select_content(
     master_data: Dict,
     job_data: Dict,
-    max_experiences: int = 4,
     max_skills: int = 20,
     max_achievements: int = 5,
     max_publications: int = 10
@@ -48,7 +47,6 @@ def select_content(
     Args:
         master_data: Full Master_CV_Data.json
         job_data: Parsed job description
-        max_experiences: Maximum experience entries to include
         max_skills: Maximum skills to include
         max_achievements: Maximum achievements to include
         max_publications: Maximum publications to include
@@ -83,7 +81,6 @@ def select_content(
         job_keywords,
         job_requirements,
         domain,
-        top_n=max_experiences
     )
     
     selected_experiences = []
