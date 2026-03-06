@@ -31,7 +31,7 @@ The system analyzes job postings using LLM intelligence, recommends relevant exp
 - Save edits before final download
 
 #### **Priority #2: Document Generation**
-- **Human-Readable PDF**: Quarto-generated, 2-column layout, styled output
+- **Human-Readable PDF**: Jinja2 HTML template (`templates/cv-template.html`) → WeasyPrint PDF, 2-column layout, styled output
 - **ATS-Optimized DOCX**: python-docx generated, single-column, keyword-optimized
 
 #### **Core Workflow** (Already Implemented):
@@ -143,11 +143,12 @@ The system analyzes job postings using LLM intelligence, recommends relevant exp
                   │
                   ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Document Generation Layer          [NEW]        │
+│              Document Generation Layer                      │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  quarto_generator.py                                 │  │
-│  │  - Generate .qmd from cv_data.json                   │  │
-│  │  - Call quarto render → HTML + PDF                   │  │
+│  │  template_renderer.py                                │  │
+│  │  - Render cv_data via Jinja2 → cv-template.html      │  │
+│  │  - WeasyPrint (primary) / Chrome headless (fallback) │  │
+│  │    converts rendered HTML → PDF                      │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐  │
@@ -183,24 +184,23 @@ The system analyzes job postings using LLM intelligence, recommends relevant exp
 - `scoring.py` - Relevance calculations
 
 **New/Enhanced**:
-- `quarto_generator.py` - Quarto template generation
+- `template_renderer.py` - Jinja2 template loading and rendering
 - `docx_generator.py` - ATS DOCX generation
 - `cv_editor.py` - Edit API and validation
-- Enhanced `cv_orchestrator.generate_cv()` method
+- Enhanced `cv_orchestrator.generate_cv()` + `_render_cv_html_pdf()` methods
 
 #### 3.2.3 Document Templates
-**Quarto Template** (`templates/cv_template.qmd`):
-- Based on sng-dnra pattern
-- Parameterized YAML header
-- 2-column CSS Grid layout
-- Page-break management
-- Print media queries
+**Jinja2 HTML Template** (`templates/cv-template.html`):
+- Self-contained HTML with embedded CSS
+- Jinja2 variable substitution and control structures
+- 2-column layout: 32% sidebar + 68% main content
+- Page-break management (`page-break-inside: avoid`)
+- WeasyPrint-compatible `@media print` rules
 
-**CSS** (`templates/cv_styles.css`):
-- Extracted from existing HTML CV
-- `@media print` rules
-- `page-break-inside: avoid` for job entries
-- Multi-page flow support
+**CSS** (`templates/cv-style.css`):
+- Extracted from existing HTML CV (linked externally)
+- Multi-page sidebar/main flow
+- Font Awesome icons, Merriweather/Inter typography
 
 #### 3.2.4 LLM Integration
 - **Primary**: GitHub Models (gpt-4o via Copilot)
@@ -222,7 +222,7 @@ The system analyzes job postings using LLM intelligence, recommends relevant exp
 8. [NEW] User edits content → POST /api/edit
 9. POST /api/generate → Backend
 10. cv_orchestrator.select_content() → Filtered cv_data.json
-11. quarto_generator.render() → PDF
+11. template_renderer.render() → HTML via Jinja2 → WeasyPrint → PDF
 12. docx_generator.generate() → DOCX
 13. Return file paths → Frontend shows download links
 ```
@@ -264,35 +264,35 @@ The system analyzes job postings using LLM intelligence, recommends relevant exp
 
 **Acceptance**: Edits flow through to generated documents
 
-### 4.2 Phase 2: Quarto PDF Generation (Priority #2a) - 1.5 days
+### 4.2 Phase 2: Jinja2 HTML PDF Generation (Priority #2a) - 1.5 days
 
 #### Day 3 Morning: Template Creation
 **Tasks**:
-- [ ] Create `templates/cv_template.qmd`
-  - YAML header with parameters
-  - 2-column layout: sidebar (30%) + main (70%)
+- [x] Create `templates/cv-template.html`
+  - Jinja2 variable substitution and control structures
+  - 2-column layout: sidebar (32%) + main (68%)
   - Sidebar: Contact, Education, Skills
   - Main: Summary, Experience, Awards
-- [ ] Create `templates/cv_styles.css`
-  - Extract from existing HTML CV
+- [x] Create `templates/cv-style.css`
+  - Extracted from existing HTML CV
   - Page-break rules
-  - Print media queries
+  - WeasyPrint-compatible print media queries
   - Multi-page sidebar/main flow
-- [ ] Test Quarto render manually with sample data
+- [x] Test render manually with sample data
 
-**Acceptance**: Quarto template renders PDF matching existing HTML CV style
+**Acceptance**: Template renders PDF matching existing HTML CV style ✅
 
 #### Day 3 Afternoon + Day 4 Morning: Python Integration
 **Tasks**:
-- [ ] Create `scripts/utils/quarto_generator.py`
-  - `generate_qmd(cv_data, output_dir)` - Creates .qmd file
-  - `render_pdf(qmd_file)` - Calls `quarto render`
-  - Error handling and logging
-- [ ] Update `cv_orchestrator.generate_cv()` to call quarto_generator
-- [ ] Handle Quarto installation check
-- [ ] Test end-to-end: Job → Customizations → Generate PDF
+- [x] Create `scripts/utils/template_renderer.py`
+  - `load_template(path)` - Loads Jinja2 template
+  - `render_template(template, cv_data)` - Renders HTML string
+- [x] Implement `cv_orchestrator._render_cv_html_pdf()`
+  - Renders HTML via Jinja2, writes `.html` output
+  - Converts to PDF via WeasyPrint (Chrome headless fallback)
+- [x] Test end-to-end: Job → Customizations → Generate PDF
 
-**Acceptance**: PDF generated via Quarto, downloadable from UI
+**Acceptance**: PDF generated via Jinja2 + WeasyPrint, downloadable from UI ✅
 
 ### 4.3 Phase 3: DOCX ATS Generation (Priority #2b) - 1 day
 
@@ -404,69 +404,68 @@ The system analyzes job postings using LLM intelligence, recommends relevant exp
 }
 ```
 
-### 5.2 Quarto Template Structure
+### 5.2 Jinja2 HTML Template Structure
 
-#### YAML Header
-```yaml
----
-title: "{{personal_info.name}}"
-subtitle: "{{job_info.title}}"
-format:
-  pdf:
-    template: cv-template.html
-    css: cv-styles.css
-    pdf-engine: chrome
-    margin-top: 0.5in
-    margin-bottom: 0.5in
-    margin-left: 0.75in
-    margin-right: 0.75in
-params:
-  personal_info:
-    name: "Gregory R. Warnes"
-    title: "Senior Bioinformatics & ML Scientist"
-    email: "greg@warnes.net"
-    ...
-  experiences: [...]
-  skills: [...]
-  ...
----
+#### Template File: `templates/cv-template.html`
+
+The template uses standard Jinja2 syntax with the `cv_data` dictionary as context:
+
+```html
+<!-- Sidebar (32% width) -->
+<div class="sidebar">
+  <section class="contact">
+    <h2>Contact</h2>
+    <p>{{ personal_info.contact.email }}</p>
+    <p>{{ personal_info.contact.phone }}</p>
+  </section>
+
+  <section class="education">
+    <h2>Education</h2>
+    {% for edu in education %}
+    <div class="edu-entry">
+      <strong>{{ edu.degree }}</strong>
+      <span>{{ edu.institution }}, {{ edu.end_year }}</span>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="skills">
+    <h2>Skills</h2>
+    {% for category, data in skills.items() %}
+    <h3>{{ data.category }}</h3>
+    {% for skill in data.skills %}
+    <span class="skill-tag">{{ skill.name }}</span>
+    {% endfor %}
+    {% endfor %}
+  </section>
+</div>
+
+<!-- Main Content (68% width) -->
+<div class="main-content">
+  <h2>Professional Summary</h2>
+  <p>{{ professional_summary }}</p>
+
+  <h2>Experience</h2>
+  {% for exp in experiences %}
+  <div class="job-entry">
+    <h3>{{ exp.title }} | {{ exp.company }}</h3>
+    <span>{{ exp.start_date }} – {{ exp.end_date }}</span>
+    <ul>
+    {% for ach in exp.achievements %}
+      <li>{{ ach.text }}</li>
+    {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</div>
 ```
 
-#### Document Structure
-```markdown
-<!-- Sidebar (30% width) -->
-::: {.sidebar}
-## Contact
-{{personal_info.email}}
-{{personal_info.phone}}
+#### PDF Conversion: WeasyPrint (primary) / Chrome headless (fallback)
 
-## Education
-{{#each education}}
-### {{degree}}
-{{institution}}, {{year}}
-{{/each}}
-
-## Skills
-{{#each skills}}
-- {{name}}
-{{/each}}
-:::
-
-<!-- Main Content (70% width) -->
-::: {.main-content}
-## Professional Summary
-{{summary}}
-
-## Experience
-{{#each experiences}}
-### {{title}} | {{company}}
-*{{start_date}} - {{end_date}}*
-
-{{#each achievements}}
-- {{this}}
-{{/each}}
-{{/each}}
-:::
+```python
+# In cv_orchestrator._convert_html_to_pdf()
+import weasyprint
+weasyprint.HTML(filename=str(html_file)).write_pdf(str(pdf_output))
 ```
 
 ### 5.3 ATS DOCX Structure
@@ -578,10 +577,10 @@ doc.save(output_path)
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Quarto template complexity underestimated | Medium | High | Allocate buffer time (0.5 days), start simple then enhance |
+| HTML template layout issues (page breaks, overflow) | Medium | High | Test on multiple examples early, iterate on CSS |
 | Editor UI takes longer than 2 days | Medium | Medium | Build minimal editor first (text fields only), enhance if time |
 | Testing reveals major bugs | Medium | High | Test continuously, don't wait until Day 5 |
-| Quarto installation issues on user machine | Low | Medium | Document dependencies clearly, test on clean env |
+| WeasyPrint rendering differences vs. browser | Low | Medium | Validate PDF output against browser render early |
 
 ### 7.3 Scope Risks
 
@@ -604,11 +603,13 @@ doc.save(output_path)
 - DataTables, jQuery (CDN)
 
 **Need to Install**:
-- **Quarto**: Download from https://quarto.org/docs/get-started/
-  - Version: 1.4+ recommended
-  - Includes built-in Chromium for PDF generation
+- **WeasyPrint**: `pip install weasyprint>=60.0`
+  - Primary HTML → PDF converter
+  - Requires system libraries: `pango`, `cairo`, `gdk-pixbuf` (macOS: `brew install pango`)
 - **python-docx**: `pip install python-docx`
   - Version: 0.8.11+
+- **Jinja2**: `pip install jinja2`
+  - Usually installed as a Flask dependency
 
 **Optional** (for development):
 - **Black** (code formatting): `pip install black`
@@ -636,13 +637,12 @@ doc.save(output_path)
 ├── scripts/
 │   ├── web_app.py
 │   └── utils/
-│       ├── quarto_generator.py    [NEW]
-│       ├── docx_generator.py      [NEW]
-│       └── cv_editor.py           [NEW]
-├── templates/                     [NEW]
-│   ├── cv_template.qmd
-│   ├── cv_styles.css
-│   └── cv-template.html
+│       ├── template_renderer.py   [implemented]
+│       ├── docx_generator.py      [implemented]
+│       └── cv_editor.py           [implemented]
+├── templates/                     [implemented]
+│   ├── cv-template.html
+│   └── cv-style.css
 └── web/
     └── index.html (enhanced)
 ```
@@ -653,7 +653,7 @@ doc.save(output_path)
 
 ### Priority #3: Cover Letter Generation
 - Same workflow as CV generation
-- Separate Quarto template  
+- Separate Jinja2 HTML template
 - Integrate with CV context
 - **Estimated**: 2-3 days
 
@@ -682,18 +682,18 @@ doc.save(output_path)
 
 ## 10. Conclusion
 
-This specification defines a **focused 1-week MVP** that delivers core value: generating customized, professional CVs quickly. By leveraging existing code (LLM analysis, review interface) and the user's Quarto expertise, the implementation is achievable within the timeline.
+This specification defines a **focused 1-week MVP** that delivers core value: generating customized, professional CVs quickly. By leveraging existing code (LLM analysis, review interface) and the Jinja2 HTML template + WeasyPrint pipeline, the implementation is achievable within the timeline.
 
 **Key Success Factors**:
 1. ✅ Clear scope (CV editing + document generation only)
 2. ✅ Realistic timeline (6 days implementation + buffer)
-3. ✅ Leveraging existing patterns (Quarto from sng-dnra)
+3. ✅ Leveraging Jinja2 HTML template + WeasyPrint (no external tool dependency)
 4. ✅ Deferred complexity (Phase 2 features documented)
 5. ✅ Focus on must-have criteria (launch blockers clearly defined)
 
 **Next Steps**:
 1. Review and approve this specification
-2. Set up development environment (install Quarto)
+2. Ensure WeasyPrint and system library dependencies are installed
 3. Begin implementation (Day 1: CV Editor UI)
 4. Daily progress check-ins
 5. Launch on Day 7 (Feb 18, 2026)
@@ -701,6 +701,6 @@ This specification defines a **focused 1-week MVP** that delivers core value: ge
 ---
 
 **Document Version**: 1.0  
-**Last Updated**: February 11, 2026  
-**Status**: Awaiting Approval  
+**Last Updated**: March 6, 2026 (updated to reflect Jinja2 HTML template + WeasyPrint PDF pipeline)  
+**Status**: Implemented  
 **Author**: AI Project Manager (GitHub Copilot)

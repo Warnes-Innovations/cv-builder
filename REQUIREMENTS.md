@@ -590,7 +590,9 @@ Which would you like to emphasize?
 
 **Python Libraries:**
 - **Document Generation:**
-  - `weasyprint` or `pdfkit`: HTML → PDF conversion
+  - `jinja2`: Render `templates/cv-template.html` with `cv_data` context
+  - `weasyprint` (primary): Rendered HTML → PDF conversion
+  - `google-chrome --headless` (fallback): Used when WeasyPrint unavailable
   - `python-docx`: DOCX generation (basic)
   - `mammoth` or `pypandoc`: HTML → DOCX with styling
 - **Google Drive API:**
