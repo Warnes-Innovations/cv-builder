@@ -188,27 +188,27 @@ Use the hierarchical number (e.g. `1.2.3`) when reporting progress.
 
 ### 5.1 Phase-gating update
 
-- [ ] 5.1.1 Add `'rewrite_review'` to the phase checks on lines ~844 and ~857 so the UI
+- [x] 5.1.1 Add `'rewrite_review'` to the phase checks on lines ~844 and ~857 so the UI
       recognises the new phase correctly (alongside `'customization'` and `'generation'`)
 
 ### 5.2 Rewrite review panel
 
-- [ ] 5.2.1 After the customization recommendations table is confirmed, fetch `GET /api/rewrites`
-- [ ] 5.2.2 If `rewrites` is empty, skip silently to generation step
-- [ ] 5.2.3 Render one card per proposal showing:
+- [x] 5.2.1 After the customization recommendations table is confirmed, fetch `GET /api/rewrites`
+- [x] 5.2.2 If `rewrites` is empty, skip silently to generation step
+- [x] 5.2.3 Render one card per proposal showing:
       - Before text (greyed / strikethrough style)
       - After text (highlighted)
       - Keywords introduced (pill badges)
       - Collapsible rationale + evidence line
       - Three action buttons: **Accept** / **Edit** / **Reject**
-- [ ] 5.2.4 For `skill_add` with `evidence_strength == "weak"`, show a "⚠ Candidate to confirm"
+- [x] 5.2.4 For `skill_add` with `evidence_strength == "weak"`, show a "⚠ Candidate to confirm"
       badge prominently on the card
-- [ ] 5.2.5 **Edit** action replaces the "After" text with an inline `<textarea>` pre-filled with
+- [x] 5.2.5 **Edit** action replaces the "After" text with an inline `<textarea>` pre-filled with
       `proposed`; saving updates the local decision to `{outcome: "edit", final_text: <edited>}`
-- [ ] 5.2.6 Tally accepted / rejected counts in a sticky summary bar at the top of the panel
-- [ ] 5.2.7 **Submit All Decisions** button posts to `POST /api/rewrites/approve` and transitions to
+- [x] 5.2.6 Tally accepted / rejected counts in a sticky summary bar at the top of the panel
+- [x] 5.2.7 **Submit All Decisions** button posts to `POST /api/rewrites/approve` and transitions to
       the generation step
-- [ ] 5.2.8 Disable Submit until every card has been actioned (no unreviewed cards remaining)
+- [x] 5.2.8 Disable Submit until every card has been actioned (no unreviewed cards remaining)
 
 ---
 
