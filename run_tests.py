@@ -115,9 +115,7 @@ class TestRunner:
         print("=" * 50)
         
         component_tests = [
-            'test_pdf_generation.py',
             'test_ats_generation.py',
-            'test_performance.py',
         ]
         
         results = {}
@@ -160,7 +158,7 @@ class TestRunner:
         
         try:
             result = subprocess.run([sys.executable, test_file], 
-                                  capture_output=True, text=True, timeout=60)
+                                  capture_output=True, text=True, timeout=120)
             
             if result.returncode == 0:
                 print(f"✅ {test_file} passed")

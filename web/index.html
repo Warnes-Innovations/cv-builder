@@ -469,7 +469,41 @@
     .submit-btn:hover { background: #2563eb; }
     .back-btn { background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 12px 32px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; }
     .back-btn:hover { background: #f1f5f9; }
-    
+
+    /* ---- Rewrite Review Panel ---- */
+    .rewrite-tally-bar { position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 2px solid #e2e8f0; padding: 12px 20px; display: flex; align-items: center; gap: 20px; font-size: 14px; font-weight: 500; margin: 0 -20px 20px; }
+    .rewrite-tally-bar .tally-accepted { color: #059669; }
+    .rewrite-tally-bar .tally-rejected { color: #dc2626; }
+    .rewrite-tally-bar .tally-pending   { color: #9ca3af; }
+    .rewrite-tally-bar .submit-rewrites-btn { margin-left: auto; background: #3b82f6; color: #fff; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }
+    .rewrite-tally-bar .submit-rewrites-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .rewrite-card { border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 16px; background: #f8fafc; overflow: hidden; transition: box-shadow 0.2s; }
+    .rewrite-card.accepted { border-color: #10b981; background: #f0fdf4; }
+    .rewrite-card.rejected { border-color: #f87171; background: #fef2f2; opacity: 0.7; }
+    .rewrite-card-header { padding: 12px 16px; display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+    .rewrite-card-type  { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; background: #e2e8f0; padding: 2px 8px; border-radius: 12px; }
+    .rewrite-card-title { font-weight: 600; font-size: 0.95em; color: #1e293b; }
+    .weak-badge { background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
+    .rewrite-card-body  { padding: 0 16px 14px; }
+    .rewrite-text-row   { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px; }
+    .rewrite-before { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 12px; font-size: 0.9em; color: #9ca3af; text-decoration: line-through; }
+    .rewrite-after  { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 12px; font-size: 0.9em; color: #166534; }
+    .rewrite-after textarea { width: 100%; box-sizing: border-box; border: none; background: transparent; font-size: inherit; color: inherit; resize: vertical; min-height: 60px; outline: 1px solid #10b981; border-radius: 4px; padding: 4px; }
+    .rewrite-keywords { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .rewrite-keyword  { background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 12px; }
+    details.rewrite-rationale { font-size: 0.85em; color: #6b7280; margin-bottom: 10px; }
+    details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight: 500; }
+    .rewrite-actions { display: flex; gap: 8px; align-items: center; }
+    .rw-btn        { padding: 5px 14px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.15s; }
+    .rw-btn.accept { color: #059669; border-color: #10b981; }
+    .rw-btn.accept:hover, .rw-btn.accept.active  { background: #10b981; color: #fff; border-color: #059669; }
+    .rw-btn.edit   { color: #2563eb; border-color: #93c5fd; }
+    .rw-btn.edit:hover,   .rw-btn.edit.active    { background: #3b82f6; color: #fff; border-color: #2563eb; }
+    .rw-btn.reject { color: #dc2626; border-color: #fca5a5; }
+    .rw-btn.reject:hover, .rw-btn.reject.active  { background: #ef4444; color: #fff; border-color: #dc2626; }
+    .rw-save-edit-btn { padding: 4px 10px; border-radius: 4px; border: none; background: #2563eb; color: #fff; cursor: pointer; font-size: 12px; font-weight: 600; }
+    /* ---- End Rewrite Review Panel ---- */
+
     /* Download Section Styles */
     .download-section {
       margin: 24px 0;
@@ -841,7 +875,7 @@
           const statusData = await statusRes.json();
           
           // If we have job analysis data, try to restore it
-          if (statusData.phase === 'customization' || statusData.phase === 'generation' || statusData.phase === 'refinement') {
+          if (statusData.phase === 'customization' || statusData.phase === 'rewrite_review' || statusData.phase === 'generation' || statusData.phase === 'refinement') {
             // Backend has analysis data - try to get it
             const analysisData = statusData.job_analysis;
             if (analysisData) {
@@ -854,7 +888,7 @@
           }
           
           // If we have customization data, try to restore it
-          if (statusData.phase === 'generation' || statusData.phase === 'refinement') {
+          if (statusData.phase === 'rewrite_review' || statusData.phase === 'generation' || statusData.phase === 'refinement') {
             const customizationData = statusData.customizations;
             if (customizationData) {
               tabData.customizations = customizationData;
@@ -1164,7 +1198,7 @@
           // Decisions were already submitted via submitExperienceDecisions/submitSkillDecisions
           // Backend has them in conversation.state['experience_decisions'] and ['skill_decisions']
         }
-        await sendAction('generate_cv');
+        await fetchAndReviewRewrites();
       });
       document.getElementById('reset-btn').addEventListener('click', resetSession);
     }
@@ -3517,6 +3551,216 @@
       
       content.innerHTML = html;
     }
+
+    // ==== Rewrite Review Functions ====
+
+    let rewriteDecisions = {};  // { id: { outcome: 'accept'|'reject'|'edit', final_text: null|string } }
+
+    async function fetchAndReviewRewrites() {
+      const loadingMsg = appendLoadingMessage('Checking for text improvements...');
+      setLoading(true);
+      try {
+        const res = await fetch('/api/rewrites');
+        const data = await res.json();
+        removeLoadingMessage(loadingMsg);
+        setLoading(false);
+        if (!res.ok) {
+          appendMessage('system', 'Error checking rewrites: ' + (data.error || 'Unknown error'));
+          return;
+        }
+        const rewrites = data.rewrites || [];
+        if (rewrites.length === 0 || data.phase === 'generation') {
+          // No rewrites — go straight to generation
+          await sendAction('generate_cv');
+          return;
+        }
+        // Show rewrite review panel
+        rewriteDecisions = {};
+        renderRewritePanel(rewrites);
+        switchTab('customizations');
+        const n = rewrites.length;
+        appendMessage('assistant', `✏️ I found **${n}** text improvement${n > 1 ? 's' : ''} to review. Look over each suggestion in the **Customizations** tab, then accept, edit, or reject each one before generating your CV.`);
+      } catch (err) {
+        removeLoadingMessage(loadingMsg);
+        setLoading(false);
+        appendMessage('system', 'Error: ' + err.message);
+      }
+    }
+
+    function renderRewritePanel(rewrites) {
+      const content = document.getElementById('document-content');
+      content.innerHTML = `
+        <div id="rewrite-panel">
+          <h1>✏️ Review Text Improvements</h1>
+          <p style="color:#6b7280;margin-bottom:20px;">
+            Review each suggested text improvement. Accept, edit, or reject all suggestions before proceeding to CV generation.
+          </p>
+          <div class="rewrite-tally-bar" id="rewrite-tally">
+            <span class="tally-accepted">✓ Accepted: <strong id="tally-accepted">0</strong></span>
+            <span class="tally-rejected">✗ Rejected: <strong id="tally-rejected">0</strong></span>
+            <span class="tally-pending">⏳ Pending: <strong id="tally-pending">${rewrites.length}</strong></span>
+            <button class="submit-rewrites-btn" id="submit-rewrites-btn" disabled
+                    onclick="submitRewriteDecisions()">Submit All Decisions</button>
+          </div>
+          <div id="rewrite-cards">
+            ${rewrites.map(r => renderRewriteCard(r)).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRewriteCard(r) {
+      const isWeakSkillAdd = r.type === 'skill_add' && r.evidence_strength === 'weak';
+      const weakBadge     = isWeakSkillAdd
+        ? `<span class="weak-badge">⚠ Candidate to confirm</span>`
+        : '';
+      const keywordPills  = (r.keywords_introduced || [])
+        .map(k => `<span class="rewrite-keyword">${escapeHtml(k)}</span>`)
+        .join('');
+      const typeLabel = (r.type || 'rewrite').replace(/_/g, ' ');
+      const cardId    = escapeHtml(r.id);
+
+      return `
+        <div class="rewrite-card" id="rw-card-${cardId}">
+          <div class="rewrite-card-header">
+            <span class="rewrite-card-type">${escapeHtml(typeLabel)}</span>
+            <span class="rewrite-card-title">${escapeHtml(r.location || r.id)}</span>
+            ${weakBadge}
+          </div>
+          <div class="rewrite-card-body">
+            <div class="rewrite-text-row">
+              <div class="rewrite-before">${escapeHtml(r.original || '')}</div>
+              <div class="rewrite-after" id="rw-after-${cardId}">
+                <span id="rw-after-text-${cardId}">${escapeHtml(r.proposed || '')}</span>
+              </div>
+            </div>
+            ${keywordPills ? `<div class="rewrite-keywords">${keywordPills}</div>` : ''}
+            ${r.rationale ? `
+            <details class="rewrite-rationale">
+              <summary>Rationale &amp; Evidence</summary>
+              <p style="margin:6px 0 0;">${escapeHtml(r.rationale)}</p>
+              ${r.evidence ? `<p style="color:#9ca3af;font-size:0.85em;margin:4px 0 0;">${escapeHtml(r.evidence)}</p>` : ''}
+            </details>` : ''}
+            <div class="rewrite-actions">
+              <button class="rw-btn accept" id="rw-accept-${cardId}" onclick="applyRewriteAction('${cardId}', 'accept')">✓ Accept</button>
+              <button class="rw-btn edit"   id="rw-edit-${cardId}"   onclick="applyRewriteAction('${cardId}', 'edit')">✎ Edit</button>
+              <button class="rw-btn reject" id="rw-reject-${cardId}" onclick="applyRewriteAction('${cardId}', 'reject')">✗ Reject</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function applyRewriteAction(id, outcome) {
+      const card    = document.getElementById(`rw-card-${id}`);
+      const afterEl = document.getElementById(`rw-after-${id}`);
+      if (!card || !afterEl) return;
+
+      // Clear any previous outcome styling
+      card.classList.remove('accepted', 'rejected');
+      ['accept', 'edit', 'reject'].forEach(a => {
+        document.getElementById(`rw-${a}-${id}`)?.classList.remove('active');
+      });
+
+      if (outcome === 'edit') {
+        // Replace the after-text span with an editable textarea pre-filled with proposed text
+        const currentText = afterEl.querySelector(`#rw-after-text-${id}`)?.textContent
+                         ?? rewriteDecisions[id]?.final_text
+                         ?? '';
+        afterEl.innerHTML = `
+          <textarea id="rw-textarea-${id}">${escapeHtml(currentText)}</textarea>
+          <button class="rw-save-edit-btn" style="margin-top:6px"
+                  onclick="saveRewriteEdit('${id}')">Save</button>
+        `;
+        document.getElementById(`rw-edit-${id}`)?.classList.add('active');
+        // Decision is recorded only when the user clicks Save
+      } else {
+        // Restore the after-text span if we previously entered edit mode
+        const textarea = afterEl.querySelector('textarea');
+        if (textarea) {
+          const txt = textarea.value;
+          afterEl.innerHTML = `<span id="rw-after-text-${id}">${escapeHtml(txt)}</span>`;
+        }
+
+        rewriteDecisions[id] = { outcome, final_text: null };
+        card.classList.add(outcome === 'accept' ? 'accepted' : 'rejected');
+        document.getElementById(`rw-${outcome}-${id}`)?.classList.add('active');
+        updateRewriteTally();
+      }
+    }
+
+    function saveRewriteEdit(id) {
+      const textarea = document.getElementById(`rw-textarea-${id}`);
+      const editedText = textarea ? textarea.value : '';
+      const afterEl    = document.getElementById(`rw-after-${id}`);
+      const card       = document.getElementById(`rw-card-${id}`);
+      if (!afterEl || !card) return;
+
+      // Replace textarea with final span
+      afterEl.innerHTML = `<span id="rw-after-text-${id}">${escapeHtml(editedText)}</span>`;
+
+      rewriteDecisions[id] = { outcome: 'edit', final_text: editedText };
+      card.classList.remove('rejected');
+      card.classList.add('accepted');
+      ['accept', 'reject'].forEach(a => document.getElementById(`rw-${a}-${id}`)?.classList.remove('active'));
+      document.getElementById(`rw-edit-${id}`)?.classList.add('active');
+      updateRewriteTally();
+    }
+
+    function updateRewriteTally() {
+      const cards = document.querySelectorAll('.rewrite-card');
+      let accepted = 0, rejected = 0, pending = 0;
+      cards.forEach(card => {
+        const id  = card.id.replace('rw-card-', '');
+        const dec = rewriteDecisions[id];
+        if      (!dec)                                           pending++;
+        else if (dec.outcome === 'accept' || dec.outcome === 'edit') accepted++;
+        else                                                     rejected++;
+      });
+
+      document.getElementById('tally-accepted').textContent = accepted;
+      document.getElementById('tally-rejected').textContent = rejected;
+      document.getElementById('tally-pending').textContent  = pending;
+
+      const submitBtn = document.getElementById('submit-rewrites-btn');
+      if (submitBtn) submitBtn.disabled = (pending > 0);
+    }
+
+    async function submitRewriteDecisions() {
+      const decisions = Object.entries(rewriteDecisions).map(([id, dec]) => ({
+        id,
+        outcome:    dec.outcome,
+        final_text: dec.final_text ?? null
+      }));
+
+      const loadingMsg = appendLoadingMessage('Submitting rewrite decisions...');
+      setLoading(true);
+      try {
+        const res = await fetch('/api/rewrites/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ decisions })
+        });
+        const data = await res.json();
+        removeLoadingMessage(loadingMsg);
+        setLoading(false);
+
+        if (!res.ok) {
+          appendMessage('system', 'Error: ' + (data.error || 'Failed to submit rewrite decisions'));
+          return;
+        }
+
+        const accepted = data.approved_count || 0;
+        const rejected = data.rejected_count || 0;
+        appendMessage('assistant', `✅ Rewrite decisions recorded: ${accepted} accepted, ${rejected} rejected. Generating your CV now...`);
+        await sendAction('generate_cv');
+      } catch (err) {
+        removeLoadingMessage(loadingMsg);
+        setLoading(false);
+        appendMessage('system', 'Error: ' + err.message);
+      }
+    }
+
+    // ==== End Rewrite Review Functions ====
 
     async function fetchWithRetry(url, options = {}, maxRetries = 3) {
       for (let i = 0; i < maxRetries; i++) {

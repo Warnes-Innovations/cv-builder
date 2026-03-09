@@ -421,7 +421,7 @@ The HTML file contains your formatted CV ready for conversion.
         company       = job_analysis.get('company', 'Company').replace(' ', '')
         role          = job_analysis.get('title', 'Role').replace(' ', '')[:20]
         timestamp     = datetime.now().strftime("%Y-%m-%d")
-        filename_base = f"CV_{company}_{role}_{timestamp}_Human"
+        filename_base = f"CV_{company}_{role}_{timestamp}"
 
         try:
             # HTML is rendered and written once; PDF is converted from that file
@@ -1463,7 +1463,7 @@ For manual generation:
         role = job_analysis.get('title', 'Role').replace(' ', '')[:20]
         timestamp = datetime.now().strftime("%Y-%m-%d")
         
-        filename = f"CV_{company}_{role}_{timestamp}_Human.docx"
+        filename = f"CV_{company}_{role}_{timestamp}.docx"
         filepath = output_dir / filename
         
         # For now, reuse ATS generation

@@ -239,6 +239,84 @@ Use the hierarchical number (e.g. `1.2.3`) when reporting progress.
 
 ---
 
+## Phase 7 — Spell & Grammar Check
+
+**Requirement source:** `REQUIREMENTS.md §6 Spell & Grammar Check`, US-A4b, US-R7  
+**Dependency:** Phase 3 must be complete (conversation state phases) and Phase 4 must be complete (`web_app.py` endpoint patterns)
+
+### 7.1 Backend: LanguageTool integration
+
+- [ ] 7.1.1 Install `language-tool-python` and verify local LanguageTool server starts correctly
+- [ ] 7.1.2 Add `check_spelling_grammar(text_fields: List[Dict], custom_words: List[str]) -> List[Dict]` to
+      `cv_orchestrator.py`. Each `text_field` is `{id, text, context_type}` where `context_type` is one of
+      `summary | bullet | skill_name | cover_letter | screening_response`.
+- [ ] 7.1.3 Suppress LanguageTool rule IDs `SENTENCE_FRAGMENT` and `MISSING_VERB` for `bullet` and
+      `skill_name` context types.
+- [ ] 7.1.4 Pre-load words from `custom_dictionary.json` as LanguageTool disabled-words before each check.
+- [ ] 7.1.5 Return results as a list of:
+      ```json
+      {
+        "id":          "<unique flag id>",
+        "context_type": "bullet",
+        "location":    "exp_001.achievements[2]",
+        "original":    "Leveraged synergetic algorithms",
+        "suggestion":  "Leveraged synergistic algorithms",
+        "rule":        "SPELLING",
+        "offset":      27,
+        "length":      10
+      }
+      ```
+
+### 7.2 Custom dictionary management
+
+- [ ] 7.2.1 On first run, create `~/CV/custom_dictionary.json` pre-populated with the candidate's name,
+      and all technical terms and company names present in `Master_CV_Data.json`.
+- [ ] 7.2.2 Add helper `add_to_custom_dictionary(word: str)` that appends to `custom_dictionary.json`
+      and invalidates the LanguageTool disabled-words cache for the current session.
+
+### 7.3 Conversation state: `spell_review` phase
+
+- [ ] 7.3.1 Add `spell_review` as a new phase in `conversation_manager.py`, entered after `rewrite_review`
+      is complete and before CV generation.
+- [ ] 7.3.2 State schema additions:
+      ```json
+      {
+        "pending_flags":   [],
+        "resolved_flags":  [],
+        "spell_audit":     []
+      }
+      ```
+- [ ] 7.3.3 Action handler: accept flag → apply correction to in-memory content; reject → mark resolved,
+      no change; edit → store user's custom text; add-to-dictionary → call `add_to_custom_dictionary`,
+      mark resolved. In all cases append a `spell_audit` record.
+
+### 7.4 API: new endpoints in `web_app.py`
+
+- [ ] 7.4.1 `GET /api/spell-check` — run the checker on current session content; return `pending_flags`.
+      Only callable when `phase == "spell_review"`.
+- [ ] 7.4.2 `POST /api/spell-check/resolve` — body `{flag_id, action, custom_text?}` where action is one of
+      `accept | reject | edit | add_to_dictionary`. Returns updated flag list.
+- [ ] 7.4.3 `GET /api/spell-check/dictionary` — return current entries in `custom_dictionary.json`.
+
+### 7.5 Web UI: spell-check review panel in `web/index.html`
+
+- [ ] 7.5.1 Add phase gate: show spell-check panel only when `phase == "spell_review"`.
+- [ ] 7.5.2 Panel displays one flag at a time (or a scrollable list), showing `original` text with the
+      flagged span highlighted, `suggestion`, and four action buttons: Accept / Reject / Edit / Add to Dictionary.
+- [ ] 7.5.3 "Edit" button opens an inline textarea pre-filled with `original`; user saves their own correction.
+- [ ] 7.5.4 "Accept All" button is enabled only after every flag has been individually viewed.
+- [ ] 7.5.5 Progress indicator: "3 of 12 flags remaining".
+
+### 7.6 Metadata audit trail
+
+- [ ] 7.6.1 After phase completes, write `spell_audit` array to `metadata.json` alongside `rewrite_audit`.
+      Each record: `{context_type, location, original, suggestion, rule, outcome, final}`.
+- [ ] 7.6.2 Verify audit is written even when there are zero flags (empty array, not absent).
+- [ ] 7.6.3 Verify session restore (`POST /api/load-session`) correctly restores `pending_flags`,
+      `resolved_flags`, and `spell_audit`.
+
+---
+
 ## Completion Checklist
 
 - [ ] All unit tests pass: `python run_tests.py --categories unit component`
@@ -247,3 +325,5 @@ Use the hierarchical number (e.g. `1.2.3`) when reporting progress.
 - [ ] No new unused imports introduced
 - [ ] `REQUIREMENTS.md` traceability: every item in §Customization Workflow step 5 has an
       implementing task above
+- [ ] `REQUIREMENTS.md §6 Spell & Grammar Check` traceability: every requirement has an
+      implementing task in Phase 7 above
