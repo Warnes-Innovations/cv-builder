@@ -3618,7 +3618,9 @@
         .map(k => `<span class="rewrite-keyword">${escapeHtml(k)}</span>`)
         .join('');
       const typeLabel = (r.type || 'rewrite').replace(/_/g, ' ');
-      const cardId    = escapeHtml(r.id);
+      // Sanitize ID: keep only alphanumeric, underscore, and hyphen so it is
+      // safe as both an HTML attribute value and a JS string literal in onclick.
+      const cardId    = String(r.id).replace(/[^a-zA-Z0-9_-]/g, '_');
 
       return `
         <div class="rewrite-card" id="rw-card-${cardId}">

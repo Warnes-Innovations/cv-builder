@@ -96,9 +96,9 @@ generation:
   max_publications: 10
   
   formats:
-    ats_docx: true       # ATS-optimized DOCX
-    human_pdf: true      # Styled PDF
-    human_docx: true     # Styled DOCX
+    ats_docx:   true   # ATS-optimized DOCX (*_ATS.docx) — plain-text, single-column
+    human_html: true   # Human-readable HTML (*.html) — Jinja2 + CSS + Schema.org JSON-LD
+    human_pdf:  true   # Human-readable PDF (*.pdf)  — rendered from HTML via WeasyPrint
 ```
 
 ### Session Management

@@ -31,8 +31,10 @@ The system analyzes job postings using LLM intelligence, recommends relevant exp
 - Save edits before final download
 
 #### **Priority #2: Document Generation**
-- **Human-Readable PDF**: Jinja2 HTML template (`templates/cv-template.html`) → WeasyPrint PDF, 2-column layout, styled output
-- **ATS-Optimized DOCX**: python-docx generated, single-column, keyword-optimized
+Three formats are generated per CV run:
+- **HTML** (`*.html`): Jinja2 renders `templates/cv-template.html` → self-contained HTML with embedded CSS (2-column layout) and a Schema.org/Person JSON-LD `<script>` block in `<head>` for structured-data ATS parsing. Directly previewable in-browser.
+- **PDF** (`*.pdf`): WeasyPrint (primary) / Chrome headless (fallback) converts the rendered HTML → PDF. Fonts embedded, background colours preserved.
+- **ATS DOCX** (`*_ATS.docx`): python-docx generated, single-column, plain-text, keyword-optimized per ATS guidelines.
 
 #### **Core Workflow** (Already Implemented):
 - Job description upload/paste
@@ -145,16 +147,23 @@ The system analyzes job postings using LLM intelligence, recommends relevant exp
 ┌─────────────────────────────────────────────────────────────┐
 │              Document Generation Layer                      │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  template_renderer.py                                │  │
-│  │  - Render cv_data via Jinja2 → cv-template.html      │  │
-│  │  - WeasyPrint (primary) / Chrome headless (fallback) │  │
-│  │    converts rendered HTML → PDF                      │  │
+│  │  cv_orchestrator._render_cv_html_pdf()               │  │
+│  │  - Render cv_data via Jinja2 → HTML (+ JSON-LD)      │  │
+  │  - Write *.html (self-contained, downloadable)      │  │
+  │  - WeasyPrint (primary) / Chrome headless (fallback) │  │
+  │    converts rendered HTML → *.pdf                   │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  docx_generator.py                                   │  │
-│  │  - Generate ATS DOCX via python-docx                 │  │
+│  │  cv_orchestrator._generate_ats_docx()                │  │
+│  │  - Generate *_ATS.docx via python-docx               │  │
+│  │  - Single-column, plain-text, keyword-optimized      │  │
 │  └──────────────────────────────────────────────────────┘  │
+│                                                              │
+│  Three output files per run:                                 │
+│    *.html       (Jinja2 + CSS + Schema.org JSON-LD)         │
+│    *.pdf        (WeasyPrint/Chrome from HTML)               │
+│    *_ATS.docx   (python-docx, ATS plain-text)               │
 └─────────────────┬───────────────────────────────────────────┘
                   │
                   ▼

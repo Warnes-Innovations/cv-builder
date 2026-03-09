@@ -180,8 +180,8 @@ CV/
 └── files/                          # Generated CVs archive
     └── {Company}_{Role}_{Date}/
         ├── CV_*_ATS.docx          # Machine-parseable
-        ├── CV_*_Human.pdf         # Styled PDF
-        ├── CV_*_Human.docx        # Styled DOCX
+        ├── CV_*.html              # Styled HTML + Schema.org JSON-LD
+        ├── CV_*.pdf               # Styled PDF
         ├── metadata.json          # Generation metadata
         └── job_description.txt    # Original posting
 ```
@@ -280,8 +280,8 @@ Output directory: files/Genentech_SeniorDataScientist_2026-01-06/
 
 Files created:
   - CV_Genentech_SeniorDataScientist_2026-01-06_ATS.docx
-  - CV_Genentech_SeniorDataScientist_2026-01-06_Human.pdf
-  - CV_Genentech_SeniorDataScientist_2026-01-06_Human.docx
+  - CV_Genentech_SeniorDataScientist_2026-01-06.html
+  - CV_Genentech_SeniorDataScientist_2026-01-06.pdf
   - metadata.json
 ```
 
