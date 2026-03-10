@@ -168,7 +168,8 @@
     /* Review tables should use full width */
     .review-section { max-width: none !important; width: 100%; }
     .review-section .document-content { max-width: none; width: 100%; box-shadow: none; padding: 20px; }
-    
+    .document-content:has(.review-section) { max-width: none !important; margin: 0; padding: 20px; box-shadow: none; min-height: unset; }
+
     .empty-state { text-align: center; color: #64748b; padding: 80px 32px; }
     .empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
     
@@ -863,7 +864,7 @@
         
       } catch (error) {
         console.warn('Session restoration failed:', error);
-        appendMessage('system', '⚠️ Could not restore previous session. Starting fresh.');
+        appendMessage('system', `⚠️ Could not restore previous session. Starting fresh. (${error.message})`);
         isReconnecting = false;
       }
     }
@@ -1003,7 +1004,7 @@
         
       } catch (error) {
         console.warn('Session restoration failed:', error);
-        appendMessage('system', '⚠️ Could not restore previous session. Starting fresh.');
+        appendMessage('system', `⚠️ Could not restore previous session. Starting fresh. (${error.message})`);
         isReconnecting = false;
       }
     }
@@ -1658,15 +1659,18 @@
         } else {
           tabData.job = jobText;
           saveTabData();
-          appendMessage('assistant', '✅ Job description submitted successfully! You can now analyze it.');
+          appendMessage('assistant', '✅ Job description submitted successfully.');
           await populateJobTab(); // Refresh the tab
           await fetchStatus(); // Update workflow status
+          setLoading(false);
+          await analyzeJob(); // Auto-trigger analysis
+          return;
         }
       } catch (error) {
         console.error('Error submitting job:', error);
         appendMessage('system', 'Error submitting job description: ' + error.message);
       }
-      
+
       setLoading(false);
     }
 
@@ -1726,7 +1730,7 @@
         }
       } catch (error) {
         console.error('Error fetching URL:', error);
-        appendMessage('system', 'Network error occurred. Please check your connection or try manual input.');
+        appendMessage('system', `Network error occurred: ${error.message}. Please check your connection or try manual input.`);
         showAlertModal('Network Error', 'Unable to connect to the server. Please try again or use the \"Paste Text\" option to input the job description manually.');
       }
       
@@ -1915,7 +1919,7 @@
           } catch (error) {
             console.error('Error processing message response:', error);
             console.error('Raw response:', data.response);
-            appendMessage('system', '⚠️ I encountered an issue processing that response. The conversation has been saved.');
+            appendMessage('system', `⚠️ I encountered an issue processing that response: ${error.message}. The conversation has been saved.`);
           }
         }
       } catch (error) {
@@ -1926,7 +1930,13 @@
         console.error('User input:', text);
         console.error('Full error:', error);
         console.error('===================');
-        appendMessage('system', '⚠️ Connection error. Please check the console for details. Your conversation has been saved.');
+        if (error instanceof TypeError || error.name === 'AbortError') {
+          appendMessage('system', `⚠️ Cannot reach the server — is it still running? (${error.message})`);
+        } else if (error instanceof SyntaxError) {
+          appendMessage('system', `⚠️ The server returned an unexpected response: ${error.message}`);
+        } else {
+          appendMessage('system', '⚠️ ' + error.message);
+        }
       }
       
       setLoading(false);
@@ -1956,11 +1966,10 @@
           // Switch to analysis tab to show results
           switchTab('analysis');
           populateAnalysisTab(data.result);
-          
-          // Ask follow-up questions after analysis
-          setTimeout(() => {
-            askPostAnalysisQuestions(data.result);
-          }, 1500);
+
+          // Await post-analysis questions while still loading to prevent
+          // user input race conditions during the LLM question-generation call.
+          await askPostAnalysisQuestions(data.result);
         }
       } catch (error) {
         console.error('=== ANALYZE JOB ERROR ===');
@@ -1972,7 +1981,7 @@
         removeLoadingMessage(loadingMsg);
         appendMessage('system', 'Error: ' + error.message);
       }
-      
+
       setLoading(false);
       await fetchStatus();
     }
@@ -2286,30 +2295,49 @@
         const data = typeof cleanResult === 'string' ? JSON.parse(cleanResult) : cleanResult;
         
         let html = '<h1>📋 Job Analysis Results</h1>';
-        
+
         if (data.title) html += `<h2>${data.title}</h2>`;
         if (data.company) html += `<h3>${data.company}</h3>`;
         if (data.domain) html += `<p><strong>Domain:</strong> ${data.domain}</p>`;
         if (data.role_level) html += `<p><strong>Level:</strong> ${data.role_level}</p>`;
-        
+
         if (data.required_skills && data.required_skills.length > 0) {
           html += '<h2>🎯 Required Skills</h2><ul>';
           data.required_skills.forEach(skill => html += `<li>${skill}</li>`);
           html += '</ul>';
         }
-        
+
         if (data.must_have_requirements && data.must_have_requirements.length > 0) {
           html += '<h2>✅ Must-Have Requirements</h2><ul>';
           data.must_have_requirements.forEach(req => html += `<li>${req}</li>`);
           html += '</ul>';
         }
-        
+
         if (data.preferred_skills && data.preferred_skills.length > 0) {
           html += '<h2>⭐ Preferred Skills</h2><ul>';
           data.preferred_skills.forEach(skill => html += `<li>${skill}</li>`);
           html += '</ul>';
         }
-        
+
+        if (data.nice_to_have_requirements && data.nice_to_have_requirements.length > 0) {
+          html += '<h2>✨ Nice to Have</h2><ul>';
+          data.nice_to_have_requirements.forEach(req => html += `<li>${req}</li>`);
+          html += '</ul>';
+        }
+
+        if (data.ats_keywords && data.ats_keywords.length > 0) {
+          html += '<h2>🔑 ATS Keywords</h2>';
+          html += '<p style="line-height: 2.2;">';
+          data.ats_keywords.forEach(kw => html += `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:3px 10px;margin:3px;font-size:0.9em;font-weight:500;">${kw}</span>`);
+          html += '</p>';
+        }
+
+        if (data.culture_indicators && data.culture_indicators.length > 0) {
+          html += '<h2>🏢 Culture Indicators</h2><ul>';
+          data.culture_indicators.forEach(c => html += `<li>${c}</li>`);
+          html += '</ul>';
+        }
+
         content.innerHTML = html;
       } catch (e) {
         console.error('Analysis parsing error:', e, 'Original result:', result);
@@ -3127,7 +3155,7 @@
       
       // Initialize DataTable
       $('#experience-review-table').DataTable({
-        pageLength: 10,
+        paging: false,
         order: [[1, 'desc']], // Sort by dates column (most recent first)
         language: {
           search: "Filter experiences:"
@@ -3156,7 +3184,17 @@
         container.innerHTML = '<p style="padding: 20px; text-align: center; color: #6b7280;">No skills found in master CV data.</p>';
         return;
       }
-      
+
+      // Sort skills: Emphasize > Include > De-emphasize > Omit
+      const recommendationOrder = { 'Emphasize': 0, 'Include': 1, 'De-emphasize': 2, 'Omit': 3 };
+      allSkills = allSkills.slice().sort((a, b) => {
+        const aName = typeof a === 'string' ? a : a.name || a;
+        const bName = typeof b === 'string' ? b : b.name || b;
+        const aOrder = recommendationOrder[getSkillRecommendation(aName, data)] ?? 3;
+        const bOrder = recommendationOrder[getSkillRecommendation(bName, data)] ?? 3;
+        return aOrder - bOrder;
+      });
+
       const recommendedSet = new Set(data.recommended_skills || []);
       
       let tableHTML = `
@@ -3228,7 +3266,7 @@
       
       // Initialize DataTable
       $('#skills-review-table').DataTable({
-        pageLength: 10,
+        paging: false,
         language: {
           search: "Filter skills:"
         }
@@ -3952,9 +3990,27 @@
           
           if (data.required_skills && data.required_skills.length > 0) {
             html += '<h4>🎯 Required Skills:</h4><ul>';
-            data.required_skills.slice(0, 5).forEach(skill => html += `<li>${skill}</li>`);
-            if (data.required_skills.length > 5) html += `<li>...and ${data.required_skills.length - 5} more</li>`;
+            data.required_skills.forEach(skill => html += `<li>${skill}</li>`);
             html += '</ul>';
+          }
+
+          if (data.preferred_skills && data.preferred_skills.length > 0) {
+            html += '<h4>⭐ Preferred Skills:</h4><ul>';
+            data.preferred_skills.forEach(skill => html += `<li>${skill}</li>`);
+            html += '</ul>';
+          }
+
+          if (data.nice_to_have_requirements && data.nice_to_have_requirements.length > 0) {
+            html += '<h4>✨ Nice to Have:</h4><ul>';
+            data.nice_to_have_requirements.forEach(req => html += `<li>${req}</li>`);
+            html += '</ul>';
+          }
+
+          if (data.ats_keywords && data.ats_keywords.length > 0) {
+            html += '<h4>🔑 ATS Keywords:</h4>';
+            html += '<p style="line-height: 2;">';
+            data.ats_keywords.forEach(kw => html += `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 8px;margin:2px;font-size:0.85em;">${kw}</span>`);
+            html += '</p>';
           }
           
           content.innerHTML = html;
