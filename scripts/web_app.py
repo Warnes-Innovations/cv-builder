@@ -63,7 +63,8 @@ def create_app(args) -> Flask:
     _auth_poll: dict = {"polling": False, "error": None, "device_code": None, "interval": 5}
 
     # Initialize dependencies
-    _provider_name: str = args.llm_provider
+    _provider_name: str  = args.llm_provider
+    _current_model: Optional[str] = args.model  # short form; updated by set_model()
     llm_client = get_llm_provider(provider=_provider_name, model=args.model, auth_manager=auth_manager)
     orchestrator = CVOrchestrator(
         master_data_path=args.master_data,
@@ -446,8 +447,8 @@ Job Description (excerpt):
 
     @app.get("/api/model")
     def get_model():
-        """Return current model, available models, and metadata for this provider."""
-        current   = llm_client.model if hasattr(llm_client, "model") else None
+        """Return current model, all provider models, and pricing metadata."""
+        current   = _current_model or (llm_client.model if hasattr(llm_client, "model") else None)
         available = PROVIDER_MODELS.get(_provider_name, [])
         billing   = PROVIDER_BILLING.get(_provider_name, {"type": "per_token", "note": ""})
         live      = get_cached_pricing()
@@ -457,17 +458,34 @@ Job Description (excerpt):
                 "context_window":     MODEL_INFO.get(m, {}).get("context_window"),
                 "cost_input":         (live.get(m) or MODEL_INFO.get(m, {})).get("cost_input"),
                 "cost_output":        (live.get(m) or MODEL_INFO.get(m, {})).get("cost_output"),
-                "copilot_multiplier": (live.get(m) or MODEL_INFO.get(m, {})).get("copilot_multiplier"),
+                "copilot_multiplier": MODEL_INFO.get(m, {}).get("copilot_multiplier"),
                 "notes":              MODEL_INFO.get(m, {}).get("notes", ""),
             }
             for m in available
         ]
+        # Cross-provider model list for the model-selection UI
+        all_models = []
+        for prov, prov_models in PROVIDER_MODELS.items():
+            prov_billing_type = PROVIDER_BILLING.get(prov, {}).get("type", "per_token")
+            for m in prov_models:
+                pricing = live.get(m) or MODEL_INFO.get(m, {})
+                all_models.append({
+                    "provider":           prov,
+                    "model":              m,
+                    "billing_type":       prov_billing_type,
+                    "context_window":     MODEL_INFO.get(m, {}).get("context_window"),
+                    "cost_input":         pricing.get("cost_input"),
+                    "cost_output":        pricing.get("cost_output"),
+                    "copilot_multiplier": MODEL_INFO.get(m, {}).get("copilot_multiplier"),
+                    "notes":              MODEL_INFO.get(m, {}).get("notes", ""),
+                })
         return jsonify({
-            "provider":          _provider_name,
-            "billing_type":      billing["type"],
-            "billing_note":      billing["note"],
-            "model":             current,
-            "available":         models_with_info,
+            "provider":           _provider_name,
+            "billing_type":       billing["type"],
+            "billing_note":       billing["note"],
+            "model":              current,
+            "available":          models_with_info,
+            "all_models":         all_models,
             "pricing_updated_at": get_pricing_updated_at(),
             "pricing_source":     get_pricing_source(),
         })
@@ -485,20 +503,23 @@ Job Description (excerpt):
 
     @app.post("/api/model")
     def set_model():
-        """Switch the active model (provider stays the same)."""
-        nonlocal llm_client
-        data = request.get_json(silent=True) or {}
-        model = data.get("model", "").strip()
+        """Switch the active model and optionally the provider."""
+        nonlocal llm_client, _provider_name, _current_model
+        data     = request.get_json(silent=True) or {}
+        model    = data.get("model", "").strip()
+        provider = (data.get("provider") or _provider_name).strip()
         if not model:
             return jsonify({"error": "Missing model"}), 400
-        available = PROVIDER_MODELS.get(_provider_name, [])
+        available = PROVIDER_MODELS.get(provider, [])
         if available and model not in available:
-            return jsonify({"error": f"Unknown model '{model}' for provider '{_provider_name}'"}), 400
+            return jsonify({"error": f"Unknown model '{model}' for provider '{provider}'"}), 400
         try:
-            llm_client = get_llm_provider(provider=_provider_name, model=model, auth_manager=auth_manager)
+            llm_client     = get_llm_provider(provider=provider, model=model, auth_manager=auth_manager)
+            _provider_name = provider
+            _current_model = model
             orchestrator.llm = llm_client
             conversation.llm = llm_client
-            return jsonify({"ok": True, "model": model})
+            return jsonify({"ok": True, "provider": provider, "model": model})
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 

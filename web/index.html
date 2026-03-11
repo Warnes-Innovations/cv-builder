@@ -166,7 +166,7 @@
 
   <!-- Model Selection Modal -->
   <div class="modal-overlay" id="model-modal-overlay" style="display: none;" onclick="if(event.target===this)closeModelModal()">
-    <div class="modal" style="max-width: 820px; width: 95%;">
+    <div class="modal" style="max-width: 1020px; width: 95%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2 style="margin:0;">Select Model</h2>
         <button onclick="closeModelModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
@@ -175,10 +175,12 @@
         <table id="model-table" style="width:100%; border-collapse: collapse; font-size: 0.9em;">
           <thead id="model-table-head">
             <tr style="background: #f1f5f9; text-align: left;">
+              <th style="padding: 10px 14px; white-space: nowrap;">Provider</th>
               <th style="padding: 10px 14px;">Model</th>
-              <th style="padding: 10px 14px; white-space: nowrap;">Context Window</th>
+              <th style="padding: 10px 14px; white-space: nowrap;">Context</th>
               <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M in</th>
               <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M out</th>
+              <th style="padding: 10px 14px; white-space: nowrap; text-align: right;" title="GitHub Copilot premium-request multiplier (0 = free for paid subscribers)">Copilot &times;</th>
               <th style="padding: 10px 14px;">Notes</th>
             </tr>
           </thead>

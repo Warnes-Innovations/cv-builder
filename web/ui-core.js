@@ -442,7 +442,11 @@ async function loadModelSelector() {
   try {
     _modelData = await apiCall('GET', '/api/model');
     const label = document.getElementById('model-current-label');
-    if (label) label.textContent = _modelData.model || '—';
+    if (label) {
+      const prov  = _modelData.provider;
+      const model = _modelData.model || '—';
+      label.textContent = prov ? `${prov} · ${model}` : model;
+    }
   } catch (e) {
     console.warn('Could not load model list:', e);
   }
@@ -465,96 +469,65 @@ function _buildModelTable() {
   const thead = document.getElementById('model-table-head');
   if (!tbody || !_modelData) return;
 
-  const current     = _modelData.model;
-  const billingType = _modelData.billing_type || 'per_token';
-  const billingNote = _modelData.billing_note || '';
-  const isPerToken  = (billingType === 'per_token');
-  const isPremReq   = (billingType === 'premium_request');
+  const currentProvider = _modelData.provider;
+  const currentModel    = _modelData.model;
 
-  // Update header cost columns to match billing type
+  // Fixed 7-column headers — no dynamic rebuilding needed
   if (thead) {
-    const headRow = thead.querySelector('tr');
-    const ths     = Array.from(headRow.querySelectorAll('th'));
-    // Rebuild from scratch: always keep Model (0), Context (1), Notes (last)
-    // Remove all cost columns (indices 2..n-1)
-    for (let i = ths.length - 2; i >= 2; i--) {
-      ths[i].remove();
-    }
-    const notesTh = headRow.querySelector('th:last-child');
-    const thStyle = 'padding:10px 14px; white-space:nowrap;';
-    if (isPerToken) {
-      const thIn  = document.createElement('th');
-      thIn.style.cssText  = thStyle + ' text-align:right;';
-      thIn.textContent    = '$/1M in';
-      const thOut = document.createElement('th');
-      thOut.style.cssText = thStyle + ' text-align:right;';
-      thOut.textContent   = '$/1M out';
-      headRow.insertBefore(thIn,  notesTh);
-      headRow.insertBefore(thOut, notesTh);
-    } else if (isPremReq) {
-      const thMult = document.createElement('th');
-      thMult.style.cssText = thStyle + ' text-align:right;';
-      thMult.title         = 'GitHub Copilot premium-request multiplier per call. 0 = free for paid subscribers.';
-      thMult.textContent   = 'Copilot ×';
-      headRow.insertBefore(thMult, notesTh);
-    } else {
-      // subscription / free: show one spanning column
-      const thCost = document.createElement('th');
-      thCost.setAttribute('colspan', '2');
-      thCost.style.cssText = thStyle;
-      thCost.textContent   = 'Cost';
-      headRow.insertBefore(thCost, notesTh);
-    }
+    const thS = 'padding:10px 14px; white-space:nowrap;';
+    thead.querySelector('tr').innerHTML =
+      `<th style="${thS}">Provider</th>` +
+      `<th style="${thS}">Model</th>` +
+      `<th style="${thS} text-align:right;">Context</th>` +
+      `<th style="${thS} text-align:right;" title="USD per 1M input tokens (direct API billing)">$/1M in</th>` +
+      `<th style="${thS} text-align:right;" title="USD per 1M output tokens (direct API billing)">$/1M out</th>` +
+      `<th style="${thS} text-align:right;" title="GitHub Copilot premium-request multiplier (0 = free for paid subscribers)">Copilot &times;</th>` +
+      `<th style="${thS}">Notes</th>`;
   }
 
-  const rows = (_modelData.available && _modelData.available.length)
-    ? _modelData.available
-    : (current ? [{ model: current, context_window: null, notes: '' }] : []);
+  // Prefer cross-provider list; fall back to current-provider available list
+  const rows = (_modelData.all_models && _modelData.all_models.length)
+    ? _modelData.all_models.filter(r => r.model)
+    : (_modelData.available || []).map(r =>
+        typeof r === 'object'
+          ? { ...r, provider: currentProvider }
+          : { model: r, provider: currentProvider }
+      );
+
   tbody.innerHTML = '';
-  const tdBase = 'padding:9px 14px; border-bottom:1px solid #e2e8f0;';
+  const tdBase  = 'padding:9px 14px; border-bottom:1px solid #e2e8f0;';
   const fmtCost = v => (v != null) ? '$' + Number(v).toFixed(v < 1 ? 3 : 2) : '—';
   const fmtMult = v => {
     if (v == null) return '—';
     if (v === 0)   return '<span style="color:#16a34a; font-weight:600;">free</span>';
-    return Number(v).toFixed(v % 1 === 0 ? 0 : 2) + '×';
+    return Number(v).toFixed(v % 1 === 0 ? 0 : 2) + '&times;';
   };
+
   rows.forEach(item => {
-    const m      = (typeof item === 'object') ? item.model         : item;
-    const ctx    = (typeof item === 'object' && item.context_window)
-      ? Number(item.context_window).toLocaleString() : '—';
-    const notes  = (typeof item === 'object') ? (item.notes || '') : '';
-    const tr     = document.createElement('tr');
-    const isSelected = (m === current);
+    const provider   = item.provider || currentProvider;
+    const m          = item.model;
+    const ctx        = item.context_window ? Number(item.context_window).toLocaleString() : '—';
+    const notes      = item.notes || '';
+    const isSelected = (provider === currentProvider && m === currentModel);
+
+    const tr = document.createElement('tr');
     tr.style.cssText = isSelected
       ? 'background:#eff6ff; font-weight:600; cursor:pointer;'
       : 'cursor:pointer;';
     tr.addEventListener('mouseover', () => { if (!isSelected) tr.style.background = '#f8fafc'; });
     tr.addEventListener('mouseout',  () => { if (!isSelected) tr.style.background = ''; });
 
-    let costCells;
-    if (isPerToken) {
-      const costIn  = (typeof item === 'object') ? fmtCost(item.cost_input)  : '—';
-      const costOut = (typeof item === 'object') ? fmtCost(item.cost_output) : '—';
-      costCells =
-        `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${costIn}</td>` +
-        `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${costOut}</td>`;
-    } else if (isPremReq) {
-      const mult = (typeof item === 'object') ? item.copilot_multiplier : null;
-      costCells  =
-        `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtMult(mult)}</td>`;
-    } else {
-      costCells =
-        `<td colspan="2" style="${tdBase} color:#64748b; font-style:italic; white-space:nowrap;">${billingNote}</td>`;
-    }
-
     tr.innerHTML =
+      `<td style="${tdBase} color:#64748b; white-space:nowrap;">${provider}</td>` +
       `<td style="${tdBase}">${m}` +
         (isSelected ? ' <span style="color:#3b82f6; font-size:0.75em;">&#10003; active</span>' : '') +
       `</td>` +
       `<td style="${tdBase} white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums;">${ctx}</td>` +
-      costCells +
+      `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtCost(item.cost_input)}</td>` +
+      `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtCost(item.cost_output)}</td>` +
+      `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtMult(item.copilot_multiplier)}</td>` +
       `<td style="${tdBase} color:#64748b;">${notes}</td>`;
-    tr.addEventListener('click', () => setModel(m));
+    tr.addEventListener('click', () => setModel(m, provider));
     tbody.appendChild(tr);
   });
 
@@ -562,13 +535,20 @@ function _buildModelTable() {
   _updatePricingFooter();
 }
 
-async function setModel(model) {
+async function setModel(model, provider) {
   if (!model) return;
   try {
-    await apiCall('POST', '/api/model', { model });
-    if (_modelData) _modelData.model = model;
+    const payload = provider ? { model, provider } : { model };
+    await apiCall('POST', '/api/model', payload);
+    if (_modelData) {
+      _modelData.model    = model;
+      if (provider) _modelData.provider = provider;
+    }
     const label = document.getElementById('model-current-label');
-    if (label) label.textContent = model;
+    if (label) {
+      const prov = (_modelData && _modelData.provider) || provider;
+      label.textContent  = prov ? `${prov} · ${model}` : model;
+    }
     closeModelModal();
   } catch (e) {
     console.error('Failed to switch model:', e);
