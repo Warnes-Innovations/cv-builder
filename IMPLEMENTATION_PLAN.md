@@ -26,7 +26,7 @@ decisions, questions, and progress as the agent implements the approved 15-phase
 |-------|-------|--------|--------|
 | 0 | Update CLAUDE.md + copilot-instructions.md | ✅ Complete | `9b92e0e` |
 | 1 | Test fixes + metadata audit trail + startup config validation | ✅ Complete | _pending_ |
-| 2 | Workflow progress indicator (8-step bar, back-nav, single-session lock) | 🔲 Pending | — |
+| 2 | Workflow progress indicator (8-step bar, back-nav, single-session lock) | ✅ Complete | _pending_ |
 | 3 | Analysis display upgrade | 🔲 Pending | — |
 | 4 | Rewrite review UI polish | 🔲 Pending | — |
 | 5 | Publications block + Human DOCX | 🔲 Pending | — |
@@ -101,19 +101,45 @@ The 1 warning is a pre-existing `UserWarning` in `llm_client.py` — not introdu
 
 ## Phase 2 — Workflow Progress Indicator
 
-**Status**: 🔲 Pending
+**Status**: ✅ Complete | **Tests**: 236/236 passed
 
-### Planned Changes
-- Expand step bar from 5 → 8 named steps in `web/index.html`
-- CSS states: `.step.completed`, `.step.active`, `.step.upcoming`
-- `updateWorkflowSteps(phase)` JS function
-- Back-navigation with confirmation modal
-- Add "Rewrite Review" viewer tab
-- Session restore to last active step
-- `threading.Lock` single-session guard in `web_app.py` + 409/amber UI banner
+### Changes Made
 
-### Decision Pending
-No decisions needed before starting. All architectural choices are locked.
+| File | Change |
+|------|--------|
+| `web/index.html` (CSS ~line 49) | Added `.step.completed { cursor: pointer; }`, `.step.completed:hover` hover feedback, `.step.upcoming { background: #f8fafc; color: #cbd5e1; }`, and `#session-conflict-banner` amber banner CSS. |
+| `web/index.html` (HTML ~line 712) | Added `#session-conflict-banner` dismissible amber banner element immediately before the workflow bar. |
+| `web/index.html` (HTML ~line 718) | Replaced 5-step bar (`Load Job → Analysis → Customizations → Generated → Complete`) with 8-step bar: `📥 Job Input → 🔍 Analysis → ⚙️ Customise → ✏️ Rewrites → 🔤 Spell Check → 📄 Generate → 🎨 Layout → ✅ Finalise`. Spell Check and Layout have static `.upcoming` class (not yet implemented). |
+| `web/index.html` (HTML ~line 778) | Added `tab-rewrite` (✏️ Rewrites) between Customizations and CV Editor tabs. |
+| `web/index.html` (JS ~line 833) | Added global `fetch` interceptor that calls `showSessionConflictBanner()` on any 409 response. |
+| `web/index.html` (JS ~line 4241) | Replaced `updateWorkflowSteps()` with 8-step version mapping backend phase strings to step visual states; added `handleStepClick(step)` for back-navigation; added `showSessionConflictBanner()`. |
+| `scripts/web_app.py` | Added `import threading`. Added `_session_lock = threading.Lock()` + `_LOCK_EXEMPT_PATHS` set + `@app.before_request` (`_acquire_session_lock`) + `@app.teardown_request` (`_release_session_lock`) — state-mutating POSTs return 409 if lock is already held. |
+
+### Design Decisions (Phase 2)
+
+**D2.1 — Spell Check and Layout steps are `upcoming` (not implemented).**
+Steps `step-spell` and `step-layout` carry a static `.upcoming` CSS class in the HTML; `updateWorkflowSteps()` skips them (`const UPCOMING = new Set(['spell', 'layout'])`). They will be activated when Phases 6 and 12 are implemented. Making them visually distinct from the un-started steps makes the planned UX roadmap visible to the user without being interactive noise.
+
+**D2.2 — Back-navigation preserves all downstream state.**
+Per the approved plan decision: `handleStepClick` navigates to the corresponding viewer tab but does NOT clear any session state. The LLM context will include all prior decisions when the user eventually re-generates.
+
+**D2.3 — Session lock uses `threading.Lock` with non-blocking `acquire`.**
+`blocking=False` means a second concurrent POST request immediately returns 409 without waiting. This is the correct behaviour for a UI that presents a dismissible amber banner — the user should see instant feedback, not a silent hang. An alternative (timeout-based acquire) would be more complex and would still leave the user uncertain while waiting.
+
+**D2.4 — `teardown_request` is safe when `before_request` returns early.**
+When `before_request` returns the 409 response (lock NOT acquired), `request.environ['_session_lock_acquired']` is never set, so `teardown_request` correctly skips the release call. No double-release or lock leak is possible.
+
+**D2.5 — Load-session and copilot-auth endpoints are lock-exempt.**
+`/api/load-session` and `/api/save` modify the session on disk but do not mutate in-memory `conversation` state in ways that race with LLM calls. Auth endpoints are entirely independent. Exempting them prevents a session restore from being blocked by an in-flight analysis call.
+
+**D2.6 — Global `fetch` interceptor for 409 detection.**
+Rather than patching each of the 30+ fetch call sites, an IIFE overrides `window.fetch` at script load time. Any `fetch` response with `status === 409` triggers the amber banner. This is minimal and correct because: (a) we always want to show the banner on 409, (b) the interceptor does not swallow the response — it returns it unchanged so callers can still inspect the 409 body if needed.
+
+### Test Results
+
+```
+Full suite: 236 passed, 1 warning in 4.48s
+```
 
 ---
 
@@ -190,4 +216,4 @@ added here as each phase is implemented.
 
 ---
 
-_Last updated by agent: 2026-03-11_
+_Last updated by agent: 2026-03-11 (Phase 2 complete)_

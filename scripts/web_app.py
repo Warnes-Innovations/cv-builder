@@ -17,6 +17,7 @@ Then open http://localhost:5000
 import argparse
 import json
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
@@ -62,6 +63,38 @@ def create_app(args) -> Flask:
         llm_client=llm_client,
     )
     conversation = ConversationManager(orchestrator=orchestrator, llm_client=llm_client)
+
+    # ── Single-session guard ────────────────────────────────────────────────
+    # Prevents two browser tabs from corrupting shared ConversationManager
+    # state concurrently. Any state-mutating POST that arrives while the lock
+    # is held returns 409 Conflict; the JS client shows the amber banner.
+    _session_lock = threading.Lock()
+    # Endpoints that are read-only or session-management: never blocked.
+    _LOCK_EXEMPT_PATHS = {
+        '/api/status', '/api/history', '/api/sessions', '/api/load-items',
+        '/api/positions', '/api/save', '/api/load-session', '/api/delete-session',
+        '/api/copilot-auth/start', '/api/copilot-auth/poll',
+        '/api/copilot-auth/status', '/api/copilot-auth/logout',
+    }
+
+    @app.before_request
+    def _acquire_session_lock():
+        if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+            if request.path.startswith('/api/') and request.path not in _LOCK_EXEMPT_PATHS:
+                acquired = _session_lock.acquire(blocking=False)
+                if not acquired:
+                    return jsonify({
+                        "error": "Session busy",
+                        "message": "Another session is active. Close the other tab or wait for it to complete.",
+                    }), 409
+                request.environ['_session_lock_acquired'] = True
+
+    @app.teardown_request
+    def _release_session_lock(exc=None):
+        if request.environ.get('_session_lock_acquired'):
+            _session_lock.release()
+            request.environ['_session_lock_acquired'] = False
+    # ── end single-session guard ────────────────────────────────────────────
 
     def _infer_position_name(job_text: str) -> Optional[str]:
         """Infer a concise position label from job text."""

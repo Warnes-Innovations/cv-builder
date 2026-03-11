@@ -47,8 +47,13 @@
     .workflow-steps { display: flex; align-items: center; justify-content: center; gap: 32px; }
     .step { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-radius: 20px; background: #f1f5f9; color: #64748b; }
     .step.active { background: #dbeafe; color: #1d4ed8; }
-    .step.completed { background: #dcfce7; color: #166534; }
+    .step.completed { background: #dcfce7; color: #166534; cursor: pointer; }
+    .step.completed:hover { filter: brightness(0.93); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+    .step.upcoming { background: #f8fafc; color: #cbd5e1; }
     .arrow { color: #94a3b8; }
+    /* Session conflict banner */
+    #session-conflict-banner { display: none; background: #fef3c7; color: #92400e; border-bottom: 1px solid #fcd34d; padding: 10px 20px; font-size: 14px; text-align: center; position: sticky; top: 0; z-index: 1000; }
+    #session-conflict-banner button { background: none; border: none; cursor: pointer; font-weight: bold; margin-left: 12px; color: #92400e; font-size: 16px; }
     
     /* Main Layout */
     .main-container { display: flex; height: calc(100vh - 210px); gap: 0; min-height: 500px; }
@@ -704,18 +709,30 @@
     <div class="position-title" id="position-title"></div>
   </div>
 
+  <!-- Session conflict amber banner -->
+  <div id="session-conflict-banner">
+    ⚠ Another session is active. Close the other tab or wait for it to complete.
+    <button onclick="document.getElementById('session-conflict-banner').style.display='none'" title="Dismiss">✕</button>
+  </div>
+
   <!-- Workflow Steps -->
   <div class="workflow">
     <div class="workflow-steps">
-      <div class="step clickable" id="step-job" onclick="showLoadJobPanel()" title="Click to load or switch job">📥 Load Job</div>
+      <div class="step clickable" id="step-job" title="Click to load or switch job" onclick="handleStepClick('job')">📥 Job Input</div>
       <div class="arrow">→</div>
-      <div class="step active" id="step-analysis">🔍 Analysis</div>
+      <div class="step" id="step-analysis" title="Job analysis" onclick="handleStepClick('analysis')">🔍 Analysis</div>
       <div class="arrow">→</div>
-      <div class="step" id="step-customizations">⚙️ Customizations</div>
+      <div class="step" id="step-customizations" title="Content customisation" onclick="handleStepClick('customizations')">⚙️ Customise</div>
       <div class="arrow">→</div>
-      <div class="step" id="step-generated">📄 Generated</div>
+      <div class="step" id="step-rewrite" title="Rewrite review" onclick="handleStepClick('rewrite')">✏️ Rewrites</div>
       <div class="arrow">→</div>
-      <div class="step" id="step-complete">✅ Complete</div>
+      <div class="step upcoming" id="step-spell" title="Spell &amp; grammar check (coming soon)">🔤 Spell Check</div>
+      <div class="arrow">→</div>
+      <div class="step" id="step-generate" title="Generate CV files" onclick="handleStepClick('generate')">📄 Generate</div>
+      <div class="arrow">→</div>
+      <div class="step upcoming" id="step-layout" title="Layout instructions (coming soon)">🎨 Layout</div>
+      <div class="arrow">→</div>
+      <div class="step" id="step-finalise" title="Finalise &amp; archive" onclick="handleStepClick('finalise')">✅ Finalise</div>
     </div>
   </div>
 
@@ -758,6 +775,7 @@
         <div class="tab active" id="tab-job" data-tab="job">Job Description</div>
         <div class="tab" id="tab-analysis" data-tab="analysis">Analysis</div>
         <div class="tab" id="tab-customizations" data-tab="customizations">Customizations</div>
+        <div class="tab" id="tab-rewrite" data-tab="rewrite">✏️ Rewrites</div>
         <div class="tab" id="tab-editor" data-tab="editor">CV Editor</div>
         <div class="tab" id="tab-cv" data-tab="cv">Generated CV</div>
         <div class="tab" id="tab-download" data-tab="download">Download</div>
@@ -811,6 +829,16 @@
     let sessionId = null;
     let lastKnownPhase = 'init';
     let isReconnecting = false;
+
+    // Global fetch interceptor — shows amber banner on 409 Conflict (session already active).
+    (function() {
+      const _origFetch = window.fetch;
+      window.fetch = async function(...args) {
+        const resp = await _origFetch.apply(this, args);
+        if (resp.status === 409) { showSessionConflictBanner(); }
+        return resp;
+      };
+    })();
 
     async function restoreSession() {
       try {
@@ -4221,38 +4249,79 @@
     }
 
     function updateWorkflowSteps(status) {
-      // Update workflow steps based on status
-      const steps = ['job', 'analysis', 'customizations', 'generated', 'complete'];
-      
-      steps.forEach((step, index) => {
-        const element = document.getElementById(`step-${step}`);
-        element.classList.remove('active', 'completed');
-        
-        if (step === 'job' && status.job_description) {
-          element.classList.add('completed');
-        } else if (step === 'analysis' && status.job_analysis) {
-          element.classList.add('completed');
-        } else if (step === 'customizations' && status.customizations) {
-          element.classList.add('completed');
-        } else if (step === 'generated' && status.generated_files) {
-          element.classList.add('completed');
-        } else if (step === 'complete' && status.generated_files) {
-          element.classList.add('completed');
+      // 8-step workflow bar: Job Input → Analysis → Customise → Rewrites →
+      //                      Spell Check (upcoming) → Generate → Layout (upcoming) → Finalise
+      //
+      // 'upcoming' steps (spell, layout) are not yet implemented; they keep their
+      // static .upcoming class and never become active or completed.
+      const UPCOMING = new Set(['spell', 'layout']);
+
+      // Determine which steps are done based on session state fields.
+      const phase = status.phase || '';
+      const done = {
+        job:            !!status.job_description,
+        analysis:       !!status.job_analysis,
+        customizations: !!status.customizations,
+        rewrite:        phase !== 'rewrite_review' && (!!status.customizations),
+        generate:       !!status.generated_files,
+        finalise:       phase === 'refinement' && !!status.generated_files,
+      };
+
+      // Determine the active step from the backend phase string.
+      const phaseToStep = {
+        'init':          'job',
+        'job_analysis':  'analysis',
+        'customization': 'customizations',
+        'rewrite_review':'rewrite',
+        'generation':    'generate',
+        'refinement':    'finalise',
+      };
+      const activeStep = phaseToStep[phase] || 'job';
+
+      const stepIds = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise'];
+      stepIds.forEach(step => {
+        const el = document.getElementById(`step-${step}`);
+        if (!el) return;
+        // Upcoming steps are fixed — never change their class.
+        if (UPCOMING.has(step)) return;
+        el.classList.remove('active', 'completed', 'clickable');
+        if (step === activeStep) {
+          el.classList.add('active');
+        } else if (done[step]) {
+          el.classList.add('completed');
+          // Completed steps are clickable for back-navigation.
+          el.classList.add('clickable');
         }
       });
-      
-      // Set active step
-      if (!status.job_description) {
-        document.getElementById('step-job').classList.add('active');
-      } else if (!status.job_analysis) {
-        document.getElementById('step-analysis').classList.add('active');
-      } else if (!status.customizations) {
-        document.getElementById('step-customizations').classList.add('active');
-      } else if (!status.generated_files) {
-        document.getElementById('step-generated').classList.add('active');
-      } else {
-        document.getElementById('step-complete').classList.add('active');
-      }
+    }
+
+    // Back-navigation: clicking a completed workflow step navigates to its viewer tab.
+    // Clicking the job step always opens the load-job panel.
+    function handleStepClick(step) {
+      const el = document.getElementById(`step-${step}`);
+      if (!el) return;
+
+      // Job step always shown: open load-job panel.
+      if (step === 'job') { showLoadJobPanel(); return; }
+
+      // Only navigate if the step is completed (back-nav) or active.
+      if (!el.classList.contains('completed') && !el.classList.contains('active')) return;
+
+      const stepToTab = {
+        analysis:       'analysis',
+        customizations: 'customizations',
+        rewrite:        'rewrite',
+        generate:       'cv',
+        finalise:       'download',
+      };
+      const tabName = stepToTab[step];
+      if (tabName) switchTab(tabName);
+    }
+
+    // Show/hide the 409 session-conflict banner.
+    function showSessionConflictBanner() {
+      const banner = document.getElementById('session-conflict-banner');
+      if (banner) banner.style.display = 'block';
     }
 
     // Start the application
