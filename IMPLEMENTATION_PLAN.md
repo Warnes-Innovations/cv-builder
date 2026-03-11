@@ -36,7 +36,7 @@ the distribution of completed-phase durations (Phases 2–6: 0.1–1.7 h intra-s
 | 6 | Spell/grammar check | ✅ Complete | `a78ae93` | ~1.7 h (99 min) |
 | 7 | ATS validation report + page count | ✅ Complete | `d9f284b` | 2026-03-11 |
 | 8 | Phase re-entry / iterative refinement | ✅ Complete | `bf26797` | 2026-03-11 |
-| 9 | Skills canonicalisation + bullet reordering | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
+| 9 | Skills canonicalisation + bullet reordering | ✅ Complete | `6c96ea5` | 2026-03-11 |
 | 10 | Persuasion checks + loading state | 🔲 Pending | — | est. 1.0 h (95% CI: 0.3–2.5 h) |
 | 11 | Finalise & archive + master data harvest | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
 | 12 | Natural-language layout instructions | 🔲 Pending | — | est. 2.5 h (95% CI: 1.0–5.5 h) |
@@ -386,10 +386,52 @@ Full suite: 252 passed, 1 warning in 5.04s
 
 ---
 
-## Phases 9–15 — Planned
+## Phase 9 — Skills Canonicalisation + Bullet Reordering
+
+**Status**: ✅ Complete (commit: `6c96ea5`) | **Completed**: 2026-03-11 | **Tests**: 272/272 passed
+
+### Changes Made
+
+| File | Change |
+|------|--------|
+| `scripts/data/synonym_map.json` | New file. 80 ML/data-science/CS term mappings used for bidirectional ATS keyword expansion and alias deduplication (`ML`→`Machine Learning`, `NLP`, `GCP`, `k8s`, `sklearn`, …). |
+| `scripts/utils/cv_orchestrator.py` | Added `_load_synonym_map()` + lookup indices (`_synonym_map`, `_canonical_index`, `_expansion_index`) loaded in `__init__`. Added `canonical_skill_name(name)` public method. `_organize_skills_by_category()`: deduplicates skills by canonical name — merges `ML` + `Machine Learning` into one entry, keeps higher-years entry, populates `aliases[]`. `_optimize_skills_for_ats()`: expands both ATS keywords and required_skills via synonym map before scoring so bidirectional abbreviation/full-form matching works. `_select_content_hybrid()`: new per-experience bullet ordering block — auto-sorts `achievements` by token+synonym overlap with `ats_keywords`; applies explicit `customizations['achievement_orders']` (list of original indices) when present; stores result as `exp['ordered_achievements']`. |
+| `scripts/utils/conversation_manager.py` | In `generate_cv` action: inject `state.get('achievement_orders', {})` into `customizations` before calling `orchestrator.generate_cv()`. |
+| `scripts/web_app.py` | `GET /api/synonym-lookup?term=X` → `{term, canonical, found}`. `GET /api/synonym-map` → full map. `POST /api/reorder-bullets` → accepts `{experience_id, order:[int...]}` and persists in `state['achievement_orders']`; empty `order` resets to relevance-sorted. |
+| `templates/cv-template.html` | Skills: render `skill.aliases` list in a `<span class="skill-alias">` with tooltip on both page-2 and page-3 skill columns. Experience bullets: use `exp.ordered_achievements` if defined, else fall back to `exp.achievements`, on both page-2 and page-3 experience loops. |
+| `web/index.html` | ↕ button added to each experience row in the customisation table. `showBulletReorder(expId, expTitle)`: fetches achievements for experience, builds modal with numbered list and ↑/↓ row-swap buttons. `moveBullet()`, `_updateBulletArrows()`, `saveBulletOrder()` (calls `/api/reorder-bullets`), `resetBulletOrder()` (passes empty order to reset). |
+| `tests/test_cv_orchestrator.py` | Added `TestSynonymMap` (7), `TestOptimizeSkillsWithSynonyms` (4), `TestOrganizeSkillsAlias` (5), `TestBulletOrderInSelectContent` (4) — 20 new tests. |
+
+### Design Decisions (Phase 9)
+
+**D9.1 — Synonym map is a flat JSON file, not hard-coded.**
+`scripts/data/synonym_map.json` is auto-loaded at orchestrator startup and can be extended without touching Python. A missing file degrades gracefully to `{}`.
+
+**D9.2 — Synonym matching is bidirectional via a single expansion index.**
+Both directions (alias→canonical and canonical→alias) are added to `_expansion_index`. ATS keywords are expanded before scoring, so a skill named `ML` matches keyword `Machine Learning` and vice versa. Terminology never changes — only matching.
+
+**D9.3 — Alias deduplication merges entries but preserves original names as aliases.**
+When `ML` and `Machine Learning` both appear in master data, the merge produces a single entry named `Machine Learning` (canonical) with `aliases: ['ML']`. The original name is not lost and appears in the CV template's tooltip.
+
+**D9.4 — Auto bullet sorting defaults to keyword-token overlap.**
+No LLM call is needed. A closure counts how many tokens (after synonym expansion) in each bullet text overlap with `ats_keywords`. This is fast, deterministic, and auditable. User-explicit ordering always takes precedence.
+
+**D9.5 — User bullet ordering is stored outside `customizations`.**
+`state['achievement_orders']` is persisted alongside spell-check and rewrite audit data. It is injected into `customizations` just before `generate_cv()` so the orchestrator receives it cleanly without polluting the LLM-facing recommendation structure.
+
+### Test Results
+
+```
+tests/test_cv_orchestrator.py  ...  272 passed  (+20 new tests)
+Full suite: 272 passed, 1 warning in 4.33s
+```
+
+---
+
+## Phases 10–15 — Planned
 
 See the approved plan in `.claude/plans/virtual-wibbling-metcalfe.md` for full
-specifications of Phases 9–15. Design decisions and implementation notes will be
+specifications of Phases 10–15. Design decisions and implementation notes will be
 added here as each phase is implemented.
 
 ---
@@ -405,4 +447,4 @@ added here as each phase is implemented.
 
 ---
 
-_Last updated by agent: 2026-03-11 (Phase 8 complete)_
+_Last updated by agent: 2026-03-11 (Phase 9 complete)_
