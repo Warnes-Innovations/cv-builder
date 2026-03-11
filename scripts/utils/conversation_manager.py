@@ -40,6 +40,7 @@ class ConversationManager:
             'customizations':     None,
             'generated_files':    None,
             'pending_rewrites':   None,   # List[Dict] from propose_rewrites
+            'persuasion_warnings': [],    # List[Dict] from run_persuasion_checks (Phase 10)
             'approved_rewrites':  [],     # List[Dict] user-accepted or user-edited
             'rewrite_audit':      [],     # full record: proposal + outcome for metadata
         }
@@ -668,6 +669,116 @@ Ask questions that are specific to this job posting, not generic career question
             'phase':          'generation',
         }
 
+    def run_persuasion_checks(
+        self,
+        rewrites: List[Dict],
+        job_analysis: Dict,
+        master_data: Dict
+    ) -> List[Dict]:
+        """Run persuasion quality checks on proposed rewrites (Phase 10).
+
+        Applies 8 persuasion checks from LLMClient to each rewrite:
+        - Strong action verbs
+        - Passive voice / hedging language
+        - Word count limits
+        - Result clause presence
+        - Named institution positioning
+        - CAR (Challenge-Action-Result) structure
+        - Summary generic phrases
+
+        Args:
+            rewrites:     List of proposed rewrite dicts from orchestrator
+            job_analysis: Current job analysis dict (for context)
+            master_data:  Master CV data dict (for context)
+
+        Returns:
+            List of warning dicts, each with keys:
+                {
+                    'id':          str,            # rewrite id
+                    'location':    str,            # e.g. 'summary', 'exp_001.achievements[0]'
+                    'flag_type':   str,            # 'strong_action_verb', 'passive_voice', etc.
+                    'severity':    'warn'|'info',  # 'warn' = user should review, 'info' = note
+                    'original':    str,            # original text
+                    'proposed':    str,            # proposed text
+                    'details':     str,            # explanation
+                }
+
+        If rewrites is empty, returns [].
+        Errors (e.g., from check functions) are logged as warnings and do not
+        block the process.
+        """
+        if not rewrites:
+            return []
+
+        warnings_list: List[Dict] = []
+
+        for rewrite in rewrites:
+            rewrite_id = rewrite.get('id', '')
+            location = rewrite.get('location', '')
+            original = rewrite.get('original', '')
+            proposed = rewrite.get('proposed', '')
+            rewrite_type = rewrite.get('type', '')
+
+            # Skip non-text rewrites (e.g., skill_add)
+            if not proposed or not original:
+                continue
+
+            # ── Run all persuasion checks ─────────────────────────────────────
+
+            checks_to_run = []
+
+            # Always check: strong action verb (bullets and summary)
+            if proposed:
+                verb_result = LLMClient.check_strong_action_verb(proposed)
+                checks_to_run.append(verb_result)
+
+            # Always check: passive voice
+            passive_result = LLMClient.check_passive_voice(proposed)
+            checks_to_run.append(passive_result)
+
+            # Always check: word count
+            wordcount_result = LLMClient.check_word_count(proposed)
+            checks_to_run.append(wordcount_result)
+
+            # Always check: result clause
+            result_result = LLMClient.check_has_result_clause(proposed)
+            checks_to_run.append(result_result)
+
+            # Always check: hedging language
+            hedging_result = LLMClient.check_hedging_language(proposed)
+            checks_to_run.append(hedging_result)
+
+            # Named institution positioning (if text seems like experience bullet)
+            if 'exp' in location.lower() or 'bullet' in rewrite_type.lower():
+                institution_result = LLMClient.check_named_institution_position(proposed)
+                checks_to_run.append(institution_result)
+
+            # CAR structure (experience bullets)
+            if 'exp' in location.lower():
+                car_result = LLMClient.check_car_structure(proposed)
+                checks_to_run.append(car_result)
+
+            # Generic phrases (summary only)
+            if location == 'summary' or rewrite_type == 'summary':
+                generic_result = LLMClient.check_summary_generic_phrases(proposed)
+                checks_to_run.append(generic_result)
+
+            # ── Collect failures (pass=False) as warnings ────────────────────
+
+            for check_result in checks_to_run:
+                if not check_result.get('pass', True):
+                    warnings_list.append({
+                        'id':        rewrite_id,
+                        'location':  location,
+                        'flag_type': check_result.get('flag_type', 'unknown'),
+                        'severity':  check_result.get('severity', 'info'),
+                        'original':  original,
+                        'proposed':  proposed,
+                        'details':   check_result.get('details', ''),
+                    })
+
+        return warnings_list
+
     # ── Phase re-entry / iterative refinement ────────────────────────────────
 
     # Mapping from logical step name (frontend) → internal phase string
@@ -808,11 +919,23 @@ Ask questions that are specific to this job posting, not generic career question
                 self.orchestrator.master_data,
                 self.state['job_analysis'],
             )
-            self.state['pending_rewrites'] = rewrites
-            self.state['iterating']        = True
-            self.state['reentry_phase']    = resolved
-            self.state['phase']            = 'rewrite_review'
-            new_output = {'pending_rewrites': rewrites}
+
+            # Run persuasion quality checks on rewrites (Phase 10)
+            persuasion_warnings = self.run_persuasion_checks(
+                rewrites,
+                self.state['job_analysis'],
+                self.orchestrator.master_data
+            )
+
+            self.state['pending_rewrites']    = rewrites
+            self.state['persuasion_warnings'] = persuasion_warnings
+            self.state['iterating']           = True
+            self.state['reentry_phase']       = resolved
+            self.state['phase']               = 'rewrite_review'
+            new_output = {
+                'pending_rewrites':    rewrites,
+                'persuasion_warnings': persuasion_warnings,
+            }
 
         else:
             return {'ok': False, 'error': f'Re-run not supported for phase: {resolved!r}'}
@@ -1096,6 +1219,8 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['post_analysis_answers'] = {}
         if 'pending_rewrites' not in self.state:
             self.state['pending_rewrites'] = None
+        if 'persuasion_warnings' not in self.state:
+            self.state['persuasion_warnings'] = []
         if 'approved_rewrites' not in self.state:
             self.state['approved_rewrites'] = []
         if 'rewrite_audit' not in self.state:

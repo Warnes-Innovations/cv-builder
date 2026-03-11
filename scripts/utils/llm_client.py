@@ -145,6 +145,470 @@ class LLMClient(ABC):
 
         return True
 
+    # ── Persuasion Quality Checks (Phase 10) ────────────────────────────────
+
+    # Approved strong action verbs for CV bullets
+    # Approved strong action verbs for CV bullets (Phase 10)
+    # These are past-tense verbs commonly used in professional accomplishment statements
+    _STRONG_ACTION_VERBS = {
+        'accelerated', 'achieved', 'acquired', 'adapted', 'administered',
+        'advanced', 'allocated', 'analyzed', 'architected', 'assembled',
+        'assessed', 'assigned', 'attained', 'audited', 'authored',
+        'automated', 'awarded', 'built', 'calculated', 'captured',
+        'championed', 'changed', 'clarified', 'coached', 'coded',
+        'collaborated', 'collected', 'commanded', 'communicated', 'compared',
+        'compiled', 'completed', 'composed', 'computed', 'conceived',
+        'conceptualized', 'conducted', 'configured', 'connected', 'consolidated',
+        'constructed', 'consulted', 'contributed', 'controlled', 'converted',
+        'coordinated', 'corrected', 'created', 'cultivated', 'customized',
+        'decreased', 'defined', 'delegated', 'delivered', 'demonstrated',
+        'deployed', 'described', 'designed', 'detected', 'determined',
+        'developed', 'devised', 'diagnosed', 'directed', 'discovered',
+        'displayed', 'distributed', 'documented', 'dominated', 'doubled',
+        'drafted', 'drove', 'earned', 'edited', 'elevated', 'eliminated',
+        'enabled', 'enclosed', 'encouraged', 'engineered', 'enhanced',
+        'enlisted', 'ensured', 'established', 'estimated', 'evaluated',
+        'examined', 'exceeded', 'excelled', 'executed', 'exercised',
+        'expanded', 'expedited', 'experimented', 'explained', 'explored',
+        'expressed', 'extended', 'extracted', 'fabricated', 'facilitated',
+        'failed', 'fashioned', 'featured', 'finalized', 'financed',
+        'fixed', 'focused', 'forecasted', 'forged', 'formalized',
+        'formulated', 'fostered', 'founded', 'framed', 'fulfilled',
+        'funded', 'furthered', 'gained', 'gathered', 'generated',
+        'governed', 'granted', 'grouped', 'guided', 'handled',
+        'headed', 'highlighted', 'hired', 'hosted', 'identified',
+        'illuminated', 'illustrated', 'implemented', 'improved', 'improvised',
+        'inaugurated', 'included', 'incorporated', 'increased', 'indicated',
+        'influenced', 'informed', 'initiated', 'innovated', 'inspected',
+        'inspired', 'installed', 'instituted', 'instructed', 'integrated',
+        'intended', 'interviewed', 'introduced', 'invented', 'invested',
+        'investigated', 'involved', 'launched', 'learned', 'led',
+        'leveraged', 'licensed', 'lifted', 'limited', 'linked',
+        'listened', 'located', 'logged', 'managed', 'mapped',
+        'marketed', 'maximized', 'measured', 'mediated', 'mentored',
+        'merged', 'minimized', 'mobilized', 'modeled', 'modernized',
+        'modified', 'monitored', 'motivated', 'moved', 'multiplied',
+        'navigated', 'negotiated', 'nominated', 'normalized', 'notified',
+        'observed', 'obtained', 'offered', 'operated', 'optimized',
+        'orchestrated', 'ordered', 'organized', 'originated', 'outlined',
+        'overcame', 'oversaw', 'owned', 'partnered', 'performed',
+        'persuaded', 'pioneered', 'placed', 'planned', 'played',
+        'positioned', 'powered', 'predicted', 'prioritized', 'processed',
+        'produced', 'programmed', 'promoted', 'proposed', 'protected',
+        'provided', 'publicized', 'published', 'purchased', 'qualified',
+        'quantified', 'questioned', 'ranked', 'realized', 'received',
+        'recognized', 'recommended', 'reconciled', 'recorded', 'recovered',
+        'recruited', 'rectified', 'redesigned', 'reduced', 'referenced',
+        'refined', 'reformatted', 'refunctioned', 'regenerated', 'registered',
+        'regulated', 'rehabilitated', 'reimbursed', 'reinforced', 'reinstated',
+        'reiterated', 'rejected', 'rejuvenated', 'related', 'released',
+        'relieved', 'relinquished', 'relocated', 'relied', 'remained',
+        'remedied', 'reminded', 'removed', 'rendered', 'renegotiated',
+        'renewed', 'reorganized', 'repaired', 'repaid', 'repaired',
+        'repeated', 'replaced', 'reported', 'represented', 'reproduced',
+        'requested', 'required', 'researched', 'reserved', 'reshaped',
+        'resolved', 'resourced', 'responded', 'restored', 'restructured',
+        'resulted', 'retained', 'retired', 'retreated', 'retrieved',
+        'returned', 'revealed', 'reversed', 'reviewed', 'revised',
+        'revitalized', 'revolved', 'rewarded', 'reworked', 'routed',
+        'ruled', 'salvaged', 'satisfied', 'saved', 'scheduled',
+        'scored', 'screened', 'scripted', 'sealed', 'searched',
+        'secured', 'segmented', 'selected', 'sold', 'serviced',
+        'served', 'settled', 'shaped', 'shared', 'sharpened',
+        'sheltered', 'shifted', 'shipped', 'shortened', 'showed',
+        'shut', 'signed', 'simplified', 'simulated', 'situated',
+        'sketched', 'skilled', 'slashed', 'smoothed', 'socialized',
+        'solicited', 'solved', 'sorted', 'sourced', 'specialized',
+        'specified', 'expedited', 'spoke', 'sponsored', 'spread',
+        'stabilized', 'staffed', 'staged', 'standardized', 'started',
+        'stated', 'steered', 'stopped', 'stored', 'straightened',
+        'streamlined', 'strengthened', 'stressed', 'structured', 'studied',
+        'submitted', 'subscribed', 'subsidized', 'substituted', 'subtracted',
+        'succeeded', 'summarized', 'supervised', 'supplied', 'supported',
+        'supposed', 'surfaced', 'surpassed', 'surveyed', 'suspended',
+        'sustained', 'symbolized', 'synchronized', 'synthesized', 'systematized',
+        'tackled', 'tailored', 'targeted', 'taught', 'team-led',
+        'tele-marketed', 'templated', 'tendered', 'terminated', 'tested',
+        'textured', 'themed', 'theorized', 'threatened', 'threshed',
+        'thrived', 'threw', 'tightened', 'tracked', 'trained',
+        'transcended', 'transcribed', 'transferred', 'transformed', 'translated',
+        'transmitted', 'transported', 'trapped', 'traveled', 'treated',
+        'triaged', 'triggered', 'trimmed', 'tripled', 'triumphed',
+        'troubled', 'trusted', 'turned', 'tutored', 'tweaked',
+        'typified', 'typed', 'ugly', 'unblocked', 'unburdened',
+        'uncapped', 'uncovered', 'underlined', 'understood', 'undertook',
+        'underwrote', 'undid', 'unfolded', 'unified', 'united',
+        'unlocked', 'unraveled', 'unsealed', 'unskewed', 'updated',
+        'upgraded', 'uploaded', 'uplifted', 'upheld', 'upsurged',
+        'urged', 'used', 'utilized', 'unveiled', 'vacated',
+        'validated', 'valued', 'vanquished', 'vaporized', 'varied',
+        'vectored', 'verbalized', 'verified', 'versioned', 'vetted',
+        'vibrated', 'videotaped', 'viewed', 'vigilanteed', 'vindicated',
+        'visualized', 'vitalized', 'vocalized', 'voiced', 'volatilized',
+        'volunteered', 'voted', 'vouched', 'waded', 'waged',
+        'waited', 'walked', 'wanted', 'warehoused', 'warmed',
+        'warned', 'warranted', 'washed', 'wasted', 'watched',
+        'watered', 'waved', 'weakened', 'wearied', 'weathered',
+        'weaved', 'webcast', 'weighted', 'welcomed', 'welded',
+        'whipped', 'whispered', 'widened', 'wielded', 'wilted',
+        'wished', 'witnessed', 'wondered', 'wove',
+        'wrapped', 'wrestled', 'wried', 'wrinkled', 'writhed',
+        'yanked', 'yelled', 'yielded', 'zigged', 'zigzagged',
+        'zoned', 'zeroed', 'zested',
+    }
+
+    # Generic CV filler phrases to avoid in professional summaries
+    _GENERIC_FILLER_PHRASES = {
+        'seek a position',
+        'looking for a role',
+        'looking for an opportunity',
+        'eager to contribute',
+        'team member',
+        'highly motivated',
+        'hard working',
+        'responsible individual',
+        'detail-oriented',
+        'self-starter',
+        'results-driven',
+        'think outside the box',
+        'synergy',
+        'passionate about',
+        'dynamic professional',
+        'dynamic team',
+        'seasoned professional',
+        'progressive company',
+        'collaborative environment',
+        'track record of success',
+        'diverse portfolio',
+        'skilled professional',
+        'dedicated professional',
+    }
+
+    @staticmethod
+    def check_strong_action_verb(text: str) -> Dict[str, Any]:
+        """Check if bullet point opens with a strong action verb.
+
+        Args:
+            text: Bullet or paragraph text.
+
+        Returns:
+            {
+                'pass': bool,
+                'flag_type': 'strong_action_verb',
+                'severity': 'warn' if fail,
+                'details': error message if fail.
+            }
+        """
+        import re
+        if not text or not text.strip():
+            return {'pass': True, 'flag_type': 'strong_action_verb', 'severity': 'info', 'details': ''}
+
+        # Extract first word
+        words = re.findall(r'\b[a-zA-Z]+\b', text)
+        if not words:
+            return {'pass': True, 'flag_type': 'strong_action_verb', 'severity': 'info', 'details': ''}
+
+        first_word = words[0].lower()
+
+        # Check if in approved list
+        if first_word in LLMClient._STRONG_ACTION_VERBS:
+            return {'pass': True, 'flag_type': 'strong_action_verb', 'severity': 'info', 'details': ''}
+
+        return {
+            'pass': False,
+            'flag_type': 'strong_action_verb',
+            'severity': 'warn',
+            'details': f"Bullet opens with '{first_word}' (not in strong action verb list). Consider: Developed, Designed, Led, Built, Deployed, etc."
+        }
+
+    @staticmethod
+    def check_passive_voice(text: str) -> Dict[str, Any]:
+        """Check for passive voice constructions.
+
+        Args:
+            text: Bullet or paragraph text.
+
+        Returns:
+            {
+                'pass': bool,
+                'flag_type': 'passive_voice',
+                'severity': 'warn' if fail,
+                'details': error message if fail.
+            }
+        """
+        import re
+        if not text or not text.strip():
+            return {'pass': True, 'flag_type': 'passive_voice', 'severity': 'info', 'details': ''}
+
+        # Patterns for passive voice
+        passive_patterns = [
+            r'\bwas\s+(?:V|[a-z]*ed)\b',      # was X, was designed
+            r'\bwere\s+(?:V|[a-z]*ed)\b',     # were X
+            r'\bresponsible\s+for\b',          # responsible for
+            r'\bhelped\s+(?:to\s+)?',          # helped to
+            r'\bwas\s+involved\s+in\b',        # was involved in
+            r'\bassisted\s+(?:with|with)\b',  # assisted with
+            r'\bwas\s+tasked\s+with\b',        # was tasked with
+        ]
+
+        for pattern in passive_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                return {
+                    'pass': False,
+                    'flag_type': 'passive_voice',
+                    'severity': 'warn',
+                    'details': f"Detected passive voice or hedging language. Rewrite in active voice focusing on what YOU did."
+                }
+
+        return {'pass': True, 'flag_type': 'passive_voice', 'severity': 'info', 'details': ''}
+
+    @staticmethod
+    def check_word_count(text: str, max_words: int = 30) -> Dict[str, Any]:
+        """Check if bullet exceeds word limit.
+
+        Args:
+            text: Bullet text.
+            max_words: Maximum allowed words (default 30 per US-P4).
+
+        Returns:
+            {
+                'pass': bool,
+                'flag_type': 'word_count',
+                'severity': 'warn' if fail,
+                'details': error message if fail.
+            }
+        """
+        if not text or not text.strip():
+            return {'pass': True, 'flag_type': 'word_count', 'severity': 'info', 'details': ''}
+
+        word_count = len(text.split())
+        if word_count <= max_words:
+            return {'pass': True, 'flag_type': 'word_count', 'severity': 'info', 'details': ''}
+
+        return {
+            'pass': False,
+            'flag_type': 'word_count',
+            'severity': 'warn',
+            'details': f"Bullet has {word_count} words (limit: {max_words}). Compress for readability."
+        }
+
+    @staticmethod
+    def check_has_result_clause(text: str) -> Dict[str, Any]:
+        """Check if bullet includes a result/outcome clause.
+
+        Args:
+            text: Bullet text.
+
+        Returns:
+            {
+                'pass': bool,
+                'flag_type': 'has_result',
+                'severity': 'warn' if fail,
+                'details': error message if fail.
+            }
+        """
+        import re
+        if not text or not text.strip():
+            return {'pass': True, 'flag_type': 'has_result', 'severity': 'info', 'details': ''}
+
+        # Heuristics for result clause: metric, number, outcome word
+        result_indicators = [
+            r'\d+\s*(?:%|K|M|B|ms|sec|users?|customers?|minutes?|days?|months?|years?)?',  # Number/metric
+            r'\b(?:reduced|increased|improved|enhanced|accelerated|achieved|delivered|enabled|generated|maximized|minimized|optimized)\b',
+            r'\b(?:resulted in|led to|contributed to|drove|impacted|affected)\b',
+        ]
+
+        for pattern in result_indicators:
+            if re.search(pattern, text, re.IGNORECASE):
+                return {'pass': True, 'flag_type': 'has_result', 'severity': 'info', 'details': ''}
+
+        return {
+            'pass': False,
+            'flag_type': 'has_result',
+            'severity': 'info',
+            'details': f"No quantified result or outcome detected. Add metrics or impact (e.g., 'improved by 40%', 'enabled 3M users')."
+        }
+
+    @staticmethod
+    def check_hedging_language(text: str) -> Dict[str, Any]:
+        """Check for hedging language that undermines authority.
+
+        Args:
+            text: Bullet text.
+
+        Returns:
+            {
+                'pass': bool,
+                'flag_type': 'hedging',
+                'severity': 'warn' if fail,
+                'details': error message if fail.
+            }
+        """
+        import re
+        if not text or not text.strip():
+            return {'pass': True, 'flag_type': 'hedging', 'severity': 'info', 'details': ''}
+
+        hedging_patterns = [
+            r'\bhelped\s+(?:to\s+)?',          # helped to
+            r'\bassisted\s+with\b',             # assisted with
+            r'\bwas\s+involved\s+in\b',         # was involved in
+            r'\bcontributed\s+to\b',            # contributed to (mild)
+            r'\bparticipated\s+in\b',           # participated in
+            r'\bsupported\s+(?:the\s+)?',       # supported the...
+            r'\bworked\s+(?:on|with)\b',        # worked on/with
+            r'\bseemed\s+',                     # seemed to
+            r'\bapproached\b',                  # approached (weak)
+            r'\b(?:may|might|could|some)\s+',  # may, might, could
+        ]
+
+        for pattern in hedging_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                return {
+                    'pass': False,
+                    'flag_type': 'hedging',
+                    'severity': 'warn',
+                    'details': f"Detected hedging language. Replace with assertive framing: 'Led', 'Drove', 'Delivered' instead of 'helped', 'contributed', 'worked on'."
+                }
+
+        return {'pass': True, 'flag_type': 'hedging', 'severity': 'info', 'details': ''}
+
+    @staticmethod
+    def check_named_institution_position(text: str, max_position: int = 15) -> Dict[str, Any]:
+        """Check if branded org names appear within first N words.
+
+        Args:
+            text: Bullet text.
+            max_position: Maximum position (word count) for named orgs (default 15 per US-P2).
+
+        Returns:
+            {
+                'pass': bool,
+                'flag_type': 'institution_placement',
+                'severity': 'info' if warning,
+                'details': message or empty string.
+            }
+        """
+        import re
+        if not text or not text.strip():
+            return {'pass': True, 'flag_type': 'institution_placement', 'severity': 'info', 'details': ''}
+
+        # Common FAANG and recognizable branded orgs
+        branded_orgs = {
+            'google', 'amazon', 'apple', 'microsoft', 'facebook', 'meta',
+            'netflix', 'spotify', 'tesla', 'airbnb', 'uber', 'lyft',
+            'adobe', 'slack', 'github', 'gitlab', 'salesforce', 'oracle',
+            'ibm', 'intel', 'nvidia', 'amd', 'qualcomm',
+            'pfizer', 'moderna', 'jnj', 'johnson', 'merck',
+            'genentech', 'amgen', 'celgene', 'broadcom', 'qualcomm',
+            'mit', 'stanford', 'harvard', 'berkeley', 'caltech',
+            'yale', 'princeton', 'columbia', 'upenn', 'cmu',
+            'nature', 'science', 'cell', 'nature genetics', 'pnas',
+            'acl', 'emnlp', 'neurips', 'icml', 'iccv',
+        }
+
+        # Find first position of any branded org name
+        words = text.split()
+        for i, word in enumerate(words[:max_position * 2]):  # scan 2x window
+            if any(org in word.lower() for org in branded_orgs):
+                if i < max_position:
+                    return {'pass': True, 'flag_type': 'institution_placement', 'severity': 'info', 'details': ''}
+
+        # Check if there's a branded org name anywhere
+        text_lower = text.lower()
+        for org in branded_orgs:
+            if org in text_lower:
+                # Found, but not in first N words
+                word_pos = len(text_lower[:text_lower.find(org)].split())
+                if word_pos >= max_position:
+                    return {
+                        'pass': False,
+                        'flag_type': 'institution_placement',
+                        'severity': 'info',
+                        'details': f"Brand/institution name found at word {word_pos+1}. Front-load to first {max_position} words for maximum impact."
+                    }
+
+        return {'pass': True, 'flag_type': 'institution_placement', 'severity': 'info', 'details': ''}
+
+    @staticmethod
+    def check_car_structure(text: str) -> Dict[str, Any]:
+        """Check for Challenge-Action-Result (CAR) structure.
+
+        CAR structure is more persuasive than plain Action-Result.
+        This check is informational; we flag bullets that lack a challenge/context.
+
+        Args:
+            text: Bullet or paragraph text.
+
+        Returns:
+            {
+                'pass': bool,
+                'flag_type': 'car_structure',
+                'severity': 'info' (never 'warn'),
+                'details': message or empty string.
+            }
+        """
+        import re
+        if not text or not text.strip():
+            return {'pass': True, 'flag_type': 'car_structure', 'severity': 'info', 'details': ''}
+
+        # Heuristics for context (Challenge):
+        context_indicators = [
+            r'\b(?:faced|encountered|overcome|struggled|challenged|tasked|required|needed)\b',
+            r'\b(?:due to|because of|in response to|when|after|before)\b',
+            r'\b(?:reduce|optimize|improve|modernize|migrate|scale|fix|resolve|address)\b',
+        ]
+
+        # Check if bullet has context + action + result pattern
+        has_context = any(re.search(p, text, re.IGNORECASE) for p in context_indicators)
+        has_result = bool(re.search(r'\d+\%?|(?:reduced|increased|improved|delivered|achieved|enabled|drove)', text, re.IGNORECASE))
+
+        if has_context and has_result:
+            return {'pass': True, 'flag_type': 'car_structure', 'severity': 'info', 'details': 'Good: CAR (Challenge-Action-Result) structure detected.'}
+        elif has_result:
+            return {'pass': True, 'flag_type': 'car_structure', 'severity': 'info', 'details': ''}
+        else:
+            return {
+                'pass': False,
+                'flag_type': 'car_structure',
+                'severity': 'info',
+                'details': 'Consider adding Challenge-Action-Result (CAR) structure: "Faced [problem], [Action], resulting in [Result]".'
+            }
+
+    @staticmethod
+    def check_summary_generic_phrases(text: str) -> Dict[str, Any]:
+        """Check professional summary for generic filler phrases.
+
+        Args:
+            text: Professional summary text.
+
+        Returns:
+            {
+                'pass': bool,
+                'flag_type': 'generic_summary',
+                'severity': 'warn' if multiple found,
+                'details': error message listing flagged phrases.
+            }
+        """
+        if not text or not text.strip():
+            return {'pass': True, 'flag_type': 'generic_summary', 'severity': 'info', 'details': ''}
+
+        text_lower = text.lower()
+        found_phrases = [
+            phrase for phrase in LLMClient._GENERIC_FILLER_PHRASES
+            if phrase in text_lower
+        ]
+
+        if not found_phrases:
+            return {'pass': True, 'flag_type': 'generic_summary', 'severity': 'info', 'details': ''}
+
+        severity = 'warn' if len(found_phrases) > 2 else 'info'
+        return {
+            'pass': len(found_phrases) <= 1,  # Allow 1 filler phrase max
+            'flag_type': 'generic_summary',
+            'severity': severity,
+            'details': f"Found {len(found_phrases)} generic filler phrase(s): {', '.join(found_phrases)}. Rewrite with specific value claims."
+        }
+
     def _parse_json_response(self, response: str) -> Any:
         """Parse a JSON value from an LLM response, tolerating markdown fences.
 

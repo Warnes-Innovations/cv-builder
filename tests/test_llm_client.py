@@ -340,5 +340,252 @@ class TestStubImplementations(unittest.TestCase):
         self.assertEqual(result, [])
 
 
+# ---------------------------------------------------------------------------
+# Persuasion Checks (Phase 10)
+# ---------------------------------------------------------------------------
+
+class TestPersuasionChecks(unittest.TestCase):
+    """Unit tests for persuasion quality check functions (Phase 10)."""
+
+    # ── Strong Action Verb Checks ──────────────────────────────────────────
+
+    def test_strong_action_verb_approved_verb(self):
+        """Approved opening verb passes the check."""
+        text = 'Developed a machine learning model for customer churn prediction.'
+        result = LLMClient.check_strong_action_verb(text)
+        self.assertTrue(result['pass'])
+        self.assertEqual(result['flag_type'], 'strong_action_verb')
+
+    def test_strong_action_verb_multiple_approved(self):
+        """Multiple approved verbs all pass."""
+        for verb in ['Led', 'Built', 'Designed', 'Deployed', 'Architected']:
+            text = f'{verb} a framework for distributed computing.'
+            result = LLMClient.check_strong_action_verb(text)
+            self.assertTrue(result['pass'], f"Failed for verb: {verb}")
+
+    def test_strong_action_verb_weak_verb(self):
+        """Non-approved opening word fails the check."""
+        text = 'Worked on a machine learning project with the team.'
+        result = LLMClient.check_strong_action_verb(text)
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['severity'], 'warn')
+
+    def test_strong_action_verb_empty_text(self):
+        """Empty text passes (no verb to check)."""
+        result = LLMClient.check_strong_action_verb('')
+        self.assertTrue(result['pass'])
+
+    # ── Passive Voice Checks ──────────────────────────────────────────────
+
+    def test_passive_voice_detected_was_verb(self):
+        """'Was designed' triggers passive voice flag."""
+        text = 'Was responsible for developing the API alongside the engineering team.'
+        result = LLMClient.check_passive_voice(text)
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['flag_type'], 'passive_voice')
+
+    def test_passive_voice_detected_helped_to(self):
+        """'Helped to' triggers hedging/passive flag."""
+        text = 'Helped to improve the system performance by 30%.'
+        result = LLMClient.check_passive_voice(text)
+        self.assertFalse(result['pass'])
+
+    def test_passive_voice_detected_was_involved(self):
+        """'Was involved in' triggers flag."""
+        text = 'Was involved in implementing the feature over three months.'
+        result = LLMClient.check_passive_voice(text)
+        self.assertFalse(result['pass'])
+
+    def test_passive_voice_active_voice_passes(self):
+        """Active voice passes the check."""
+        text = 'Led the redesign of the data pipeline, improving query latency by 60%.'
+        result = LLMClient.check_passive_voice(text)
+        self.assertTrue(result['pass'])
+
+    def test_passive_voice_empty_text(self):
+        """Empty text passes."""
+        result = LLMClient.check_passive_voice('')
+        self.assertTrue(result['pass'])
+
+    # ── Word Count Checks ─────────────────────────────────────────────────
+
+    def test_word_count_within_limit(self):
+        """Bullet under 30 words passes."""
+        text = 'Developed a machine learning model for customer prediction.'
+        # ~9 words
+        result = LLMClient.check_word_count(text, max_words=30)
+        self.assertTrue(result['pass'])
+
+    def test_word_count_exactly_at_limit(self):
+        """Exactly 30 words passes."""
+        words = ['word'] * 30
+        text = ' '.join(words)
+        result = LLMClient.check_word_count(text, max_words=30)
+        self.assertTrue(result['pass'])
+
+    def test_word_count_exceeds_limit(self):
+        """Bullet over 30 words fails."""
+        words = ['word'] * 35
+        text = ' '.join(words)
+        result = LLMClient.check_word_count(text, max_words=30)
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['severity'], 'warn')
+
+    def test_word_count_empty_text(self):
+        """Empty text passes."""
+        result = LLMClient.check_word_count('')
+        self.assertTrue(result['pass'])
+
+    # ── Result Clause Checks ──────────────────────────────────────────────
+
+    def test_has_result_with_metric(self):
+        """Bullet with quantified metric passes."""
+        text = 'Improved prediction accuracy from 72% to 89% using ensemble methods.'
+        result = LLMClient.check_has_result_clause(text)
+        self.assertTrue(result['pass'])
+
+    def test_has_result_with_number(self):
+        """Bullet with a number passes."""
+        text = 'Led a team of 12 engineers in implementing the new system.'
+        result = LLMClient.check_has_result_clause(text)
+        self.assertTrue(result['pass'])
+
+    def test_has_result_with_outcome_verb(self):
+        """Bullet with outcome verb passes."""
+        text = 'Designed the architecture which enabled the company to scale to 10M users.'
+        result = LLMClient.check_has_result_clause(text)
+        self.assertTrue(result['pass'])
+
+    def test_has_no_result_clause(self):
+        """Bullet without quantifiable result flags warning (info severity)."""
+        text = 'Worked on various projects and helped the team.'
+        result = LLMClient.check_has_result_clause(text)
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['severity'], 'info')
+
+    def test_has_result_empty_text(self):
+        """Empty text passes."""
+        result = LLMClient.check_has_result_clause('')
+        self.assertTrue(result['pass'])
+
+    # ── Hedging Language Checks ────────────────────────────────────────────
+
+    def test_hedging_detected_helped_to(self):
+        """'Helped to' is flagged as hedging."""
+        text = 'Helped to improve system performance and reliability.'
+        result = LLMClient.check_hedging_language(text)
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['flag_type'], 'hedging')
+
+    def test_hedging_detected_assisted(self):
+        """'Assisted with' is flagged."""
+        text = 'Assisted with the migration from legacy systems.'
+        result = LLMClient.check_hedging_language(text)
+        self.assertFalse(result['pass'])
+
+    def test_hedging_detected_involved_in(self):
+        """'Was involved in' is flagged."""
+        text = 'Was involved in implementing the CI/CD pipeline.'
+        result = LLMClient.check_hedging_language(text)
+        self.assertFalse(result['pass'])
+
+    def test_hedging_assertive_language_passes(self):
+        """Strong, direct language passes."""
+        text = 'Led the migration from legacy systems to microservices.'
+        result = LLMClient.check_hedging_language(text)
+        self.assertTrue(result['pass'])
+
+    def test_hedging_empty_text(self):
+        """Empty text passes."""
+        result = LLMClient.check_hedging_language('')
+        self.assertTrue(result['pass'])
+
+    # ── Named Institution Position Checks ──────────────────────────────────
+
+    def test_institution_in_first_words(self):
+        """Brand appearing in first 15 words passes."""
+        text = 'At Google, developed machine learning models for recommendation systems.'
+        result = LLMClient.check_named_institution_position(text, max_position=15)
+        self.assertTrue(result['pass'])
+
+    def test_institution_beyond_first_words(self):
+        """Brand appearing after word 15 fails."""
+        words = ['word'] * 20 + ['Google']  # "Google" at word 21
+        text = ' '.join(words)
+        result = LLMClient.check_named_institution_position(text, max_position=15)
+        self.assertFalse(result['pass'])
+
+    def test_institution_no_brand_in_text(self):
+        """Text without recognized brands passes."""
+        text = 'Developed machine learning models for internal systems.'
+        result = LLMClient.check_named_institution_position(text)
+        self.assertTrue(result['pass'])
+
+    def test_institution_multiple_brands(self):
+        """Multiple brands, first one in position passes."""
+        text = 'Led initiatives at Google and later Amazon.'
+        result = LLMClient.check_named_institution_position(text)
+        self.assertTrue(result['pass'])
+
+    # ── CAR Structure Checks ──────────────────────────────────────────────
+
+    def test_car_structure_present(self):
+        """Challenge-Action-Result structure detected."""
+        text = 'Faced scaling challenges with legacy monolith, architected microservices, resulting in 3x throughput increase.'
+        result = LLMClient.check_car_structure(text)
+        self.assertTrue(result['pass'])
+
+    def test_car_structure_missing_challenge(self):
+        """No challenge context is flagged (info severity) but result passes."""
+        text = 'Improved system performance by 40%.'
+        result = LLMClient.check_car_structure(text)
+        # Has a result clause, so passes; no challenge detected but that's optional
+        self.assertTrue(result['pass'])
+        self.assertEqual(result['flag_type'], 'car_structure')
+
+    def test_car_structure_with_result(self):
+        """Action-Result without challenge still counts as having result."""
+        text = 'Implemented new caching layer, reducing query latency by 70%.'
+        result = LLMClient.check_car_structure(text)
+        self.assertTrue(result['pass'])
+
+    def test_car_structure_empty_text(self):
+        """Empty text passes."""
+        result = LLMClient.check_car_structure('')
+        self.assertTrue(result['pass'])
+
+    # ── Generic Summary Phrase Checks ──────────────────────────────────────
+
+    def test_generic_summary_clean(self):
+        """Summary without filler phrases passes."""
+        text = 'Data scientist specializing in deep learning and NLP with 8 years at Pfizer and Genentech.'
+        result = LLMClient.check_summary_generic_phrases(text)
+        self.assertTrue(result['pass'])
+
+    def test_generic_summary_one_filler(self):
+        """Summary with one filler phrase is tolerated."""
+        text = 'Highly motivated data scientist with expertise in statistical modeling.'
+        result = LLMClient.check_summary_generic_phrases(text)
+        self.assertTrue(result['pass'])
+
+    def test_generic_summary_multiple_fillers(self):
+        """Summary with multiple filler phrases fails."""
+        text = 'Highly motivated and detail-oriented professional seeking a position in a dynamic team environment.'
+        result = LLMClient.check_summary_generic_phrases(text)
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['severity'], 'warn')
+
+    def test_generic_summary_specific_claim(self):
+        """Summary with specificity passes."""
+        text = 'Genomics ML engineer. Built deep learning pipelines that reduced variant-calling time from 48h to 6h. Published in Nature.'
+        result = LLMClient.check_summary_generic_phrases(text)
+        self.assertTrue(result['pass'])
+
+    def test_generic_summary_empty_text(self):
+        """Empty text passes."""
+        result = LLMClient.check_summary_generic_phrases('')
+        self.assertTrue(result['pass'])
+
+
 if __name__ == '__main__':
     unittest.main()
