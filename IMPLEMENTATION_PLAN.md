@@ -37,7 +37,7 @@ the distribution of completed-phase durations (Phases 2–6: 0.1–1.7 h intra-s
 | 7 | ATS validation report + page count | ✅ Complete | `d9f284b` | 2026-03-11 |
 | 8 | Phase re-entry / iterative refinement | ✅ Complete | `bf26797` | 2026-03-11 |
 | 9 | Skills canonicalisation + bullet reordering | ✅ Complete | `6c96ea5` | 2026-03-11 |
-| 10 | Persuasion checks + loading state | 🔲 Pending | — | est. 1.0 h (95% CI: 0.3–2.5 h) |
+| 10 | Persuasion checks + loading state | ✅ Complete | `5e39d34` | 2026-03-11 15:15 EDT \| 2.75h |
 | 11 | Finalise & archive + master data harvest | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
 | 12 | Natural-language layout instructions | 🔲 Pending | — | est. 2.5 h (95% CI: 1.0–5.5 h) |
 | 13 | Master data management + accessibility baseline | 🔲 Pending | — | est. 2.5 h (95% CI: 1.0–5.5 h) |
