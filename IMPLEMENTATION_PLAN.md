@@ -34,8 +34,8 @@ the distribution of completed-phase durations (Phases 2–6: 0.1–1.7 h intra-s
 | 4 | Rewrite review UI polish | ✅ Complete | `d494603` | ~0.2 h (10 min) |
 | 5 | Publications block + Human DOCX | ✅ Complete | `3632bc9` | ~0.3 h (18 min) |
 | 6 | Spell/grammar check | ✅ Complete | `a78ae93` | ~1.7 h (99 min) |
-| 7 | ATS validation report + page count | ✅ Complete | — | — |
-| 8 | Phase re-entry / iterative refinement | 🔲 Pending | — | est. 2.0 h (95% CI: 0.5–4.5 h) |
+| 7 | ATS validation report + page count | ✅ Complete | `d9f284b` | — |
+| 8 | Phase re-entry / iterative refinement | ✅ Complete | `bf26797` | — |
 | 9 | Skills canonicalisation + bullet reordering | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
 | 10 | Persuasion checks + loading state | 🔲 Pending | — | est. 1.0 h (95% CI: 0.3–2.5 h) |
 | 11 | Finalise & archive + master data harvest | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
@@ -347,10 +347,49 @@ Full suite: 241 passed, 1 warning in 4.74s  (no new tests needed — validate_at
 
 ---
 
-## Phases 8–15 — Planned
+## Phase 8 — Phase Re-entry / Iterative Refinement
+
+**Status**: ✅ Complete (commit: `bf26797`) | **Tests**: 252/252 passed
+
+### Changes Made
+
+| File | Change |
+|------|--------|
+| `scripts/utils/conversation_manager.py` | Added `_STEP_TO_PHASE` class dict mapping frontend step labels to internal phase strings. Added `back_to_phase(target_phase)` — sets `state['phase']`, `iterating`, `reentry_phase` without clearing any downstream state; saves session. Added `re_run_phase(target_phase)` — builds `_downstream_context()` string (prior approvals, omitted/emphasised experiences/skills, accepted spell-check fixes) and passes as `_prior_context` in `user_prefs`; re-executes LLM call for analysis/customization/rewrite_review; stores prior and new outputs; saves session. |
+| `scripts/web_app.py` | Added `POST /api/back-to-phase` endpoint wrapping `conversation.back_to_phase()`. Added `POST /api/re-run-phase` endpoint wrapping `conversation.re_run_phase()`; returns 400 if call returns `ok: False`. Updated `/api/status` to return `iterating` and `reentry_phase` fields. |
+| `web/index.html` | Added `backToPhase(step)`, `confirmReRunPhase(step)`, `reRunPhase(step)` JS functions. Added "Iterative Refinement" panel at end of `populateDownloadTab()` with three buttons (Refine Customisations, Refine Rewrites, Re-analyse Job). Overhauled `updateWorkflowSteps()`: sets `el.innerHTML` to inject hover-visible `↻` rerun span inside completed steps, amber "↻ Refining" badge on re-entered step when `status.iterating` is true; injected `<style>` for `.step.completed:hover .step-rerun { opacity:1 }`. |
+| `tests/test_conversation_manager.py` | Added `TestBackToPhase` (6 tests) and `TestReRunPhase` (5 tests). Fixed `TestReRunPhase.setUp` to configure `mock_llm.recommend_customizations.return_value` and `mock_llm.analyze_job_description.return_value` as dicts to avoid `MagicMock` JSON-serialisation error in `_save_session`. |
+
+### Design Decisions (Phase 8)
+
+**D8.1 — `back_to_phase` accepts both frontend step labels and internal phase strings.**
+`_STEP_TO_PHASE.get(target_phase, target_phase)` passes through unrecognised strings unchanged. This means the frontend can pass either `'customizations'` (UI label) or `'customization'` (internal) and both resolve correctly.
+
+**D8.2 — Downstream state is never cleared by back-navigation.**
+Per the approved plan decision. `back_to_phase` only mutates `state['phase']`, `state['iterating']`, and `state['reentry_phase']`. All generated files, approved rewrites, experience/skill decisions, and spell-check audit survive the transition. This lets the LLM improve on the last pass rather than starting fresh.
+
+**D8.3 — `_downstream_context()` is a nested closure, not a method.**
+It reads `self.state` directly via closure. This keeps the context-building tightly coupled to the re-run logic without polluting the class API with a semi-private helper. If it needs testing in isolation later it can be extracted.
+
+**D8.4 — Re-run sets `phase = 'customization'` for both analysis and customization re-runs.**
+After re-running analysis, the user should proceed through customisation again (their prior selections may no longer apply). Setting phase to `'customization'` rather than back to `'job_analysis'` means the frontend lands the user in the right next step without an extra click.
+
+**D8.5 — ↻ rerun icon is injected into `el.innerHTML`, not a child element.**
+`updateWorkflowSteps` previously set only `el.classList`. Switching to `el.innerHTML` allows injecting the `<span class="step-rerun">↻</span>` inside the step element. The span's `onclick` uses `event.stopPropagation()` to prevent the enclosing `handleStepClick` from also firing.
+
+### Test Results
+
+```
+tests/test_conversation_manager.py  ...  252 passed  (+11 new tests)
+Full suite: 252 passed, 1 warning in 5.04s
+```
+
+---
+
+## Phases 9–15 — Planned
 
 See the approved plan in `.claude/plans/virtual-wibbling-metcalfe.md` for full
-specifications of Phases 8–15. Design decisions and implementation notes will be
+specifications of Phases 9–15. Design decisions and implementation notes will be
 added here as each phase is implemented.
 
 ---
@@ -366,4 +405,4 @@ added here as each phase is implemented.
 
 ---
 
-_Last updated by agent: 2026-03-11 (Phase 7 complete)_
+_Last updated by agent: 2026-03-11 (Phase 8 complete)_
