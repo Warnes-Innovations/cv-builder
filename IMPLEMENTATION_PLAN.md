@@ -28,7 +28,7 @@ decisions, questions, and progress as the agent implements the approved 15-phase
 | 1 | Test fixes + metadata audit trail + startup config validation | ✅ Complete | _pending_ |
 | 2 | Workflow progress indicator (8-step bar, back-nav, single-session lock) | ✅ Complete | _pending_ |
 | 3 | Analysis display upgrade | ✅ Complete | _pending_ |
-| 4 | Rewrite review UI polish | 🔲 Pending | — |
+| 4 | Rewrite review UI polish | ✅ Complete | `d494603` |
 | 5 | Publications block + Human DOCX | 🔲 Pending | — |
 | 6 | Spell/grammar check | 🔲 Pending | — |
 | 7 | ATS validation report + page count | 🔲 Pending | — |
@@ -187,13 +187,42 @@ Full suite: 236 passed, 1 warning in 3.64s
 
 ## Phase 4 — Rewrite Review UI Polish
 
-**Status**: 🔲 Pending
+**Status**: ✅ Complete | **Tests**: 236/236 passed
 
-### Planned Changes
-- `computeWordDiff(original, proposed)` LCS word-level diff
-- Inline `<del>`/`<ins>` diff replacing side-by-side layout
-- Ranked keyword pills with weight badge
-- Sticky tally bar at top
+### Changes Made
+
+| File | Change |
+|------|--------|
+| `web/index.html` (CSS ~line 531) | Replaced `.rewrite-text-row` / `.rewrite-before` two-column grid with `.rewrite-inline-diff` container. Added `del.diff-removed` (red strikethrough) and `ins.diff-added` (green) token styles. Kept `.rewrite-after` for edit-mode textarea. |
+| `web/index.html` (CSS ~line 537) | Updated `.rewrite-keyword` to `display:inline-flex` with a `.kw-rank` child badge (dark blue pill, white text). |
+| `web/index.html` (new `computeWordDiff` ~line 3825) | LCS word-level diff: tokenises both strings by splitting on `/(\s+)/` (preserving whitespace as tokens), builds O(m×n) DP table, backtracks to produce `[{token, type: 'unchanged'|'removed'|'added'}]` array. |
+| `web/index.html` (new `renderDiffHtml` ~line 3862) | Shared helper that converts a diff-token array to `<del>`/`<ins>` HTML (calls `escapeHtml` on each token). |
+| `web/index.html` (`renderRewriteCard` ~line 3871) | Replaced side-by-side `.rewrite-text-row` with `.rewrite-inline-diff` block containing computed diff. Stores `data-original` attribute for diff regeneration. Added `#${idx+1}` rank badge to each keyword pill. Added hidden `#rw-after-${cardId}` container for edit flow. |
+| `web/index.html` (`applyRewriteAction` ~line 3918) | Edit mode: hides diff div, shows `#rw-after` textarea. Accept/reject from edit: restores diff display, hides edit area. |
+| `web/index.html` (`saveRewriteEdit` ~line 3962) | After saving an edit, regenerates the inline diff from `diffEl.dataset.original` → edited text and re-shows the diff panel. |
+
+### Design Decisions (Phase 4)
+
+**D4.1 — LCS operates on whitespace-split tokens, not characters.**
+Character-level diffs produce unreadable noise for CV bullets ("Reduc**ed** the…" → red/green char-by-char). Word-level with whitespace tokens preserved as separate array elements means the rendered diff is the same text flow as the original, just with `<del>`/`<ins>` wrapping changed words. The `split(/(\s+)/)` capturing-group approach keeps all spaces as array entries so the joined HTML has correct spacing without extra logic.
+
+**D4.2 — `data-original` stores the original for edit-then-save diff regeneration.**
+If the user clicks Edit, changes the text, and saves, the inline diff is recomputed against the true original (not the previously-proposed text). This is the correct behaviour: the card always shows what changed from the CV as-was, not a diff of a diff. The attribute is set once at render time in `renderRewriteCard` and never mutated by JS.
+
+**D4.3 — `#rw-after-${id}` is kept but hidden by default.**
+`applyRewriteAction` and `saveRewriteEdit` were already written to expect this element as the locus of edit-mode UI. Rather than rewriting both functions from scratch, the hidden container pattern keeps those functions minimal: they only add `style.display` toggles alongside `diffEl`. This maintains backward compatibility with any future callers that expect `#rw-after-text-${id}` to hold the proposed text.
+
+**D4.4 — Sticky tally bar and `step-rewrite` wiring were already correct.**
+The `.rewrite-tally-bar { position: sticky; top: 0 }` was implemented in an earlier pass. `updateWorkflowSteps()` already maps `'rewrite_review'` → `step-rewrite`. No additional changes were needed for those two Phase 4 acceptance criteria.
+
+**D4.5 — Keyword pill rank badge uses array position, not a score field.**
+The plan says "weight rank badge … position in `keywords_introduced` array". The LLM already returns keywords in priority order. The badge renders `#1`, `#2`, … using `.map((k, idx) => …)`. No server-side change is needed: the ordering is preserved by the existing JSON serialisation.
+
+### Test Results
+
+```
+Full suite: 236 passed, 1 warning in 3.92s
+```
 
 ---
 
@@ -245,4 +274,4 @@ added here as each phase is implemented.
 
 ---
 
-_Last updated by agent: 2026-03-11 (Phase 3 complete)_
+_Last updated by agent: 2026-03-11 (Phase 4 complete)_
