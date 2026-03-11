@@ -7,6 +7,7 @@ google-auth-oauthlib>=1.1.0
 
 # Document Generation
 python-docx>=0.8.11
+docxtpl>=0.20.0
 weasyprint>=60.0
 pypandoc>=1.11
 mammoth>=1.6.0

@@ -3203,13 +3203,23 @@
             <button class="submit-btn" onclick="submitSkillDecisions()">Submit Skill Decisions</button>
           </div>
         </div>
+
+        <div class="review-section" id="publications-review-section" style="margin-top: 40px; display:none;">
+          <h2>📄 Selected Publications</h2>
+          <p style="color: #6b7280; font-size: 0.95em; margin-bottom: 16px;">LLM-ranked recommendations from your bibliography. Accept or reject each publication to control what appears in the CV.</p>
+          <div id="publications-table-container"></div>
+          <div class="nav-buttons" style="margin: 20px 0;">
+            <button class="submit-btn" onclick="submitPublicationDecisions()">Save Publication Selections</button>
+          </div>
+        </div>
       `;
       
       content.innerHTML = html;
       
-      // Build both tables
+      // Build all three tables
       await buildExperienceReviewTable();
       await buildSkillsReviewTable();
+      await buildPublicationsReviewTable();
     }
     
     async function buildExperienceReviewTable() {
@@ -3430,7 +3440,7 @@
       `;
       
       container.innerHTML = tableHTML;
-      
+
       // Initialize DataTable
       $('#skills-review-table').DataTable({
         paging: false,
@@ -3439,7 +3449,172 @@
         }
       });
     }
-    
+
+    // Track publication accept/reject decisions: cite_key → true (accept) | false (reject)
+    window.publicationDecisions = {};
+
+    async function buildPublicationsReviewTable() {
+      const container = document.getElementById('publications-table-container');
+      const section   = document.getElementById('publications-review-section');
+      if (!container) return;
+
+      container.innerHTML = '<p style="padding: 20px; text-align: center; color: #6b7280;">Loading publication recommendations…</p>';
+
+      let recommendations = [];
+      let totalCount = 0;
+      try {
+        const res  = await fetch('/api/publication-recommendations');
+        const data = await res.json();
+        if (!data.ok) { container.innerHTML = `<p class="error-message">${data.error || 'Failed to load publications.'}</p>`; return; }
+        recommendations = data.recommendations || [];
+        // total count shown in status
+        const statusRes = await fetch('/api/status');
+        const statusData = await statusRes.json();
+        const jobAnalysis = statusData.job_analysis || {};
+        totalCount = (typeof jobAnalysis === 'object' && jobAnalysis !== null) ? (window._pubTotalCount || recommendations.length) : recommendations.length;
+      } catch (err) {
+        console.error('Error fetching publication recommendations:', err);
+        container.innerHTML = '<p style="color: #ef4444; padding: 20px;">Failed to load publication recommendations.</p>';
+        return;
+      }
+
+      if (recommendations.length === 0) {
+        // No publications — keep section hidden
+        if (section) section.style.display = 'none';
+        return;
+      }
+
+      // Show section
+      if (section) section.style.display = '';
+
+      // Update heading count
+      const heading = section ? section.querySelector('h2') : null;
+      if (heading) {
+        const total = totalCount > recommendations.length ? totalCount : recommendations.length;
+        heading.textContent = `📄 Selected Publications (${recommendations.length} of ${total})`;
+      }
+
+      // Initialise decisions — all accepted by default
+      window.publicationDecisions = {};
+      recommendations.forEach(pub => {
+        window.publicationDecisions[pub.cite_key] = true;
+      });
+
+      let tableHTML = `
+        <table id="publications-review-table" class="review-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Citation</th>
+              <th>Venue</th>
+              <th>Year</th>
+              <th>1st Author</th>
+              <th>Score</th>
+              <th>Rationale</th>
+              <th>Include?</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      recommendations.forEach((pub, idx) => {
+        const rank       = idx + 1;
+        const citation   = pub.formatted_citation || [pub.title, pub.venue, pub.year].filter(Boolean).join('. ');
+        const venue      = pub.venue || '<em style="color:#9ca3af">—</em>';
+        const year       = pub.year || '—';
+        const firstAuth  = pub.is_first_author ? '<span style="color:#10b981;font-weight:700;" title="First author">★</span>' : '<span style="color:#d1d5db;">☆</span>';
+        const score      = pub.relevance_score != null ? pub.relevance_score : '—';
+        const rationale  = pub.rationale ? `<small>${escapeHtml(pub.rationale)}</small>` : '';
+        const venueWarn  = pub.venue_warning ? ` <span title="${escapeHtml(pub.venue_warning)}" style="color:#dc7900;cursor:help;">⚠</span>` : '';
+        const citeKey    = pub.cite_key || '';
+        const authSignals = (pub.authority_signals || []).map(s => `<span style="font-size:11px;background:#ede9fe;color:#5b21b6;border-radius:8px;padding:1px 6px;margin-right:3px;">${escapeHtml(s)}</span>`).join('');
+
+        tableHTML += `
+          <tr data-cite-key="${escapeHtml(citeKey)}">
+            <td style="text-align:center;font-weight:700;">${rank}</td>
+            <td style="max-width:280px;font-size:0.87em;">${escapeHtml(citation)}${venueWarn}${authSignals ? '<br>' + authSignals : ''}</td>
+            <td style="font-size:0.87em;">${venue}</td>
+            <td style="text-align:center;">${year}</td>
+            <td style="text-align:center;">${firstAuth}</td>
+            <td style="text-align:center;"><strong>${score}</strong>/10</td>
+            <td style="max-width:200px;">${rationale}</td>
+            <td class="action-btns">
+              <button class="icon-btn active" data-action="accept" title="Include in CV"
+                  onclick="handlePubAction('${escapeHtml(citeKey)}', true)"
+                  style="color:#10b981;font-size:1.3em;" id="pub-accept-${rank}">✓</button>
+              <button class="icon-btn" data-action="reject" title="Exclude from CV"
+                  onclick="handlePubAction('${escapeHtml(citeKey)}', false)"
+                  style="color:#ef4444;font-size:1.3em;" id="pub-reject-${rank}">✗</button>
+            </td>
+          </tr>
+        `;
+      });
+
+      tableHTML += '</tbody></table>';
+      container.innerHTML = tableHTML;
+
+      // Initialize DataTable
+      $('#publications-review-table').DataTable({
+        paging: false,
+        order: [[0, 'asc']],
+        language: { search: "Filter publications:" }
+      });
+    }
+
+    function handlePubAction(citeKey, accept) {
+      window.publicationDecisions[citeKey] = accept;
+      // update button active states in the row
+      const row = document.querySelector(`tr[data-cite-key="${CSS.escape(citeKey)}"]`);
+      if (!row) return;
+      row.querySelectorAll('.icon-btn').forEach(btn => btn.classList.remove('active'));
+      const action = accept ? 'accept' : 'reject';
+      const btn = row.querySelector(`[data-action="${action}"]`);
+      if (btn) btn.classList.add('active');
+    }
+
+    async function submitPublicationDecisions() {
+      const decisions = window.publicationDecisions || {};
+      const count = Object.keys(decisions).length;
+      if (count === 0) {
+        showAlertModal('No Publications', 'No publication decisions to save.');
+        return;
+      }
+
+      // Persist as a structured answer in session state via post-analysis-responses
+      const accepted = Object.entries(decisions)
+        .filter(([, v]) => v)
+        .map(([k]) => k);
+      const rejected = Object.entries(decisions)
+        .filter(([, v]) => !v)
+        .map(([k]) => k);
+
+      const answersPayload = {
+        publication_accepted: accepted.join(', '),
+        publication_rejected: rejected.join(', '),
+      };
+
+      try {
+        const response = await fetch('/api/post-analysis-responses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ questions: [], answers: answersPayload })
+        });
+
+        if (response.ok) {
+          showAlertModal(
+            '✅ Publication Selections Saved',
+            `Kept <strong>${accepted.length}</strong> publication${accepted.length !== 1 ? 's' : ''}; excluded <strong>${rejected.length}</strong>.<br><br>These selections will be applied when generating your CV.`
+          );
+        } else {
+          const err = await response.json();
+          showAlertModal('❌ Error', `Failed to save publication selections: ${err.error || 'Unknown error'}`);
+        }
+      } catch (err) {
+        console.error('Error saving publication decisions:', err);
+        showAlertModal('❌ Error', 'Failed to save publication selections. Please try again.');
+      }
+    }
+
     function handleActionClick(itemId, action, type) {
       // Remove active class from all buttons in this row
       const row = type === 'experience' 

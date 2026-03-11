@@ -1405,6 +1405,72 @@ Job Description (excerpt):
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
+    @app.get("/api/publication-recommendations")
+    def publication_recommendations():
+        """Return LLM-ranked publication recommendations for the current job.
+
+        Reads `session.publication_recommendations` if already computed, or
+        computes them from `orchestrator.publications` + `session.job_analysis`.
+        Computation runs at most once per session (cached in state).
+        """
+        try:
+            # Return cached recommendations if available.
+            cached = conversation.state.get('publication_recommendations')
+            if cached is not None:
+                return jsonify({"ok": True, "recommendations": cached, "source": "cache"})
+
+            job_analysis = conversation.state.get('job_analysis')
+            if not job_analysis:
+                return jsonify({"ok": True, "recommendations": [], "source": "no_analysis"})
+
+            if not orchestrator.publications:
+                return jsonify({"ok": True, "recommendations": [], "source": "no_publications"})
+
+            candidate_name = ''
+            if orchestrator.master_data:
+                candidate_name = orchestrator.master_data.get('personal_info', {}).get('name', '')
+
+            # Convert bibtex_parser dict-of-dicts to list for the LLM ranker.
+            pubs_list = list(orchestrator.publications.values())
+
+            try:
+                recommendations = llm_client.rank_publications_for_job(
+                    publications=pubs_list,
+                    job_analysis=job_analysis,
+                    candidate_name=candidate_name,
+                    max_results=15,
+                )
+                source = "llm"
+            except Exception as rank_err:
+                print(f"Publication ranking failed, using score-based fallback: {rank_err}")
+                # Fallback: use the existing score-based _select_publications.
+                selected = orchestrator._select_publications(job_analysis, max_count=15)
+                recommendations = []
+                for pub in selected:
+                    recommendations.append({
+                        'cite_key':          pub.get('key', ''),
+                        'title':             pub.get('title', ''),
+                        'venue':             pub.get('journal') or pub.get('booktitle') or '',
+                        'year':              pub.get('year', ''),
+                        'is_first_author':   False,
+                        'relevance_score':   pub.get('relevance_score', 5),
+                        'rationale':         '',
+                        'authority_signals': [],
+                        'venue_warning':     '' if (pub.get('journal') or pub.get('booktitle')) else 'No venue found',
+                        'formatted_citation': pub.get('formatted', ''),
+                    })
+                source = "fallback"
+
+            conversation.state['publication_recommendations'] = recommendations
+            conversation._save_session()
+
+            return jsonify({"ok": True, "recommendations": recommendations, "source": source})
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
     @app.get("/api/download/<filename>")
     def download_file(filename):
         """Download generated CV files"""

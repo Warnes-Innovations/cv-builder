@@ -107,7 +107,8 @@ class CVOrchestrator:
             'variant': template_variant,
             'generated_date': datetime.now().isoformat(),
             'job_title': job_analysis.get('title', ''),
-            'company': job_analysis.get('company', '')
+            'company': job_analysis.get('company', ''),
+            'total_publications_count': len(self.publications) if self.publications else 0,
         }
         
         cv_data = {
@@ -999,9 +1000,23 @@ For manual generation:
         summaries = self.master_data.get('professional_summaries', {})
         summary_key = customizations.get('summary_focus', 'default')
         selected_summary = summaries.get(summary_key) or summaries.get('default', '')
-        
-        # Select publications
-        selected_publications = self._select_publications(job_analysis, max_count=10)
+
+        # Select publications — honour user accept/reject decisions if present
+        accepted_pubs = customizations.get('accepted_publications')  # list of cite_keys or None
+        rejected_pubs = set(customizations.get('rejected_publications') or [])
+
+        if accepted_pubs is not None:
+            # User has explicitly selected publications — use their ordered list
+            accepted_set = set(accepted_pubs)
+            selected_publications = []
+            for pub in self._select_publications(job_analysis, max_count=len(self.publications) if self.publications else 50):
+                key = pub.get('key', '') or ''
+                if key in accepted_set and key not in rejected_pubs:
+                    selected_publications.append(pub)
+                    if len(selected_publications) >= 15:
+                        break
+        else:
+            selected_publications = self._select_publications(job_analysis, max_count=10)
         
         return {
             'personal_info': self.master_data.get('personal_info', {}),
@@ -1025,7 +1040,7 @@ For manual generation:
         scored_pubs = []
         for key, pub in self.publications.items():
             score = 0.0
-            
+
             # Recent publications score higher
             try:
                 year = int(pub['year'])
@@ -1037,37 +1052,38 @@ For manual generation:
                     score += 10
             except (ValueError, KeyError):
                 pass
-            
+
             # Type bonus
             if pub['type'] == 'article':
                 score += 25
             elif pub['type'] in ['inproceedings', 'conference']:
                 score += 20
-            
+
             # Keyword matches
             title_lower = pub['title'].lower()
             matches = sum(1 for kw in keywords if kw.lower() in title_lower)
             score += matches * 5
-            
+
             # Domain-specific
             if domain == 'genomics' and any(
                 term in title_lower for term in ['genom', 'gene', 'dna', 'rna']
             ):
                 score += 15
-            
-            scored_pubs.append((pub, score))
-        
-        scored_pubs.sort(key=lambda x: x[1], reverse=True)
-        
+
+            scored_pubs.append((key, pub, score))
+
+        scored_pubs.sort(key=lambda x: x[2], reverse=True)
+
         selected = []
-        for pub, score in scored_pubs[:max_count]:
+        for key, pub, score in scored_pubs[:max_count]:
             formatted = format_publication(pub, style='brief')
             selected.append({
+                'key': key,
                 'formatted': formatted,
                 'year': pub['year'],
                 'type': pub['type']
             })
-        
+
         return selected
     
     def _generate_ats_docx(
@@ -1458,21 +1474,223 @@ For manual generation:
         job_analysis: Dict,
         output_dir: Path
     ) -> Path:
-        """Generate human-readable DOCX with styling."""
-        # Similar to ATS but with better formatting
-        # TODO: Implement styled version
-        company = job_analysis.get('company', 'Company').replace(' ', '')
-        role = job_analysis.get('title', 'Role').replace(' ', '')[:20]
-        timestamp = datetime.now().strftime("%Y-%m-%d")
-        
-        filename = f"CV_{company}_{role}_{timestamp}.docx"
-        filepath = output_dir / filename
-        
-        # For now, reuse ATS generation
+        """Generate human-readable DOCX using python-docx with Calibri, standard margins.
+
+        Sections (all conditional where marked):
+        Name / Contact / Summary / Experience / Skills / Education /
+        Certifications (if any) / Selected Publications (if any).
+        """
         from docx import Document
+        from docx.shared import Pt, RGBColor, Inches
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+
+        company   = job_analysis.get('company', 'Company').replace(' ', '')
+        role      = job_analysis.get('title', 'Role').replace(' ', '')[:20]
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+        filename  = f"CV_{company}_{role}_{timestamp}.docx"
+        filepath  = output_dir / filename
+
         doc = Document()
-        doc.add_paragraph("Human-readable DOCX coming soon")
+
+        # ── Page margins (1 inch all sides) ─────────────────────────────────
+        for section in doc.sections:
+            section.top_margin    = Inches(1.0)
+            section.bottom_margin = Inches(1.0)
+            section.left_margin   = Inches(1.0)
+            section.right_margin  = Inches(1.0)
+
+        # ── Default paragraph style: Calibri 11 ─────────────────────────────
+        style = doc.styles['Normal']
+        font  = style.font
+        font.name = 'Calibri'
+        font.size = Pt(11)
+
+        # ── Helper functions ─────────────────────────────────────────────────
+        def _heading(text: str, level: int = 1):
+            p = doc.add_paragraph()
+            run = p.add_run(text.upper())
+            run.bold = True
+            run.font.size = Pt(13 if level == 1 else 11)
+            run.font.color.rgb = RGBColor(0x2c, 0x3e, 0x50)
+            # Bottom border (thin rule under section heading)
+            pPr = p._p.get_or_add_pPr()
+            pBdr = OxmlElement('w:pBdr')
+            bottom = OxmlElement('w:bottom')
+            bottom.set(qn('w:val'), 'single')
+            bottom.set(qn('w:sz'), '4')
+            bottom.set(qn('w:space'), '1')
+            bottom.set(qn('w:color'), '2c3e50')
+            pBdr.append(bottom)
+            pPr.append(pBdr)
+            p.paragraph_format.space_before = Pt(8)
+            p.paragraph_format.space_after  = Pt(2)
+            return p
+
+        def _para(text: str = '', bold: bool = False, italic: bool = False,
+                  size: int = 11, indent: float = 0.0, space_after: float = 2):
+            p = doc.add_paragraph()
+            p.paragraph_format.space_after  = Pt(space_after)
+            p.paragraph_format.space_before = Pt(0)
+            if indent:
+                p.paragraph_format.left_indent = Inches(indent)
+            if text:
+                run = p.add_run(text)
+                run.bold   = bold
+                run.italic = italic
+                run.font.size = Pt(size)
+            return p
+
+        def _bullet(text: str):
+            p = doc.add_paragraph(style='List Bullet')
+            p.paragraph_format.left_indent  = Inches(0.25)
+            p.paragraph_format.space_after  = Pt(1)
+            p.add_run(text)
+            return p
+
+        # ── Name ─────────────────────────────────────────────────────────────
+        personal_info = content.get('personal_info', {})
+        name_para = doc.add_paragraph()
+        name_run  = name_para.add_run(personal_info.get('name', ''))
+        name_run.bold       = True
+        name_run.font.size  = Pt(22)
+        name_run.font.color.rgb = RGBColor(0x2c, 0x3e, 0x50)
+        name_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        name_para.paragraph_format.space_after = Pt(2)
+
+        # Job title line
+        title_para = doc.add_paragraph()
+        title_run  = title_para.add_run(job_analysis.get('title', ''))
+        title_run.italic    = True
+        title_run.font.size = Pt(12)
+        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title_para.paragraph_format.space_after = Pt(4)
+
+        # ── Contact ──────────────────────────────────────────────────────────
+        contact = personal_info.get('contact', {})
+        contact_parts = []
+        if contact.get('email'):
+            contact_parts.append(contact['email'])
+        if contact.get('phone'):
+            contact_parts.append(contact['phone'])
+        address = contact.get('address', {})
+        if address:
+            city  = address.get('city', '')
+            state = address.get('state', '')
+            if city or state:
+                contact_parts.append(f"{city}, {state}".strip(', '))
+        if contact.get('linkedin'):
+            contact_parts.append(contact['linkedin'].replace('https://', ''))
+        if contact_parts:
+            cp = doc.add_paragraph(' | '.join(contact_parts))
+            cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            cp.paragraph_format.space_after = Pt(4)
+            for run in cp.runs:
+                run.font.size = Pt(10)
+
+        # ── Professional Summary ─────────────────────────────────────────────
+        summary = content.get('professional_summary', '')
+        if summary:
+            _heading('Professional Summary')
+            _para(summary, space_after=4)
+
+        # ── Experience ───────────────────────────────────────────────────────
+        experiences = content.get('experiences', [])
+        if experiences:
+            _heading('Experience')
+            for exp in experiences:
+                # Role + Company on same line, dates on right
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(4)
+                p.paragraph_format.space_after  = Pt(0)
+                role_run = p.add_run(exp.get('title', ''))
+                role_run.bold = True
+                p.add_run('  ')
+                co_run = p.add_run(exp.get('company', ''))
+                co_run.italic = True
+                # Dates as right-aligned run (approximate via tab stop)
+                date_str = f"{exp.get('start_date', '')} – {exp.get('end_date', '')}"
+                p.add_run(f"   {date_str}")
+                loc = exp.get('location', {})
+                if isinstance(loc, dict) and (loc.get('city') or loc.get('state')):
+                    _para(f"{loc.get('city', '')}, {loc.get('state', '')}".strip(', '),
+                          italic=True, size=10, space_after=1)
+                for ach in exp.get('achievements', []):
+                    text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
+                    if text.strip():
+                        _bullet(text)
+
+        # ── Skills ───────────────────────────────────────────────────────────
+        skills_by_category = content.get('skills_by_category', [])
+        if skills_by_category:
+            _heading('Technical Skills')
+            for cat in skills_by_category:
+                p = doc.add_paragraph()
+                p.paragraph_format.space_after = Pt(2)
+                cat_run = p.add_run(f"{cat.get('category', '')}: ")
+                cat_run.bold = True
+                cat_run.font.size = Pt(10)
+                skills_list = cat.get('skills', [])
+                skills_text = ', '.join(
+                    s.get('name', s) if isinstance(s, dict) else str(s)
+                    for s in skills_list
+                )
+                skill_run = p.add_run(skills_text)
+                skill_run.font.size = Pt(10)
+
+        # ── Education ────────────────────────────────────────────────────────
+        education = content.get('education', [])
+        if education:
+            _heading('Education')
+            for edu in education:
+                degree = edu.get('degree', '')
+                field  = edu.get('field', '')
+                inst   = edu.get('institution', '')
+                year   = edu.get('end_year') or edu.get('graduation_date', '')
+                degree_str = f"{degree}, {field}" if field else degree
+                p = doc.add_paragraph()
+                p.paragraph_format.space_after = Pt(2)
+                deg_run = p.add_run(degree_str)
+                deg_run.bold = True
+                p.add_run(f"  {inst}  ({year})")
+
+        # ── Certifications ───────────────────────────────────────────────────
+        certifications = content.get('certifications', [])
+        if certifications:
+            _heading('Certifications')
+            for cert in certifications:
+                name   = cert.get('name', '')
+                issuer = cert.get('issuer', '')
+                year   = cert.get('year', '')
+                parts  = [name]
+                if issuer:
+                    parts.append(issuer)
+                if year:
+                    parts.append(f"({year})")
+                _para(' | '.join(parts), space_after=2)
+
+        # ── Selected Publications ────────────────────────────────────────────
+        publications = content.get('publications', [])
+        if publications:
+            total_count = len(self.publications) if self.publications else 0
+            heading_text = 'Selected Publications'
+            if total_count and total_count > len(publications):
+                heading_text = f'Selected Publications ({len(publications)} of {total_count})'
+            _heading(heading_text)
+            for idx, pub in enumerate(publications, 1):
+                citation = pub.get('formatted_citation', '')
+                if citation:
+                    p = doc.add_paragraph(style='List Number')
+                    p.paragraph_format.space_after  = Pt(2)
+                    p.paragraph_format.left_indent  = Inches(0.25)
+                    run = p.add_run(citation)
+                    run.font.size = Pt(10)
+                    if pub.get('venue_warning'):
+                        warn_run = p.add_run('  ⚠')
+                        warn_run.font.size  = Pt(9)
+                        warn_run.font.color.rgb = RGBColor(0xDC, 0x79, 0x00)
+
         doc.save(str(filepath))
-        
-        print(f"⚠ Human DOCX placeholder: {filename}")
+        print(f"✓ Human DOCX: {filename}")
         return filepath

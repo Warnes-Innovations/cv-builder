@@ -422,6 +422,18 @@
                 margin: 0;
             }
         }
+
+        /* Publications section */
+        .pub-list { list-style: decimal; padding-left: 1.4em; margin: 0; }
+        .pub-item { margin-bottom: 0.7em; font-size: 0.88em; line-height: 1.5; }
+        .pub-citation { color: var(--text-main); }
+        .pub-count { font-size: 0.75em; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
+        .pub-venue-warn { color: #dc7900; font-size: 0.85em; margin-left: 4px; cursor: help; }
+
+        /* Certifications in sidebar */
+        .cert-item { margin-bottom: 0.5em; }
+        .cert-name { display: block; font-size: 0.82em; font-weight: 600; color: var(--text-main); }
+        .cert-issuer { display: block; font-size: 0.78em; color: var(--text-muted); }
     </style>
 </head>
 <body>
@@ -471,6 +483,19 @@
                     </div>
                     {% endfor %}
                 </div>
+
+                {% if certifications %}
+                <div class="sidebar-section">
+                    <div class="sidebar-title">Certifications</div>
+                    {% for cert in certifications %}
+                    <div class="cert-item">
+                        <span class="cert-name">{{ cert.name }}</span>
+                        {% if cert.issuer %}<span class="cert-issuer">{{ cert.issuer }}</span>{% endif %}
+                        {% if cert.year %}<span class="year">{{ cert.year }}</span>{% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
 
                 <div class="sidebar-section">
                     <div class="sidebar-title">Languages</div>
@@ -598,6 +623,31 @@
         <!-- END PAGE THREE -->
     </div>
 
+    {% if publications %}
+    <!-- SELECTED PUBLICATIONS PAGE -->
+    <div id="page-publications" class="page">
+        <main class="right-col" style="grid-column: 1 / -1; max-width: 100%;">
+            <section class="section">
+                <h2 class="section-title"><i class="fas fa-file-alt"></i> Selected Publications
+                    {% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}
+                    <span class="pub-count">({{ publications | length }} of {{ template_metadata.total_publications_count }})</span>
+                    {% endif %}
+                </h2>
+                <ol class="pub-list">
+                    {% for pub in publications %}
+                    <li class="pub-item">
+                        <span class="pub-citation">{{ pub.formatted_citation }}</span>
+                        {% if pub.venue_warning %}
+                        <span class="pub-venue-warn" title="{{ pub.venue_warning }}">⚠</span>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ol>
+            </section>
+        </main>
+    </div>
+    {% endif %}
+
     <!-- ================================================================
          HIDDEN PLAIN-TEXT SECTION
          Invisible in browser and print.  Included for ATS engines that
@@ -646,6 +696,18 @@ EDUCATION
 TECHNICAL SKILLS
 --------------------------------------------------------------------------------
 {% for cat in skills_by_category %}{{ cat.category }}: {{ cat.skills | map(attribute='name') | join(', ') }}
+{% endfor %}{% endif %}
+{% if certifications %}
+--------------------------------------------------------------------------------
+CERTIFICATIONS
+--------------------------------------------------------------------------------
+{% for cert in certifications %}{{ cert.name }}{% if cert.issuer %} | {{ cert.issuer }}{% endif %}{% if cert.year %} ({{ cert.year }}){% endif %}
+{% endfor %}{% endif %}
+{% if publications %}
+--------------------------------------------------------------------------------
+SELECTED PUBLICATIONS
+--------------------------------------------------------------------------------
+{% for pub in publications %}{{ loop.index }}. {{ pub.formatted_citation }}
 {% endfor %}{% endif %}
 ================================================================================
     </pre></section>

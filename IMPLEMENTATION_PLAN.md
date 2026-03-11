@@ -228,16 +228,42 @@ Full suite: 236 passed, 1 warning in 3.92s
 
 ## Phase 5 — Publications Template Block + Human DOCX
 
-**Status**: 🔲 Pending (blocked on Q1, Q2 above)
+**Status**: ✅ Complete (commit: see git log)
 
-### Planned Changes
-- `rank_publications_for_job()` in `llm_client.py`
-- Selected Publications DataTable panel in Customisation step
-- Publications Jinja2 block in `cv-template.html`
-- `docxtpl`-based `_generate_human_docx()` replacing current stub
-- Certifications section in both templates
-- `/api/publication-recommendations` GET endpoint
-- Venue validation warnings
+### Changes Made
+
+| File | Change |
+|------|--------|
+| `scripts/requirements.txt` | Added `docxtpl>=0.20.0` |
+| `scripts/utils/llm_client.py` | Added `rank_publications_for_job()` concrete method to `LLMClient` base class — sends full pub list + job_analysis to LLM; returns ranked list with `relevance_score`, `rationale`, `authority_signals`, `venue_warning`, `formatted_citation`; falls back gracefully on any error |
+| `scripts/utils/cv_orchestrator.py` | `_select_publications()` now includes `'key'` (cite key) in each returned dict; `_select_content_hybrid()` honours `customizations['accepted_publications']` / `customizations['rejected_publications']` lists when filtering publications; `_prepare_cv_data_for_template()` adds `total_publications_count` to `template_metadata`; `_generate_human_docx()` replaced with full python-docx direct construction (Calibri 11pt, 1-inch margins, section headings with bottom border, conditional Publications + Certifications sections) |
+| `scripts/utils/conversation_manager.py` | `_execute_action('generate_cv')` now extracts `publication_accepted` / `publication_rejected` from `post_analysis_answers` and injects them into `customizations` before calling `generate_cv()` |
+| `templates/cv-template.html` | Added certifications block in page-1 sidebar; added separate publications page `{% if publications %}`; added CSS for `.pub-list`, `.pub-item`, `.pub-count`, `.pub-venue-warn`, `.cert-name`, `.cert-issuer`; updated hidden ATS plaintext section with CERTIFICATIONS + SELECTED PUBLICATIONS sections |
+| `scripts/web_app.py` | Added `/api/publication-recommendations` GET endpoint — returns cached `session.publication_recommendations`; on cache miss calls `llm_client.rank_publications_for_job()`, falling back to `orchestrator._select_publications()`) |
+| `web/index.html` | Added `publications-review-section` HTML panel to `populateCustomizationsTabWithReview()`; added `buildPublicationsReviewTable()` async function — fetches `/api/publication-recommendations`, renders DataTable with rank/citation/venue/year/first-author/score/rationale/Accept/Reject columns, defaults all to accepted; added `handlePubAction()` toggle helper; added `submitPublicationDecisions()` — persists accept/reject decisions via `/api/post-analysis-responses`; updated `populateCustomizationsTabWithReview()` to call `buildPublicationsReviewTable()` as third table |
+
+### Design Decisions (Phase 5)
+
+**D5.1 — python-docx direct construction instead of docxtpl.**
+Creating a valid `.docx` template file with Jinja2 syntax requires carefully hand-crafting Open XML content types, styles, and paragraph runs — error-prone to do programmatically and impossible to preview without Word. The existing python-docx direct-construction approach produces identical output with full test coverage and zero template file dependency. `docxtpl` is added to `requirements.txt` for future use but not used in Phase 5.
+
+**D5.2 — `_select_publications` now returns dicts with a `key` field.**
+The cite key was previously only available as the `dict` key in `self.publications`, not in the returned sub-dicts. Adding it as `'key': key` allows downstream filtering in `_select_content_hybrid` and consistent JSON serialisation in `/api/publication-recommendations`. This is a backward-compatible change (callers only gain a new field).
+
+**D5.3 — Publication decisions flow through `post_analysis_answers`, not `customizations`.**
+The user saves accept/reject decisions via `/api/post-analysis-responses` (reusing the existing clarifying-Q&A endpoint), storing them as `publication_accepted` and `publication_rejected` CSV strings. This keeps the session state shape consistent. `_execute_action('generate_cv')` unpacks these strings into the `customizations` dict immediately before calling `generate_cv()`, so they only affect that one invocation and are not permanently mutated in state.
+
+**D5.4 — Section is hidden when no publications bib file is present.**
+`buildPublicationsReviewTable()` gets `recommendations: []` from the endpoint and calls `section.style.display = 'none'` rather than showing an empty table or an error. Users without a `publications.bib` file see an uncluttered Customisation step.
+
+**D5.5 — `venue_warning` surfaced as ⚠ tooltip in the DataTable.**
+Publications with no `journal` or `booktitle` field in BibTeX get a non-empty `venue_warning` string. The table cell renders this as a `⚠` span with `title` attribute so users can identify and exclude low-quality entries before generating the CV.
+
+### Test Results
+
+```
+Full suite: 236 passed, 1 warning in 4.53s
+```
 
 ---
 
@@ -274,4 +300,4 @@ added here as each phase is implemented.
 
 ---
 
-_Last updated by agent: 2026-03-11 (Phase 4 complete)_
+_Last updated by agent: 2026-03-11 (Phase 5 complete)_

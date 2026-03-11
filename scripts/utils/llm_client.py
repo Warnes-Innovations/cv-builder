@@ -167,6 +167,150 @@ class LLMClient(ABC):
             f"Cannot extract JSON from LLM response: {response[:200]!r}"
         )
 
+    def rank_publications_for_job(
+        self,
+        publications: List[Dict],
+        job_analysis: Dict,
+        candidate_name: str = '',
+        max_results: int = 10,
+    ) -> List[Dict]:
+        """Rank publications by relevance to the target job using the LLM.
+
+        Args:
+            publications: List of parsed publication dicts from bibtex_parser
+                          (each has keys: key, type, title, year, authors, …).
+            job_analysis: Output of analyze_job_description (ats_keywords,
+                          required_skills, domain, role_level, …).
+            candidate_name: Candidate's full name for first-author detection.
+            max_results:  Maximum number of ranked publications to return.
+
+        Returns:
+            List of dicts, most-relevant first::
+
+                {
+                  "cite_key":         str,
+                  "title":            str,
+                  "venue":            str,
+                  "year":             str|int,
+                  "is_first_author":  bool,
+                  "relevance_score":  int,   # 1–10
+                  "rationale":        str,
+                  "authority_signals": [str],
+                  "venue_warning":    str,   # non-empty if venue missing
+                  "formatted_citation": str,
+                }
+
+            Returns an empty list on failure — never raises.
+        """
+        if not publications:
+            return []
+
+        # Build a compact publication list for the prompt.
+        pub_lines = []
+        for i, pub in enumerate(publications[:60]):  # cap at 60 to stay in context
+            first_author = ''
+            if candidate_name and pub.get('authors'):
+                last_name = candidate_name.split()[-1] if candidate_name else ''
+                first_author = ' [FIRST_AUTHOR]' if last_name and last_name.lower() in pub['authors'].lower() and pub['authors'].lower().startswith(last_name.lower()) else ''
+            venue = pub.get('journal') or pub.get('booktitle') or pub.get('publisher') or ''
+            venue_str = f" | {venue}" if venue else ' | [no venue]'
+            pub_lines.append(
+                f"{i+1}. key={pub.get('key', '')} ({pub.get('year', '?')})"
+                f"{first_author}{venue_str}\n   {pub.get('title', '')}"
+            )
+
+        prompt = f"""You are selecting publications for a CV tailored to this job.
+
+Job Analysis:
+- Domain: {job_analysis.get('domain', 'N/A')}
+- Role: {job_analysis.get('title', 'N/A')}
+- Required skills: {', '.join((job_analysis.get('required_skills') or [])[:15])}
+- ATS keywords: {', '.join((job_analysis.get('ats_keywords') or [])[:15])}
+
+Publications ({len(pub_lines)} total):
+{chr(10).join(pub_lines)}
+
+Select and rank up to {max_results} publications most relevant for this role.
+Return ONLY valid JSON — an array of objects. No extra text.
+
+Schema:
+[
+  {{
+    "cite_key": "...",
+    "relevance_score": 1-10,
+    "rationale": "1-2 sentence explanation"
+  }}
+]
+"""
+        try:
+            response = self.chat(
+                messages=[
+                    {"role": "system", "content": "You select relevant academic publications for a CV. Respond with strict JSON."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_tokens=800,
+            )
+            ranked_raw = self._parse_json_response(response)
+            if not isinstance(ranked_raw, list):
+                return []
+        except Exception as exc:
+            import warnings
+            warnings.warn(f"rank_publications_for_job: LLM call failed ({exc}); returning empty list")
+            return []
+
+        # Build the output list, merging LLM ranking with source publication data.
+        pub_by_key = {p.get('key', ''): p for p in publications}
+        results = []
+        for item in ranked_raw:
+            if not isinstance(item, dict):
+                continue
+            cite_key = str(item.get('cite_key', '')).strip()
+            pub = pub_by_key.get(cite_key)
+            if not pub:
+                continue
+            # Authority signals
+            authority_signals = []
+            if candidate_name:
+                last_name = candidate_name.split()[-1]
+                authors_str = pub.get('authors', '')
+                if last_name and last_name.lower() in authors_str.lower() and authors_str.lower().startswith(last_name.lower()):
+                    authority_signals.append('first_author')
+            if pub.get('journal'):
+                authority_signals.append(f"journal: {pub['journal']}")
+            elif pub.get('booktitle'):
+                authority_signals.append(f"conference: {pub['booktitle']}")
+            # Venue warning
+            has_venue = bool(pub.get('journal') or pub.get('booktitle'))
+            venue_warning = '' if has_venue else 'No journal or conference name found in BibTeX entry'
+            # Formatted citation (use bibtex_parser if available, else basic)
+            try:
+                from utils.bibtex_parser import format_publication
+                formatted_citation = format_publication(pub, style='apa')
+            except Exception:
+                authors = pub.get('authors', '')
+                year = pub.get('year', '')
+                title = pub.get('title', '')
+                venue = pub.get('journal') or pub.get('booktitle') or ''
+                formatted_citation = f"{authors} ({year}). {title}. {venue}".strip('. ')
+
+            results.append({
+                'cite_key':          cite_key,
+                'title':             pub.get('title', ''),
+                'venue':             pub.get('journal') or pub.get('booktitle') or '',
+                'year':              pub.get('year', ''),
+                'is_first_author':   'first_author' in authority_signals,
+                'relevance_score':   min(10, max(1, int(item.get('relevance_score', 5)))),
+                'rationale':         str(item.get('rationale', '')).strip()[:300],
+                'authority_signals': authority_signals,
+                'venue_warning':     venue_warning,
+                'formatted_citation': formatted_citation,
+            })
+
+        # Sort by relevance_score descending, then by year descending.
+        results.sort(key=lambda x: (-x['relevance_score'], -int(str(x['year']).strip() or '0')))
+        return results[:max_results]
+
     def _propose_rewrites_via_chat(
         self, content: Dict, job_analysis: Dict
     ) -> List[Dict]:

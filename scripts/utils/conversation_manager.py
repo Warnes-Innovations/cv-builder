@@ -557,6 +557,18 @@ Ask questions that are specific to this job posting, not generic career question
                     customizations['omitted_skills'] = omitted
 
                 self.state['customizations'] = customizations
+
+            # Apply publication accept/reject decisions from post_analysis_answers
+            post_answers = self.state.get('post_analysis_answers') or {}
+            accepted_str = post_answers.get('publication_accepted', '')
+            rejected_str = post_answers.get('publication_rejected', '')
+            if accepted_str or rejected_str:
+                customizations['accepted_publications'] = [
+                    k.strip() for k in accepted_str.split(',') if k.strip()
+                ]
+                customizations['rejected_publications'] = [
+                    k.strip() for k in rejected_str.split(',') if k.strip()
+                ]
             
             print("\n🔄 Generating CV files...")
             result = self.orchestrator.generate_cv(
