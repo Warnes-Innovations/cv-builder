@@ -334,7 +334,7 @@ DOCX-specific failures block only the DOCX download; HTML/JSON-LD failures block
 Using `weasyprint.HTML(string=html).render().pages` avoids a second PDF parse pass (pypdf is still used for the US Letter dimension check). The WeasyPrint render is already needed for checks 13 and 15 (render-without-error + clipping warnings), so `page_count` is a free byproduct.
 
 **D7.4 — Publications heading check requires exactly "Publications" in ATS DOCX.**
-ATS parsers target the standard heading label "Publications". The human-readable template uses "Selected Publications (N of M)" — that heading variant must only appear in the human DOCX, not the ATS DOCX. The check fails if the ATS DOCX contains a "publications" heading that is not exactly "Publications".
+ATS parsers target the standard heading label "Publications". The ATS DOCX must always use "Publications" exactly. The human-readable template heading is **conditional**: `"Publications"` when all publications are included; `"Selected Publications"` when a subset is included. The count `(N of M)` is never rendered. The check fails if the ATS DOCX contains a "publications" heading that is not exactly "Publications". _(Amendment 2026-03-11: human DOCX/HTML heading made conditional; (N of M) count notation removed.)_
 
 **D7.5 — Date-format consistency checks Mon YYYY vs MM/YYYY only.**
 The spec says mixed formats within one document are flagged. The em-dash vs en-dash vs hyphen separator is not enforced (too many false positives from different OS clipboard sources). Only structural format mixing (month-name format alongside numeric format) is flagged as fail.
@@ -368,8 +368,8 @@ Full suite: 241 passed, 1 warning in 4.74s  (no new tests needed — validate_at
 **D8.2 — Downstream state is never cleared by back-navigation.**
 Per the approved plan decision. `back_to_phase` only mutates `state['phase']`, `state['iterating']`, and `state['reentry_phase']`. All generated files, approved rewrites, experience/skill decisions, and spell-check audit survive the transition. This lets the LLM improve on the last pass rather than starting fresh.
 
-**D8.3 — `_downstream_context()` is a nested closure, not a method.**
-It reads `self.state` directly via closure. This keeps the context-building tightly coupled to the re-run logic without polluting the class API with a semi-private helper. If it needs testing in isolation later it can be extracted.
+**D8.3 — `_downstream_context()` extracted to `_build_downstream_context(self)` class method.**
+Originally implemented as a nested closure. Amended 2026-03-11: extract to a private class method `_build_downstream_context(self)` so it can be unit tested in isolation. Add `TestBuildDownstreamContext` tests to `tests/test_conversation_manager.py`.
 
 **D8.4 — Re-run sets `phase = 'customization'` for both analysis and customization re-runs.**
 After re-running analysis, the user should proceed through customisation again (their prior selections may no longer apply). Setting phase to `'customization'` rather than back to `'job_analysis'` means the frontend lands the user in the right next step without an extra click.

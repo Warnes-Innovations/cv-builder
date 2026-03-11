@@ -7,7 +7,10 @@
   
   <!-- DataTables CSS -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
-  
+
+  <!-- Modularized styles (Phase 11 refactoring) -->
+  <link rel="stylesheet" href="styles.css">
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #f8fafc; }
@@ -5477,7 +5480,13 @@
     // Start the application
     init();
   </script>
-  
+
+  <!-- Phase 11 Refactoring: Modularized JavaScript (load after main script) -->
+  <script src="utils.js"></script>
+  <script src="api-client.js"></script>
+  <script src="state-manager.js"></script>
+  <script src="ui-core.js"></script>
+
   <!-- jQuery and DataTables -->
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
