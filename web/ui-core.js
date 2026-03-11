@@ -7,6 +7,62 @@
 // StorageKeys is defined in api-client.js (loaded before this file)
 
 /**
+ * Custom confirm dialog — returns a Promise<boolean>.
+ * Replaces browser confirm() which can be silently suppressed once the user
+ * checks "Prevent this page from creating additional dialogs".
+ *
+ * Usage:  if (await confirmDialog('Are you sure?')) { ... }
+ */
+function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false } = {}) {
+  return new Promise(resolve => {
+    // Reuse or create the shared overlay element
+    let overlay = document.getElementById('confirm-dialog-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'confirm-dialog-overlay';
+      overlay.style.cssText =
+        'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999;' +
+        'align-items:center; justify-content:center;';
+      overlay.innerHTML =
+        '<div id="confirm-dialog-box" style="background:#fff; border-radius:8px; padding:24px 28px;' +
+        'max-width:400px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.18); font-family:inherit;">' +
+        '<p id="confirm-dialog-msg" style="margin:0 0 20px; font-size:0.95em; color:#1e293b; white-space:pre-wrap;"></p>' +
+        '<div style="display:flex; gap:8px; justify-content:flex-end;">' +
+        '<button id="confirm-dialog-cancel" style="padding:6px 16px; border:1px solid #cbd5e1;' +
+        'border-radius:5px; background:#f8fafc; cursor:pointer; color:#475569;"></button>' +
+        '<button id="confirm-dialog-ok" style="padding:6px 16px; border:none;' +
+        'border-radius:5px; cursor:pointer; color:#fff; font-weight:600;"></button>' +
+        '</div></div>';
+      document.body.appendChild(overlay);
+    }
+
+    const okBtn     = document.getElementById('confirm-dialog-ok');
+    const cancelBtn = document.getElementById('confirm-dialog-cancel');
+    const msgEl     = document.getElementById('confirm-dialog-msg');
+
+    msgEl.textContent          = message;
+    okBtn.textContent          = confirmLabel;
+    cancelBtn.textContent      = cancelLabel;
+    okBtn.style.background     = danger ? '#dc2626' : '#3b82f6';
+
+    overlay.style.display = 'flex';
+
+    const finish = (result) => {
+      overlay.style.display = 'none';
+      // Remove listeners to avoid stacking handlers
+      okBtn.replaceWith(okBtn.cloneNode(true));
+      cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+      resolve(result);
+    };
+
+    // Rebind cloned buttons
+    document.getElementById('confirm-dialog-ok').addEventListener('click',     () => finish(true),  { once: true });
+    document.getElementById('confirm-dialog-cancel').addEventListener('click', () => finish(false), { once: true });
+    overlay.addEventListener('click', e => { if (e.target === overlay) finish(false); }, { once: true });
+  });
+}
+
+/**
  * Global fetch interceptor — shows amber banner on 409 Conflict (session already active).
  */
 (function() {

@@ -534,9 +534,7 @@ Job Description (excerpt):
         t0 = time.monotonic()
         try:
             llm_client.chat(
-                messages=[{"role": "user", "content": "Hi"}],
-                max_tokens=1,
-                temperature=0.0,
+                messages=[{"role": "user", "content": "Reply with one word: ready"}],
             )
             latency_ms = round((time.monotonic() - t0) * 1000)
             return jsonify({

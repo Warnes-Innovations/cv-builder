@@ -727,9 +727,11 @@ function showJobInput() { showLoadJobPanel(); }
 async function deleteSession(sessionId, event) {
   event.stopPropagation(); // Prevent row click
   
-  if (!confirm(`Are you sure you want to delete this session?\n\nThis action cannot be undone.`)) {
-    return;
-  }
+  const confirmed = await confirmDialog(
+    'Are you sure you want to delete this session?\n\nThis action cannot be undone.',
+    { confirmLabel: 'Delete', cancelLabel: 'Cancel', danger: true }
+  );
+  if (!confirmed) return;
   
   try {
     const res = await fetch('/api/delete-session', {
@@ -2246,8 +2248,8 @@ function addNewExperience() {
   }
 }
 
-function removeExperience(index) {
-  if (confirm('Are you sure you want to remove this experience?')) {
+async function removeExperience(index) {
+  if (await confirmDialog('Are you sure you want to remove this experience?', { confirmLabel: 'Remove', danger: true })) {
     cvEditorData.experiences.splice(index, 1);
     document.getElementById('experiences-container').innerHTML = renderExperienceCards();
   }
@@ -2295,7 +2297,7 @@ async function saveCVChanges() {
 }
 
 async function resetCVEditor() {
-  if (confirm('Are you sure you want to reset all changes? This will reload the original CV data.')) {
+  if (await confirmDialog('Are you sure you want to reset all changes? This will reload the original CV data.', { confirmLabel: 'Reset', danger: true })) {
     await populateCVEditorTab();
   }
 }
@@ -4223,7 +4225,7 @@ async function openCopilotAuthModal() {
   // If already authenticated, let user log out instead
   const statusRes = await fetch('/api/copilot-auth/status').then(r => r.json()).catch(() => ({}));
   if (statusRes.authenticated) {
-    if (confirm('You are already authenticated with GitHub Copilot. Log out?')) {
+    if (await confirmDialog('You are already authenticated with GitHub Copilot. Log out?', { confirmLabel: 'Log out', danger: true })) {
       await fetch('/api/copilot-auth/logout', { method: 'POST' });
       updateAuthBadge({ authenticated: false });
     }
