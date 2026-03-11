@@ -149,112 +149,73 @@ class LLMClient(ABC):
 
     # Approved strong action verbs for CV bullets
     # Approved strong action verbs for CV bullets (Phase 10)
-    # These are past-tense verbs commonly used in professional accomplishment statements
+    # Expert-curated past-tense verbs aligned with persuasion principles:
+    # - Authority signals (Cialdini social proof)
+    # - Results/outcome focus (impact over activity)
+    # - Leadership and scale
+    # Excludes: weak operational verbs, generic catch-alls, malformed entries
     _STRONG_ACTION_VERBS = {
-        'accelerated', 'achieved', 'acquired', 'adapted', 'administered',
-        'advanced', 'allocated', 'analyzed', 'architected', 'assembled',
-        'assessed', 'assigned', 'attained', 'audited', 'authored',
-        'automated', 'awarded', 'built', 'calculated', 'captured',
-        'championed', 'changed', 'clarified', 'coached', 'coded',
-        'collaborated', 'collected', 'commanded', 'communicated', 'compared',
-        'compiled', 'completed', 'composed', 'computed', 'conceived',
-        'conceptualized', 'conducted', 'configured', 'connected', 'consolidated',
-        'constructed', 'consulted', 'contributed', 'controlled', 'converted',
-        'coordinated', 'corrected', 'created', 'cultivated', 'customized',
-        'decreased', 'defined', 'delegated', 'delivered', 'demonstrated',
-        'deployed', 'described', 'designed', 'detected', 'determined',
-        'developed', 'devised', 'diagnosed', 'directed', 'discovered',
-        'displayed', 'distributed', 'documented', 'dominated', 'doubled',
-        'drafted', 'drove', 'earned', 'edited', 'elevated', 'eliminated',
-        'enabled', 'enclosed', 'encouraged', 'engineered', 'enhanced',
-        'enlisted', 'ensured', 'established', 'estimated', 'evaluated',
-        'examined', 'exceeded', 'excelled', 'executed', 'exercised',
-        'expanded', 'expedited', 'experimented', 'explained', 'explored',
-        'expressed', 'extended', 'extracted', 'fabricated', 'facilitated',
-        'failed', 'fashioned', 'featured', 'finalized', 'financed',
-        'fixed', 'focused', 'forecasted', 'forged', 'formalized',
-        'formulated', 'fostered', 'founded', 'framed', 'fulfilled',
-        'funded', 'furthered', 'gained', 'gathered', 'generated',
-        'governed', 'granted', 'grouped', 'guided', 'handled',
-        'headed', 'highlighted', 'hired', 'hosted', 'identified',
-        'illuminated', 'illustrated', 'implemented', 'improved', 'improvised',
-        'inaugurated', 'included', 'incorporated', 'increased', 'indicated',
-        'influenced', 'informed', 'initiated', 'innovated', 'inspected',
-        'inspired', 'installed', 'instituted', 'instructed', 'integrated',
-        'intended', 'interviewed', 'introduced', 'invented', 'invested',
-        'investigated', 'involved', 'launched', 'learned', 'led',
-        'leveraged', 'licensed', 'lifted', 'limited', 'linked',
-        'listened', 'located', 'logged', 'managed', 'mapped',
-        'marketed', 'maximized', 'measured', 'mediated', 'mentored',
-        'merged', 'minimized', 'mobilized', 'modeled', 'modernized',
-        'modified', 'monitored', 'motivated', 'moved', 'multiplied',
-        'navigated', 'negotiated', 'nominated', 'normalized', 'notified',
-        'observed', 'obtained', 'offered', 'operated', 'optimized',
-        'orchestrated', 'ordered', 'organized', 'originated', 'outlined',
-        'overcame', 'oversaw', 'owned', 'partnered', 'performed',
-        'persuaded', 'pioneered', 'placed', 'planned', 'played',
-        'positioned', 'powered', 'predicted', 'prioritized', 'processed',
-        'produced', 'programmed', 'promoted', 'proposed', 'protected',
-        'provided', 'publicized', 'published', 'purchased', 'qualified',
-        'quantified', 'questioned', 'ranked', 'realized', 'received',
-        'recognized', 'recommended', 'reconciled', 'recorded', 'recovered',
-        'recruited', 'rectified', 'redesigned', 'reduced', 'referenced',
-        'refined', 'reformatted', 'refunctioned', 'regenerated', 'registered',
-        'regulated', 'rehabilitated', 'reimbursed', 'reinforced', 'reinstated',
-        'reiterated', 'rejected', 'rejuvenated', 'related', 'released',
-        'relieved', 'relinquished', 'relocated', 'relied', 'remained',
-        'remedied', 'reminded', 'removed', 'rendered', 'renegotiated',
-        'renewed', 'reorganized', 'repaired', 'repaid', 'repaired',
-        'repeated', 'replaced', 'reported', 'represented', 'reproduced',
-        'requested', 'required', 'researched', 'reserved', 'reshaped',
-        'resolved', 'resourced', 'responded', 'restored', 'restructured',
-        'resulted', 'retained', 'retired', 'retreated', 'retrieved',
-        'returned', 'revealed', 'reversed', 'reviewed', 'revised',
-        'revitalized', 'revolved', 'rewarded', 'reworked', 'routed',
-        'ruled', 'salvaged', 'satisfied', 'saved', 'scheduled',
-        'scored', 'screened', 'scripted', 'sealed', 'searched',
-        'secured', 'segmented', 'selected', 'sold', 'serviced',
-        'served', 'settled', 'shaped', 'shared', 'sharpened',
-        'sheltered', 'shifted', 'shipped', 'shortened', 'showed',
-        'shut', 'signed', 'simplified', 'simulated', 'situated',
-        'sketched', 'skilled', 'slashed', 'smoothed', 'socialized',
-        'solicited', 'solved', 'sorted', 'sourced', 'specialized',
-        'specified', 'expedited', 'spoke', 'sponsored', 'spread',
-        'stabilized', 'staffed', 'staged', 'standardized', 'started',
-        'stated', 'steered', 'stopped', 'stored', 'straightened',
-        'streamlined', 'strengthened', 'stressed', 'structured', 'studied',
-        'submitted', 'subscribed', 'subsidized', 'substituted', 'subtracted',
-        'succeeded', 'summarized', 'supervised', 'supplied', 'supported',
-        'supposed', 'surfaced', 'surpassed', 'surveyed', 'suspended',
-        'sustained', 'symbolized', 'synchronized', 'synthesized', 'systematized',
-        'tackled', 'tailored', 'targeted', 'taught', 'team-led',
-        'tele-marketed', 'templated', 'tendered', 'terminated', 'tested',
-        'textured', 'themed', 'theorized', 'threatened', 'threshed',
-        'thrived', 'threw', 'tightened', 'tracked', 'trained',
-        'transcended', 'transcribed', 'transferred', 'transformed', 'translated',
-        'transmitted', 'transported', 'trapped', 'traveled', 'treated',
-        'triaged', 'triggered', 'trimmed', 'tripled', 'triumphed',
-        'troubled', 'trusted', 'turned', 'tutored', 'tweaked',
-        'typified', 'typed', 'ugly', 'unblocked', 'unburdened',
-        'uncapped', 'uncovered', 'underlined', 'understood', 'undertook',
-        'underwrote', 'undid', 'unfolded', 'unified', 'united',
-        'unlocked', 'unraveled', 'unsealed', 'unskewed', 'updated',
-        'upgraded', 'uploaded', 'uplifted', 'upheld', 'upsurged',
-        'urged', 'used', 'utilized', 'unveiled', 'vacated',
-        'validated', 'valued', 'vanquished', 'vaporized', 'varied',
-        'vectored', 'verbalized', 'verified', 'versioned', 'vetted',
-        'vibrated', 'videotaped', 'viewed', 'vigilanteed', 'vindicated',
-        'visualized', 'vitalized', 'vocalized', 'voiced', 'volatilized',
-        'volunteered', 'voted', 'vouched', 'waded', 'waged',
-        'waited', 'walked', 'wanted', 'warehoused', 'warmed',
-        'warned', 'warranted', 'washed', 'wasted', 'watched',
-        'watered', 'waved', 'weakened', 'wearied', 'weathered',
-        'weaved', 'webcast', 'weighted', 'welcomed', 'welded',
-        'whipped', 'whispered', 'widened', 'wielded', 'wilted',
-        'wished', 'witnessed', 'wondered', 'wove',
-        'wrapped', 'wrestled', 'wried', 'wrinkled', 'writhed',
-        'yanked', 'yelled', 'yielded', 'zigged', 'zigzagged',
-        'zoned', 'zeroed', 'zested',
+        # Achievement & Results
+        'accelerated', 'achieved', 'amplified', 'attained', 'captured',
+        'commanded', 'completed', 'conquered', 'delivered', 'dominated',
+        'drove', 'earned', 'enabled', 'exceeded', 'expanded',
+        'expedited', 'generated', 'guaranteed', 'impacted', 'increased',
+        'led', 'mastered', 'maximized', 'outperformed', 'produced',
+        'realized', 'reduced', 'secured', 'surpassed', 'transformed',
+        'triumphed', 'unlocked', 'won', 'yielded',
+
+        # Leadership & Authority
+        'architected', 'championed', 'chaired', 'coordinated', 'directed',
+        'engineered', 'established', 'founded', 'governed', 'guided',
+        'headed', 'inaugurated', 'initiated', 'instituted', 'launched',
+        'managed', 'pioneered', 'spearheaded', 'steered', 'supervised',
+        'orchestrated',
+
+        # Innovation & Transformation
+        'conceived', 'designed', 'devised', 'discovered', 'invented',
+        'innovated', 'revolutionized', 'solved', 'created', 'developed',
+        'formulated', 'originated',
+
+        # Operational Excellence
+        'automated', 'built', 'configured', 'constructed', 'deployed',
+        'implemented', 'installed', 'integrated', 'optimized', 'rebuilt',
+        'restructured', 'streamlined', 'systematized', 'upgraded', 'scaled',
+
+        # Strategic & Analytical
+        'analyzed', 'assessed', 'audited', 'benchmarked', 'calculated',
+        'diagnosed', 'evaluated', 'examined', 'forecasted', 'identified',
+        'investigated', 'measured', 'planned', 'predicted', 'prioritized',
+        'proposed', 'researched', 'strategized', 'validated', 'verified',
+
+        # Sales & Growth
+        'acquired', 'closed', 'converted', 'cultivated', 'marketed',
+        'negotiated', 'penetrated', 'sourced', 'captured',
+
+        # Quality & Excellence
+        'certified', 'excelled', 'maintained', 'perfected', 'refined',
+        'strengthened', 'elevated', 'enhanced', 'improved',
+
+        # Collaboration & Communication
+        'aligned', 'bridged', 'collaborated', 'communicated', 'connected',
+        'consulted', 'facilitated', 'fostered', 'influenced', 'instructed',
+        'liaised', 'mentored', 'partnered', 'presented', 'promoted',
+        'taught', 'united',
+
+        # Problem-Solving & Impact
+        'alleviated', 'conquered', 'eliminated', 'eradicated', 'mitigated',
+        'overcome', 'prevented', 'resolved', 'salvaged', 'stabilized',
+        'remedied',
+
+        # Recognition & Authority Building
+        'awarded', 'cited', 'commended', 'honored', 'inducted',
+        'nominated', 'published', 'recognized', 'selected',
+
+        # Additional High-Impact Verbs
+        'catalyzed', 'clarified', 'consolidated', 'empowered', 'extracted',
+        'galvanized', 'harvested', 'illuminated', 'incited', 'leveraged',
+        'monetized', 'professionalized', 'revitalized', 'sharpened',
+        'solidified', 'spurred', 'standardized', 'synchronized',
+        'synthesized', 'tailored', 'unblocked', 'unified', 'ventured',
     }
 
     # Generic CV filler phrases to avoid in professional summaries
