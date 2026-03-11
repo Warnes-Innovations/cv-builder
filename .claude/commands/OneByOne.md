@@ -1,0 +1,1 @@
+/Users/warnes/src/vscode-config/prompts/OneByOne.prompt.md
