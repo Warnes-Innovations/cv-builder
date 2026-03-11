@@ -4,14 +4,7 @@
  * Entry point for the application - loads on DOMContentLoaded.
  */
 
-// Reference StorageKeys from api-client.js (loaded first)
-// Fallback values if api-client.js not loaded yet
-const StorageKeys = {
-  SESSION_ID: 'cv-builder-session-id',
-  TAB_DATA: 'cv-builder-tab-data',
-  CURRENT_TAB: 'cv-builder-current-tab',
-  CHAT_COLLAPSED: 'cv-builder-chat-collapsed'
-};
+// StorageKeys is defined in api-client.js (loaded before this file)
 
 /**
  * Global fetch interceptor — shows amber banner on 409 Conflict (session already active).
@@ -385,6 +378,11 @@ async function displayMessage(phase, response) {
 function updatePhaseIndicator(status) {
   if (!status.phase) return;
 
+  const sessionNameEl = document.getElementById('header-session-name');
+  if (sessionNameEl) {
+    sessionNameEl.textContent = status.position_name || '';
+  }
+
   const phases = ['job_input', 'analysis', 'customization', 'rewrite_review', 'generation', 'refinement'];
   const phaseIndex = phases.indexOf(status.phase);
 
@@ -402,6 +400,31 @@ function updatePhaseIndicator(status) {
 }
 
 /**
+ * Handle click on a workflow step indicator.
+ * Job step always opens the load-job panel; other steps navigate to their tab if completed/active.
+ * @param {string} step - Step name matching step-{name} element IDs
+ */
+function handleStepClick(step) {
+  const el = document.getElementById(`step-${step}`);
+  if (!el) return;
+
+  if (step === 'job') { showLoadJobPanel(); return; }
+
+  if (!el.classList.contains('completed') && !el.classList.contains('active')) return;
+
+  const stepToTab = {
+    analysis:       'analysis',
+    customizations: 'customizations',
+    rewrite:        'rewrite',
+    spell:          'spell',
+    generate:       'cv',
+    finalise:       'download',
+  };
+  const tabName = stepToTab[step];
+  if (tabName) switchTab(tabName);
+}
+
+/**
  * Enable/disable controls based on workflow state.
  * @param {boolean} enabled - True to enable controls
  */
@@ -411,13 +434,187 @@ function setControlsEnabled(enabled) {
   });
 }
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', initialize);
+// ── Model selector ────────────────────────────────────────────────────────────
 
-// Also try immediate initialization for faster startup
-if (document.readyState === 'loading') {
-  // Document is still loading, wait for DOMContentLoaded
-} else {
-  // Document is already loaded
-  initialize();
+let _modelData = null; // cached from last loadModelSelector() call
+
+async function loadModelSelector() {
+  try {
+    _modelData = await apiCall('GET', '/api/model');
+    const label = document.getElementById('model-current-label');
+    if (label) label.textContent = _modelData.model || '—';
+  } catch (e) {
+    console.warn('Could not load model list:', e);
+  }
 }
+
+function openModelModal() {
+  const overlay = document.getElementById('model-modal-overlay');
+  if (!overlay) return;
+  _buildModelTable();
+  overlay.style.display = 'flex';
+}
+
+function closeModelModal() {
+  const overlay = document.getElementById('model-modal-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function _buildModelTable() {
+  const tbody = document.getElementById('model-table-body');
+  const thead = document.getElementById('model-table-head');
+  if (!tbody || !_modelData) return;
+
+  const current     = _modelData.model;
+  const billingType = _modelData.billing_type || 'per_token';
+  const billingNote = _modelData.billing_note || '';
+  const isPerToken  = (billingType === 'per_token');
+  const isPremReq   = (billingType === 'premium_request');
+
+  // Update header cost columns to match billing type
+  if (thead) {
+    const headRow = thead.querySelector('tr');
+    const ths     = Array.from(headRow.querySelectorAll('th'));
+    // Rebuild from scratch: always keep Model (0), Context (1), Notes (last)
+    // Remove all cost columns (indices 2..n-1)
+    for (let i = ths.length - 2; i >= 2; i--) {
+      ths[i].remove();
+    }
+    const notesTh = headRow.querySelector('th:last-child');
+    const thStyle = 'padding:10px 14px; white-space:nowrap;';
+    if (isPerToken) {
+      const thIn  = document.createElement('th');
+      thIn.style.cssText  = thStyle + ' text-align:right;';
+      thIn.textContent    = '$/1M in';
+      const thOut = document.createElement('th');
+      thOut.style.cssText = thStyle + ' text-align:right;';
+      thOut.textContent   = '$/1M out';
+      headRow.insertBefore(thIn,  notesTh);
+      headRow.insertBefore(thOut, notesTh);
+    } else if (isPremReq) {
+      const thMult = document.createElement('th');
+      thMult.style.cssText = thStyle + ' text-align:right;';
+      thMult.title         = 'GitHub Copilot premium-request multiplier per call. 0 = free for paid subscribers.';
+      thMult.textContent   = 'Copilot ×';
+      headRow.insertBefore(thMult, notesTh);
+    } else {
+      // subscription / free: show one spanning column
+      const thCost = document.createElement('th');
+      thCost.setAttribute('colspan', '2');
+      thCost.style.cssText = thStyle;
+      thCost.textContent   = 'Cost';
+      headRow.insertBefore(thCost, notesTh);
+    }
+  }
+
+  const rows = (_modelData.available && _modelData.available.length)
+    ? _modelData.available
+    : (current ? [{ model: current, context_window: null, notes: '' }] : []);
+  tbody.innerHTML = '';
+  const tdBase = 'padding:9px 14px; border-bottom:1px solid #e2e8f0;';
+  const fmtCost = v => (v != null) ? '$' + Number(v).toFixed(v < 1 ? 3 : 2) : '—';
+  const fmtMult = v => {
+    if (v == null) return '—';
+    if (v === 0)   return '<span style="color:#16a34a; font-weight:600;">free</span>';
+    return Number(v).toFixed(v % 1 === 0 ? 0 : 2) + '×';
+  };
+  rows.forEach(item => {
+    const m      = (typeof item === 'object') ? item.model         : item;
+    const ctx    = (typeof item === 'object' && item.context_window)
+      ? Number(item.context_window).toLocaleString() : '—';
+    const notes  = (typeof item === 'object') ? (item.notes || '') : '';
+    const tr     = document.createElement('tr');
+    const isSelected = (m === current);
+    tr.style.cssText = isSelected
+      ? 'background:#eff6ff; font-weight:600; cursor:pointer;'
+      : 'cursor:pointer;';
+    tr.addEventListener('mouseover', () => { if (!isSelected) tr.style.background = '#f8fafc'; });
+    tr.addEventListener('mouseout',  () => { if (!isSelected) tr.style.background = ''; });
+
+    let costCells;
+    if (isPerToken) {
+      const costIn  = (typeof item === 'object') ? fmtCost(item.cost_input)  : '—';
+      const costOut = (typeof item === 'object') ? fmtCost(item.cost_output) : '—';
+      costCells =
+        `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${costIn}</td>` +
+        `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${costOut}</td>`;
+    } else if (isPremReq) {
+      const mult = (typeof item === 'object') ? item.copilot_multiplier : null;
+      costCells  =
+        `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtMult(mult)}</td>`;
+    } else {
+      costCells =
+        `<td colspan="2" style="${tdBase} color:#64748b; font-style:italic; white-space:nowrap;">${billingNote}</td>`;
+    }
+
+    tr.innerHTML =
+      `<td style="${tdBase}">${m}` +
+        (isSelected ? ' <span style="color:#3b82f6; font-size:0.75em;">&#10003; active</span>' : '') +
+      `</td>` +
+      `<td style="${tdBase} white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums;">${ctx}</td>` +
+      costCells +
+      `<td style="${tdBase} color:#64748b;">${notes}</td>`;
+    tr.addEventListener('click', () => setModel(m));
+    tbody.appendChild(tr);
+  });
+
+  // Update pricing freshness footer
+  _updatePricingFooter();
+}
+
+async function setModel(model) {
+  if (!model) return;
+  try {
+    await apiCall('POST', '/api/model', { model });
+    if (_modelData) _modelData.model = model;
+    const label = document.getElementById('model-current-label');
+    if (label) label.textContent = model;
+    closeModelModal();
+  } catch (e) {
+    console.error('Failed to switch model:', e);
+  }
+}
+
+function _updatePricingFooter() {
+  const el = document.getElementById('pricing-updated-label');
+  if (!el || !_modelData) return;
+  const ts     = _modelData.pricing_updated_at;
+  const source = _modelData.pricing_source;
+
+  const sourceLabel = (source === 'openrouter')
+    ? '<a href="https://openrouter.ai" target="_blank" rel="noopener" ' +
+      'style="color:inherit; text-decoration:underline dotted;">OpenRouter</a>'
+    : 'static baseline (March 2026)';
+
+  if (!ts) { el.innerHTML = `Prices: ${sourceLabel}`; return; }
+  try {
+    const d   = new Date(ts);
+    const now = new Date();
+    const h   = Math.round((now - d) / 3_600_000);
+    const age = h < 1 ? 'just now' : h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
+    el.innerHTML = `Prices via ${sourceLabel} &middot; updated ${age}`;
+  } catch { el.innerHTML = `Prices: ${sourceLabel}`; }
+}
+
+async function refreshModelPricing() {
+  const btn = document.getElementById('pricing-refresh-btn');
+  const lbl = document.getElementById('pricing-updated-label');
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
+  try {
+    await apiCall('POST', '/api/model-pricing/refresh');
+    // Re-fetch model data so the table gets fresh prices
+    _modelData = await apiCall('GET', '/api/model');
+    _buildModelTable();
+  } catch (e) {
+    if (lbl) lbl.textContent = 'Refresh failed';
+    console.error('Pricing refresh failed:', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh prices'; }
+  }
+}
+
+// Initialize on page load — delegates to app.js init() which is loaded after this file
+document.addEventListener('DOMContentLoaded', () => {
+  loadModelSelector();
+  if (typeof init === 'function') init();
+});

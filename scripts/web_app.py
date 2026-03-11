@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file, send_from_directory
 import requests
 from urllib.parse import urlparse
 import re
@@ -37,10 +37,14 @@ if env_path.exists():
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.config import get_config, validate_config, ConfigurationError
-from utils.llm_client import get_llm_provider
+from utils.llm_client import get_llm_provider, PROVIDER_MODELS, PROVIDER_BILLING, MODEL_INFO
 from utils.cv_orchestrator import CVOrchestrator, validate_ats_report
 from utils.conversation_manager import ConversationManager
 from utils.copilot_auth import CopilotAuthManager
+from utils.pricing_cache import (
+    get_cached_pricing, get_pricing_updated_at, get_pricing_source,
+    refresh_pricing_cache, maybe_refresh_in_background,
+)
 from utils.spell_checker import SpellChecker
 
 
@@ -51,12 +55,16 @@ def create_app(args) -> Flask:
     # Raises ConfigurationError with a clear message if no LLM provider is set.
     validate_config(provider=args.llm_provider)
 
+    # Kick off a background pricing-cache refresh if the cache is stale
+    maybe_refresh_in_background()
+
     # Copilot OAuth auth manager (shared across all requests)
     auth_manager = CopilotAuthManager()
     _auth_poll: dict = {"polling": False, "error": None, "device_code": None, "interval": 5}
 
     # Initialize dependencies
-    llm_client = get_llm_provider(provider=args.llm_provider, model=args.model, auth_manager=auth_manager)
+    _provider_name: str = args.llm_provider
+    llm_client = get_llm_provider(provider=_provider_name, model=args.model, auth_manager=auth_manager)
     orchestrator = CVOrchestrator(
         master_data_path=args.master_data,
         publications_path=args.publications,
@@ -76,6 +84,7 @@ def create_app(args) -> Flask:
         '/api/positions', '/api/save', '/api/load-session', '/api/delete-session',
         '/api/copilot-auth/start', '/api/copilot-auth/poll',
         '/api/copilot-auth/status', '/api/copilot-auth/logout',
+        '/api/model', '/api/model-pricing/refresh',
     }
 
     @app.before_request
@@ -194,8 +203,25 @@ def create_app(args) -> Flask:
 
         return questions[:4]
 
-    def _generate_post_analysis_questions(analysis: Dict[str, Any], job_text: Optional[str]) -> List[Dict]:
-        """Generate clarifying questions from the LLM in JSON format."""
+    def _generate_post_analysis_questions(
+        analysis: Dict[str, Any],
+        job_text: Optional[str],
+        prior_qa: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict]:
+        """Generate clarifying questions from the LLM in JSON format.
+
+        ``prior_qa`` is a dict mapping previous question keys to the candidate's
+        answers; when supplied the LLM is instructed to avoid redundant questions
+        and focus only on gaps not yet covered.
+        """
+        prior_section = ""
+        if prior_qa:
+            lines = "\n".join(f"- {k}: {v}" for k, v in prior_qa.items())
+            prior_section = f"""
+Previously answered questions (do NOT repeat these topics):
+{lines}
+
+"""
         prompt = f"""You are helping tailor a CV to a specific job.
 
 Create 2-4 concise, high-value clarifying questions for the candidate before generating customization recommendations.
@@ -207,7 +233,7 @@ Requirements:
 - Keep each question under 220 characters.
 - For each question, provide 2-4 button-answer choices covering the most likely responses.
 - Return ONLY valid JSON as an array of objects.
-
+{prior_section}
 Schema:
 [
   {{"type": "short_snake_case", "question": "...", "choices": ["Option A", "Option B", "Option C"]}}
@@ -295,6 +321,15 @@ Job Description (excerpt):
     def index():
         page_path = Path(__file__).parent.parent / "web" / "index.html"
         return send_file(page_path)
+
+    @app.get("/favicon.ico")
+    def favicon():
+        return "", 204
+
+    @app.get("/<path:filename>")
+    def static_web(filename):
+        web_dir = Path(__file__).parent.parent / "web"
+        return send_from_directory(web_dir, filename)
 
     @app.get("/logo")
     def logo():
@@ -406,6 +441,66 @@ Job Description (excerpt):
         """Clear stored credentials."""
         auth_manager.logout()
         return jsonify({"ok": True})
+
+    # ── Model selection endpoints ─────────────────────────────────────────────
+
+    @app.get("/api/model")
+    def get_model():
+        """Return current model, available models, and metadata for this provider."""
+        current   = llm_client.model if hasattr(llm_client, "model") else None
+        available = PROVIDER_MODELS.get(_provider_name, [])
+        billing   = PROVIDER_BILLING.get(_provider_name, {"type": "per_token", "note": ""})
+        live      = get_cached_pricing()
+        models_with_info = [
+            {
+                "model":              m,
+                "context_window":     MODEL_INFO.get(m, {}).get("context_window"),
+                "cost_input":         (live.get(m) or MODEL_INFO.get(m, {})).get("cost_input"),
+                "cost_output":        (live.get(m) or MODEL_INFO.get(m, {})).get("cost_output"),
+                "copilot_multiplier": (live.get(m) or MODEL_INFO.get(m, {})).get("copilot_multiplier"),
+                "notes":              MODEL_INFO.get(m, {}).get("notes", ""),
+            }
+            for m in available
+        ]
+        return jsonify({
+            "provider":          _provider_name,
+            "billing_type":      billing["type"],
+            "billing_note":      billing["note"],
+            "model":             current,
+            "available":         models_with_info,
+            "pricing_updated_at": get_pricing_updated_at(),
+            "pricing_source":     get_pricing_source(),
+        })
+
+    @app.post("/api/model-pricing/refresh")
+    def refresh_model_pricing():
+        """Refresh the pricing cache. Fetches live prices from OpenRouter; falls back to static."""
+        pricing = refresh_pricing_cache()
+        return jsonify({
+            "ok":          True,
+            "updated_at":  get_pricing_updated_at(),
+            "source":      get_pricing_source(),
+            "model_count": len(pricing),
+        })
+
+    @app.post("/api/model")
+    def set_model():
+        """Switch the active model (provider stays the same)."""
+        nonlocal llm_client
+        data = request.get_json(silent=True) or {}
+        model = data.get("model", "").strip()
+        if not model:
+            return jsonify({"error": "Missing model"}), 400
+        available = PROVIDER_MODELS.get(_provider_name, [])
+        if available and model not in available:
+            return jsonify({"error": f"Unknown model '{model}' for provider '{_provider_name}'"}), 400
+        try:
+            llm_client = get_llm_provider(provider=_provider_name, model=model, auth_manager=auth_manager)
+            orchestrator.llm = llm_client
+            conversation.llm = llm_client
+            return jsonify({"ok": True, "model": model})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
 
     # ── Job / chat endpoints ──────────────────────────────────────────────────
 
@@ -1046,8 +1141,8 @@ Job Description (excerpt):
             candidate = Path(path_param)
             if candidate.exists() and candidate.name == 'session.json':
                 job_dir = candidate.parent
-                # Safety: must be a direct child of output_base
-                if job_dir.parent.resolve() == output_base.resolve():
+                # Safety: must be somewhere inside output_base
+                if job_dir.resolve().is_relative_to(output_base.resolve()):
                     import shutil as _shutil
                     _shutil.rmtree(job_dir)
                     print(f"Deleted job directory: {job_dir}")
@@ -1193,6 +1288,7 @@ Job Description (excerpt):
     def post_analysis_questions():
         """Generate post-analysis clarifying questions, preferably via LLM."""
         data = request.get_json(silent=True) or {}
+
         analysis = data.get("analysis") or conversation.state.get("job_analysis")
 
         if isinstance(analysis, str):
@@ -1201,12 +1297,16 @@ Job Description (excerpt):
         if not isinstance(analysis, dict):
             return jsonify({"ok": True, "questions": []})
 
+        # Pass prior answers so the LLM avoids re-asking already-covered topics.
+        prior_qa = conversation.state.get("post_analysis_answers") or None
+
         questions: List[Dict[str, str]] = []
         source = "fallback"
         try:
             questions = _generate_post_analysis_questions(
                 analysis=analysis,
                 job_text=conversation.state.get("job_description"),
+                prior_qa=prior_qa,
             )
             if questions:
                 source = "llm"
@@ -1444,7 +1544,12 @@ Job Description (excerpt):
             if not content:
                 return jsonify({"error": "CV master data not loaded."}), 400
 
-            rewrites = orchestrator.propose_rewrites(content, job_analysis)
+            rewrites = orchestrator.propose_rewrites(
+                content,
+                job_analysis,
+                conversation_history=conversation.conversation_history,
+                user_preferences=conversation.state.get('post_analysis_answers'),
+            )
             conversation.state['pending_rewrites'] = rewrites
 
             # Run persuasion quality checks (Phase 10)
@@ -1524,7 +1629,8 @@ Job Description (excerpt):
             # Return cached recommendations if available.
             cached = conversation.state.get('publication_recommendations')
             if cached is not None:
-                return jsonify({"ok": True, "recommendations": cached, "source": "cache"})
+                return jsonify({"ok": True, "recommendations": cached, "source": "cache",
+                                "total_count": len(cached)})
 
             job_analysis = conversation.state.get('job_analysis')
             if not job_analysis:
@@ -1561,6 +1667,7 @@ Job Description (excerpt):
                         'year':              pub.get('year', ''),
                         'is_first_author':   False,
                         'relevance_score':   pub.get('relevance_score', 5),
+                        'confidence':        'Medium',
                         'rationale':         '',
                         'authority_signals': [],
                         'venue_warning':     '' if (pub.get('journal') or pub.get('booktitle')) else 'No venue found',
@@ -1568,10 +1675,51 @@ Job Description (excerpt):
                     })
                 source = "fallback"
 
+            # Mark LLM-recommended publications and add any remaining pubs as not recommended.
+            recommended_keys = {r['cite_key'] for r in recommendations}
+            for r in recommendations:
+                r['is_recommended'] = True
+
+            if orchestrator.publications:
+                try:
+                    from utils.bibtex_parser import format_publication as _fmt_pub
+                except ImportError:
+                    _fmt_pub = None
+                not_recommended = []
+                for key, pub in orchestrator.publications.items():
+                    if key in recommended_keys:
+                        continue
+                    if _fmt_pub:
+                        try:
+                            formatted = _fmt_pub(pub, style='apa')
+                        except Exception:
+                            formatted = ''
+                    else:
+                        formatted = ''
+                    if not formatted:
+                        formatted = f"{pub.get('authors', '')} ({pub.get('year', '')}). {pub.get('title', '')}".strip('. ')
+                    not_recommended.append({
+                        'cite_key':          key,
+                        'title':             pub.get('title', ''),
+                        'venue':             pub.get('journal') or pub.get('booktitle') or '',
+                        'year':              pub.get('year', ''),
+                        'is_first_author':   False,
+                        'relevance_score':   0,
+                        'confidence':        '',
+                        'rationale':         '',
+                        'authority_signals': [],
+                        'venue_warning':     '' if (pub.get('journal') or pub.get('booktitle')) else 'No venue found',
+                        'formatted_citation': formatted,
+                        'is_recommended':    False,
+                    })
+                not_recommended.sort(key=lambda p: -int(str(p['year']).strip() or '0'))
+                recommendations.extend(not_recommended)
+
             conversation.state['publication_recommendations'] = recommendations
             conversation._save_session()
 
-            return jsonify({"ok": True, "recommendations": recommendations, "source": source})
+            total_count = len(recommendations)
+            return jsonify({"ok": True, "recommendations": recommendations, "source": source, "total_count": total_count})
 
         except Exception as e:
             import traceback
@@ -1761,6 +1909,92 @@ Job Description (excerpt):
             body        = request.get_json(force=True) or {}
             spell_audit = body.get('spell_audit', [])
             result      = conversation.complete_spell_check(spell_audit)
+            return jsonify({'ok': True, **result})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    # ------------------------------------------------------------------ #
+    # Layout Instructions (Phase 12)                                      #
+    # ------------------------------------------------------------------ #
+
+    @app.post("/api/layout-instruction")
+    def apply_layout_instruction():
+        """Apply a natural-language layout instruction to the current HTML.
+
+        Body: ``{"instruction": "Move Publications after Skills", "current_html": "..."}``
+            Optional: ``"prior_instructions": [...]``
+
+        Returns:
+            Success: ``{"ok": true, "html": "...", "summary": "...", "confidence": 0.95}``
+            Clarification: ``{"ok": false, "error": "clarify", "question": "..."}``
+            Error: ``{"ok": false, "error": "error_type", "details": "..."}``
+        """
+        try:
+            body = request.get_json(force=True) or {}
+            instruction_text = body.get('instruction', '').strip()
+            current_html = body.get('current_html', '')
+            prior_instructions = body.get('prior_instructions', [])
+
+            if not instruction_text:
+                return jsonify({'error': 'Missing instruction text'}), 400
+            if not current_html:
+                return jsonify({'error': 'Missing current HTML'}), 400
+
+            # Call orchestrator to apply instruction
+            result = conversation.orchestrator.apply_layout_instruction(
+                instruction_text=instruction_text,
+                current_html=current_html,
+                prior_instructions=prior_instructions
+            )
+
+            if result.get('error'):
+                return jsonify({
+                    'ok': False,
+                    'error': result['error'],
+                    'question': result.get('question'),
+                    'details': result.get('details'),
+                    'confidence': result.get('confidence')
+                })
+
+            return jsonify({
+                'ok': True,
+                'html': result['html'],
+                'summary': result['summary'],
+                'confidence': result['confidence']
+            })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.get("/api/layout-history")
+    def get_layout_history():
+        """Return the current session's applied layout instruction history.
+
+        Returns:
+            ``{"instructions": [...], "count": int}``
+        """
+        try:
+            instructions = conversation.state.get('layout_instructions', [])
+            return jsonify({
+                'instructions': instructions,
+                'count': len(instructions)
+            })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.post("/api/layout-complete")
+    def complete_layout_review():
+        """Record layout instruction outcomes and advance phase to refinement (finalise).
+
+        Body: ``{"layout_instructions": [...]}``
+        Each instruction should have: ``{timestamp, instruction_text, change_summary, confirmation}``
+
+        Returns:
+            ``{"ok": true, "instructions_applied": int, "phase": "refinement"}``
+        """
+        try:
+            body = request.get_json(force=True) or {}
+            layout_instructions = body.get('layout_instructions', [])
+            result = conversation.complete_layout_review(layout_instructions)
             return jsonify({'ok': True, **result})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
