@@ -27,7 +27,7 @@ decisions, questions, and progress as the agent implements the approved 15-phase
 | 0 | Update CLAUDE.md + copilot-instructions.md | ✅ Complete | `9b92e0e` |
 | 1 | Test fixes + metadata audit trail + startup config validation | ✅ Complete | _pending_ |
 | 2 | Workflow progress indicator (8-step bar, back-nav, single-session lock) | ✅ Complete | _pending_ |
-| 3 | Analysis display upgrade | 🔲 Pending | — |
+| 3 | Analysis display upgrade | ✅ Complete | _pending_ |
 | 4 | Rewrite review UI polish | 🔲 Pending | — |
 | 5 | Publications block + Human DOCX | 🔲 Pending | — |
 | 6 | Spell/grammar check | 🔲 Pending | — |
@@ -145,14 +145,43 @@ Full suite: 236 passed, 1 warning in 4.48s
 
 ## Phase 3 — Analysis Display Upgrade
 
-**Status**: 🔲 Pending
+**Status**: ✅ Complete | **Tests**: 236/236 passed
 
-### Planned Changes
-- Four-section layout: Role & Domain card, Required Skills grid,
-  Preferred/Nice-to-Have list, ATS Keywords with rank badges
-- Amber mismatch callout for skill gaps
-- Button-answer clarifying questions (chips + always-visible text input)
-- `/api/post-analysis-questions`: add `choices: string[]` per question
+### Changes Made
+
+| File | Change |
+|------|--------|
+| `web/index.html` (CSS ~line 128) | Added `.analysis-page`, `.analysis-role-card`, `.analysis-section`, `.skill-grid`, `.skill-badge`, `.skill-badge.missing`, `.preferred-list`, `.kw-badges`, `.kw-badge`, `.kw-rank`, `.mismatch-callout`, `.questions-panel`, `.question-item`, `.q-chip`, `.q-input`, `.questions-submit-btn` — all Phase 3 analysis and question panel styles. |
+| `web/index.html` (`populateAnalysisTab` ~line 2353) | Replaced flat list layout with 4-section layout: (1) Role & Domain card; (2) Required Skills grid with `.skill-badge.missing` highlights; (3) Preferred / Nice-to-Have list; (4) ATS Keywords with `#rank` superscript badges. Amber mismatch callout shown above the grid when any required skill is absent from `window._masterSkills`. |
+| `web/index.html` (`fetchStatus` ~line 4185) | Added `window._masterSkills` cache: on every status poll, `all_skills` from the server is normalized to lowercase and stored for mismatch detection. |
+| `web/index.html` (`buildFallbackPostAnalysisQuestions` ~line 2180) | Added `choices: [...]` arrays to all 4 fallback questions. |
+| `web/index.html` (`askPostAnalysisQuestions` ~line 2239) | Updated to preserve `choices` field from LLM response; calls `renderQuestionsPanel()` instead of `showNextQuestion()`. |
+| `web/index.html` (new `renderQuestionsPanel`, `selectQChip`, `updateQProgress`, `submitAllAnswers` ~line 2289) | New question panel functions: chips + always-visible text area per question; `updateQProgress()` counts answered questions and enables Submit button when all answered; `submitAllAnswers()` persists and removes panel. |
+| `scripts/web_app.py` (`_fallback_post_analysis_questions` ~line 156) | Added `choices: [...]` arrays to all 4 fallback questions (mirrors frontend fallback). |
+| `scripts/web_app.py` (`_generate_post_analysis_questions` ~line 196) | Updated LLM prompt schema to include `choices: ["Option A", ...]`; updated response parser to extract and validate `choices` list (max 4 items, stripped, truthy). |
+
+### Design Decisions (Phase 3)
+
+**D3.1 — Mismatch detection is client-side, fuzzy substring match.**
+The frontend compares `required_skills` against `window._masterSkills` using bidirectional `.includes()`: `ms.includes(skill)` OR `skill.includes(ms)`. This catches common aliases (e.g. "Machine Learning" matches "Machine Learning Research"). It is intentionally permissive — false positives (no amber flag when the skill really is absent) are worse than false negatives (amber flag shown when skill is present under a different name). Phase 9 skill canonicalisation will improve precision.
+
+**D3.2 — Missing skill badges are highlighted red in the Required Skills grid.**
+Skill badges with class `.skill-badge.missing` are rendered in red so the user can immediately see which skills are unmatched without reading the callout carefully. The amber callout provides a text list for screen reader accessibility.
+
+**D3.3 — Questions panel appends to analysis tab, not chat.**
+The previous chat-bubble approach forced sequential answers through the conversation input. The new panel renders all questions together in the analysis tab after the 4-section content. This means the user sees analysis and questions in a single scroll, can answer at their own pace, and can change answers before submitting.
+
+**D3.4 — "Submit Answers" button is disabled until all text areas are non-empty.**
+`updateQProgress()` counts filled text areas, not selected chips. This allows the user to type a custom answer directly without clicking a chip, and the Submit button becomes enabled as soon as all fields have content.
+
+**D3.5 — `choices` are optional; questions without choices render text area only.**
+The LLM or fallback may not always provide choices for every question. The `chips` variable is an empty string when `q.choices` is empty, so no chip div is rendered, just the text area. This is robust to partial LLM responses.
+
+### Test Results
+
+```
+Full suite: 236 passed, 1 warning in 3.64s
+```
 
 ---
 
@@ -216,4 +245,4 @@ added here as each phase is implemented.
 
 ---
 
-_Last updated by agent: 2026-03-11 (Phase 2 complete)_
+_Last updated by agent: 2026-03-11 (Phase 3 complete)_

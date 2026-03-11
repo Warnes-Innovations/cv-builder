@@ -155,13 +155,14 @@ def create_app(args) -> Flask:
 
     def _fallback_post_analysis_questions(analysis: Dict[str, Any]) -> List[Dict[str, str]]:
         """Deterministic fallback if LLM question generation fails."""
-        questions: List[Dict[str, str]] = []
+        questions: List[Dict] = []
 
         role_level = analysis.get("role_level")
         if role_level:
             questions.append({
                 "type": "experience_level",
                 "question": f"This role appears to be at {role_level} level. Should I emphasize your most senior experiences or include a broader range to show career progression?",
+                "choices": ["Emphasize most senior", "Broader career progression", "Let you decide based on analysis"],
             })
 
         required_skills = analysis.get("required_skills") or []
@@ -171,6 +172,7 @@ def create_app(args) -> Flask:
                 questions.append({
                     "type": "leadership_focus",
                     "question": "This role has leadership components. Would you prefer me to emphasize your management experience or focus more on your technical contributions?",
+                    "choices": ["Emphasize management", "Focus on technical", "Balance both equally"],
                 })
 
         domain = analysis.get("domain")
@@ -178,6 +180,7 @@ def create_app(args) -> Flask:
             questions.append({
                 "type": "domain_expertise",
                 "question": f"The role is in {domain}. Do you have particular projects or achievements in this domain that you'd like me to highlight?",
+                "choices": ["Highlight domain-specific achievements", "Use all available experience", "Prioritize most recent work"],
             })
 
         company = analysis.get("company")
@@ -185,11 +188,12 @@ def create_app(args) -> Flask:
             questions.append({
                 "type": "company_culture",
                 "question": f"For {company}, would you like me to tailor emphasis toward their culture and values? If so, what should I prioritize?",
+                "choices": ["Research-driven / academic", "Industry / commercial impact", "Innovation / startup", "Use cultural indicators from job description"],
             })
 
         return questions[:4]
 
-    def _generate_post_analysis_questions(analysis: Dict[str, Any], job_text: Optional[str]) -> List[Dict[str, str]]:
+    def _generate_post_analysis_questions(analysis: Dict[str, Any], job_text: Optional[str]) -> List[Dict]:
         """Generate clarifying questions from the LLM in JSON format."""
         prompt = f"""You are helping tailor a CV to a specific job.
 
@@ -200,11 +204,12 @@ Requirements:
 - Focus on tradeoffs that affect selection/emphasis of experiences and skills.
 - Avoid generic or repetitive questions.
 - Keep each question under 220 characters.
+- For each question, provide 2-4 button-answer choices covering the most likely responses.
 - Return ONLY valid JSON as an array of objects.
 
 Schema:
 [
-  {{"type": "short_snake_case", "question": "..."}}
+  {{"type": "short_snake_case", "question": "...", "choices": ["Option A", "Option B", "Option C"]}}
 ]
 
 Job Analysis:
@@ -220,7 +225,7 @@ Job Description (excerpt):
                 {"role": "user", "content": prompt},
             ],
             temperature=0.4,
-            max_tokens=500,
+            max_tokens=600,
         )
 
         payload = _extract_json_payload(response)
@@ -230,18 +235,25 @@ Job Description (excerpt):
         if not isinstance(payload, list):
             return []
 
-        cleaned: List[Dict[str, str]] = []
+        cleaned: List[Dict] = []
         for item in payload:
             if not isinstance(item, dict):
                 continue
             question = str(item.get("question", "")).strip()
             qtype = str(item.get("type", "clarification")).strip().lower().replace(" ", "_")
+            choices = item.get("choices")
+            if not isinstance(choices, list):
+                choices = []
+            choices = [str(c).strip() for c in choices if str(c).strip()][:4]
             if not question:
                 continue
-            cleaned.append({
+            entry: Dict = {
                 "type": qtype[:40] or "clarification",
                 "question": question[:220],
-            })
+            }
+            if choices:
+                entry["choices"] = choices
+            cleaned.append(entry)
 
         return cleaned[:4]
 

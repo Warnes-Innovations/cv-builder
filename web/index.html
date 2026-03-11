@@ -125,6 +125,42 @@
     .job-analysis h4 { margin: 16px 0 8px; color: #0369a1; font-size: 14px; }
     .job-analysis ul { margin: 8px 0; padding-left: 20px; }
     .job-analysis li { margin: 4px 0; color: #1e293b; }
+    /* Phase 3: 4-section analysis layout */
+    .analysis-page { padding: 20px; max-width: 860px; }
+    .analysis-role-card { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1px solid #bfdbfe; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; }
+    .analysis-role-card h1 { margin: 0 0 4px; font-size: 22px; color: #1e293b; }
+    .analysis-role-card .company { font-size: 16px; color: #475569; margin: 0 0 10px; }
+    .analysis-role-card .meta { display: flex; gap: 16px; flex-wrap: wrap; }
+    .analysis-role-card .meta-chip { background: #fff; border: 1px solid #dbeafe; border-radius: 20px; padding: 4px 12px; font-size: 13px; color: #1d4ed8; font-weight: 500; }
+    .analysis-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px; }
+    .analysis-section h2 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 8px; }
+    .skill-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .skill-badge { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 16px; padding: 5px 12px; font-size: 13px; font-weight: 500; }
+    .skill-badge.missing { background: #fee2e2; color: #dc2626; border-color: #fecaca; }
+    .preferred-list { list-style: none; padding: 0; margin: 0; }
+    .preferred-list li { padding: 5px 0; color: #475569; font-size: 14px; border-bottom: 1px solid #f1f5f9; }
+    .preferred-list li:last-child { border-bottom: none; }
+    .kw-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+    .kw-badge { position: relative; background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; border-radius: 16px; padding: 4px 12px 4px 24px; font-size: 13px; font-weight: 500; }
+    .kw-badge .kw-rank { position: absolute; left: 7px; top: 3px; font-size: 9px; font-weight: 700; color: #64748b; line-height: 1.4; }
+    .mismatch-callout { background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 14px; color: #92400e; }
+    .mismatch-callout strong { color: #78350f; }
+    /* Phase 3: Questions panel */
+    .questions-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px; margin-top: 20px; }
+    .questions-panel h2 { margin: 0 0 4px; font-size: 16px; font-weight: 700; color: #1e293b; }
+    .questions-panel .q-progress { font-size: 13px; color: #64748b; margin-bottom: 16px; }
+    .question-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9; }
+    .question-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .question-item .q-text { font-size: 14px; font-weight: 600; color: #1e293b; margin-bottom: 10px; }
+    .question-item .q-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .q-chip { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 16px; padding: 6px 14px; font-size: 13px; cursor: pointer; transition: all 0.15s; }
+    .q-chip:hover { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+    .q-chip.selected { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; font-weight: 600; }
+    .question-item .q-input { width: 100%; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 14px; color: #1e293b; resize: vertical; min-height: 48px; }
+    .question-item .q-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .questions-submit-btn { background: #3b82f6; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 4px; }
+    .questions-submit-btn:hover { background: #2563eb; }
+    .questions-submit-btn:disabled { background: #94a3b8; cursor: not-allowed; }
     
     /* Input Area */
     .input-area { 
@@ -2147,7 +2183,8 @@
       if (data.role_level) {
         questions.push({
           question: `This role appears to be at ${data.role_level} level. Should I emphasize your most senior experiences or include a broader range to show career progression?`,
-          type: 'experience_level'
+          type: 'experience_level',
+          choices: ['Emphasize most senior', 'Broader career progression', 'Let you decide based on analysis'],
         });
       }
 
@@ -2157,21 +2194,24 @@
           skill.toLowerCase().includes('team'))) {
         questions.push({
           question: 'This role has leadership components. Would you prefer me to emphasize your management experience or focus more on your technical contributions?',
-          type: 'leadership_focus'
+          type: 'leadership_focus',
+          choices: ['Emphasize management', 'Focus on technical', 'Balance both equally'],
         });
       }
 
       if (data.domain) {
         questions.push({
           question: `The role is in ${data.domain}. Do you have particular projects or achievements in this domain that you'd like me to highlight?`,
-          type: 'domain_expertise'
+          type: 'domain_expertise',
+          choices: ['Highlight domain-specific achievements', 'Use all available experience', 'Prioritize most recent work'],
         });
       }
 
       if (data.company) {
         questions.push({
-          question: `For ${data.company}, would you like me to research their culture and values to tailor the CV accordingly? Or do you have specific insights about what they value?`,
-          type: 'company_culture'
+          question: `For ${data.company}, would you like me to tailor emphasis toward their culture and values? If so, what should I prioritize?`,
+          type: 'company_culture',
+          choices: ['Research-driven / academic', 'Industry / commercial impact', 'Innovation / startup', 'Use cultural indicators from job description'],
         });
       }
 
@@ -2221,7 +2261,8 @@
                 .filter(q => q && typeof q.question === 'string' && q.question.trim())
                 .map(q => ({
                   question: q.question.trim(),
-                  type: (q.type || 'clarification').toString()
+                  type: (q.type || 'clarification').toString(),
+                  choices: Array.isArray(q.choices) ? q.choices : [],
                 }));
             }
           }
@@ -2234,58 +2275,123 @@
         }
 
         window.questionAnswers = {};
-
         await persistPostAnalysisState();
 
         if (window.postAnalysisQuestions.length > 0) {
-          window.currentQuestionIndex = 0;
-          appendMessage('assistant', 'Great! I\'ve analyzed the job. Now I have a few questions to help me provide the best recommendations:');
-          showNextQuestion();
+          renderQuestionsPanel();
         } else {
-          appendMessage('assistant', 'Analysis complete! Type "proceed" when ready for customization recommendations.');
+          appendMessage('assistant', 'Analysis complete! Click "Recommend Customizations" when ready.');
         }
-
       } catch (e) {
         console.error('Error parsing analysis for questions:', e);
-        appendMessage('assistant', 'Analysis complete! Feel free to ask me questions about the job requirements or type "proceed" when ready for recommendations.');
+        appendMessage('assistant', 'Analysis complete! Click "Recommend Customizations" when ready.');
       }
     }
-    
-    function showNextQuestion() {
-      if (!window.postAnalysisQuestions || window.currentQuestionIndex >= window.postAnalysisQuestions.length) {
-        // All questions answered
-        finishPostAnalysisQuestions();
-        return;
-      }
-      
-      const question = window.postAnalysisQuestions[window.currentQuestionIndex];
-      appendMessage('assistant', question.question);
-      window.waitingForQuestionResponse = true;
+
+    // Renders all clarifying questions as a panel at the bottom of the analysis tab.
+    // Each question gets chip buttons + an always-visible text area.
+    function renderQuestionsPanel() {
+      const qs = window.postAnalysisQuestions || [];
+      if (qs.length === 0) return;
+
+      const content = document.getElementById('document-content');
+      if (!content) return;
+
+      // Remove any existing questions panel.
+      const existing = content.querySelector('.questions-panel');
+      if (existing) existing.remove();
+
+      const total = qs.length;
+      let panelHtml = `<div class="questions-panel" id="questions-panel">
+        <h2>💬 A few quick questions</h2>
+        <p class="q-progress" id="q-progress">Please answer all ${total} question${total > 1 ? 's' : ''} before proceeding.</p>`;
+
+      qs.forEach((q, idx) => {
+        const chips = (q.choices || []).map((c, ci) =>
+          `<button class="q-chip" data-qidx="${idx}" data-cidx="${ci}" onclick="selectQChip(this, ${idx})">${c}</button>`
+        ).join('');
+        panelHtml += `
+          <div class="question-item" id="q-item-${idx}">
+            <div class="q-text">${idx + 1}. ${q.question}</div>
+            ${chips ? `<div class="q-chips">${chips}</div>` : ''}
+            <textarea class="q-input" id="q-input-${idx}" placeholder="Your answer…" oninput="updateQProgress()"></textarea>
+          </div>`;
+      });
+
+      panelHtml += `<button class="questions-submit-btn" id="q-submit-btn" onclick="submitAllAnswers()" disabled>Submit Answers</button></div>`;
+
+      // Append to the analysis content (already has the 4-section layout).
+      content.insertAdjacentHTML('beforeend', panelHtml);
     }
-    
+
+    // Handles chip selection: marks chip as selected, populates the text area.
+    function selectQChip(btn, qIdx) {
+      // Deselect sibling chips.
+      const panel = document.getElementById(`q-item-${qIdx}`);
+      if (panel) {
+        panel.querySelectorAll('.q-chip').forEach(c => c.classList.remove('selected'));
+      }
+      btn.classList.add('selected');
+      const textarea = document.getElementById(`q-input-${qIdx}`);
+      if (textarea) {
+        textarea.value = btn.textContent;
+        updateQProgress();
+      }
+    }
+
+    // Updates the progress label and enables/disables the Submit button.
+    function updateQProgress() {
+      const qs = window.postAnalysisQuestions || [];
+      const answered = qs.filter((_, idx) => {
+        const ta = document.getElementById(`q-input-${idx}`);
+        return ta && ta.value.trim().length > 0;
+      }).length;
+      const progressEl = document.getElementById('q-progress');
+      if (progressEl) {
+        progressEl.textContent = `Answered ${answered} of ${qs.length}`;
+      }
+      const submitBtn = document.getElementById('q-submit-btn');
+      if (submitBtn) {
+        submitBtn.disabled = answered < qs.length;
+      }
+    }
+
+    // Collects all answers and persists them, then removes the panel.
+    async function submitAllAnswers() {
+      const qs = window.postAnalysisQuestions || [];
+      qs.forEach((q, idx) => {
+        const ta = document.getElementById(`q-input-${idx}`);
+        if (ta && ta.value.trim()) {
+          window.questionAnswers[q.type] = ta.value.trim();
+        }
+      });
+      await persistPostAnalysisState();
+      const panel = document.getElementById('questions-panel');
+      if (panel) panel.remove();
+      appendMessage('assistant', `✓ Thank you! ${qs.length} answer${qs.length > 1 ? 's' : ''} saved. Click "Recommend Customizations" when ready.`);
+    }
+
+    // Legacy compatibility: keep these stubs so existing callers do not break.
+    function showNextQuestion() { renderQuestionsPanel(); }
+
     function handleQuestionResponse(message) {
-      if (!window.postAnalysisQuestions || window.currentQuestionIndex >= window.postAnalysisQuestions.length) {
-        return false;
-      }
-      
-      const question = window.postAnalysisQuestions[window.currentQuestionIndex];
-      window.questionAnswers[question.type] = message;
+      if (!window.postAnalysisQuestions || window.postAnalysisQuestions.length === 0) return false;
+      if (!window.waitingForQuestionResponse) return false;
+      // Legacy path: record answer for the current question index (used by chat input).
+      const idx = window.currentQuestionIndex || 0;
+      const q = window.postAnalysisQuestions[idx];
+      if (!q) return false;
+      window.questionAnswers[q.type] = message;
       window.waitingForQuestionResponse = false;
+      window.currentQuestionIndex = idx + 1;
       persistPostAnalysisState();
-      
-      // Acknowledge the response
-      appendMessage('assistant', 'Got it. Thanks for that context!');
-      
-      // Move to next question
-      window.currentQuestionIndex++;
-      setTimeout(() => showNextQuestion(), 500);
-      
+      renderQuestionsPanel();
       return true;
     }
-    
+
     function finishPostAnalysisQuestions() {
       window.waitingForQuestionResponse = false;
-      appendMessage('assistant', 'Thank you for those insights! Type "proceed" when you\'re ready for me to generate customization recommendations.');
+      appendMessage('assistant', 'Thank you for those insights! Click "Recommend Customizations" when you\'re ready.');
     }
 
     async function getStatus() {
@@ -2320,57 +2426,83 @@
         // Store for persistence
         tabData.analysis = result;
         saveTabData();
-        
-        // Clean up JSON response more thoroughly
+
         const cleanResult = cleanJsonResponse(result);
-        console.log('Cleaned analysis result:', cleanResult);
-        
         const data = typeof cleanResult === 'string' ? JSON.parse(cleanResult) : cleanResult;
-        
-        let html = '<h1>📋 Job Analysis Results</h1>';
 
-        if (data.title) html += `<h2>${data.title}</h2>`;
-        if (data.company) html += `<h3>${data.company}</h3>`;
-        if (data.domain) html += `<p><strong>Domain:</strong> ${data.domain}</p>`;
-        if (data.role_level) html += `<p><strong>Level:</strong> ${data.role_level}</p>`;
+        // ── Section 1: Role & Domain card ────────────────────────────────────
+        let html = '<div class="analysis-page">';
+        html += '<div class="analysis-role-card">';
+        html += `<h1>${data.title || 'Role'}</h1>`;
+        if (data.company) html += `<p class="company">🏢 ${data.company}</p>`;
+        html += '<div class="meta">';
+        if (data.domain)     html += `<span class="meta-chip">🔬 ${data.domain}</span>`;
+        if (data.role_level) html += `<span class="meta-chip">📊 ${data.role_level}</span>`;
+        if (data.suggested_summary) html += `<span class="meta-chip">💬 ${data.suggested_summary}</span>`;
+        html += '</div></div>';
 
-        if (data.required_skills && data.required_skills.length > 0) {
-          html += '<h2>🎯 Required Skills</h2><ul>';
-          data.required_skills.forEach(skill => html += `<li>${skill}</li>`);
-          html += '</ul>';
+        // ── Mismatch callout (computed from master skills) ────────────────────
+        const requiredSkills = Array.isArray(data.required_skills) ? data.required_skills : [];
+        const masterSkills = window._masterSkills || [];
+        if (requiredSkills.length > 0 && masterSkills.length > 0) {
+          const missing = requiredSkills.filter(skill =>
+            !masterSkills.some(ms => ms.includes(skill.toLowerCase()) || skill.toLowerCase().includes(ms))
+          );
+          if (missing.length > 0) {
+            html += `<div class="mismatch-callout">⚠ <strong>${missing.length} required skill${missing.length > 1 ? 's' : ''} not found in your master CV:</strong> ${missing.join(', ')}</div>`;
+          }
         }
 
-        if (data.must_have_requirements && data.must_have_requirements.length > 0) {
-          html += '<h2>✅ Must-Have Requirements</h2><ul>';
-          data.must_have_requirements.forEach(req => html += `<li>${req}</li>`);
-          html += '</ul>';
+        // ── Section 2: Required Skills grid ──────────────────────────────────
+        if (requiredSkills.length > 0) {
+          html += '<div class="analysis-section"><h2>🎯 Required Skills</h2><div class="skill-grid">';
+          requiredSkills.forEach(skill => {
+            const isMissing = masterSkills.length > 0 && !masterSkills.some(
+              ms => ms.includes(skill.toLowerCase()) || skill.toLowerCase().includes(ms)
+            );
+            html += `<span class="skill-badge${isMissing ? ' missing' : ''}" title="${isMissing ? 'Not in master CV' : 'Found in master CV'}">${skill}</span>`;
+          });
+          html += '</div></div>';
         }
 
-        if (data.preferred_skills && data.preferred_skills.length > 0) {
-          html += '<h2>⭐ Preferred Skills</h2><ul>';
-          data.preferred_skills.forEach(skill => html += `<li>${skill}</li>`);
-          html += '</ul>';
+        // ── Section 3: Preferred / Nice-to-Have list ─────────────────────────
+        const preferred = [
+          ...(Array.isArray(data.preferred_skills) ? data.preferred_skills : []),
+          ...(Array.isArray(data.nice_to_have_requirements) ? data.nice_to_have_requirements : []),
+        ];
+        if (preferred.length > 0) {
+          html += '<div class="analysis-section"><h2>⭐ Preferred / Nice-to-Have</h2><ul class="preferred-list">';
+          preferred.forEach(item => { html += `<li>${item}</li>`; });
+          html += '</ul></div>';
         }
 
-        if (data.nice_to_have_requirements && data.nice_to_have_requirements.length > 0) {
-          html += '<h2>✨ Nice to Have</h2><ul>';
-          data.nice_to_have_requirements.forEach(req => html += `<li>${req}</li>`);
-          html += '</ul>';
+        // ── Section 4: ATS Keywords with rank badges ──────────────────────────
+        const atsKws = Array.isArray(data.ats_keywords) ? data.ats_keywords : [];
+        if (atsKws.length > 0) {
+          html += '<div class="analysis-section"><h2>🔑 ATS Keywords <small style="font-weight:400;color:#64748b;font-size:12px;">(higher rank = higher priority)</small></h2><div class="kw-badges">';
+          atsKws.forEach((kw, idx) => {
+            html += `<span class="kw-badge"><span class="kw-rank">#${idx + 1}</span>${kw}</span>`;
+          });
+          html += '</div></div>';
         }
 
-        if (data.ats_keywords && data.ats_keywords.length > 0) {
-          html += '<h2>🔑 ATS Keywords</h2>';
-          html += '<p style="line-height: 2.2;">';
-          data.ats_keywords.forEach(kw => html += `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:3px 10px;margin:3px;font-size:0.9em;font-weight:500;">${kw}</span>`);
-          html += '</p>';
+        // ── Culture indicators (optional) ────────────────────────────────────
+        const culture = Array.isArray(data.culture_indicators) ? data.culture_indicators : [];
+        if (culture.length > 0) {
+          html += '<div class="analysis-section"><h2>🏢 Culture Indicators</h2><ul class="preferred-list">';
+          culture.forEach(c => { html += `<li>${c}</li>`; });
+          html += '</ul></div>';
         }
 
-        if (data.culture_indicators && data.culture_indicators.length > 0) {
-          html += '<h2>🏢 Culture Indicators</h2><ul>';
-          data.culture_indicators.forEach(c => html += `<li>${c}</li>`);
-          html += '</ul>';
+        // ── Must-have requirements ────────────────────────────────────────────
+        const mustHave = Array.isArray(data.must_have_requirements) ? data.must_have_requirements : [];
+        if (mustHave.length > 0) {
+          html += '<div class="analysis-section"><h2>✅ Must-Have Requirements</h2><ul class="preferred-list">';
+          mustHave.forEach(r => { html += `<li>${r}</li>`; });
+          html += '</ul></div>';
         }
 
+        html += '</div>'; // .analysis-page
         content.innerHTML = html;
       } catch (e) {
         console.error('Analysis parsing error:', e, 'Original result:', result);
@@ -4156,6 +4288,10 @@
         }
         if (data.post_analysis_answers && typeof data.post_analysis_answers === 'object') {
           window.questionAnswers = data.post_analysis_answers;
+        }
+        // Cache master CV skills for mismatch detection in populateAnalysisTab.
+        if (Array.isArray(data.all_skills)) {
+          window._masterSkills = data.all_skills.map(s => (typeof s === 'string' ? s : (s.name || s.skill || '')).toLowerCase());
         }
 
         updatePositionTitle(data);
