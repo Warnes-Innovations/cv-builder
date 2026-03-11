@@ -35,7 +35,7 @@ if env_path.exists():
 # Ensure scripts are importable
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils.config import get_config
+from utils.config import get_config, validate_config, ConfigurationError
 from utils.llm_client import get_llm_provider
 from utils.cv_orchestrator import CVOrchestrator
 from utils.conversation_manager import ConversationManager
@@ -44,6 +44,10 @@ from utils.copilot_auth import CopilotAuthManager
 
 def create_app(args) -> Flask:
     app = Flask(__name__, static_folder=None)
+
+    # Validate configuration before initializing dependencies.
+    # Raises ConfigurationError with a clear message if no LLM provider is set.
+    validate_config(provider=args.llm_provider)
 
     # Copilot OAuth auth manager (shared across all requests)
     auth_manager = CopilotAuthManager()

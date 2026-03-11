@@ -734,6 +734,7 @@ For manual generation:
         customizations: Dict,
         output_dir: Optional[Path] = None,
         approved_rewrites: Optional[List[Dict]] = None,
+        rewrite_audit: Optional[List[Dict]] = None,
     ) -> Dict:
         """
         Generate CV files based on LLM analysis and recommendations.
@@ -828,6 +829,7 @@ For manual generation:
             'job_analysis':    job_analysis,
             'customizations':  customizations,
             'approved_rewrites': approved_rewrites or [],
+            'rewrite_audit':   rewrite_audit or [],
             'selected_content_summary': {
                 'experiences_count': len(selected_content['experiences']),
                 'skills_count': len(selected_content['skills']),

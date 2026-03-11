@@ -110,9 +110,9 @@ class Config:
     
     # LLM settings
     @property
-    def llm_provider(self) -> str:
-        """Default LLM provider."""
-        return os.getenv('CV_LLM_PROVIDER') or self.get('llm.default_provider', 'copilot')
+    def llm_provider(self) -> Optional[str]:
+        """Default LLM provider. Returns None if not configured."""
+        return os.getenv('CV_LLM_PROVIDER') or self.get('llm.default_provider') or None
     
     @property
     def llm_model(self) -> Optional[str]:
@@ -247,6 +247,10 @@ class Config:
         return os.getenv('CV_LOG_DIR') or self.get('logging.log_dir', './logs')
 
 
+class ConfigurationError(Exception):
+    """Raised when the configuration is invalid or missing required values."""
+
+
 # Global config instance
 _config: Optional[Config] = None
 
@@ -254,10 +258,10 @@ _config: Optional[Config] = None
 def get_config(reload: bool = False) -> Config:
     """
     Get global configuration instance.
-    
+
     Args:
         reload: Force reload configuration
-        
+
     Returns:
         Config instance
     """
@@ -265,3 +269,23 @@ def get_config(reload: bool = False) -> Config:
     if _config is None or reload:
         _config = Config()
     return _config
+
+
+def validate_config(provider: Optional[str] = None) -> None:
+    """Validate that required configuration values are present.
+
+    Call at application startup (before first request).  Pass the resolved
+    provider string (from CLI arg or env override) so that explicit CLI
+    values are accepted even when config.yaml is sparse.
+
+    Raises:
+        ConfigurationError: if no LLM provider is configured from any source.
+    """
+    effective_provider = provider or get_config().llm_provider
+    if not effective_provider or not str(effective_provider).strip():
+        raise ConfigurationError(
+            "No LLM provider configured. "
+            "Set `llm.default_provider` in config.yaml or pass `--llm-provider` "
+            "on the command line. "
+            "Valid values: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local."
+        )

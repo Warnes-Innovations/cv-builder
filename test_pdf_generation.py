@@ -16,7 +16,7 @@ import time
 sys.path.append(str(Path(__file__).parent / 'scripts'))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from scripts.utils.cv_orchestrator import CVOrchestrator
 from test_utils import TestHelpers, TestAssertions, create_temp_output_dir
@@ -300,13 +300,13 @@ def main():
     print("🧪 Enhanced PDF Generation Test Suite")
     print("=" * 60)
     print("Testing Quarto-based PDF generation with comprehensive validation")
-    
+
     # Check environment
     master_data_path = Path.home() / 'CV'
     if not master_data_path.exists():
         print(f"⚠️  Warning: Master CV data not found at {master_data_path}")
         print("   Tests will use mock data only")
-    
+
     # Run test suite
     tests = [
         ("Basic PDF Generation", run_basic_pdf_test),
@@ -315,33 +315,40 @@ def main():
         ("Performance Benchmarks", run_performance_test),
         ("Multiple Formats", run_multiple_formats_test),
     ]
-    
+
     results = {}
     start_time = time.time()
-    
-    for test_name, test_func in tests:
-        try:
-            print(f"\n🔍 Running {test_name}...")
-            success = test_func()
-            results[test_name] = success
-        except Exception as e:
-            print(f"❌ {test_name} crashed: {e}")
-            results[test_name] = False
-    
+
+    # Mock WeasyPrint to avoid network fetches (Google Fonts CDN) in tests.
+    def _fake_write_pdf(path, *args, **kwargs):
+        Path(path).write_bytes(b'%PDF-1.4\n%%EOF\n')
+
+    with patch('scripts.utils.cv_orchestrator.weasyprint.HTML') as mock_html:
+        mock_html.return_value.write_pdf.side_effect = _fake_write_pdf
+
+        for test_name, test_func in tests:
+            try:
+                print(f"\n🔍 Running {test_name}...")
+                success = test_func()
+                results[test_name] = success
+            except Exception as e:
+                print(f"❌ {test_name} crashed: {e}")
+                results[test_name] = False
+
     # Print summary
     total_time = time.time() - start_time
     passed_tests = sum(results.values())
     total_tests = len(results)
-    
+
     print(f"\n📊 Test Results Summary")
     print("=" * 60)
     for test_name, success in results.items():
         status = "✅ PASS" if success else "❌ FAIL"
         print(f"{test_name}: {status}")
-    
+
     print(f"\n⏱️  Total time: {total_time:.2f}s")
     print(f"📈 Results: {passed_tests}/{total_tests} tests passed")
-    
+
     if passed_tests == total_tests:
         print("🎉 All PDF generation tests passed!")
         return True

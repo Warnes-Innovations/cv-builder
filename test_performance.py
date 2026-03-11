@@ -16,7 +16,7 @@ import os
 import json
 from pathlib import Path
 from typing import Dict, List, Tuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Add scripts to path
 sys.path.insert(0, str(Path(__file__).parent / 'scripts'))
@@ -356,14 +356,21 @@ class PerformanceBenchmarks:
 
 def main():
     """Run performance benchmarks."""
+
+    # Mock WeasyPrint to avoid network fetches (Google Fonts CDN) in tests.
+    def _fake_write_pdf(path, *args, **kwargs):
+        Path(path).write_bytes(b'%PDF-1.4\n%%EOF\n')
+
     try:
         benchmarks = PerformanceBenchmarks()
-        results = benchmarks.run_all_benchmarks()
-        
+        with patch('scripts.utils.cv_orchestrator.weasyprint.HTML') as mock_html:
+            mock_html.return_value.write_pdf.side_effect = _fake_write_pdf
+            results = benchmarks.run_all_benchmarks()
+
         # Return success if all benchmarks passed
         all_passed = all(result.get('success', False) for result in results.values())
         return 0 if all_passed else 1
-        
+
     except KeyboardInterrupt:
         print("\n❌ Benchmarks interrupted by user")
         return 1

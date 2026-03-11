@@ -280,6 +280,7 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
     """
     Light smoke-test of _render_cv_html_pdf using the real HTML template.
     Skipped automatically if cv-template.html is not found.
+    WeasyPrint is mocked to avoid CDN fetches (Google Fonts) in CI/offline.
     """
 
     _TEMPLATE_PATH = (
@@ -292,7 +293,16 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.orc = _make_orchestrator(Path(self.tmp.name))
 
+        # Patch WeasyPrint to write minimal PDF bytes (avoids CDN/network timeouts)
+        def _fake_write_pdf(path, *args, **kwargs):
+            Path(path).write_bytes(b'%PDF-1.4\n%%EOF\n')
+
+        self._wp_patcher = patch('utils.cv_orchestrator.weasyprint.HTML')
+        mock_html = self._wp_patcher.start()
+        mock_html.return_value.write_pdf.side_effect = _fake_write_pdf
+
     def tearDown(self):
+        self._wp_patcher.stop()
         if hasattr(self, 'tmp'):
             self.tmp.cleanup()
 

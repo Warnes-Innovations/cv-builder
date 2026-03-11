@@ -564,6 +564,7 @@ Ask questions that are specific to this job posting, not generic career question
                 customizations,
                 output_dir=self.session_dir,
                 approved_rewrites=self.state.get('approved_rewrites') or [],
+                rewrite_audit=self.state.get('rewrite_audit') or [],
             )
             self.state['generated_files'] = result
             self.state['phase'] = 'refinement'
@@ -933,6 +934,7 @@ Ask questions that are specific to this job posting, not generic career question
             analysis,
             recommendations,
             approved_rewrites=self.state.get('approved_rewrites') or [],
+            rewrite_audit=self.state.get('rewrite_audit') or [],
         )
         self.state['generated_files'] = result
         
