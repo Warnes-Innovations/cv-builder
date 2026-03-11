@@ -152,6 +152,40 @@ class TestRunner:
         
         return results
     
+    def run_ui_tests(self) -> Dict[str, bool]:
+        """Run Playwright UI tests (browser automation)."""
+        print("\n🎭 Running UI Tests (Playwright)")
+        print("=" * 50)
+
+        ui_test_dir = Path('tests/ui')
+        if not ui_test_dir.exists():
+            print("⚠️  tests/ui/ directory not found")
+            return {}
+
+        try:
+            result = subprocess.run(
+                [sys.executable, '-m', 'pytest', 'tests/ui/', '-v', '--tb=short'],
+                capture_output=not self.verbose,
+                text=True,
+                timeout=300,
+            )
+            success = result.returncode == 0
+            if success:
+                print("✅ UI tests passed")
+            else:
+                print("❌ UI tests failed")
+                if not self.verbose and result.stdout:
+                    print(result.stdout[-3000:])  # last 3k chars
+                if not self.verbose and result.stderr:
+                    print(result.stderr[-1000:])
+            return {'tests/ui/': success}
+        except subprocess.TimeoutExpired:
+            print("⏰ UI tests timed out")
+            return {'tests/ui/': False}
+        except Exception as e:
+            print(f"💥 UI tests crashed: {e}")
+            return {'tests/ui/': False}
+
     def _run_test_file(self, test_file: str) -> bool:
         """Run a specific test file and return success status."""
         print(f"\n🔍 Running {test_file}...")
@@ -191,7 +225,7 @@ class TestRunner:
         
         # Default to all categories if none specified
         if not categories:
-            categories = ['unit', 'component', 'integration']
+            categories = ['unit', 'component', 'integration', 'ui']
         
         # Run unit tests (no server needed)
         if 'unit' in categories:
@@ -210,7 +244,11 @@ class TestRunner:
             else:
                 print("❌ Skipping integration tests - could not start web server")
                 self.results['integration'] = {}
-        
+
+        # Run UI (Playwright) tests — server is managed internally by conftest.py
+        if 'ui' in categories:
+            self.results['ui'] = self.run_ui_tests()
+
         self.print_summary()
         return self._overall_success()
     
@@ -254,8 +292,8 @@ def main():
     parser = argparse.ArgumentParser(description='CV Builder Test Runner')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Verbose output')
-    parser.add_argument('--categories', '-c', nargs='+', 
-                       choices=['unit', 'component', 'integration'],
+    parser.add_argument('--categories', '-c', nargs='+',
+                       choices=['unit', 'component', 'integration', 'ui'],
                        help='Test categories to run (default: all)')
     parser.add_argument('--list', '-l', action='store_true',
                        help='List available test files')

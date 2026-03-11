@@ -1,0 +1,329 @@
+/**
+ * layout-instruction.js
+ * Frontend UI for natural-language layout instruction workflow.
+ * Handles instruction submission, preview updates, and instruction history.
+ *
+ * DEPENDENCIES:
+ * - utils.js (for htmlEscape function)
+ * - api-client.js (for apiCall function)
+ */
+
+/**
+ * Initialize layout instruction UI and event handlers.
+ * Called when layout tab is activated.
+ */
+function initiateLayoutInstructions() {
+  const instructionTab = document.getElementById('tab-layout');
+  if (!instructionTab) return;
+
+  // Create two-column layout if it doesn't exist
+  if (!instructionTab.querySelector('.layout-instruction-panel')) {
+    instructionTab.innerHTML = `
+      <div class="layout-instruction-panel">
+        <div class="layout-preview-pane">
+          <h3>Current Layout Preview</h3>
+          <div class="preview-iframe-container">
+            <iframe id="layout-preview" class="layout-preview-iframe" title="CV Layout Preview"></iframe>
+          </div>
+        </div>
+
+        <div class="layout-input-pane">
+          <h3>Layout Instructions</h3>
+          <p class="layout-scope-label">💡 Layout changes only — approved text is never modified</p>
+
+          <textarea
+            id="instruction-input"
+            class="layout-instruction-textarea"
+            placeholder="e.g., Move Publications section after Skills&#10;or: Make the Summary section smaller&#10;or: Keep the Genentech entry on one page"
+            rows="8"></textarea>
+
+          <button id="apply-instruction-btn" class="btn btn-primary layout-action-btn">
+            Apply Instruction
+          </button>
+
+          <div id="processing-indicator" class="processing-indicator" style="display: none;">
+            <div class="spinner"></div>
+            <p>Applying instruction...</p>
+          </div>
+
+          <div id="confirmation-message" class="confirmation-message" style="display: none;"></div>
+
+          <div class="layout-history-section">
+            <h4>
+              <span class="history-toggle">▼</span>
+              Instruction History (<span id="instruction-count">0</span>)
+            </h4>
+            <div id="instruction-history" class="instruction-history-list"></div>
+          </div>
+
+          <button id="proceed-to-finalise-btn" class="btn btn-success layout-action-btn" style="display: none;">
+            Proceed to Final Generation
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Wire up event listeners
+    setupLayoutInstructionListeners();
+  }
+
+  // Load and display current HTML preview
+  const currentHtml = window.tabData?.cv?.['*.html'] || '';
+  if (currentHtml) {
+    displayLayoutPreview(currentHtml);
+  }
+
+  // Restore any prior instructions from session
+  restoreInstructionHistory();
+}
+
+/**
+ * Set up event listeners for layout instruction UI.
+ */
+function setupLayoutInstructionListeners() {
+  const applyBtn = document.getElementById('apply-instruction-btn');
+  const proceedBtn = document.getElementById('proceed-to-finalise-btn');
+  const instructionInput = document.getElementById('instruction-input');
+  const historyToggle = document.querySelector('.history-toggle');
+
+  if (applyBtn) {
+    applyBtn.addEventListener('click', () => {
+      const instruction = instructionInput.value.trim();
+      if (!instruction) {
+        appendMessage('system', '⚠️ Please enter a layout instruction before submitting.');
+        return;
+      }
+      submitLayoutInstruction(instruction);
+    });
+  }
+
+  if (proceedBtn) {
+    proceedBtn.addEventListener('click', completeLayoutReview);
+  }
+
+  if (historyToggle) {
+    historyToggle.addEventListener('click', (e) => {
+      e.target.textContent = e.target.textContent === '▼' ? '▶' : '▼';
+      const historyList = document.getElementById('instruction-history');
+      if (historyList) {
+        historyList.classList.toggle('collapsed');
+      }
+    });
+  }
+
+  // Allow Enter key to submit in textarea (Shift+Enter for new line)
+  if (instructionInput) {
+    instructionInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        applyBtn?.click();
+      }
+    });
+  }
+}
+
+/**
+ * Submit layout instruction to backend for processing.
+ */
+async function submitLayoutInstruction(instructionText) {
+  const currentHtml = window.tabData?.cv?.['*.html'] || '';
+  const priorInstructions = window.layoutInstructions || [];
+
+  try {
+    showProcessing(true);
+
+    const response = await apiCall('POST', '/api/layout-instruction', {
+      instruction: instructionText,
+      current_html: currentHtml,
+      prior_instructions: priorInstructions
+    });
+
+    if (!response.ok) {
+      if (response.error === 'clarify') {
+        showClarificationDialog(response.question, instructionText);
+      } else {
+        appendMessage('system', `⚠️ Error: ${response.error} — ${response.details || ''}`);
+      }
+      return;
+    }
+
+    // Update preview with new HTML
+    const newHtml = response.html;
+    displayLayoutPreview(newHtml);
+
+    // Update state
+    window.tabData.cv['*.html'] = newHtml;
+
+    // Add to instruction history
+    const instruction = {
+      timestamp: new Date().toLocaleTimeString(),
+      instruction_text: instructionText,
+      change_summary: response.summary,
+      confirmation: true
+    };
+    addToInstructionHistory(instruction);
+
+    // Show confirmation
+    showConfirmationMessage(`✅ ${response.summary}`);
+
+    // Clear input and show proceed button
+    document.getElementById('instruction-input').value = '';
+    document.getElementById('proceed-to-finalise-btn').style.display = 'block';
+
+  } catch (error) {
+    appendMessage('system', `❌ Failed to apply layout instruction: ${error.message}`);
+  } finally {
+    showProcessing(false);
+  }
+}
+
+/**
+ * Display HTML preview in iframe.
+ */
+function displayLayoutPreview(html) {
+  const preview = document.getElementById('layout-preview');
+  if (!preview) return;
+
+  // Set iframe content safely
+  const doc = preview.contentDocument || preview.contentWindow?.document;
+  if (doc) {
+    doc.open();
+    doc.write(html);
+    doc.close();
+  }
+}
+
+/**
+ * Add instruction to history panel.
+ */
+function addToInstructionHistory(instruction) {
+  // Initialize global instruction list if needed
+  if (!window.layoutInstructions) {
+    window.layoutInstructions = [];
+  }
+
+  window.layoutInstructions.push(instruction);
+
+  const historyList = document.getElementById('instruction-history');
+  if (!historyList) return;
+
+  const entry = document.createElement('div');
+  entry.className = 'instruction-history-entry';
+  entry.innerHTML = `
+    <div class="instruction-time">${instruction.timestamp}</div>
+    <div class="instruction-text">${htmlEscape(instruction.instruction_text)}</div>
+    <div class="instruction-summary"><em>${instruction.change_summary}</em></div>
+    <button class="btn btn-small" onclick="undoInstruction(${window.layoutInstructions.length - 1})">
+      Undo
+    </button>
+  `;
+
+  historyList.appendChild(entry);
+
+  // Update count
+  document.getElementById('instruction-count').textContent = window.layoutInstructions.length;
+}
+
+/**
+ * Restore instruction history from session state.
+ */
+function restoreInstructionHistory() {
+  const instructions = window.layoutInstructions || [];
+  instructions.forEach(addToInstructionHistory);
+
+  // Show proceed button if any instructions applied
+  if (instructions.length > 0) {
+    document.getElementById('proceed-to-finalise-btn').style.display = 'block';
+  }
+}
+
+/**
+ * Show processing spinner.
+ */
+function showProcessing(show) {
+  const indicator = document.getElementById('processing-indicator');
+  if (indicator) {
+    indicator.style.display = show ? 'block' : 'none';
+  }
+}
+
+/**
+ * Show confirmation message.
+ */
+function showConfirmationMessage(message) {
+  const element = document.getElementById('confirmation-message');
+  if (!element) return;
+
+  element.textContent = message;
+  element.style.display = 'block';
+
+  // Auto-hide after 3 seconds
+  setTimeout(() => {
+    element.style.display = 'none';
+  }, 3000);
+}
+
+/**
+ * Show inline clarification dialog when LLM needs more info.
+ */
+function showClarificationDialog(question, originalInstruction) {
+  const response = prompt(
+    `The system needs clarification:\n\n${question}\n\nYour original: "${originalInstruction}"\n\nPlease clarify:`,
+    originalInstruction
+  );
+
+  if (response && response !== originalInstruction) {
+    submitLayoutInstruction(response);
+  }
+}
+
+/**
+ * Undo a specific instruction (regenerate from prior step).
+ */
+function undoInstruction(index) {
+  if (!window.layoutInstructions || index < 0 || index >= window.layoutInstructions.length) {
+    return;
+  }
+
+  window.layoutInstructions.splice(index, 1);
+
+  // Regenerate preview from HTML at this point
+  // (simplified: in production, would re-apply all prior instructions)
+  appendMessage('system', '🔄 Undo not yet implemented — would regenerate from prior state');
+
+  // Update history display
+  const historyList = document.getElementById('instruction-history');
+  if (historyList) {
+    historyList.innerHTML = '';
+    window.layoutInstructions.forEach(addToInstructionHistory);
+  }
+}
+
+/**
+ * Complete layout review and advance to finalise phase.
+ */
+async function completeLayoutReview() {
+  try {
+    showProcessing(true);
+
+    const response = await apiCall('POST', '/api/layout-complete', {
+      layout_instructions: window.layoutInstructions || []
+    });
+
+    if (!response.ok) {
+      appendMessage('system', `❌ Error: ${response.error}`);
+      return;
+    }
+
+    appendMessage('assistant', '✅ Layout confirmed. Ready to generate final output.');
+
+    // Update phase and switch to download/generation tab
+    stateManager.setPhase('refinement');
+    switchTab('download');
+
+  } catch (error) {
+    appendMessage('system', `❌ Failed to complete layout review: ${error.message}`);
+  } finally {
+    showProcessing(false);
+  }
+}

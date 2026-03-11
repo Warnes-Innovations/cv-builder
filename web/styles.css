@@ -557,3 +557,28 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .btn-secondary { background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s; }
 .btn-secondary:hover { background: #f1f5f9; border-color: #94a3b8; }
 .url-help p { margin: 4px 0; }
+
+/* ===== LAYOUT INSTRUCTIONS (Phase 12) ===== */
+.layout-instruction-panel { display: flex; gap: 24px; height: calc(100vh - 240px); min-height: 500px; }
+.layout-preview-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.layout-preview-pane h3 { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+.preview-iframe-container { flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: white; }
+.layout-preview-iframe { width: 100%; height: 100%; border: none; }
+.layout-input-pane { width: 360px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
+.layout-input-pane h3 { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 0; }
+.layout-scope-label { font-size: 12px; color: #64748b; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 6px 10px; margin: 0; }
+.layout-instruction-textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit; resize: vertical; line-height: 1.5; }
+.layout-instruction-textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+.layout-action-btn { width: 100%; padding: 10px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.2s; }
+.processing-indicator { display: flex; align-items: center; gap: 10px; padding: 10px; background: #f8fafc; border-radius: 6px; font-size: 13px; color: #475569; }
+.processing-indicator .spinner { width: 16px; height: 16px; border: 2px solid #cbd5e1; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.confirmation-message { padding: 10px 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; color: #166534; font-size: 13px; }
+.layout-history-section h4 { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; cursor: pointer; user-select: none; }
+.layout-history-section h4:hover { color: #1e40af; }
+.instruction-history-list { display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
+.instruction-history-list.collapsed { display: none; }
+.instruction-history-entry { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+.instruction-time { color: #94a3b8; font-size: 11px; margin-bottom: 3px; }
+.instruction-text { font-weight: 500; color: #374151; margin-bottom: 3px; }
+.instruction-summary { color: #64748b; font-style: italic; margin-bottom: 6px; }

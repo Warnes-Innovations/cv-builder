@@ -11,7 +11,7 @@ data:
 # LLM Provider Settings
 llm:
   default_provider: "copilot-oauth"  # Options: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local
-  default_model: "gpt-4o"  # Model name; null uses provider default
+  default_model: "claude-3-5-sonnet"  # Model name; null uses provider default
   temperature: 0.7
   max_tokens: null  # null uses provider default
 
@@ -42,7 +42,7 @@ google_drive:
 # Web UI Settings
 web:
   host: "127.0.0.1"
-  port: 5000
+  port: 5001
   debug: false
 
 # Logging

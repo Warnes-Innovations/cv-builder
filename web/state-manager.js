@@ -4,14 +4,7 @@
  * Centralizes all state management logic (currentTab, interactiveState, sessionId, etc.)
  */
 
-// Reference shared StorageKeys from api-client.js (loaded first)
-// Fallback values if api-client.js not loaded yet
-const StorageKeys = {
-  SESSION_ID: 'cv-builder-session-id',
-  TAB_DATA: 'cv-builder-tab-data',
-  CURRENT_TAB: 'cv-builder-current-tab',
-  CHAT_COLLAPSED: 'cv-builder-chat-collapsed'
-};
+// StorageKeys is defined in api-client.js (loaded before this file)
 
 // Global state variables (moved into module for clarity)
 let currentTab = 'job';

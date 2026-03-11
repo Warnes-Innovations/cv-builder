@@ -55,7 +55,13 @@ class LLMClient(ABC):
         pass
 
     @abstractmethod
-    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+    def propose_rewrites(
+        self,
+        content: Dict,
+        job_analysis: Dict,
+        conversation_history: List[Dict] = None,
+        user_preferences: Dict = None,
+    ) -> List[Dict]:
         """Propose targeted text rewrites to align CV terminology with the job.
 
         Each proposal covers one section: professional summary, an experience
@@ -91,6 +97,33 @@ class LLMClient(ABC):
             Always returns ``[]`` on parse/API failure — never raises.
         """
         pass
+
+    def call_llm(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> str:
+        """Call LLM with a single user prompt and optional system prompt.
+
+        Convenience wrapper around :meth:`chat` for callers that work with a
+        plain string prompt rather than a messages list.
+
+        Args:
+            prompt:        User-facing prompt text.
+            system_prompt: Optional system/instruction prompt.
+            temperature:   Sampling temperature passed to :meth:`chat`.
+            max_tokens:    Token limit passed to :meth:`chat` (None = provider default).
+
+        Returns:
+            The model's response as a plain string.
+        """
+        messages: List[Dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        return self.chat(messages, temperature=temperature, max_tokens=max_tokens)
 
     # ── Concrete helpers shared by all provider implementations ──────────────
 
@@ -663,6 +696,7 @@ Schema:
   {{
     "cite_key": "...",
     "relevance_score": 1-10,
+    "confidence": "High|Medium|Low",
     "rationale": "1-2 sentence explanation"
   }}
 ]
@@ -726,6 +760,7 @@ Schema:
                 'year':              pub.get('year', ''),
                 'is_first_author':   'first_author' in authority_signals,
                 'relevance_score':   min(10, max(1, int(item.get('relevance_score', 5)))),
+                'confidence':        str(item.get('confidence', '')).strip() or 'Medium',
                 'rationale':         str(item.get('rationale', '')).strip()[:300],
                 'authority_signals': authority_signals,
                 'venue_warning':     venue_warning,
@@ -737,7 +772,11 @@ Schema:
         return results[:max_results]
 
     def _propose_rewrites_via_chat(
-        self, content: Dict, job_analysis: Dict
+        self,
+        content: Dict,
+        job_analysis: Dict,
+        conversation_history: List[Dict] = None,
+        user_preferences: Dict = None,
     ) -> List[Dict]:
         """Shared :meth:`propose_rewrites` logic for chat-capable providers.
 
@@ -784,9 +823,25 @@ Schema:
         skills_section  = ', '.join(skill_names[:30]) or '(none)'
         keywords_str    = ', '.join(keywords[:25]) or '(none)'
 
+        prefs_section = ""
+        if user_preferences:
+            lines = "\n".join(f"  - {k}: {v}" for k, v in user_preferences.items())
+            prefs_section = f"CANDIDATE PREFERENCES (respect these when prioritising rewrites):\n{lines}\n\n"
+
+        history_section = ""
+        if conversation_history:
+            history_section = "CONVERSATION HISTORY (for additional context):\n" + "-" * 60 + "\n"
+            for msg in conversation_history:
+                role = msg.get('role', 'unknown').capitalize()
+                content_text = msg.get('content', '')[:800]
+                history_section += f"{role}: {content_text}\n\n"
+            history_section += "-" * 60 + "\n\n"
+
         prompt = (
             "You are a CV optimization specialist. Propose targeted text rewrites "
             "so the CV uses terminology from the job description.\n\n"
+            f"{prefs_section}"
+            f"{history_section}"
             "CONSTRAINTS — every proposal MUST:\n"
             '1. Preserve all numbers, metrics, and percentages '
             '(e.g. "40%", "12 engineers", "$2M")\n'
@@ -981,9 +1036,9 @@ Return as JSON with these fields:
         if conversation_history:
             conversation_context = "\n\nRecent Conversation History:\n"
             conversation_context += "-"*80 + "\n"
-            for msg in conversation_history[-10:]:  # Last 10 messages for context
+            for msg in conversation_history:
                 role = msg.get('role', 'unknown').capitalize()
-                content = msg.get('content', '')[:300]  # Truncate long messages
+                content = msg.get('content', '')[:800]
                 conversation_context += f"{role}: {content}\n\n"
             conversation_context += "-"*80 + "\n"
             conversation_context += "Review this conversation for additional user preferences and instructions.\n\n"
@@ -1169,9 +1224,9 @@ Be thorough - provide recommendations for ALL {len(master_data.get('experience',
         matches = sum(1 for req in requirements if req.lower() in content_lower)
         return matches / len(requirements) if requirements else 0.0
 
-    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+    def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via OpenAI chat. Delegates to shared implementation."""
-        return self._propose_rewrites_via_chat(content, job_analysis)
+        return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
 
 
 class AnthropicClient(LLMClient):
@@ -1236,9 +1291,9 @@ class AnthropicClient(LLMClient):
         # Claude doesn't have native embeddings API, use prompting
         pass
 
-    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+    def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via Anthropic Claude. Delegates to shared implementation."""
-        return self._propose_rewrites_via_chat(content, job_analysis)
+        return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
 
 
 class GeminiClient(LLMClient):
@@ -1436,9 +1491,9 @@ Score (0.0-1.0):"""
         except ValueError:
             return 0.5  # Default middle score
 
-    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+    def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via Gemini. Delegates to shared implementation."""
-        return self._propose_rewrites_via_chat(content, job_analysis)
+        return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
 
 
 class LocalLLMClient(LLMClient):
@@ -1497,7 +1552,7 @@ class LocalLLMClient(LLMClient):
         # Claude doesn't have native embeddings API, use prompting
         pass
 
-    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+    def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites not supported by this stub client."""
         return []
 
@@ -1595,7 +1650,7 @@ class LocalLLMClient(LLMClient):
         matches = sum(1 for req in requirements if req.lower() in content_lower)
         return matches / len(requirements) if requirements else 0.0
 
-    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+    def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites not supported by this local stub client."""
         return []
 
@@ -1628,10 +1683,26 @@ class GroqClient(OpenAIClient):
 
 class GitHubModelsClient(OpenAIClient):
     """GitHub Models client - uses OpenAI-compatible API with GitHub token."""
-    
+
+    # Short name → publisher/model ID required by models.inference.ai.azure.com
+    MODEL_ALIASES = {
+        "claude-sonnet-4-6":   "anthropic/claude-sonnet-4-6",
+        "claude-3-7-sonnet":   "anthropic/claude-3-7-sonnet",
+        "claude-3-5-sonnet":   "anthropic/claude-3-5-sonnet",
+        "claude-3.5-sonnet":   "anthropic/claude-3-5-sonnet",  # dot-form alias
+        "claude-3-haiku":      "anthropic/claude-3-haiku",
+        "claude-3-opus":       "anthropic/claude-3-opus",
+        "gpt-4o":              "openai/gpt-4o",
+        "gpt-4o-mini":         "openai/gpt-4o-mini",
+        "gpt-4-turbo-preview": "openai/gpt-4-turbo-preview",
+        "gpt-3.5-turbo":       "openai/gpt-3.5-turbo",
+        "o1-preview":          "openai/o1-preview",
+        "o1-mini":             "openai/o1-mini",
+    }
+
     def __init__(self, model: str = "gpt-4o", api_key: Optional[str] = None):
-        # GitHub Models uses the same API format as OpenAI
-        self.model = model
+        # Expand short alias → full publisher/model ID required by the endpoint
+        self.model = self.MODEL_ALIASES.get(model, model)
         self.api_key = api_key or os.getenv("GITHUB_MODELS_TOKEN")
         
         if not self.api_key:
@@ -1666,6 +1737,7 @@ class CopilotClient(OpenAIClient):
         "claude-sonnet-4-6":   "anthropic/claude-sonnet-4-6",
         "claude-3-7-sonnet":   "anthropic/claude-3-7-sonnet",
         "claude-3-5-sonnet":   "anthropic/claude-3-5-sonnet",
+        "claude-3.5-sonnet":   "anthropic/claude-3-5-sonnet",  # dot-form alias
         "claude-3-haiku":      "anthropic/claude-3-haiku",
         "claude-3-opus":       "anthropic/claude-3-opus",
         "gpt-4o":              "openai/gpt-4o",
@@ -1823,9 +1895,81 @@ class CopilotOAuthClient(LLMClient):
         dummy.chat = types.MethodType(lambda self_, msgs, **kw: self.chat(msgs, **kw), dummy)
         return _OAI.semantic_match(dummy, content, requirements)
 
-    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+    def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via Copilot OAuth. Delegates to shared implementation."""
-        return self._propose_rewrites_via_chat(content, job_analysis)
+        return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
+
+
+# Available models per provider (used by UI model selector)
+PROVIDER_MODELS: dict = {
+    "copilot-oauth": CopilotOAuthClient.SUPPORTED_MODELS,
+    "copilot":       [m for m in CopilotClient.MODEL_ALIASES.keys() if "." not in m],
+    "github":        [m for m in GitHubModelsClient.MODEL_ALIASES.keys() if "." not in m],
+    "openai":        ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo-preview", "gpt-3.5-turbo"],
+    "anthropic":     ["claude-sonnet-4-6", "claude-3-7-sonnet", "claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"],
+    "gemini":        ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-pro", "gemini-1.5-flash"],
+    "groq":          ["llama-3.3-70b-versatile", "llama-4-scout", "llama-4-maverick", "llama-3.1-8b-instant", "llama3-70b-8192", "mixtral-8x7b-32768"],
+    "local":         [],
+}
+
+# How each provider is billed.
+# type:
+#   "per_token"        – standard USD per 1M input/output LLM tokens
+#   "premium_request"  – GitHub Copilot premium-request multiplier (Nx per call)
+#   "free"             – local / no external cost
+# note: short label shown in the model-selection table cost column
+PROVIDER_BILLING: dict = {
+    "copilot-oauth": {"type": "premium_request", "note": "GitHub Copilot subscription — premium requests"},
+    "copilot":       {"type": "premium_request", "note": "GitHub Copilot subscription — premium requests"},
+    "github":        {"type": "per_token",       "note": "USD per 1M tokens (GitHub Models direct)"},
+    "openai":        {"type": "per_token",       "note": "USD per 1M tokens (OpenAI API)"},
+    "anthropic":     {"type": "per_token",       "note": "USD per 1M tokens (Anthropic API)"},
+    "gemini":        {"type": "per_token",       "note": "USD per 1M tokens (Google AI API)"},
+    "groq":          {"type": "per_token",       "note": "USD per 1M tokens (Groq API)"},
+    "local":         {"type": "free",            "note": "Local model — no API cost"},
+}
+
+# Metadata for each model.
+# cost_input / cost_output    : USD per 1M tokens (direct API billing, as of March 2026).
+# copilot_multiplier          : GitHub Copilot premium-request multiplier (Nx per call).
+#                               0 = free for paid-plan subscribers.
+#                               None / absent = not available via Copilot.
+MODEL_INFO: dict = {
+    # ── OpenAI ─────────────────────────────────────────────────────────────
+    "gpt-4o":                     {"context_window": 128_000, "cost_input":  2.50, "cost_output": 10.00, "copilot_multiplier": 0.0,  "notes": "OpenAI flagship — fast, multimodal"},
+    "gpt-4o-mini":                {"context_window": 128_000, "cost_input":  0.15, "cost_output":  0.60, "copilot_multiplier": 0.0,  "notes": "Smaller/cheaper GPT-4o variant"},
+    "gpt-4.1":                    {"context_window": 128_000, "cost_input":  2.00, "cost_output":  8.00, "copilot_multiplier": 0.0,  "notes": "GPT-4.1 — improved instruction following"},
+    "gpt-4.1-mini":               {"context_window": 128_000, "cost_input":  0.40, "cost_output":  1.60, "copilot_multiplier": 0.0,  "notes": "GPT-4.1 mini — fast, cost-efficient"},
+    "gpt-4-turbo-preview":        {"context_window": 128_000, "cost_input": 10.00, "cost_output": 30.00,                            "notes": "GPT-4 Turbo preview"},
+    "gpt-3.5-turbo":              {"context_window":  16_385, "cost_input":  0.50, "cost_output":  1.50,                            "notes": "Fast and inexpensive"},
+    "o1-preview":                 {"context_window": 128_000, "cost_input": 15.00, "cost_output": 60.00,                            "notes": "OpenAI o1 reasoning model (slow)"},
+    "o1-mini":                    {"context_window": 128_000, "cost_input":  3.00, "cost_output": 12.00,                            "notes": "Faster o1 reasoning model"},
+    "gpt-5-mini":                 {"context_window": 128_000, "cost_input":  0.25, "cost_output":  2.00, "copilot_multiplier": 0.0,  "notes": "GPT-5 mini — free with Copilot paid"},
+    # ── Anthropic Claude ───────────────────────────────────────────────────
+    "claude-3.5-sonnet":          {"context_window": 200_000, "cost_input":  3.00, "cost_output": 15.00, "copilot_multiplier": 1.0,  "notes": "Claude 3.5 Sonnet — fast, large context"},
+    "claude-3-5-sonnet":          {"context_window": 200_000, "cost_input":  3.00, "cost_output": 15.00, "copilot_multiplier": 1.0,  "notes": "Claude 3.5 Sonnet — fast, large context"},
+    "claude-3-5-sonnet-20241022": {"context_window": 200_000, "cost_input":  3.00, "cost_output": 15.00,                            "notes": "Claude 3.5 Sonnet (dated release)"},
+    "claude-3-7-sonnet":          {"context_window": 200_000, "cost_input":  3.00, "cost_output": 15.00, "copilot_multiplier": 1.0,  "notes": "Claude 3.7 Sonnet — hybrid reasoning"},
+    "claude-3-opus-20240229":     {"context_window": 200_000, "cost_input": 15.00, "cost_output": 75.00,                            "notes": "Claude 3 Opus — most capable (dated)"},
+    "claude-3-haiku":             {"context_window": 200_000, "cost_input":  0.25, "cost_output":  1.25, "copilot_multiplier": 0.33, "notes": "Claude 3 Haiku — fastest/cheapest"},
+    "claude-3-haiku-20240307":    {"context_window": 200_000, "cost_input":  0.25, "cost_output":  1.25,                            "notes": "Claude 3 Haiku (dated release)"},
+    "claude-3-opus":              {"context_window": 200_000, "cost_input": 15.00, "cost_output": 75.00, "copilot_multiplier": 3.0,  "notes": "Claude 3 Opus — most capable"},
+    "claude-sonnet-4-6":          {"context_window": 200_000, "cost_input":  3.00, "cost_output": 15.00, "copilot_multiplier": 1.0,  "notes": "Claude Sonnet 4.6 — latest Sonnet"},
+    # ── Google Gemini ──────────────────────────────────────────────────────
+    "gemini-1.5-pro":             {"context_window": 1_000_000, "cost_input": 1.25, "cost_output":  5.00, "notes": "Gemini 1.5 Pro — 1M context"},
+    "gemini-1.5-flash":           {"context_window": 1_000_000, "cost_input": 0.075,"cost_output":  0.30, "notes": "Gemini 1.5 Flash — fast"},
+    "gemini-2.0-flash":           {"context_window": 1_000_000, "cost_input": 0.10, "cost_output":  0.40, "notes": "Gemini 2.0 Flash (deprecated Jun 2026)"},
+    "gemini-2.5-flash":           {"context_window": 1_000_000, "cost_input": 0.30, "cost_output":  2.50, "notes": "Gemini 2.5 Flash — hybrid reasoning"},
+    "gemini-2.5-flash-lite":      {"context_window": 1_000_000, "cost_input": 0.10, "cost_output":  0.40, "notes": "Gemini 2.5 Flash-Lite — cost-efficient"},
+    "gemini-2.5-pro":             {"context_window": 1_000_000, "cost_input": 1.25, "cost_output": 10.00, "copilot_multiplier": 1.0, "notes": "Gemini 2.5 Pro — state-of-the-art"},
+    # ── Groq (fast open-source inference) ─────────────────────────────────
+    "llama3-70b-8192":            {"context_window":   8_192, "cost_input": 0.59, "cost_output": 0.79, "notes": "Llama 3 70B on Groq"},
+    "llama-3.3-70b-versatile":    {"context_window": 128_000, "cost_input": 0.59, "cost_output": 0.79, "notes": "Llama 3.3 70B Versatile on Groq"},
+    "llama-3.1-8b-instant":       {"context_window": 128_000, "cost_input": 0.05, "cost_output": 0.08, "notes": "Llama 3.1 8B Instant on Groq — fastest"},
+    "llama-4-scout":              {"context_window": 128_000, "cost_input": 0.11, "cost_output": 0.34, "notes": "Llama 4 Scout on Groq"},
+    "llama-4-maverick":           {"context_window": 128_000, "cost_input": 0.20, "cost_output": 0.60, "notes": "Llama 4 Maverick on Groq"},
+    "mixtral-8x7b-32768":         {"context_window":  32_768, "cost_input": 0.24, "cost_output": 0.24, "notes": "Mixtral 8x7B on Groq"},
+}
 
 
 def get_llm_provider(

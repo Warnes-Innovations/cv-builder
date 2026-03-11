@@ -615,7 +615,13 @@ For manual generation:
 
     # ── Rewrite pipeline ─────────────────────────────────────────────────────
 
-    def propose_rewrites(self, content: Dict, job_analysis: Dict) -> List[Dict]:
+    def propose_rewrites(
+        self,
+        content: Dict,
+        job_analysis: Dict,
+        conversation_history: List = None,
+        user_preferences: Dict = None,
+    ) -> List[Dict]:
         """Propose targeted text rewrites to align CV terminology with the job.
 
         Delegates to the LLM provider's ``propose_rewrites`` implementation.
@@ -623,9 +629,11 @@ For manual generation:
         so the caller can degrade gracefully.
 
         Args:
-            content:      Selected CV content dict from
-                          :meth:`_select_content_hybrid`.
-            job_analysis: Output of the LLM job-description analysis.
+            content:              Selected CV content dict from
+                                  :meth:`_select_content_hybrid`.
+            job_analysis:         Output of the LLM job-description analysis.
+            conversation_history: Full chat history for additional context.
+            user_preferences:     Post-analysis Q&A answers.
 
         Returns:
             List of rewrite proposals (see :meth:`LLMClient.propose_rewrites`
@@ -637,7 +645,7 @@ For manual generation:
                 "configured. Returning empty proposals."
             )
             return []
-        return self.llm.propose_rewrites(content, job_analysis)
+        return self.llm.propose_rewrites(content, job_analysis, conversation_history, user_preferences)
 
     def apply_approved_rewrites(
         self, content: Dict, approved: List[Dict]
@@ -943,7 +951,167 @@ For manual generation:
             'metadata': metadata,
             'generation_progress': generation_progress,
         }
-    
+
+    def _serialize_html_for_context(self, html: str) -> str:
+        """Convert HTML to human-readable outline for LLM context.
+
+        Parses HTML and extracts section names, nesting, and item counts
+        to create a concise structure description. Used to give LLM
+        context about current CV layout without sending full HTML.
+
+        Args:
+            html: The HTML document to serialize
+
+        Returns:
+            Human-readable outline showing section structure and item counts
+        """
+        import re
+
+        # Extract major sections (h1, h2)
+        outline = []
+
+        # Find all major headings
+        h_tags = re.findall(r'<h[23][^>]*>([^<]+)</h[23]>', html)
+
+        # Count total items in document (simple heuristic for LLM context)
+        total_li_count = len(re.findall(r'<li[^>]*>[^<]*</li>', html))
+
+        for i, heading in enumerate(h_tags, 1):
+            outline.append(f"{i}. {heading.strip()}")
+
+        if total_li_count > 0:
+            outline.append(f"\nTotal items: {total_li_count}")
+
+        return '\n'.join(outline) if outline else "[No structured sections found]"
+
+    def apply_layout_instruction(
+        self,
+        instruction_text: str,
+        current_html: str,
+        prior_instructions: Optional[List[Dict]] = None
+    ) -> Dict:
+        """Apply natural-language layout instruction to HTML via LLM.
+
+        Interprets user's plain-English layout request (e.g., "Move Publications
+        after Skills") and modifies HTML structure accordingly without altering
+        text content.
+
+        Args:
+            instruction_text: Plain-English instruction from user
+            current_html: Current HTML document to modify
+            prior_instructions: List of previously applied instructions (for context)
+
+        Returns:
+            {
+                'html': modified HTML (if successful),
+                'summary': change description,
+                'confidence': score 0.0-1.0,
+                'error': error message (if applicable),
+                'question': clarification question (if confidence < 0.7 or ambiguous),
+                'requires_clarification': bool
+            }
+        """
+        # Build LLM prompt
+        cv_outline = self._serialize_html_for_context(current_html)
+        prior_context = ""
+        if prior_instructions:
+            prior_list = [f"- {inst.get('instruction_text', '')}" for inst in prior_instructions]
+            prior_context = "\n\nPRIOR INSTRUCTIONS APPLIED:\n" + "\n".join(prior_list)
+
+        prompt = f"""You are a CV layout assistant. Your job is to interpret user requests and modify CV HTML structure.
+
+CURRENT CV STRUCTURE (outline):
+{cv_outline}
+
+CURRENT HTML (modify this):
+{current_html}
+{prior_context}
+
+USER INSTRUCTION:
+"{instruction_text}"
+
+YOUR TASK:
+1. Interpret the user's intent
+2. Modify the HTML to reflect the instruction (reorder sections, adjust spacing, etc.)
+3. Return ONLY valid JSON (no markdown, no explanations outside the JSON):
+
+{{
+  "modified_html": "[complete modified HTML]",
+  "change_summary": "[2-3 sentence human-readable summary of what changed]",
+  "confidence": 0.95,
+  "requires_clarification": false
+}}
+
+IMPORTANT CONSTRAINTS:
+- Never modify text content (only structure/CSS/order)
+- Preserve all existing text exactly
+- Return the full HTML document (not a diff or excerpt)
+- If unsure of intent, set confidence < 0.7 and include clarification_question
+
+If you need clarification, return:
+{{
+  "requires_clarification": true,
+  "clarification_question": "[your question]",
+  "confidence": 0.5
+}}
+"""
+
+        try:
+            # Call LLM to interpret and modify HTML
+            response = self.llm.call_llm(
+                prompt=prompt,
+                system_prompt="You are an expert HTML/CSS layout modifier. You modify CV structure without changing content.",
+                temperature=0.3  # Low temperature for precise modifications
+            )
+
+            # Parse response as JSON
+            import json
+            result = json.loads(response)
+
+            # Validate response structure
+            if result.get('requires_clarification', False):
+                return {
+                    'error': 'clarify',
+                    'clarification_question': result.get('clarification_question', ''),
+                    'confidence': result.get('confidence', 0.5)
+                }
+
+            # Check confidence before HTML validation so low-confidence responses
+            # are surfaced correctly even when modified_html is empty/short.
+            confidence = result.get('confidence', 0.7)
+            if confidence < 0.7:
+                return {
+                    'error': 'low_confidence',
+                    'question': f"Low confidence ({confidence:.0%}). Could you clarify: {instruction_text}?",
+                    'confidence': confidence
+                }
+
+            # Extract modified HTML and validate it's not empty
+            modified_html = result.get('modified_html', '')
+            if not modified_html:
+                return {
+                    'error': 'parse_failed',
+                    'details': 'HTML response was empty'
+                }
+
+            return {
+                'html': modified_html,
+                'summary': result.get('change_summary', 'Layout updated'),
+                'confidence': confidence,
+                'requires_clarification': False
+            }
+
+        except json.JSONDecodeError as e:
+            return {
+                'error': 'parse_error',
+                'details': f'LLM response was not valid JSON: {str(e)}'
+            }
+        except Exception as e:
+            return {
+                'error': 'processing_error',
+                'details': f'Failed to apply layout instruction: {str(e)}'
+            }
+
     def _select_content_hybrid(
         self,
         job_analysis: Dict,
@@ -1962,9 +2130,7 @@ For manual generation:
         publications = content.get('publications', [])
         if publications:
             total_count = len(self.publications) if self.publications else 0
-            heading_text = 'Selected Publications'
-            if total_count and total_count > len(publications):
-                heading_text = f'Selected Publications ({len(publications)} of {total_count})'
+            heading_text = 'Selected Publications' if (total_count and total_count > len(publications)) else 'Publications'
             _heading(heading_text)
             for idx, pub in enumerate(publications, 1):
                 citation = pub.get('formatted_citation', '')
@@ -2083,7 +2249,7 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 'experience', 'education', 'skills', 'summary', 'publications',
                 'certifications', 'achievements', 'awards', 'objective',
                 'work experience', 'professional experience', 'technical skills',
-                'professional summary', 'selected publications', 'contact',
+                'professional summary', 'selected publications', 'publications', 'contact',
             })
             heading_paras = [p for p in paragraphs if p.style.name.startswith('Heading')]
             heading_texts = [p.text.strip() for p in heading_paras if p.text.strip()]

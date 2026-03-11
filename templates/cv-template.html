@@ -630,9 +630,11 @@
     <div id="page-publications" class="page">
         <main class="right-col" style="grid-column: 1 / -1; max-width: 100%;">
             <section class="section">
-                <h2 class="section-title"><i class="fas fa-file-alt"></i> Selected Publications
+                <h2 class="section-title"><i class="fas fa-file-alt"></i>
                     {% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}
-                    <span class="pub-count">({{ publications | length }} of {{ template_metadata.total_publications_count }})</span>
+                    Selected Publications
+                    {% else %}
+                    Publications
                     {% endif %}
                 </h2>
                 <ol class="pub-list">

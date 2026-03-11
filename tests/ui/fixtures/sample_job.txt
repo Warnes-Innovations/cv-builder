@@ -1,0 +1,14 @@
+Senior Data Scientist at Acme Corp
+
+We are looking for a Senior Data Scientist to join our AI team.
+
+Requirements:
+- 5+ years of experience in machine learning and statistical modelling
+- Proficiency in Python and R
+- Experience with NLP and large language models
+- Strong communication skills
+
+Responsibilities:
+- Develop and deploy ML models for production
+- Collaborate with engineering and product teams
+- Mentor junior data scientists

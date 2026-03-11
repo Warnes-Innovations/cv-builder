@@ -17,6 +17,8 @@ from .cv_orchestrator import CVOrchestrator
 from .config import get_config
 
 
+
+
 class ConversationManager:
     """Manages conversational flow for CV generation."""
     
@@ -31,7 +33,7 @@ class ConversationManager:
         self.config = config or get_config()
         self.conversation_history: List[Dict[str, str]] = []
         self.state = {
-            'phase':              'init',  # init, job_analysis, customization, rewrite_review, spell_check, generation, refinement
+            'phase':              'init',  # init, job_analysis, customization, rewrite_review, spell_check, generation, layout_review, refinement
             'position_name':      None,
             'job_description':    None,
             'job_analysis':       None,
@@ -44,6 +46,7 @@ class ConversationManager:
             'generation_progress': [],    # List[Dict] step-by-step progress from generate_cv (Phase 10)
             'approved_rewrites':  [],     # List[Dict] user-accepted or user-edited
             'rewrite_audit':      [],     # full record: proposal + outcome for metadata
+            'layout_instructions': [],    # List[Dict] layout instruction history (Phase 12)
         }
         self.session_dir: Optional[Path] = None
         # Readline history file
@@ -194,11 +197,12 @@ Ask questions that are specific to this job posting, not generic career question
         
         # Build context-aware system message
         system_msg = self._build_system_prompt()
-        
-        # Prepare messages for LLM
+
+        # Prepare messages for LLM — strip large context blocks from history entries
+        # since the current system prompt already carries the full CV + job analysis.
         messages = [
             {'role': 'system', 'content': system_msg}
-        ] + self.conversation_history
+        ] + self._strip_context_from_history(self.conversation_history)
         
         # Get LLM response
         response = self.llm.chat(messages, temperature=0.7)
@@ -214,18 +218,37 @@ Ask questions that are specific to this job posting, not generic career question
         if action:
             action_result = self._execute_action(action)
             if action_result:
-                # Add action result to context
-                self.conversation_history.append({
-                    'role': 'system',
-                    'content': f"Action completed: {action_result}"
-                })
-                response += f"\n\n{action_result}"
+                # Structured results carry large data in context_data (separate from text)
+                # so it can be stripped from history without losing the narrative.
+                if isinstance(action_result, dict) and 'text' in action_result:
+                    text = action_result['text']
+                    entry = {'role': 'system', 'content': f"Action completed: {text}"}
+                    if 'context_data' in action_result:
+                        entry['context_data'] = action_result['context_data']
+                else:
+                    text = str(action_result)
+                    entry = {'role': 'system', 'content': f"Action completed: {text}"}
+                self.conversation_history.append(entry)
+                response += f"\n\n{text}"
         
         # Auto-save after each message exchange
         self._save_session()
-        
+
         return response
-    
+
+    def _strip_context_from_history(self, history: list) -> list:
+        """Return history entries with the ``context_data`` key removed.
+
+        ``context_data`` holds large structured objects (job analysis,
+        customizations) that are already present in the current system prompt.
+        Dropping the key keeps requests within token limits while preserving
+        the full conversational narrative in ``content``.
+        """
+        return [
+            {k: v for k, v in entry.items() if k != 'context_data'}
+            for entry in history
+        ]
+
     def _build_system_prompt(self) -> str:
         """Build context-aware system prompt."""
         current_phase = self.state['phase']
@@ -383,7 +406,7 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
         if action_type == 'analyze_job':
             job_text = action.get('job_text') or self.state.get('job_description')
             if not job_text:
-                return "❌ No job description provided"
+                return "\u274c No job description provided"
             
             print("\n🔄 Analyzing job description...")
             analysis = self.llm.analyze_job_description(
@@ -421,10 +444,11 @@ Ask questions that are specific to this job posting, not generic career question
             try:
                 # Build context-aware system message
                 system_msg = self._build_system_prompt()
-                messages = [
-                    {'role': 'system', 'content': system_msg},
-                    {'role': 'user', 'content': contextual_prompt}
-                ]
+                messages = (
+                    [{'role': 'system', 'content': system_msg}]
+                    + self._strip_context_from_history(self.conversation_history)
+                    + [{'role': 'user', 'content': contextual_prompt}]
+                )
                 questions_response = self.llm.chat(messages, temperature=0.7)
                 
                 # Add the questions to conversation history 
@@ -436,7 +460,10 @@ Ask questions that are specific to this job posting, not generic career question
                 return f"✓ Job analysis complete:\n\n{questions_response}"
             except Exception as e:
                 print(f"Error generating contextual questions: {e}")
-                return f"✓ Job analysis complete:\n{json.dumps(analysis, indent=2)}"
+                return {
+                    'text': '✓ Job analysis complete.',
+                    'context_data': {'job_analysis': analysis},
+                }
         
         elif action_type == 'recommend_customizations':
             if not self.state['job_analysis']:
@@ -464,7 +491,10 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['customizations'] = recommendations
             self.state['phase'] = 'generation'
             
-            return f"✓ Customization recommendations:\n{json.dumps(recommendations, indent=2)}"
+            return {
+                'text': f"✓ Customization recommendations generated ({len(recommendations.get('recommended_experiences', []))} experiences, {len(recommendations.get('recommended_skills', []))} skills).",
+                'context_data': {'customizations': recommendations},
+            }
         
         elif action_type == 'submit_rewrites':
             decisions = action.get('decisions', [])
@@ -523,7 +553,9 @@ Ask questions that are specific to this job posting, not generic career question
 
                 recommendations = self.llm.recommend_customizations(
                     job_analysis,
-                    self.orchestrator.master_data
+                    self.orchestrator.master_data,
+                    user_preferences=self.state.get('post_analysis_answers') or {},
+                    conversation_history=self.conversation_history
                 )
                 self.state['customizations'] = recommendations
             
@@ -588,7 +620,7 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['generated_files'] = result
             # Store generation progress for frontend display (Phase 10)
             self.state['generation_progress'] = result.get('generation_progress', [])
-            self.state['phase'] = 'refinement'
+            self.state['phase'] = 'layout_review'
 
             files_list = "\n".join(f"  - {f}" for f in result['files'])
             return f"✓ CV generated successfully!\n\nOutput directory: {result['output_dir']}\n\nFiles created:\n{files_list}"
@@ -670,6 +702,25 @@ Ask questions that are specific to this job posting, not generic career question
             'flag_count':     flag_count,
             'accepted_count': accepted_count,
             'phase':          'generation',
+        }
+
+    def complete_layout_review(self, layout_instructions: list) -> Dict:
+        """Record layout instruction outcomes and advance phase to *refinement* (finalise).
+
+        Args:
+            layout_instructions: List of instruction entries. Each entry should have keys:
+                ``timestamp, instruction_text, change_summary, confirmation``.
+
+        Returns:
+            ``{"instructions_applied": int, "phase": "refinement"}``
+        """
+        self.state['layout_instructions'] = layout_instructions or []
+        self.state['phase'] = 'refinement'
+        self._save_session()
+        instructions_applied = len(layout_instructions or [])
+        return {
+            'instructions_applied': instructions_applied,
+            'phase': 'refinement',
         }
 
     def run_persuasion_checks(
@@ -792,7 +843,51 @@ Ask questions that are specific to this job posting, not generic career question
         'rewrite':        'rewrite_review',
         'spell':          'spell_check',
         'generate':       'generation',
+        'layout':         'layout_review',
     }
+
+    def _build_downstream_context(self) -> str:
+        """Build a plain-English context string summarising prior session decisions.
+
+        Used by :meth:`re_run_phase` to augment LLM prompts with the user's
+        previous choices so re-runs improve on the last pass rather than
+        starting blind.
+
+        Returns an empty string when no relevant prior decisions exist.
+        """
+        parts = []
+
+        approved = self.state.get('approved_rewrites') or []
+        if approved:
+            parts.append(
+                f"Previously approved {len(approved)} text rewrite(s). "
+                "Preserve terminology and tone of accepted rewrites."
+            )
+
+        exp_dec = self.state.get('experience_decisions') or {}
+        if exp_dec:
+            omitted = [k for k, v in exp_dec.items() if v == 'omit']
+            emph    = [k for k, v in exp_dec.items() if v == 'emphasize']
+            if omitted:
+                parts.append(f"User omitted experiences: {', '.join(omitted)}.")
+            if emph:
+                parts.append(f"User emphasised experiences: {', '.join(emph)}.")
+
+        skill_dec = self.state.get('skill_decisions') or {}
+        if skill_dec:
+            omitted = [k for k, v in skill_dec.items() if v == 'omit']
+            if omitted:
+                parts.append(f"User omitted skills: {', '.join(omitted)}.")
+
+        spell_audit = self.state.get('spell_audit') or []
+        accepted_fixes = [a for a in spell_audit if a.get('outcome') == 'accept']
+        if accepted_fixes:
+            parts.append(
+                f"Spell-check accepted {len(accepted_fixes)} correction(s). "
+                "Maintain corrected spellings."
+            )
+
+        return "  ".join(parts) if parts else ""
 
     def back_to_phase(self, target_phase: str) -> Dict:
         """Navigate back to *target_phase* without clearing downstream state.
@@ -842,42 +937,7 @@ Ask questions that are specific to this job posting, not generic career question
         new_output:   Dict = {}
 
         # ── Build downstream-context text ────────────────────────────────────
-        def _downstream_context() -> str:
-            parts = []
-
-            approved = self.state.get('approved_rewrites') or []
-            if approved:
-                parts.append(
-                    f"Previously approved {len(approved)} text rewrite(s). "
-                    "Preserve terminology and tone of accepted rewrites."
-                )
-
-            exp_dec = self.state.get('experience_decisions') or {}
-            if exp_dec:
-                omitted = [k for k, v in exp_dec.items() if v == 'omit']
-                emph    = [k for k, v in exp_dec.items() if v == 'emphasize']
-                if omitted:
-                    parts.append(f"User omitted experiences: {', '.join(omitted)}.")
-                if emph:
-                    parts.append(f"User emphasised experiences: {', '.join(emph)}.")
-
-            skill_dec = self.state.get('skill_decisions') or {}
-            if skill_dec:
-                omitted = [k for k, v in skill_dec.items() if v == 'omit']
-                if omitted:
-                    parts.append(f"User omitted skills: {', '.join(omitted)}.")
-
-            spell_audit = self.state.get('spell_audit') or []
-            accepted_fixes = [a for a in spell_audit if a.get('outcome') == 'accept']
-            if accepted_fixes:
-                parts.append(
-                    f"Spell-check accepted {len(accepted_fixes)} correction(s). "
-                    "Maintain corrected spellings."
-                )
-
-            return "  ".join(parts) if parts else ""
-
-        ctx = _downstream_context()
+        ctx = self._build_downstream_context()
 
         # ── Re-run phase-specific LLM call ───────────────────────────────────
         if resolved in ('init', 'job_analysis'):

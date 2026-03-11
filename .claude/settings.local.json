@@ -20,7 +20,8 @@
       "WebFetch(domain:www.r-project.org)",
       "Bash(pdf_file=\"/Users/warnes/.claude/projects/-Users-warnes-src-cv-builder/ccc61f9c-07d1-4d9b-95b5-ed5d232814cb/tool-results/webfetch-1773182575738-lpvxvg.pdf\")",
       "Bash(pdftotext \"$pdf_file\" -)",
-      "WebFetch(domain:apps.dtic.mil)"
+      "WebFetch(domain:apps.dtic.mil)",
+      "Bash(conda run:*)"
     ]
   }
 }

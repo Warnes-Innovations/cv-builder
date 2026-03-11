@@ -479,5 +479,114 @@ class TestReRunPhase(unittest.TestCase):
         self.assertTrue(self.cm.state.get('iterating'))
 
 
+class TestBuildDownstreamContext(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm  = _make_manager(self.tmp)
+
+    def test_empty_state_returns_empty_string(self):
+        self.cm.state = {}
+        self.assertEqual(self.cm._build_downstream_context(), "")
+
+    def test_approved_rewrites_included(self):
+        self.cm.state['approved_rewrites'] = [{'id': 'r1'}, {'id': 'r2'}]
+        ctx = self.cm._build_downstream_context()
+        self.assertIn("2 text rewrite", ctx)
+        self.assertIn("Preserve terminology", ctx)
+
+    def test_omitted_experiences_included(self):
+        self.cm.state['experience_decisions'] = {'exp_001': 'omit', 'exp_002': 'include'}
+        ctx = self.cm._build_downstream_context()
+        self.assertIn("omitted experiences", ctx)
+        self.assertIn("exp_001", ctx)
+        self.assertNotIn("exp_002", ctx)
+
+    def test_emphasised_experiences_included(self):
+        self.cm.state['experience_decisions'] = {'exp_003': 'emphasize'}
+        ctx = self.cm._build_downstream_context()
+        self.assertIn("emphasised experiences", ctx)
+        self.assertIn("exp_003", ctx)
+
+    def test_omitted_skills_included(self):
+        self.cm.state['skill_decisions'] = {'Python': 'omit', 'R': 'include'}
+        ctx = self.cm._build_downstream_context()
+        self.assertIn("omitted skills", ctx)
+        self.assertIn("Python", ctx)
+        self.assertNotIn("R", ctx)
+
+    def test_accepted_spell_fixes_included(self):
+        self.cm.state['spell_audit'] = [
+            {'outcome': 'accept', 'word': 'analyse'},
+            {'outcome': 'reject', 'word': 'optimise'},
+        ]
+        ctx = self.cm._build_downstream_context()
+        self.assertIn("1 correction", ctx)
+        self.assertIn("Maintain corrected spellings", ctx)
+
+    def test_no_spell_fixes_when_all_rejected(self):
+        self.cm.state['spell_audit'] = [{'outcome': 'reject', 'word': 'optimise'}]
+        ctx = self.cm._build_downstream_context()
+        self.assertNotIn("correction", ctx)
+
+    def test_multiple_parts_joined(self):
+        self.cm.state['approved_rewrites']    = [{'id': 'r1'}]
+        self.cm.state['experience_decisions'] = {'exp_001': 'omit'}
+        ctx = self.cm._build_downstream_context()
+        self.assertIn("rewrite", ctx)
+        self.assertIn("omitted experiences", ctx)
+
+
+# ---------------------------------------------------------------------------
+# Phase 12 — complete_layout_review
+# ---------------------------------------------------------------------------
+
+class TestCompleteLayoutReview(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm  = _make_manager(self.tmp)
+        self.cm.state['phase'] = 'layout_review'
+        self.cm.state['generated_files'] = {'files': ['cv.html']}
+
+    def test_phase_advances_to_refinement(self):
+        self.cm.complete_layout_review([])
+        self.assertEqual(self.cm.state['phase'], 'refinement')
+
+    def test_empty_instructions_stored(self):
+        self.cm.complete_layout_review([])
+        self.assertEqual(self.cm.state['layout_instructions'], [])
+
+    def test_instructions_stored(self):
+        instructions = [
+            {'timestamp': '10:00', 'instruction_text': 'Move Publications after Skills',
+             'change_summary': 'Publications section moved.', 'confirmation': True}
+        ]
+        self.cm.complete_layout_review(instructions)
+        self.assertEqual(self.cm.state['layout_instructions'], instructions)
+
+    def test_return_values(self):
+        instructions = [
+            {'timestamp': '10:00', 'instruction_text': 'Compact Summary',
+             'change_summary': 'Summary reduced.', 'confirmation': True},
+            {'timestamp': '10:05', 'instruction_text': 'Remove sidebar border',
+             'change_summary': 'Border removed.', 'confirmation': True},
+        ]
+        result = self.cm.complete_layout_review(instructions)
+        self.assertEqual(result['instructions_applied'], 2)
+        self.assertEqual(result['phase'], 'refinement')
+
+    def test_none_instructions_treated_as_empty(self):
+        self.cm.complete_layout_review(None)
+        self.assertEqual(self.cm.state['layout_instructions'], [])
+        result = self.cm.complete_layout_review(None)
+        self.assertEqual(result['instructions_applied'], 0)
+
+    def test_session_saved(self):
+        with patch.object(self.cm, '_save_session') as mock_save:
+            self.cm.complete_layout_review([])
+            mock_save.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main()

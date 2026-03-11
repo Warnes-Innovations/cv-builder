@@ -16,12 +16,27 @@
   <!-- Header -->
   <div class="header">
     <div style="display: flex; align-items: center; gap: 16px;">
-      <img src="/logo" alt="Warnes Innovations" style="height: 48px; text-align:center;" onerror="this.style.display='none'">
-      <h1>AI CV Customizer</h1>
+      <div style="height: 48px; width: 52px; overflow: hidden; flex-shrink: 0;">
+        <img src="/logo" alt="W" style="height: 48px; width: auto; display: block;" onerror="this.parentElement.style.display='none'">
+      </div>
+      <div>
+        <h1 style="margin: 0;">CV Customizer</h1>
+        <div id="header-session-name" style="font-size: 0.8em; opacity: 0.75;"></div>
+      </div>
     </div>
-    <div id="copilot-auth-badge" class="auth-badge unauthenticated" onclick="openCopilotAuthModal()" title="Click to authenticate with GitHub Copilot">
-      <span id="auth-badge-icon">&#x26A0;</span>
-      <span id="auth-badge-label">Not authenticated</span>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <button id="model-selector-btn" onclick="openModelModal()"
+        style="background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3);
+               border-radius: 4px; padding: 4px 10px; font-size: 0.8em; cursor: pointer;
+               white-space: nowrap; display: flex; align-items: center; gap: 5px;">
+        <span style="opacity:0.7;">Model:</span>
+        <span id="model-current-label">Loading…</span>
+        <span style="opacity:0.5; font-size:0.8em;">&#9660;</span>
+      </button>
+      <div id="copilot-auth-badge" class="auth-badge unauthenticated" onclick="openCopilotAuthModal()" title="Click to authenticate with GitHub Copilot">
+        <span id="auth-badge-icon">&#x26A0;</span>
+        <span id="auth-badge-label">Not authenticated</span>
+      </div>
     </div>
   </div>
 
@@ -67,7 +82,7 @@
       <div class="arrow">→</div>
       <div class="step" id="step-generate" title="Generate CV files" onclick="handleStepClick('generate')">📄 Generate</div>
       <div class="arrow">→</div>
-      <div class="step upcoming" id="step-layout" title="Layout instructions (coming soon)">🎨 Layout</div>
+      <div class="step" id="step-layout" title="Layout instructions" onclick="handleStepClick('layout')">🎨 Layout</div>
       <div class="arrow">→</div>
       <div class="step" id="step-finalise" title="Finalise &amp; archive" onclick="handleStepClick('finalise')">✅ Finalise</div>
     </div>
@@ -116,6 +131,7 @@
         <div class="tab" id="tab-spell" data-tab="spell">🔤 Spell Check</div>
         <div class="tab" id="tab-editor" data-tab="editor">CV Editor</div>
         <div class="tab" id="tab-cv" data-tab="cv">Generated CV</div>
+        <div class="tab" id="tab-layout" data-tab="layout">🎨 Layout</div>
         <div class="tab" id="tab-download" data-tab="download">Download</div>
       </div>
       
@@ -148,14 +164,49 @@
     </div>
   </div>
 
-  <!-- Phase 11 Refactoring: Modularized JavaScript (load after main script) -->
+  <!-- Model Selection Modal -->
+  <div class="modal-overlay" id="model-modal-overlay" style="display: none;" onclick="if(event.target===this)closeModelModal()">
+    <div class="modal" style="max-width: 820px; width: 95%;">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin:0;">Select Model</h2>
+        <button onclick="closeModelModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 0;">
+        <table id="model-table" style="width:100%; border-collapse: collapse; font-size: 0.9em;">
+          <thead id="model-table-head">
+            <tr style="background: #f1f5f9; text-align: left;">
+              <th style="padding: 10px 14px;">Model</th>
+              <th style="padding: 10px 14px; white-space: nowrap;">Context Window</th>
+              <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M in</th>
+              <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M out</th>
+              <th style="padding: 10px 14px;">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="model-table-body"></tbody>
+        </table>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-top:1px solid #e2e8f0; background:#f8fafc; font-size:0.8em; color:#64748b;">
+        <span id="pricing-updated-label">Loading pricing info…</span>
+        <button id="pricing-refresh-btn" onclick="refreshModelPricing()"
+          style="padding:3px 10px; font-size:0.85em; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
+          ↻ Refresh prices
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Infrastructure modules (load first) -->
   <script src="utils.js"></script>
   <script src="api-client.js"></script>
   <script src="state-manager.js"></script>
   <script src="ui-core.js"></script>
 
-  <!-- jQuery and DataTables -->
+  <!-- jQuery and DataTables (needed by app.js) -->
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+
+  <!-- Application logic (loads last so it overrides module stubs) -->
+  <script src="app.js"></script>
+  <script src="layout-instruction.js"></script>
 </body>
 </html>
