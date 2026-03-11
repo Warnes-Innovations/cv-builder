@@ -3981,6 +3981,26 @@
         </div>`;
       }
 
+      // ── Refine buttons ────────────────────────────────────────────────────
+      out += `<div style="margin-top:24px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;
+                border-radius:8px;">
+        <div style="font-weight:600;margin-bottom:10px;color:#374151;">↻ Iterative Refinement</div>
+        <div style="font-size:0.9em;color:#6b7280;margin-bottom:12px;">
+          Go back to refine an earlier step — all prior decisions and approvals are preserved.
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="backToPhase('customizations')" title="Return to Customisations step">
+            ↻ Refine Customisations
+          </button>
+          <button class="btn-secondary" onclick="backToPhase('rewrite')" title="Return to Rewrite Review step">
+            ↻ Refine Rewrites
+          </button>
+          <button class="btn-secondary" onclick="backToPhase('analysis')" title="Return to Analysis step">
+            ↻ Re-analyse Job
+          </button>
+        </div>
+      </div>`;
+
       content.innerHTML = out;
     }
 
@@ -4934,12 +4954,120 @@
       if (_authPollTimer) { clearInterval(_authPollTimer); _authPollTimer = null; }
     }
 
+    // ==== Phase Re-entry / Iterative Refinement ====
+
+    /**
+     * Navigate back to a prior workflow step without clearing downstream state.
+     * Called by "Refine" buttons in Download tab and ↻ workflow-step icons.
+     */
+    async function backToPhase(step) {
+      try {
+        const res  = await fetch('/api/back-to-phase', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({phase: step}),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          appendMessage('system', '⚠ Could not navigate back: ' + (data.error || 'Unknown error'));
+          return;
+        }
+        appendMessage('assistant', `↻ Navigating back to ${step}. Prior decisions and approvals are preserved.`);
+        await fetchStatus();
+
+        // Switch to the appropriate viewer tab
+        const tabMap = {
+          job:            null,
+          analysis:       'analysis',
+          customizations: 'customizations',
+          rewrite:        'rewrite',
+          spell:          'spell',
+          generate:       'cv',
+        };
+        const resolvedTab = tabMap[step] || tabMap[data.phase] || null;
+        if (resolvedTab) switchTab(resolvedTab);
+      } catch (err) {
+        appendMessage('system', '⚠ Network error in backToPhase: ' + err.message);
+      }
+    }
+
+    /**
+     * Re-run the LLM call for a phase with downstream context included.
+     * Shows a confirmation popover before proceeding.
+     */
+    function confirmReRunPhase(step) {
+      const label = {
+        analysis:       'Job Analysis',
+        customizations: 'Customisations',
+        rewrite:        'Rewrite Review',
+      }[step] || step;
+
+      if (!confirm(
+        `Re-run ${label} using updated inputs?\n\n` +
+        `Prior approvals will be preserved and included as context.`
+      )) return;
+
+      reRunPhase(step);
+    }
+
+    async function reRunPhase(step) {
+      const loadingMsg = appendLoadingMessage(`↻ Re-running ${step}…`);
+      setLoading(true);
+      try {
+        const res  = await fetch('/api/re-run-phase', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({phase: step}),
+        });
+        const data = await res.json();
+        removeLoadingMessage(loadingMsg);
+        setLoading(false);
+
+        if (!res.ok || !data.ok) {
+          appendMessage('system', '⚠ Re-run failed: ' + (data.error || 'Unknown error'));
+          return;
+        }
+
+        appendMessage('assistant', `✅ ${step} re-run complete. Review the updated results — changed items are highlighted.`);
+        await fetchStatus();
+
+        // Navigate to the step's viewer tab
+        const tabMap = {
+          analysis:       'analysis',
+          customizations: 'customizations',
+          rewrite:        'rewrite',
+        };
+        if (tabMap[step]) switchTab(tabMap[step]);
+
+      } catch (err) {
+        removeLoadingMessage(loadingMsg);
+        setLoading(false);
+        appendMessage('system', '⚠ Network error in reRunPhase: ' + err.message);
+      }
+    }
+
+    // ==== End Phase Re-entry Functions ====
+
     function updateWorkflowSteps(status) {
       // 8-step workflow bar: Job Input → Analysis → Customise → Rewrites →
       //                      Spell Check → Generate → Layout (upcoming) → Finalise
       //
       // 'upcoming' steps (layout) are not yet implemented.
       const UPCOMING = new Set(['layout']);
+
+      // Steps that support LLM re-execution via /api/re-run-phase
+      const RE_RUN_STEPS = new Set(['analysis', 'customizations', 'rewrite']);
+
+      // Base label for each step (used when injecting ↻ button)
+      const STEP_LABELS = {
+        job:            '📥 Job Input',
+        analysis:       '🔍 Analysis',
+        customizations: '⚙️ Customise',
+        rewrite:        '✏️ Rewrites',
+        spell:          '🔤 Spell Check',
+        generate:       '📄 Generate',
+        finalise:       '✅ Finalise',
+      };
 
       // Determine which steps are done based on session state fields.
       const phase = status.phase || '';
@@ -4965,6 +5093,12 @@
       };
       const activeStep = phaseToStep[phase] || 'job';
 
+      // Resolve the reentry step for the "Refining" badge
+      const _phaseToStep2 = Object.assign({'init': 'job'}, phaseToStep);
+      const reentryStep = status.iterating
+        ? (_phaseToStep2[status.reentry_phase] || status.reentry_phase || null)
+        : null;
+
       const stepIds = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise'];
       stepIds.forEach(step => {
         const el = document.getElementById(`step-${step}`);
@@ -4972,14 +5106,39 @@
         // Upcoming steps are fixed — never change their class.
         if (UPCOMING.has(step)) return;
         el.classList.remove('active', 'completed', 'clickable', 'upcoming');
+
+        let label = STEP_LABELS[step] || step;
+
         if (step === activeStep) {
           el.classList.add('active');
+          // "↻ Refining" badge shown on the active step when iterating
+          if (status.iterating && reentryStep === step) {
+            label += ' <span style="font-size:0.75em;background:#fef9c3;color:#92400e;' +
+                     'border-radius:6px;padding:1px 5px;vertical-align:middle;">↻ Refining</span>';
+          }
         } else if (done[step]) {
           el.classList.add('completed');
           // Completed steps are clickable for back-navigation.
           el.classList.add('clickable');
+          // Add ↻ re-run icon for steps that support LLM re-execution
+          if (RE_RUN_STEPS.has(step)) {
+            label += ` <span class="step-rerun" title="Re-run ${step} with updated inputs"
+              onclick="event.stopPropagation();confirmReRunPhase('${step}')"
+              style="font-size:0.8em;opacity:0;transition:opacity 0.15s;margin-left:2px;cursor:pointer;">↻</span>`;
+          }
         }
+
+        el.innerHTML = label;
       });
+
+      // Show ↻ icons via CSS :hover on the parent .completed step
+      // (inject a <style> only once)
+      if (!document.getElementById('step-rerun-style')) {
+        const s = document.createElement('style');
+        s.id = 'step-rerun-style';
+        s.textContent = '.step.completed:hover .step-rerun { opacity: 1 !important; }';
+        document.head.appendChild(s);
+      }
     }
 
     // Back-navigation: clicking a completed workflow step navigates to its viewer tab.

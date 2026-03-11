@@ -663,6 +663,164 @@ Ask questions that are specific to this job posting, not generic career question
             'phase':          'generation',
         }
 
+    # ── Phase re-entry / iterative refinement ────────────────────────────────
+
+    # Mapping from logical step name (frontend) → internal phase string
+    _STEP_TO_PHASE: Dict[str, str] = {
+        'job':            'init',
+        'analysis':       'job_analysis',
+        'customizations': 'customization',
+        'rewrite':        'rewrite_review',
+        'spell':          'spell_check',
+        'generate':       'generation',
+    }
+
+    def back_to_phase(self, target_phase: str) -> Dict:
+        """Navigate back to *target_phase* without clearing downstream state.
+
+        All prior decisions, accepted rewrites, customisations, and generated
+        content are preserved so the next generation pass can improve on the
+        last rather than starting fresh.
+
+        The ``iterating`` flag lets generation endpoints know they should
+        append a ``prior_context`` summary block to the LLM prompt.
+
+        Returns a summary dict for the API response.
+        """
+        # Accept either frontend step labels or internal phase strings
+        resolved = self._STEP_TO_PHASE.get(target_phase, target_phase)
+
+        self.state['iterating']     = True
+        self.state['reentry_phase'] = resolved
+        self.state['phase']         = resolved
+        self._save_session()
+
+        return {
+            'ok':            True,
+            'phase':         resolved,
+            'iterating':     True,
+            'reentry_phase': resolved,
+        }
+
+    def re_run_phase(self, target_phase: str) -> Dict:
+        """Re-execute the LLM call for *target_phase* with downstream context.
+
+        The prior output for the phase is preserved as ``prior_<key>`` in
+        state so the frontend can diff the new vs old results.  Downstream
+        approvals (rewrites, spell-check, customisation decisions) are
+        preserved and included in the new LLM prompt as structured context.
+
+        Supported target phases (by logical step name or internal phase):
+            - ``'analysis'`` / ``'job_analysis'``
+            - ``'customizations'`` / ``'customization'``
+            - ``'rewrite'`` / ``'rewrite_review'``
+
+        Returns ``{ok, phase, prior_output, new_output}`` on success.
+        """
+        resolved = self._STEP_TO_PHASE.get(target_phase, target_phase)
+
+        prior_output: Dict = {}
+        new_output:   Dict = {}
+
+        # ── Build downstream-context text ────────────────────────────────────
+        def _downstream_context() -> str:
+            parts = []
+
+            approved = self.state.get('approved_rewrites') or []
+            if approved:
+                parts.append(
+                    f"Previously approved {len(approved)} text rewrite(s). "
+                    "Preserve terminology and tone of accepted rewrites."
+                )
+
+            exp_dec = self.state.get('experience_decisions') or {}
+            if exp_dec:
+                omitted = [k for k, v in exp_dec.items() if v == 'omit']
+                emph    = [k for k, v in exp_dec.items() if v == 'emphasize']
+                if omitted:
+                    parts.append(f"User omitted experiences: {', '.join(omitted)}.")
+                if emph:
+                    parts.append(f"User emphasised experiences: {', '.join(emph)}.")
+
+            skill_dec = self.state.get('skill_decisions') or {}
+            if skill_dec:
+                omitted = [k for k, v in skill_dec.items() if v == 'omit']
+                if omitted:
+                    parts.append(f"User omitted skills: {', '.join(omitted)}.")
+
+            spell_audit = self.state.get('spell_audit') or []
+            accepted_fixes = [a for a in spell_audit if a.get('outcome') == 'accept']
+            if accepted_fixes:
+                parts.append(
+                    f"Spell-check accepted {len(accepted_fixes)} correction(s). "
+                    "Maintain corrected spellings."
+                )
+
+            return "  ".join(parts) if parts else ""
+
+        ctx = _downstream_context()
+
+        # ── Re-run phase-specific LLM call ───────────────────────────────────
+        if resolved in ('init', 'job_analysis'):
+            job_text = self.state.get('job_description')
+            if not job_text:
+                return {'ok': False, 'error': 'No job description available'}
+            prior_output = {'job_analysis': self.state.get('job_analysis')}
+            analysis = self.llm.analyze_job_description(
+                job_text, self.orchestrator.master_data
+            )
+            self.state['job_analysis'] = analysis
+            # Reset downstream flags so the user re-approves from the new analysis
+            self.state['iterating']     = True
+            self.state['reentry_phase'] = resolved
+            self.state['phase']         = 'customization'
+            new_output = {'job_analysis': analysis}
+
+        elif resolved == 'customization':
+            if not self.state.get('job_analysis'):
+                return {'ok': False, 'error': 'Job analysis not available'}
+            prior_output = {'customizations': self.state.get('customizations')}
+            user_prefs = dict(self.state.get('post_analysis_answers') or {})
+            if ctx:
+                user_prefs['_prior_context'] = ctx
+            recommendations = self.llm.recommend_customizations(
+                self.state['job_analysis'],
+                self.orchestrator.master_data,
+                user_preferences=user_prefs,
+                conversation_history=self.conversation_history,
+            )
+            self.state['customizations'] = recommendations
+            self.state['iterating']      = True
+            self.state['reentry_phase']  = resolved
+            self.state['phase']          = 'customization'
+            new_output = {'customizations': recommendations}
+
+        elif resolved == 'rewrite_review':
+            if not self.state.get('job_analysis'):
+                return {'ok': False, 'error': 'Job analysis not available'}
+            prior_output = {'pending_rewrites': self.state.get('pending_rewrites')}
+            rewrites = self.orchestrator.propose_rewrites(
+                self.orchestrator.master_data,
+                self.state['job_analysis'],
+            )
+            self.state['pending_rewrites'] = rewrites
+            self.state['iterating']        = True
+            self.state['reentry_phase']    = resolved
+            self.state['phase']            = 'rewrite_review'
+            new_output = {'pending_rewrites': rewrites}
+
+        else:
+            return {'ok': False, 'error': f'Re-run not supported for phase: {resolved!r}'}
+
+        self._save_session()
+        return {
+            'ok':           True,
+            'phase':        self.state['phase'],
+            'prior_output': prior_output,
+            'new_output':   new_output,
+        }
+
+
     def add_job_description(self, job_text: str):
         """Add job description to state."""
         self.state['job_description'] = job_text

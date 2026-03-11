@@ -387,5 +387,97 @@ class TestLoadSessionBackwardCompat(unittest.TestCase):
         self.assertEqual(self.cm.state['approved_rewrites'], [{'id': 'b1'}])
 
 
+
+# ---------------------------------------------------------------------------
+# Phase 8 — back_to_phase and re_run_phase
+# ---------------------------------------------------------------------------
+
+class TestBackToPhase(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm  = _make_manager(self.tmp)
+        # Simulate a post-generation session with prior decisions intact
+        self.cm.state.update({
+            'phase':            'refinement',
+            'job_description':  'Software Engineer at Acme',
+            'job_analysis':     {'title': 'SE', 'company': 'Acme'},
+            'customizations':   {'recommended_experiences': []},
+            'generated_files':  {'files': []},
+            'experience_decisions': {'exp_001': 'emphasize'},
+        })
+
+    def test_back_to_customizations_sets_phase(self):
+        result = self.cm.back_to_phase('customizations')
+        self.assertEqual(self.cm.state['phase'], 'customization')
+        self.assertTrue(result['ok'])
+
+    def test_back_to_analysis_sets_phase(self):
+        result = self.cm.back_to_phase('analysis')
+        self.assertEqual(self.cm.state['phase'], 'job_analysis')
+
+    def test_back_does_not_clear_downstream_state(self):
+        """Generated files and decisions must survive back-navigation."""
+        self.cm.back_to_phase('customizations')
+        self.assertIsNotNone(self.cm.state.get('generated_files'))
+        self.assertIsNotNone(self.cm.state.get('job_analysis'))
+        self.assertEqual(self.cm.state.get('experience_decisions'), {'exp_001': 'emphasize'})
+
+    def test_iterating_flag_set(self):
+        self.cm.back_to_phase('rewrite')
+        self.assertTrue(self.cm.state.get('iterating'))
+
+    def test_reentry_phase_stored(self):
+        self.cm.back_to_phase('customizations')
+        self.assertEqual(self.cm.state.get('reentry_phase'), 'customization')
+
+    def test_accepts_internal_phase_string(self):
+        """Internal phase strings (e.g. 'customization') should also work."""
+        result = self.cm.back_to_phase('customization')
+        self.assertTrue(result['ok'])
+        self.assertEqual(self.cm.state['phase'], 'customization')
+
+
+class TestReRunPhase(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm  = _make_manager(self.tmp)
+        self.cm.state.update({
+            'phase':           'refinement',
+            'job_description': 'Software Engineer at Acme',
+            'job_analysis':    {'title': 'SE', 'company': 'Acme', 'ats_keywords': []},
+            'customizations':  {'recommended_experiences': []},
+        })
+        # Configure mock LLM to return JSON-serializable dicts (not MagicMock objects)
+        self.cm.llm.recommend_customizations.return_value = {'recommended_experiences': []}
+        self.cm.llm.analyze_job_description.return_value  = {'title': 'SE', 'company': 'Acme'}
+
+    def test_re_run_customizations_returns_ok(self):
+        result = self.cm.re_run_phase('customizations')
+        self.assertTrue(result.get('ok'))
+
+    def test_re_run_customizations_preserves_prior_output(self):
+        old_customizations = {'recommended_experiences': ['exp_001']}
+        self.cm.state['customizations'] = old_customizations
+        result = self.cm.re_run_phase('customizations')
+        self.assertIn('prior_output', result)
+        self.assertEqual(result['prior_output'].get('customizations'), old_customizations)
+
+    def test_re_run_unsupported_phase_returns_error(self):
+        result = self.cm.re_run_phase('generation')
+        self.assertFalse(result.get('ok'))
+        self.assertIn('error', result)
+
+    def test_re_run_analysis_without_job_text_returns_error(self):
+        self.cm.state['job_description'] = None
+        result = self.cm.re_run_phase('analysis')
+        self.assertFalse(result.get('ok'))
+
+    def test_iterating_flag_set_after_re_run(self):
+        self.cm.re_run_phase('customizations')
+        self.assertTrue(self.cm.state.get('iterating'))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -343,6 +343,8 @@ Job Description (excerpt):
             "all_experience_ids": all_experience_ids,  # Add all experience IDs
             "all_skills": all_skills,  # Add all skills
             "copilot_auth": auth_manager.status,
+            "iterating": bool(conversation.state.get("iterating")),
+            "reentry_phase": conversation.state.get("reentry_phase"),
         })
 
     # ── Copilot OAuth endpoints ──────────────────────────────────────────────
@@ -1098,6 +1100,45 @@ Job Description (excerpt):
         except Exception as e:
             print(f"Action execution error: {e}")
             return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/back-to-phase")
+    def back_to_phase():
+        """Navigate back to a prior phase without clearing downstream state.
+
+        Body: ``{"phase": "analysis"|"customizations"|"rewrite"|"spell"|...}``
+        Resolves frontend step labels to internal phase strings automatically.
+        """
+        data = request.get_json(silent=True) or {}
+        target = data.get("phase")
+        if not target:
+            return jsonify({"error": "Missing phase"}), 400
+        try:
+            result = conversation.back_to_phase(target)
+            return jsonify(result)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/re-run-phase")
+    def re_run_phase():
+        """Re-execute the LLM call for a phase with downstream context preserved.
+
+        Body: ``{"phase": "analysis"|"customizations"|"rewrite"}``
+        Returns ``{ok, phase, prior_output, new_output}``.
+        """
+        data = request.get_json(silent=True) or {}
+        target = data.get("phase")
+        if not target:
+            return jsonify({"error": "Missing phase"}), 400
+        try:
+            result = conversation.re_run_phase(target)
+            if not result.get("ok"):
+                return jsonify(result), 400
+            return jsonify(result)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
 
     @app.post("/api/post-analysis-questions")
     def post_analysis_questions():
