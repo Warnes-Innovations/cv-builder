@@ -85,7 +85,7 @@ def create_app(args) -> Flask:
         '/api/positions', '/api/save', '/api/load-session', '/api/delete-session',
         '/api/copilot-auth/start', '/api/copilot-auth/poll',
         '/api/copilot-auth/status', '/api/copilot-auth/logout',
-        '/api/model', '/api/model-pricing/refresh',
+        '/api/model', '/api/model/test', '/api/model-pricing/refresh',
     }
 
     @app.before_request
@@ -522,6 +522,36 @@ Job Description (excerpt):
             return jsonify({"ok": True, "provider": provider, "model": model})
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
+
+    @app.post("/api/model/test")
+    def test_model():
+        """Smoke-test the active LLM: send a minimal 1-token prompt.
+
+        Returns {ok, provider, model, latency_ms} on success or
+        {ok: false, error, provider, model} on failure.
+        """
+        import time
+        t0 = time.monotonic()
+        try:
+            llm_client.chat(
+                messages=[{"role": "user", "content": "Hi"}],
+                max_tokens=1,
+                temperature=0.0,
+            )
+            latency_ms = round((time.monotonic() - t0) * 1000)
+            return jsonify({
+                "ok":         True,
+                "provider":   _provider_name,
+                "model":      _current_model,
+                "latency_ms": latency_ms,
+            })
+        except Exception as exc:
+            return jsonify({
+                "ok":       False,
+                "error":    str(exc),
+                "provider": _provider_name,
+                "model":    _current_model,
+            }), 200   # 200 so JS can read the body regardless
 
     # ── Job / chat endpoints ──────────────────────────────────────────────────
 

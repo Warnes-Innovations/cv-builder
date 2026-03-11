@@ -550,8 +550,61 @@ async function setModel(model, provider) {
       label.textContent  = prov ? `${prov} · ${model}` : model;
     }
     closeModelModal();
+    // Fire-and-forget connection test so the user sees a status badge quickly
+    testCurrentModel();
   } catch (e) {
     console.error('Failed to switch model:', e);
+  }
+}
+
+async function testCurrentModel() {
+  // Update both the header badge and the modal status line
+  const badge  = document.getElementById('model-test-badge');
+  const status = document.getElementById('model-test-status');
+  const btn    = document.getElementById('model-test-btn');
+
+  const SPIN = '⏳';
+  const OK   = '✅';
+  const FAIL = '❌';
+
+  const setRunning = () => {
+    if (badge)  { badge.textContent  = SPIN; badge.style.display  = ''; badge.title  = 'Testing…'; }
+    if (status) { status.innerHTML   = `${SPIN} Testing connection…`; status.style.display = ''; }
+    if (btn)    { btn.disabled = true; btn.textContent = '⏳ Testing…'; }
+  };
+
+  const setOk = (latencyMs) => {
+    const tip = `Connected — ${latencyMs}ms`;
+    if (badge)  { badge.textContent  = OK;  badge.style.display  = ''; badge.title  = tip; }
+    if (status) { status.innerHTML   = `${OK} ${tip}`; status.style.color = '#16a34a'; status.style.display = ''; }
+    if (btn)    { btn.disabled = false; btn.innerHTML = '&#10003; Test connection'; }
+    // Auto-clear the badge after 30 s so it doesn't linger forever
+    setTimeout(() => {
+      if (badge  && badge.textContent  === OK)  badge.style.display  = 'none';
+      if (status && status.textContent.includes(tip)) status.style.display = 'none';
+    }, 30_000);
+  };
+
+  const setFail = (errMsg) => {
+    if (badge)  { badge.textContent  = FAIL; badge.style.display  = ''; badge.title  = errMsg; }
+    if (status) {
+      status.innerHTML   = `${FAIL} <span title="${errMsg.replace(/"/g, '&quot;')}" style="cursor:help; text-decoration:underline dotted;">Connection failed</span>`;
+      status.style.color = '#dc2626';
+      status.style.display = '';
+    }
+    if (btn)    { btn.disabled = false; btn.innerHTML = '&#10003; Test connection'; }
+  };
+
+  setRunning();
+  try {
+    const result = await apiCall('POST', '/api/model/test');
+    if (result.ok) {
+      setOk(result.latency_ms);
+    } else {
+      setFail(result.error || 'Unknown error');
+    }
+  } catch (e) {
+    setFail(e.message || String(e));
   }
 }
 

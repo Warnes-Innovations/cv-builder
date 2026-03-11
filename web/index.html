@@ -31,6 +31,7 @@
                white-space: nowrap; display: flex; align-items: center; gap: 5px;">
         <span style="opacity:0.7;">Model:</span>
         <span id="model-current-label">Loading…</span>
+        <span id="model-test-badge" title="Connection test result" style="display:none; font-size:0.85em;"></span>
         <span style="opacity:0.5; font-size:0.8em;">&#9660;</span>
       </button>
       <div id="copilot-auth-badge" class="auth-badge unauthenticated" onclick="openCopilotAuthModal()" title="Click to authenticate with GitHub Copilot">
@@ -188,11 +189,20 @@
         </table>
       </div>
       <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-top:1px solid #e2e8f0; background:#f8fafc; font-size:0.8em; color:#64748b;">
-        <span id="pricing-updated-label">Loading pricing info…</span>
-        <button id="pricing-refresh-btn" onclick="refreshModelPricing()"
-          style="padding:3px 10px; font-size:0.85em; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
-          ↻ Refresh prices
-        </button>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span id="pricing-updated-label">Loading pricing info…</span>
+          <span id="model-test-status" style="display:none;"></span>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button id="model-test-btn" onclick="testCurrentModel()"
+            style="padding:3px 10px; font-size:0.85em; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
+            &#10003; Test connection
+          </button>
+          <button id="pricing-refresh-btn" onclick="refreshModelPricing()"
+            style="padding:3px 10px; font-size:0.85em; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
+            ↻ Refresh prices
+          </button>
+        </div>
       </div>
     </div>
   </div>
