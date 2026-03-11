@@ -74,7 +74,7 @@
 | Experience | "Work Experience" or "Professional Experience" | "Career History", "My Journey" |
 | Education | "Education" | "Academic Background" |
 | Skills | "Skills", "Technical Skills", or "Core Competencies" | "What I Know", "Toolkit" |
-| Publications | "Publications" | "Papers", "Research Work" |
+| Publications | "Publications" | "Selected Publications", "Papers", "Research Work" |
 | Certifications | "Certifications" | "Credentials" |
 
 **ATS Failure Modes:**

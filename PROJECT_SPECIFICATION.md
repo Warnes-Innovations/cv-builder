@@ -31,10 +31,11 @@ The system analyzes job postings using LLM intelligence, recommends relevant exp
 - Save edits before final download
 
 #### **Priority #2: Document Generation**
-Three formats are generated per CV run:
+Four formats are generated per CV run:
 - **HTML** (`*.html`): Jinja2 renders `templates/cv-template.html` → self-contained HTML with embedded CSS (2-column layout) and a Schema.org/Person JSON-LD `<script>` block in `<head>` for structured-data ATS parsing. Directly previewable in-browser.
 - **PDF** (`*.pdf`): WeasyPrint (primary) / Chrome headless (fallback) converts the rendered HTML → PDF. Fonts embedded, background colours preserved.
 - **ATS DOCX** (`*_ATS.docx`): python-docx generated, single-column, plain-text, keyword-optimized per ATS guidelines.
+- **Human DOCX** (`*.docx`): docxtpl (Jinja2) renders `templates/cv-template.docx` → Word-native editable DOCX (Calibri, standard margins). Independently styled from the PDF — no visual parity requirement.
 
 #### **Core Workflow** (Already Implemented):
 - Job description upload/paste
@@ -49,7 +50,7 @@ Three formats are generated per CV run:
 - Cover letter generation
 - Interview screening question responses
 - Job application tracking
-- Google Drive integration
+- ~~Google Drive integration~~ — **dropped** (git-only archiving; no Drive integration planned)
 - Analytics and insights
 - LinkedIn profile generation
 - Mobile application
@@ -160,10 +161,11 @@ Three formats are generated per CV run:
 │  │  - Single-column, plain-text, keyword-optimized      │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                                                              │
-│  Three output files per run:                                 │
+│  Four output files per run:                                  │
 │    *.html       (Jinja2 + CSS + Schema.org JSON-LD)         │
 │    *.pdf        (WeasyPrint/Chrome from HTML)               │
 │    *_ATS.docx   (python-docx, ATS plain-text)               │
+│    *.docx       (docxtpl, Word-native human-readable)       │
 └─────────────────┬───────────────────────────────────────────┘
                   │
                   ▼
@@ -211,9 +213,14 @@ Three formats are generated per CV run:
 - Multi-page sidebar/main flow
 - Font Awesome icons, Merriweather/Inter typography
 
+**Human DOCX Template** (`templates/cv-template.docx`):
+- Word-native `.docx` file with Jinja2 `{{ variable }}` / `{% for %}` placeholders via `docxtpl`
+- Professional defaults: Calibri font, standard margins, ATS-safe layout
+- Independently styled from the PDF — no visual parity requirement
+- Filled at generation time from the same `cv_data` context as the HTML template
+
 #### 3.2.4 LLM Integration
-- **Primary**: GitHub Models (gpt-4o via Copilot)
-- **Fallback**: OpenAI, Anthropic (if configured)
+- **Provider**: Configurable — GitHub Copilot OAuth (default for local dev), OpenAI, Anthropic, Gemini, Groq, or local model. **No built-in default provider** — `llm.default_provider` must be explicitly set in `config.yaml` or passed via `--llm-provider`; the app fails with a clear error on startup if unset.
 - **Timeout**: 30 seconds per LLM call
 - **Retry**: 3 attempts with exponential backoff
 
@@ -232,7 +239,8 @@ Three formats are generated per CV run:
 9. POST /api/generate → Backend
 10. cv_orchestrator.select_content() → Filtered cv_data.json
 11. template_renderer.render() → HTML via Jinja2 → WeasyPrint → PDF
-12. docx_generator.generate() → DOCX
+12. docx_generator.generate() → ATS DOCX (python-docx, plain-text)
+12b. cv_orchestrator._generate_human_docx() → Human DOCX (docxtpl, Word-native)
 13. Return file paths → Frontend shows download links
 ```
 

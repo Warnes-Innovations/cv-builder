@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p .github/obo_sessions)",
+      "Read(.github/obo_sessions/**)",
+      "Write(.github/obo_sessions/**)",
+      "WebFetch(domain:cran.r-project.org)",
+      "WebFetch(domain:bioconductor.org)",
+      "WebFetch(domain:pubmed.ncbi.nlm.nih.gov)",
+      "WebFetch(domain:doi.org)",
+      "WebFetch(domain:www.jstatsoft.org)",
+      "WebFetch(domain:ieeexplore.ieee.org)",
+      "Bash(curl -s -L \"https://cran.r-project.org/package=gtools\")",
+      "WebSearch",
+      "WebFetch(domain:digital.lib.washington.edu)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:stat.uw.edu)",
+      "WebFetch(domain:pywebsvcs.sourceforge.net)",
+      "WebFetch(domain:sourceforge.net)",
+      "WebFetch(domain:www.r-project.org)",
+      "Bash(pdf_file=\"/Users/warnes/.claude/projects/-Users-warnes-src-cv-builder/ccc61f9c-07d1-4d9b-95b5-ed5d232814cb/tool-results/webfetch-1773182575738-lpvxvg.pdf\")",
+      "Bash(pdftotext \"$pdf_file\" -)",
+      "WebFetch(domain:apps.dtic.mil)"
+    ]
+  }
+}

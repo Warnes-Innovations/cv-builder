@@ -35,7 +35,7 @@
 - Page 1 contains name, contact, summary, selected achievements, and education — all visible without scrolling.
 - Summary is role-specific: contains the job title or near-equivalent, years of experience, and one specific differentiator.
 - Page 1 has no overflow (content does not bleed onto page 2 from the fixed-height section).
-- Page 1 has no large blank areas (>2cm of white space at bottom of either column).
+- Page 1 has no visibly unbalanced whitespace — both columns appear full or near-full; neither column ends with a large blank area. (Visual QC guideline: gap greater than ~2cm at the bottom of either column is a flag for human review.)
 
 ---
 
@@ -119,6 +119,7 @@
 - Sidebar content is balanced across pages (not empty on any page that has main content).
 - Total page count is 2–3 for a senior candidate; system warns if output is 1 or >3 pages.
 - Publications included only when flagged as relevant for the role type.
+- When publications are included, the section is headed "Selected Publications" — not "Publications" — signalling deliberate curation rather than a full list dump.
 
 ---
 
@@ -129,9 +130,9 @@
 **So that** poor formatting doesn't introduce doubts about the candidate's attention to detail.
 
 **Visual Requirements:**
-- Consistent colour scheme: primary dark navy (#2c3e50), accent blue (#2980b9), muted text (#666).
-- Typography: Merriweather for the candidate's name; Inter for all body text.
-- Section titles: uppercase, 1.1rem, with border-bottom rule.
+- Consistent colour scheme: dark navy primary for headings/structure, accent blue for interactive elements and icons, muted grey for secondary text, light border separators. (Exact values are implementation details defined in `cv-template.html`.)
+- Typography: a serif font for the candidate's name (display heading); a clean sans-serif for all body text. (Merriweather and Inter are the current choices; the user story requires *a* pairing that achieves this contrast, not these specific fonts.)
+- Section titles: uppercase, slightly larger than body, with a horizontal rule border-bottom.
 - Icon-prefixed contact fields (Font Awesome icons).
 - Bullet points: custom-styled with accent colour.
 - No visible pagination artefacts (half-rendered sidebar boundaries, clipped text).
@@ -182,5 +183,40 @@
 - At least one company-specific reference (recent initiative, product, or value) if extractable from the job posting.
 - Body paragraphs cite specific, named achievements — not generic claims.
 - Closing paragraph ends with a direct interview request.
-- Length within 300–500 words.
+- Length within the role-appropriate range: 300–400w standard; 400–500w executive; 500–600w research/academic.
 - Tone setting (startup / pharma / academic / financial) applied based on inferred employer type.
+
+---
+
+## US-M7: Selected Publications — Credibility and Relevance Signalling
+
+**As a** hiring manager reviewing a research, scientific, or technical role,
+**I want** the publications section — when present — to show me a short, clearly curated list of work directly relevant to the role I'm filling,
+**So that** I can quickly assess the candidate's domain expertise and credibility without wading through an undifferentiated bibliography.
+
+**What I Look For:**
+
+1. **Immediate relevance signal** — The listed publications should feel like they were chosen *for this job*, not copied from a CV template. The topics should map to the role's core requirements within one or two reads.
+2. **Concise, scannable citations** — Each entry should show: title, venue (journal or conference), year, and enough author information to confirm first-author or senior-author status. I do not want full BibTeX formatting or excess metadata.
+3. **Curation, not volume** — 2–5 highly relevant publications signal judgment and focus. 15+ entries signal the candidate did not edit. For a pure research role, up to 10 is acceptable if all are clearly relevant.
+4. **Section placement** — Publications are always the final section of the CV, regardless of role type. The page they land on is a consequence of CV length and publication count — not a separate placement directive. For research-heavy roles, keep the CV to 2 pages so publications appear on page 2; for industry roles, a 3-page CV with publications on the last page is acceptable.
+5. **"Selected" framing** — The heading "Selected Publications" tells me this is an intentional subset. Heading "Publications" implies it's a complete list and raises the question of what's missing.
+6. **First-author visibility** — I care whether the candidate led the work. The citation format should make first-author status immediately apparent (name position, or a "First Author" note if not obvious from citation style).
+
+**Failure Modes:**
+
+- Section headed "Publications" with 25 entries — signals the candidate didn't tailor the CV and expects me to filter.
+- Highly cited but off-topic papers listed prominently — suggests the candidate is signalling prestige over relevance.
+- First-author and co-author papers mixed indistinguishably — I can't assess contribution without extra work.
+- Publications section placed after the cover letter page — effectively invisible.
+- Venue not shown — a paper with no journal or conference name cannot be evaluated for credibility.
+- Year not shown — I cannot assess recency or whether the work predates the relevant technology landscape.
+
+**Acceptance Criteria:**
+
+- Section heading is always "Selected Publications" when the section is present.
+- Each entry displays: authors (first-author name identifiable), title, venue, year — in that order of scan priority.
+- Total entry count matches what the applicant confirmed in the Customisation step — not the full `publications.bib` count.
+- A count indicator is shown: _"Selected Publications (4 of 52)"_ — communicates curation to the reader.
+- Selected Publications is always the final section of the CV; its page position is determined by overall CV length and publication count, not by a separate placement rule.
+- No entry appears without a venue — entries missing a `journal` or `booktitle` BibTeX field are flagged to the user during Customisation rather than silently rendered without venue.

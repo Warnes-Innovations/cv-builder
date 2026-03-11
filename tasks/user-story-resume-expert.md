@@ -38,19 +38,22 @@
 **Evaluation Criteria:**
 1. **Recency bias check** — Most-recent experience should not be automatically highest-scored if an older role is more relevant. Relevance score should be role-based, not recency-biased.
 2. **Achievement ordering within a job** — The most job-relevant bullet should be first; the system must not preserve the original document order blindly.
-3. **Section inclusion logic** — Publications should be included for research roles, excluded for industry roles. The system should justify conditional inclusions/exclusions.
-4. **Completeness without bloat** — For a senior candidate, the CV should be 2–3 pages. The system must not pad with marginally relevant content to fill pages, nor truncate critical content to fit.
-5. **Selected Achievements quality** — The 4–6 selected achievements should represent diverse impact types (technical, leadership, business) appropriate to the role, not all from one domain.
+3. **Section inclusion logic** — Publications should be included for research roles, excluded for industry roles. The system should justify conditional inclusions/exclusions. For research roles, the LLM must rank publications by relevance to the specific job (keyword overlap with `ats_keywords` and `required_skills`, domain alignment, first-author status, recency) and recommend a shortlist — not simply include all or include none.
+4. **Publication selection quality** — The recommended publications shortlist should surface items that directly evidence the required skills and domain expertise, not the most-cited or most-recent regardless of relevance.
+5. **Completeness without bloat** — For a senior candidate, the CV should be 2–3 pages. The system must not pad with marginally relevant content to fill pages, nor truncate critical content to fit.
+6. **Selected Achievements quality** — The 4–6 selected achievements should represent diverse impact types (technical, leadership, business) appropriate to the role, not all from one domain.
 
 **Failure Modes to Guard Against:**
 - Recommending all experiences regardless of relevance (lazy inclusion).
 - Always using original bullet order (missing reordering opportunity).
 - Dropping Publications silently for a research role because they aren't scored highly by keyword matching.
+- Including all publications indiscriminately for any research role, without filtering for relevance to this specific job.
 
 **Acceptance Criteria:**
 - Relevance score is based on semantic + keyword match, not recency rank.
 - Bullet reordering is proposed and applied within each experience entry.
 - Conditional section decisions (Publications, Languages, Awards) are shown with rationale.
+- For any role where publications may be relevant, a ranked publication shortlist is presented with per-item relevance scores and rationale; it is never silently omitted or silently included in full.
 - System warns if estimated CV length exceeds 3 pages or is under 1.5 pages.
 
 ---

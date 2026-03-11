@@ -36,7 +36,7 @@
 **So that** I know what the employer is prioritising before I approve any customisations.
 
 **Steps:**
-1. After job text is confirmed, the system runs LLM analysis (≤10 s). 
+1. After job text is confirmed, the system runs LLM analysis; a progress indicator is shown within 1 s of starting (target completion ≤10 s under normal load — this is a performance guideline, not a hard SLA).
 2. The full `Master_CV_Data.json` is included in the LLM context alongside the job description so the analysis can identify mismatches as well as matches.
 3. The UI displays:
    - Required qualifications (must-have)
@@ -47,7 +47,7 @@
    - **Apparent mismatches** between the job requirements and the master CV data (e.g., a required skill not evidenced, a seniority level higher than current title)
 4. The system asks clarifying questions arising from both general ambiguity and specific mismatches. For example:
    - "Do you want to emphasise leadership or technical IC aspects?"
-   - "Should publications be included? This appears to be a research role."
+   - "Should publications be included? This appears to be a research role. Based on the job requirements, the following publications look most relevant: [ranked list]. Shall I include all, a subset, or none?"
    - "Kubernetes is listed as required but isn’t in your master data — do you have relevant experience to add, or should we note this gap?"
 5. I answer the clarifying questions (UI: dropdown or button choices, not free text).  
 6. If additional clarification is needed, return to 4.
@@ -72,12 +72,13 @@
 
 **Steps:**
 1. System presents content recommendations in interactive tables (DataTables):
-   - **Experiences**: 
+   - **Experiences**:
       - reverse chronological order by default, I can reorder them using up down buttons.
       - each entry with relevance score, proposed bullet ordering, accept/reject toggle
    - **Selected Achievements**: ordered and ranked by relevance, accept/reject, reorder using up and down buttons
    - **Skills**: recommended skill groups and individual skills, ordered and ranked by relevance, accept/reject, reorder using up and down buttons
-   - **Sections to omit**: e.g., "Omit Publications — industry role", with rationale.
+   - **Selected Publications**: ranked list of publications recommended by the LLM from `publications.bib`, each with a relevance score and rationale (keyword overlap, domain match, first-author status, recency); accept/reject per item; reorder using up/down buttons; section omitted entirely if no items accepted.
+   - **Sections to omit**: e.g., "Omit Selected Publications — industry role", with rationale.
 2. I adjust toggles — include/exclude any item.
 3. I can reorder experience bullets within an entry by drag-and-drop or up/down controls.
 4. I click **Confirm Customisations** to advance.
@@ -85,11 +86,13 @@
 
 **Acceptance Criteria:**
 - Every recommended item shows a relevance score and brief rationale.
-- Include/exclude toggles work for experiences, achievements, and skills individually.
-- Up/down buttons for experiences, achievements, and skills individually to change order.
+- Include/exclude toggles work for experiences, achievements, skills, and publications individually.
+- Up/down buttons for experiences, achievements, skills, and publications to change order.
 - Bullet reordering within a job entry is supported.
 - "Omit" suggestions (sections, experiences) are explained, not silently dropped.
-- Confirmed decisions persist in session.
+- LLM-recommended publications list is shown whenever `publications.bib` is non-empty; the list is pre-ranked by relevance to the current job and each item shows its relevance score and rationale.
+- If all publications are rejected, the "Selected Publications" section is omitted from the CV entirely (not rendered as an empty section).
+- Confirmed decisions (including publication selections) persist in session and in `metadata.json` under `clarification_answers.selected_publications`.
 
 ---
 
@@ -174,7 +177,7 @@
 - Only the HTML format is generated at this step; PDF and ATS DOCX are not yet produced.
 - HTML preview opens automatically in the inline preview pane.
 - HTML preview renders correctly in any browser with two-column layout and styling intact.
-- Generation completes within 30 s.
+- A progress indicator is shown within 1 s of clicking Generate HTML Preview; generation typically completes within 30 s under normal load (performance guideline, not a hard SLA).
 - Errors surface as user-visible messages, not silent failures.
 - Archive directory and `metadata.json` created at this step.
 
@@ -234,7 +237,7 @@
 - PDF and ATS DOCX are generated from the HTML that was confirmed in US-A5b (no re-render from scratch).
 - File naming follows `CV_{CompanyName}_{Role}_{Date}` convention; ATS file adds `_ATS` suffix.
 - All three formats available as download links on completion.
-- Generation completes within 45 s.
+- A progress indicator is shown within 1 s of clicking Proceed to Final Generation; generation typically completes within 45 s under normal load (performance guideline, not a hard SLA).
 - Errors surface as user-visible messages, not silent failures.
 - `metadata.json` updated with generation timestamps for each format.
 
@@ -317,7 +320,7 @@
 **Acceptance Criteria:**
 - Semantically similar prior responses are surfaced per question before generating fresh text.
 - At least 3 relevant experience matches shown per question.
-- All three response formats available and produce appropriately sized text.
+- All three response formats available and produce text in roughly the appropriate length range. Word count ranges (150–200w / 250–350w / 400–500w) are targets shown as guidance in the UI — the system does not auto-reject or retry responses that fall slightly outside the range.
 - The LLM has access to the session's `cover_letter` and `clarification_answers` when generating draft responses.
 - My format and experience choices persist per question.
 - Responses editable before saving.
@@ -341,14 +344,12 @@
    - Writes final `metadata.json` (including status, notes, all file paths, rewrite audit, spell audit, customisation decisions, `clarification_answers`, `cover_letter_text`, and `screening_responses`).
    - Upserts all screening responses into `~/CV/response_library.json`.
    - Commits all artefacts to Git with message `feat: Add {Company}_{Role}_{Date} application`.
-   - Syncs to Google Drive.
 5. A confirmation summary is shown: files generated, total time, keywords matched.
 
 **Acceptance Criteria:**
 - Status transitions (draft → ready → sent) persistent in `metadata.json`.
 - Notes field saved.
 - Git commit created automatically with all artefacts.
-- Google Drive sync confirmed (or failure surfaced clearly).
 - Summary shows keyword match score vs. job description.
 
 ---
@@ -365,13 +366,13 @@
    - Type a natural-language update: "I just finished a project at Acme using Kubernetes. Add it to my exp_005 achievements."
    - Paste an existing document (old CV, LinkedIn export) for bulk ingestion.
 3. The system shows me the proposed JSON changes and asks for confirmation.
-4. On confirmation, it writes the updated `Master_CV_Data.json`, commits to Git, and syncs to Google Drive.
+4. On confirmation, it writes the updated `Master_CV_Data.json` and commits to Git.
 
 **Acceptance Criteria:**
 - Natural-language updates produce a proposed JSON diff shown to me before writing.
 - Document ingestion extracts structured data with a review step.
 - No blind writes — every change requires explicit confirmation.
-- Git commit and Google Drive sync on every confirmed update.
+- Git commit on every confirmed update.
 
 ---
 
@@ -396,7 +397,6 @@
 6. I confirm and the system:
    - Writes the updated `Master_CV_Data.json`.
    - Commits to Git with message `chore: Update master CV data from {Company}_{Role}_{Date} session`.
-   - Syncs to Google Drive.
 7. A summary is shown: *"X items written to master data."*
 8. I can click **Skip** at any point to bypass the harvest without writing anything.
 
@@ -408,5 +408,52 @@
 - A consolidated JSON diff is shown before any write.
 - No blind writes — explicit confirmation required.
 - Items the user declines are never written; session-specific content stays session-specific.
-- Git commit and Google Drive sync on every confirmed harvest.
+- Git commit on every confirmed harvest.
 - Harvest step is skippable if no meaningful improvements were generated this session (i.e., all rewrites were rejected or were keyword-only swaps).
+
+---
+
+## US-A12: Re-enter and Re-run Earlier Workflow Stages
+
+**As a** job applicant,
+**I want to** return to any previously completed workflow stage and re-run it — including the job analysis step — at any point in the session,
+**So that** if I'm uncertain a step completed correctly, or I want to refine it after seeing downstream results, I can do so without losing later work.
+
+**Precondition:** At least one workflow stage has been completed.
+
+**Key scenario (analysis re-run):**
+I have proceeded to the Customisations or Rewrite Review step and realise the job analysis may have been incomplete — for example, it missed a required skill, used the wrong role type, or my clarifying answers were different from what I intended. I want to re-run **Analyse Job** without discarding approved customisations or rewrites.
+
+**Steps:**
+
+1. From any workflow stage, I can see a **Re-run** or **Re-analyse** affordance next to any completed stage in the progress indicator. (Examples: "Re-analyse" on the Analysis stage chip; "Re-review Customisations" on the Customisations stage chip.)
+2. I click **Re-analyse** (or equivalent for another stage).
+3. The system shows a confirmation dialogue explaining:
+   - Which stage will be re-run.
+   - Which downstream stages (if any) could be affected by the re-run.
+   - That downstream approvals will be preserved as defaults but may need review if the re-run changes recommendations.
+4. I confirm and the system re-runs the selected stage using:
+   - The original job text (plus my current clarification answers, which I can amend at this step).
+   - All downstream approved decisions (customisations, rewrites, layout instructions) as context — so the LLM is aware of what I have already approved.
+5. Results from the re-run are shown in the relevant UI step.
+6. For each downstream stage that could be affected (e.g., customisation recommendations changed after re-analysis), the UI flags which items are new, changed, or no longer recommended — rather than requiring me to re-review everything from scratch.
+7. Items I previously approved that are unaffected by the re-run retain their approved state.
+8. I review and confirm the affected items and continue.
+
+**Acceptance Criteria:**
+
+- A **Re-run** affordance is visible for each completed stage in the workflow progress indicator (not just via a hidden settings menu).
+- The confirmation dialogue accurately lists which downstream stages contain decisions that could be affected.
+- Re-running a stage does not silently discard any previously approved decision; all prior approvals are preserved until the user explicitly changes them.
+- The LLM re-run receives the full session context: original job text, current clarification answers, and a summary of downstream decisions already approved.
+- After re-run, only changed or new items are highlighted as requiring re-review; unchanged items remain approved without requiring re-confirmation.
+- Clarification answers can be amended when triggering a re-run of the Analysis stage, without requiring a separate step.
+- Session state and audit log record each re-run event with: stage name, timestamp, previous clarification answers (if changed), and count of downstream items affected.
+- Re-run affordance is also accessible via a keyboard shortcut or menu, not only via the progress indicator.
+
+**Anti-patterns to guard against:**
+
+- Re-running analysis silently overwrites all customisation decisions, forcing a full re-review.
+- Re-run triggers only available by navigating back with no way to return to the current stage without losing work.
+- No visual indication of which previously approved items were affected by the re-run.
+- User must re-answer all clarifying questions from scratch even when only one answer changed.

@@ -16,7 +16,7 @@ The system will use a simple web UI.
 2. Allow updating the master data file using natural language interactions, including ingestion of existing documents.
 3. Preserve an archive of generated materials to allow for reference and future reuse.
 4. Leverage Git/GitHub for revision management of text and code resources.
-5. Use Google Drive (either directly or via the local mirror in /Users/warnes/Google Drive@ -> /Users/warnes/Library/CloudStorage/GoogleDrive-greg@warnes.net) to store all 'current' files.  **This will require a python script to access the contents of .gdoc files.**
+5. **Google Drive sync is not implemented.** All generated files are stored locally at `~/CV/files/`. Git (§4) is the archiving mechanism. Google Drive Desktop sync can be configured at the OS level independently; no in-app integration is planned.
 
 ### CV and Cover Letter Generation
 
@@ -51,7 +51,7 @@ The system will use a simple web UI.
 - Education
 - Skills (or "Technical Skills" / "Core Competencies")
 - Certifications (if applicable)
-- Publications (if applicable)
+- Publications (if applicable) — **ATS DOCX only**; human-readable PDF and DOCX use "Selected Publications" (see below)
 
 ### Formatting Rules
 
@@ -154,13 +154,17 @@ The system will use a simple web UI.
 7. Apply approved rewrites; discard or revert rejected ones
 8. Run spell and grammar check on all finalized text (see §Spell & Grammar Check below);
    present flagged items for accept/reject; apply accepted corrections
-9. Generate all three output formats from finalized content:
+9. Generate all four output formats from finalized content:
    - **ATS DOCX**: clean, parseable plain-text DOCX (python-docx)
+   - **Human DOCX**: Word-native editable DOCX (docxtpl Jinja2 template; independently styled from the PDF)
    - **HTML**: Jinja2-rendered human-readable HTML with embedded Schema.org/Person JSON-LD in `<head>`
    - **PDF**: WeasyPrint (primary) / Chrome headless (fallback) conversion of the rendered HTML
 9. Validate ATS DOCX: Can all text be selected/copied as plain text? No tables, text boxes, or multi-column sections?
 10. Validate HTML: JSON-LD block present and parseable? All CSS renders correctly in browsers?
 11. Validate PDF: No clipped content, fonts embedded, page breaks correct?
+12. **ATS validation blocking rules:**
+    - **Format-specific failures** block only the affected format download — DOCX failures grey out the DOCX download; HTML/JSON-LD failures grey out the HTML download; PDF failures grey out the PDF download; other formats remain available.
+    - **Keyword presence failure (exception):** If required keywords are absent from the finalised CV text, **all format downloads are blocked**. Keywords are content-level — they are absent from all three outputs equally because all formats are rendered from the same finalised text.
 
 **Success Criteria:**
 - ATS can extract all section content correctly
@@ -231,7 +235,7 @@ The system will use a simple web UI.
 
 - **Right Main:**
   - Work Experience continuation (earlier positions)
-  - Publications section (optional, if space allows)
+  - Publications section (optional, if space allows; always the final section regardless of role type)
 
 ### Section Priority & Selection
 
@@ -248,6 +252,9 @@ The system will use a simple web UI.
 2. **Languages** - Include if job international or mentions language requirements
 3. **Infrastructure Skills** - Emphasize for DevOps/MLOps/Platform roles; de-emphasize for pure research
 4. **Publications** - Include for academic/research scientist roles; optional for industry positions
+   - **LLM-driven item selection:** At job-analysis time, the LLM reads the full `publications.bib` file alongside the job description and recommends a ranked shortlist of the most relevant publications for a "Selected Publications" section, with per-item rationale (keyword overlap, domain alignment, recency, first-author status). The user reviews and adjusts the shortlist in the Customisation step before it enters the CV.
+   - **Count guidance by role type:** Research/academic roles: up to 10 items; industry/biotech roles: 2–5 most relevant; pure business/management roles: omit unless directly instructed.
+   - **Section heading:** Always labelled "Selected Publications" (not "Publications") to signal intentional curation to the reader.
 5. **Patents** - Include for innovation-focused or IP-heavy roles
 
 **Customization Strategy:**
@@ -272,16 +279,20 @@ The system will use a simple web UI.
 3. Tailor Professional Summary keywords to job description
 4. Adjust Selected Achievements to match role requirements (leadership vs. technical)
 5. Omit older/less relevant positions if CV exceeds 3 pages
+6. Select publications by relevance to the specific job: rank all items in `publications.bib` by keyword overlap with `ats_keywords` and `required_skills`, domain match, recency, and first-author status; present top-N candidates for user confirmation
 
 ### File Generation
 
-**Output Formats (three formats per CV generation run):**
+**Output Formats (four formats per CV generation run):**
 
 | Format | Purpose | Generator | Audience |
 |--------|---------|-----------|----------|
 | **ATS DOCX** (`*_ATS.docx`) | Machine parsing by ATS | python-docx | ATS systems, HR portals |
+| **Human DOCX** (`*.docx`) | Human-readable editable Word document | docxtpl (Jinja2 template) | Applicants — edit before submission in Word/Pages/LibreOffice |
 | **HTML** (`*.html`) | Human-readable browser view + structured metadata | Jinja2 template | Browsers, structured-data parsers |
 | **PDF** (`*.pdf`) | Print/email human-readable CV | WeasyPrint → HTML | HR, hiring managers, email submission |
+
+> **Note:** The Human DOCX and the PDF are **independently styled** — the PDF is a polished 2-column CSS render; the Human DOCX is a clean Word-native layout (Calibri, standard margins). There is no requirement for them to look identical.
 
 **HTML Format Details:**
 - Rendered from `templates/cv-template.html` via Jinja2
@@ -390,7 +401,11 @@ CV/
   "job_url": "https://...",
   "clarification_answers": {
     "emphasis": "technical_ic",
-    "include_publications": false,
+    "include_publications": true,
+    "selected_publications": [
+      {"cite_key": "warnes2023genomics", "relevance_score": 0.91, "rationale": "Directly addresses RNA-Seq pipeline requirement"},
+      {"cite_key": "warnes2021bioconductor", "relevance_score": 0.78, "rationale": "R/Bioconductor domain match"}
+    ],
     "tone_preference": "pharma_biotech"
   },
   "customizations": {
@@ -406,7 +421,7 @@ CV/
     "CV_Genentech_SrBiostatistician_2025-12-15_ATS.docx",
     "CoverLetter_Genentech_2025-12-15.docx"
   ],
-  "cover_letter_text": "Dear Dr. Smith,\n\n[finalized body...]",
+  "cover_letter_text": "[body paragraphs only — salutation and closing are re-generated per session from the hiring manager name field]",
   "cover_letter_reused_from": null,
   "screening_responses": [
     {
@@ -651,7 +666,7 @@ Gregory R. Warnes, Ph.D.
 5. Reference specific company projects/initiatives when possible
 
 **Storage and Reuse:**
-- The finalized cover letter body text (after user edits) is stored in `metadata.json` under `cover_letter_text` in addition to the `.docx` file, so it is available as structured data.
+- The finalized cover letter **body text** (hook + value paragraphs + CTA — not the salutation "Dear X," or the closing "Sincerely,") is stored in `metadata.json` under `cover_letter_text` in addition to the `.docx` file. The salutation and closing are re-generated per session using the hiring manager name field, so the stored body paragraphs are cleanly reusable across different applications.
 - When starting a new cover letter, the system searches prior sessions for cover letters with the same `tone_preference` or targeting the same `role_type`; if found, it surfaces the best match with a "Use as starting point?" prompt.
 - The prior cover letter is offered as an editable draft pre-filled in the text area, not applied silently.
 - Prior cover letter reuse is tracked in `metadata.json` as `cover_letter_reused_from: "<prior_session_id>"` (or `null` if written from scratch).
@@ -885,7 +900,7 @@ Which would you like to emphasize?
      * `metadata.json` for the session
      * `~/CV/response_library.json` (if updated)
      * If git is not available or the working tree is in an unexpected state, log a warning and skip the commit rather than failing the finalization step
-   - **Google Drive sync:** Handled automatically by the Google Drive desktop app via filesystem sync; no in-app action required
+   - **Google Drive sync:** Not implemented — git commit is the archiving mechanism.
    - Mark status (draft/ready/sent)
 
 12. **Session Master Data Harvest (optional):**
@@ -896,7 +911,7 @@ Which would you like to emphasize?
      * Skills revealed by clarification answers to mismatch questions
    - Each item shown as before/after diff with rationale; all opt-in (nothing pre-selected)
    - Consolidated JSON diff shown before any write
-   - On confirmation: write `Master_CV_Data.json`, commit `chore: Update master CV data from {Company}_{Role}_{Date} session` (same git error-handling as step 11); Drive sync is automatic via desktop app
+   - On confirmation: write `Master_CV_Data.json`, commit `chore: Update master CV data from {Company}_{Role}_{Date} session` (same git error-handling as step 11)
    - Step is skippable if no meaningful improvements exist
 
 **Validation Steps Before Output:**

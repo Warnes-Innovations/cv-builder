@@ -158,6 +158,7 @@
     .document-viewer.expanded { padding: 16px; }
     .document-content { max-width: 8.5in; margin: 0 auto; background: #fff; min-height: 11in; padding: 0.5in; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
     .expanded .document-content { max-width: none; margin: 0; padding: 20px; box-shadow: none; }
+    .document-content.full-width { max-width: none !important; margin: 0; padding: 20px; box-shadow: none; min-height: unset; }
     .document-content h1 { font-size: 28px; font-weight: 700; margin-bottom: 16px; color: #1e293b; }
     .document-content h2 { font-size: 20px; font-weight: 600; margin: 20px 0 12px; color: #334155; }
     .document-content h3 { font-size: 16px; font-weight: 600; margin: 16px 0 8px; color: #475569; }
@@ -1242,6 +1243,10 @@
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.getElementById(`tab-${tab}`).classList.add('active');
       currentTab = tab;
+
+      // All tabs except 'cv' use full-width layout (no paper-sized centering)
+      const content = document.getElementById('document-content');
+      content.classList.toggle('full-width', tab !== 'cv');
 
       // Load content for tab
       loadTabContent(tab);

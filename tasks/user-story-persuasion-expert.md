@@ -40,20 +40,25 @@
 **Evaluation Criteria:**
 1. **Named institutions and brands** — Well-known employers, universities, journals, or conference names should be surface-level visible (first line of a bullet, not buried). Pfizer, Genentech, Nature Genetics — these carry social proof weight that generic references do not.
 2. **Quantified impact** — Metrics (team size, budget, percentage improvement, number of users/patients affected) function as social proof by making claims verifiable. Any bullet without a number where a number existed in the master data is a lost opportunity.
-3. **External validation** — Publications, awards, patents, press mentions, and invited talks are authority anchors. These must appear at the appropriate prominence for the role (high for research, moderate for engineering, omitted for pure management).
-4. **Third-party language** — Phrases like "selected by…", "invited to…", "cited by…", or "adopted by [organisation]" carry third-party validation weight. The system should preserve and surface these wherever present in master data.
-5. **Specificity as credibility** — Vague claims ("improved performance") undermine authority. Specific claims ("reduced inference latency by 40% at p50") signal the candidate measured and owned the outcome.
+3. **External validation** — Publications, awards, patents, press mentions, and invited talks are authority anchors. These must appear at the appropriate prominence for the role (high for research, moderate for engineering, omitted for pure management). For research/scientific roles, the system must proactively recommend the most persuasion-relevant publications — those that directly address the job's required expertise — not the most-cited or the oldest. A targeted 2–5 publication shortlist is more persuasive than a comprehensive list.
+4. **Publication authority signals** — Within each recommended publication, the system should flag authority indicators to the user: first-author status, high-impact journal/conference, citation count if notable, industry partner co-authorship. These should inform the ordering of the shortlist beyond raw keyword overlap.
+5. **Third-party language** — Phrases like "selected by…", "invited to…", "cited by…", or "adopted by [organisation]" carry third-party validation weight. The system should preserve and surface these wherever present in master data.
+6. **Specificity as credibility** — Vague claims ("improved performance") undermine authority. Specific claims ("reduced inference latency by 40% at p50") signal the candidate measured and owned the outcome.
 
 **Failure Modes to Guard Against:**
 - Burying a recognisable brand name in the middle of a long bullet.
 - Replacing a specific metric with a vague qualifier during a rewrite ("significantly improved" instead of "improved by 40%").
 - Omitting publications or awards silently without surfacing the omission decision to the user.
+- Including a raw dump of all publications with no relevance filtering — a long undifferentiated list signals poor judgment.
+- Ranking publications purely by citation count or journal impact factor, ignoring relevance to the specific job requirements.
 - Over-listing metrics that are small or unimpressive without context (including a weak number is worse than no number).
 
 **Acceptance Criteria:**
 - `apply_rewrite_constraints` rejects any proposal that removes or vagues-over a numeric metric.
 - Named recognisable organisations appear within the first 15 words of their respective bullet.
 - Conditional omission decisions for Publications/Awards are surfaced to the user with rationale, not silently dropped.
+- Publication recommendation list is ranked by job-relevance (keyword + domain + authority signals), not by recency or citation count alone.
+- Each recommended publication shows at least one authority signal (first-author, journal/conference name, citation note) alongside its relevance rationale.
 - System flags bullets where a number is present in master data but absent in the proposed rewrite.
 
 ---

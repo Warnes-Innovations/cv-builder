@@ -377,3 +377,46 @@ Three artefacts are referenced by persuasion expert stories but do not exist any
   - Filler phrase detection: run on summary and cover letter; flag if count > 1
   - CAR detection: LLM prompt that identifies challenge clause presence in a bullet and proposes restructuring if found
 - All three checks are warn-level (surfaced for user decision), not hard-fail
+
+---
+
+## GAP-18: Workflow Stage Re-run — Not Specified, Not Implemented
+
+**Severity:** HIGH
+**Affected stories:** US-A12, US-U1, US-A6
+**Status:** Not in REQUIREMENTS.md; no implementation in `conversation_manager.py` or `web/index.html`
+
+**Description:**
+US-A12 requires that users can re-run any completed earlier workflow stage (e.g., re-trigger job analysis
+after proceeding to customisations) without silently discarding downstream approved decisions. This is
+distinct from US-A6 (post-generation iterative refinement) and US-U1 (general back-navigation safety):
+US-A12 specifically addresses *intentional re-processing* of a step — for example, re-running the LLM
+analysis when the user suspects it was incomplete or used wrong clarification answers.
+
+Current gaps:
+
+- `conversation_manager.py` only advances phases forward; no `re_run_phase()` or `back_to_phase()` logic
+  exists that preserves downstream state.
+- The progress indicator in `web/index.html` does not expose a re-run affordance on completed stages.
+- No spec for how a re-run LLM call should receive downstream approved decisions as context.
+- No spec for diff-highlighting which items changed as a result of the re-run vs. items unaffected.
+- Overlaps with GAP-02 (back-transition logic) but is broader: GAP-02 covers post-generation re-entry;
+  GAP-18 covers re-running any step at any point in the workflow, including mid-workflow.
+
+**Recommended resolution:**
+
+- Add `### Workflow Stage Re-run` subsection to REQUIREMENTS.md §7 specifying:
+  - Which stages support re-run (all completed stages)
+  - Confirmation dialogue content: affected downstream stages listed, preservation guarantee stated
+  - LLM re-run context: must include original job text, current clarification answers, and a compact
+    summary of all downstream approved decisions
+  - Diff highlighting: after re-run, items that changed vs. prior run are flagged; unchanged items
+    retain approved state without requiring re-confirmation
+- Implement `conversation_manager.re_run_phase(phase_name)` that:
+  - Saves current downstream state as a checkpoint before re-running
+  - Resets only the target phase and marks downstream phases as "needs review" (not "approved")
+  - Provides rollback if user cancels after seeing re-run results
+- Add re-run controls to the progress indicator in `web/index.html` (visible on completed stage chips)
+- Amend the `/api/analyze` endpoint (and equivalent phase endpoints) to accept optional
+  `downstream_context` payload when called as a re-run
+- Session audit log must record each re-run event: phase name, timestamp, changed item count
