@@ -25,8 +25,8 @@ decisions, questions, and progress as the agent implements the approved 15-phase
 _Time estimates for pending phases are expressed as X.X hours (95% CI: Y.Y–Z.Z h), derived from
 the distribution of completed-phase durations (Phases 2–6: 0.1–1.7 h intra-session)._
 
-| Phase | Title | Status | Commit | Duration |
-|-------|-------|--------|--------|----------|
+| Phase | Title | Status | Commit | Completed / Duration |
+|-------|-------|--------|--------|----------------------|
 | 0 | Update CLAUDE.md + copilot-instructions.md | ✅ Complete | `9b92e0e` | ~6.9 h (incl. session gap) |
 | 1 | Test fixes + metadata audit trail + startup config validation | ✅ Complete | `6e4fc71` | ~10.0 h (spans overnight) |
 | 2 | Workflow progress indicator (8-step bar, back-nav, single-session lock) | ✅ Complete | `d3f41d6` | ~0.2 h (13 min) |
@@ -34,8 +34,8 @@ the distribution of completed-phase durations (Phases 2–6: 0.1–1.7 h intra-s
 | 4 | Rewrite review UI polish | ✅ Complete | `d494603` | ~0.2 h (10 min) |
 | 5 | Publications block + Human DOCX | ✅ Complete | `3632bc9` | ~0.3 h (18 min) |
 | 6 | Spell/grammar check | ✅ Complete | `a78ae93` | ~1.7 h (99 min) |
-| 7 | ATS validation report + page count | ✅ Complete | `d9f284b` | — |
-| 8 | Phase re-entry / iterative refinement | ✅ Complete | `bf26797` | — |
+| 7 | ATS validation report + page count | ✅ Complete | `d9f284b` | 2026-03-11 |
+| 8 | Phase re-entry / iterative refinement | ✅ Complete | `bf26797` | 2026-03-11 |
 | 9 | Skills canonicalisation + bullet reordering | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
 | 10 | Persuasion checks + loading state | 🔲 Pending | — | est. 1.0 h (95% CI: 0.3–2.5 h) |
 | 11 | Finalise & archive + master data harvest | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
@@ -312,7 +312,7 @@ Full suite: 241 passed, 1 warning in 4.84s  (+5 new tests)
 
 ## Phase 7 — ATS Validation Report + Page Count
 
-**Status**: ✅ Complete (commit: see git log)
+**Status**: ✅ Complete (commit: `d9f284b`) | **Completed**: 2026-03-11
 
 ### Changes Made
 
@@ -349,7 +349,7 @@ Full suite: 241 passed, 1 warning in 4.74s  (no new tests needed — validate_at
 
 ## Phase 8 — Phase Re-entry / Iterative Refinement
 
-**Status**: ✅ Complete (commit: `bf26797`) | **Tests**: 252/252 passed
+**Status**: ✅ Complete (commit: `bf26797`) | **Completed**: 2026-03-11 | **Tests**: 252/252 passed
 
 ### Changes Made
 
