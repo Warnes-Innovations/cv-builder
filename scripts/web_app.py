@@ -340,6 +340,8 @@ Job Description (excerpt):
             "post_analysis_answers": conversation.state.get("post_analysis_answers") or {},
             "customizations": conversation.state.get("customizations"),  # Return full data, not just bool
             "generated_files": conversation.state.get("generated_files"),
+            "generation_progress": conversation.state.get("generation_progress") or [],  # Phase 10
+            "persuasion_warnings": conversation.state.get("persuasion_warnings") or [],  # Phase 10
             "all_experience_ids": all_experience_ids,  # Add all experience IDs
             "all_skills": all_skills,  # Add all skills
             "copilot_auth": auth_manager.status,
@@ -1116,7 +1118,6 @@ Job Description (excerpt):
             result = conversation.back_to_phase(target)
             return jsonify(result)
         except Exception as e:
-            import traceback; traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
     @app.post("/api/re-run-phase")
@@ -1136,7 +1137,6 @@ Job Description (excerpt):
                 return jsonify(result), 400
             return jsonify(result)
         except Exception as e:
-            import traceback; traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
 
@@ -1186,7 +1186,6 @@ Job Description (excerpt):
             conversation._save_session()
             return jsonify({"ok": True, "experience_id": exp_id, "order": order})
         except Exception as e:
-            import traceback; traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
 
@@ -1448,6 +1447,17 @@ Job Description (excerpt):
             rewrites = orchestrator.propose_rewrites(content, job_analysis)
             conversation.state['pending_rewrites'] = rewrites
 
+            # Run persuasion quality checks (Phase 10)
+            if rewrites:
+                persuasion_warnings = conversation.run_persuasion_checks(
+                    rewrites,
+                    job_analysis,
+                    orchestrator.master_data
+                )
+                conversation.state['persuasion_warnings'] = persuasion_warnings
+            else:
+                conversation.state['persuasion_warnings'] = []
+
             if rewrites:
                 conversation.state['phase'] = 'rewrite_review'
                 phase = 'rewrite_review'
@@ -1456,7 +1466,12 @@ Job Description (excerpt):
                 phase = 'generation'
 
             conversation._save_session()
-            return jsonify({"ok": True, "rewrites": rewrites, "phase": phase})
+            return jsonify({
+                "ok": True,
+                "rewrites": rewrites,
+                "persuasion_warnings": conversation.state.get('persuasion_warnings', []),
+                "phase": phase
+            })
 
         except Exception as e:
             import traceback
@@ -1797,6 +1812,56 @@ Job Description (excerpt):
                 'page_count': page_count,
                 'summary':    summary,
             })
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': str(e)}), 500
+
+    @app.get("/api/persuasion-check")
+    def persuasion_check():
+        """Run rule-based persuasion checks on selected experience bullets.
+
+        Returns
+        -------
+        ``{"ok": true, "findings": [...], "summary": {total_bullets, flagged,
+           strong_count}}``
+
+        Each finding has: ``exp_id``, ``bullet_index``, ``text``, ``severity``,
+        ``issues`` (list of ``{type, severity, suggestion}``).
+        """
+        try:
+            experiences = None
+
+            # Use selected_content stored during generation if available
+            generated = conversation.state.get('generated_files')
+            if generated:
+                # Re-derive selected content from current state
+                job_analysis   = conversation.state.get('job_analysis') or {}
+                customizations = conversation.state.get('customizations') or {}
+                if isinstance(job_analysis, str):
+                    import json as _json
+                    try:
+                        job_analysis = _json.loads(job_analysis)
+                    except Exception:
+                        job_analysis = {}
+                try:
+                    selected = conversation.orchestrator._select_content_hybrid(
+                        job_analysis, customizations
+                    )
+                    experiences = selected.get('experiences', [])
+                except Exception:
+                    experiences = None
+
+            # Fallback: analyse raw master data experiences
+            if experiences is None:
+                experiences = (
+                    conversation.orchestrator.master_data.get('experience')
+                    or conversation.orchestrator.master_data.get('experiences')
+                    or []
+                )
+
+            result = conversation.orchestrator.check_persuasion(experiences)
+            return jsonify({'ok': True, **result})
         except Exception as e:
             import traceback
             traceback.print_exc()

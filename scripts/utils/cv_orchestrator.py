@@ -10,6 +10,7 @@ This module coordinates between:
 import copy
 import json
 import re
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -52,10 +53,6 @@ class CVOrchestrator:
 
         # Load synonym map for ATS skill normalisation
         self._synonym_map: Dict[str, str] = self._load_synonym_map()
-        # Build a reverse index: canonical_lower -> canonical (for fast lookup)
-        self._canonical_index: Dict[str, str] = {
-            v.lower(): v for v in self._synonym_map.values()
-        }
         # Full expansion index: any form (lower) -> canonical
         self._expansion_index: Dict[str, str] = {}
         for alias, canonical in self._synonym_map.items():
@@ -859,35 +856,59 @@ For manual generation:
         cv_data['achievements'] = selected_content.get('achievements', [])
         cv_data['json_ld_str']  = self._build_json_ld(cv_data, job_analysis)
 
-        # Generate documents
+        # Generate documents (Phase 10: Track progress)
         files_created = []
+        generation_progress = []
 
         # 1. ATS-optimized DOCX
+        progress_ats = {
+            'step': 'generating_docx_ats',
+            'status': 'in_progress',
+            'start_time': time.time()
+        }
         ats_file = self._generate_ats_docx(
             selected_content,
             job_analysis,
             job_output_dir
         )
+        progress_ats['status'] = 'complete'
+        progress_ats['elapsed_ms'] = int((time.time() - progress_ats['start_time']) * 1000)
+        generation_progress.append(progress_ats)
         files_created.append(ats_file.name)
 
         # 2. Single HTML (ATS metadata embedded) + PDF both rendered from it
+        progress_html = {
+            'step': 'rendering_html',
+            'status': 'in_progress',
+            'start_time': time.time()
+        }
         html_path, pdf_path = self._generate_human_pdf(
             cv_data,
             job_analysis,
             job_output_dir
         )
+        progress_html['status'] = 'complete'
+        progress_html['elapsed_ms'] = int((time.time() - progress_html['start_time']) * 1000)
+        generation_progress.append(progress_html)
         if html_path is not None:
             files_created.append(html_path.name)
         files_created.append(pdf_path.name)
 
         # 3. Human-readable DOCX
+        progress_docx_human = {
+            'step': 'generating_docx_human',
+            'status': 'in_progress',
+            'start_time': time.time()
+        }
         human_docx = self._generate_human_docx(
             selected_content,
             job_analysis,
             job_output_dir
         )
+        progress_docx_human['status'] = 'complete'
+        progress_docx_human['elapsed_ms'] = int((time.time() - progress_docx_human['start_time']) * 1000)
+        generation_progress.append(progress_docx_human)
         files_created.append(human_docx.name)
-        
         # Save metadata
         metadata = {
             'generation_date': datetime.now().isoformat(),
@@ -919,7 +940,8 @@ For manual generation:
         return {
             'output_dir': str(job_output_dir),
             'files': files_created,
-            'metadata': metadata
+            'metadata': metadata,
+            'generation_progress': generation_progress,
         }
     
     def _select_content_hybrid(
@@ -1468,20 +1490,160 @@ For manual generation:
         if not achievement:
             return achievement
 
-        _ACTION_VERBS = {
-            'Developed', 'Led', 'Implemented', 'Managed', 'Created',
-            'Improved', 'Reduced', 'Increased', 'Optimized', 'Designed',
-            'Built', 'Established', 'Delivered', 'Drove', 'Launched',
-            'Deployed', 'Architected', 'Automated', 'Spearheaded',
-        }
         text = achievement.strip()
-        if not any(text.startswith(v) for v in _ACTION_VERBS):
+        if not any(text.startswith(v) for v in self._STRONG_VERBS):
             print(
                 f"Warning: _enhance_achievement_for_ats: bullet does not start "
                 f"with a strong action verb: {text[:60]!r}"
             )
 
         return text
+
+    # ── Persuasion vocabulary ──────────────────────────────────────────────────
+
+    _STRONG_VERBS: frozenset = frozenset({
+        'Accelerated', 'Achieved', 'Architected', 'Automated', 'Built',
+        'Championed', 'Consolidated', 'Created', 'Cut', 'Delivered',
+        'Deployed', 'Designed', 'Developed', 'Directed', 'Doubled',
+        'Drove', 'Enabled', 'Established', 'Expanded', 'Generated',
+        'Grew', 'Improved', 'Implemented', 'Increased', 'Launched',
+        'Led', 'Managed', 'Optimized', 'Pioneered', 'Published',
+        'Raised', 'Reduced', 'Refactored', 'Scaled', 'Shipped',
+        'Spearheaded', 'Streamlined', 'Transformed', 'Tripled',
+    })
+
+    _WEAK_VERBS: frozenset = frozenset({
+        'Assisted', 'Contributed', 'Helped', 'Participated',
+        'Supported', 'Supervised', 'Worked', 'Was responsible',
+        'Was involved', 'Collaborated', 'Cooperated',
+    })
+
+    _VAGUE_PHRASES: tuple = (
+        'various tasks', 'multiple tasks', 'several tasks',
+        'day-to-day', 'various projects', 'multiple projects',
+        'various responsibilities', 'general support', 'helped to',
+        'assisted with', 'participated in', 'was part of',
+        'involved in', 'worked on various', 'worked on multiple',
+    )
+
+    _METRIC_RE = re.compile(
+        r'(\d[\d,]*%?'             # digit-based metric
+        r'|\$[\d,]+[kmb]?'         # dollar amount
+        r'|£[\d,]+[kmb]?'          # pound amount
+        r'|\b\d+\s*x\b'            # multiplier (3x)
+        r'|\b\d+[-–]\d+\b'         # range
+        r'|\b(one|two|three|four|five|six|seven|eight|nine|ten)\b)',  # spelled-out small numbers
+        re.IGNORECASE,
+    )
+
+    def check_persuasion(self, experiences: List[Dict]) -> Dict:
+        """Analyse experience bullets for persuasion quality.
+
+        Parameters
+        ----------
+        experiences:
+            List of experience dicts (each with ``id`` and ``achievements``).
+
+        Returns
+        -------
+        Dict with keys:
+          - ``findings``: list of finding dicts (exp_id, bullet_index, text,
+            severity, issues)
+          - ``summary``: {total_bullets, flagged, strong_count}
+        """
+        findings = []
+        total_bullets = 0
+        strong_count  = 0
+
+        for exp in experiences:
+            exp_id = exp.get('id', '')
+            achievements = exp.get('ordered_achievements') or exp.get('achievements') or []
+            for idx, ach in enumerate(achievements):
+                text = (ach.get('text', '') if isinstance(ach, dict) else str(ach)).strip()
+                if not text:
+                    continue
+                total_bullets += 1
+                issues = []
+                first_word = text.split()[0] if text.split() else ''
+
+                # Weak opening verb
+                if any(text.lower().startswith(wv.lower()) for wv in self._WEAK_VERBS):
+                    issues.append({
+                        'type':       'weak_verb',
+                        'severity':   'warning',
+                        'suggestion': (
+                            f'Replace "{first_word}" with a stronger action verb '
+                            '(e.g. Led, Built, Delivered, Reduced, Improved).'
+                        ),
+                    })
+                elif not any(text.startswith(sv) for sv in self._STRONG_VERBS):
+                    issues.append({
+                        'type':       'no_strong_verb',
+                        'severity':   'info',
+                        'suggestion': (
+                            f'Consider opening with a strong action verb '
+                            '(e.g. Led, Built, Delivered, Reduced, Improved).'
+                        ),
+                    })
+
+                # Missing quantification
+                if not self._METRIC_RE.search(text):
+                    issues.append({
+                        'type':       'no_metric',
+                        'severity':   'warning',
+                        'suggestion': (
+                            'Add a quantified result — percentage improvement, '
+                            'team size, dollar value, or time saved.'
+                        ),
+                    })
+
+                # Vague language
+                text_lower = text.lower()
+                for phrase in self._VAGUE_PHRASES:
+                    if phrase in text_lower:
+                        issues.append({
+                            'type':       'vague_language',
+                            'severity':   'warning',
+                            'suggestion': (
+                                f'Replace vague phrase "{phrase}" with a specific, '
+                                'measurable description of impact.'
+                            ),
+                        })
+                        break
+
+                # Too short
+                if len(text.split()) < 8:
+                    issues.append({
+                        'type':       'too_short',
+                        'severity':   'info',
+                        'suggestion': (
+                            'Expand this bullet to include context, action, and result '
+                            '(aim for 15–25 words).'
+                        ),
+                    })
+
+                if not issues:
+                    strong_count += 1
+                else:
+                    findings.append({
+                        'exp_id':       exp_id,
+                        'bullet_index': idx,
+                        'text':         text,
+                        'severity':     max(
+                            (i['severity'] for i in issues),
+                            key=lambda s: 0 if s == 'info' else 1,
+                        ),
+                        'issues': issues,
+                    })
+
+        return {
+            'findings': findings,
+            'summary':  {
+                'total_bullets': total_bullets,
+                'flagged':       len(findings),
+                'strong_count':  strong_count,
+            },
+        }
     
     def _add_ats_additional_sections(self, doc, content: Dict, job_analysis: Dict):
         """Add additional sections that improve ATS scoring."""

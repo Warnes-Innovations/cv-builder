@@ -51,12 +51,15 @@ def _make_app():
 
     mock_conversation = MagicMock()
     mock_conversation.state = {
-        'phase':            'customization',
-        'job_analysis':     {'keywords': ['Python', 'MLOps']},
-        'pending_rewrites': None,
-        'approved_rewrites': [],
-        'rewrite_audit':    [],
+        'phase':                'customization',
+        'job_analysis':         {'keywords': ['Python', 'MLOps']},
+        'pending_rewrites':     None,
+        'persuasion_warnings':  [],  # Phase 10
+        'approved_rewrites':    [],
+        'rewrite_audit':        [],
     }
+    # Mock run_persuasion_checks to return empty list by default (Phase 10)
+    mock_conversation.run_persuasion_checks.return_value = []
 
     with patch('scripts.web_app.get_llm_provider', return_value=mock_llm), \
          patch('scripts.web_app.CVOrchestrator', return_value=mock_orchestrator), \

@@ -41,6 +41,7 @@ class ConversationManager:
             'generated_files':    None,
             'pending_rewrites':   None,   # List[Dict] from propose_rewrites
             'persuasion_warnings': [],    # List[Dict] from run_persuasion_checks (Phase 10)
+            'generation_progress': [],    # List[Dict] step-by-step progress from generate_cv (Phase 10)
             'approved_rewrites':  [],     # List[Dict] user-accepted or user-edited
             'rewrite_audit':      [],     # full record: proposal + outcome for metadata
         }
@@ -585,8 +586,10 @@ Ask questions that are specific to this job posting, not generic career question
                 rewrite_audit=self.state.get('rewrite_audit') or [],
             )
             self.state['generated_files'] = result
+            # Store generation progress for frontend display (Phase 10)
+            self.state['generation_progress'] = result.get('generation_progress', [])
             self.state['phase'] = 'refinement'
-            
+
             files_list = "\n".join(f"  - {f}" for f in result['files'])
             return f"✓ CV generated successfully!\n\nOutput directory: {result['output_dir']}\n\nFiles created:\n{files_list}"
         
@@ -1221,6 +1224,8 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['pending_rewrites'] = None
         if 'persuasion_warnings' not in self.state:
             self.state['persuasion_warnings'] = []
+        if 'generation_progress' not in self.state:
+            self.state['generation_progress'] = []
         if 'approved_rewrites' not in self.state:
             self.state['approved_rewrites'] = []
         if 'rewrite_audit' not in self.state:
