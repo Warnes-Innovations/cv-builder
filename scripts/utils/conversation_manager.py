@@ -558,6 +558,11 @@ Ask questions that are specific to this job posting, not generic career question
 
                 self.state['customizations'] = customizations
 
+            # Inject user-defined bullet ordering (Phase 9) into customizations
+            achievement_orders = self.state.get('achievement_orders', {})
+            if achievement_orders:
+                customizations['achievement_orders'] = achievement_orders
+
             # Apply publication accept/reject decisions from post_analysis_answers
             post_answers = self.state.get('post_analysis_answers') or {}
             accepted_str = post_answers.get('publication_accepted', '')

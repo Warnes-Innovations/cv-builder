@@ -44,11 +44,25 @@ class CVOrchestrator:
         
         # Load master data
         self.master_data = self._load_master_data()
-        
+
         # Load publications if available
         self.publications = {}
         if self.publications_path.exists():
             self.publications = parse_bibtex_file(str(self.publications_path))
+
+        # Load synonym map for ATS skill normalisation
+        self._synonym_map: Dict[str, str] = self._load_synonym_map()
+        # Build a reverse index: canonical_lower -> canonical (for fast lookup)
+        self._canonical_index: Dict[str, str] = {
+            v.lower(): v for v in self._synonym_map.values()
+        }
+        # Full expansion index: any form (lower) -> canonical
+        self._expansion_index: Dict[str, str] = {}
+        for alias, canonical in self._synonym_map.items():
+            if alias.startswith('_'):  # skip comment keys
+                continue
+            self._expansion_index[alias.lower()] = canonical
+            self._expansion_index[canonical.lower()] = canonical
     
     def _load_master_data(self) -> Dict:
         """Load Master_CV_Data.json."""
@@ -60,7 +74,27 @@ class CVOrchestrator:
         
         with open(self.master_data_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    
+
+    def _load_synonym_map(self) -> Dict[str, str]:
+        """Load scripts/data/synonym_map.json, returning {} gracefully if missing."""
+        map_path = Path(__file__).parent.parent / 'data' / 'synonym_map.json'
+        if not map_path.exists():
+            return {}
+        try:
+            with open(map_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return {k: v for k, v in data.items() if not k.startswith('_')}
+        except Exception:
+            return {}
+
+    def canonical_skill_name(self, name: str) -> str:
+        """Return the canonical form of a skill name using the synonym map.
+
+        Examples: 'ML' -> 'Machine Learning', 'sklearn' -> 'scikit-learn'.
+        Unknown names are returned unchanged.
+        """
+        return self._expansion_index.get(name.lower(), name)
+
     def _prepare_cv_data_for_template(
         self,
         selected_content: Dict,
@@ -126,46 +160,78 @@ class CVOrchestrator:
         return cv_data
     
     def _organize_skills_by_category(self, skills: List[Dict], variant: str) -> List[Dict]:
-        """Organize skills by category."""
+        """Organize skills by category, deduplicating by canonical synonym name."""
         if not skills:
             return []
-        
-        category_skills = defaultdict(list)
+
+        # Deduplicate within the full list by canonical name.
+        # If 'ML' and 'Machine Learning' both appear, merge them: keep the one
+        # with more years and collect aliases from the other.
+        canonical_seen: Dict[str, Dict] = {}  # canonical_lower -> merged skill dict
         for skill in skills:
+            name = skill.get('name', '')
+            canonical = self.canonical_skill_name(name)
+            key = canonical.lower()
+            if key not in canonical_seen:
+                merged = dict(skill)
+                merged['name'] = canonical if canonical != name else name
+                merged.setdefault('aliases', list(skill.get('aliases') or []))
+                if canonical != name and name not in merged['aliases']:
+                    merged['aliases'].append(name)
+                canonical_seen[key] = merged
+            else:
+                existing = canonical_seen[key]
+                # Keep the entry with more years; add the other name as alias
+                if skill.get('years', 0) > existing.get('years', 0):
+                    alias_name = existing.get('name', '')
+                    existing.update({k: v for k, v in skill.items() if k != 'aliases'})
+                    existing['name'] = canonical
+                    existing.setdefault('aliases', [])
+                    if alias_name and alias_name not in existing['aliases']:
+                        existing['aliases'].append(alias_name)
+                else:
+                    existing.setdefault('aliases', [])
+                    if name and name not in existing['aliases'] and name != existing['name']:
+                        existing['aliases'].append(name)
+
+        deduped_skills = list(canonical_seen.values())
+
+        category_skills: Dict[str, List[Dict]] = defaultdict(list)
+        for skill in deduped_skills:
             category = skill.get('category', 'General')
             category_skills[category].append(skill)
-        
+
         # Define category priority
         priority_orders = {
             'standard': ['Core Expertise', 'Programming', 'Technical', 'Tools', 'General'],
             'technical': ['Programming', 'Technical', 'Tools', 'Core Expertise', 'General'],
             'academic': ['Research', 'Technical', 'Programming', 'Core Expertise', 'General']
         }
-        
+
         priority_order = priority_orders.get(variant, priority_orders['standard'])
-        
+
         sorted_categories = []
-        
+
         # Add priority categories first
         for category in priority_order:
             if category in category_skills:
-                skills_list = sorted(category_skills[category], 
-                                   key=lambda x: (-x.get('years', 0), x.get('name', '')))
+                skills_list = sorted(category_skills[category],
+                                     key=lambda x: (-x.get('years', 0), x.get('name', '')))
                 sorted_categories.append({
                     'category': category,
                     'skills': skills_list
                 })
-        
+
         # Add remaining categories alphabetically
         remaining_categories = sorted(set(category_skills.keys()) - set(priority_order))
         for category in remaining_categories:
-            skills_list = sorted(category_skills[category], 
-                               key=lambda x: (-x.get('years', 0), x.get('name', '')))
+            skills_list = sorted(category_skills[category],
+                                 key=lambda x: (-x.get('years', 0), x.get('name', '')))
             sorted_categories.append({
                 'category': category,
                 'skills': skills_list
             })
-        
+
         return sorted_categories
     
     def _format_publications(self, publications: List) -> List[Dict]:
@@ -953,6 +1019,51 @@ For manual generation:
         scored_experiences.sort(key=lambda x: x[1], reverse=True)
         selected_experiences = [exp for exp, _ in scored_experiences]
 
+        # ── Per-experience bullet ordering ────────────────────────────────────
+        # Default: sort bullets by keyword-overlap relevance.
+        # Override: if the user has explicitly reordered bullets via the UI,
+        # apply their ordering stored in customizations['achievement_orders']
+        # as a list of original indices per experience id.
+        achievement_orders = customizations.get('achievement_orders', {})
+        ordered_experiences = []
+        for exp in selected_experiences:
+            exp_id = exp.get('id', '')
+            achievements = list(exp.get('achievements') or [])
+            if not achievements:
+                ordered_experiences.append(exp)
+                continue
+
+            if exp_id in achievement_orders:
+                user_order = achievement_orders[exp_id]
+                reordered = []
+                seen_in_order = set()
+                for idx in user_order:
+                    try:
+                        reordered.append(achievements[idx])
+                        seen_in_order.add(idx)
+                    except IndexError:
+                        pass
+                for i, a in enumerate(achievements):
+                    if i not in seen_in_order:
+                        reordered.append(a)
+                achievements = reordered
+            elif job_keywords:
+                def _ach_relevance(ach, _kws=job_keywords):
+                    text = (ach.get('text', '') if isinstance(ach, dict) else str(ach)).lower()
+                    tokens = set(re.findall(r'\b\w+\b', text))
+                    expanded: set = set()
+                    for t in tokens:
+                        c = self._expansion_index.get(t)
+                        if c:
+                            expanded.add(c.lower())
+                    return len((tokens | expanded) & {kw.lower() for kw in _kws})
+                achievements = sorted(achievements, key=_ach_relevance, reverse=True)
+
+            exp = dict(exp)
+            exp['ordered_achievements'] = achievements
+            ordered_experiences.append(exp)
+        selected_experiences = ordered_experiences
+
         # ── Achievements ──────────────────────────────────────────────────────
         scored_achievements = []
         for ach in all_achievements:
@@ -1301,34 +1412,49 @@ For manual generation:
     def _optimize_skills_for_ats(self, skills: List[Dict], job_analysis: Dict) -> List[str]:
         """Return a score-ordered, deduplicated subset of skill names.
 
+        Synonym expansion is applied so that a skill named 'ML' scores a
+        match against job keyword 'Machine Learning' and vice versa.
         Only reorders and selects skills — terminology is never renamed here.
         All vocabulary changes must come via :meth:`apply_approved_rewrites`
         before content reaches this method.
         """
         ats_keywords = set(kw.lower() for kw in job_analysis.get('ats_keywords', []))
         required_skills = set(skill.lower() for skill in job_analysis.get('required_skills', []))
-        
+
+        # Expand ATS keywords via synonym map so we can match either direction
+        expanded_ats: set = set(ats_keywords)
+        for kw in list(ats_keywords):
+            canonical = self._expansion_index.get(kw)
+            if canonical:
+                expanded_ats.add(canonical.lower())
+        expanded_required: set = set(required_skills)
+        for req in list(required_skills):
+            canonical = self._expansion_index.get(req)
+            if canonical:
+                expanded_required.add(canonical.lower())
+
         # Priority scoring for skills
         skill_scores = []
         for skill in skills:
             name = skill.get('name', '')
             name_lower = name.lower()
+            canonical_lower = self.canonical_skill_name(name).lower()
             years = skill.get('years', 0)
-            
+
             score = 0
-            # High priority for exact keyword matches
-            if name_lower in ats_keywords:
+            # High priority for exact keyword matches (direct or via synonym)
+            if name_lower in expanded_ats or canonical_lower in expanded_ats:
                 score += 50
-            if name_lower in required_skills:
+            if name_lower in expanded_required or canonical_lower in expanded_required:
                 score += 40
             # Years of experience bonus
             score += min(years * 2, 20)
-            
+
             skill_scores.append((name, score))
-        
+
         # Sort by score and return top skills
         skill_scores.sort(key=lambda x: x[1], reverse=True)
-        
+
         # Return optimized skill names (top 15 for ATS readability)
         return [skill[0] for skill in skill_scores[:15]]
     

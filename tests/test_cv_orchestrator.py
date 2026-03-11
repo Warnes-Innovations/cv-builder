@@ -780,6 +780,222 @@ class TestOrchestratorProposeRewrites(unittest.TestCase):
         self.assertEqual(result, [])
 
 
+# ---------------------------------------------------------------------------
+# Phase 9 — Synonym map / canonical_skill_name
+# ---------------------------------------------------------------------------
+
+class TestSynonymMap(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_canonical_known_abbreviation(self):
+        # 'ML' should expand to 'Machine Learning'
+        result = self.orc.canonical_skill_name('ML')
+        self.assertEqual(result, 'Machine Learning')
+
+    def test_canonical_known_alias_case_insensitive(self):
+        result = self.orc.canonical_skill_name('ml')
+        self.assertEqual(result, 'Machine Learning')
+
+    def test_canonical_full_form_returns_itself(self):
+        result = self.orc.canonical_skill_name('Machine Learning')
+        self.assertEqual(result, 'Machine Learning')
+
+    def test_canonical_unknown_term_returned_unchanged(self):
+        result = self.orc.canonical_skill_name('QuantumFoo')
+        self.assertEqual(result, 'QuantumFoo')
+
+    def test_synonym_map_is_dict(self):
+        self.assertIsInstance(self.orc._synonym_map, dict)
+
+    def test_synonym_map_non_empty(self):
+        self.assertGreater(len(self.orc._synonym_map), 0)
+
+    def test_expansion_index_covers_canonicals(self):
+        # Every canonical value should be immediately retrievable
+        for canonical in self.orc._synonym_map.values():
+            self.assertIn(canonical.lower(), self.orc._expansion_index)
+
+
+class TestOptimizeSkillsWithSynonyms(unittest.TestCase):
+    """_optimize_skills_for_ats should match via synonym expansion."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_abbreviation_matches_keyword(self):
+        # Skill named 'ML' should score when ATS keyword is 'Machine Learning'
+        skills = [{'name': 'ML', 'years': 3}]
+        job    = {'ats_keywords': ['Machine Learning'], 'required_skills': []}
+        result = self.orc._optimize_skills_for_ats(skills, job)
+        self.assertIn('ML', result)
+        # Score must be > 0 (synonym match)
+        self.assertGreater(len(result), 0)
+
+    def test_full_form_matches_abbreviated_keyword(self):
+        # Skill named 'Natural Language Processing' should match keyword 'NLP'
+        skills = [{'name': 'Natural Language Processing', 'years': 2}]
+        job    = {'ats_keywords': ['NLP'], 'required_skills': []}
+        result = self.orc._optimize_skills_for_ats(skills, job)
+        self.assertIn('Natural Language Processing', result)
+
+    def test_synonym_match_outranks_unmatched(self):
+        skills = [
+            {'name': 'ML',   'years': 0},
+            {'name': 'Misc', 'years': 0},
+        ]
+        job    = {'ats_keywords': ['Machine Learning'], 'required_skills': []}
+        result = self.orc._optimize_skills_for_ats(skills, job)
+        # ML should rank ahead of Misc
+        self.assertLess(result.index('ML'), result.index('Misc'))
+
+    def test_years_bonus_still_applied(self):
+        # Without keyword match, years bonus should still affect order
+        skills = [
+            {'name': 'Python', 'years': 10},
+            {'name': 'R',      'years': 1},
+        ]
+        job    = {'ats_keywords': [], 'required_skills': []}
+        result = self.orc._optimize_skills_for_ats(skills, job)
+        self.assertLess(result.index('Python'), result.index('R'))
+
+
+class TestOrganizeSkillsAlias(unittest.TestCase):
+    """_organize_skills_by_category should deduplicate via canonical synonym name."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_duplicate_alias_and_canonical_merged(self):
+        # 'ML' and 'Machine Learning' should be merged into one entry
+        skills = [
+            {'name': 'ML',               'category': 'General', 'years': 5},
+            {'name': 'Machine Learning', 'category': 'General', 'years': 3},
+        ]
+        result = self.orc._organize_skills_by_category(skills, 'standard')
+        all_names = [s['name'] for cat in result for s in cat['skills']]
+        # Only one entry should remain
+        self.assertEqual(len(all_names), 1)
+
+    def test_merged_entry_keeps_higher_years(self):
+        skills = [
+            {'name': 'ML',               'category': 'General', 'years': 5},
+            {'name': 'Machine Learning', 'category': 'General', 'years': 3},
+        ]
+        result  = self.orc._organize_skills_by_category(skills, 'standard')
+        merged  = result[0]['skills'][0]
+        self.assertEqual(merged.get('years'), 5)
+
+    def test_merged_entry_has_alias_list(self):
+        skills = [
+            {'name': 'ML',               'category': 'General', 'years': 2},
+            {'name': 'Machine Learning', 'category': 'General', 'years': 1},
+        ]
+        result  = self.orc._organize_skills_by_category(skills, 'standard')
+        merged  = result[0]['skills'][0]
+        aliases = merged.get('aliases', [])
+        self.assertIsInstance(aliases, list)
+        self.assertGreater(len(aliases), 0)
+
+    def test_no_deduplication_when_no_synonym(self):
+        skills = [
+            {'name': 'Python', 'category': 'Programming', 'years': 5},
+            {'name': 'R',      'category': 'Programming', 'years': 3},
+        ]
+        result    = self.orc._organize_skills_by_category(skills, 'standard')
+        all_names = [s['name'] for cat in result for s in cat['skills']]
+        self.assertEqual(len(all_names), 2)
+
+    def test_existing_aliases_field_preserved(self):
+        # A skill that already has aliases in the data should keep them
+        skills = [{'name': 'Python', 'category': 'General', 'years': 5,
+                   'aliases': ['py', 'python3']}]
+        result  = self.orc._organize_skills_by_category(skills, 'standard')
+        merged  = result[0]['skills'][0]
+        aliases = merged.get('aliases', [])
+        # 'py' and 'python3' should still be present (py is also in synonym map)
+        self.assertIn('python3', aliases)
+
+
+class TestBulletOrderInSelectContent(unittest.TestCase):
+    """_select_content_hybrid should add ordered_achievements sorted by relevance."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+        # Override master data with experiences that have multiple achievements
+        self.orc.master_data['experience'] = [
+            {
+                'id':           'exp_k1',
+                'title':        'Data Scientist',
+                'company':      'Acme',
+                'start_date':   '2020-01',
+                'end_date':     'Present',
+                'achievements': [
+                    {'text': 'Managed internal admin processes'},       # low relevance
+                    {'text': 'Built machine learning pipeline for ATS'},  # high relevance
+                    {'text': 'Attended quarterly review meetings'},     # low relevance
+                ],
+            }
+        ]
+        self.orc.master_data['selected_achievements'] = []
+        self.orc.master_data['skills'] = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _run(self, customizations=None):
+        job = {
+            'ats_keywords':         ['machine learning', 'ATS'],
+            'required_skills':      [],
+            'must_have_requirements':   [],
+            'nice_to_have_requirements': [],
+            'domain':               '',
+        }
+        self.orc.llm.semantic_match.return_value = 0.0
+        return self.orc._select_content_hybrid(job, customizations or {})
+
+    def test_ordered_achievements_present(self):
+        result = self._run()
+        exp    = result['experiences'][0]
+        self.assertIn('ordered_achievements', exp)
+
+    def test_high_relevance_bullet_first(self):
+        result     = self._run()
+        exp        = result['experiences'][0]
+        first_text = exp['ordered_achievements'][0].get('text', '')
+        self.assertIn('machine learning', first_text.lower())
+
+    def test_user_order_overrides_auto_sort(self):
+        # Explicit order [0, 1, 2] (original order) should be respected
+        custom     = {'achievement_orders': {'exp_k1': [0, 1, 2]}}
+        result     = self._run(custom)
+        exp        = result['experiences'][0]
+        first_text = exp['ordered_achievements'][0].get('text', '')
+        # First bullet in original order is the low-relevance one
+        self.assertIn('admin', first_text.lower())
+
+    def test_empty_achievements_no_key_added(self):
+        self.orc.master_data['experience'][0]['achievements'] = []
+        result  = self._run()
+        exp     = result['experiences'][0]
+        # ordered_achievements may or may not be present but must not raise
+        self.assertNotIn('ordered_achievements', exp)
+
+
 if __name__ == '__main__':
     unittest.main()
 

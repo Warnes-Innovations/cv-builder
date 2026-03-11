@@ -3322,6 +3322,7 @@
               <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Include - Standard treatment" onclick="handleActionClick('${expId}', 'include', 'experience')" style="font-size: 1.3em;">✓</button>
               <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize - Brief mention only" onclick="handleActionClick('${expId}', 'de-emphasize', 'experience')" style="color: #f59e0b; font-size: 1.5em;">➖</button>
               <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Exclude - Omit from CV" onclick="handleActionClick('${expId}', 'exclude', 'experience')" style="color: #ef4444; font-size: 1.3em;">✗</button>
+              <button class="icon-btn" title="Reorder bullet points for this experience" onclick="event.stopPropagation();showBulletReorder('${expId}', '${(title||'').replace(/'/g,'\\'')}')" style="color:#6366f1;font-size:1.1em;">↕</button>
             </td>
           </tr>
         `;
@@ -5047,6 +5048,145 @@
     }
 
     // ==== End Phase Re-entry Functions ====
+
+    // ==== Phase 9: Bullet Reorder Functions ====
+
+    async function showBulletReorder(expId, expTitle) {
+      // Fetch current achievements for this experience
+      let achievements = [];
+      try {
+        const res  = await fetch('/api/experience-details', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({experience_id: expId}),
+        });
+        const data = await res.json();
+        achievements = (data.experience && data.experience.achievements) || [];
+      } catch (e) {
+        appendMessage('system', '⚠ Could not load bullets: ' + e.message);
+        return;
+      }
+      if (!achievements.length) {
+        appendMessage('system', 'No bullet points found for this experience.');
+        return;
+      }
+
+      // Build modal content
+      const modal = document.createElement('div');
+      modal.id = 'bullet-reorder-modal';
+      modal.style.cssText = `
+        position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);
+        z-index:9999;display:flex;align-items:center;justify-content:center;`;
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:8px;padding:24px;max-width:640px;width:92%;
+                    max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+            <div>
+              <h3 style="margin:0;color:#1f2937;">↕ Reorder Bullets</h3>
+              <div style="color:#6b7280;font-size:0.9em;margin-top:4px;">${expTitle}</div>
+            </div>
+            <button onclick="document.getElementById('bullet-reorder-modal').remove()"
+              style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#6b7280;">✕</button>
+          </div>
+          <div style="font-size:0.85em;color:#6b7280;margin-bottom:12px;">
+            Use ↑ ↓ to reorder. Bullets higher in the list appear first on your CV.
+            The most relevant bullet will be auto-ranked highest if you reset.
+          </div>
+          <ol id="bullet-reorder-list" style="padding:0;margin:0;list-style:none;">
+          </ol>
+          <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
+            <button class="btn-secondary" onclick="resetBulletOrder('${expId}')">↺ Reset to Auto</button>
+            <button class="btn-primary"   onclick="saveBulletOrder('${expId}')">Save Order</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+
+      // Populate list items
+      const list = document.getElementById('bullet-reorder-list');
+      achievements.forEach((ach, idx) => {
+        const text = (typeof ach === 'object' ? (ach.text || '') : String(ach));
+        const li = document.createElement('li');
+        li.dataset.origIndex = idx;
+        li.style.cssText = `display:flex;align-items:flex-start;gap:8px;padding:8px;margin-bottom:6px;
+          background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;`;
+        li.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
+            <button title="Move up"   onclick="moveBullet(this,-1)"
+              style="background:none;border:1px solid #d1d5db;border-radius:3px;
+                     cursor:pointer;padding:1px 5px;line-height:1.2;font-size:0.9em;">↑</button>
+            <button title="Move down" onclick="moveBullet(this,+1)"
+              style="background:none;border:1px solid #d1d5db;border-radius:3px;
+                     cursor:pointer;padding:1px 5px;line-height:1.2;font-size:0.9em;">↓</button>
+          </div>
+          <span style="flex:1;font-size:0.9em;">${text}</span>`;
+        list.appendChild(li);
+      });
+      _updateBulletArrows();
+    }
+
+    function moveBullet(btn, direction) {
+      const li   = btn.closest('li');
+      const list = li.parentNode;
+      if (direction === -1 && li.previousElementSibling) {
+        list.insertBefore(li, li.previousElementSibling);
+      } else if (direction === +1 && li.nextElementSibling) {
+        list.insertBefore(li.nextElementSibling, li);
+      }
+      _updateBulletArrows();
+    }
+
+    function _updateBulletArrows() {
+      const list = document.getElementById('bullet-reorder-list');
+      if (!list) return;
+      const items = list.querySelectorAll('li');
+      items.forEach((li, idx) => {
+        const [upBtn, downBtn] = li.querySelectorAll('button');
+        upBtn.disabled   = idx === 0;
+        downBtn.disabled = idx === items.length - 1;
+        upBtn.style.opacity   = upBtn.disabled   ? '0.3' : '1';
+        downBtn.style.opacity = downBtn.disabled ? '0.3' : '1';
+      });
+    }
+
+    async function saveBulletOrder(expId) {
+      const list  = document.getElementById('bullet-reorder-list');
+      const items = list ? list.querySelectorAll('li') : [];
+      const order = Array.from(items).map(li => parseInt(li.dataset.origIndex, 10));
+      try {
+        const res  = await fetch('/api/reorder-bullets', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({experience_id: expId, order}),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          appendMessage('system', '⚠ Could not save bullet order: ' + (data.error||'Unknown'));
+          return;
+        }
+        appendMessage('assistant', '↕ Bullet order saved. It will apply when you generate the CV.');
+        document.getElementById('bullet-reorder-modal')?.remove();
+      } catch(e) {
+        appendMessage('system', '⚠ Network error saving bullet order: ' + e.message);
+      }
+    }
+
+    async function resetBulletOrder(expId) {
+      try {
+        const res  = await fetch('/api/reorder-bullets', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({experience_id: expId, order: []}),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          appendMessage('system', '⚠ Could not reset bullet order: ' + (data.error||'Unknown'));
+          return;
+        }
+        appendMessage('assistant', '↺ Bullet order reset. Relevance-based ordering will apply.');
+        document.getElementById('bullet-reorder-modal')?.remove();
+      } catch(e) {
+        appendMessage('system', '⚠ Network error resetting bullet order: ' + e.message);
+      }
+    }
+
+    // ==== End Bullet Reorder Functions ====
 
     function updateWorkflowSteps(status) {
       // 8-step workflow bar: Job Input → Analysis → Customise → Rewrites →

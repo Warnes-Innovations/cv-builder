@@ -1140,6 +1140,56 @@ Job Description (excerpt):
             return jsonify({"error": str(e)}), 500
 
 
+    @app.get("/api/synonym-lookup")
+    def synonym_lookup():
+        """Look up the canonical form of a skill or keyword via the synonym map.
+
+        Query param: ``?term=ML``
+        Returns ``{term, canonical, found}`` — ``found`` is False when no
+        mapping exists (canonical == term in that case).
+        """
+        term = request.args.get("term", "").strip()
+        if not term:
+            return jsonify({"error": "Missing term query parameter"}), 400
+        canonical = conversation.orchestrator.canonical_skill_name(term)
+        return jsonify({"term": term, "canonical": canonical, "found": canonical != term})
+
+    @app.get("/api/synonym-map")
+    def synonym_map():
+        """Return the full synonym map as ``{alias: canonical}``."""
+        return jsonify(conversation.orchestrator._synonym_map)
+
+    @app.post("/api/reorder-bullets")
+    def reorder_bullets():
+        """Persist a user-defined bullet ordering for one experience.
+
+        Body: ``{"experience_id": "exp_001", "order": [2, 0, 1]}``
+        ``order`` is a list of original achievement indices in the desired
+        display order.  Pass an empty list to reset to relevance-sorted order.
+        Returns ``{ok: true}``.
+        """
+        data = request.get_json(silent=True) or {}
+        exp_id = data.get("experience_id")
+        order  = data.get("order")
+        if not exp_id:
+            return jsonify({"error": "Missing experience_id"}), 400
+        if order is None:
+            return jsonify({"error": "Missing order list"}), 400
+        if not isinstance(order, list):
+            return jsonify({"error": "order must be a list of integers"}), 400
+        try:
+            achievement_orders = conversation.state.setdefault("achievement_orders", {})
+            if order:
+                achievement_orders[exp_id] = [int(i) for i in order]
+            else:
+                achievement_orders.pop(exp_id, None)  # reset → use auto relevance sort
+            conversation._save_session()
+            return jsonify({"ok": True, "experience_id": exp_id, "order": order})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+
     @app.post("/api/post-analysis-questions")
     def post_analysis_questions():
         """Generate post-analysis clarifying questions, preferably via LLM."""
