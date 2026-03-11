@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.config import get_config, validate_config, ConfigurationError
 from utils.llm_client import get_llm_provider
-from utils.cv_orchestrator import CVOrchestrator
+from utils.cv_orchestrator import CVOrchestrator, validate_ats_report
 from utils.conversation_manager import ConversationManager
 from utils.copilot_auth import CopilotAuthManager
 from utils.spell_checker import SpellChecker
@@ -1657,6 +1657,58 @@ Job Description (excerpt):
             result      = conversation.complete_spell_check(spell_audit)
             return jsonify({'ok': True, **result})
         except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    # ------------------------------------------------------------------ #
+    # ATS Validation + Page Count  (Phase 7)                              #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/api/ats-validate")
+    def ats_validate():
+        """Run 16-check ATS validation on the latest generated CV files.
+
+        Returns:
+            ``{"ok": true, "checks": [...], "page_count": int|null,
+               "summary": {"pass": N, "warn": N, "fail": N}}``
+        """
+        try:
+            generated = conversation.state.get('generated_files')
+            if not generated or not isinstance(generated, dict):
+                return jsonify({'ok': False, 'error': 'No CV files generated yet'}), 400
+
+            output_dir  = Path(generated.get('output_dir', ''))
+            if not output_dir.is_dir():
+                return jsonify({'ok': False, 'error': f'Output directory not found: {output_dir}'}), 404
+
+            job_analysis = conversation.state.get('job_analysis') or {}
+            if isinstance(job_analysis, str):
+                import json as _json
+                try:
+                    job_analysis = _json.loads(job_analysis)
+                except Exception:
+                    job_analysis = {}
+
+            checks, page_count = validate_ats_report(output_dir, job_analysis)
+
+            # Cache page_count in session state
+            if page_count is not None:
+                conversation.state['page_count'] = page_count
+
+            summary = {
+                'pass': sum(1 for c in checks if c['status'] == 'pass'),
+                'warn': sum(1 for c in checks if c['status'] == 'warn'),
+                'fail': sum(1 for c in checks if c['status'] == 'fail'),
+            }
+
+            return jsonify({
+                'ok':         True,
+                'checks':     checks,
+                'page_count': page_count,
+                'summary':    summary,
+            })
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
             return jsonify({'error': str(e)}), 500
 
     return app

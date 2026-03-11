@@ -974,7 +974,7 @@
             if (currentTab === 'cv') {
               populateCVTab(statusData.generated_files);
             } else if (currentTab === 'download') {
-              populateDownloadTab(statusData.generated_files);
+              await populateDownloadTab(statusData.generated_files);
             }
           }
         }
@@ -1352,7 +1352,7 @@
           break;
         case 'download':
           if (tabData.cv && Object.keys(tabData.cv).length > 0) {
-            populateDownloadTab(tabData.cv);
+            await populateDownloadTab(tabData.cv);
           } else {
             content.innerHTML = '<div class="empty-state"><div class="icon">⬇️</div><h3>Download</h3><p>Generate CV to enable downloads</p></div>';
           }
@@ -3813,127 +3813,175 @@
       content.innerHTML = html;
     }
 
-    function populateDownloadTab(cvData) {
+    async function populateDownloadTab(cvData) {
       // Store for persistence
       tabData.cv = cvData;
-      
+
       const content = document.getElementById('document-content');
       let html = '<h1>⬇️ Download Generated Files</h1>';
-      
+
       if (!cvData || (typeof cvData === 'object' && Object.keys(cvData).length === 0)) {
         html += '<div class="empty-state"><div class="icon">⬇️</div><h3>No Files Available</h3><p>Generate a CV first to see download options.</p></div>';
         content.innerHTML = html;
         return;
       }
-      
-      html += '<div class="download-section">';
-      html += '<p>Your CV has been generated in multiple formats. Click the links below to download:</p>';
-      html += '<div class="download-grid">';
-      
-      // Handle the orchestrator data structure: {output_dir: 'path', files: ['file1', 'file2'], metadata: {}}
+
+      content.innerHTML = html + '<p style="color:#6b7280;margin-bottom:16px;">Running ATS validation…</p>';
+
+      // ── Fetch ATS validation ────────────────────────────────────────────────
+      let checks = [], pageCount = null, atsSummary = {pass:0,warn:0,fail:0};
+      let atsError = null;
+      try {
+        const atsRes  = await fetch('/api/ats-validate');
+        const atsData = await atsRes.json();
+        if (atsData.ok) {
+          checks     = atsData.checks     || [];
+          pageCount  = atsData.page_count ?? null;
+          atsSummary = atsData.summary    || atsSummary;
+        } else {
+          atsError = atsData.error || 'Validation failed';
+        }
+      } catch (err) {
+        atsError = `Network error: ${err.message}`;
+      }
+
+      // ── Determine which formats are blocked ─────────────────────────────────
+      // Per spec:
+      //   - DOCX-specific failures → block DOCX downloads
+      //   - HTML/JSON-LD failures  → block HTML downloads
+      //   - PDF failures           → block PDF downloads
+      //   - ats_keyword_presence fail (format='all') → block ALL downloads
+      const keywordFail = checks.some(c => c.name === 'ats_keyword_presence' && c.status === 'fail');
+      const blockDocx   = keywordFail || checks.some(c => c.format === 'docx' && c.status === 'fail');
+      const blockHtml   = keywordFail || checks.some(c => c.format === 'html' && c.status === 'fail');
+      const blockPdf    = keywordFail || checks.some(c => c.format === 'pdf'  && c.status === 'fail');
+      const anyFail     = atsSummary.fail > 0;
+
+      // ── Collect files ────────────────────────────────────────────────────────
       const files = [];
-      
       if (typeof cvData === 'object' && cvData.files && Array.isArray(cvData.files)) {
-        // This is the structure returned by cv_orchestrator.generate_cv()
         for (const filename of cvData.files) {
-          let icon, description;
-          
+          let icon, description, fmt;
           if (filename.endsWith('.pdf')) {
-            if (filename.includes('ATS')) {
-              icon = '🤖';
-              description = 'ATS-optimized PDF - Machine-readable format for automated screening systems';
-            } else {
-              icon = '📄';
-              description = 'Human-readable PDF - Best for human readers and printing';
-            }
+            icon = filename.includes('ATS') ? '🤖' : '📄';
+            description = filename.includes('ATS')
+              ? 'ATS-optimised PDF — machine-readable for automated screening'
+              : 'Human-readable PDF — for human reviewers and printing';
+            fmt = 'pdf';
           } else if (filename.endsWith('.docx')) {
-            if (filename.includes('ATS')) {
-              icon = '📝';
-              description = 'ATS-optimized Word document - Keyword-optimized for job applications';
-            } else {
-              icon = '📝';
-              description = 'Human-readable Word document - Editable format';
-            }
+            icon = '📝';
+            description = filename.includes('ATS')
+              ? 'ATS-optimised Word document — keyword-optimised for job applications'
+              : 'Human-readable Word document — editable format';
+            fmt = 'docx';
           } else if (filename.endsWith('.html')) {
             icon = '🌐';
-            description = 'HTML format - Web-friendly version';
+            description = 'HTML format with embedded JSON-LD structured data';
+            fmt = 'html';
           } else if (filename === 'job_description.txt') {
-            icon = '📋';
-            description = 'Original job description reference';
+            icon = '📋'; description = 'Original job description reference'; fmt = 'other';
           } else {
-            icon = '📁';
-            description = 'Generated file';
+            icon = '📁'; description = 'Generated file'; fmt = 'other';
           }
-          
-          files.push({ filename, description, icon });
-        }
-      } else {
-        // Legacy structure or other format
-        for (const [fileType, fileData] of Object.entries(cvData)) {
-          let filename, description, icon;
-          
-          if (typeof fileData === 'string') {
-            // Simple string path case
-            filename = fileData.split('/').pop();
-          } else if (fileData && typeof fileData === 'object') {
-            // Object with metadata case
-            filename = fileData.filename || fileData.name;
-            description = fileData.description || '';
-          }
-          
-          if (filename) {
-            // Set icon and description based on file type
-            if (filename.endsWith('.pdf')) {
-              icon = '📄';
-              description = description || 'PDF format - Best for human readers';
-            } else if (filename.endsWith('.docx')) {
-              icon = '📝';
-              description = description || 'Word format - ATS optimized for job applications';
-            } else if (filename.endsWith('.html')) {
-              icon = '🌐';
-              description = description || 'HTML format - Web-friendly version';
-            } else {
-              icon = '📁';
-              description = description || 'Generated file';
-            }
-            
-            files.push({ filename, description, icon, fileType });
-          }
+          files.push({ filename, description, icon, fmt });
         }
       }
-      
-      if (files.length === 0) {
-        html += '<p>No downloadable files found. Please try generating your CV again.</p>';
-      } else {
-        for (const file of files) {
-          html += `
-            <div class="download-item">
-              <div class="download-icon">${file.icon}</div>
-              <div class="download-info">
-                <div class="download-name">${file.filename}</div>
-                <div class="download-description">${file.description}</div>
-              </div>
-              <a href="/api/download/${encodeURIComponent(file.filename)}" 
-                 class="download-link" 
-                 download="${file.filename}">
-                <button class="btn-download">Download</button>
-              </a>
-            </div>
-          `;
-        }
-      }
-      
-      html += '</div>'; // end download-grid
-      html += '</div>'; // end download-section
-      
-      // Add output directory info if available
-      if (cvData.output_dir) {
-        html += `<div style="margin-top: 20px; padding: 12px; background: #f1f5f9; border-radius: 6px; font-size: 14px; color: #64748b;">
-          <strong>Output Directory:</strong> ${cvData.output_dir}
+
+      // ── Build HTML ───────────────────────────────────────────────────────────
+      let out = '<h1>⬇️ Download Generated Files</h1>';
+
+      // Page count badge
+      if (pageCount !== null) {
+        const pageBad = pageCount < 1.5 || pageCount > 3;
+        out += `<div style="display:inline-flex;align-items:center;gap:8px;
+                  background:${pageBad ? '#fef9c3' : '#f0fdf4'};
+                  border:1px solid ${pageBad ? '#fde047' : '#bbf7d0'};
+                  border-radius:8px;padding:8px 14px;margin-bottom:16px;">
+          <span style="font-size:1.3em;">📄</span>
+          <strong>${pageCount} page${pageCount !== 1 ? 's' : ''}</strong>
+          ${pageBad ? `<span style="color:#d97706;font-size:0.88em;">⚠ Senior candidate target is 2–3 pages</span>` : '<span style="color:#166534;font-size:0.88em;">✓ Good length</span>'}
         </div>`;
       }
-      
-      content.innerHTML = html;
+
+      // ATS validation panel
+      if (atsError) {
+        out += `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:20px;">
+          <strong>⚠ ATS validation error:</strong> ${escapeHtml(atsError)}
+        </div>`;
+      } else if (checks.length > 0) {
+        const statusColour  = atsSummary.fail > 0 ? '#dc2626' : atsSummary.warn > 0 ? '#d97706' : '#166534';
+        const statusIcon    = atsSummary.fail > 0 ? '❌' : atsSummary.warn > 0 ? '⚠' : '✅';
+        out += `
+          <details open style="margin-bottom:20px;">
+            <summary style="cursor:pointer;font-weight:700;font-size:1em;padding:8px 0;color:${statusColour};">
+              ${statusIcon} ATS Report — ${atsSummary.pass} pass, ${atsSummary.warn} warn, ${atsSummary.fail} fail
+            </summary>
+            <table class="review-table" style="margin-top:10px;font-size:0.87em;">
+              <thead><tr><th>Check</th><th>Format</th><th>Status</th><th>Detail</th></tr></thead>
+              <tbody>`;
+        for (const chk of checks) {
+          const bg   = chk.status === 'pass' ? '#f0fdf4' : chk.status === 'warn' ? '#fef9c3' : '#fee2e2';
+          const icon = chk.status === 'pass' ? '✅' : chk.status === 'warn' ? '⚠' : '❌';
+          const fmtBadge = `<span style="font-size:11px;background:#e0e7ff;color:#3730a3;border-radius:6px;padding:1px 5px;">${escapeHtml(chk.format)}</span>`;
+          out += `<tr style="background:${bg};">
+            <td style="font-weight:600;">${escapeHtml(chk.label)}</td>
+            <td>${fmtBadge}</td>
+            <td style="text-align:center;">${icon}</td>
+            <td><small>${escapeHtml(chk.detail)}</small></td>
+          </tr>`;
+        }
+        out += `</tbody></table></details>`;
+
+        if (anyFail) {
+          out += `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:10px 16px;margin-bottom:20px;">
+            <strong>❌ Fix required:</strong> Some checks failed. Blocked formats are greyed out below.
+            ${keywordFail ? '<br><strong>ATS keyword failure blocks all downloads</strong> — re-run customisations to improve keyword coverage.' : ''}
+          </div>`;
+        }
+      }
+
+      // Download buttons
+      out += '<div class="download-section"><div class="download-grid">';
+      if (files.length === 0) {
+        out += '<p>No downloadable files found. Please try generating your CV again.</p>';
+      } else {
+        for (const file of files) {
+          const blocked = (file.fmt === 'docx' && blockDocx) ||
+                          (file.fmt === 'html' && blockHtml) ||
+                          (file.fmt === 'pdf'  && blockPdf);
+          const btnStyle = blocked
+            ? 'cursor:not-allowed;opacity:0.4;background:#9ca3af;border-color:#9ca3af;'
+            : '';
+          const blockedMsg = blocked
+            ? '<div style="font-size:0.78em;color:#dc2626;margin-top:4px;">⛔ Blocked — fix ATS failures first</div>'
+            : '';
+          out += `
+            <div class="download-item" style="${blocked ? 'opacity:0.75;' : ''}">
+              <div class="download-icon">${file.icon}</div>
+              <div class="download-info">
+                <div class="download-name">${escapeHtml(file.filename)}</div>
+                <div class="download-description">${escapeHtml(file.description)}</div>
+                ${blockedMsg}
+              </div>
+              ${blocked
+                ? `<button class="btn-download" disabled style="${btnStyle}">Blocked</button>`
+                : `<a href="/api/download/${encodeURIComponent(file.filename)}"
+                      class="download-link" download="${escapeHtml(file.filename)}">
+                     <button class="btn-download">Download</button>
+                   </a>`
+              }
+            </div>`;
+        }
+      }
+      out += '</div></div>';
+
+      if (cvData.output_dir) {
+        out += `<div style="margin-top:20px;padding:12px;background:#f1f5f9;border-radius:6px;font-size:14px;color:#64748b;">
+          <strong>Output Directory:</strong> ${escapeHtml(cvData.output_dir)}
+        </div>`;
+      }
+
+      content.innerHTML = out;
     }
 
     // ==== Rewrite Review Functions ====

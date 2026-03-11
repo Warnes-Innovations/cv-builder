@@ -1694,3 +1694,309 @@ For manual generation:
         doc.save(str(filepath))
         print(f"✓ Human DOCX: {filename}")
         return filepath
+
+
+# ── Module-level ATS validation ──────────────────────────────────────────────
+
+def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
+    """Run 16 ATS validation checks on the generated CV files.
+
+    Args:
+        output_dir:   Path to the job-specific output directory.
+        job_analysis: Job analysis dict (for ATS keyword checks).
+
+    Returns:
+        ``(checks, page_count)`` where *checks* is a list of dicts:
+        ``{name, label, format, status, detail}`` with status
+        ``'pass' | 'warn' | 'fail'`` and *page_count* is an ``int | None``.
+        *format* is ``'docx' | 'html' | 'pdf' | 'all'``.
+    """
+    import re as _re
+    import json as _json
+    import logging as _logging
+
+    checks: List[Dict] = []
+
+    def _chk(name: str, label: str, fmt: str, status: str, detail: str) -> None:
+        checks.append({'name': name, 'label': label, 'format': fmt,
+                       'status': status, 'detail': detail})
+
+    # ── locate files ─────────────────────────────────────────────────────────
+    ats_docx_files = sorted(output_dir.glob('*_ATS.docx'))
+    html_files     = sorted(output_dir.glob('*.html'))
+    pdf_files      = sorted(f for f in output_dir.glob('*.pdf')
+                            if '_ATS' not in f.name)
+
+    ats_docx  = ats_docx_files[0] if ats_docx_files else None
+    html_path = html_files[0]     if html_files     else None
+    pdf_path  = pdf_files[0]      if pdf_files      else None
+
+    # ── DOCX checks 1-8, 16 ──────────────────────────────────────────────────
+    DOCX_CHECKS = [
+        ('docx_text_selectable',       'DOCX text selectable'),
+        ('docx_zero_tables',           'No tables in DOCX'),
+        ('docx_zero_shapes',           'No text boxes / shapes'),
+        ('docx_contact_in_body',       'Contact info in body'),
+        ('docx_standard_headings',     'Standard heading text'),
+        ('docx_heading1_present',      'Heading 1 style present'),
+        ('docx_date_format_consistent','Consistent date formats'),
+        ('ats_keyword_presence',       'ATS keyword presence'),
+        ('docx_publications_heading',  'Publications heading text'),
+    ]
+
+    if ats_docx is None:
+        for name, label in DOCX_CHECKS:
+            fmt = 'all' if name == 'ats_keyword_presence' else 'docx'
+            _chk(name, label, fmt, 'fail', 'ATS DOCX file not found')
+    else:
+        try:
+            from docx import Document as _Document
+            doc        = _Document(str(ats_docx))
+            paragraphs = doc.paragraphs
+            docx_text  = '\n'.join(p.text for p in paragraphs if p.text.strip())
+
+            # 1 — text selectable
+            if len(docx_text) > 100:
+                _chk('docx_text_selectable', 'DOCX text selectable', 'docx',
+                     'pass', f'{len(docx_text):,} characters extracted')
+            else:
+                _chk('docx_text_selectable', 'DOCX text selectable', 'docx',
+                     'fail', 'Little or no text extracted — document may be image-based')
+
+            # 2 — zero tables
+            n_tables = len(doc.tables)
+            if n_tables == 0:
+                _chk('docx_zero_tables', 'No tables in DOCX', 'docx', 'pass', 'No tables found')
+            else:
+                _chk('docx_zero_tables', 'No tables in DOCX', 'docx', 'fail',
+                     f'{n_tables} table(s) — ATS parsers may skip table content')
+
+            # 3 — zero shapes
+            from docx.oxml.ns import qn as _qn
+            shapes = (doc.element.body.findall('.//' + _qn('v:textbox')) +
+                      doc.element.body.findall('.//' + _qn('mc:Fallback')))
+            if not shapes:
+                _chk('docx_zero_shapes', 'No text boxes / shapes', 'docx', 'pass', 'No shapes found')
+            else:
+                _chk('docx_zero_shapes', 'No text boxes / shapes', 'docx', 'warn',
+                     f'{len(shapes)} shape element(s) — content may be unreadable by ATS')
+
+            # 4 — contact in body
+            email_re = _re.compile(r'\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b')
+            if email_re.search(docx_text):
+                _chk('docx_contact_in_body', 'Contact info in body', 'docx', 'pass',
+                     'Email address found in document body')
+            else:
+                _chk('docx_contact_in_body', 'Contact info in body', 'docx', 'fail',
+                     'No email address in body text — ATS may miss contact info')
+
+            # 5 & 6 — headings
+            STANDARD = frozenset({
+                'experience', 'education', 'skills', 'summary', 'publications',
+                'certifications', 'achievements', 'awards', 'objective',
+                'work experience', 'professional experience', 'technical skills',
+                'professional summary', 'selected publications', 'contact',
+            })
+            heading_paras = [p for p in paragraphs if p.style.name.startswith('Heading')]
+            heading_texts = [p.text.strip() for p in heading_paras if p.text.strip()]
+            unexpected    = [t for t in heading_texts
+                             if not any(s in t.lower() for s in STANDARD)]
+            if not unexpected:
+                _chk('docx_standard_headings', 'Standard heading text', 'docx', 'pass',
+                     f'{len(heading_texts)} standard section heading(s) found')
+            else:
+                _chk('docx_standard_headings', 'Standard heading text', 'docx', 'warn',
+                     f'Unexpected heading(s): {", ".join(unexpected[:3])}')
+
+            h1_count = sum(1 for p in heading_paras if p.style.name == 'Heading 1')
+            if h1_count > 0:
+                _chk('docx_heading1_present', 'Heading 1 style present', 'docx', 'pass',
+                     f'{h1_count} Heading 1 paragraph(s) found')
+            else:
+                _chk('docx_heading1_present', 'Heading 1 style present', 'docx', 'warn',
+                     'No Heading 1 paragraphs — ATS relies on heading hierarchy')
+
+            # 7 — consistent dates
+            date_pats = [
+                (_re.compile(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\b'),
+                 'Mon YYYY'),
+                (_re.compile(r'\b\d{1,2}/\d{4}\b'), 'MM/YYYY'),
+            ]
+            found_fmts = {name for pat, name in date_pats if pat.search(docx_text)}
+            if len(found_fmts) <= 1:
+                _chk('docx_date_format_consistent', 'Consistent date formats', 'docx', 'pass',
+                     f'Date format: {next(iter(found_fmts), "not detected")}')
+            else:
+                _chk('docx_date_format_consistent', 'Consistent date formats', 'docx', 'fail',
+                     f'Mixed formats — {" and ".join(sorted(found_fmts))} — standardise to one')
+
+            # 8 — ATS keywords
+            ats_kws = [k.lower() for k in job_analysis.get('ats_keywords', [])[:15]]
+            if not ats_kws:
+                _chk('ats_keyword_presence', 'ATS keyword presence', 'all', 'warn',
+                     'No ATS keywords defined in job analysis')
+            else:
+                text_lower = docx_text.lower()
+                missing = [kw for kw in ats_kws if kw not in text_lower]
+                if not missing:
+                    _chk('ats_keyword_presence', 'ATS keyword presence', 'all', 'pass',
+                         f'All {len(ats_kws)} ATS keywords present')
+                elif len(missing) <= max(1, len(ats_kws) // 3):
+                    _chk('ats_keyword_presence', 'ATS keyword presence', 'all', 'warn',
+                         f'{len(missing)} keyword(s) missing: {", ".join(missing[:5])}')
+                else:
+                    _chk('ats_keyword_presence', 'ATS keyword presence', 'all', 'fail',
+                         (f'{len(missing)}/{len(ats_kws)} keywords missing: '
+                          f'{", ".join(missing[:5])}{"…" if len(missing) > 5 else ""}'))
+
+            # 16 — publications heading
+            pub_headings = [p for p in heading_paras if 'publication' in p.text.lower()]
+            if not pub_headings:
+                _chk('docx_publications_heading', 'Publications heading text', 'docx', 'pass',
+                     'No publications section (optional)')
+            else:
+                wrong = [p.text.strip() for p in pub_headings
+                         if p.text.strip() != 'Publications']
+                if not wrong:
+                    _chk('docx_publications_heading', 'Publications heading text', 'docx',
+                         'pass', 'Heading reads exactly "Publications"')
+                else:
+                    _chk('docx_publications_heading', 'Publications heading text', 'docx',
+                         'fail', f'Heading "{wrong[0]}" must be exactly "Publications"')
+
+        except Exception as exc:
+            for name, label in DOCX_CHECKS:
+                fmt = 'all' if name == 'ats_keyword_presence' else 'docx'
+                _chk(name, label, fmt, 'fail', f'DOCX check error: {exc}')
+
+    # ── HTML checks 9-12 ─────────────────────────────────────────────────────
+    HTML_CHECKS = [
+        ('html_jsonld_present',       'HTML JSON-LD present'),
+        ('html_jsonld_valid_person',  'JSON-LD is schema.org/Person'),
+        ('html_jsonld_knows_about',   'JSON-LD knowsAbout populated'),
+        ('html_required_fields',      'JSON-LD name + email present'),
+    ]
+    if html_path is None:
+        for name, label in HTML_CHECKS:
+            _chk(name, label, 'html', 'fail', 'HTML file not found')
+    else:
+        try:
+            from bs4 import BeautifulSoup as _BS
+            html_src    = html_path.read_text(encoding='utf-8', errors='replace')
+            soup        = _BS(html_src, 'html.parser')
+            jsonld_tags = soup.find_all('script', type='application/ld+json')
+
+            if not jsonld_tags:
+                for name, label in HTML_CHECKS:
+                    _chk(name, label, 'html', 'fail', 'No JSON-LD <script> block found')
+            else:
+                _chk('html_jsonld_present', 'HTML JSON-LD present', 'html', 'pass',
+                     f'{len(jsonld_tags)} JSON-LD block(s) found')
+                try:
+                    jld = _json.loads(jsonld_tags[0].string or '{}')
+                    # 10
+                    if (jld.get('@type') == 'Person' and
+                            str(jld.get('@context', '')).startswith('https://schema.org')):
+                        _chk('html_jsonld_valid_person', 'JSON-LD is schema.org/Person',
+                             'html', 'pass', '@type: Person with schema.org context')
+                    else:
+                        _chk('html_jsonld_valid_person', 'JSON-LD is schema.org/Person',
+                             'html', 'fail',
+                             f'@type="{jld.get("@type","missing")}", expected Person')
+                    # 11
+                    ka = jld.get('knowsAbout', [])
+                    if len(ka) >= 3:
+                        _chk('html_jsonld_knows_about', 'JSON-LD knowsAbout populated',
+                             'html', 'pass', f'{len(ka)} skills listed')
+                    elif ka:
+                        _chk('html_jsonld_knows_about', 'JSON-LD knowsAbout populated',
+                             'html', 'warn', f'Only {len(ka)} skill(s) in knowsAbout')
+                    else:
+                        _chk('html_jsonld_knows_about', 'JSON-LD knowsAbout populated',
+                             'html', 'fail', 'knowsAbout absent or empty')
+                    # 12
+                    missing_flds = [f for f in ('name', 'email') if not jld.get(f, '').strip()]
+                    if not missing_flds:
+                        _chk('html_required_fields', 'JSON-LD name + email present',
+                             'html', 'pass',
+                             f'name="{jld.get("name","")}", email="{jld.get("email","")}"')
+                    else:
+                        _chk('html_required_fields', 'JSON-LD name + email present',
+                             'html', 'fail',
+                             f'Missing required fields: {", ".join(missing_flds)}')
+                except _json.JSONDecodeError as exc:
+                    for name, label in HTML_CHECKS[1:]:
+                        _chk(name, label, 'html', 'fail', f'JSON-LD parse error: {exc}')
+
+        except Exception as exc:
+            for name, label in HTML_CHECKS:
+                _chk(name, label, 'html', 'fail', f'HTML check error: {exc}')
+
+    # ── WeasyPrint render checks 13, 15 ──────────────────────────────────────
+    page_count: Optional[int] = None
+    if html_path is None:
+        _chk('html_renders_ok',   'HTML renders without error',      'pdf', 'fail', 'HTML file not found')
+        _chk('pdf_no_clipping',   'No WeasyPrint clipping warnings', 'pdf', 'fail', 'HTML file not found')
+    else:
+        wp_warnings: List[str] = []
+
+        class _WPCapture(_logging.Handler):
+            def emit(self, record: _logging.LogRecord) -> None:
+                wp_warnings.append(record.getMessage())
+
+        wp_logger = _logging.getLogger('weasyprint')
+        _handler  = _WPCapture()
+        _handler.setLevel(_logging.WARNING)
+        wp_logger.addHandler(_handler)
+        try:
+            import weasyprint as _wp
+            html_str  = html_path.read_text(encoding='utf-8', errors='replace')
+            rendered  = _wp.HTML(string=html_str,
+                                 base_url=str(html_path.parent)).render()
+            page_count = len(rendered.pages)
+            _chk('html_renders_ok', 'HTML renders without error', 'pdf', 'pass',
+                 f'Rendered {page_count} page(s) successfully')
+            clip_warns = [w for w in wp_warnings
+                          if 'clip' in w.lower() or 'overflow' in w.lower()]
+            if not clip_warns:
+                _chk('pdf_no_clipping', 'No WeasyPrint clipping warnings', 'pdf', 'pass',
+                     'No clipping or overflow warnings')
+            else:
+                _chk('pdf_no_clipping', 'No WeasyPrint clipping warnings', 'pdf', 'warn',
+                     f'{len(clip_warns)} clipping warning(s): {clip_warns[0][:100]}')
+        except Exception as exc:
+            _chk('html_renders_ok', 'HTML renders without error', 'pdf', 'fail',
+                 f'WeasyPrint error: {str(exc)[:200]}')
+            _chk('pdf_no_clipping', 'No WeasyPrint clipping warnings', 'pdf', 'fail',
+                 'HTML render failed')
+        finally:
+            wp_logger.removeHandler(_handler)
+
+    # ── PDF size check 14 ────────────────────────────────────────────────────
+    if pdf_path is None:
+        _chk('pdf_us_letter', 'PDF page size is US Letter', 'pdf', 'fail', 'PDF file not found')
+    else:
+        try:
+            import pypdf as _pypdf
+            reader = _pypdf.PdfReader(str(pdf_path))
+            if reader.pages:
+                w = float(reader.pages[0].mediabox.width)
+                h = float(reader.pages[0].mediabox.height)
+                # Normalise to portrait
+                w, h = min(w, h), max(w, h)
+                if abs(w - 612) < 6 and abs(h - 792) < 6:
+                    _chk('pdf_us_letter', 'PDF page size is US Letter', 'pdf', 'pass',
+                         f'{w:.0f}×{h:.0f} pts — Letter')
+                elif abs(w - 595) < 6 and abs(h - 842) < 6:
+                    _chk('pdf_us_letter', 'PDF page size is US Letter', 'pdf', 'warn',
+                         f'{w:.0f}×{h:.0f} pts — appears A4, not US Letter')
+                else:
+                    _chk('pdf_us_letter', 'PDF page size is US Letter', 'pdf', 'warn',
+                         f'{w:.0f}×{h:.0f} pts — unexpected page size')
+            else:
+                _chk('pdf_us_letter', 'PDF page size is US Letter', 'pdf', 'fail', 'PDF has no pages')
+        except Exception as exc:
+            _chk('pdf_us_letter', 'PDF page size is US Letter', 'pdf', 'fail',
+                 f'PDF check error: {exc}')
+
+    return checks, page_count

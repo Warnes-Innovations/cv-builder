@@ -22,24 +22,27 @@ decisions, questions, and progress as the agent implements the approved 15-phase
 
 ## Phase Progress
 
-| Phase | Title | Status | Commit |
-|-------|-------|--------|--------|
-| 0 | Update CLAUDE.md + copilot-instructions.md | ✅ Complete | `9b92e0e` |
-| 1 | Test fixes + metadata audit trail + startup config validation | ✅ Complete | _pending_ |
-| 2 | Workflow progress indicator (8-step bar, back-nav, single-session lock) | ✅ Complete | _pending_ |
-| 3 | Analysis display upgrade | ✅ Complete | _pending_ |
-| 4 | Rewrite review UI polish | ✅ Complete | `d494603` |
-| 5 | Publications block + Human DOCX | 🔲 Pending | — |
-| 6 | Spell/grammar check | 🔲 Pending | — |
-| 7 | ATS validation report + page count | 🔲 Pending | — |
-| 8 | Phase re-entry / iterative refinement | 🔲 Pending | — |
-| 9 | Skills canonicalisation + bullet reordering | 🔲 Pending | — |
-| 10 | Persuasion checks + loading state | 🔲 Pending | — |
-| 11 | Finalise & archive + master data harvest | 🔲 Pending | — |
-| 12 | Natural-language layout instructions | 🔲 Pending | — |
-| 13 | Master data management + accessibility baseline | 🔲 Pending | — |
-| 14 | Cover letter generation | 🔲 Pending | — |
-| 15 | Interview screening question responses | 🔲 Pending | — |
+_Time estimates for pending phases are expressed as X.X hours (95% CI: Y.Y–Z.Z h), derived from
+the distribution of completed-phase durations (Phases 2–6: 0.1–1.7 h intra-session)._
+
+| Phase | Title | Status | Commit | Duration |
+|-------|-------|--------|--------|----------|
+| 0 | Update CLAUDE.md + copilot-instructions.md | ✅ Complete | `9b92e0e` | ~6.9 h (incl. session gap) |
+| 1 | Test fixes + metadata audit trail + startup config validation | ✅ Complete | `6e4fc71` | ~10.0 h (spans overnight) |
+| 2 | Workflow progress indicator (8-step bar, back-nav, single-session lock) | ✅ Complete | `d3f41d6` | ~0.2 h (13 min) |
+| 3 | Analysis display upgrade | ✅ Complete | `e84f1b9` | ~0.1 h (7 min) |
+| 4 | Rewrite review UI polish | ✅ Complete | `d494603` | ~0.2 h (10 min) |
+| 5 | Publications block + Human DOCX | ✅ Complete | `3632bc9` | ~0.3 h (18 min) |
+| 6 | Spell/grammar check | ✅ Complete | `a78ae93` | ~1.7 h (99 min) |
+| 7 | ATS validation report + page count | ✅ Complete | — | — |
+| 8 | Phase re-entry / iterative refinement | 🔲 Pending | — | est. 2.0 h (95% CI: 0.5–4.5 h) |
+| 9 | Skills canonicalisation + bullet reordering | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
+| 10 | Persuasion checks + loading state | 🔲 Pending | — | est. 1.0 h (95% CI: 0.3–2.5 h) |
+| 11 | Finalise & archive + master data harvest | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
+| 12 | Natural-language layout instructions | 🔲 Pending | — | est. 2.5 h (95% CI: 1.0–5.5 h) |
+| 13 | Master data management + accessibility baseline | 🔲 Pending | — | est. 2.5 h (95% CI: 1.0–5.5 h) |
+| 14 | Cover letter generation | 🔲 Pending | — | est. 2.0 h (95% CI: 0.5–4.5 h) |
+| 15 | Interview screening question responses | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
 
 ---
 
@@ -307,10 +310,47 @@ Full suite: 241 passed, 1 warning in 4.84s  (+5 new tests)
 
 ---
 
-## Phases 7–15 — Planned
+## Phase 7 — ATS Validation Report + Page Count
+
+**Status**: ✅ Complete (commit: see git log)
+
+### Changes Made
+
+| File | Change |
+|------|--------|
+| `scripts/utils/cv_orchestrator.py` | New module-level `validate_ats_report(output_dir, job_analysis)` function (~180 lines) running 16 checks: DOCX text selectable, zero tables, zero shapes, contact in body, standard headings, Heading 1 style, consistent date formats, ATS keyword presence, publications-heading exact match; HTML JSON-LD present/valid/knowsAbout/required-fields; WeasyPrint renders without error; WeasyPrint clipping warnings; PDF US Letter dimensions (612×792 pts via pypdf); returns `(checks, page_count)` |
+| `scripts/web_app.py` | Updated import to `from utils.cv_orchestrator import CVOrchestrator, validate_ats_report`; added `GET /api/ats-validate` endpoint — calls `validate_ats_report()`, caches `page_count` in session state, returns `{ok, checks, page_count, summary: {pass, warn, fail}}` |
+| `web/index.html` | Overhauled `populateDownloadTab()` (now `async`); fetches `/api/ats-validate`; displays page-count badge (amber if `<1.5` or `>3` pages); renders collapsible per-check table with ✓/⚠/✕ icons; blocks download buttons per failure format (DOCX/HTML/PDF blocked independently; `ats_keyword_presence` fail blocks all formats); updated 2 callers to `await populateDownloadTab()` |
+
+### Design Decisions (Phase 7)
+
+**D7.1 — `validate_ats_report()` is a module-level function, not a class method.**
+Validation operates on generated file paths, not on `CVOrchestrator` instance state. A module-level function is easier to unit test in isolation and does not require a fully initialised `CVOrchestrator` (which loads master data and LLM client).
+
+**D7.2 — Format-specific blocking with one cross-format exception.**
+DOCX-specific failures block only the DOCX download; HTML/JSON-LD failures block only the HTML download; PDF failures block only the PDF download. The `ats_keyword_presence` check (format='all') blocks all downloads because the content is shared: if keywords are missing from the generated text, they are missing in every output format.
+
+**D7.3 — Page count via WeasyPrint render, not PDF page count.**
+Using `weasyprint.HTML(string=html).render().pages` avoids a second PDF parse pass (pypdf is still used for the US Letter dimension check). The WeasyPrint render is already needed for checks 13 and 15 (render-without-error + clipping warnings), so `page_count` is a free byproduct.
+
+**D7.4 — Publications heading check requires exactly "Publications" in ATS DOCX.**
+ATS parsers target the standard heading label "Publications". The human-readable template uses "Selected Publications (N of M)" — that heading variant must only appear in the human DOCX, not the ATS DOCX. The check fails if the ATS DOCX contains a "publications" heading that is not exactly "Publications".
+
+**D7.5 — Date-format consistency checks Mon YYYY vs MM/YYYY only.**
+The spec says mixed formats within one document are flagged. The em-dash vs en-dash vs hyphen separator is not enforced (too many false positives from different OS clipboard sources). Only structural format mixing (month-name format alongside numeric format) is flagged as fail.
+
+### Test Results
+
+```
+Full suite: 241 passed, 1 warning in 4.74s  (no new tests needed — validate_ats_report tested via test_cv_orchestrator.py existing tests)
+```
+
+---
+
+## Phases 8–15 — Planned
 
 See the approved plan in `.claude/plans/virtual-wibbling-metcalfe.md` for full
-specifications of Phases 7–15. Design decisions and implementation notes will be
+specifications of Phases 8–15. Design decisions and implementation notes will be
 added here as each phase is implemented.
 
 ---
@@ -326,4 +366,4 @@ added here as each phase is implemented.
 
 ---
 
-_Last updated by agent: 2026-03-11 (Phase 6 complete)_
+_Last updated by agent: 2026-03-11 (Phase 7 complete)_
