@@ -549,8 +549,8 @@ async function setModel(model, provider) {
       const prov = (_modelData && _modelData.provider) || provider;
       label.textContent  = prov ? `${prov} · ${model}` : model;
     }
-    closeModelModal();
-    // Fire-and-forget connection test so the user sees a status badge quickly
+    // Keep the modal open so the user can click "Test connection"
+    // Fire-and-forget connection test so the result appears immediately
     testCurrentModel();
   } catch (e) {
     console.error('Failed to switch model:', e);
