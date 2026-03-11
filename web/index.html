@@ -440,6 +440,17 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    /* Loading state: progress bar at page top + pulsing active step */
+    #loading-progress-bar {
+      position: fixed; top: 0; left: 0; height: 3px; background: #6366f1;
+      z-index: 9998; transition: width 0.3s ease; width: 0;
+      box-shadow: 0 0 8px rgba(99,102,241,0.6);
+    }
+    @keyframes step-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.4); }
+      50%       { box-shadow: 0 0 0 4px rgba(99,102,241,0.1); }
+    }
+    .step.active.loading-step { animation: step-pulse 1.4s ease-in-out infinite; }
     .loading-message {
       display: flex;
       align-items: center;
@@ -3322,7 +3333,7 @@
               <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Include - Standard treatment" onclick="handleActionClick('${expId}', 'include', 'experience')" style="font-size: 1.3em;">✓</button>
               <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize - Brief mention only" onclick="handleActionClick('${expId}', 'de-emphasize', 'experience')" style="color: #f59e0b; font-size: 1.5em;">➖</button>
               <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Exclude - Omit from CV" onclick="handleActionClick('${expId}', 'exclude', 'experience')" style="color: #ef4444; font-size: 1.3em;">✗</button>
-              <button class="icon-btn" title="Reorder bullet points for this experience" onclick="event.stopPropagation();showBulletReorder('${expId}', '${(title||'').replace(/'/g,'\\'')}')" style="color:#6366f1;font-size:1.1em;">↕</button>
+              <button class="icon-btn" title="Reorder bullet points for this experience" onclick="event.stopPropagation();showBulletReorder('${expId}', '${(title||'').replace(/'/g, '&#39;')}')" style="color:#6366f1;font-size:1.1em;">↕</button>
             </td>
           </tr>
         `;
@@ -3982,6 +3993,55 @@
         </div>`;
       }
 
+      // ── Persuasion analysis ────────────────────────────────────────────────
+      // Show interim loading indicator while fetching
+      content.innerHTML = out + '<p style="color:#6b7280;margin-top:16px;font-size:0.9em;">Analysing bullet persuasiveness…</p>';
+      let persuasionHtml = '';
+      try {
+        const pRes  = await fetch('/api/persuasion-check');
+        const pData = await pRes.json();
+        if (pRes.ok && pData.ok) {
+          const ps = pData.summary;
+          const scoreColor = ps.flagged === 0 ? '#10b981' : ps.flagged <= 3 ? '#f59e0b' : '#ef4444';
+          const scoreLabel = ps.flagged === 0 ? 'Excellent' : ps.flagged <= 3 ? 'Good — minor improvements possible' : 'Needs attention';
+          persuasionHtml += `<div style="margin-top:20px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+            <div style="padding:14px 16px;background:#f8fafc;display:flex;justify-content:space-between;align-items:center;cursor:pointer;"
+                 onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+              <div>
+                <span style="font-weight:600;color:#1f2937;">💪 Bullet Persuasiveness</span>
+                <span style="margin-left:12px;background:${scoreColor};color:#fff;border-radius:4px;padding:2px 8px;font-size:0.8em;">${scoreLabel}</span>
+              </div>
+              <div style="font-size:0.85em;color:#6b7280;">
+                ${ps.strong_count}/${ps.total_bullets} strong · ${ps.flagged} flagged · click to ${ps.flagged>0?'expand':'collapse'}
+              </div>
+            </div>`;
+          if (pData.findings.length > 0) {
+            persuasionHtml += `<div style="padding:12px 16px;display:${ps.flagged<=3?'block':'none'};">`;
+            for (const f of pData.findings) {
+              const sev = f.severity === 'warning' ? {bg:'#fff7ed',border:'#f59e0b',label:'⚠ Warning'} : {bg:'#f0f9ff',border:'#3b82f6',label:'ℹ Info'};
+              persuasionHtml += `<div style="margin-bottom:12px;padding:10px 12px;background:${sev.bg};border-left:3px solid ${sev.border};border-radius:0 6px 6px 0;">
+                <div style="font-size:0.8em;color:#6b7280;margin-bottom:4px;">
+                  <span style="background:${sev.border};color:#fff;border-radius:3px;padding:1px 6px;font-size:0.9em;">${sev.label}</span>
+                  Bullet ${f.bullet_index + 1}${f.exp_id ? ' · ' + escapeHtml(f.exp_id) : ''}
+                </div>
+                <div style="font-size:0.9em;color:#374151;margin-bottom:6px;">"${escapeHtml(f.text.length > 120 ? f.text.slice(0,120)+'…' : f.text)}"</div>
+                <ul style="margin:0;padding-left:18px;">`;
+              for (const issue of f.issues) {
+                persuasionHtml += `<li style="font-size:0.85em;color:#6b7280;margin-bottom:2px;">${escapeHtml(issue.suggestion)}</li>`;
+              }
+              persuasionHtml += `</ul></div>`;
+            }
+            persuasionHtml += `</div>`;
+          } else {
+            persuasionHtml += `<div style="padding:12px 16px;color:#10b981;font-size:0.9em;">All bullets meet persuasiveness criteria.</div>`;
+          }
+          persuasionHtml += `</div>`;
+        }
+      } catch (e) { /* persuasion check is best-effort */ }
+
+      // Append persuasion panel to main output
+      out += persuasionHtml;
+
       // ── Refine buttons ────────────────────────────────────────────────────
       out += `<div style="margin-top:24px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;
                 border-radius:8px;">
@@ -4008,6 +4068,7 @@
     // ==== Rewrite Review Functions ====
 
     let rewriteDecisions = {};  // { id: { outcome: 'accept'|'reject'|'edit', final_text: null|string } }
+    let persuasionWarningsAcknowledged = false;  // Phase 10: track if user reviewed warnings
 
     async function fetchAndReviewRewrites() {
       const loadingMsg = appendLoadingMessage('Checking for text improvements...');
@@ -4022,14 +4083,24 @@
           return;
         }
         const rewrites = data.rewrites || [];
+        const warnings = data.persuasion_warnings || [];  // Phase 10
+
         if (rewrites.length === 0 || data.phase === 'generation') {
           // No rewrites — go straight to generation
           await sendAction('generate_cv');
           return;
         }
+
+        // Show persuasion warnings first (Phase 10)
+        persuasionWarningsAcknowledged = warnings.length === 0;  // Mark acknowledged if no warnings
+        if (warnings.length > 0) {
+          const msg = `⚠️ **${warnings.length}** persuasion check${warnings.length > 1 ? 's' : ''} flagged. Review these before submitting.`;
+          appendMessage('assistant', msg);
+        }
+
         // Show rewrite review panel
         rewriteDecisions = {};
-        renderRewritePanel(rewrites);
+        renderRewritePanel(rewrites, warnings);  // Pass warnings to panel
         switchTab('customizations');
         const n = rewrites.length;
         appendMessage('assistant', `✏️ I found **${n}** text improvement${n > 1 ? 's' : ''} to review. Look over each suggestion in the **Customizations** tab, then accept, edit, or reject each one before generating your CV.`);
@@ -4040,9 +4111,44 @@
       }
     }
 
-    function renderRewritePanel(rewrites) {
+    function renderRewritePanel(rewrites, warnings = []) {
       const content = document.getElementById('document-content');
-      content.innerHTML = `
+
+      // Build persuasion warnings section (Phase 10)
+      let warningsHtml = '';
+      if (warnings.length > 0) {
+        const warningsByType = {};
+        warnings.forEach(w => {
+          if (!warningsByType[w.flag_type]) warningsByType[w.flag_type] = 0;
+          warningsByType[w.flag_type]++;
+        });
+        const warningCounts = Object.entries(warningsByType)
+          .map(([type, count]) => `${count} ${type.replace(/_/g, ' ')}`)
+          .join(', ');
+
+        warningsHtml = `
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px;margin-bottom:20px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;" onclick="this.parentElement.querySelector('#warnings-detail').style.display = this.parentElement.querySelector('#warnings-detail').style.display === 'none' ? 'block' : 'none';">
+              <span style="font-size:20px;">⚠️</span>
+              <strong style="color:#991b1b;">Persuasion checks: ${warningCounts}</strong>
+              <span style="margin-left:auto;color:#7f1d1d;">▼</span>
+            </div>
+            <div id="warnings-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #fecaca;">
+              ${warnings.map(w => `
+                <div style="padding:8px;margin-bottom:8px;background:#fff7ed;border-left:3px solid #f97316;border-radius:4px;font-size:0.9em;">
+                  <strong>${w.flag_type.replace(/_/g, ' ')}</strong> at ${w.location}<br>
+                  <span style="color:#7c2d12;">${w.details}</span>
+                </div>
+              `).join('')}
+              <button style="margin-top:10px;padding:8px 12px;background:#991b1b;color:white;border:none;border-radius:4px;cursor:pointer;" onclick="persuasionWarningsAcknowledged = true; this.parentElement.parentElement.style.opacity = '0.6';">
+                ✓ Acknowledged
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      content.innerHTML = warningsHtml + `
         <div id="rewrite-panel">
           <h1>✏️ Review Text Improvements</h1>
           <p style="color:#6b7280;margin-bottom:20px;">
@@ -4586,6 +4692,40 @@
           if (action === 'recommend_customizations') {
             await handleCustomizationResponse(data.result);
           } else if (action === 'generate_cv') {
+            // Show generation progress (Phase 10)
+            const generationMsg = appendMessage('assistant', '⏳ Generating CV files (ATS DOCX → HTML → Human DOCX)...');
+
+            // Poll for progress updates
+            let progressPoled = false;
+            for (let i = 0; i < 120; i++) {  // poll for up to 2 minutes
+              await new Promise(r => setTimeout(r, 500));  // 500ms interval
+
+              try {
+                const statusRes = await fetch('/api/status');
+                const statusData = await statusRes.json();
+                const progress = statusData.generation_progress || [];
+
+                if (progress.length > 0) {
+                  progressPoled = true;
+                  const steps = progress.map(p =>
+                    `${p.status === 'complete' ? '✓' : '⏳'} ${p.step.replace(/_/g, ' ')} ${p.elapsed_ms ? `(${p.elapsed_ms}ms)` : ''}`
+                  ).join(' • ');
+
+                  // Update message
+                  if (generationMsg) {
+                    generationMsg.querySelector('.content').textContent = `Generating CV: ${steps}`;
+                  }
+                }
+
+                // Check if generation complete
+                if (progress.every(p => p.status === 'complete') && progress.length > 0) {
+                  break;
+                }
+              } catch (e) {
+                // Polling error, continue
+              }
+            }
+
             appendMessage('assistant', 'CV generated successfully!');
             tabData.cv = data.result;
             switchTab('cv');
@@ -4775,10 +4915,33 @@
       }
     }
 
-    function setLoading(loading) {
+    function setLoading(loading, label) {
       isLoading = loading;
       const buttons = document.querySelectorAll('button');
       buttons.forEach(btn => btn.disabled = loading);
+
+      // Progress bar
+      let bar = document.getElementById('loading-progress-bar');
+      if (loading) {
+        if (!bar) {
+          bar = document.createElement('div');
+          bar.id = 'loading-progress-bar';
+          document.body.prepend(bar);
+        }
+        // Animate to 70% to indicate in-progress (completing in fetchStatus)
+        requestAnimationFrame(() => { bar.style.width = '70%'; });
+        if (label) bar.title = label;
+      } else {
+        if (bar) {
+          bar.style.width = '100%';
+          setTimeout(() => bar.remove(), 400);
+        }
+      }
+
+      // Pulse the active workflow step
+      document.querySelectorAll('.step.active').forEach(el => {
+        el.classList.toggle('loading-step', loading);
+      });
     }
 
     function extractTitleAndCompanyFromJobText(jobText) {
