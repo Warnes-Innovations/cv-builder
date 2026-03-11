@@ -764,7 +764,7 @@
       <div class="arrow">→</div>
       <div class="step" id="step-rewrite" title="Rewrite review" onclick="handleStepClick('rewrite')">✏️ Rewrites</div>
       <div class="arrow">→</div>
-      <div class="step upcoming" id="step-spell" title="Spell &amp; grammar check (coming soon)">🔤 Spell Check</div>
+      <div class="step" id="step-spell" title="Spell &amp; grammar check" onclick="handleStepClick('spell')">🔤 Spell Check</div>
       <div class="arrow">→</div>
       <div class="step" id="step-generate" title="Generate CV files" onclick="handleStepClick('generate')">📄 Generate</div>
       <div class="arrow">→</div>
@@ -814,6 +814,7 @@
         <div class="tab" id="tab-analysis" data-tab="analysis">Analysis</div>
         <div class="tab" id="tab-customizations" data-tab="customizations">Customizations</div>
         <div class="tab" id="tab-rewrite" data-tab="rewrite">✏️ Rewrites</div>
+        <div class="tab" id="tab-spell" data-tab="spell">🔤 Spell Check</div>
         <div class="tab" id="tab-editor" data-tab="editor">CV Editor</div>
         <div class="tab" id="tab-cv" data-tab="cv">Generated CV</div>
         <div class="tab" id="tab-download" data-tab="download">Download</div>
@@ -1355,6 +1356,9 @@
           } else {
             content.innerHTML = '<div class="empty-state"><div class="icon">⬇️</div><h3>Download</h3><p>Generate CV to enable downloads</p></div>';
           }
+          break;
+        case 'spell':
+          await populateSpellCheckTab();
           break;
       }
     }
@@ -4206,8 +4210,8 @@
 
         const accepted = data.approved_count || 0;
         const rejected = data.rejected_count || 0;
-        appendMessage('assistant', `✅ Rewrite decisions recorded: ${accepted} accepted, ${rejected} rejected. Generating your CV now...`);
-        await sendAction('generate_cv');
+        appendMessage('assistant', `✅ Rewrite decisions recorded: ${accepted} accepted, ${rejected} rejected. Starting spell check…`);
+        switchTab('spell');
       } catch (err) {
         removeLoadingMessage(loadingMsg);
         setLoading(false);
@@ -4216,6 +4220,254 @@
     }
 
     // ==== End Rewrite Review Functions ====
+
+    // ==== Spell Check Functions ====
+
+    // Audit log for the current spell-check session: [{context_type, location, original, suggestion, rule, outcome, final}]
+    let spellAudit = [];
+
+    async function populateSpellCheckTab() {
+      const content = document.getElementById('document-content');
+      content.innerHTML = `
+        <h1>🔤 Spell &amp; Grammar Check</h1>
+        <p style="color:#6b7280;margin-bottom:24px;">Checking CV sections for spelling and grammar issues…</p>
+        <div id="spell-loading" style="text-align:center;padding:40px;">
+          <div class="loading-spinner"></div>
+          <p style="color:#6b7280;margin-top:12px;">Running LanguageTool checks…</p>
+        </div>
+        <div id="spell-results" style="display:none;"></div>
+      `;
+      spellAudit = [];
+
+      try {
+        // Fetch sections to check
+        const sectionsRes = await fetch('/api/spell-check-sections');
+        const sectionsData = await sectionsRes.json();
+        if (!sectionsData.ok) {
+          document.getElementById('spell-loading').innerHTML = `<p class="error-message">Failed to load sections: ${sectionsData.error || 'Unknown error'}</p>`;
+          return;
+        }
+
+        const sections = sectionsData.sections || [];
+        if (sections.length === 0) {
+          // Fast-path: no sections to check — advance phase immediately
+          await completeSpellCheckFastPath('No CV sections available to check.');
+          return;
+        }
+
+        // Check each section
+        const flaggedSections = [];
+        for (const section of sections) {
+          const res  = await fetch('/api/spell-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: section.text, context: section.context })
+          });
+          const data = await res.json();
+          if (data.ok && data.suggestions && data.suggestions.length > 0) {
+            flaggedSections.push({ section, suggestions: data.suggestions });
+          }
+        }
+
+        document.getElementById('spell-loading').style.display = 'none';
+
+        if (flaggedSections.length === 0) {
+          // Zero-flag fast-path
+          await completeSpellCheckFastPath(`Spell check passed — ${sections.length} section${sections.length !== 1 ? 's' : ''} checked, no issues found.`);
+          return;
+        }
+
+        // Render suggestions panel
+        renderSpellSuggestions(flaggedSections, sections.length);
+
+      } catch (err) {
+        console.error('Spell check error:', err);
+        document.getElementById('spell-loading').innerHTML = `<p style="color:#ef4444;padding:20px;">Spell check failed: ${err.message}</p>`;
+      }
+    }
+
+    async function completeSpellCheckFastPath(message) {
+      // Save empty audit and advance to generation
+      const res  = await fetch('/api/spell-check-complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spell_audit: [] })
+      });
+      const data = await res.json();
+      const content = document.getElementById('document-content');
+      content.innerHTML = `
+        <div style="text-align:center;padding:60px 20px;">
+          <div style="font-size:3em;margin-bottom:16px;">✅</div>
+          <h2 style="color:#166534;">${message}</h2>
+          <p style="color:#6b7280;margin:16px 0 24px;">Advancing to CV generation…</p>
+        </div>
+      `;
+      // Refresh status then navigate to CV tab and generate
+      await fetchStatus();
+      await sendAction('generate_cv');
+    }
+
+    function renderSpellSuggestions(flaggedSections, totalSections) {
+      const results = document.getElementById('spell-results');
+      results.style.display = '';
+
+      let html = `
+        <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:24px;">
+          <strong>⚠ ${flaggedSections.reduce((t, f) => t + f.suggestions.length, 0)} issue${flaggedSections.reduce((t, f) => t + f.suggestions.length, 0) !== 1 ? 's' : ''}</strong> found
+          across ${flaggedSections.length} of ${totalSections} section${totalSections !== 1 ? 's' : ''}.
+          Review each suggestion below, then click <strong>Done</strong>.
+        </div>
+      `;
+
+      flaggedSections.forEach(({ section, suggestions }) => {
+        html += `<div class="review-section" style="margin-bottom:24px;">
+          <h3 style="font-size:1em;font-weight:700;color:#374151;margin-bottom:12px;">${escapeHtml(section.label)}</h3>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.9em;white-space:pre-wrap;">${escapeHtml(section.text)}</div>
+        `;
+        suggestions.forEach((sug, idx) => {
+          const sugId = `sug_${section.id}_${idx}`;
+          const reps = sug.replacements || [];
+          html += `
+            <div class="spell-suggestion" id="${sugId}" data-section-id="${escapeHtml(section.id)}" data-idx="${idx}"
+                 style="border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:8px;background:#fff;">
+              <div style="display:flex;align-items:flex-start;gap:10px;">
+                <div style="flex:1;">
+                  <div style="font-size:0.88em;color:#6b7280;margin-bottom:4px;">
+                    <span style="background:#fee2e2;color:#dc2626;border-radius:4px;padding:1px 6px;font-weight:600;">${escapeHtml(sug.flagged)}</span>
+                    <span style="margin-left:8px;">${escapeHtml(sug.message)}</span>
+                  </div>
+                  <div style="font-style:italic;font-size:0.85em;color:#374151;margin-bottom:8px;">${escapeHtml(sug.snippet)}</div>
+                  ${reps.length > 0 ? `
+                  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+                    <span style="font-size:0.82em;color:#6b7280;align-self:center;">Suggestions:</span>
+                    ${reps.map((r, ri) => `<button class="rewrite-keyword" onclick="applySpellReplacement('${escapeHtml(section.id)}', ${idx}, ${ri})"
+                      style="cursor:pointer;border:1px solid #3b82f6;background:#dbeafe;">${escapeHtml(r)}</button>`).join('')}
+                  </div>` : ''}
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="icon-btn" onclick="dismissSpellSuggestion('${escapeHtml(sugId)}', '${escapeHtml(section.id)}', ${idx}, '${escapeHtml(sug.flagged)}')"
+                        title="Ignore this suggestion">Ignore</button>
+                    <button class="icon-btn" onclick="addSpellWord('${escapeHtml(sug.flagged)}', '${escapeHtml(sugId)}')"
+                        title="Add to custom dictionary">Add to Dictionary</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+          // Register in audit as pending
+          if (!window._spellSugMap) window._spellSugMap = {};
+          window._spellSugMap[`${section.id}_${idx}`] = {
+            context_type: section.context,
+            location:     section.label,
+            original:     sug.flagged,
+            suggestion:   (reps[0] || ''),
+            rule:         sug.rule_id || '',
+            outcome:      'pending',
+            final:        sug.flagged,
+          };
+        });
+        html += '</div>';
+      });
+
+      html += `
+        <div class="nav-buttons" style="margin:24px 0;">
+          <button class="submit-btn" onclick="submitSpellCheckDecisions()">Done — Generate CV</button>
+        </div>
+      `;
+      results.innerHTML = html;
+    }
+
+    function applySpellReplacement(sectionId, idx, repIdx) {
+      const key  = `${sectionId}_${idx}`;
+      const entry = (window._spellSugMap || {})[key];
+      if (!entry) return;
+      // The replacements list is not directly accessible here — read from DOM suggestion
+      const sugEl = document.querySelector(`.spell-suggestion[data-section-id="${CSS.escape(sectionId)}"][data-idx="${idx}"]`);
+      if (!sugEl) return;
+      const buttons = sugEl.querySelectorAll('.rewrite-keyword');
+      const rep = buttons[repIdx] ? buttons[repIdx].textContent.trim() : '';
+      entry.outcome = 'accept';
+      entry.final   = rep;
+      // Visual feedback: strike the flagged word, show replacement
+      const flaggedSpan = sugEl.querySelector('span[style*="background:#fee2e2"]');
+      if (flaggedSpan) {
+        flaggedSpan.outerHTML = `<del style="color:#dc2626;">${escapeHtml(entry.original)}</del> → <ins style="color:#166534;text-decoration:none;">${escapeHtml(rep)}</ins>`;
+      }
+      sugEl.style.opacity = '0.5';
+    }
+
+    function dismissSpellSuggestion(sugId, sectionId, idx, word) {
+      const key   = `${sectionId}_${idx}`;
+      const entry = (window._spellSugMap || {})[key];
+      if (entry) { entry.outcome = 'reject'; entry.final = word; }
+      const el = document.getElementById(sugId);
+      if (el) el.style.opacity = '0.4';
+    }
+
+    async function addSpellWord(word, sugId) {
+      try {
+        const res = await fetch('/api/custom-dictionary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          const el = document.getElementById(sugId);
+          if (el) {
+            el.style.opacity = '0.4';
+            const msg = document.createElement('div');
+            msg.style.cssText = 'color:#166534;font-size:0.85em;margin-top:4px;';
+            msg.textContent = `"${word}" added to dictionary.`;
+            el.appendChild(msg);
+          }
+          // Also record in audit
+          const parts = sugId.replace(/^sug_/, '').split('_');
+          const idx = parseInt(parts.pop(), 10);
+          const sectionId = parts.join('_');
+          const key = `${sectionId}_${idx}`;
+          const entry = (window._spellSugMap || {})[key];
+          if (entry) { entry.outcome = 'add_dict'; entry.final = word; }
+        }
+      } catch (err) {
+        console.error('Error adding to dictionary:', err);
+      }
+    }
+
+    async function submitSpellCheckDecisions() {
+      // Collect audit from _spellSugMap
+      const audit = Object.values(window._spellSugMap || {}).filter(e => e.outcome !== 'pending');
+      // Remaining 'pending' items are implicitly accepted as-is
+      Object.values(window._spellSugMap || {}).forEach(e => {
+        if (e.outcome === 'pending') { e.outcome = 'ignore'; audit.push(e); }
+      });
+      spellAudit = audit;
+
+      const loadingMsg = appendLoadingMessage('Saving spell check decisions…');
+      setLoading(true);
+      try {
+        const res  = await fetch('/api/spell-check-complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spell_audit: spellAudit })
+        });
+        const data = await res.json();
+        removeLoadingMessage(loadingMsg);
+        setLoading(false);
+        if (!res.ok) {
+          showAlertModal('❌ Error', `Failed to save spell check: ${data.error || 'Unknown error'}`);
+          return;
+        }
+        appendMessage('assistant', `✅ Spell check complete — ${spellAudit.length} item${spellAudit.length !== 1 ? 's' : ''} reviewed. Generating your CV…`);
+        await fetchStatus();
+        await sendAction('generate_cv');
+      } catch (err) {
+        removeLoadingMessage(loadingMsg);
+        setLoading(false);
+        showAlertModal('❌ Error', `Spell check error: ${err.message}`);
+      }
+    }
+
+    // ==== End Spell Check Functions ====
 
     async function fetchWithRetry(url, options = {}, maxRetries = 3) {
       for (let i = 0; i < maxRetries; i++) {
@@ -4636,11 +4888,10 @@
 
     function updateWorkflowSteps(status) {
       // 8-step workflow bar: Job Input → Analysis → Customise → Rewrites →
-      //                      Spell Check (upcoming) → Generate → Layout (upcoming) → Finalise
+      //                      Spell Check → Generate → Layout (upcoming) → Finalise
       //
-      // 'upcoming' steps (spell, layout) are not yet implemented; they keep their
-      // static .upcoming class and never become active or completed.
-      const UPCOMING = new Set(['spell', 'layout']);
+      // 'upcoming' steps (layout) are not yet implemented.
+      const UPCOMING = new Set(['layout']);
 
       // Determine which steps are done based on session state fields.
       const phase = status.phase || '';
@@ -4649,6 +4900,7 @@
         analysis:       !!status.job_analysis,
         customizations: !!status.customizations,
         rewrite:        phase !== 'rewrite_review' && (!!status.customizations),
+        spell:          phase === 'generation' || phase === 'refinement',
         generate:       !!status.generated_files,
         finalise:       phase === 'refinement' && !!status.generated_files,
       };
@@ -4659,6 +4911,7 @@
         'job_analysis':  'analysis',
         'customization': 'customizations',
         'rewrite_review':'rewrite',
+        'spell_check':   'spell',
         'generation':    'generate',
         'refinement':    'finalise',
       };
@@ -4670,7 +4923,7 @@
         if (!el) return;
         // Upcoming steps are fixed — never change their class.
         if (UPCOMING.has(step)) return;
-        el.classList.remove('active', 'completed', 'clickable');
+        el.classList.remove('active', 'completed', 'clickable', 'upcoming');
         if (step === activeStep) {
           el.classList.add('active');
         } else if (done[step]) {
@@ -4697,6 +4950,7 @@
         analysis:       'analysis',
         customizations: 'customizations',
         rewrite:        'rewrite',
+        spell:          'spell',
         generate:       'cv',
         finalise:       'download',
       };

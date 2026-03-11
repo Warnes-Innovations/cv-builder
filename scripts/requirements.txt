@@ -17,6 +17,7 @@ transformers>=4.30.0
 spacy>=3.6.0
 blis==0.7.9
 nltk>=3.8
+language-tool-python>=3.3.0
 
 # BibTeX Processing
 pybtex>=0.24.0

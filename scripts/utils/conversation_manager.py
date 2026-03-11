@@ -31,7 +31,7 @@ class ConversationManager:
         self.config = config or get_config()
         self.conversation_history: List[Dict[str, str]] = []
         self.state = {
-            'phase':              'init',  # init, job_analysis, customization, rewrite_review, generation, refinement
+            'phase':              'init',  # init, job_analysis, customization, rewrite_review, spell_check, generation, refinement
             'position_name':      None,
             'job_description':    None,
             'job_analysis':       None,
@@ -630,13 +630,36 @@ Ask questions that are specific to this job posting, not generic career question
 
         self.state['approved_rewrites'] = approved
         self.state['rewrite_audit']     = audit
-        self.state['phase']             = 'generation'
+        self.state['phase']             = 'spell_check'
         self._save_session()
 
         n_rejected = sum(1 for d in decisions if d.get('outcome') == 'reject')
         return {
             'approved_count': len(approved),
             'rejected_count': n_rejected,
+            'phase':          'spell_check',
+        }
+
+    def complete_spell_check(self, spell_audit: list) -> Dict:
+        """Record spell-check outcomes and advance phase to *generation*.
+
+        Args:
+            spell_audit: List of audit entries.  Each entry is a dict with
+                keys: ``context_type, location, original, suggestion, rule,
+                outcome, final``.
+
+        Returns:
+            ``{"flag_count": int, "accepted_count": int, "phase": "generation"}``
+        """
+        self.state['spell_audit'] = spell_audit or []
+        self.state['phase']       = 'generation'
+        self._save_session()
+        spell_audit    = spell_audit or []
+        flag_count     = len(spell_audit)
+        accepted_count = sum(1 for a in spell_audit if a.get('outcome') == 'accept')
+        return {
+            'flag_count':     flag_count,
+            'accepted_count': accepted_count,
             'phase':          'generation',
         }
 

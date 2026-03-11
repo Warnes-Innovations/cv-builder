@@ -269,15 +269,41 @@ Full suite: 236 passed, 1 warning in 4.53s
 
 ## Phase 6 — Spell/Grammar Check
 
-**Status**: 🔲 Pending (blocked on Q3 above)
+**Status**: ✅ Complete (commit: see git log)
 
-### Planned Changes
-- `scripts/utils/spell_checker.py` (new, wraps `language-tool-python`)
-- Context-aware suppression (sentence fragments in bullet context)
-- Custom dictionary from master CV skill names
-- `/api/spell-check` + `/api/custom-dictionary` endpoints
-- Zero-flag fast-path (auto-advance)
-- `spell_audit[]` in `metadata.json`
+### Changes Made
+
+| File | Change |
+|------|--------|
+| `scripts/utils/spell_checker.py` | New module — `SpellChecker` class wrapping `language_tool_python`; lazy JVM init; suppresses `SENTENCE_FRAGMENT`, `PUNCTUATION_PARAGRAPH`, `UPPERCASE_SENTENCE_START` for bullet context; skips all grammar checks for skill context; loads/saves `~/CV/custom_dictionary.json`; `prepopulate_from_skills()` auto-populates from master data |
+| `scripts/requirements.txt` | Added `language-tool-python>=3.3.0` |
+| `scripts/utils/conversation_manager.py` | `submit_rewrite_decisions()` now advances to `spell_check` phase (was `generation`); new `complete_spell_check(spell_audit)` method — stores `spell_audit[]` in state, advances to `generation`, returns `{flag_count, accepted_count, phase}` |
+| `scripts/web_app.py` | Imported `SpellChecker`; added lazy singleton `_spell_checker`; added `GET /api/spell-check-sections` (returns summary + approved-rewrite texts); added `POST /api/spell-check` (single-section check); added `GET /api/custom-dictionary`; added `POST /api/custom-dictionary`; added `POST /api/spell-check-complete` (saves audit, calls `complete_spell_check`) |
+| `web/index.html` | Added `tab-spell` tab between Rewrites and CV Editor; removed `step-spell` from UPCOMING set; updated `updateWorkflowSteps()` to handle `spell_check` phase and mark spell step done when phase is `generation`/`refinement`; added `spell_check` to `phaseToStep` map; added `spell` to `stepToTab` map; changed post-rewrite submission to navigate to spell tab instead of calling `generate_cv`; added `populateSpellCheckTab()`, `completeSpellCheckFastPath()`, `renderSpellSuggestions()`, `applySpellReplacement()`, `dismissSpellSuggestion()`, `addSpellWord()`, `submitSpellCheckDecisions()` |
+| `tests/test_conversation_manager.py` | Updated `test_phase_advances_to_generation` + `test_empty_decisions_returns_zeros` to expect `'spell_check'`; added `TestCompleteSpellCheck` class with 5 tests |
+
+### Design Decisions (Phase 6)
+
+**D6.1 — Lazy JVM init on `SpellChecker._get_tool()`.**
+LanguageTool starts a local Java process. Doing this at import/app-init time would add several seconds to startup and fail if Java is unavailable. Lazy init on the first `/api/spell-check` call keeps startup fast and allows graceful degradation.
+
+**D6.2 — `phase: spell_check` inserted between `rewrite_review` and `generation`.**
+The plan calls for a dedicated spell-check workflow step. Rather than running spell check inside the `generate_cv` action (which would block cancellation or re-run), it's a separate phase with its own `complete_spell_check()` transition method. The `generate_cv` action doesn't check the incoming phase, so it still works when called from `spell_check` directly (fast-path).
+
+**D6.3 — Zero-flag fast-path auto-advances without rendering the panel.**
+If all sections return 0 suggestions, `populateSpellCheckTab()` immediately calls `/api/spell-check-complete` with an empty audit, shows a brief success message, refreshes status, and calls `generate_cv`. No user interaction is required.
+
+**D6.4 — Sections are fetched from session state, not from a pre-generation render.**
+The spell check runs on: (a) the professional summary from master data, and (b) the `proposed` text of every approved rewrite. This is the text the user has already seen and approved — checking it prevents typos introduced during edit mode. Post-generation HTML text is not re-checked (that would require parsing the output, added complexity without clear benefit).
+
+**D6.5 — Custom dictionary pre-populates from skill names.**
+Technical skill names (e.g. "scikit-learn", "dplyr", "GWAS") would generate false MORFOLOGIK flags. `_prepopulate_spell_dict()` (called on first `/api/spell-check` request) loads all skills from `master_data` + the candidate's name into the custom dictionary in `~/CV/custom_dictionary.json`.
+
+### Test Results
+
+```
+Full suite: 241 passed, 1 warning in 4.84s  (+5 new tests)
+```
 
 ---
 
@@ -300,4 +326,4 @@ added here as each phase is implemented.
 
 ---
 
-_Last updated by agent: 2026-03-11 (Phase 5 complete)_
+_Last updated by agent: 2026-03-11 (Phase 6 complete)_

@@ -205,7 +205,7 @@ class TestSubmitRewriteDecisions(unittest.TestCase):
     def test_phase_advances_to_generation(self):
         self.cm.state['phase'] = 'rewrite_review'
         self.cm.submit_rewrite_decisions([])
-        self.assertEqual(self.cm.state['phase'], 'generation')
+        self.assertEqual(self.cm.state['phase'], 'spell_check')
 
     def test_save_session_called(self):
         with self._save_spy() as mock_save:
@@ -216,7 +216,50 @@ class TestSubmitRewriteDecisions(unittest.TestCase):
         summary = self.cm.submit_rewrite_decisions([])
         self.assertEqual(summary['approved_count'], 0)
         self.assertEqual(summary['rejected_count'], 0)
-        self.assertEqual(summary['phase'],          'generation')
+        self.assertEqual(summary['phase'],          'spell_check')
+
+
+# ---------------------------------------------------------------------------
+# 3.15 complete_spell_check
+# ---------------------------------------------------------------------------
+
+class TestCompleteSpellCheck(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm  = _make_manager(self.tmp)
+        self.cm.state['phase'] = 'spell_check'
+        self.cm.state['customizations'] = {'recommended_experiences': []}
+
+    def test_phase_advances_to_generation(self):
+        self.cm.complete_spell_check([])
+        self.assertEqual(self.cm.state['phase'], 'generation')
+
+    def test_empty_audit_stored(self):
+        self.cm.complete_spell_check([])
+        self.assertEqual(self.cm.state['spell_audit'], [])
+
+    def test_audit_entries_stored(self):
+        audit = [{'context_type': 'bullet', 'location': 'Exp', 'original': 'teh', 'suggestion': 'the',
+                  'rule': 'MORFOLOGIK_RULE_EN_US', 'outcome': 'accept', 'final': 'the'}]
+        self.cm.complete_spell_check(audit)
+        self.assertEqual(self.cm.state['spell_audit'], audit)
+
+    def test_return_values(self):
+        audit = [
+            {'outcome': 'accept', 'original': 'teh', 'suggestion': 'the', 'final': 'the',
+             'context_type': 'bullet', 'location': 'X', 'rule': 'r'},
+            {'outcome': 'reject', 'original': 'foo', 'suggestion': 'bar', 'final': 'foo',
+             'context_type': 'summary', 'location': 'Y', 'rule': 'r'},
+        ]
+        result = self.cm.complete_spell_check(audit)
+        self.assertEqual(result['flag_count'], 2)
+        self.assertEqual(result['accepted_count'], 1)
+        self.assertEqual(result['phase'], 'generation')
+
+    def test_none_audit_treated_as_empty(self):
+        self.cm.complete_spell_check(None)
+        self.assertEqual(self.cm.state['spell_audit'], [])
 
 
 # ---------------------------------------------------------------------------

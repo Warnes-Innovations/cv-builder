@@ -41,6 +41,7 @@ from utils.llm_client import get_llm_provider
 from utils.cv_orchestrator import CVOrchestrator
 from utils.conversation_manager import ConversationManager
 from utils.copilot_auth import CopilotAuthManager
+from utils.spell_checker import SpellChecker
 
 
 def create_app(args) -> Flask:
@@ -1528,6 +1529,135 @@ Job Description (excerpt):
             import traceback
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
+
+    # ------------------------------------------------------------------ #
+    # Spell / Grammar Check endpoints  (Phase 6)                          #
+    # ------------------------------------------------------------------ #
+
+    # Lazy singleton — the LanguageTool JVM starts on first call.
+    _spell_checker: SpellChecker = SpellChecker()
+
+    def _prepopulate_spell_dict() -> None:
+        """Load skill names from master data into the custom dictionary once."""
+        try:
+            skills = orchestrator.master_data.get('skills', {})
+            # skills may be a list, dict of categories, or flat list
+            all_names: list = []
+            if isinstance(skills, dict):
+                for cat_skills in skills.values():
+                    if isinstance(cat_skills, list):
+                        all_names.extend(cat_skills)
+            elif isinstance(skills, list):
+                all_names = [s if isinstance(s, str) else str(s) for s in skills]
+            # Also add candidate name
+            pinfo = orchestrator.master_data.get('personal_info', {})
+            name = pinfo.get('name', '')
+            if name:
+                all_names.append(name)
+            _spell_checker.prepopulate_from_skills(all_names)
+        except Exception:
+            pass
+
+    @app.get("/api/spell-check-sections")
+    def spell_check_sections():
+        """Return the text sections that need spell checking for the current session."""
+        sections = []
+        try:
+            state = conversation.state
+
+            # Professional summary (from master data or post-analysis answers)
+            post_answers = state.get('post_analysis_answers') or {}
+            summary_text = post_answers.get('custom_summary', '')
+            if not summary_text:
+                summaries = orchestrator.master_data.get('professional_summaries', {})
+                summary_text = summaries.get('default', '') or next(iter(summaries.values()), '')
+            if summary_text:
+                sections.append({
+                    'id':      'summary',
+                    'label':   'Professional Summary',
+                    'text':    summary_text,
+                    'context': 'summary',
+                })
+
+            # Approved rewrite proposed texts
+            approved_rewrites = state.get('approved_rewrites') or []
+            for r in approved_rewrites:
+                proposed = r.get('proposed', '')
+                if not proposed:
+                    continue
+                location = r.get('id', '') or r.get('section', 'bullet')
+                sections.append({
+                    'id':      f"rewrite_{r.get('id', location)}",
+                    'label':   f"Rewrite: {location}",
+                    'text':    proposed,
+                    'context': 'bullet',
+                })
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+        return jsonify({'ok': True, 'sections': sections})
+
+    @app.post("/api/spell-check")
+    def spell_check_text():
+        """Check a single text fragment.
+
+        Body: ``{"text": "...", "context": "bullet"|"summary"|"skill"}``
+        Returns: ``{"ok": true, "suggestions": [...]}``
+        """
+        try:
+            body    = request.get_json(force=True) or {}
+            text    = body.get('text', '')
+            context = body.get('context', 'bullet')
+            if context not in ('bullet', 'summary', 'skill'):
+                context = 'bullet'
+
+            _prepopulate_spell_dict()
+            suggestions = _spell_checker.check(text, context=context)
+            return jsonify({'ok': True, 'suggestions': suggestions})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.get("/api/custom-dictionary")
+    def custom_dictionary_get():
+        """Return the current custom dictionary word list."""
+        try:
+            words = _spell_checker.get_custom_dict()
+            return jsonify({'ok': True, 'words': words})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.post("/api/custom-dictionary")
+    def custom_dictionary_add():
+        """Add a word to the custom dictionary.
+
+        Body: ``{"word": "MyTechTerm"}``
+        Returns: ``{"ok": true, "added": true|false}``
+        """
+        try:
+            body  = request.get_json(force=True) or {}
+            word  = body.get('word', '').strip()
+            if not word:
+                return jsonify({'error': 'word is required'}), 400
+            added = _spell_checker.add_word(word)
+            return jsonify({'ok': True, 'added': added})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.post("/api/spell-check-complete")
+    def spell_check_complete():
+        """Record spell-check audit and advance phase to generation.
+
+        Body: ``{"spell_audit": [...]}``
+        Each audit entry: ``{context_type, location, original, suggestion, rule, outcome, final}``
+        """
+        try:
+            body        = request.get_json(force=True) or {}
+            spell_audit = body.get('spell_audit', [])
+            result      = conversation.complete_spell_check(spell_audit)
+            return jsonify({'ok': True, **result})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
     return app
 
