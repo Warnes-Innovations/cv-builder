@@ -186,10 +186,59 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ===== TABS ===== */
-.tabs { display: flex; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
-.tab { padding: 16px 24px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 500; color: #64748b; }
-.tab:hover { color: #475569; }
+.tabs {
+  display: flex;
+  border-bottom: 2px solid #e2e8f0;
+  background: #f8fafc;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.tabs::-webkit-scrollbar { height: 4px; }
+.tabs::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+.tab {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  font-weight: 500;
+  font-size: 0.85em;
+  color: #64748b;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover { color: #334155; background: #f1f5f9; }
 .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; background: #fff; }
+
+/* ===== REVIEW SUB-TABS ===== */
+.review-subtabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 20px;
+  background: #f8fafc;
+  border-radius: 6px 6px 0 0;
+  scrollbar-width: thin;
+}
+.review-subtab {
+  padding: 9px 16px;
+  cursor: pointer;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  font-weight: 500;
+  font-size: 0.88em;
+  color: #64748b;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+.review-subtab:hover { color: #334155; background: #f1f5f9; }
+.review-subtab.active { color: #3b82f6; border-bottom-color: #3b82f6; background: #fff; }
+.review-pane { min-height: 200px; }
 
 /* ===== DOCUMENT VIEWER ===== */
 .document-viewer { flex: 1; overflow-y: auto; padding: 32px; background: #fff; }

@@ -1339,6 +1339,58 @@ function getSkillReasoning(skill, data) {
   return reasonings[Math.floor(Math.random() * reasonings.length)];
 }
 
+// ==== Achievement Recommendation Helpers ====
+
+function getAchievementRecommendation(achId, data) {
+  if (data.achievement_recommendations && Array.isArray(data.achievement_recommendations)) {
+    const rec = data.achievement_recommendations.find(r => r.id === achId);
+    if (rec && rec.recommendation) return rec.recommendation;
+  }
+  // Fallback: if in recommended_achievements list, default Include; otherwise De-emphasize
+  if (data.recommended_achievements && data.recommended_achievements.includes(achId)) {
+    return 'Include';
+  }
+  return 'De-emphasize';
+}
+
+function getAchievementConfidence(achId, data, achImportance) {
+  if (data.achievement_recommendations && Array.isArray(data.achievement_recommendations)) {
+    const rec = data.achievement_recommendations.find(r => r.id === achId);
+    if (rec && rec.confidence) {
+      const conf = rec.confidence.toLowerCase();
+      if (conf.includes('very high')) return { level: 'very-high', text: 'Very High' };
+      if (conf.includes('high'))      return { level: 'high',      text: 'High' };
+      if (conf.includes('medium'))    return { level: 'medium',    text: 'Medium' };
+      if (conf.includes('very low'))  return { level: 'very-low',  text: 'Very Low' };
+      if (conf.includes('low'))       return { level: 'low',       text: 'Low' };
+    }
+  }
+  // Derive from importance score (1-10)
+  const imp = achImportance || 5;
+  if (imp >= 9) return { level: 'very-high', text: 'Very High' };
+  if (imp >= 7) return { level: 'high',      text: 'High' };
+  if (imp >= 5) return { level: 'medium',    text: 'Medium' };
+  if (imp >= 3) return { level: 'low',       text: 'Low' };
+  return { level: 'very-low', text: 'Very Low' };
+}
+
+function getAchievementReasoning(achId, data, ach) {
+  if (data.achievement_recommendations && Array.isArray(data.achievement_recommendations)) {
+    const rec = data.achievement_recommendations.find(r => r.id === achId);
+    if (rec && rec.reasoning) return rec.reasoning;
+  }
+  // Derive from achievement metadata
+  const relevantFor = (ach.relevant_for || []).join(', ');
+  if (data.recommended_achievements && data.recommended_achievements.includes(achId)) {
+    return relevantFor
+      ? `Recommended for this role. Relevant for: ${relevantFor}.`
+      : 'Recommended by AI as relevant to this role.';
+  }
+  return relevantFor
+    ? `Relevant for: ${relevantFor}. Not specifically highlighted for this role.`
+    : 'Not specifically highlighted for this role based on job requirements.';
+}
+
 function buildFallbackPostAnalysisQuestions(data) {
   const questions = [];
 
@@ -2494,62 +2546,105 @@ async function showTableBasedReview() {
 
 async function populateCustomizationsTabWithReview(data) {
   const content = document.getElementById('document-content');
-  
+
+  // Build the shell with sub-tabs; individual sections are loaded lazily as tabs are clicked
   let html = `
     <h1>⚙️ Review Customization Recommendations</h1>
-    <p style="color: #6b7280; margin-bottom: 24px;">Review the AI's recommendations below. Use the action buttons to adjust how each item should be featured in your CV. Green defaults indicate the AI's recommendation.</p>
-    
-    <div class="review-section">
-      <h2>📊 Experiences</h2>
-      <p style="color: #6b7280; font-size: 0.95em; margin-bottom: 16px;">Sorted by date (most recent first). Click action buttons to override recommendations.</p>
+    <p style="color:#6b7280;margin-bottom:16px;">Review the AI's recommendations. Use the action buttons to adjust each item, then save your decisions before generating the CV.</p>
+
+    <!-- Sub-tab bar -->
+    <div class="review-subtabs" id="review-subtab-bar">
+      <button class="review-subtab active" data-pane="experiences"   onclick="switchReviewSubtab('experiences')">📊 Experiences</button>
+      <button class="review-subtab"         data-pane="skills"        onclick="switchReviewSubtab('skills')">🛠️ Skills</button>
+      <button class="review-subtab"         data-pane="achievements"  onclick="switchReviewSubtab('achievements')">🏆 Achievements</button>
+      <button class="review-subtab"         data-pane="summary"       onclick="switchReviewSubtab('summary')">📝 Summary</button>
+      <button class="review-subtab"         data-pane="publications"  onclick="switchReviewSubtab('publications')">📄 Publications</button>
+    </div>
+
+    <!-- Pane: Experiences -->
+    <div id="review-pane-experiences" class="review-pane" style="display:block;">
+      <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">Sorted by date (most recent first). Click action buttons to override recommendations.</p>
       <div id="experience-table-container"></div>
-      <div class="nav-buttons" style="margin: 20px 0;">
-        <button class="submit-btn" onclick="submitExperienceDecisions()">Submit Experience Decisions</button>
+      <div class="nav-buttons" style="margin:16px 0;">
+        <button class="submit-btn" onclick="submitExperienceDecisions()">Save Experience Decisions</button>
       </div>
     </div>
-    
-    <div class="review-section" style="margin-top: 40px;">
-      <h2>🛠️ Skills</h2>
-      <p style="color: #6b7280; font-size: 0.95em; margin-bottom: 16px;">Sorted by relevance. Select how to feature each skill.</p>
+
+    <!-- Pane: Skills -->
+    <div id="review-pane-skills" class="review-pane" style="display:none;">
+      <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">Sorted by relevance. Select how to feature each skill.</p>
       <div id="skills-table-container"></div>
-      <div class="nav-buttons" style="margin: 20px 0;">
-        <button class="submit-btn" onclick="submitSkillDecisions()">Submit Skill Decisions</button>
+      <div class="nav-buttons" style="margin:16px 0;">
+        <button class="submit-btn" onclick="submitSkillDecisions()">Save Skill Decisions</button>
       </div>
     </div>
 
-    <div class="review-section" style="margin-top: 40px;">
-      <h2>🏆 Key Achievements</h2>
-      <p style="color: #6b7280; font-size: 0.95em; margin-bottom: 16px;">Select which key achievements to feature in your CV. All are included by default — exclude any that aren't relevant to this role.</p>
+    <!-- Pane: Achievements -->
+    <div id="review-pane-achievements" class="review-pane" style="display:none;">
+      <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">Select how to feature each key achievement. AI recommendations are pre-selected.</p>
       <div id="achievements-table-container"></div>
-      <div class="nav-buttons" style="margin: 20px 0;">
-        <button class="submit-btn" onclick="submitAchievementDecisions()">Save Achievement Selections</button>
+      <div class="nav-buttons" style="margin:16px 0;">
+        <button class="submit-btn" onclick="submitAchievementDecisions()">Save Achievement Decisions</button>
       </div>
     </div>
 
-    <div class="review-section" style="margin-top: 40px;">
-      <h2>📝 Professional Summary</h2>
-      <p style="color: #6b7280; font-size: 0.95em; margin-bottom: 16px;">Select which professional summary to use. The AI's recommendation is pre-selected.</p>
+    <!-- Pane: Summary -->
+    <div id="review-pane-summary" class="review-pane" style="display:none;">
+      <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">Select which professional summary to use. The AI's recommendation is pre-selected.</p>
       <div id="summary-focus-container"></div>
     </div>
 
-    <div class="review-section" id="publications-review-section" style="margin-top: 40px; display:none;">
-      <h2>📄 Selected Publications</h2>
-      <p style="color: #6b7280; font-size: 0.95em; margin-bottom: 16px;">All publications from your bibliography, ranked by relevance to this role. Accept or reject each to control what appears in your CV.</p>
+    <!-- Pane: Publications -->
+    <div id="review-pane-publications" class="review-pane" style="display:none;">
+      <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">All publications ranked by relevance. Accept or reject each for your CV.</p>
       <div id="publications-table-container"></div>
-      <div class="nav-buttons" style="margin: 20px 0;">
-        <button class="submit-btn" onclick="submitPublicationDecisions()">Save Publication Selections</button>
+      <div class="nav-buttons" style="margin:16px 0;">
+        <button class="submit-btn" onclick="submitPublicationDecisions()">Save Publication Decisions</button>
       </div>
     </div>
   `;
-  
+
   content.innerHTML = html;
-  
-  // Build all tables/sections
-  await buildExperienceReviewTable();
-  await buildSkillsReviewTable();
-  await buildAchievementsReviewTable();
-  await buildSummaryFocusSection();
-  await buildPublicationsReviewTable();
+
+  // Track which panes have been loaded to avoid re-fetching
+  window._reviewPaneLoaded = {};
+
+  // Load the first pane (Experiences) immediately
+  await _loadReviewPane('experiences');
+}
+
+// Track which pane is currently active
+window._activeReviewPane = 'experiences';
+
+async function switchReviewSubtab(pane) {
+  // Update button states
+  document.querySelectorAll('.review-subtab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.pane === pane);
+  });
+
+  // Hide all panes, show the selected one
+  document.querySelectorAll('.review-pane').forEach(p => p.style.display = 'none');
+  const target = document.getElementById(`review-pane-${pane}`);
+  if (target) target.style.display = 'block';
+
+  window._activeReviewPane = pane;
+
+  // Lazy-load pane content on first visit
+  if (!window._reviewPaneLoaded || !window._reviewPaneLoaded[pane]) {
+    await _loadReviewPane(pane);
+  }
+}
+
+async function _loadReviewPane(pane) {
+  if (!window._reviewPaneLoaded) window._reviewPaneLoaded = {};
+  window._reviewPaneLoaded[pane] = true;
+  switch (pane) {
+    case 'experiences':   await buildExperienceReviewTable();  break;
+    case 'skills':        await buildSkillsReviewTable();       break;
+    case 'achievements':  await buildAchievementsReviewTable(); break;
+    case 'summary':       await buildSummaryFocusSection();     break;
+    case 'publications':  await buildPublicationsReviewTable(); break;
+  }
 }
 
 async function buildExperienceReviewTable() {
@@ -2806,14 +2901,22 @@ async function buildAchievementsReviewTable() {
 
   container.innerHTML = '<p style="padding:20px;text-align:center;color:#6b7280;">Loading achievements…</p>';
 
+  // Fetch achievements directly from the master fields endpoint (robust fallback)
   let allAchievements = [];
   try {
-    const res = await fetch('/api/status');
-    const statusData = await res.json();
-    allAchievements = statusData.all_achievements || [];
+    const res = await fetch('/api/master-fields');
+    const masterData = await res.json();
+    allAchievements = masterData.selected_achievements || [];
   } catch (err) {
-    container.innerHTML = '<p style="color:#ef4444;padding:20px;">Failed to load achievements.</p>';
-    return;
+    // Secondary fallback: /api/status
+    try {
+      const res2 = await fetch('/api/status');
+      const statusData = await res2.json();
+      allAchievements = statusData.all_achievements || [];
+    } catch (err2) {
+      container.innerHTML = '<p style="color:#ef4444;padding:20px;">Failed to load achievements.</p>';
+      return;
+    }
   }
 
   if (allAchievements.length === 0) {
@@ -2821,10 +2924,27 @@ async function buildAchievementsReviewTable() {
     return;
   }
 
-  // Default: include all achievements
+  const data = window.pendingRecommendations || {};
+  const recommendedSet = new Set(data.recommended_achievements || []);
+
+  // Sort: recommended first, then by importance descending
+  allAchievements = [...allAchievements].sort((a, b) => {
+    const aRec = recommendedSet.has(a.id) ? 1 : 0;
+    const bRec = recommendedSet.has(b.id) ? 1 : 0;
+    if (bRec !== aRec) return bRec - aRec;
+    return (b.importance || 0) - (a.importance || 0);
+  });
+
+  // Initialise decisions
   window.achievementDecisions = {};
   allAchievements.forEach(ach => {
-    window.achievementDecisions[ach.id || ach.title] = 'include';
+    const rec = getAchievementRecommendation(ach.id, data);
+    let defaultAction = 'include';
+    if (rec === 'Emphasize')    defaultAction = 'emphasize';
+    else if (rec === 'Include') defaultAction = 'include';
+    else if (rec === 'De-emphasize') defaultAction = 'de-emphasize';
+    else if (rec === 'Omit')    defaultAction = 'exclude';
+    window.achievementDecisions[ach.id] = defaultAction;
   });
 
   let tableHTML = `
@@ -2832,28 +2952,39 @@ async function buildAchievementsReviewTable() {
       <thead>
         <tr>
           <th>Achievement</th>
-          <th>Description</th>
-          <th>Include?</th>
+          <th>Recommendation</th>
+          <th>Confidence</th>
+          <th>Reasoning</th>
+          <th>Your Selection</th>
         </tr>
       </thead>
       <tbody>
   `;
 
   allAchievements.forEach(ach => {
-    const id = ach.id || ach.title || '';
-    const title = ach.title || id;
-    const desc = ach.description || '';
+    const id            = ach.id || ach.title || '';
+    const title         = ach.title || id;
+    const desc          = ach.description || '';
+    const recommendation = getAchievementRecommendation(id, data);
+    const confidence    = getAchievementConfidence(id, data, ach.importance);
+    const reasoning     = getAchievementReasoning(id, data, ach);
+    const defaultAction = window.achievementDecisions[id];
+    const confidenceBadge = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
+
     tableHTML += `
       <tr data-ach-id="${escapeHtml(id)}">
-        <td style="white-space:nowrap;"><strong>${escapeHtml(title)}</strong></td>
-        <td style="font-size:0.87em;">${escapeHtml(desc)}</td>
+        <td>
+          <strong>${escapeHtml(title)}</strong>
+          ${desc ? `<br><small style="color:#6b7280;">${escapeHtml(desc.slice(0, 120))}${desc.length > 120 ? '…' : ''}</small>` : ''}
+        </td>
+        <td><strong>${escapeHtml(recommendation)}</strong></td>
+        <td>${confidenceBadge}</td>
+        <td style="max-width:280px;"><small>${escapeHtml(reasoning)}</small></td>
         <td class="action-btns">
-          <button class="icon-btn active" data-action="include" title="Include in CV"
-              onclick="handleAchievementAction('${escapeHtml(id)}', 'include')"
-              style="color:#10b981;font-size:1.3em;" id="ach-include-${escapeHtml(id)}">✓</button>
-          <button class="icon-btn" data-action="omit" title="Exclude from CV"
-              onclick="handleAchievementAction('${escapeHtml(id)}', 'omit')"
-              style="color:#ef4444;font-size:1.3em;" id="ach-omit-${escapeHtml(id)}">✗</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    title="Emphasize — feature prominently"  onclick="handleAchievementAction('${escapeHtml(id)}', 'emphasize')"    style="color:#10b981;font-size:1.5em;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      title="Include — standard treatment"      onclick="handleAchievementAction('${escapeHtml(id)}', 'include')"      style="font-size:1.3em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize — brief mention only"  onclick="handleAchievementAction('${escapeHtml(id)}', 'de-emphasize')" style="color:#f59e0b;font-size:1.5em;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      title="Exclude — omit from CV"            onclick="handleAchievementAction('${escapeHtml(id)}', 'exclude')"      style="color:#ef4444;font-size:1.3em;">✗</button>
         </td>
       </tr>
     `;
@@ -2903,12 +3034,19 @@ async function buildSummaryFocusSection() {
 
   let professionalSummaries = {};
   try {
-    const res = await fetch('/api/status');
-    const statusData = await res.json();
-    professionalSummaries = statusData.professional_summaries || {};
+    const res = await fetch('/api/master-fields');
+    const masterData = await res.json();
+    professionalSummaries = masterData.professional_summaries || {};
   } catch (err) {
-    container.innerHTML = '<p style="color:#ef4444;">Failed to load professional summaries.</p>';
-    return;
+    // fallback to status endpoint
+    try {
+      const res2 = await fetch('/api/status');
+      const statusData = await res2.json();
+      professionalSummaries = statusData.professional_summaries || {};
+    } catch (err2) {
+      container.innerHTML = '<p style="color:#ef4444;">Failed to load professional summaries.</p>';
+      return;
+    }
   }
 
   const summaryKeys = Object.keys(professionalSummaries);
@@ -2999,7 +3137,10 @@ window.publicationDecisions = {};
 
 async function buildPublicationsReviewTable() {
   const container = document.getElementById('publications-table-container');
-  const section   = document.getElementById('publications-review-section');
+  // In the new sub-tab layout, we use the pane wrapper instead of the old section
+  const section   = document.getElementById('publications-review-section') ||
+                    document.getElementById('review-pane-publications');
+  const pubTabBtn = document.querySelector('.review-subtab[data-pane="publications"]');
   if (!container) return;
 
   container.innerHTML = '<p style="padding: 20px; text-align: center; color: #6b7280;">Loading publication recommendations…</p>';
@@ -3012,11 +3153,7 @@ async function buildPublicationsReviewTable() {
     if (!data.ok) { container.innerHTML = `<p class="error-message">${escapeHtml(data.error || 'Failed to load publications.')}</p>`; return; }
     recommendations = data.recommendations || [];
     totalCount = data.total_count || recommendations.length;
-    // total count shown in status
-    const statusRes = await fetch('/api/status');
-    const statusData = await statusRes.json();
-    const jobAnalysis = statusData.job_analysis || {};
-    // totalCount already set from API response above; status fetch no longer needed for count
+    // totalCount already set from API response above
   } catch (err) {
     console.error('Error fetching publication recommendations:', err);
     container.innerHTML = '<p style="color: #ef4444; padding: 20px;">Failed to load publication recommendations.</p>';
@@ -3024,15 +3161,17 @@ async function buildPublicationsReviewTable() {
   }
 
   if (recommendations.length === 0) {
-    // No publications — keep section hidden
+    // No publications — hide the pane and disable the tab button
     if (section) section.style.display = 'none';
+    if (pubTabBtn) pubTabBtn.style.display = 'none';
+    container.innerHTML = '<p style="padding:20px;color:#6b7280;">No publications found.</p>';
     return;
   }
 
-  // Show section
-  if (section) section.style.display = '';
+  // Show section and tab button
+  if (pubTabBtn) pubTabBtn.style.display = '';
 
-  // Update heading count
+  // Update heading count (handle both pane approach and legacy section approach)
   const heading = section ? section.querySelector('h2') : null;
   if (heading) {
     heading.textContent = `📄 Selected Publications`;

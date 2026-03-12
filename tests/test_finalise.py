@@ -463,5 +463,56 @@ class TestHarvestAddSummaryVariant(unittest.TestCase):
         self.assertEqual(len(master['professional_summaries']), 1)
 
 
+# ---------------------------------------------------------------------------
+# GET /api/master-fields
+# ---------------------------------------------------------------------------
+
+class TestMasterFieldsEndpoint(unittest.TestCase):
+
+    def test_returns_selected_achievements_and_summaries(self):
+        """Normal path: reads master file and returns both fields."""
+        master_data = {
+            'selected_achievements': [
+                {'id': 'sa_001', 'title': 'Led team of 10', 'importance': 8},
+            ],
+            'professional_summaries': {
+                'default': 'Experienced data scientist...',
+            },
+        }
+        app, _, _ = _make_app()
+        with app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master_data))):
+            res  = client.get('/api/master-fields')
+            data = res.get_json()
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        self.assertEqual(len(data['selected_achievements']), 1)
+        self.assertEqual(data['selected_achievements'][0]['id'], 'sa_001')
+        self.assertIn('default', data['professional_summaries'])
+
+    def test_returns_empty_lists_when_fields_absent(self):
+        """If master data lacks the fields, returns empty defaults without error."""
+        app, _, _ = _make_app()
+        with app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({}))):
+            res  = client.get('/api/master-fields')
+            data = res.get_json()
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['selected_achievements'], [])
+        self.assertEqual(data['professional_summaries'], {})
+
+    def test_returns_500_on_read_error(self):
+        """If the master file cannot be read, returns 500 with ok=False."""
+        app, _, _ = _make_app()
+        with app.test_client() as client, \
+             patch('builtins.open', side_effect=OSError('file not found')):
+            res  = client.get('/api/master-fields')
+            data = res.get_json()
+        self.assertEqual(res.status_code, 500)
+        self.assertFalse(data['ok'])
+        self.assertIn('file not found', data['error'])
+
+
 if __name__ == '__main__':
     unittest.main()

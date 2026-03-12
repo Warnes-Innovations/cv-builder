@@ -485,6 +485,29 @@ Job Description (excerpt):
             "reentry_phase": conversation.state.get("reentry_phase"),
         })
 
+    @app.get("/api/master-fields")
+    def master_fields():
+        """Return selected_achievements and professional_summaries directly from the master CV file.
+
+        This endpoint re-reads directly from disk to bypass any in-memory state
+        issues, ensuring the data is always fresh and available.
+        """
+        try:
+            with open(orchestrator.master_data_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return jsonify({
+                "ok": True,
+                "selected_achievements":   data.get('selected_achievements', []),
+                "professional_summaries":  data.get('professional_summaries', {}),
+            })
+        except Exception as e:
+            return jsonify({
+                "ok": False,
+                "error": str(e),
+                "selected_achievements":  [],
+                "professional_summaries": {},
+            }), 500
+
     # ── Copilot OAuth endpoints ──────────────────────────────────────────────
 
     @app.post("/api/copilot-auth/start")

@@ -624,7 +624,7 @@ Ask questions that are specific to this job posting, not generic career question
                     emphasized   = [k for k, v in exp_decisions.items() if v == 'emphasize']
                     included     = [k for k, v in exp_decisions.items() if v == 'include']
                     deemphasized = [k for k, v in exp_decisions.items() if v == 'de-emphasize']
-                    omitted      = [k for k, v in exp_decisions.items() if v == 'omit']
+                    omitted      = [k for k, v in exp_decisions.items() if v in ('omit', 'exclude')]
                     customizations['recommended_experiences'] = emphasized + included + deemphasized
                     # Explicitly omitted IDs — only these are excluded from the output
                     customizations['omitted_experiences'] = omitted
@@ -633,7 +633,7 @@ Ask questions that are specific to this job posting, not generic career question
                     emphasized   = [k for k, v in skill_decisions.items() if v == 'emphasize']
                     included     = [k for k, v in skill_decisions.items() if v == 'include']
                     deemphasized = [k for k, v in skill_decisions.items() if v == 'de-emphasize']
-                    omitted      = [k for k, v in skill_decisions.items() if v == 'omit']
+                    omitted      = [k for k, v in skill_decisions.items() if v in ('omit', 'exclude')]
                     customizations['recommended_skills'] = emphasized + included + deemphasized
                     customizations['omitted_skills'] = omitted
 
@@ -645,8 +645,8 @@ Ask questions that are specific to this job posting, not generic career question
                     except Exception:
                         ach_decisions = {}
                 if ach_decisions:
-                    included_achs = [k for k, v in ach_decisions.items() if v in ('include', 'emphasize')]
-                    omitted_achs  = [k for k, v in ach_decisions.items() if v == 'omit']
+                    included_achs = [k for k, v in ach_decisions.items() if v in ('include', 'emphasize', 'de-emphasize')]
+                    omitted_achs  = [k for k, v in ach_decisions.items() if v in ('omit', 'exclude')]
                     customizations['recommended_achievements'] = included_achs
                     customizations['omitted_achievements'] = omitted_achs
 

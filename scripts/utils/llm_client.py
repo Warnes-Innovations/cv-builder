@@ -1077,7 +1077,17 @@ Available Experiences:"""
             title = exp.get('title', '')
             company = exp.get('company', '')
             prompt += f"\n- {exp_id}: {title} at {company}"
-        
+
+        prompt += f"""
+
+Available Key Achievements:"""
+
+        for ach in master_data.get('selected_achievements', []):
+            ach_id = ach.get('id', '')
+            title = ach.get('title', '')
+            relevant_for = ', '.join(ach.get('relevant_for', []))
+            prompt += f"\n- {ach_id}: {title} (relevant for: {relevant_for})"
+
         prompt += f"""
 
 STEP 3: For EACH experience above, provide THREE independent pieces of information:
@@ -1133,12 +1143,21 @@ Return as JSON with:
     ...
   ],
   "recommended_skills": ["skill1", "skill2", ...],
+  "achievement_recommendations": [
+    {{
+      "id": "sa_001",
+      "recommendation": "Emphasize|Include|De-emphasize|Omit",
+      "confidence": "Very High|High|Medium|Low|Very Low",
+      "reasoning": "Brief explanation of relevance to this role"
+    }},
+    ...
+  ],
   "recommended_achievements": ["achievement_id1", ...],
   "summary_focus": "Brief description of what to emphasize in professional summary",
   "reasoning": "Overall strategy for this CV customization"
 }}
 
-Be thorough - provide recommendations for ALL {len(master_data.get('experience', []))} experiences using their exact IDs."""
+Be thorough - provide recommendations for ALL {len(master_data.get('experience', []))} experiences and ALL {len(master_data.get('selected_achievements', []))} key achievements using their exact IDs."""
         
         messages = [
             {"role": "system", "content": "You are an expert at CV optimization. You provide structured recommendations with clear reasoning and confidence assessments."},
@@ -1192,6 +1211,7 @@ Be thorough - provide recommendations for ALL {len(master_data.get('experience',
                 "experience_recommendations": [],
                 "recommended_experiences": [],  # Keep for backwards compatibility
                 "recommended_skills": [],
+                "achievement_recommendations": [],
                 "recommended_achievements": [],
                 "summary_focus": "general",
                 "reasoning": "Failed to parse LLM response"
@@ -1478,6 +1498,7 @@ Available Experience IDs: {', '.join([exp.get('id', '') for exp in master_data.g
 Return as JSON with:
 - recommended_experiences: List[str] (use exact IDs from the list above, e.g., ["exp_001", "exp_005"])
 - recommended_skills: List[str]
+- achievement_recommendations: List[Dict] (each with id, recommendation, confidence, reasoning)
 - recommended_achievements: List[str] (IDs)
 - summary_focus: str
 - reasoning: str
@@ -1513,6 +1534,7 @@ Return as JSON with:
             return {
                 "recommended_experiences": [],
                 "recommended_skills": [],
+                "achievement_recommendations": [],
                 "recommended_achievements": [],
                 "summary_focus": "general",
                 "reasoning": "Failed to parse LLM response"
