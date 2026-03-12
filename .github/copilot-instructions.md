@@ -39,7 +39,8 @@ Actions requiring explicit confirmation:
 
 ## Critical workflows
 - Environment: use conda env `cvgen`.
-- Start web app: `python scripts/web_app.py --llm-provider github` (default port in config is 5000).
+- Start web app: `python scripts/web_app.py --llm-provider github`.
+- If `--llm-provider` is omitted, `llm.default_provider` must be configured via env/config.
 - zsh tip: if shell autocorrect changes `github` to `.github`, escape or quote the provider value, e.g. `python scripts/web_app.py --llm-provider \github` (or `--llm-provider 'github'`).
 - Start CLI flow: `python scripts/llm_cv_generator.py`.
 - Run tests via orchestrator script (preferred):

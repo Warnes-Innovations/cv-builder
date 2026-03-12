@@ -457,7 +457,10 @@ Ask questions that are specific to this job posting, not generic career question
                     'content': questions_response
                 })
                 
-                return f"✓ Job analysis complete:\n\n{questions_response}"
+                return {
+                    'text': f"✓ Job analysis complete:\n\n{questions_response}",
+                    'context_data': {'job_analysis': analysis},
+                }
             except Exception as e:
                 print(f"Error generating contextual questions: {e}")
                 return {

@@ -202,7 +202,7 @@ Local models would be too slow (30-90s waits) for the interactive workflow, and 
 # Scope: read:user
 
 export GITHUB_MODELS_TOKEN="ghp_your_token"
-python scripts/llm_cv_generator.py --llm-provider github  # default
+python scripts/llm_cv_generator.py --llm-provider github
 ```
 
 **Note:** Uses `GITHUB_MODELS_TOKEN` (not `GITHUB_TOKEN`) to avoid conflicts.

@@ -610,6 +610,16 @@ async function setModel(model, provider) {
     testCurrentModel();
   } catch (e) {
     console.error('Failed to switch model:', e);
+    const msg = e.message || String(e);
+    const status = document.getElementById('model-test-status');
+    if (status) {
+      status.style.display = '';
+      status.style.color = '#dc2626';
+      status.textContent = `❌ ${msg}`;
+    }
+    if (typeof appendMessage === 'function') {
+      appendMessage('system', `❌ Model switch failed: ${msg}`);
+    }
   }
 }
 

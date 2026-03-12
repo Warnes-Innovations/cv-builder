@@ -12,6 +12,7 @@ conda activate cvgen
 python scripts/web_app.py --llm-provider github
 # zsh gotcha: if shell autocorrects `github` → `.github`, quote it:
 # python scripts/web_app.py --llm-provider 'github'
+# If `--llm-provider` is omitted, `llm.default_provider` must be configured via env/config.
 
 # Start CLI flow
 python scripts/llm_cv_generator.py

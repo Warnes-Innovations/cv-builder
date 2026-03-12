@@ -11,11 +11,12 @@ import sys
 import unittest
 import warnings
 from pathlib import Path
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
-from utils.llm_client import LLMClient, OpenAIClient
+from utils.llm_client import LLMClient, OpenAIClient, CopilotClient, GitHubModelsClient, GeminiClient, _normalize_github_model_id
 
 
 # ---------------------------------------------------------------------------
@@ -318,10 +319,18 @@ class TestProposeRewrites(unittest.TestCase):
         }
         self._mock_chat([valid_proposal, invalid_proposal])
 
-        result = self.client.propose_rewrites(SAMPLE_CONTENT, SAMPLE_JOB_ANALYSIS)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            result = self.client.propose_rewrites(
+                SAMPLE_CONTENT,
+                SAMPLE_JOB_ANALYSIS,
+            )
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]['id'], 'bullet_exp002_0')
+        self.assertTrue(
+            any('constraint violation filtered' in str(w.message) for w in caught)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +347,182 @@ class TestStubImplementations(unittest.TestCase):
         client = object.__new__(LocalLLMClient)
         result = client.propose_rewrites(SAMPLE_CONTENT, SAMPLE_JOB_ANALYSIS)
         self.assertEqual(result, [])
+
+
+class TestGitHubModelNormalization(unittest.TestCase):
+    """Validate model-ID normalization for GitHub/Copilot compatibility."""
+
+    def test_legacy_claude_sonnet_46_model_id_normalizes(self):
+        """Legacy hyphenated Sonnet 4.6 model ID is normalized to dotted form."""
+        self.assertEqual(
+            _normalize_github_model_id('anthropic/claude-sonnet-4-6'),
+            'anthropic/claude-sonnet-4.6',
+        )
+
+    def test_short_alias_maps_to_supported_dotted_model_id(self):
+        """Short alias for Sonnet 4.6 maps to dotted publisher/model ID."""
+        self.assertEqual(
+            CopilotClient.MODEL_ALIASES['claude-sonnet-4-6'],
+            'anthropic/claude-sonnet-4.6',
+        )
+        self.assertEqual(
+            GitHubModelsClient.MODEL_ALIASES['claude-sonnet-4-6'],
+            'anthropic/claude-sonnet-4.6',
+        )
+
+
+class TestGeminiClientAnyLLM(unittest.TestCase):
+    """Validate Gemini client behavior when routed through any-llm."""
+
+    def test_init_prefers_explicit_api_key(self):
+        """Explicit api_key argument wins over environment variables."""
+        mock_completion = MagicMock()
+        with patch('utils.llm_client.os.getenv', return_value='env-key'):
+            with patch.dict(sys.modules, {'any_llm': SimpleNamespace(completion=mock_completion)}):
+                client = GeminiClient(model='gemini-2.5-flash', api_key='explicit-key')
+
+        self.assertEqual(client.api_key, 'explicit-key')
+        self.assertEqual(client.model, 'gemini-2.5-flash')
+
+    def test_init_uses_gemini_api_key_env(self):
+        """GEMINI_API_KEY is used when explicit api_key is not provided."""
+        mock_completion = MagicMock()
+
+        def _env(name, default=None):
+            if name == 'GEMINI_API_KEY':
+                return 'gemini-env-key'
+            return default
+
+        with patch('utils.llm_client.os.getenv', side_effect=_env):
+            with patch.dict(sys.modules, {'any_llm': SimpleNamespace(completion=mock_completion)}):
+                client = GeminiClient(model='gemini-2.5-flash')
+
+        self.assertEqual(client.api_key, 'gemini-env-key')
+
+    def test_init_falls_back_to_google_api_key_env(self):
+        """GOOGLE_API_KEY fallback is used when GEMINI_API_KEY is unset."""
+        mock_completion = MagicMock()
+
+        def _env(name, default=None):
+            if name == 'GEMINI_API_KEY':
+                return None
+            if name == 'GOOGLE_API_KEY':
+                return 'google-env-key'
+            return default
+
+        with patch('utils.llm_client.os.getenv', side_effect=_env):
+            with patch.dict(sys.modules, {'any_llm': SimpleNamespace(completion=mock_completion)}):
+                client = GeminiClient(model='gemini-2.5-flash')
+
+        self.assertEqual(client.api_key, 'google-env-key')
+
+    def test_init_raises_when_no_api_key(self):
+        """Missing both GEMINI_API_KEY and GOOGLE_API_KEY raises ValueError."""
+        with patch('utils.llm_client.os.getenv', return_value=None):
+            with self.assertRaises(ValueError) as ctx:
+                GeminiClient(model='gemini-2.5-flash')
+
+        message = str(ctx.exception)
+        self.assertIn('GEMINI_API_KEY', message)
+        self.assertIn('GOOGLE_API_KEY', message)
+
+    def test_init_raises_when_any_llm_missing(self):
+        """Missing any-llm dependency raises ImportError with install guidance."""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def _import(name, *args, **kwargs):
+            if name == 'any_llm':
+                raise ImportError('No module named any_llm')
+            return original_import(name, *args, **kwargs)
+
+        with patch('utils.llm_client.os.getenv', return_value='test-key'):
+            with patch('builtins.__import__', side_effect=_import):
+                with self.assertRaises(ImportError) as ctx:
+                    GeminiClient(model='gemini-2.5-flash')
+
+        self.assertIn('any-llm package not installed', str(ctx.exception))
+
+    def test_chat_forwards_arguments_to_any_llm(self):
+        """chat() passes provider, model, key, and generation args through unchanged."""
+        client = object.__new__(GeminiClient)
+        client.model = 'gemini-2.5-flash'
+        client.api_key = 'unit-test-key'
+        client._anyllm_completion = MagicMock(
+            return_value=SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content='Ready'))]
+            )
+        )
+
+        messages = [
+            {'role': 'system', 'content': 'Answer in one word.'},
+            {'role': 'user', 'content': 'Say ready'}
+        ]
+
+        result = client.chat(messages, temperature=0.1, max_tokens=12)
+
+        self.assertEqual(result, 'Ready')
+        client._anyllm_completion.assert_called_once_with(
+            provider='gemini',
+            model='gemini-2.5-flash',
+            api_key='unit-test-key',
+            messages=messages,
+            temperature=0.1,
+            max_tokens=12,
+        )
+
+    def test_chat_returns_string_content(self):
+        """String response content is returned as-is."""
+        client = object.__new__(GeminiClient)
+        client._anyllm_completion = MagicMock(
+            return_value=SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content='Direct text'))]
+            )
+        )
+        client.model = 'gemini-2.5-flash'
+        client.api_key = 'unit-test-key'
+
+        result = client.chat([{'role': 'user', 'content': 'hi'}])
+        self.assertEqual(result, 'Direct text')
+
+    def test_chat_joins_list_content_parts(self):
+        """List content is reduced by concatenating each dict text field."""
+        client = object.__new__(GeminiClient)
+        client._anyllm_completion = MagicMock(
+            return_value=SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            content=[
+                                {'text': 'Ready'},
+                                {'text': ' now'},
+                                {'ignored': 'value'},
+                            ]
+                        )
+                    )
+                ]
+            )
+        )
+        client.model = 'gemini-2.5-flash'
+        client.api_key = 'unit-test-key'
+
+        result = client.chat([{'role': 'user', 'content': 'hi'}])
+        self.assertEqual(result, 'Ready now')
+
+    def test_chat_stringifies_unexpected_content_types(self):
+        """Non-string, non-list content is converted using str()."""
+        client = object.__new__(GeminiClient)
+        client._anyllm_completion = MagicMock(
+            return_value=SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=12345))]
+            )
+        )
+        client.model = 'gemini-2.5-flash'
+        client.api_key = 'unit-test-key'
+
+        result = client.chat([{'role': 'user', 'content': 'hi'}])
+        self.assertEqual(result, '12345')
 
 
 # ---------------------------------------------------------------------------

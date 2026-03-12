@@ -16,6 +16,15 @@ from typing import Dict, List, Optional, Any
 from abc import ABC, abstractmethod
 
 
+def _normalize_github_model_id(model: str) -> str:
+    """Normalize legacy GitHub Models IDs to currently accepted IDs."""
+    legacy_aliases = {
+        # Legacy ID kept for backward compatibility with saved sessions/config.
+        "anthropic/claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+    }
+    return legacy_aliases.get(model, model)
+
+
 class LLMClient(ABC):
     """Abstract base class for LLM clients."""
     
@@ -1301,20 +1310,19 @@ class GeminiClient(LLMClient):
     
     def __init__(self, model: str = "gemini-1.5-pro", api_key: Optional[str] = None):
         self.model = model
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         
         if not self.api_key:
             raise ValueError(
-                "Gemini API key not found. Set GEMINI_API_KEY environment variable."
+                "Gemini API key not found. Set GEMINI_API_KEY or GOOGLE_API_KEY environment variable."
             )
         
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=self.api_key)
-            self.client = genai.GenerativeModel(model)
+            from any_llm import completion as anyllm_completion
+            self._anyllm_completion = anyllm_completion
         except ImportError:
             raise ImportError(
-                "Google Generative AI package not installed. Run: pip install google-generativeai"
+                "any-llm package not installed. Run: pip install any-llm-sdk[gemini]"
             )
     
     def chat(
@@ -1324,37 +1332,21 @@ class GeminiClient(LLMClient):
         max_tokens: Optional[int] = None
     ) -> str:
         """Send chat messages to Gemini."""
-        # Convert messages to Gemini format
-        history = []
-        current_prompt = ""
-        
-        for msg in messages:
-            if msg['role'] == 'system':
-                # Prepend system message to first user message
-                current_prompt = msg['content'] + "\n\n"
-            elif msg['role'] == 'user':
-                current_prompt += msg['content']
-            elif msg['role'] == 'assistant':
-                history.append({
-                    'role': 'user',
-                    'parts': [current_prompt]
-                })
-                history.append({
-                    'role': 'model',
-                    'parts': [msg['content']]
-                })
-                current_prompt = ""
-        
-        # Start chat with history
-        chat = self.client.start_chat(history=history[:-1] if history else [])
-        
-        # Generate response
-        response = chat.send_message(
-            current_prompt,
-            generation_config={'temperature': temperature, 'max_output_tokens': max_tokens or 8192}
+        response = self._anyllm_completion(
+            provider="gemini",
+            model=self.model,
+            api_key=self.api_key,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
-        
-        return response.text
+        content = response.choices[0].message.content
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts = [part.get("text", "") for part in content if isinstance(part, dict)]
+            return "".join(text_parts).strip()
+        return str(content)
     
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
         """Analyze job description using Gemini."""
@@ -1686,7 +1678,7 @@ class GitHubModelsClient(OpenAIClient):
 
     # Short name → publisher/model ID required by models.inference.ai.azure.com
     MODEL_ALIASES = {
-        "claude-sonnet-4-6":   "anthropic/claude-sonnet-4-6",
+        "claude-sonnet-4-6":   "anthropic/claude-sonnet-4.6",
         "claude-3-7-sonnet":   "anthropic/claude-3-7-sonnet",
         "claude-3-5-sonnet":   "anthropic/claude-3-5-sonnet",
         "claude-3.5-sonnet":   "anthropic/claude-3-5-sonnet",  # dot-form alias
@@ -1702,7 +1694,8 @@ class GitHubModelsClient(OpenAIClient):
 
     def __init__(self, model: str = "gpt-4o", api_key: Optional[str] = None):
         # Expand short alias → full publisher/model ID required by the endpoint
-        self.model = self.MODEL_ALIASES.get(model, model)
+        resolved_model = self.MODEL_ALIASES.get(model, model)
+        self.model = _normalize_github_model_id(resolved_model)
         self.api_key = api_key or os.getenv("GITHUB_MODELS_TOKEN")
         
         if not self.api_key:
@@ -1734,7 +1727,7 @@ class CopilotClient(OpenAIClient):
 
     # Map short names → full GitHub Models publisher/model IDs
     MODEL_ALIASES = {
-        "claude-sonnet-4-6":   "anthropic/claude-sonnet-4-6",
+        "claude-sonnet-4-6":   "anthropic/claude-sonnet-4.6",
         "claude-3-7-sonnet":   "anthropic/claude-3-7-sonnet",
         "claude-3-5-sonnet":   "anthropic/claude-3-5-sonnet",
         "claude-3.5-sonnet":   "anthropic/claude-3-5-sonnet",  # dot-form alias
@@ -1744,7 +1737,7 @@ class CopilotClient(OpenAIClient):
         "gpt-4o-mini":         "openai/gpt-4o-mini",
     }
 
-    def __init__(self, model: str = "anthropic/claude-sonnet-4-6", api_key: Optional[str] = None):
+    def __init__(self, model: str = "anthropic/claude-sonnet-4.6", api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("GITHUB_MODELS_TOKEN") or os.getenv("GITHUB_TOKEN")
 
         if not self.api_key:
@@ -1754,7 +1747,8 @@ class CopilotClient(OpenAIClient):
             )
 
         # Expand short alias → full publisher/model ID
-        self.model = self.MODEL_ALIASES.get(model, model)
+        resolved_model = self.MODEL_ALIASES.get(model, model)
+        self.model = _normalize_github_model_id(resolved_model)
 
         try:
             from openai import OpenAI
@@ -1987,7 +1981,7 @@ def get_llm_provider(
         )
     elif provider == "copilot":
         return CopilotClient(
-            model=model or "anthropic/claude-sonnet-4-6",
+            model=model or "claude-sonnet-4-6",
             api_key=api_key
         )
     elif provider == "github":

@@ -505,6 +505,19 @@ Job Description (excerpt):
     def set_model():
         """Switch the active model and optionally the provider."""
         nonlocal llm_client, _provider_name, _current_model
+
+        def _probe_client(candidate_client) -> tuple[bool, Optional[str]]:
+            """Run a minimal chat call to ensure model/provider is reachable."""
+            try:
+                candidate_client.chat(
+                    messages=[{"role": "user", "content": "Reply with one word: ready"}],
+                    temperature=0,
+                    max_tokens=8,
+                )
+                return True, None
+            except Exception as exc:
+                return False, str(exc)
+
         data     = request.get_json(silent=True) or {}
         model    = data.get("model", "").strip()
         provider = (data.get("provider") or _provider_name).strip()
@@ -514,7 +527,16 @@ Job Description (excerpt):
         if available and model not in available:
             return jsonify({"error": f"Unknown model '{model}' for provider '{provider}'"}), 400
         try:
-            llm_client     = get_llm_provider(provider=provider, model=model, auth_manager=auth_manager)
+            candidate_client = get_llm_provider(provider=provider, model=model, auth_manager=auth_manager)
+            ok, probe_error = _probe_client(candidate_client)
+            if not ok:
+                return jsonify({
+                    "error": f"Model '{model}' is not currently available for provider '{provider}'. {probe_error}",
+                    "provider": provider,
+                    "model": model,
+                }), 400
+
+            llm_client     = candidate_client
             _provider_name = provider
             _current_model = model
             orchestrator.llm = llm_client

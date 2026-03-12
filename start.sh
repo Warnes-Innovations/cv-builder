@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 # Start the CV Builder web app with the correct environment and arguments.
 # Usage: ./start.sh [--llm-provider PROVIDER] [--llm-model MODEL]
-#   Defaults: provider=github, model from config.yaml
+#   Defaults: values come from config/env (e.g., config.yaml)
 
 set -e
 
@@ -15,4 +15,4 @@ if [[ -n "$existing" ]]; then
   sleep 1
 fi
 
-exec conda run -n cvgen --no-capture-output python scripts/web_app.py --llm-provider 'github' "$@"
+exec conda run -n cvgen --no-capture-output python scripts/web_app.py "$@"

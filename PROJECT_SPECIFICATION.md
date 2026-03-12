@@ -220,7 +220,7 @@ Four formats are generated per CV run:
 - Filled at generation time from the same `cv_data` context as the HTML template
 
 #### 3.2.4 LLM Integration
-- **Provider**: Configurable — GitHub Copilot OAuth (default for local dev), OpenAI, Anthropic, Gemini, Groq, or local model. **No built-in default provider** — `llm.default_provider` must be explicitly set in `config.yaml` or passed via `--llm-provider`; the app fails with a clear error on startup if unset.
+- **Provider**: Configurable — GitHub Copilot OAuth, OpenAI, Anthropic, Gemini, Groq, or local model. **No built-in default provider** — `llm.default_provider` must be explicitly set in `config.yaml` or passed via `--llm-provider`; the app fails with a clear error on startup if unset.
 - **Timeout**: 30 seconds per LLM call
 - **Retry**: 3 attempts with exponential backoff
 

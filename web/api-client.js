@@ -42,7 +42,16 @@ async function apiCall(method, endpoint, data = null) {
 
     if (!response.ok) {
       console.error(`API error on ${method} ${endpoint}:`, response.status, response.statusText);
-      throw new Error(`${response.status}: ${response.statusText}`);
+      let errorMessage = response.statusText;
+      try {
+        const errorJson = await response.json();
+        if (errorJson && typeof errorJson === 'object') {
+          errorMessage = errorJson.error || errorJson.message || errorMessage;
+        }
+      } catch (_) {
+        // Fall back to status text when response is not JSON.
+      }
+      throw new Error(`${response.status}: ${errorMessage}`);
     }
 
     const json = await response.json();

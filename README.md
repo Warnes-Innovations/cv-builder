@@ -58,6 +58,8 @@ pip install -r scripts/requirements-pip.txt
 
 Choose one LLM provider and set the appropriate credentials:
 
+If you do not pass `--llm-provider` on the CLI, `llm.default_provider` must be configured via env/config.
+
 #### **GitHub Models (Recommended - Uses Your GitHub Copilot Subscription)**
 
 1. Create a GitHub Personal Access Token:
@@ -121,7 +123,7 @@ python scripts/llm_cv_generator.py --job-file sample_jobs/data_science_lead.txt
 ### Specify LLM Provider
 
 ```bash
-# Use GitHub Models (default - included with Copilot)
+# Use GitHub Models (included with Copilot)
 python scripts/llm_cv_generator.py --llm-provider github
 
 # Use OpenAI GPT-4 directly
@@ -152,6 +154,7 @@ Serve a simple web interface instead of the terminal UI:
 conda activate cvgen
 pip install -r scripts/requirements-pip.txt  # ensure Flask is installed
 python scripts/web_app.py --llm-provider github
+# If you omit --llm-provider, llm.default_provider must be configured.
 # Open http://localhost:5000
 ```
 

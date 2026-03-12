@@ -2,18 +2,18 @@
 
 ## What Changed
 
-The CV generator now supports **GitHub Models** as the default LLM provider, allowing you to use your existing GitHub Copilot subscription at no additional cost.
+The CV generator now supports **GitHub Models** as an LLM provider, allowing you to use your existing GitHub Copilot subscription at no additional cost.
 
 ## Files Modified/Created
 
 1. **`scripts/utils/llm_client.py`**
    - Added `GitHubModelsClient` class
    - Uses OpenAI-compatible API with GitHub token
-   - Made GitHub the default provider
+   - Added GitHub provider support
 
 2. **`scripts/llm_cv_generator.py`**
    - Updated CLI to include `--llm-provider github`
-   - Made `github` the default option
+   - Added `github` as a provider option
 
 3. **`scripts/test_llm.py`**
    - Added GitHub Models testing
