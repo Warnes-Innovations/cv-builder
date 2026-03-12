@@ -174,7 +174,10 @@ class TestGetRewrites(unittest.TestCase):
         self.client.get('/api/rewrites')
 
         self.orch.propose_rewrites.assert_called_once_with(
-            self.orch.master_data, analysis
+            self.orch.master_data,
+            analysis,
+            conversation_history=self.conv.conversation_history,
+            user_preferences=self.conv.state.get('post_analysis_answers'),
         )
 
 

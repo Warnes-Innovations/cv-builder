@@ -15,10 +15,14 @@ Then open http://localhost:5000
 """
 
 import argparse
+import copy
 import json
 import os
+import subprocess
 import sys
 import threading
+import traceback
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
@@ -164,7 +168,9 @@ def create_app(args) -> Flask:
     # Prevents two browser tabs from corrupting shared ConversationManager
     # state concurrently. Any state-mutating POST that arrives while the lock
     # is held returns 409 Conflict; the JS client shows the amber banner.
-    _session_lock = threading.Lock()
+    # RLock (reentrant) is required because before_request acquires the lock
+    # and some endpoint handlers also use `with _session_lock:` internally.
+    _session_lock = threading.RLock()
     # Endpoints that are read-only or session-management: never blocked.
     _LOCK_EXEMPT_PATHS = {
         '/api/status', '/api/history', '/api/sessions', '/api/load-items',
@@ -2347,7 +2353,396 @@ Job Description (excerpt):
             traceback.print_exc()
             return jsonify({'error': str(e)}), 500
 
+    # ── Phase 11: Finalise & Archive ────────────────────────────────────────
+
+    @app.post("/api/finalise")
+    def finalise_application():
+        """Finalise the application: update metadata, upsert response library, git commit.
+
+        Request body (all optional):
+            status  — "draft" | "ready" | "sent"  (default "ready")
+            notes   — free-text notes string
+
+        Returns:
+            { ok, commit_hash, summary } on success
+        """
+        with _session_lock:
+            generated = conversation.state.get('generated_files')
+            if not generated or not generated.get('output_dir'):
+                return jsonify({'error': 'No generated CV to finalise. Please generate first.'}), 400
+
+            try:
+                body        = request.get_json(silent=True) or {}
+                app_status  = body.get('status', 'ready')
+                notes       = body.get('notes', '')
+
+                if app_status not in ('draft', 'ready', 'sent'):
+                    return jsonify({'error': "status must be 'draft', 'ready', or 'sent'"}), 400
+
+                output_dir   = Path(generated['output_dir'])
+                metadata_path = output_dir / 'metadata.json'
+
+                # Load existing metadata (created during generate_cv)
+                if metadata_path.exists():
+                    with open(metadata_path, encoding='utf-8') as f:
+                        metadata = json.load(f)
+                else:
+                    metadata = {}
+
+                # Augment metadata with finalise data
+                metadata['application_status'] = app_status
+                metadata['notes']              = notes
+                metadata['finalised_at']       = datetime.now().isoformat()
+                metadata['clarification_answers'] = conversation.state.get('post_analysis_answers') or {}
+                metadata['spell_audit']           = conversation.state.get('spell_audit') or []
+                metadata['layout_instructions']   = conversation.state.get('layout_instructions') or []
+
+                # Upsert screening responses into response_library.json (if any)
+                screening = metadata.get('screening_responses') or []
+                if screening:
+                    library_path = Path(conversation.orchestrator.master_data_path).parent / 'response_library.json'
+                    if library_path.exists():
+                        with open(library_path, encoding='utf-8') as f:
+                            library = json.load(f)
+                    else:
+                        library = {}
+                    for resp in screening:
+                        tag = resp.get('topic_tag') or resp.get('question', '')[:40]
+                        if tag:
+                            library[tag] = resp
+                    library_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(library_path, 'w', encoding='utf-8') as f:
+                        json.dump(library, f, indent=2)
+
+                # Write updated metadata
+                with open(metadata_path, 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f, indent=2)
+
+                # Git commit
+                company  = (metadata.get('company') or 'Unknown').replace(' ', '_')
+                role     = (metadata.get('role') or 'Role').replace(' ', '_')
+                date_str = datetime.now().strftime('%Y-%m-%d')
+                commit_msg = f"feat: Add {company}_{role}_{date_str} application"
+
+                commit_hash = None
+                git_error   = None
+                try:
+                    repo_root = Path(__file__).parent.parent
+                    subprocess.run(
+                        ['git', 'add', str(output_dir)],
+                        cwd=str(repo_root), check=True, capture_output=True
+                    )
+                    result = subprocess.run(
+                        ['git', 'commit', '-m', commit_msg],
+                        cwd=str(repo_root), capture_output=True, text=True
+                    )
+                    if result.returncode == 0:
+                        # Extract short hash from the commit output
+                        m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
+                        commit_hash = m.group(1) if m else None
+                    else:
+                        git_error = result.stderr.strip() or result.stdout.strip()
+                except Exception as git_exc:
+                    git_error = str(git_exc)
+
+                # Advance phase
+                conversation.state['phase'] = 'refinement'
+                conversation.save_session()
+
+                # Build keyword match summary
+                job_analysis   = conversation.state.get('job_analysis') or {}
+                ats_keywords   = job_analysis.get('ats_keywords') or []
+                approved_count = len(conversation.state.get('approved_rewrites') or [])
+
+                summary = {
+                    'files':          generated.get('files', []),
+                    'output_dir':     str(output_dir),
+                    'ats_keywords':   ats_keywords,
+                    'approved_rewrites': approved_count,
+                    'application_status': app_status,
+                }
+
+                return jsonify({
+                    'ok':          True,
+                    'commit_hash': commit_hash,
+                    'git_error':   git_error,
+                    'summary':     summary,
+                })
+            except Exception as e:
+                traceback.print_exc()
+                return jsonify({'error': str(e)}), 500
+
+    # ── Phase 11: Master Data Harvest ───────────────────────────────────────
+
+    @app.get("/api/harvest/candidates")
+    def harvest_candidates():
+        """Compile candidate write-back items from the current session.
+
+        Returns:
+            { candidates: List[{id, type, label, original, proposed, rationale}] }
+        """
+        with _session_lock:
+            try:
+                candidates = _compile_harvest_candidates(conversation)
+                return jsonify({'ok': True, 'candidates': candidates})
+            except Exception as e:
+                traceback.print_exc()
+                return jsonify({'error': str(e)}), 500
+
+    @app.post("/api/harvest/apply")
+    def harvest_apply():
+        """Write selected harvest candidates back to Master_CV_Data.json and git commit.
+
+        Request body:
+            selected_ids — list of candidate ids to apply
+
+        Returns:
+            { ok, written_count, diff_summary, commit_hash }
+        """
+        with _session_lock:
+            try:
+                body         = request.get_json(silent=True) or {}
+                selected_ids = body.get('selected_ids') or []
+
+                if not selected_ids:
+                    return jsonify({'ok': True, 'written_count': 0, 'diff_summary': [], 'commit_hash': None})
+
+                candidates_by_id = {c['id']: c for c in _compile_harvest_candidates(conversation)}
+                selected = [candidates_by_id[sid] for sid in selected_ids if sid in candidates_by_id]
+                if not selected:
+                    return jsonify({'ok': True, 'written_count': 0, 'diff_summary': [], 'commit_hash': None})
+
+                master_path = Path(conversation.orchestrator.master_data_path)
+                with open(master_path, encoding='utf-8') as f:
+                    master = json.load(f)
+
+                original_master = copy.deepcopy(master)
+                diff_summary: List[Dict[str, Any]] = []
+
+                for cand in selected:
+                    ctype = cand['type']
+                    if ctype == 'improved_bullet':
+                        # Update the matching bullet in master experience data
+                        applied = _harvest_apply_bullet(master, cand['original'], cand['proposed'])
+                        diff_summary.append({
+                            'id':      cand['id'],
+                            'type':    ctype,
+                            'applied': applied,
+                            'label':   cand['label'],
+                        })
+                    elif ctype in ('new_skill', 'skill_gap_confirmed'):
+                        skill_name = cand['proposed']
+                        applied    = _harvest_add_skill(master, skill_name)
+                        diff_summary.append({
+                            'id':      cand['id'],
+                            'type':    ctype,
+                            'applied': applied,
+                            'label':   cand['label'],
+                        })
+                    elif ctype == 'summary_variant':
+                        applied = _harvest_add_summary_variant(master, cand['proposed'])
+                        diff_summary.append({
+                            'id':      cand['id'],
+                            'type':    ctype,
+                            'applied': applied,
+                            'label':   cand['label'],
+                        })
+
+                # Write updated master data
+                with open(master_path, 'w', encoding='utf-8') as f:
+                    json.dump(master, f, indent=2)
+
+                # Reload in orchestrator
+                conversation.orchestrator.master_data = master
+
+                # Git commit
+                job_analysis = conversation.state.get('job_analysis') or {}
+                company  = (job_analysis.get('company') or 'Unknown').replace(' ', '_')
+                role     = (job_analysis.get('title') or 'Role').replace(' ', '_')
+                date_str = datetime.now().strftime('%Y-%m-%d')
+                commit_msg = f"chore: Update master CV data from {company}_{role}_{date_str} session"
+
+                commit_hash = None
+                git_error   = None
+                try:
+                    repo_root = Path(__file__).parent.parent
+                    subprocess.run(
+                        ['git', 'add', str(master_path)],
+                        cwd=str(repo_root), check=True, capture_output=True
+                    )
+                    result = subprocess.run(
+                        ['git', 'commit', '-m', commit_msg],
+                        cwd=str(repo_root), capture_output=True, text=True
+                    )
+                    if result.returncode == 0:
+                        m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
+                        commit_hash = m.group(1) if m else None
+                    else:
+                        git_error = result.stderr.strip() or result.stdout.strip()
+                except Exception as git_exc:
+                    git_error = str(git_exc)
+
+                written_count = sum(1 for d in diff_summary if d.get('applied'))
+                return jsonify({
+                    'ok':           True,
+                    'written_count': written_count,
+                    'diff_summary': diff_summary,
+                    'commit_hash':  commit_hash,
+                    'git_error':    git_error,
+                })
+            except Exception as e:
+                traceback.print_exc()
+                return jsonify({'error': str(e)}), 500
+
     return app
+
+
+# ---------------------------------------------------------------------------
+# Phase 11 harvest helpers (module-level for testability)
+# ---------------------------------------------------------------------------
+
+def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
+    """Return candidate write-back items for the current session.
+
+    Extracted from the harvest_candidates view so harvest_apply can call it
+    directly without round-tripping through the Flask response layer.
+    """
+    candidates: List[Dict[str, Any]] = []
+
+    approved_rewrites = conversation.state.get('approved_rewrites') or []
+    customizations    = conversation.state.get('customizations') or {}
+    post_answers      = conversation.state.get('post_analysis_answers') or {}
+
+    # 1. Improved bullets — approved rewrites where content differs from master
+    for rw in approved_rewrites:
+        proposed = rw.get('proposed', '')
+        original = rw.get('original', '')
+        if not proposed or not original:
+            continue
+        if proposed.strip() == original.strip():
+            continue
+        candidates.append({
+            'id':        f"rewrite_{rw.get('id', len(candidates))}",
+            'type':      'improved_bullet',
+            'label':     f"Improved bullet — {rw.get('context', rw.get('id', 'unknown'))}",
+            'original':  original,
+            'proposed':  proposed,
+            'rationale': rw.get('rationale') or 'Approved rewrite improves ATS-keyword coverage or adds a quantified metric.',
+        })
+
+    # 2. New / renamed skills added during the session
+    for skill in customizations.get('new_skills_added') or []:
+        if not skill:
+            continue
+        candidates.append({
+            'id':        f"skill_{skill.replace(' ', '_')}",
+            'type':      'new_skill',
+            'label':     f"New skill — {skill}",
+            'original':  '(not in master data)',
+            'proposed':  skill,
+            'rationale': 'Skill was added during the skills review step.',
+        })
+
+    # 3. Summary variant — if summary was rewritten and approved
+    summary_rewrite = next(
+        (rw for rw in approved_rewrites if rw.get('section') == 'summary'), None
+    )
+    if summary_rewrite and summary_rewrite.get('proposed'):
+        cand_id = 'summary_variant'
+        if not any(c['id'] == cand_id for c in candidates):
+            candidates.append({
+                'id':        cand_id,
+                'type':      'summary_variant',
+                'label':     'Professional summary variant',
+                'original':  summary_rewrite.get('original', ''),
+                'proposed':  summary_rewrite.get('proposed', ''),
+                'rationale': 'Rewritten summary could be stored as a named variant for future reuse.',
+            })
+
+    # 4. Clarification-answer-revealed skills (user confirmed yes to a skill gap)
+    for key, val in post_answers.items():
+        if not isinstance(val, str):
+            continue
+        if key.startswith('skill_gap_') and val.lower() in ('yes', 'true', '1'):
+            skill_name = key[len('skill_gap_'):]
+            cand_id    = f'skill_gap_{skill_name}'
+            if not any(c['id'] == cand_id for c in candidates):
+                candidates.append({
+                    'id':        cand_id,
+                    'type':      'skill_gap_confirmed',
+                    'label':     f"Confirmed skill — {skill_name}",
+                    'original':  '(not in master data)',
+                    'proposed':  skill_name,
+                    'rationale': 'You confirmed this skill in response to a clarifying question.',
+                })
+
+    return candidates
+
+
+def _harvest_apply_bullet(master: Dict, original: str, proposed: str) -> bool:
+    """Replace ``original`` bullet text with ``proposed`` in master experience data."""
+    experiences = (
+        master.get('experience')
+        or master.get('experiences')
+        or []
+    )
+    for exp in experiences:
+        achievements = exp.get('achievements') or exp.get('bullets') or []
+        for i, bullet in enumerate(achievements):
+            text = bullet if isinstance(bullet, str) else bullet.get('text', '')
+            if text.strip() == original.strip():
+                if isinstance(bullet, str):
+                    achievements[i] = proposed
+                else:
+                    bullet['text'] = proposed
+                return True
+    return False
+
+
+def _harvest_add_skill(master: Dict, skill_name: str) -> bool:
+    """Add ``skill_name`` to master skills data; returns True if actually added."""
+    skills = master.get('skills')
+    if isinstance(skills, list):
+        if skill_name not in skills:
+            skills.append(skill_name)
+            return True
+        return False
+    elif isinstance(skills, dict):
+        # Category dict — add to a named 'other'/'general'/'additional' bucket;
+        # never auto-add to an arbitrary category.
+        for cat_key, cat_val in skills.items():
+            cat_list: List[str] = []
+            if isinstance(cat_val, list):
+                cat_list = cat_val
+            elif isinstance(cat_val, dict) and isinstance(cat_val.get('skills'), list):
+                cat_list = cat_val['skills']
+            if cat_key.lower() in ('other', 'general', 'additional'):
+                if skill_name not in cat_list:
+                    cat_list.append(skill_name)
+                    return True
+                return False
+        # No suitable category — add a new 'Other' category
+        skills['Other'] = [skill_name]
+        return True
+    # skills field is missing — create as list
+    master['skills'] = [skill_name]
+    return True
+
+
+def _harvest_add_summary_variant(master: Dict, new_summary: str) -> bool:
+    """Store ``new_summary`` as a named variant in master data.
+
+    If ``professional_summaries`` already exists as a list, appends.
+    Otherwise creates it.
+    """
+    variants = master.get('professional_summaries')
+    if isinstance(variants, list):
+        if new_summary not in variants:
+            variants.append(new_summary)
+            return True
+        return False
+    master['professional_summaries'] = [new_summary]
+    return True
 
 
 def parse_args():

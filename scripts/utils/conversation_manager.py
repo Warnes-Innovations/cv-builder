@@ -1146,6 +1146,10 @@ Ask questions that are specific to this job posting, not generic career question
         else:
             print("\n✓ Reset cancelled.")
     
+    def save_session(self):
+        """Public alias for _save_session."""
+        self._save_session()
+
     def _save_session(self):
         """Save conversation session."""
         try:
