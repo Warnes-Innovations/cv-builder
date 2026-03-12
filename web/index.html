@@ -127,6 +127,7 @@
       <div class="tabs">
         <div class="tab active" id="tab-job" data-tab="job">Job Description</div>
         <div class="tab" id="tab-analysis" data-tab="analysis">Analysis</div>
+        <div class="tab" id="tab-questions" data-tab="questions">💬 Questions</div>
         <div class="tab" id="tab-customizations" data-tab="customizations">Customizations</div>
         <div class="tab" id="tab-rewrite" data-tab="rewrite">✏️ Rewrites</div>
         <div class="tab" id="tab-spell" data-tab="spell">🔤 Spell Check</div>
@@ -173,6 +174,12 @@
         <button onclick="closeModelModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
       </div>
       <div class="modal-body" style="padding: 0;">
+        <div style="padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
+          <div style="font-size:0.85em; color:#334155; margin-bottom:6px;">
+            Step 1: Select provider(s)
+          </div>
+          <div id="model-provider-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+        </div>
         <table id="model-table" style="width:100%; border-collapse: collapse; font-size: 0.9em;">
           <thead id="model-table-head">
             <tr style="background: #f1f5f9; text-align: left;">
@@ -181,7 +188,8 @@
               <th style="padding: 10px 14px; white-space: nowrap;">Context</th>
               <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M in</th>
               <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M out</th>
-              <th style="padding: 10px 14px; white-space: nowrap; text-align: right;" title="GitHub Copilot premium-request multiplier (0 = free for paid subscribers)">Copilot &times;</th>
+              <th style="padding: 10px 14px; white-space: nowrap; text-align: right;" title="GitHub Copilot premium-request multiplier (0 = free for paid subscribers)">Copilot</th>
+              <th style="padding: 10px 14px; white-space: nowrap;">Source</th>
               <th style="padding: 10px 14px;">Notes</th>
             </tr>
           </thead>

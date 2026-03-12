@@ -398,6 +398,41 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
             except json.JSONDecodeError:
                 return None
         return None
+
+    def _extract_structured_questions(self, text: str) -> List[Dict[str, object]]:
+        """Extract numbered clarifying questions from free-form LLM text.
+
+        The analyze flow often returns narrative text followed by numbered
+        questions (``1.``, ``2.``, ``3.``). This helper converts that output
+        into the structured question objects used by the web Questions tab.
+        """
+        if not text:
+            return []
+
+        normalized = text.replace("\r\n", "\n")
+        blocks = re.split(r"(?m)^\s*\d+\.\s+", normalized)
+        if len(blocks) <= 1:
+            return []
+
+        extracted: List[Dict[str, object]] = []
+        for idx, block in enumerate(blocks[1:], 1):
+            chunk = block.strip()
+            if not chunk:
+                continue
+
+            # Preserve full question body (including markdown/newlines) so the
+            # Questions tab can render rich context without truncation.
+            question = chunk.strip()
+            if not question:
+                continue
+
+            extracted.append({
+                "type": f"clarification_{idx}",
+                "question": question[:4000],
+                "choices": [],
+            })
+
+        return extracted[:4]
     
     def _execute_action(self, action: Dict) -> Optional[str]:
         """Execute requested action."""
@@ -415,6 +450,8 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
             )
             self.state['job_analysis'] = analysis
             self.state['phase'] = 'customization'
+            self.state['post_analysis_questions'] = []
+            self.state['post_analysis_answers'] = {}
 
             # Rename the session directory now that company / role are known
             self._rename_session_dir(
@@ -456,10 +493,17 @@ Ask questions that are specific to this job posting, not generic career question
                     'role': 'assistant',
                     'content': questions_response
                 })
+
+                extracted_questions = self._extract_structured_questions(questions_response)
+                if extracted_questions:
+                    self.state['post_analysis_questions'] = extracted_questions
                 
                 return {
                     'text': f"✓ Job analysis complete:\n\n{questions_response}",
-                    'context_data': {'job_analysis': analysis},
+                    'context_data': {
+                        'job_analysis': analysis,
+                        'post_analysis_questions': extracted_questions,
+                    },
                 }
             except Exception as e:
                 print(f"Error generating contextual questions: {e}")

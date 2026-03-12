@@ -287,5 +287,5 @@ def validate_config(provider: Optional[str] = None) -> None:
             "No LLM provider configured. "
             "Set `llm.default_provider` in config.yaml or pass `--llm-provider` "
             "on the command line. "
-            "Valid values: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local."
+            "Valid values: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local, copilot-sdk."
         )

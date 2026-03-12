@@ -27,6 +27,7 @@ from utils.pricing_cache import (
     get_cached_pricing,
     get_pricing_source,
     get_pricing_updated_at,
+    lookup_runtime_pricing_bulk,
     refresh_pricing_cache,
 )
 
@@ -337,6 +338,48 @@ class TestRefreshPricingCache(unittest.TestCase):
 
         self.assertEqual(captured["payload"]["source"],     "static")
         self.assertEqual(captured["payload"]["live_count"], 0)
+
+
+class TestLookupRuntimePricingBulk(unittest.TestCase):
+
+    def setUp(self):
+        pc._mem_cache = None
+
+    def test_returns_cached_price_for_runtime_model(self):
+        live = {"gemini-2.5-flash": {"cost_input": 0.30, "cost_output": 2.50}}
+        result = lookup_runtime_pricing_bulk(
+            [("gemini", "models/gemini-2.5-flash")],
+            cached_pricing=live,
+        )
+        self.assertEqual(result["models/gemini-2.5-flash"]["cost_input"], 0.30)
+
+    def test_fetches_and_persists_unknown_runtime_model(self):
+        catalog = {
+            "google/gemini-3.1-flash-lite": {"cost_input": 0.12, "cost_output": 0.48},
+        }
+        persisted = {}
+
+        def _capture_persist(entries):
+            persisted.update(entries)
+
+        with patch.object(pc, "_fetch_openrouter_catalog_index", return_value=catalog), \
+             patch.object(pc, "_persist_runtime_pricing", side_effect=_capture_persist):
+            result = lookup_runtime_pricing_bulk(
+                [("gemini", "gemini-3.1-flash-lite")],
+                cached_pricing={},
+            )
+
+        self.assertEqual(result["gemini-3.1-flash-lite"]["cost_output"], 0.48)
+        self.assertIn("gemini-3.1-flash-lite", persisted)
+        self.assertIn("google/gemini-3.1-flash-lite", persisted)
+
+    def test_returns_empty_when_catalog_unavailable(self):
+        with patch.object(pc, "_fetch_openrouter_catalog_index", return_value=None):
+            result = lookup_runtime_pricing_bulk(
+                [("gemini", "gemini-3.1-flash-lite")],
+                cached_pricing={},
+            )
+        self.assertEqual(result, {})
 
 
 

@@ -493,6 +493,8 @@ function setControlsEnabled(enabled) {
 // ── Model selector ────────────────────────────────────────────────────────────
 
 let _modelData = null; // cached from last loadModelSelector() call
+let _modelDataTable = null;
+let _selectedModelProviders = new Set();
 
 async function loadModelSelector() {
   try {
@@ -503,21 +505,133 @@ async function loadModelSelector() {
       const model = _modelData.model || '—';
       label.textContent = prov ? `${prov} · ${model}` : model;
     }
+    if (_modelData && _modelData.provider) {
+      _selectedModelProviders = new Set([_modelData.provider]);
+    }
   } catch (e) {
     console.warn('Could not load model list:', e);
   }
 }
 
-function openModelModal() {
+function _providerStageLabel(provider, capableSet) {
+  const isCapable = capableSet.has(provider);
+  return isCapable ? 'list_models' : 'fallback';
+}
+
+function _renderProviderSelector() {
+  const listEl = document.getElementById('model-provider-list');
+  if (!listEl || !_modelData) return;
+
+  const providers = Array.isArray(_modelData.providers)
+    ? _modelData.providers
+    : Array.from(new Set((_modelData.all_models || []).map(r => r.provider).filter(Boolean))).sort();
+  const capableSet = new Set(_modelData.list_models_capable || []);
+
+  if (_selectedModelProviders.size === 0 && _modelData.provider) {
+    _selectedModelProviders.add(_modelData.provider);
+  }
+
+  listEl.innerHTML = '';
+  providers.forEach(provider => {
+    const checked = _selectedModelProviders.has(provider);
+    const sourceLabel = _providerStageLabel(provider, capableSet);
+
+    const label = document.createElement('label');
+    label.style.cssText = 'display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:0.82em; background:#fff; cursor:pointer;';
+    label.innerHTML =
+      `<input type="checkbox" value="${escapeHtml(provider)}" ${checked ? 'checked' : ''} style="margin:0;" />` +
+      `<span>${escapeHtml(provider)}</span>` +
+      `<span style="color:#64748b; font-size:0.8em;">(${escapeHtml(sourceLabel)})</span>`;
+
+    const checkbox = label.querySelector('input');
+    checkbox.addEventListener('change', async (event) => {
+      if (event.target.checked) {
+        _selectedModelProviders.add(provider);
+      } else {
+        _selectedModelProviders.delete(provider);
+      }
+      if (_selectedModelProviders.size === 0 && _modelData.provider) {
+        _selectedModelProviders.add(_modelData.provider);
+        event.target.checked = true;
+      }
+      await _refreshModelCatalogForSelection();
+    });
+
+    listEl.appendChild(label);
+  });
+}
+
+async function _refreshModelCatalogForSelection() {
+  if (!_modelData) return;
+
+  const selected = Array.from(_selectedModelProviders);
+  if (!selected.length) {
+    _selectedModelProviders = new Set([_modelData.provider]);
+  }
+
+  try {
+    const providersParam = encodeURIComponent(Array.from(_selectedModelProviders).join(','));
+    const catalog = await apiCall('GET', `/api/model-catalog?providers=${providersParam}`);
+    _modelData.all_models = catalog.all_models || [];
+    _modelData.pricing_updated_at = catalog.pricing_updated_at || _modelData.pricing_updated_at;
+    _modelData.pricing_source = catalog.pricing_source || _modelData.pricing_source;
+    if (Array.isArray(catalog.providers) && catalog.providers.length) {
+      _modelData.providers = catalog.providers;
+    }
+    if (Array.isArray(catalog.list_models_capable)) {
+      _modelData.list_models_capable = catalog.list_models_capable;
+    }
+  } catch (error) {
+    console.warn('Could not refresh model catalog for selected providers:', error);
+  }
+
+  _buildModelTable();
+}
+
+async function openModelModal() {
   const overlay = document.getElementById('model-modal-overlay');
   if (!overlay) return;
-  _buildModelTable();
+
+  if (!_modelData) {
+    await loadModelSelector();
+  }
+  _renderProviderSelector();
+  await _refreshModelCatalogForSelection();
   overlay.style.display = 'flex';
 }
 
 function closeModelModal() {
   const overlay = document.getElementById('model-modal-overlay');
   if (overlay) overlay.style.display = 'none';
+}
+
+function _applyModelRowVisualState(tr, isActive) {
+  tr.classList.toggle('model-row-active', isActive);
+  tr.style.cssText = isActive
+    ? 'background:#eff6ff; font-weight:600; cursor:pointer;'
+    : 'cursor:pointer;';
+
+  const model = tr.getAttribute('data-model') || '';
+  const modelCell = tr.cells && tr.cells[1];
+  if (modelCell) {
+    modelCell.innerHTML = `${escapeHtml(model)}` +
+      (isActive ? ' <span style="color:#3b82f6; font-size:0.75em;">&#10003; active</span>' : '');
+  }
+}
+
+function _syncModelTableSelection() {
+  const tbody = document.getElementById('model-table-body');
+  if (!tbody || !_modelData) return;
+
+  const activeProvider = _modelData.provider;
+  const activeModel = _modelData.model;
+  tbody.querySelectorAll('tr').forEach(tr => {
+    const isActive = (
+      tr.getAttribute('data-provider') === activeProvider &&
+      tr.getAttribute('data-model') === activeModel
+    );
+    _applyModelRowVisualState(tr, isActive);
+  });
 }
 
 function _buildModelTable() {
@@ -531,18 +645,28 @@ function _buildModelTable() {
   // Fixed 7-column headers — no dynamic rebuilding needed
   if (thead) {
     const thS = 'padding:10px 14px; white-space:nowrap;';
-    thead.querySelector('tr').innerHTML =
-      `<th style="${thS}">Provider</th>` +
-      `<th style="${thS}">Model</th>` +
-      `<th style="${thS} text-align:right;">Context</th>` +
-      `<th style="${thS} text-align:right;" title="USD per 1M input tokens (direct API billing)">$/1M in</th>` +
-      `<th style="${thS} text-align:right;" title="USD per 1M output tokens (direct API billing)">$/1M out</th>` +
-      `<th style="${thS} text-align:right;" title="GitHub Copilot premium-request multiplier (0 = free for paid subscribers)">Copilot &times;</th>` +
-      `<th style="${thS}">Notes</th>`;
+    thead.innerHTML =
+      `<tr style="background:#f1f5f9; text-align:left;">` +
+        `<th style="${thS}">Provider</th>` +
+        `<th style="${thS}">Model</th>` +
+        `<th style="${thS} text-align:right;">Context</th>` +
+        `<th style="${thS} text-align:right;" title="USD per 1M input tokens (direct API billing)">$/1M in</th>` +
+        `<th style="${thS} text-align:right;" title="USD per 1M output tokens (direct API billing)">$/1M out</th>` +
+        `<th style="${thS} text-align:right;" title="GitHub Copilot premium-request multiplier (0 = free for paid subscribers)">Copilot</th>` +
+        `<th style="${thS}">Source</th>` +
+        `<th style="${thS}">Notes</th>` +
+      `</tr>`;
+  }
+
+  // Tear down any existing DataTable before rebuilding rows.
+  if (window.$ && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#model-table')) {
+    _modelDataTable = $('#model-table').DataTable();
+    _modelDataTable.destroy();
+    _modelDataTable = null;
   }
 
   // Prefer cross-provider list; fall back to current-provider available list
-  const rows = (_modelData.all_models && _modelData.all_models.length)
+  let rows = (_modelData.all_models && _modelData.all_models.length)
     ? _modelData.all_models.filter(r => r.model)
     : (_modelData.available || []).map(r =>
         typeof r === 'object'
@@ -553,6 +677,18 @@ function _buildModelTable() {
   tbody.innerHTML = '';
   const tdBase  = 'padding:9px 14px; border-bottom:1px solid #e2e8f0;';
   const fmtCost = v => (v != null) ? '$' + Number(v).toFixed(v < 1 ? 3 : 2) : '—';
+  const fmtPriceHint = source => {
+    if (source === 'runtime_cache') {
+      return '<span title="Price from runtime cache" style="margin-left:6px; display:inline-block; padding:1px 5px; border-radius:999px; background:#ecfeff; color:#0f766e; font-size:0.72em; font-weight:600; vertical-align:middle;">cache</span>';
+    }
+    return '<span title="Price from static baseline" style="margin-left:6px; display:inline-block; padding:1px 5px; border-radius:999px; background:#f8fafc; color:#64748b; font-size:0.72em; font-weight:600; vertical-align:middle;">static</span>';
+  };
+  const fmtSource = s => {
+    if (s === 'list_models') {
+      return '<span style="display:inline-block; padding:2px 6px; border-radius:999px; background:#ecfeff; color:#0f766e; font-size:0.78em; font-weight:600;">list_models</span>';
+    }
+    return '<span style="display:inline-block; padding:2px 6px; border-radius:999px; background:#f1f5f9; color:#475569; font-size:0.78em; font-weight:600;">fallback_static</span>';
+  };
   const fmtMult = v => {
     if (v == null) return '—';
     if (v === 0)   return '<span style="color:#16a34a; font-weight:600;">free</span>';
@@ -563,29 +699,87 @@ function _buildModelTable() {
     const provider   = item.provider || currentProvider;
     const m          = item.model;
     const ctx        = item.context_window ? Number(item.context_window).toLocaleString() : '—';
+    const source     = item.source || 'fallback_static';
+    const priceSource = item.price_source || 'static_baseline';
     const notes      = item.notes || '';
     const isSelected = (provider === currentProvider && m === currentModel);
 
     const tr = document.createElement('tr');
-    tr.style.cssText = isSelected
-      ? 'background:#eff6ff; font-weight:600; cursor:pointer;'
-      : 'cursor:pointer;';
-    tr.addEventListener('mouseover', () => { if (!isSelected) tr.style.background = '#f8fafc'; });
-    tr.addEventListener('mouseout',  () => { if (!isSelected) tr.style.background = ''; });
+    tr.setAttribute('data-provider', provider);
+    tr.setAttribute('data-model', m);
+    _applyModelRowVisualState(tr, isSelected);
+    tr.addEventListener('mouseover', () => {
+      if (!tr.classList.contains('model-row-active')) tr.style.background = '#f8fafc';
+    });
+    tr.addEventListener('mouseout', () => {
+      if (!tr.classList.contains('model-row-active')) tr.style.background = '';
+    });
 
     tr.innerHTML =
-      `<td style="${tdBase} color:#64748b; white-space:nowrap;">${provider}</td>` +
-      `<td style="${tdBase}">${m}` +
-        (isSelected ? ' <span style="color:#3b82f6; font-size:0.75em;">&#10003; active</span>' : '') +
-      `</td>` +
+      `<td style="${tdBase} color:#64748b; white-space:nowrap;">${escapeHtml(provider)}</td>` +
+      `<td style="${tdBase}">${escapeHtml(m)}</td>` +
       `<td style="${tdBase} white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums;">${ctx}</td>` +
-      `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtCost(item.cost_input)}</td>` +
-      `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtCost(item.cost_output)}</td>` +
+      `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtCost(item.cost_input)}${fmtPriceHint(priceSource)}</td>` +
+      `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtCost(item.cost_output)}${fmtPriceHint(priceSource)}</td>` +
       `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtMult(item.copilot_multiplier)}</td>` +
+      `<td style="${tdBase} white-space:nowrap;">${fmtSource(source)}</td>` +
       `<td style="${tdBase} color:#64748b;">${notes}</td>`;
-    tr.addEventListener('click', () => setModel(m, provider));
     tbody.appendChild(tr);
   });
+
+  // Rebind row click using delegation so sorting/filter redraws still work.
+  tbody.onclick = (event) => {
+    const tr = event.target.closest('tr');
+    if (!tr) return;
+    const provider = tr.getAttribute('data-provider');
+    const model = tr.getAttribute('data-model');
+    if (!model) return;
+    setModel(model, provider);
+  };
+
+  // Enhance with DataTables for sorting/searching; keep paging disabled.
+  if (window.$ && $.fn && $.fn.DataTable) {
+    _modelDataTable = $('#model-table').DataTable({
+      paging: false,
+      searching: true,
+      info: false,
+      orderCellsTop: true,
+      order: [[0, 'asc'], [1, 'asc']],
+      autoWidth: false,
+      language: { search: 'Filter:' },
+      initComplete: function() {
+        const api = this.api();
+        const $thead = $('#model-table thead');
+        const hasFilterRow = $thead.find('tr.model-filter-row').length > 0;
+        if (!hasFilterRow) {
+          const $filterRow = $('<tr class="model-filter-row"></tr>');
+          api.columns().every(function(colIdx) {
+            const title = $(api.column(colIdx).header()).text().trim();
+            const $th = $('<th style="padding:6px 10px; background:#f8fafc; border-top:1px solid #e2e8f0;"></th>');
+            const $input = $(`<input type="text" placeholder="${title}" style="width:100%; padding:4px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.82em;" />`);
+            $th.append($input);
+            $filterRow.append($th);
+          });
+          $thead.append($filterRow);
+        }
+
+        api.columns().every(function(colIdx) {
+          const $input = $('#model-table thead tr.model-filter-row th').eq(colIdx).find('input');
+          if (!$input.length) return;
+          $input.off('click.modelFilter keyup.modelFilter change.modelFilter');
+          $input.on('click.modelFilter', function(event) { event.stopPropagation(); });
+          $input.on('keyup.modelFilter change.modelFilter', function() {
+            const value = this.value;
+            if (api.column(colIdx).search() !== value) {
+              api.column(colIdx).search(value).draw();
+            }
+          });
+        });
+      },
+    });
+  }
+
+  _syncModelTableSelection();
 
   // Update pricing freshness footer
   _updatePricingFooter();
@@ -605,6 +799,7 @@ async function setModel(model, provider) {
       const prov = (_modelData && _modelData.provider) || provider;
       label.textContent  = prov ? `${prov} · ${model}` : model;
     }
+    _syncModelTableSelection();
     // Keep the modal open so the user can click "Test connection"
     // Fire-and-forget connection test so the result appears immediately
     testCurrentModel();

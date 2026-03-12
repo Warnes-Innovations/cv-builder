@@ -94,7 +94,7 @@ Examples:
     )
     parser.add_argument(
         '--llm-provider',
-        choices=['github', 'openai', 'anthropic', 'local'],
+        choices=['copilot-oauth', 'copilot', 'github', 'openai', 'anthropic', 'gemini', 'groq', 'local', 'copilot-sdk'],
         default=config.llm_provider,
         help='LLM provider to use'
     )

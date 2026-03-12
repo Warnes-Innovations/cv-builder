@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
-from utils.llm_client import LLMClient, OpenAIClient, CopilotClient, GitHubModelsClient, GeminiClient, _normalize_github_model_id
+from utils.llm_client import LLMClient, OpenAIClient, CopilotClient, GitHubModelsClient, GeminiClient, CopilotSdkClient, get_llm_provider, _normalize_github_model_id
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +523,192 @@ class TestGeminiClientAnyLLM(unittest.TestCase):
 
         result = client.chat([{'role': 'user', 'content': 'hi'}])
         self.assertEqual(result, '12345')
+
+    def test_chat_falls_back_to_output_text_when_choices_missing(self):
+        """Gemini parsing supports responses without choices[] when output_text exists."""
+        client = object.__new__(GeminiClient)
+        client._anyllm_completion = MagicMock(
+            return_value=SimpleNamespace(output_text='Ready from fallback')
+        )
+        client.model = 'gemini-2.5-flash'
+        client.api_key = 'unit-test-key'
+
+        result = client.chat([{'role': 'user', 'content': 'hi'}])
+        self.assertEqual(result, 'Ready from fallback')
+
+    def test_chat_raises_clear_error_when_no_content(self):
+        """Gemini parsing returns empty string when no content fields are present."""
+        client = object.__new__(GeminiClient)
+        client._anyllm_completion = MagicMock(return_value=SimpleNamespace())
+        client.model = 'gemini-2.5-flash'
+        client.api_key = 'unit-test-key'
+
+        result = client.chat([{'role': 'user', 'content': 'hi'}])
+        self.assertEqual(result, '')
+
+    def test_chat_reads_candidates_parts_envelope(self):
+        """Gemini parsing supports candidate->content->parts text envelopes."""
+        part = SimpleNamespace(text='Ready from candidates')
+        cand_content = SimpleNamespace(parts=[part])
+        candidate = SimpleNamespace(content=cand_content)
+
+        client = object.__new__(GeminiClient)
+        client._anyllm_completion = MagicMock(
+            return_value=SimpleNamespace(candidates=[candidate])
+        )
+        client.model = 'gemini-2.5-flash'
+        client.api_key = 'unit-test-key'
+
+        result = client.chat([{'role': 'user', 'content': 'hi'}])
+        self.assertEqual(result, 'Ready from candidates')
+
+
+class TestCopilotSdkClient(unittest.TestCase):
+    """Validate CopilotSdkClient behavior when routed through any-llm copilot_sdk provider."""
+
+    def test_init_prefers_explicit_api_key(self):
+        """Explicit api_key argument wins over environment variables."""
+        mock_completion = MagicMock()
+        with patch('utils.llm_client.os.getenv', return_value='env-key'):
+            with patch.dict(sys.modules, {'any_llm': SimpleNamespace(completion=mock_completion)}):
+                client = CopilotSdkClient(model='gpt-4o', api_key='explicit-key')
+
+        self.assertEqual(client.api_key, 'explicit-key')
+        self.assertEqual(client.model, 'gpt-4o')
+
+    def test_init_uses_copilot_github_token_env(self):
+        """COPILOT_GITHUB_TOKEN is used when no explicit api_key is given."""
+        mock_completion = MagicMock()
+
+        def _env(name, default=None):
+            if name == 'COPILOT_GITHUB_TOKEN':
+                return 'copilot-token'
+            return default
+
+        with patch('utils.llm_client.os.getenv', side_effect=_env):
+            with patch.dict(sys.modules, {'any_llm': SimpleNamespace(completion=mock_completion)}):
+                client = CopilotSdkClient(model='gpt-4o')
+
+        self.assertEqual(client.api_key, 'copilot-token')
+
+    def test_init_falls_back_to_github_token_env(self):
+        """GITHUB_TOKEN is used when COPILOT_GITHUB_TOKEN is unset."""
+        mock_completion = MagicMock()
+
+        def _env(name, default=None):
+            if name == 'GITHUB_TOKEN':
+                return 'github-token'
+            return default
+
+        with patch('utils.llm_client.os.getenv', side_effect=_env):
+            with patch.dict(sys.modules, {'any_llm': SimpleNamespace(completion=mock_completion)}):
+                client = CopilotSdkClient(model='gpt-4o')
+
+        self.assertEqual(client.api_key, 'github-token')
+
+    def test_init_falls_back_to_gh_token_env(self):
+        """GH_TOKEN is used as final env-var fallback."""
+        mock_completion = MagicMock()
+
+        def _env(name, default=None):
+            if name == 'GH_TOKEN':
+                return 'gh-token'
+            return default
+
+        with patch('utils.llm_client.os.getenv', side_effect=_env):
+            with patch.dict(sys.modules, {'any_llm': SimpleNamespace(completion=mock_completion)}):
+                client = CopilotSdkClient(model='gpt-4o')
+
+        self.assertEqual(client.api_key, 'gh-token')
+
+    def test_init_allows_no_token(self):
+        """No API key is fine — logged-in CLI user mode requires no token."""
+        mock_completion = MagicMock()
+        with patch('utils.llm_client.os.getenv', return_value=None):
+            with patch.dict(sys.modules, {'any_llm': SimpleNamespace(completion=mock_completion)}):
+                client = CopilotSdkClient(model='gpt-4o')
+
+        self.assertIsNone(client.api_key)
+
+    def test_init_raises_when_any_llm_missing(self):
+        """Missing any-llm dependency raises ImportError with install guidance."""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def _import(name, *args, **kwargs):
+            if name == 'any_llm':
+                raise ImportError('No module named any_llm')
+            return original_import(name, *args, **kwargs)
+
+        with patch('utils.llm_client.os.getenv', return_value=None):
+            with patch('builtins.__import__', side_effect=_import):
+                with self.assertRaises(ImportError) as ctx:
+                    CopilotSdkClient(model='gpt-4o')
+
+        self.assertIn('any-llm', str(ctx.exception))
+
+    def test_chat_forwards_arguments_with_api_key(self):
+        """chat() includes api_key in any-llm call when a token is set."""
+        client = object.__new__(CopilotSdkClient)
+        client.model = 'gpt-4o'
+        client.api_key = 'test-token'
+        client._anyllm_completion = MagicMock(
+            return_value=SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content='Hello'))]
+            )
+        )
+
+        messages = [{'role': 'user', 'content': 'Hi'}]
+        result = client.chat(messages, temperature=0.5, max_tokens=20)
+
+        self.assertEqual(result, 'Hello')
+        client._anyllm_completion.assert_called_once_with(
+            provider='copilot_sdk',
+            model='gpt-4o',
+            api_key='test-token',
+            messages=messages,
+            temperature=0.5,
+            max_tokens=20,
+        )
+
+    def test_chat_omits_api_key_when_none(self):
+        """chat() omits api_key from any-llm call when api_key is None (logged-in mode)."""
+        client = object.__new__(CopilotSdkClient)
+        client.model = 'gpt-4o'
+        client.api_key = None
+        client._anyllm_completion = MagicMock(
+            return_value=SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content='Hello'))]
+            )
+        )
+
+        messages = [{'role': 'user', 'content': 'Hi'}]
+        result = client.chat(messages, temperature=0.7)
+
+        self.assertEqual(result, 'Hello')
+        call_kwargs = client._anyllm_completion.call_args.kwargs
+        self.assertNotIn('api_key', call_kwargs)
+
+    def test_chat_returns_empty_string_on_no_content(self):
+        """chat() returns empty string when no content fields are present."""
+        client = object.__new__(CopilotSdkClient)
+        client.model = 'gpt-4o'
+        client.api_key = None
+        client._anyllm_completion = MagicMock(return_value=SimpleNamespace())
+
+        result = client.chat([{'role': 'user', 'content': 'hi'}])
+        self.assertEqual(result, '')
+
+    def test_get_llm_provider_returns_copilot_sdk_client(self):
+        """get_llm_provider('copilot-sdk') returns a CopilotSdkClient instance."""
+        mock_completion = MagicMock()
+        with patch('utils.llm_client.os.getenv', return_value=None):
+            with patch.dict(sys.modules, {'any_llm': SimpleNamespace(completion=mock_completion)}):
+                client = get_llm_provider(provider='copilot-sdk', model='gpt-4o')
+
+        self.assertIsInstance(client, CopilotSdkClient)
+        self.assertEqual(client.model, 'gpt-4o')
 
 
 # ---------------------------------------------------------------------------

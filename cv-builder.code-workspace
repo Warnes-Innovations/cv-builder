@@ -8,6 +8,12 @@
 		},
 		{
 			"path": "../../Library/CloudStorage/GoogleDrive-greg@warnes.net/My Drive/CV"
+		},
+		{
+			"path": "../copilot-sdk"
+		},
+		{
+			"path": "../any-llm"
 		}
 	],
 	"settings": {

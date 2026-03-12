@@ -39,7 +39,7 @@ import logging
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,13 @@ _refresh_lock = threading.Lock()
 # ── OpenRouter live-pricing constants ────────────────────────────────────────
 _OPENROUTER_API_URL = "https://openrouter.ai/api/v1/models"
 _OPENROUTER_TIMEOUT = 15   # seconds
+
+_PROVIDER_NAMESPACE = {
+    "openai":    "openai",
+    "anthropic": "anthropic",
+    "gemini":    "google",
+    "groq":      "groq",
+}
 
 # Maps our internal short model IDs → canonical OpenRouter model IDs.
 # OR prices are in USD-per-token; we multiply × 1,000,000 → $/1M.
@@ -254,6 +261,146 @@ def _fetch_openrouter_pricing() -> Optional[Dict[str, Dict[str, Any]]]:
     logger.info("OpenRouter: resolved %d / %d model prices",
                 len(result), len(_OPENROUTER_ID_MAP))
     return result or None
+
+
+def _fetch_openrouter_catalog_index() -> Optional[Dict[str, Dict[str, Any]]]:
+    """Fetch OpenRouter model catalog and return ``{id: {cost_input, cost_output}}``."""
+    try:
+        import requests as _requests  # lazy import; avoids hard dep at module load
+        resp = _requests.get(_OPENROUTER_API_URL, timeout=_OPENROUTER_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("OpenRouter catalog fetch failed: %s", exc)
+        return None
+
+    index: Dict[str, Dict[str, Any]] = {}
+    for model in data.get("data", []):
+        mid = str(model.get("id", "") or "")
+        pricing = model.get("pricing", {})
+        if not mid:
+            continue
+        try:
+            cost_in = float(pricing.get("prompt", 0)) * 1_000_000
+            cost_out = float(pricing.get("completion", 0)) * 1_000_000
+            if cost_in >= 0 and cost_out >= 0:
+                index[mid] = {"cost_input": cost_in, "cost_output": cost_out}
+        except (ValueError, TypeError):
+            continue
+    return index or None
+
+
+def _runtime_pricing_candidates(model_id: str, provider: Optional[str] = None) -> List[str]:
+    """Return likely pricing lookup keys for a runtime-discovered model id."""
+    raw = (model_id or "").strip()
+    if not raw:
+        return []
+
+    candidates: List[str] = []
+
+    def _add(value: str) -> None:
+        if value and value not in candidates:
+            candidates.append(value)
+
+    normalized = raw[7:] if raw.startswith("models/") else raw
+    _add(raw)
+    _add(normalized)
+
+    if "/" in normalized:
+        _add(normalized.split("/", 1)[1])
+
+    ns = _PROVIDER_NAMESPACE.get((provider or "").strip().lower())
+    if ns and "/" not in normalized:
+        _add(f"{ns}/{normalized}")
+
+    # Common OpenRouter namespaces for Groq-discovered open-weight models.
+    if (provider or "").strip().lower() == "groq" and "/" not in normalized:
+        _add(f"meta-llama/{normalized}")
+        _add(f"mistralai/{normalized}")
+
+    return candidates
+
+
+def _persist_runtime_pricing(entries: Dict[str, Dict[str, Any]]) -> None:
+    """Merge discovered runtime pricing entries into cache file and memory cache."""
+    if not entries:
+        return
+
+    global _mem_cache
+    with _refresh_lock:
+        payload = _load_cache_file() or {}
+        pricing = dict(payload.get("pricing", {}))
+        pricing.update(entries)
+
+        source = payload.get("source") or "runtime_openrouter"
+        updated_payload: Dict[str, Any] = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "source": source,
+            "live_count": payload.get("live_count", 0),
+            "pricing": pricing,
+        }
+        try:
+            _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _CACHE_FILE.write_text(json.dumps(updated_payload, indent=2))
+        except Exception as exc:
+            logger.warning("Could not persist runtime pricing cache: %s", exc)
+
+        merged = {**STATIC_PRICING, **pricing}
+        if _mem_cache is None:
+            _mem_cache = merged
+        else:
+            _mem_cache.update(merged)
+
+
+def lookup_runtime_pricing_bulk(
+    models: List[Tuple[Optional[str], str]],
+    cached_pricing: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Resolve pricing for runtime-discovered models and write-through cache.
+
+    Args:
+        models: list of tuples ``(provider, model_id)`` to resolve.
+        cached_pricing: optional preloaded pricing dict from ``get_cached_pricing()``.
+
+    Returns:
+        Dict keyed by the original ``model_id`` with pricing fields.
+    """
+    live = cached_pricing if cached_pricing is not None else get_cached_pricing()
+    resolved: Dict[str, Dict[str, Any]] = {}
+
+    unresolved: List[Tuple[Optional[str], str, List[str]]] = []
+    for provider, model_id in models:
+        candidates = _runtime_pricing_candidates(model_id, provider)
+        found = None
+        for key in candidates:
+            found = live.get(key)
+            if found:
+                resolved[model_id] = found
+                break
+        if not found and candidates:
+            unresolved.append((provider, model_id, candidates))
+
+    if not unresolved:
+        return resolved
+
+    or_index = _fetch_openrouter_catalog_index()
+    if not or_index:
+        return resolved
+
+    discovered_entries: Dict[str, Dict[str, Any]] = {}
+    for _provider, model_id, candidates in unresolved:
+        for key in candidates:
+            price = or_index.get(key)
+            if not price:
+                continue
+            resolved[model_id] = price
+            # Persist aliases so subsequent lookups are local.
+            for alias in candidates:
+                discovered_entries[alias] = price
+            break
+
+    _persist_runtime_pricing(discovered_entries)
+    return resolved
 
 
 def refresh_pricing_cache() -> Dict[str, Dict[str, Any]]:

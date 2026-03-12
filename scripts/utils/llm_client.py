@@ -1291,7 +1291,7 @@ class AnthropicClient(LLMClient):
         # ... (similar logic)
         pass
     
-    def recommend_customizations(self, job_analysis: Dict, master_data: Dict, user_preferences: Dict = None, conversation_history: List[Dict] = None) -> Dict:
+    def recommend_customizations(self, job_analysis: Dict, master_data: Dict, user_preferences: Optional[Dict] = None, conversation_history: Optional[List[Dict]] = None) -> Dict:
         """Get recommendations from Claude."""
         pass
     
@@ -1340,7 +1340,66 @@ class GeminiClient(LLMClient):
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        content = response.choices[0].message.content
+
+        # any-llm can return slightly different response envelopes depending on
+        # provider/model version. Prefer OpenAI-style choices[0].message.content,
+        # then fall back to common top-level text fields.
+        content = None
+        choices = getattr(response, "choices", None)
+        if isinstance(choices, list) and choices:
+            first_choice = choices[0]
+            message = getattr(first_choice, "message", None)
+            if message is not None:
+                content = getattr(message, "content", None)
+
+        if content is None:
+            for attr in ("output_text", "text", "content"):
+                value = getattr(response, attr, None)
+                if value is not None:
+                    content = value
+                    break
+
+        # Gemini-like envelope fallback:
+        # response.candidates[0].content.parts -> [{'text': '...'}]
+        if content is None:
+            candidates = getattr(response, "candidates", None)
+            if isinstance(candidates, list) and candidates:
+                first_candidate = candidates[0]
+                cand_content = getattr(first_candidate, "content", None)
+                if cand_content is not None:
+                    parts = getattr(cand_content, "parts", None)
+                    if isinstance(parts, list):
+                        text_parts = []
+                        for part in parts:
+                            if isinstance(part, dict):
+                                text_parts.append(part.get("text", ""))
+                            else:
+                                text_parts.append(getattr(part, "text", "") or "")
+                        joined = "".join(text_parts).strip()
+                        if joined:
+                            content = joined
+
+        if content is None and isinstance(response, dict):
+            for key in ("output_text", "text", "content"):
+                if key in response and response[key] is not None:
+                    content = response[key]
+                    break
+
+        if content is None and isinstance(response, dict):
+            candidates = response.get("candidates")
+            if isinstance(candidates, list) and candidates:
+                cand_content = candidates[0].get("content", {}) if isinstance(candidates[0], dict) else {}
+                parts = cand_content.get("parts", []) if isinstance(cand_content, dict) else []
+                text_parts = [p.get("text", "") for p in parts if isinstance(p, dict)]
+                joined = "".join(text_parts).strip()
+                if joined:
+                    content = joined
+
+        if content is None:
+            # Keep provider switching resilient for models that occasionally
+            # return empty content on tiny probe prompts.
+            return ""
+
         if isinstance(content, str):
             return content
         if isinstance(content, list):
@@ -1488,6 +1547,205 @@ Score (0.0-1.0):"""
         return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
 
 
+class CopilotSdkClient(LLMClient):
+    """GitHub Copilot client via the any-llm copilot_sdk provider."""
+
+    def __init__(self, model: str = "gpt-4o", api_key: Optional[str] = None):
+        self.model = model
+        self.api_key = (
+            api_key
+            or os.getenv("COPILOT_GITHUB_TOKEN")
+            or os.getenv("GITHUB_TOKEN")
+            or os.getenv("GH_TOKEN")
+        )
+        # api_key may be None when using the logged-in GitHub CLI user — that is fine.
+
+        try:
+            from any_llm import completion as anyllm_completion
+            self._anyllm_completion = anyllm_completion
+        except ImportError:
+            raise ImportError(
+                "any-llm SDK with copilot_sdk extra not installed. "
+                "Run: pip install any-llm-sdk[copilot_sdk]"
+            )
+
+    def chat(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> str:
+        """Send chat messages to GitHub Copilot via any-llm copilot_sdk provider."""
+        kwargs: Dict[str, Any] = dict(
+            provider="copilot_sdk",
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+        )
+        if self.api_key is not None:
+            kwargs["api_key"] = self.api_key
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+
+        response = self._anyllm_completion(**kwargs)
+
+        content = None
+        choices = getattr(response, "choices", None)
+        if isinstance(choices, list) and choices:
+            message = getattr(choices[0], "message", None)
+            if message is not None:
+                content = getattr(message, "content", None)
+
+        if content is None:
+            for attr in ("output_text", "text", "content"):
+                value = getattr(response, attr, None)
+                if value is not None:
+                    content = value
+                    break
+
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "".join(part.get("text", "") for part in content if isinstance(part, dict)).strip()
+        return str(content)
+
+    def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
+        """Analyze job description using GitHub Copilot."""
+        prompt = f"""Analyze this job description and extract:
+1. Key requirements (must-have vs. nice-to-have)
+2. Required skills and technologies
+3. Domain focus (data science, biostatistics, ML engineering, etc.)
+4. Role level (IC, senior IC, staff, principal, leadership)
+5. Company culture indicators
+6. Top 10 keywords for ATS optimization
+
+Job Description:
+{job_text}
+
+Return as JSON with these fields:
+- title: str
+- company: str (if mentioned)
+- domain: str
+- role_level: str
+- required_skills: List[str]
+- preferred_skills: List[str]
+- must_have_requirements: List[str]
+- nice_to_have_requirements: List[str]
+- culture_indicators: List[str]
+- ats_keywords: List[str]
+"""
+
+        messages = [
+            {"role": "system", "content": "You are an expert at analyzing job descriptions for CV optimization."},
+            {"role": "user",   "content": prompt},
+        ]
+
+        response = self.chat(messages, temperature=0.3)
+
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            if "```json" in response:
+                json_str = response.split("```json")[1].split("```")[0].strip()
+                return json.loads(json_str)
+            elif "```" in response:
+                json_str = response.split("```")[1].split("```")[0].strip()
+                if json_str.startswith("json\n"):
+                    json_str = json_str[5:]
+                return json.loads(json_str)
+            raise
+
+    def recommend_customizations(
+        self,
+        job_analysis: Dict,
+        master_data: Dict,
+        user_preferences: Dict = None,
+        conversation_history: List[Dict] = None,
+    ) -> Dict:
+        """Get LLM recommendations for customization."""
+        prompt = f"""Based on this job analysis and candidate's master CV data, recommend:
+1. Which experiences to emphasize (list IDs and reasons)
+2. Which skills to highlight
+3. Which achievements to feature
+4. Professional summary focus
+5. Suggested content reordering
+
+Job Analysis:
+{json.dumps(job_analysis, indent=2)}
+
+Candidate Data Summary:
+- {len(master_data.get('experience', []))} experiences
+- {len(master_data.get('skills', {}))} skill categories
+- {len(master_data.get('selected_achievements', []))} key achievements
+
+Available Experience IDs: {', '.join([exp.get('id', '') for exp in master_data.get('experience', [])])}
+
+Return as JSON with:
+- recommended_experiences: List[str] (use exact IDs from the list above, e.g., ["exp_001", "exp_005"])
+- recommended_skills: List[str]
+- recommended_achievements: List[str] (IDs)
+- summary_focus: str
+- reasoning: str
+"""
+
+        messages = [
+            {"role": "system", "content": "You are an expert at CV optimization and content selection."},
+            {"role": "user",   "content": prompt},
+        ]
+
+        response = self.chat(messages, temperature=0.5)
+
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError as e:
+            print(f"Warning: Failed to parse LLM response as JSON: {e}")
+            print(f"Response preview: {response[:500]}...")
+            if "```json" in response:
+                json_str = response.split("```json")[1].split("```")[0].strip()
+                return json.loads(json_str)
+            elif "```" in response:
+                json_str = response.split("```")[1].split("```")[0].strip()
+                if json_str.startswith("json\n"):
+                    json_str = json_str[5:]
+                return json.loads(json_str)
+            return {
+                "recommended_experiences": [],
+                "recommended_skills":      [],
+                "recommended_achievements": [],
+                "summary_focus":  "general",
+                "reasoning":      "Failed to parse LLM response",
+            }
+
+    def semantic_match(self, content: str, requirements: List[str]) -> float:
+        """Calculate semantic similarity via Copilot prompt scoring."""
+        prompt = f"""Rate how well this content matches these requirements on a scale of 0.0 to 1.0.
+Only return the numeric score.
+
+Content: {content[:500]}
+
+Requirements: {', '.join(requirements[:10])}
+
+Score (0.0-1.0):"""
+
+        response = self.chat([{"role": "user", "content": prompt}], temperature=0.1)
+        try:
+            return float(response.strip())
+        except ValueError:
+            return 0.5
+
+    def propose_rewrites(
+        self,
+        content: Dict,
+        job_analysis: Dict,
+        conversation_history: List[Dict] = None,
+        user_preferences: Dict = None,
+    ) -> List[Dict]:
+        """Propose rewrites via GitHub Copilot. Delegates to shared implementation."""
+        return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
+
+
 class LocalLLMClient(LLMClient):
     """Anthropic Claude client."""
     
@@ -1535,7 +1793,7 @@ class LocalLLMClient(LLMClient):
         # ... (similar logic)
         pass
     
-    def recommend_customizations(self, job_analysis: Dict, master_data: Dict, user_preferences: Dict = None, conversation_history: List[Dict] = None) -> Dict:
+    def recommend_customizations(self, job_analysis: Dict, master_data: Dict, user_preferences: Optional[Dict] = None, conversation_history: Optional[List[Dict]] = None) -> Dict:
         """Get recommendations from Claude."""
         pass
     
@@ -1615,7 +1873,7 @@ class LocalLLMClient(LLMClient):
         # Similar to OpenAI but may need simpler prompts
         pass
     
-    def recommend_customizations(self, job_analysis: Dict, master_data: Dict, user_preferences: Dict = None, conversation_history: List[Dict] = None) -> Dict:
+    def recommend_customizations(self, job_analysis: Dict, master_data: Dict, user_preferences: Optional[Dict] = None, conversation_history: Optional[List[Dict]] = None) -> Dict:
         """Get recommendations from local model."""
         pass
     
@@ -1904,6 +2162,7 @@ PROVIDER_MODELS: dict = {
     "gemini":        ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-pro", "gemini-1.5-flash"],
     "groq":          ["llama-3.3-70b-versatile", "llama-4-scout", "llama-4-maverick", "llama-3.1-8b-instant", "llama3-70b-8192", "mixtral-8x7b-32768"],
     "local":         [],
+    "copilot-sdk":   ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-6", "claude-sonnet-4-5"],
 }
 
 # How each provider is billed.
@@ -1921,6 +2180,7 @@ PROVIDER_BILLING: dict = {
     "gemini":        {"type": "per_token",       "note": "USD per 1M tokens (Google AI API)"},
     "groq":          {"type": "per_token",       "note": "USD per 1M tokens (Groq API)"},
     "local":         {"type": "free",            "note": "Local model — no API cost"},
+    "copilot-sdk":   {"type": "premium_request", "note": "GitHub Copilot CLI via SDK"},
 }
 
 # Metadata for each model.
@@ -2004,6 +2264,11 @@ def get_llm_provider(
             model=model or "gemini-1.5-pro",
             api_key=api_key
         )
+    elif provider == "copilot-sdk":
+        return CopilotSdkClient(
+            model=model or "gpt-4o",
+            api_key=api_key
+        )
     elif provider == "groq":
         return GroqClient(
             model=model or "llama-3.3-70b-versatile",
@@ -2014,4 +2279,4 @@ def get_llm_provider(
             model=model or "mistralai/Mistral-7B-Instruct-v0.2"
         )
     else:
-        raise ValueError(f"Unknown provider: {provider}. Choose from: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local")
+        raise ValueError(f"Unknown provider: {provider}. Choose from: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local, copilot-sdk")

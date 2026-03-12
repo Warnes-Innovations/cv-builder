@@ -479,6 +479,66 @@ class TestReRunPhase(unittest.TestCase):
         self.assertTrue(self.cm.state.get('iterating'))
 
 
+class TestAnalyzeQuestionExtraction(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm  = _make_manager(self.tmp)
+        self.cm.state['job_description'] = 'Senior Data Scientist at Acme'
+        self.cm.llm.analyze_job_description.return_value = {
+            'title': 'Senior Data Scientist',
+            'company': 'Acme',
+            'domain': 'HealthTech',
+            'role_level': 'Senior',
+            'required_skills': ['Python'],
+            'must_have_requirements': ['Clinical research'],
+        }
+
+    def test_extract_structured_questions_from_numbered_text(self):
+        text = (
+            'Great fit. Please answer these questions.\n\n'
+            '1. Which experiences should I emphasize for this role?\n'
+            '2. Should I prioritize leadership or hands-on execution?\n'
+            '3. Which domain-specific outcomes should I highlight?\n'
+        )
+        questions = self.cm._extract_structured_questions(text)
+        self.assertEqual(len(questions), 3)
+        self.assertEqual(questions[0]['type'], 'clarification_1')
+        self.assertIn('emphasize', questions[0]['question'])
+
+    def test_extract_structured_questions_preserves_full_body_markdown(self):
+        long_body = (
+            '**Prioritization:** Please weigh these tradeoffs carefully.\n'
+            '- item one with context\n'
+            '- item two with additional detail\n\n'
+            'Could you clarify which direction to prioritize and why?'
+        )
+        text = f'1. {long_body}\n2. Short follow-up question?\n'
+        questions = self.cm._extract_structured_questions(text)
+        self.assertEqual(len(questions), 2)
+        self.assertIn('**Prioritization:**', questions[0]['question'])
+        self.assertIn('- item two with additional detail', questions[0]['question'])
+        self.assertIn('Could you clarify which direction to prioritize and why?', questions[0]['question'])
+
+    def test_analyze_action_includes_extracted_questions_in_context(self):
+        self.cm.llm.chat.return_value = (
+            'Here are focused questions:\n\n'
+            '1. Which experiences should I emphasize most?\n'
+            '2. Should we emphasize technical depth or leadership scope?\n'
+        )
+
+        result = self.cm._execute_action({'action': 'analyze_job'})
+
+        self.assertIsInstance(result, dict)
+        context_data = result.get('context_data', {})
+        self.assertIn('post_analysis_questions', context_data)
+        self.assertEqual(len(context_data['post_analysis_questions']), 2)
+        self.assertEqual(
+            self.cm.state.get('post_analysis_questions'),
+            context_data['post_analysis_questions']
+        )
+
+
 class TestBuildDownstreamContext(unittest.TestCase):
 
     def setUp(self):

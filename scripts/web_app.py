@@ -16,6 +16,7 @@ Then open http://localhost:5000
 
 import argparse
 import json
+import os
 import sys
 import threading
 from pathlib import Path
@@ -43,9 +44,94 @@ from utils.conversation_manager import ConversationManager
 from utils.copilot_auth import CopilotAuthManager
 from utils.pricing_cache import (
     get_cached_pricing, get_pricing_updated_at, get_pricing_source,
-    refresh_pricing_cache, maybe_refresh_in_background,
+    refresh_pricing_cache, maybe_refresh_in_background, lookup_runtime_pricing_bulk, STATIC_PRICING,
 )
 from utils.spell_checker import SpellChecker
+
+
+# ---------------------------------------------------------------------------
+# Model-catalog helpers (module-level for testability)
+# ---------------------------------------------------------------------------
+
+_CATALOG_LIST_MODELS_CAPABLE: set[str] = {"openai", "anthropic", "gemini", "groq"}
+_CATALOG_STATIC_ONLY: set[str] = {"copilot-oauth", "copilot", "github", "local"}
+
+
+def _catalog_provider_api_key(provider: str) -> Optional[str]:
+    if provider == "openai":
+        return os.getenv("OPENAI_API_KEY")
+    if provider == "anthropic":
+        return os.getenv("ANTHROPIC_API_KEY")
+    if provider == "gemini":
+        return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if provider == "groq":
+        return os.getenv("GROQ_API_KEY")
+    return None
+
+
+def _catalog_provider_api_base(provider: str) -> Optional[str]:
+    if provider == "openai":
+        return os.getenv("OPENAI_BASE_URL")
+    if provider == "anthropic":
+        return os.getenv("ANTHROPIC_BASE_URL")
+    if provider == "gemini":
+        return os.getenv("GOOGLE_GEMINI_BASE_URL")
+    if provider == "groq":
+        return os.getenv("GROQ_BASE_URL")
+    return None
+
+
+def _catalog_normalize_model_id(model_id: str) -> str:
+    """Normalize Gemini-style 'models/gemini-2.5-flash' IDs to bare model names."""
+    if model_id.startswith("models/"):
+        return model_id.split("/", 1)[1]
+    return model_id
+
+
+def _catalog_discover_provider_models(provider: str) -> Optional[List[str]]:
+    """Return runtime model list for providers that support list_models, or None."""
+    if provider not in _CATALOG_LIST_MODELS_CAPABLE or provider in _CATALOG_STATIC_ONLY:
+        return None
+
+    api_key = _catalog_provider_api_key(provider)
+    if not api_key:
+        return None
+
+    try:
+        from any_llm import list_models as anyllm_list_models
+    except Exception:
+        return None
+
+    try:
+        kwargs: Dict[str, Any] = {
+            "provider": provider,
+            "api_key":  api_key,
+        }
+        api_base = _catalog_provider_api_base(provider)
+        if api_base:
+            kwargs["api_base"] = api_base
+
+        models = anyllm_list_models(**kwargs)
+        names: List[str] = []
+        for item in models:
+            model_id = getattr(item, "id", None)
+            if model_id is None:
+                model_id = str(item)
+            model_id = _catalog_normalize_model_id(str(model_id))
+            if model_id:
+                names.append(model_id)
+
+        # Keep order stable and deduplicate.
+        unique: List[str] = []
+        seen: set[str] = set()
+        for name in names:
+            if name in seen:
+                continue
+            unique.append(name)
+            seen.add(name)
+        return unique
+    except Exception:
+        return None
 
 
 def create_app(args) -> Flask:
@@ -369,6 +455,8 @@ Job Description (excerpt):
         return jsonify({
             "position_name": conversation.state.get("position_name"),
             "phase": conversation.state.get("phase"),
+            "llm_provider": _provider_name,
+            "llm_model": _current_model,
             "job_description": bool(conversation.state.get("job_description")),
             "job_description_text": conversation.state.get("job_description"),
             "job_analysis": conversation.state.get("job_analysis"),  # Return full data, not just bool
@@ -469,9 +557,12 @@ Job Description (excerpt):
             prov_billing_type = PROVIDER_BILLING.get(prov, {}).get("type", "per_token")
             for m in prov_models:
                 pricing = live.get(m) or MODEL_INFO.get(m, {})
+                price_source = "static_baseline"
                 all_models.append({
                     "provider":           prov,
                     "model":              m,
+                    "source":             "fallback_static",
+                    "price_source":       price_source,
                     "billing_type":       prov_billing_type,
                     "context_window":     MODEL_INFO.get(m, {}).get("context_window"),
                     "cost_input":         pricing.get("cost_input"),
@@ -481,6 +572,8 @@ Job Description (excerpt):
                 })
         return jsonify({
             "provider":           _provider_name,
+            "providers":          sorted(PROVIDER_MODELS.keys()),
+            "list_models_capable": ["openai", "anthropic", "gemini", "groq"],
             "billing_type":       billing["type"],
             "billing_note":       billing["note"],
             "model":              current,
@@ -488,6 +581,84 @@ Job Description (excerpt):
             "all_models":         all_models,
             "pricing_updated_at": get_pricing_updated_at(),
             "pricing_source":     get_pricing_source(),
+        })
+
+    @app.get("/api/model-catalog")
+    def get_model_catalog():
+        """Return model rows for selected providers.
+
+        For providers that support list_models and have credentials configured,
+        build rows from runtime-discovered models. Otherwise, fall back to the
+        static provider/model catalog.
+        """
+        list_models_capable = _CATALOG_LIST_MODELS_CAPABLE
+
+        selected_param = (request.args.get("providers") or "").strip()
+        if selected_param:
+            selected = [p.strip() for p in selected_param.split(",") if p.strip()]
+        else:
+            selected = [_provider_name]
+
+        selected = [p for p in selected if p in PROVIDER_MODELS]
+        if not selected:
+            selected = [_provider_name]
+
+        live = get_cached_pricing()
+        rows: List[Dict[str, Any]] = []
+        provider_sources: Dict[str, str] = {}
+        provider_models: Dict[str, List[str]] = {}
+        runtime_candidates: List[tuple[str, str]] = []
+
+        for provider in selected:
+            discovered = _catalog_discover_provider_models(provider)
+            if discovered:
+                model_list = discovered
+                provider_sources[provider] = "list_models"
+                runtime_candidates.extend((provider, name) for name in model_list)
+            else:
+                model_list = PROVIDER_MODELS.get(provider, [])
+                provider_sources[provider] = "fallback_static"
+            provider_models[provider] = model_list
+
+        runtime_prices = lookup_runtime_pricing_bulk(runtime_candidates, cached_pricing=live)
+
+        for provider in selected:
+            model_list = provider_models.get(provider, [])
+            prov_billing_type = PROVIDER_BILLING.get(provider, {}).get("type", "per_token")
+            for model_name in model_list:
+                pricing = (
+                    live.get(model_name)
+                    or runtime_prices.get(model_name)
+                    or MODEL_INFO.get(model_name, {})
+                )
+                if model_name in runtime_prices and model_name not in STATIC_PRICING:
+                    price_source = "runtime_cache"
+                else:
+                    price_source = "static_baseline"
+                base_notes = MODEL_INFO.get(model_name, {}).get("notes", "")
+                if provider_sources[provider] == "list_models" and not base_notes:
+                    base_notes = "Discovered via list_models"
+                rows.append({
+                    "provider":           provider,
+                    "model":              model_name,
+                    "source":             provider_sources[provider],
+                    "price_source":       price_source,
+                    "billing_type":       prov_billing_type,
+                    "context_window":     MODEL_INFO.get(model_name, {}).get("context_window"),
+                    "cost_input":         pricing.get("cost_input"),
+                    "cost_output":        pricing.get("cost_output"),
+                    "copilot_multiplier": MODEL_INFO.get(model_name, {}).get("copilot_multiplier"),
+                    "notes":              base_notes,
+                })
+
+        return jsonify({
+            "providers":            sorted(PROVIDER_MODELS.keys()),
+            "selected_providers":   selected,
+            "list_models_capable":  sorted(list(list_models_capable)),
+            "provider_sources":     provider_sources,
+            "all_models":           rows,
+            "pricing_updated_at":   get_pricing_updated_at(),
+            "pricing_source":       get_pricing_source(),
         })
 
     @app.post("/api/model-pricing/refresh")
@@ -524,7 +695,11 @@ Job Description (excerpt):
         if not model:
             return jsonify({"error": "Missing model"}), 400
         available = PROVIDER_MODELS.get(provider, [])
-        if available and model not in available:
+        # Providers with dynamic model catalogs (e.g., list_models-backed) can
+        # accept models beyond the static catalog. Enforce strict validation only
+        # for providers that are intentionally static.
+        static_only = {"copilot-oauth", "copilot", "github", "local"}
+        if provider in static_only and available and model not in available:
             return jsonify({"error": f"Unknown model '{model}' for provider '{provider}'"}), 400
         try:
             candidate_client = get_llm_provider(provider=provider, model=model, auth_manager=auth_manager)
@@ -2186,7 +2361,7 @@ def parse_args():
                        help=f"Path to publications.bib")
     parser.add_argument("--output-dir", default=config.output_dir,
                        help=f"Output directory")
-    parser.add_argument("--llm-provider", choices=["copilot-oauth", "copilot", "github", "openai", "anthropic", "gemini", "groq", "local"],
+    parser.add_argument("--llm-provider", choices=["copilot-oauth", "copilot", "github", "openai", "anthropic", "gemini", "groq", "local", "copilot-sdk"],
                        default=config.llm_provider,
                        help=f"LLM provider (default: {config.llm_provider})")
     parser.add_argument("--model", default=config.llm_model, help="Specific model to use")

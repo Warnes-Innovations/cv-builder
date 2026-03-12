@@ -468,6 +468,9 @@ async function loadTabContent(tab) {
         content.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><h3>Job Analysis</h3><p>Click "Analyze Job" to generate analysis</p></div>';
       }
       break;
+    case 'questions':
+      populateQuestionsTab();
+      break;
     case 'customizations':
       if (tabData.customizations) {
         await populateCustomizationsTabWithReview(tabData.customizations);
@@ -1183,6 +1186,9 @@ async function analyzeJob() {
       const analysisData = typeof result === 'object' && result !== null
         ? (result.context_data?.job_analysis ?? result)
         : result;
+      const structuredQuestions = (typeof result === 'object' && result !== null)
+        ? result.context_data?.post_analysis_questions
+        : null;
 
       if (analysisText) appendMessage('assistant', analysisText);
       appendFormattedAnalysis(analysisData);
@@ -1191,7 +1197,7 @@ async function analyzeJob() {
 
       // Await post-analysis questions while still loading to prevent
       // user input race conditions during the LLM question-generation call.
-      await askPostAnalysisQuestions(analysisData);
+      await askPostAnalysisQuestions(analysisData, structuredQuestions);
     }
   } catch (error) {
     console.error('=== ANALYZE JOB ERROR ===');
@@ -1393,45 +1399,138 @@ async function persistPostAnalysisState() {
   }
 }
 
-async function askPostAnalysisQuestions(analysisResult) {
+function normalizePostAnalysisQuestions(rawQuestions) {
+  if (!Array.isArray(rawQuestions)) return [];
+  return rawQuestions
+    .filter(q => q && typeof q.question === 'string' && q.question.trim())
+    .map((q, idx) => ({
+      question: q.question.trim(),
+      type: (q.type || `clarification_${idx + 1}`).toString(),
+      choices: Array.isArray(q.choices) ? q.choices : [],
+    }));
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderQuestionMarkdown(markdownText) {
+  const safe = escapeHtml(markdownText || '');
+  return safe
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\n/g, '<br>');
+}
+
+function mergePostAnalysisQuestions(existingQuestions, incomingQuestions) {
+  const existing = normalizePostAnalysisQuestions(existingQuestions);
+  const incoming = normalizePostAnalysisQuestions(incomingQuestions);
+
+  const merged = [...existing];
+  const seenByQuestion = new Set(
+    existing.map(q => q.question.toLowerCase().replace(/\s+/g, ' ').trim())
+  );
+  const usedTypes = new Set(existing.map(q => q.type));
+
+  incoming.forEach((q, idx) => {
+    const key = q.question.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!key || seenByQuestion.has(key)) return;
+
+    let type = q.type || `clarification_${merged.length + idx + 1}`;
+    if (usedTypes.has(type)) {
+      type = `${type}_${merged.length + idx + 1}`;
+    }
+
+    merged.push({
+      question: q.question,
+      type,
+      choices: Array.isArray(q.choices) ? q.choices : [],
+    });
+    seenByQuestion.add(key);
+    usedTypes.add(type);
+  });
+
+  return merged;
+}
+
+async function fetchPostAnalysisQuestionsFromApi(analysisData) {
+  try {
+    const res = await fetch('/api/post-analysis-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ analysis: analysisData })
+    });
+    if (!res.ok) return [];
+    const payload = await res.json();
+    return normalizePostAnalysisQuestions(payload.questions);
+  } catch (apiError) {
+    console.warn('Failed to fetch post-analysis questions:', apiError);
+    return [];
+  }
+}
+
+async function appendFollowUpPostAnalysisQuestions() {
+  if (!tabData.analysis) return 0;
+
+  let analysisData;
+  try {
+    const cleanAnalysis = cleanJsonResponse(tabData.analysis);
+    analysisData = typeof cleanAnalysis === 'string'
+      ? JSON.parse(cleanAnalysis)
+      : cleanAnalysis;
+  } catch (parseError) {
+    console.warn('Skipping follow-up questions due to invalid analysis payload:', parseError);
+    return 0;
+  }
+
+  const followUps = await fetchPostAnalysisQuestionsFromApi(analysisData);
+  if (followUps.length === 0) return 0;
+
+  const beforeCount = Array.isArray(window.postAnalysisQuestions)
+    ? window.postAnalysisQuestions.length
+    : 0;
+
+  window.postAnalysisQuestions = mergePostAnalysisQuestions(
+    window.postAnalysisQuestions,
+    followUps
+  );
+
+  const added = window.postAnalysisQuestions.length - beforeCount;
+  if (added > 0) {
+    await persistPostAnalysisState();
+  }
+  return added;
+}
+
+async function askPostAnalysisQuestions(analysisResult, preferredQuestions = null) {
   try {
     const cleanResult = cleanJsonResponse(analysisResult);
     const data = typeof cleanResult === 'string' ? JSON.parse(cleanResult) : cleanResult;
 
-    window.postAnalysisQuestions = [];
+    window.postAnalysisQuestions = mergePostAnalysisQuestions([], preferredQuestions);
 
-    try {
-      const res = await fetch('/api/post-analysis-questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ analysis: data })
-      });
-
-      if (res.ok) {
-        const payload = await res.json();
-        if (Array.isArray(payload.questions)) {
-          window.postAnalysisQuestions = payload.questions
-            .filter(q => q && typeof q.question === 'string' && q.question.trim())
-            .map(q => ({
-              question: q.question.trim(),
-              type: (q.type || 'clarification').toString(),
-              choices: Array.isArray(q.choices) ? q.choices : [],
-            }));
-        }
-      }
-    } catch (apiError) {
-      console.warn('Failed to fetch LLM-generated post-analysis questions:', apiError);
+    if (window.postAnalysisQuestions.length === 0) {
+      window.postAnalysisQuestions = await fetchPostAnalysisQuestionsFromApi(data);
     }
 
     if (window.postAnalysisQuestions.length === 0) {
       window.postAnalysisQuestions = buildFallbackPostAnalysisQuestions(data);
     }
 
-    window.questionAnswers = {};
+    if (!window.questionAnswers || typeof window.questionAnswers !== 'object') {
+      window.questionAnswers = {};
+    }
     await persistPostAnalysisState();
 
     if (window.postAnalysisQuestions.length > 0) {
       renderQuestionsPanel();
+      switchTab('questions');
     } else {
       appendMessage('assistant', 'Analysis complete! Click "Recommend Customizations" when ready.');
     }
@@ -1439,6 +1538,25 @@ async function askPostAnalysisQuestions(analysisResult) {
     console.error('Error parsing analysis for questions:', e);
     appendMessage('assistant', 'Analysis complete! Click "Recommend Customizations" when ready.');
   }
+}
+
+function populateQuestionsTab() {
+  const content = document.getElementById('document-content');
+  if (!content) return;
+
+  if (!tabData.analysis) {
+    content.innerHTML = '<div class="empty-state"><div class="icon">💬</div><h3>No Questions Yet</h3><p>Run "Analyze Job" first to generate clarifying questions.</p></div>';
+    return;
+  }
+
+  const hasQuestions = Array.isArray(window.postAnalysisQuestions) && window.postAnalysisQuestions.length > 0;
+  if (!hasQuestions) {
+    content.innerHTML = '<div class="empty-state"><div class="icon">✅</div><h3>Questions Complete</h3><p>No pending clarifying questions. Click "Recommend Customizations" when ready.</p></div>';
+    return;
+  }
+
+  content.innerHTML = '<div class="analysis-page"><div class="analysis-section"><h2>💬 Clarifying Questions</h2><p style="color:#64748b; margin: 0;">Please answer each question to improve recommendation quality.</p></div></div>';
+  renderQuestionsPanel();
 }
 
 // Renders all clarifying questions as a panel at the bottom of the analysis tab.
@@ -1455,19 +1573,24 @@ function renderQuestionsPanel() {
   if (existing) existing.remove();
 
   const total = qs.length;
+  const existingAnswers = (window.questionAnswers && typeof window.questionAnswers === 'object')
+    ? window.questionAnswers
+    : {};
   let panelHtml = `<div class="questions-panel" id="questions-panel">
     <h2>💬 A few quick questions</h2>
     <p class="q-progress" id="q-progress">Please answer all ${total} question${total > 1 ? 's' : ''} before proceeding.</p>`;
 
   qs.forEach((q, idx) => {
+    const savedAnswer = (existingAnswers[q.type] || '').toString();
+    const renderedQuestion = renderQuestionMarkdown(q.question);
     const chips = (q.choices || []).map((c, ci) =>
-      `<button class="q-chip" data-qidx="${idx}" data-cidx="${ci}" onclick="selectQChip(this, ${idx})">${c}</button>`
+      `<button class="q-chip" data-qidx="${idx}" data-cidx="${ci}" onclick="selectQChip(this, ${idx})">${escapeHtml(c)}</button>`
     ).join('');
     panelHtml += `
       <div class="question-item" id="q-item-${idx}">
-        <div class="q-text">${idx + 1}. ${q.question}</div>
+        <div class="q-text">${idx + 1}. ${renderedQuestion}</div>
         ${chips ? `<div class="q-chips">${chips}</div>` : ''}
-        <textarea class="q-input" id="q-input-${idx}" placeholder="Your answer…" oninput="updateQProgress()"></textarea>
+        <textarea class="q-input" id="q-input-${idx}" placeholder="Your answer…" oninput="updateQProgress()">${escapeHtml(savedAnswer)}</textarea>
       </div>`;
   });
 
@@ -1475,6 +1598,21 @@ function renderQuestionsPanel() {
 
   // Append to the analysis content (already has the 4-section layout).
   content.insertAdjacentHTML('beforeend', panelHtml);
+
+  // Restore chip selection if a saved answer matches a predefined choice.
+  qs.forEach((q, idx) => {
+    const saved = (existingAnswers[q.type] || '').toString().trim();
+    if (!saved) return;
+    const item = document.getElementById(`q-item-${idx}`);
+    if (!item) return;
+    item.querySelectorAll('.q-chip').forEach(chip => {
+      if ((chip.textContent || '').trim() === saved) {
+        chip.classList.add('selected');
+      }
+    });
+  });
+
+  updateQProgress();
 }
 
 // Handles chip selection: marks chip as selected, populates the text area.
@@ -1519,6 +1657,14 @@ async function submitAllAnswers() {
     }
   });
   await persistPostAnalysisState();
+
+  const addedFollowUps = await appendFollowUpPostAnalysisQuestions();
+  if (addedFollowUps > 0) {
+    appendMessage('assistant', `✓ Thanks. I added ${addedFollowUps} follow-up question${addedFollowUps > 1 ? 's' : ''} to reduce remaining uncertainty.`);
+    switchTab('questions');
+    return;
+  }
+
   const panel = document.getElementById('questions-panel');
   if (panel) panel.remove();
   appendMessage('assistant', `✓ Thank you! ${qs.length} answer${qs.length > 1 ? 's' : ''} saved. Click "Recommend Customizations" when ready.`);
@@ -1659,7 +1805,7 @@ function populateAnalysisTab(result) {
     content.innerHTML = html;
   } catch (e) {
     console.error('Analysis parsing error:', e, 'Original result:', result);
-    content.innerHTML = `<div class="empty-state"><div class="icon">❌</div><h3>Analysis Error</h3><p>Could not parse analysis results: ${e.message}</p><details><summary>Debug Info</summary><pre>${JSON.stringify(result, null, 2)}</pre></details></div>`;
+    content.innerHTML = `<div class="empty-state"><div class="icon">❌</div><h3>Analysis Error</h3><p>Could not parse analysis results: ${escapeHtml(e.message)}</p><details><summary>Debug Info</summary><pre>${escapeHtml(JSON.stringify(result, null, 2))}</pre></details></div>`;
   }
 }
 
@@ -2617,7 +2763,7 @@ async function buildPublicationsReviewTable() {
   try {
     const res  = await fetch('/api/publication-recommendations');
     const data = await res.json();
-    if (!data.ok) { container.innerHTML = `<p class="error-message">${data.error || 'Failed to load publications.'}</p>`; return; }
+    if (!data.ok) { container.innerHTML = `<p class="error-message">${escapeHtml(data.error || 'Failed to load publications.')}</p>`; return; }
     recommendations = data.recommendations || [];
     totalCount = data.total_count || recommendations.length;
     // total count shown in status
@@ -4183,6 +4329,9 @@ async function fetchStatus() {
     if (data.post_analysis_answers && typeof data.post_analysis_answers === 'object') {
       window.questionAnswers = data.post_analysis_answers;
     }
+    if (typeof data.llm_provider === 'string' && data.llm_provider) {
+      window.currentProvider = data.llm_provider;
+    }
     // Cache master CV skills for mismatch detection in populateAnalysisTab.
     if (Array.isArray(data.all_skills)) {
       window._masterSkills = data.all_skills.map(s => (typeof s === 'string' ? s : (s.name || s.skill || '')).toLowerCase());
@@ -4190,7 +4339,7 @@ async function fetchStatus() {
 
     updatePositionTitle(data);
     updateWorkflowSteps(data);
-    if (data.copilot_auth) updateAuthBadge(data.copilot_auth);
+    if (data.copilot_auth) updateAuthBadge(data.copilot_auth, data.llm_provider);
   } catch (error) {
     console.error('Error fetching status:', error);
   }
@@ -4200,11 +4349,38 @@ async function fetchStatus() {
 
 let _authPollTimer = null;
 
-function updateAuthBadge(authStatus) {
+function formatProviderLabel(provider) {
+  if (!provider || typeof provider !== 'string') return 'Provider';
+  const aliases = {
+    openai: 'OpenAI',
+    'copilot-oauth': 'Copilot OAuth',
+  };
+  if (aliases[provider]) return aliases[provider];
+  return provider
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function updateAuthBadge(authStatus, provider = null) {
   const badge = document.getElementById('copilot-auth-badge');
   const icon  = document.getElementById('auth-badge-icon');
   const label = document.getElementById('auth-badge-label');
   if (!badge) return;
+
+  const activeProvider = provider || window.currentProvider || null;
+  const isCopilotOAuth = activeProvider === 'copilot-oauth';
+
+  // For non-Copilot providers, show provider status text instead of Copilot auth state.
+  if (activeProvider && !isCopilotOAuth) {
+    badge.classList.remove('authenticated', 'unauthenticated', 'polling');
+    badge.classList.add('authenticated');
+    icon.textContent  = '\u2713';
+    label.textContent = `${formatProviderLabel(activeProvider)} Provider Active`;
+    return;
+  }
+
   badge.classList.remove('authenticated', 'unauthenticated', 'polling');
   if (authStatus.authenticated) {
     badge.classList.add('authenticated');
@@ -4618,8 +4794,20 @@ function handleStepClick(step) {
   // Only navigate if the step is completed (back-nav) or active.
   if (!el.classList.contains('completed') && !el.classList.contains('active')) return;
 
+  const hasUnansweredPostAnalysisQuestions = () => {
+    const qs = Array.isArray(window.postAnalysisQuestions) ? window.postAnalysisQuestions : [];
+    if (qs.length === 0) return false;
+    const answers = (window.questionAnswers && typeof window.questionAnswers === 'object')
+      ? window.questionAnswers
+      : {};
+    return qs.some(q => {
+      const value = answers[q.type];
+      return !value || !String(value).trim();
+    });
+  };
+
   const stepToTab = {
-    analysis:       'analysis',
+    analysis:       hasUnansweredPostAnalysisQuestions() ? 'questions' : 'analysis',
     customizations: 'customizations',
     rewrite:        'rewrite',
     spell:          'spell',
