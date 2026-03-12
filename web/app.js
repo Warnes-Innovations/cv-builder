@@ -2517,6 +2517,21 @@ async function populateCustomizationsTabWithReview(data) {
       </div>
     </div>
 
+    <div class="review-section" style="margin-top: 40px;">
+      <h2>🏆 Key Achievements</h2>
+      <p style="color: #6b7280; font-size: 0.95em; margin-bottom: 16px;">Select which key achievements to feature in your CV. All are included by default — exclude any that aren't relevant to this role.</p>
+      <div id="achievements-table-container"></div>
+      <div class="nav-buttons" style="margin: 20px 0;">
+        <button class="submit-btn" onclick="submitAchievementDecisions()">Save Achievement Selections</button>
+      </div>
+    </div>
+
+    <div class="review-section" style="margin-top: 40px;">
+      <h2>📝 Professional Summary</h2>
+      <p style="color: #6b7280; font-size: 0.95em; margin-bottom: 16px;">Select which professional summary to use. The AI's recommendation is pre-selected.</p>
+      <div id="summary-focus-container"></div>
+    </div>
+
     <div class="review-section" id="publications-review-section" style="margin-top: 40px; display:none;">
       <h2>📄 Selected Publications</h2>
       <p style="color: #6b7280; font-size: 0.95em; margin-bottom: 16px;">All publications from your bibliography, ranked by relevance to this role. Accept or reject each to control what appears in your CV.</p>
@@ -2529,9 +2544,11 @@ async function populateCustomizationsTabWithReview(data) {
   
   content.innerHTML = html;
   
-  // Build all three tables
+  // Build all tables/sections
   await buildExperienceReviewTable();
   await buildSkillsReviewTable();
+  await buildAchievementsReviewTable();
+  await buildSummaryFocusSection();
   await buildPublicationsReviewTable();
 }
 
@@ -2657,7 +2674,7 @@ async function buildExperienceReviewTable() {
 async function buildSkillsReviewTable() {
   const data = window.pendingRecommendations;
   const container = document.getElementById('skills-table-container');
-  
+
   // Get all skills from the API status
   let allSkills = [];
   try {
@@ -2669,22 +2686,32 @@ async function buildSkillsReviewTable() {
     // Fallback to just recommended skills
     allSkills = data.recommended_skills || [];
   }
-  
+
+  // Detect skills recommended by LLM that aren't in master CV and prepend them
+  const masterSkillNames = new Set(allSkills.map(s => (typeof s === 'string' ? s : s.name || s)));
+  const newSkills = (data.recommended_skills || []).filter(s => !masterSkillNames.has(s));
+  window._newSkillsFromLLM = newSkills;  // track for submitSkillDecisions
+  if (newSkills.length > 0) {
+    allSkills = [...newSkills.map(s => ({ name: s, _isNew: true })), ...allSkills];
+  }
+
   // If we got no skills, show a message
   if (allSkills.length === 0) {
     container.innerHTML = '<p style="padding: 20px; text-align: center; color: #6b7280;">No skills found in master CV data.</p>';
     return;
   }
 
-  // Sort skills: Emphasize > Include > De-emphasize > Omit
+  // Sort skills: Emphasize > Include > De-emphasize > Omit (new skills stay at top)
   const recommendationOrder = { 'Emphasize': 0, 'Include': 1, 'De-emphasize': 2, 'Omit': 3 };
-  allSkills = allSkills.slice().sort((a, b) => {
+  const masterSkills = allSkills.filter(s => !s._isNew);
+  const sortedMaster = masterSkills.slice().sort((a, b) => {
     const aName = typeof a === 'string' ? a : a.name || a;
     const bName = typeof b === 'string' ? b : b.name || b;
     const aOrder = recommendationOrder[getSkillRecommendation(aName, data)] ?? 3;
     const bOrder = recommendationOrder[getSkillRecommendation(bName, data)] ?? 3;
     return aOrder - bOrder;
   });
+  allSkills = [...allSkills.filter(s => s._isNew), ...sortedMaster];
 
   const recommendedSet = new Set(data.recommended_skills || []);
   
@@ -2704,11 +2731,12 @@ async function buildSkillsReviewTable() {
   
   for (const skill of allSkills) {
     const skillName = typeof skill === 'string' ? skill : skill.name || skill;
+    const isNew = skill._isNew === true;
     const isRecommended = recommendedSet.has(skillName);
     const recommendation = getSkillRecommendation(skillName, data);
     const confidence = getSkillConfidence(skillName, data);
     const reasoning = getSkillReasoning(skillName, data);
-    
+
     // Determine default action based on LLM recommendation level
     let defaultAction = 'exclude';
     if (recommendation === 'Emphasize') {
@@ -2719,30 +2747,34 @@ async function buildSkillsReviewTable() {
       defaultAction = 'de-emphasize';
     } else if (recommendation === 'Omit') {
       defaultAction = 'exclude';
-    } else if (isRecommended) {
-      // Fallback for backwards compatibility
+    } else if (isRecommended || isNew) {
+      // LLM-suggested skill (including new ones not yet in CV) — default include
       defaultAction = 'include';
     }
-    
+
     // Store default selection
     userSelections.skills[skillName] = defaultAction;
-    
-    // Prepare display text - show the actual LLM recommendation
-    const recommendationText = recommendation || "Omit";
+
+    // Prepare display text
+    const newBadge = isNew
+      ? '<span title="This skill was suggested by the AI but is not yet in your CV profile. If included, it will be added to your generated CV." style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>'
+      : '';
+    const recommendationText = recommendation || (isNew ? 'Include (AI suggested)' : 'Omit');
     const confidenceBadge = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
-    const reasoningText = reasoning || "This skill was not specifically mentioned in the job requirements.";
-    
+    const reasoningText = reasoning || (isNew ? 'Recommended by AI based on job requirements but not currently in your master CV.' : 'This skill was not specifically mentioned in the job requirements.');
+    const rowStyle = isNew ? 'background:#fffbeb;' : '';
+
     tableHTML += `
-      <tr data-skill="${skillName}">
-        <td><strong>${skillName}</strong></td>
-        <td><strong>${recommendationText}</strong></td>
+      <tr data-skill="${escapeHtml(skillName)}" style="${rowStyle}">
+        <td><strong>${escapeHtml(skillName)}</strong>${newBadge}</td>
+        <td><strong>${escapeHtml(recommendationText)}</strong></td>
         <td>${confidenceBadge}</td>
-        <td style="max-width: 300px;"><small>${reasoningText}</small></td>
+        <td style="max-width: 300px;"><small>${escapeHtml(reasoningText)}</small></td>
         <td class="action-btns">
-          <button class="icon-btn ${defaultAction === 'emphasize' ? 'active' : ''}" data-action="emphasize" title="Emphasize - Feature prominently" onclick="handleActionClick('${skillName}', 'emphasize', 'skill')" style="color: #10b981; font-size: 1.5em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Include - Standard listing" onclick="handleActionClick('${skillName}', 'include', 'skill')" style="font-size: 1.3em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize - Brief mention" onclick="handleActionClick('${skillName}', 'de-emphasize', 'skill')" style="color: #f59e0b; font-size: 1.5em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Exclude - Omit from CV" onclick="handleActionClick('${skillName}', 'exclude', 'skill')" style="color: #ef4444; font-size: 1.3em;">✗</button>
+          <button class="icon-btn ${defaultAction === 'emphasize' ? 'active' : ''}" data-action="emphasize" title="Emphasize - Feature prominently" onclick="handleActionClick('${escapeHtml(skillName)}', 'emphasize', 'skill')" style="color: #10b981; font-size: 1.5em;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Include - Standard listing" onclick="handleActionClick('${escapeHtml(skillName)}', 'include', 'skill')" style="font-size: 1.3em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize - Brief mention" onclick="handleActionClick('${escapeHtml(skillName)}', 'de-emphasize', 'skill')" style="color: #f59e0b; font-size: 1.5em;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Exclude - Omit from CV" onclick="handleActionClick('${escapeHtml(skillName)}', 'exclude', 'skill')" style="color: #ef4444; font-size: 1.3em;">✗</button>
         </td>
       </tr>
     `;
@@ -2762,6 +2794,204 @@ async function buildSkillsReviewTable() {
       search: "Filter skills:"
     }
   });
+}
+
+// ==== Achievements Review ====
+
+window.achievementDecisions = {};
+
+async function buildAchievementsReviewTable() {
+  const container = document.getElementById('achievements-table-container');
+  if (!container) return;
+
+  container.innerHTML = '<p style="padding:20px;text-align:center;color:#6b7280;">Loading achievements…</p>';
+
+  let allAchievements = [];
+  try {
+    const res = await fetch('/api/status');
+    const statusData = await res.json();
+    allAchievements = statusData.all_achievements || [];
+  } catch (err) {
+    container.innerHTML = '<p style="color:#ef4444;padding:20px;">Failed to load achievements.</p>';
+    return;
+  }
+
+  if (allAchievements.length === 0) {
+    container.innerHTML = '<p style="padding:20px;color:#6b7280;">No key achievements found in master CV data.</p>';
+    return;
+  }
+
+  // Default: include all achievements
+  window.achievementDecisions = {};
+  allAchievements.forEach(ach => {
+    window.achievementDecisions[ach.id || ach.title] = 'include';
+  });
+
+  let tableHTML = `
+    <table id="achievements-review-table" class="review-table">
+      <thead>
+        <tr>
+          <th>Achievement</th>
+          <th>Description</th>
+          <th>Include?</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  allAchievements.forEach(ach => {
+    const id = ach.id || ach.title || '';
+    const title = ach.title || id;
+    const desc = ach.description || '';
+    tableHTML += `
+      <tr data-ach-id="${escapeHtml(id)}">
+        <td style="white-space:nowrap;"><strong>${escapeHtml(title)}</strong></td>
+        <td style="font-size:0.87em;">${escapeHtml(desc)}</td>
+        <td class="action-btns">
+          <button class="icon-btn active" data-action="include" title="Include in CV"
+              onclick="handleAchievementAction('${escapeHtml(id)}', 'include')"
+              style="color:#10b981;font-size:1.3em;" id="ach-include-${escapeHtml(id)}">✓</button>
+          <button class="icon-btn" data-action="omit" title="Exclude from CV"
+              onclick="handleAchievementAction('${escapeHtml(id)}', 'omit')"
+              style="color:#ef4444;font-size:1.3em;" id="ach-omit-${escapeHtml(id)}">✗</button>
+        </td>
+      </tr>
+    `;
+  });
+
+  tableHTML += '</tbody></table>';
+  container.innerHTML = tableHTML;
+}
+
+function handleAchievementAction(achId, action) {
+  window.achievementDecisions[achId] = action;
+  const row = document.querySelector(`tr[data-ach-id="${CSS.escape(achId)}"]`);
+  if (!row) return;
+  row.querySelectorAll('.icon-btn').forEach(btn => btn.classList.remove('active'));
+  const activeBtn = row.querySelector(`[data-action="${action}"]`);
+  if (activeBtn) activeBtn.classList.add('active');
+}
+
+async function submitAchievementDecisions() {
+  const decisions = window.achievementDecisions;
+  const count = Object.keys(decisions).length;
+  if (count === 0) return;
+  try {
+    const response = await fetch('/api/review-decisions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'achievements', decisions })
+    });
+    if (response.ok) {
+      showAlertModal('✅ Achievement Selections Saved', `Saved selections for ${count} achievements.`);
+    } else {
+      const err = await response.json();
+      showAlertModal('❌ Error', `Failed to save: ${err.error || 'Unknown error'}`);
+    }
+  } catch (e) {
+    showAlertModal('❌ Error', 'Failed to save achievement selections.');
+  }
+}
+
+// ==== Summary Focus Section ====
+
+async function buildSummaryFocusSection() {
+  const container = document.getElementById('summary-focus-container');
+  if (!container) return;
+
+  const data = window.pendingRecommendations;
+
+  let professionalSummaries = {};
+  try {
+    const res = await fetch('/api/status');
+    const statusData = await res.json();
+    professionalSummaries = statusData.professional_summaries || {};
+  } catch (err) {
+    container.innerHTML = '<p style="color:#ef4444;">Failed to load professional summaries.</p>';
+    return;
+  }
+
+  const summaryKeys = Object.keys(professionalSummaries);
+  if (summaryKeys.length === 0) {
+    container.innerHTML = '<p style="color:#6b7280;font-size:0.9em;">No professional summaries configured in master CV data.</p>';
+    return;
+  }
+
+  // The LLM's summary_focus may be a free-text description rather than a key.
+  // Show it as guidance, and let the user pick a key.
+  const llmSummaryText = data.summary_focus || '';
+  const llmGuidanceHTML = llmSummaryText
+    ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px;margin-bottom:16px;">
+        <strong style="color:#166534;">💡 AI Recommendation:</strong>
+        <p style="margin:6px 0 0;color:#166534;font-size:0.9em;">${escapeHtml(llmSummaryText)}</p>
+       </div>`
+    : '';
+
+  // Suggested content reordering
+  const reorderingText = data.suggested_content_reordering || '';
+  const reorderingHTML = reorderingText
+    ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:16px;">
+        <strong style="color:#1e40af;">📋 Suggested Content Order:</strong>
+        <p style="margin:6px 0 0;color:#1e3a8a;font-size:0.9em;white-space:pre-line;">${escapeHtml(reorderingText)}</p>
+       </div>`
+    : '';
+
+  // Default: pick key closest to llmSummaryText or 'default'
+  const defaultKey = summaryKeys.find(k => llmSummaryText.toLowerCase().includes(k.replace(/_/g, ' '))) || 'default';
+  window.selectedSummaryKey = defaultKey;
+
+  let radiosHTML = summaryKeys.map(key => {
+    const preview = (professionalSummaries[key] || '').slice(0, 180);
+    const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const checked = key === defaultKey ? 'checked' : '';
+    return `
+      <label style="display:block;border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-bottom:8px;cursor:pointer;${checked ? 'border-color:#10b981;background:#f0fdf4;' : ''}">
+        <input type="radio" name="summary_key" value="${escapeHtml(key)}" ${checked}
+          onchange="selectSummaryKey('${escapeHtml(key)}')" style="margin-right:8px;">
+        <strong>${escapeHtml(label)}</strong>
+        <p style="margin:6px 0 0;font-size:0.85em;color:#6b7280;">${escapeHtml(preview)}${preview.length === 180 ? '…' : ''}</p>
+      </label>`;
+  }).join('');
+
+  container.innerHTML = `
+    ${llmGuidanceHTML}
+    ${reorderingHTML}
+    <div id="summary-radios">${radiosHTML}</div>
+    <div style="margin-top:12px;">
+      <button class="submit-btn" onclick="submitSummaryFocusDecision()">Save Summary Selection</button>
+    </div>
+  `;
+
+  // Pre-save the default so Generate CV picks it up even without explicit user click
+  await saveSummaryFocusToBackend(defaultKey);
+}
+
+function selectSummaryKey(key) {
+  window.selectedSummaryKey = key;
+  // Update visual selection
+  document.querySelectorAll('#summary-radios label').forEach(label => {
+    const radio = label.querySelector('input[type=radio]');
+    const isSelected = radio && radio.value === key;
+    label.style.borderColor = isSelected ? '#10b981' : '#e5e7eb';
+    label.style.background  = isSelected ? '#f0fdf4' : '';
+  });
+}
+
+async function saveSummaryFocusToBackend(key) {
+  try {
+    await fetch('/api/review-decisions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'summary_focus', decisions: key })
+    });
+  } catch (e) { /* silent */ }
+}
+
+async function submitSummaryFocusDecision() {
+  const key = window.selectedSummaryKey;
+  if (!key) return;
+  await saveSummaryFocusToBackend(key);
+  showAlertModal('✅ Summary Selection Saved', `Selected summary: <strong>${key.replace(/_/g, ' ')}</strong>`);
 }
 
 // Track publication accept/reject decisions: cite_key → true (accept) | false (reject)
@@ -3029,18 +3259,26 @@ async function submitSkillDecisions() {
   }
   
   try {
+    // Extra skills: LLM-suggested skills not in master CV that the user chose to include/emphasize
+    const extraSkills = (window._newSkillsFromLLM || []).filter(s => {
+      const d = decisions[s];
+      return d === 'include' || d === 'emphasize';
+    });
+
     const response = await fetch('/api/review-decisions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'skills',
-        decisions: decisions
+        decisions: decisions,
+        extra_skills: extraSkills
       })
     });
-    
+
     if (response.ok) {
       const result = await response.json();
-      showAlertModal('✅ Skill Decisions Submitted', `Submitted decisions for ${count} skills. ${result.message || 'Saved successfully!'}<br><br><strong>You can now click "Generate CV" to create your customized CV.</strong>`);
+      const extraNote = extraSkills.length > 0 ? `<br><small style="color:#dc7900;">⚠ ${extraSkills.length} AI-suggested skill(s) not in your CV profile will be added to this generated CV only.</small>` : '';
+      showAlertModal('✅ Skill Decisions Submitted', `Submitted decisions for ${count} skills. ${result.message || 'Saved successfully!'}${extraNote}<br><br><strong>You can now click "Generate CV" to create your customized CV.</strong>`);
       
       // Add confirmation message to conversation
       if (Object.keys(userSelections.experiences).length > 0 && Object.keys(userSelections.skills).length > 0) {

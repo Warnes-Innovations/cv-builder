@@ -439,10 +439,14 @@ Job Description (excerpt):
         # Get all experience IDs from master data
         all_experience_ids = []
         all_skills = []
+        all_achievements = []
+        professional_summaries = {}
         if orchestrator and orchestrator.master_data:
             experiences = orchestrator.master_data.get('experience', [])
             all_experience_ids = [exp.get('id') for exp in experiences if exp.get('id')]
-            
+            all_achievements = orchestrator.master_data.get('selected_achievements', [])
+            professional_summaries = orchestrator.master_data.get('professional_summaries', {})
+
             # Get all skills - handle both list and dict formats
             skills_data = orchestrator.master_data.get('skills', [])
             if isinstance(skills_data, dict):
@@ -472,8 +476,10 @@ Job Description (excerpt):
             "generated_files": conversation.state.get("generated_files"),
             "generation_progress": conversation.state.get("generation_progress") or [],  # Phase 10
             "persuasion_warnings": conversation.state.get("persuasion_warnings") or [],  # Phase 10
-            "all_experience_ids": all_experience_ids,  # Add all experience IDs
-            "all_skills": all_skills,  # Add all skills
+            "all_experience_ids": all_experience_ids,
+            "all_skills": all_skills,
+            "all_achievements": all_achievements,
+            "professional_summaries": professional_summaries,
             "copilot_auth": auth_manager.status,
             "iterating": bool(conversation.state.get("iterating")),
             "reentry_phase": conversation.state.get("reentry_phase"),
@@ -1659,7 +1665,17 @@ Job Description (excerpt):
                 message = f"Saved decisions for {len(decisions)} experiences"
             elif decision_type == 'skills':
                 conversation.state['skill_decisions'] = decisions
+                extra_skills = data.get('extra_skills', [])
+                if extra_skills:
+                    conversation.state['extra_skills'] = extra_skills
                 message = f"Saved decisions for {len(decisions)} skills"
+            elif decision_type == 'achievements':
+                conversation.state['achievement_decisions'] = decisions
+                message = f"Saved decisions for {len(decisions)} achievements"
+            elif decision_type == 'summary_focus':
+                # decisions is a single string key here
+                conversation.state['summary_focus_override'] = decisions
+                message = "Saved summary focus preference"
             else:
                 return jsonify({"error": f"Invalid type: {decision_type}"}), 400
             
@@ -1905,6 +1921,8 @@ Job Description (excerpt):
                     candidate_name=candidate_name,
                     max_results=15,
                 )
+                if not recommendations:
+                    raise RuntimeError("LLM returned no publication recommendations")
                 source = "llm"
             except Exception as rank_err:
                 print(f"Publication ranking failed, using score-based fallback: {rank_err}")
@@ -2516,7 +2534,6 @@ Job Description (excerpt):
                 with open(master_path, encoding='utf-8') as f:
                     master = json.load(f)
 
-                original_master = copy.deepcopy(master)
                 diff_summary: List[Dict[str, Any]] = []
 
                 for cand in selected:
@@ -2615,6 +2632,8 @@ def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
 
     # 1. Improved bullets — approved rewrites where content differs from master
     for rw in approved_rewrites:
+        if rw.get('section') == 'summary':  # handled separately as summary_variant
+            continue
         proposed = rw.get('proposed', '')
         original = rw.get('original', '')
         if not proposed or not original:

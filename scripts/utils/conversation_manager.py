@@ -555,7 +555,7 @@ Ask questions that are specific to this job posting, not generic career question
         elif action_type == 'generate_cv':
             # Check if we have customizations OR user decisions from table review
             has_customizations = bool(self.state.get('customizations'))
-            has_decisions = bool(self.state.get('experience_decisions') or self.state.get('skill_decisions'))
+            has_decisions = bool(self.state.get('experience_decisions') or self.state.get('skill_decisions') or self.state.get('achievement_decisions'))
             
             if not has_customizations and not has_decisions:
                 return "❌ Please generate customizations first (click 'Recommend Customizations')"
@@ -636,6 +636,29 @@ Ask questions that are specific to this job posting, not generic career question
                     omitted      = [k for k, v in skill_decisions.items() if v == 'omit']
                     customizations['recommended_skills'] = emphasized + included + deemphasized
                     customizations['omitted_skills'] = omitted
+
+                # Achievement decisions
+                ach_decisions = self.state.get('achievement_decisions', {})
+                if isinstance(ach_decisions, str):
+                    try:
+                        ach_decisions = json.loads(ach_decisions)
+                    except Exception:
+                        ach_decisions = {}
+                if ach_decisions:
+                    included_achs = [k for k, v in ach_decisions.items() if v in ('include', 'emphasize')]
+                    omitted_achs  = [k for k, v in ach_decisions.items() if v == 'omit']
+                    customizations['recommended_achievements'] = included_achs
+                    customizations['omitted_achievements'] = omitted_achs
+
+                # Extra skills (LLM-suggested skills not in master CV that user approved)
+                extra_skills = self.state.get('extra_skills', [])
+                if extra_skills:
+                    customizations['extra_skills'] = extra_skills
+
+                # Summary focus override (user-selected summary key)
+                summary_override = self.state.get('summary_focus_override')
+                if summary_override:
+                    customizations['summary_focus'] = summary_override
 
                 self.state['customizations'] = customizations
 

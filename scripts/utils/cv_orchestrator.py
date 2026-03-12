@@ -1131,8 +1131,9 @@ If you need clarification, return:
             first, remaining non-omitted skills follow by score.
         """
         # IDs/names explicitly omitted by the user
-        omitted_exp_ids  = set(customizations.get('omitted_experiences', []))
-        omitted_skill_names = set(customizations.get('omitted_skills', []))
+        omitted_exp_ids      = set(customizations.get('omitted_experiences', []))
+        omitted_skill_names  = set(customizations.get('omitted_skills', []))
+        omitted_ach_ids      = set(customizations.get('omitted_achievements', []))
 
         # IDs carrying an extra relevance boost from user/LLM recommendations
         recommended_exp_ids          = set(customizations.get('recommended_experiences', []))
@@ -1258,7 +1259,7 @@ If you need clarification, return:
         scored_achievements = []
         for ach in all_achievements:
             ach_id = ach.get('id', '')
-            if ach_id in omitted_exp_ids:  # achievements share the omit set
+            if ach_id in omitted_exp_ids or ach_id in omitted_ach_ids:
                 continue
 
             llm_score     = 10.0 if ach_id in recommended_achievement_ids else 0.0
@@ -1296,7 +1297,17 @@ If you need clarification, return:
             selected_skills.append(skill)
             if len(selected_skills) >= max_skills:
                 break
-        
+
+        # Prepend extra_skills: LLM-suggested skills not in master CV that the user approved
+        extra_skills = customizations.get('extra_skills', [])
+        if extra_skills:
+            existing_skill_names = {s.get('name', '') for s in all_skills}
+            prepend = []
+            for skill_name in extra_skills:
+                if skill_name not in omitted_skill_names and skill_name not in existing_skill_names:
+                    prepend.append({'name': skill_name})
+            selected_skills = prepend + selected_skills
+
         # Select professional summary
         summaries = self.master_data.get('professional_summaries', {})
         summary_key = customizations.get('summary_focus', 'default')

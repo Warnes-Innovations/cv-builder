@@ -99,8 +99,8 @@ def _make_app(state_overrides=None):
 class TestFinaliseEndpoint(unittest.TestCase):
 
     def test_finalise_normal_path(self):
-        """Finalise archives metadata and advances phase."""
-        app, conv, orch = _make_app()
+        """Finalise archives metadata and advances phase to 'refinement'."""
+        app, conv, orch = _make_app(state_overrides={'phase': 'generation'})
         metadata_content = json.dumps({'company': 'Acme', 'role': 'Engineer'})
 
         with app.test_client() as client, \
@@ -151,6 +151,67 @@ class TestFinaliseEndpoint(unittest.TestCase):
                  patch('subprocess.run', return_value=MagicMock(returncode=1, stdout='', stderr='nothing')):
                 res = client.post('/api/finalise', json={'status': status})
             self.assertIn(res.status_code, (200,), msg=f"status={status} should return 200")
+
+    def test_finalise_upserts_screening_into_response_library(self):
+        """Finalise with screening_responses writes them to response_library.json keyed by topic_tag."""
+        from pathlib import Path as _Path
+        screening = [{'topic_tag': 'leadership', 'answer': 'I led a team of 5 engineers.'}]
+        metadata_content = json.dumps({
+            'company': 'Acme', 'role': 'Engineer',
+            'screening_responses': screening,
+        })
+
+        app, _, _ = _make_app()
+        dumped_calls = []
+
+        def conditional_exists(self_path):
+            return 'response_library' not in str(self_path)
+
+        with app.test_client() as client, \
+             patch.object(_Path, 'exists', conditional_exists), \
+             patch('pathlib.Path.mkdir'), \
+             patch('builtins.open', mock_open(read_data=metadata_content)), \
+             patch('json.dump', side_effect=lambda obj, f, **kw: dumped_calls.append(obj)), \
+             patch('subprocess.run', return_value=MagicMock(returncode=0, stdout='abc1234', stderr='')):
+            res = client.post('/api/finalise', json={'status': 'ready'})
+
+        self.assertEqual(res.status_code, 200)
+        # First json.dump call should be the response library write
+        self.assertTrue(len(dumped_calls) >= 1)
+        library_dump = dumped_calls[0]
+        self.assertIn('leadership', library_dump)
+        self.assertEqual(library_dump['leadership']['answer'], 'I led a team of 5 engineers.')
+
+    def test_finalise_screening_uses_question_fallback_key(self):
+        """When topic_tag is absent, question[:40] is used as the response library key."""
+        from pathlib import Path as _Path
+        long_question = 'Tell me about yourself, what are your greatest strengths and weaknesses?'
+        screening = [{'question': long_question, 'answer': 'I am highly motivated...'}]
+        metadata_content = json.dumps({
+            'company': 'Acme', 'role': 'Engineer',
+            'screening_responses': screening,
+        })
+
+        app, _, _ = _make_app()
+        dumped_calls = []
+
+        def conditional_exists(self_path):
+            return 'response_library' not in str(self_path)
+
+        with app.test_client() as client, \
+             patch.object(_Path, 'exists', conditional_exists), \
+             patch('pathlib.Path.mkdir'), \
+             patch('builtins.open', mock_open(read_data=metadata_content)), \
+             patch('json.dump', side_effect=lambda obj, f, **kw: dumped_calls.append(obj)), \
+             patch('subprocess.run', return_value=MagicMock(returncode=0, stdout='abc1234', stderr='')):
+            res = client.post('/api/finalise', json={'status': 'ready'})
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(len(dumped_calls) >= 1)
+        library_dump = dumped_calls[0]
+        expected_key = long_question[:40]
+        self.assertIn(expected_key, library_dump)
+        self.assertEqual(library_dump[expected_key]['answer'], 'I am highly motivated...')
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +272,7 @@ class TestHarvestCandidates(unittest.TestCase):
         self.assertEqual(skill_cand['proposed'], 'Kubernetes')
 
     def test_summary_variant_candidate(self):
-        """Approved rewrite with section='summary' produces a summary_variant candidate."""
+        """Approved rewrite with section='summary' produces a summary_variant candidate only."""
         rewrite = {
             'id': 'sw1', 'section': 'summary',
             'original': 'Experienced engineer.',
@@ -222,6 +283,7 @@ class TestHarvestCandidates(unittest.TestCase):
             data = client.get('/api/harvest/candidates').get_json()
         types = [c['type'] for c in data['candidates']]
         self.assertIn('summary_variant', types)
+        self.assertNotIn('improved_bullet', types)
 
     def test_skill_gap_confirmed_candidate(self):
         """skill_gap_* key with truthy answer produces skill_gap_confirmed candidate."""
