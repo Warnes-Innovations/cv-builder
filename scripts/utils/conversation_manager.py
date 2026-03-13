@@ -47,6 +47,9 @@ class ConversationManager:
             'approved_rewrites':  [],     # List[Dict] user-accepted or user-edited
             'rewrite_audit':      [],     # full record: proposal + outcome for metadata
             'layout_instructions': [],    # List[Dict] layout instruction history (Phase 12)
+            'cover_letter_text':   None,   # str — finalized cover letter body (Phase 14)
+            'cover_letter_params': None,   # Dict — generation params (tone, hiring_manager, …)
+            'cover_letter_reused_from': None,  # str session path or None
         }
         self.session_dir: Optional[Path] = None
         # Readline history file
@@ -204,8 +207,11 @@ Ask questions that are specific to this job posting, not generic career question
             {'role': 'system', 'content': system_msg}
         ] + self._strip_context_from_history(self.conversation_history)
         
-        # Get LLM response
-        response = self.llm.chat(messages, temperature=0.7)
+        # Get LLM response — request a generous token budget for free-form chat.
+        # The system prompt includes large context blobs (full CV JSON, job analysis,
+        # customizations) that consume input tokens; without an explicit output cap the
+        # provider may return a very small default, truncating long responses.
+        response = self.llm.chat(messages, temperature=0.7, max_tokens=4096)
         
         # Add to history
         self.conversation_history.append({
@@ -486,7 +492,7 @@ Ask questions that are specific to this job posting, not generic career question
                     + self._strip_context_from_history(self.conversation_history)
                     + [{'role': 'user', 'content': contextual_prompt}]
                 )
-                questions_response = self.llm.chat(messages, temperature=0.7)
+                questions_response = self.llm.chat(messages, temperature=0.7, max_tokens=4096)
                 
                 # Add the questions to conversation history 
                 self.conversation_history.append({
@@ -1164,6 +1170,9 @@ Ask questions that are specific to this job posting, not generic career question
                 'pending_rewrites':   None,
                 'approved_rewrites':  [],
                 'rewrite_audit':      [],
+                'cover_letter_text':   None,
+                'cover_letter_params': None,
+                'cover_letter_reused_from': None,
             }
             print("\n✓ Conversation reset. Let's start fresh!")
         else:

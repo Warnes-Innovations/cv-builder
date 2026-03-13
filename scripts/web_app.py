@@ -605,6 +605,204 @@ Job Description (excerpt):
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+    # ── Cover Letter endpoints (Phase 14) ───────────────────────────────────
+
+    _TONE_GUIDANCE: Dict[str, str] = {
+        'startup/tech':   'Energetic, direct, outcome-focused.  Emphasise velocity, impact, and technical depth.',
+        'pharma/biotech': 'Precise, methodical, compliance-aware.  Reference domain credentials and regulatory rigour.',
+        'academia':       'Scholarly, collaborative.  Highlight publications, teaching experience, and departmental service.',
+        'financial':      'Professional, quantitative, risk-aware.  Emphasise fiduciary responsibility and data-driven decisions.',
+        'leadership':     'Strategic, vision-focused, people-first.  Highlight team-building and organisational impact.',
+    }
+
+    @app.get("/api/cover-letter/prior")
+    def cover_letter_prior():
+        """Scan prior sessions for saved cover letters and return previews."""
+        try:
+            from utils.config import get_config
+            cfg         = get_config()
+            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            results     = []
+            if output_base.exists():
+                for session_file in sorted(output_base.rglob('session.json'), reverse=True)[:30]:
+                    try:
+                        with open(session_file, encoding='utf-8') as f:
+                            data = json.load(f)
+                        state = data.get('state', {})
+                        cl_text = state.get('cover_letter_text')
+                        if not cl_text:
+                            continue
+                        params = state.get('cover_letter_params') or {}
+                        job_analysis = state.get('job_analysis') or {}
+                        results.append({
+                            'session_path': str(session_file),
+                            'company':      job_analysis.get('company', ''),
+                            'role':         job_analysis.get('title', ''),
+                            'date':         data.get('timestamp', '')[:10],
+                            'tone':         params.get('tone', ''),
+                            'preview':      cl_text[:200],
+                            'full_text':    cl_text,
+                        })
+                    except Exception:
+                        pass
+            return jsonify({'ok': True, 'sessions': results})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+    @app.post("/api/cover-letter/generate")
+    def cover_letter_generate():
+        """Generate a cover letter using the LLM and current session context."""
+        with _session_lock:
+            body            = request.get_json(silent=True) or {}
+            tone            = body.get('tone', 'startup/tech')
+            hiring_manager  = (body.get('hiring_manager') or 'Hiring Manager').strip()
+            company_address = (body.get('company_address') or '').strip()
+            highlight       = (body.get('highlight') or '').strip()
+            reuse_body      = (body.get('reuse_body') or '').strip()
+
+            job_analysis  = conversation.state.get('job_analysis') or {}
+            master        = orchestrator.master_data or {}
+            personal_info = master.get('personal_info', {})
+
+            # Build skills/summary snippet from master data
+            skills_raw = master.get('skills', [])
+            if isinstance(skills_raw, dict):
+                all_skills = [s for lst in skills_raw.values() if isinstance(lst, list) for s in lst]
+            else:
+                all_skills = list(skills_raw)
+            top_skills = ', '.join(all_skills[:12]) if all_skills else '(see attached CV)'
+
+            summaries = master.get('professional_summaries', {})
+            if isinstance(summaries, dict) and summaries:
+                summary_text = next(iter(summaries.values()))
+            else:
+                summary_text = master.get('summary', '')
+
+            achievements   = master.get('selected_achievements', [])
+            top_ach_titles = '\n'.join(f'- {a.get("title", "")}' for a in achievements[:4]) or '(see CV)'
+
+            answers_snippet = ''
+            answers = conversation.state.get('post_analysis_answers') or {}
+            if answers:
+                answers_snippet = 'Candidate context:\n' + '\n'.join(
+                    f'- {q}: {a}' for q, a in list(answers.items())[:6]
+                )
+
+            tone_hint = _TONE_GUIDANCE.get(tone, '')
+            company   = job_analysis.get('company', 'the company')
+            role      = job_analysis.get('title', 'the position')
+            keywords  = ', '.join((job_analysis.get('ats_keywords') or [])[:12])
+            req_skills = ', '.join((job_analysis.get('required_skills') or [])[:10])
+
+            today = datetime.now().strftime('%B %d, %Y')
+            pieces   = [f'Date: {today}']
+            if company_address:
+                pieces.append(company_address)
+            header_block = '\n'.join(pieces) + '\n\n'  # LLM provides the salutation
+
+            reuse_instruction = (
+                f'\nUse the following prior cover letter as a starting point, '
+                f'adapting it to the new role:\n\n"""\n{reuse_body}\n"""\n'
+            ) if reuse_body else ''
+
+            prompt = f"""\
+You are a professional career coach writing a tailored cover letter.
+
+Tone style: {tone} — {tone_hint}
+
+TARGET ROLE
+  Company: {company}
+  Position: {role}
+  Key requirements: {req_skills or keywords or '(see job description)'}
+
+CANDIDATE PROFILE
+  Name: {personal_info.get('name', 'The candidate')}
+  Summary: {summary_text[:400] if summary_text else '(see CV)'}
+  Top skills: {top_skills}
+  Key achievements:
+{top_ach_titles}
+
+{answers_snippet}
+{reuse_instruction}
+{'Please especially highlight: ' + highlight if highlight else ''}
+
+Write a compelling, personalised cover letter (3–4 paragraphs, ~300–400 words).
+Start directly with the salutation line: "Dear {hiring_manager},"
+Do NOT include a date, address block, or subject line — return only the letter body starting with the salutation.
+Reference concrete skills and achievements from the candidate profile.
+Close professionally with a call to action.
+"""
+
+            try:
+                response = llm_client.chat(
+                    messages=[
+                        {'role': 'system', 'content': 'You write tailored, professional cover letters. Return only the letter body text.'},
+                        {'role': 'user',   'content': prompt},
+                    ],
+                    temperature=0.7,
+                    max_tokens=800,
+                )
+            except Exception as e:
+                return jsonify({'ok': False, 'error': f'LLM error: {e}'}), 500
+
+            # Prepend date + address block; LLM response already contains the salutation
+            letter_text = header_block + response.strip()
+            conversation.state['cover_letter_text']   = letter_text
+            conversation.state['cover_letter_params'] = {
+                'tone': tone, 'hiring_manager': hiring_manager,
+                'company_address': company_address, 'highlight': highlight,
+            }
+            return jsonify({'ok': True, 'text': letter_text})
+
+    @app.post("/api/cover-letter/save")
+    def cover_letter_save():
+        """Save cover letter text to DOCX in the output directory and update metadata.json."""
+        with _session_lock:
+            text = (request.get_json(silent=True) or {}).get('text', '').strip()
+            if not text:
+                return jsonify({'error': 'text is required'}), 400
+
+            generated = conversation.state.get('generated_files')
+            if not generated or not generated.get('output_dir'):
+                return jsonify({'error': 'No generated CV found — please generate your CV first.'}), 400
+
+            try:
+                from docx import Document
+                from docx.shared import Pt
+
+                output_dir   = Path(generated['output_dir'])
+                job_analysis = conversation.state.get('job_analysis') or {}
+                company      = (job_analysis.get('company') or 'Company').replace(' ', '_')
+                date_str     = datetime.now().strftime('%Y-%m-%d')
+                filename     = f'CoverLetter_{company}_{date_str}.docx'
+                docx_path    = output_dir / filename
+
+                doc = Document()
+                # Use Normal style and write paragraphs
+                for para_text in text.split('\n'):
+                    p = doc.add_paragraph(para_text)
+                    for run in p.runs:
+                        run.font.size = Pt(11)
+                        run.font.name = 'Calibri'
+                doc.save(str(docx_path))
+
+                # Update metadata.json
+                metadata_path = output_dir / 'metadata.json'
+                if metadata_path.exists():
+                    with open(metadata_path, encoding='utf-8') as f:
+                        metadata = json.load(f)
+                else:
+                    metadata = {}
+                metadata['cover_letter_text']        = text
+                metadata['cover_letter_reused_from'] = conversation.state.get('cover_letter_reused_from')
+                with open(metadata_path, 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f, indent=2)
+
+                conversation.state['cover_letter_text'] = text
+                return jsonify({'ok': True, 'filename': filename})
+            except Exception as e:
+                return jsonify({'ok': False, 'error': str(e)}), 500
+
     # ── Copilot OAuth endpoints ──────────────────────────────────────────────
 
     @app.post("/api/copilot-auth/start")
@@ -1359,7 +1557,7 @@ Job Description (excerpt):
             if question_text:
                 cleaned_questions.append({
                     "type": qtype[:40] or "clarification",
-                    "question": question_text[:260],
+                    "question": question_text[:2000],
                 })
 
         cleaned_answers = {}

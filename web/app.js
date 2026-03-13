@@ -514,6 +514,9 @@ async function loadTabContent(tab) {
     case 'master':
       await populateMasterTab();
       break;
+    case 'cover-letter':
+      await populateCoverLetterTab();
+      break;
   }
 }
 
@@ -5877,5 +5880,191 @@ async function saveMasterSummary() {
 }
 
 // ==== End Master CV Management Tab ====
+
+// ==== Cover Letter Tab (Phase 14) ====
+
+const COVER_LETTER_TONES = [
+  { value: 'startup/tech',   label: 'Startup / Tech'    },
+  { value: 'pharma/biotech', label: 'Pharma / Biotech'  },
+  { value: 'academia',       label: 'Academia'           },
+  { value: 'financial',      label: 'Financial Services' },
+  { value: 'leadership',     label: 'Leadership / Exec'  },
+];
+
+let _coverLetterPriorSessions = [];
+
+async function populateCoverLetterTab() {
+  const content = document.getElementById('document-content');
+  content.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading cover letter…</p></div>';
+
+  // Fetch prior sessions with cover letters
+  try {
+    const res  = await fetch('/api/cover-letter/prior');
+    const data = await res.json();
+    _coverLetterPriorSessions = (data.sessions || []);
+  } catch (_) {
+    _coverLetterPriorSessions = [];
+  }
+
+  const toneOptions = COVER_LETTER_TONES.map(t =>
+    `<option value="${t.value}">${escapeHtml(t.label)}</option>`
+  ).join('');
+
+  const priorSection = _coverLetterPriorSessions.length ? `
+    <div class="cl-prior-section">
+      <h3>📋 Prior Cover Letters</h3>
+      <p style="color:#6b7280;font-size:0.85em;margin-bottom:10px;">
+        Select a prior letter to use as a starting point.
+      </p>
+      <div id="cl-prior-list">
+        ${_coverLetterPriorSessions.map((s, i) => `
+          <div class="cl-prior-card" id="cl-prior-${i}">
+            <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;">
+              <input type="radio" name="cl-prior" value="${i}" style="margin-top:3px;" />
+              <div>
+                <strong>${escapeHtml(s.role || 'Role')} at ${escapeHtml(s.company || 'Company')}</strong>
+                <span style="color:#94a3b8;font-size:0.82em;margin-left:6px;">${escapeHtml(s.date || '')}</span>
+                ${s.tone ? `<span class="cl-tone-badge">${escapeHtml(s.tone)}</span>` : ''}
+                <p style="color:#64748b;font-size:0.85em;margin:4px 0 0;">${escapeHtml((s.preview || '').slice(0, 120))}…</p>
+              </div>
+            </label>
+          </div>`).join('')}
+      </div>
+    </div>` : '';
+
+  content.innerHTML = `
+    <h1>📩 Cover Letter</h1>
+    <p style="color:#6b7280;margin-bottom:20px;">
+      Generate a tailored cover letter for this application using your CV content
+      and job analysis as context.
+    </p>
+
+    ${priorSection}
+
+    <div class="cl-form-section">
+      <h3>Generation Options</h3>
+      <div class="cl-form-grid">
+        <div class="cl-form-field">
+          <label for="cl-tone-select">Tone / Industry</label>
+          <select id="cl-tone-select" class="edit-input">${toneOptions}</select>
+        </div>
+        <div class="cl-form-field">
+          <label for="cl-hiring-manager">Hiring Manager Name/Title <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+          <input type="text" id="cl-hiring-manager" class="edit-input"
+              placeholder="e.g. Dr. Jane Smith, Head of Data Science" />
+        </div>
+      </div>
+      <div class="cl-form-field" style="margin-top:12px;">
+        <label for="cl-company-address">Company Address <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+        <textarea id="cl-company-address" class="edit-input" rows="2"
+            style="resize:vertical;"
+            placeholder="e.g. Acme Corp, 123 Main St, Boston MA 02134"></textarea>
+      </div>
+      <div class="cl-form-field" style="margin-top:12px;">
+        <label for="cl-highlight">Specific achievement or project to highlight <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+        <input type="text" id="cl-highlight" class="edit-input"
+            placeholder="e.g. Led the migration to Kubernetes saving 30% infra cost" />
+      </div>
+      <div style="margin-top:16px;">
+        <button class="action-btn primary" id="cl-generate-btn" onclick="generateCoverLetter()">
+          ✨ Generate Cover Letter
+        </button>
+      </div>
+    </div>
+
+    <div id="cl-result-section" style="display:none;margin-top:24px;">
+      <div class="cl-result-header">
+        <h3>Generated Cover Letter</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="action-btn" onclick="generateCoverLetter()" title="Regenerate">🔄 Regenerate</button>
+          <button class="action-btn primary" onclick="saveCoverLetter()" id="cl-save-btn">💾 Save Cover Letter</button>
+        </div>
+      </div>
+      <p style="color:#6b7280;font-size:0.85em;margin-bottom:8px;">
+        Edit the text below before saving.
+      </p>
+      <textarea id="cl-letter-textarea" class="cl-letter-textarea" rows="22"
+          aria-label="Cover letter text — edit as needed"></textarea>
+    </div>
+  `;
+}
+
+async function generateCoverLetter() {
+  const btn = document.getElementById('cl-generate-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating…';
+
+  const tone           = (document.getElementById('cl-tone-select')    || {}).value || 'startup/tech';
+  const hiring_manager = (document.getElementById('cl-hiring-manager') || {}).value || '';
+  const company_address = (document.getElementById('cl-company-address') || {}).value || '';
+  const highlight      = (document.getElementById('cl-highlight')       || {}).value || '';
+
+  // Check for prior letter selection
+  let reuse_body = '';
+  const checkedPrior = document.querySelector('input[name="cl-prior"]:checked');
+  if (checkedPrior) {
+    const idx = parseInt(checkedPrior.value, 10);
+    reuse_body = (_coverLetterPriorSessions[idx] || {}).full_text || '';
+  }
+
+  try {
+    const res  = await fetch('/api/cover-letter/generate', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ tone, hiring_manager, company_address, highlight, reuse_body }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      const resultSection = document.getElementById('cl-result-section');
+      const textarea      = document.getElementById('cl-letter-textarea');
+      if (resultSection) resultSection.style.display = 'block';
+      if (textarea)      textarea.value = data.text;
+    } else {
+      showAlertModal('❌ Generation Failed', data.error || 'LLM did not return a cover letter.');
+    }
+  } catch (e) {
+    showAlertModal('❌ Error', 'Failed to contact server.');
+  } finally {
+    if (btn) {
+      btn.disabled    = false;
+      btn.textContent = '✨ Generate Cover Letter';
+    }
+  }
+}
+
+async function saveCoverLetter() {
+  const textarea = document.getElementById('cl-letter-textarea');
+  if (!textarea) return;
+  const text = textarea.value.trim();
+  if (!text) {
+    showAlertModal('⚠️ Empty Letter', 'Please generate or type a cover letter before saving.');
+    return;
+  }
+
+  const btn = document.getElementById('cl-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
+
+  try {
+    const res  = await fetch('/api/cover-letter/save', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ text }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      showAlertModal('✅ Saved', `Cover letter saved as <strong>${escapeHtml(data.filename)}</strong> in your application folder.`);
+    } else {
+      showAlertModal('❌ Save Failed', data.error || 'Could not save cover letter.');
+    }
+  } catch (e) {
+    showAlertModal('❌ Error', 'Failed to contact server.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save Cover Letter'; }
+  }
+}
+
+// ==== End Cover Letter Tab ====
 
 // Entry point called by DOMContentLoaded in ui-core.js
