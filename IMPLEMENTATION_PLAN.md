@@ -38,11 +38,11 @@ the distribution of completed-phase durations (Phases 2–6: 0.1–1.7 h intra-s
 | 8 | Phase re-entry / iterative refinement | ✅ Complete | `bf26797` | 2026-03-11 |
 | 9 | Skills canonicalisation + bullet reordering | ✅ Complete | `6c96ea5` | 2026-03-11 |
 | 10 | Persuasion checks + loading state | ✅ Complete | `5e39d34` | 2026-03-11 15:15 EDT \| 2.75h |
-| 11 | Finalise & archive + master data harvest | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
+| 11 | Finalise & archive + master data harvest | ✅ Complete | `45f0774` | 2026-03-11 |
 | 12 | Natural-language layout instructions | ✅ Complete | — | 2026-03-11 |
-| 13 | Master data management + accessibility baseline | 🔲 Pending | — | est. 2.5 h (95% CI: 1.0–5.5 h) |
-| 14 | Cover letter generation | 🔲 Pending | — | est. 2.0 h (95% CI: 0.5–4.5 h) |
-| 15 | Interview screening question responses | 🔲 Pending | — | est. 1.5 h (95% CI: 0.5–3.5 h) |
+| 13 | Master data management + accessibility baseline | ✅ Complete | `a7c3597` | 2026-03-11 |
+| 14 | Cover letter generation | ✅ Complete | `9a42f87` | 2026-03-11 |
+| 15 | Interview screening question responses | ✅ Complete | `6c66e0c` | 2026-03-11 |
 
 ---
 
