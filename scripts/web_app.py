@@ -508,6 +508,103 @@ Job Description (excerpt):
                 "professional_summaries": {},
             }), 500
 
+    # ── Master data management endpoints ────────────────────────────────────
+
+    @app.get("/api/master-data/overview")
+    def master_data_overview():
+        """Return a profile summary (counts + personal info) from the master CV file."""
+        try:
+            with open(orchestrator.master_data_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            personal  = data.get('personal_info', {})
+            skills    = data.get('skills', [])
+            skill_count = (
+                sum(len(v) if isinstance(v, list) else 0 for v in skills.values())
+                if isinstance(skills, dict) else len(skills)
+            )
+            summaries = data.get('professional_summaries', {})
+            return jsonify({
+                "ok":                True,
+                "name":              personal.get('name', ''),
+                "headline":          personal.get('headline', personal.get('title', '')),
+                "email":             (personal.get('contact') or {}).get('email',
+                                     personal.get('email', '')),
+                "experience_count":  len(data.get('experience', [])),
+                "skill_count":       skill_count,
+                "achievement_count": len(data.get('selected_achievements', [])),
+                "summary_count":     len(summaries) if isinstance(summaries, dict)
+                                     else len(summaries),
+                "education_count":   len(data.get('education', [])),
+                "publication_count": len(data.get('publications', [])),
+            })
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.post("/api/master-data/update-achievement")
+    def master_data_update_achievement():
+        """Update an existing selected achievement or add a new one to the master CV."""
+        req  = request.get_json() or {}
+        ach_id = (req.get('id') or '').strip()
+        if not ach_id:
+            return jsonify({"error": "id is required"}), 400
+        try:
+            master_path = Path(orchestrator.master_data_path)
+            with open(master_path, 'r', encoding='utf-8') as f:
+                master = json.load(f)
+            achievements = master.setdefault('selected_achievements', [])
+            existing = next((a for a in achievements if a.get('id') == ach_id), None)
+            if existing:
+                for field in ('title', 'description', 'relevant_for', 'importance'):
+                    if field in req:
+                        existing[field] = req[field]
+                action = 'updated'
+            else:
+                new_ach = {'id': ach_id}
+                for field in ('title', 'description', 'relevant_for', 'importance'):
+                    if field in req:
+                        new_ach[field] = req[field]
+                achievements.append(new_ach)
+                action = 'added'
+            with open(master_path, 'w', encoding='utf-8') as f:
+                json.dump(master, f, indent=2)
+            # Stage the change silently so the auto-git-commit at Finalise picks it up
+            subprocess.run(
+                ['git', '-C', str(master_path.parent), 'add', master_path.name],
+                capture_output=True, check=False,
+            )
+            return jsonify({"ok": True, "action": action, "id": ach_id})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.post("/api/master-data/update-summary")
+    def master_data_update_summary():
+        """Update or add a named professional summary variant in the master CV."""
+        req  = request.get_json() or {}
+        key  = (req.get('key') or '').strip()
+        text = (req.get('text') or '').strip()
+        if not key or not text:
+            return jsonify({"error": "key and text are required"}), 400
+        try:
+            master_path = Path(orchestrator.master_data_path)
+            with open(master_path, 'r', encoding='utf-8') as f:
+                master = json.load(f)
+            summaries = master.get('professional_summaries', {})
+            if isinstance(summaries, list):
+                summaries = {str(i): v for i, v in enumerate(summaries)}
+                master['professional_summaries'] = summaries
+            is_new = key not in summaries
+            summaries[key] = text
+            master['professional_summaries'] = summaries
+            with open(master_path, 'w', encoding='utf-8') as f:
+                json.dump(master, f, indent=2)
+            subprocess.run(
+                ['git', '-C', str(master_path.parent), 'add', master_path.name],
+                capture_output=True, check=False,
+            )
+            return jsonify({"ok": True, "action": "added" if is_new else "updated", "key": key})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
     # ── Copilot OAuth endpoints ──────────────────────────────────────────────
 
     @app.post("/api/copilot-auth/start")

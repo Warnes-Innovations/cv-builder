@@ -441,9 +441,16 @@ function normalizeText(text) {
 }
 
 function switchTab(tab) {
-  // Update active tab
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById(`tab-${tab}`).classList.add('active');
+  // Update active tab and ARIA state
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.remove('active');
+    t.setAttribute('aria-selected', 'false');
+  });
+  const activeTab = document.getElementById(`tab-${tab}`);
+  if (activeTab) {
+    activeTab.classList.add('active');
+    activeTab.setAttribute('aria-selected', 'true');
+  }
   currentTab = tab;
 
   // All tabs except 'cv' use full-width layout (no paper-sized centering)
@@ -503,6 +510,9 @@ async function loadTabContent(tab) {
       break;
     case 'finalise':
       await populateFinaliseTab();
+      break;
+    case 'master':
+      await populateMasterTab();
       break;
   }
 }
@@ -5552,5 +5562,320 @@ function showSessionConflictBanner() {
   const banner = document.getElementById('session-conflict-banner');
   if (banner) banner.style.display = 'block';
 }
+
+// ==== Master CV Management Tab ====
+
+async function populateMasterTab() {
+  const content = document.getElementById('document-content');
+  content.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading master CV data…</p></div>';
+
+  let overview = {};
+  let achievements = [];
+  let summaries = {};
+
+  try {
+    const [ovRes, mfRes] = await Promise.all([
+      fetch('/api/master-data/overview'),
+      fetch('/api/master-fields'),
+    ]);
+    overview     = (await ovRes.json()) || {};
+    const mf     = (await mfRes.json()) || {};
+    achievements = mf.selected_achievements || [];
+    summaries    = mf.professional_summaries || {};
+  } catch (err) {
+    content.innerHTML = '<p style="color:#ef4444;padding:20px;">Failed to load master CV data.</p>';
+    return;
+  }
+
+  content.innerHTML = `
+    <h1>📚 Master CV Profile</h1>
+    <p style="color:#6b7280;margin-bottom:20px;">
+      This is your persistent master CV profile. Changes here update
+      <code>Master_CV_Data.json</code> directly and persist across all sessions.
+    </p>
+
+    <!-- Profile overview card -->
+    <div class="master-profile-card">
+      <div class="master-profile-name">${escapeHtml(overview.name || 'Your Profile')}</div>
+      ${overview.headline ? `<div class="master-profile-headline">${escapeHtml(overview.headline)}</div>` : ''}
+      ${overview.email    ? `<div class="master-profile-email">✉️ ${escapeHtml(overview.email)}</div>` : ''}
+      <div class="master-stats">
+        <div class="master-stat"><span class="master-stat-value">${overview.experience_count ?? '—'}</span><span class="master-stat-label">Experiences</span></div>
+        <div class="master-stat"><span class="master-stat-value">${overview.skill_count ?? '—'}</span><span class="master-stat-label">Skills</span></div>
+        <div class="master-stat"><span class="master-stat-value">${overview.achievement_count ?? '—'}</span><span class="master-stat-label">Achievements</span></div>
+        <div class="master-stat"><span class="master-stat-value">${overview.summary_count ?? '—'}</span><span class="master-stat-label">Summaries</span></div>
+        <div class="master-stat"><span class="master-stat-value">${overview.education_count ?? '—'}</span><span class="master-stat-label">Education</span></div>
+        <div class="master-stat"><span class="master-stat-value">${overview.publication_count ?? '—'}</span><span class="master-stat-label">Publications</span></div>
+      </div>
+    </div>
+
+    <!-- Selected Achievements section -->
+    <div class="master-section">
+      <div class="master-section-header">
+        <h2>🏆 Selected Achievements</h2>
+        <button class="action-btn" onclick="showAddAchievementModal()" aria-label="Add new achievement to master CV">
+          + Add Achievement
+        </button>
+      </div>
+      <p style="color:#6b7280;font-size:0.9em;margin-bottom:12px;">
+        These are cross-role highlights shown in the Achievements review during customisation.
+        The Harvest feature (Finalise tab) can add new ones from your current session.
+      </p>
+      <div id="master-achievements-container">
+        ${_renderAchievementsTable(achievements)}
+      </div>
+    </div>
+
+    <!-- Professional Summaries section -->
+    <div class="master-section">
+      <div class="master-section-header">
+        <h2>📝 Professional Summaries</h2>
+        <button class="action-btn" onclick="showAddSummaryModal()" aria-label="Add new professional summary variant">
+          + Add Summary
+        </button>
+      </div>
+      <p style="color:#6b7280;font-size:0.9em;margin-bottom:12px;">
+        Named summary variants let you tailor your professional statement for different role types
+        without regenerating from scratch. The AI will recommend the most relevant variant
+        during the Summary Focus step.
+      </p>
+      <div id="master-summaries-container">
+        ${_renderSummariesList(summaries)}
+      </div>
+    </div>
+
+    <!-- Edit modals (hidden) -->
+    <div id="master-ach-modal-overlay" style="display:none;" role="dialog" aria-modal="true"
+        aria-labelledby="master-ach-modal-title" class="modal-overlay"
+        onclick="if(event.target===this)closeMasterAchModal()">
+      <div class="modal" style="max-width:600px;">
+        <div class="modal-header">
+          <h2 id="master-ach-modal-title">Achievement</h2>
+          <button onclick="closeMasterAchModal()" aria-label="Close achievement editor"
+              style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:20px;">
+          <input type="hidden" id="ach-modal-id" />
+          <div style="margin-bottom:14px;">
+            <label for="ach-modal-title-input" style="display:block;font-weight:600;margin-bottom:4px;">Title <span aria-hidden="true">*</span></label>
+            <input type="text" id="ach-modal-title-input" class="edit-input" style="width:100%;" aria-required="true"
+                placeholder="e.g. Led 3× revenue growth initiative" />
+          </div>
+          <div style="margin-bottom:14px;">
+            <label for="ach-modal-desc-input" style="display:block;font-weight:600;margin-bottom:4px;">Description</label>
+            <textarea id="ach-modal-desc-input" class="edit-input" rows="3" style="width:100%;resize:vertical;"
+                placeholder="Optional detail or metric"></textarea>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label for="ach-modal-relevant-input" style="display:block;font-weight:600;margin-bottom:4px;">Relevant for (comma-separated roles/domains)</label>
+            <input type="text" id="ach-modal-relevant-input" class="edit-input" style="width:100%;"
+                placeholder="e.g. leadership, ML engineering, data science" />
+          </div>
+          <div style="margin-bottom:14px;">
+            <label for="ach-modal-importance-input" style="display:block;font-weight:600;margin-bottom:4px;">Importance (1–10)</label>
+            <input type="number" id="ach-modal-importance-input" class="edit-input" style="width:80px;"
+                min="1" max="10" value="7" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="action-btn" onclick="closeMasterAchModal()">Cancel</button>
+          <button class="action-btn primary" onclick="saveMasterAchievement()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="master-sum-modal-overlay" style="display:none;" role="dialog" aria-modal="true"
+        aria-labelledby="master-sum-modal-title" class="modal-overlay"
+        onclick="if(event.target===this)closeMasterSumModal()">
+      <div class="modal" style="max-width:600px;">
+        <div class="modal-header">
+          <h2 id="master-sum-modal-title">Professional Summary</h2>
+          <button onclick="closeMasterSumModal()" aria-label="Close summary editor"
+              style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:20px;">
+          <div style="margin-bottom:14px;">
+            <label for="sum-modal-key-input" style="display:block;font-weight:600;margin-bottom:4px;">Key/name <span aria-hidden="true">*</span></label>
+            <input type="text" id="sum-modal-key-input" class="edit-input" style="width:100%;" aria-required="true"
+                placeholder="e.g. ml_engineering or leadership" />
+            <p style="font-size:0.82em;color:#6b7280;margin:4px 0 0;">Use lowercase_underscore — this is the key used internally and shown in the Summary Focus step.</p>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label for="sum-modal-text-input" style="display:block;font-weight:600;margin-bottom:4px;">Summary text <span aria-hidden="true">*</span></label>
+            <textarea id="sum-modal-text-input" class="edit-input" rows="5" style="width:100%;resize:vertical;" aria-required="true"
+                placeholder="Write your professional summary variant here…"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="action-btn" onclick="closeMasterSumModal()">Cancel</button>
+          <button class="action-btn primary" onclick="saveMasterSummary()">Save</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function _renderAchievementsTable(achievements) {
+  if (!achievements.length) {
+    return '<p style="color:#6b7280;padding:12px 0;">No selected achievements yet. Use the Harvest feature to add achievements from a completed session, or click "+ Add Achievement" above.</p>';
+  }
+  let rows = achievements.map(ach => {
+    const id      = escapeHtml(ach.id || '');
+    const title   = escapeHtml(ach.title || '');
+    const desc    = escapeHtml((ach.description || '').slice(0, 100));
+    const imp     = ach.importance ?? '—';
+    const relFor  = escapeHtml((ach.relevant_for || []).join(', '));
+    return `
+      <tr>
+        <td><strong>${title}</strong>${desc ? `<br><small style="color:#6b7280;">${desc}${(ach.description||'').length > 100 ? '…' : ''}</small>` : ''}</td>
+        <td style="text-align:center;">${imp}</td>
+        <td style="font-size:0.85em;color:#475569;">${relFor || '—'}</td>
+        <td class="action-btns">
+          <button class="icon-btn" onclick="editMasterAchievement(${escapeHtml(JSON.stringify({id: ach.id||'', title: ach.title||'', description: ach.description||'', relevant_for: ach.relevant_for||[], importance: ach.importance||7}))})"
+              aria-label="Edit achievement: ${title}" title="Edit">✏️</button>
+        </td>
+      </tr>`;
+  }).join('');
+  return `
+    <table class="review-table" style="width:100%;">
+      <thead>
+        <tr>
+          <th>Achievement</th>
+          <th style="width:60px;text-align:center;">Importance</th>
+          <th>Relevant for</th>
+          <th style="width:60px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function _renderSummariesList(summaries) {
+  const keys = Object.keys(summaries);
+  if (!keys.length) {
+    return '<p style="color:#6b7280;padding:12px 0;">No professional summary variants yet. Click "+ Add Summary" above to create your first one.</p>';
+  }
+  return keys.map(key => {
+    const text    = typeof summaries[key] === 'string' ? summaries[key] : JSON.stringify(summaries[key]);
+    const preview = escapeHtml(text.slice(0, 200));
+    const keyEsc  = escapeHtml(key);
+    return `
+      <div class="master-summary-card">
+        <div class="master-summary-header">
+          <span class="master-summary-key">${keyEsc}</span>
+          <button class="icon-btn" onclick="editMasterSummary(${escapeHtml(JSON.stringify({key, text}))})"
+              aria-label="Edit summary: ${keyEsc}" title="Edit">✏️</button>
+        </div>
+        <div class="master-summary-preview">${preview}${text.length > 200 ? '…' : ''}</div>
+      </div>`;
+  }).join('');
+}
+
+function showAddAchievementModal() {
+  document.getElementById('ach-modal-id').value            = '';
+  document.getElementById('ach-modal-title-input').value   = '';
+  document.getElementById('ach-modal-desc-input').value    = '';
+  document.getElementById('ach-modal-relevant-input').value = '';
+  document.getElementById('ach-modal-importance-input').value = '7';
+  document.getElementById('master-ach-modal-title').textContent = 'Add Achievement';
+  document.getElementById('master-ach-modal-overlay').style.display = 'flex';
+  document.getElementById('ach-modal-title-input').focus();
+}
+
+function editMasterAchievement(ach) {
+  document.getElementById('ach-modal-id').value              = ach.id || '';
+  document.getElementById('ach-modal-title-input').value     = ach.title || '';
+  document.getElementById('ach-modal-desc-input').value      = ach.description || '';
+  document.getElementById('ach-modal-relevant-input').value  = (ach.relevant_for || []).join(', ');
+  document.getElementById('ach-modal-importance-input').value = ach.importance || 7;
+  document.getElementById('master-ach-modal-title').textContent = 'Edit Achievement';
+  document.getElementById('master-ach-modal-overlay').style.display = 'flex';
+  document.getElementById('ach-modal-title-input').focus();
+}
+
+function closeMasterAchModal() {
+  document.getElementById('master-ach-modal-overlay').style.display = 'none';
+}
+
+async function saveMasterAchievement() {
+  const id = document.getElementById('ach-modal-id').value.trim() ||
+             'sa_' + Date.now();
+  const title       = document.getElementById('ach-modal-title-input').value.trim();
+  const description = document.getElementById('ach-modal-desc-input').value.trim();
+  const relevantRaw = document.getElementById('ach-modal-relevant-input').value;
+  const importance  = parseInt(document.getElementById('ach-modal-importance-input').value, 10) || 7;
+
+  if (!title) {
+    showAlertModal('⚠️ Validation', 'Title is required.');
+    return;
+  }
+  const relevant_for = relevantRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+  try {
+    const res = await fetch('/api/master-data/update-achievement', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ id, title, description, relevant_for, importance }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeMasterAchModal();
+      showAlertModal('✅ Saved', `Achievement "${title}" ${data.action}.`);
+      await populateMasterTab();  // refresh
+    } else {
+      showAlertModal('❌ Error', data.error || 'Save failed');
+    }
+  } catch (e) {
+    showAlertModal('❌ Error', 'Failed to save achievement');
+  }
+}
+
+function showAddSummaryModal() {
+  document.getElementById('sum-modal-key-input').value  = '';
+  document.getElementById('sum-modal-text-input').value = '';
+  document.getElementById('master-sum-modal-title').textContent = 'Add Professional Summary';
+  document.getElementById('master-sum-modal-overlay').style.display = 'flex';
+  document.getElementById('sum-modal-key-input').focus();
+}
+
+function editMasterSummary(obj) {
+  document.getElementById('sum-modal-key-input').value  = obj.key  || '';
+  document.getElementById('sum-modal-text-input').value = obj.text || '';
+  document.getElementById('master-sum-modal-title').textContent = 'Edit Professional Summary';
+  document.getElementById('master-sum-modal-overlay').style.display = 'flex';
+  document.getElementById('sum-modal-key-input').focus();
+}
+
+function closeMasterSumModal() {
+  document.getElementById('master-sum-modal-overlay').style.display = 'none';
+}
+
+async function saveMasterSummary() {
+  const key  = document.getElementById('sum-modal-key-input').value.trim();
+  const text = document.getElementById('sum-modal-text-input').value.trim();
+  if (!key || !text) {
+    showAlertModal('⚠️ Validation', 'Both Key and Summary text are required.');
+    return;
+  }
+  try {
+    const res = await fetch('/api/master-data/update-summary', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ key, text }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeMasterSumModal();
+      showAlertModal('✅ Saved', `Summary "${key}" ${data.action}.`);
+      await populateMasterTab();  // refresh
+    } else {
+      showAlertModal('❌ Error', data.error || 'Save failed');
+    }
+  } catch (e) {
+    showAlertModal('❌ Error', 'Failed to save summary');
+  }
+}
+
+// ==== End Master CV Management Tab ====
 
 // Entry point called by DOMContentLoaded in ui-core.js
