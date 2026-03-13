@@ -272,6 +272,214 @@ async function loadSessionFile(path) {
   }
 }
 
+// ── LLM abort helper ──────────────────────────────────────────────────────
+// Wraps fetch() and automatically attaches the current AbortController signal.
+function llmFetch(url, options = {}) {
+  if (window._currentAbortController) {
+    options.signal = window._currentAbortController.signal;
+  }
+  return fetch(url, options);
+}
+
+function abortCurrentRequest() {
+  if (window._currentAbortController) {
+    window._currentAbortController.abort();
+    window._currentAbortController = null;
+    setLoading(false);
+    appendMessage('system', '⏹ Request stopped.');
+  }
+}
+
+// ── LLM status bar ────────────────────────────────────────────────────────
+function _updateLLMStatusBar(loading) {
+  const bar       = document.getElementById('llm-status-bar');
+  const thinking  = document.getElementById('llm-thinking');
+  const abortBtn  = document.getElementById('llm-abort-btn');
+  if (!bar) return;
+  if (loading) {
+    bar.style.display    = 'flex';
+    if (thinking) thinking.style.display = 'flex';
+    if (abortBtn) abortBtn.style.display  = '';
+  } else {
+    if (thinking) thinking.style.display = 'none';
+    if (abortBtn) abortBtn.style.display  = 'none';
+    // Refresh token count (non-blocking); hides bar if fetch fails
+    _refreshContextStats();
+  }
+}
+
+async function _refreshContextStats() {
+  const bar      = document.getElementById('llm-status-bar');
+  const tokenEl  = document.getElementById('llm-token-count');
+  if (!bar || !tokenEl) return;
+  try {
+    const res  = await fetch('/api/context-stats');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.ok) return;
+    const est    = data.estimated_tokens || 0;
+    const win    = data.context_window   || 128_000;
+    const pct    = Math.round((est / win) * 100);
+    const estStr = est >= 1000 ? `${(est / 1000).toFixed(1)}K` : `${est}`;
+    const winStr = win >= 1000 ? `${Math.round(win / 1000)}K`  : `${win}`;
+    tokenEl.textContent  = `~${estStr} / ${winStr} (${pct}%)`;
+    bar.style.display    = 'flex';
+  } catch (_) { /* silently ignore */ }
+}
+
+// ── Sessions modal ────────────────────────────────────────────────────────
+async function openSessionsModal() {
+  const overlay = document.getElementById('sessions-modal-overlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  await _renderSessionsModalBody();
+}
+
+function closeSessionsModal() {
+  const overlay = document.getElementById('sessions-modal-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function _renderSessionsModalBody() {
+  const body = document.getElementById('sessions-modal-body');
+  if (!body) return;
+  body.innerHTML = '<p style="padding:24px;text-align:center;color:#6b7280;">Loading sessions…</p>';
+  let sessions = [];
+  try {
+    const res = await fetch('/api/sessions');
+    const data = await res.json();
+    sessions = data.sessions || [];
+  } catch (e) {
+    body.innerHTML = `<p style="padding:20px;color:#ef4444;">Could not load sessions: ${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  if (sessions.length === 0) {
+    body.innerHTML = '<p style="padding:24px;text-align:center;color:#6b7280;">No saved sessions found.</p>';
+    return;
+  }
+
+  function fmtDate(ts) {
+    if (!ts) return '';
+    try { return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+    catch { return ts.slice(0, 10); }
+  }
+
+  let html = '<table style="width:100%;border-collapse:collapse;">';
+  sessions.forEach((s, i) => {
+    const ts = fmtDate(s.timestamp);
+    const indicators = [
+      s.has_job          ? '📋' : '',
+      s.has_analysis     ? '🔍' : '',
+      s.has_customizations ? '⚙️' : '',
+    ].filter(Boolean).join(' ');
+    const ep = escapeHtml(s.path);
+    html += `
+      <tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;">
+        <td style="padding:12px 16px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+            <span id="sm-name-${i}" style="font-weight:600;color:#1e293b;">${escapeHtml(s.position_name || 'Untitled')}</span>
+            <button onclick="startSessionModalRename('${ep}',${i})" title="Rename"
+              style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:0.85em;padding:1px 3px;">✏️</button>
+          </div>
+          <div id="sm-rename-${i}" style="display:none;align-items:center;gap:4px;margin-top:4px;">
+            <input id="sm-input-${i}" type="text" value="${escapeHtml(s.position_name || '')}"
+              style="border:1px solid #3b82f6;border-radius:4px;padding:3px 8px;font-size:13px;flex:1;"
+              onkeydown="if(event.key==='Enter')submitSessionModalRename('${ep}',${i});if(event.key==='Escape')cancelSessionModalRename(${i})">
+            <button onclick="submitSessionModalRename('${ep}',${i})"
+              style="background:#3b82f6;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer;">✓</button>
+            <button onclick="cancelSessionModalRename(${i})"
+              style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer;">✕</button>
+          </div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:3px;">${ts ? ts + ' · ' : ''}${indicators} ${escapeHtml(s.phase || '')}</div>
+        </td>
+        <td style="padding:12px 16px;white-space:nowrap;vertical-align:middle;">
+          <div style="display:flex;gap:6px;">
+            <button onclick="loadSessionAndCloseModal('${ep}')"
+              style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;">Load</button>
+            <button onclick="_deleteSessionFromModal('${ep}',event)"
+              style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:6px 8px;font-size:13px;cursor:pointer;" title="Delete session">🗑</button>
+          </div>
+        </td>
+      </tr>`;
+  });
+  html += '</table>';
+  body.innerHTML = html;
+}
+
+async function loadSessionAndCloseModal(path) {
+  closeSessionsModal();
+  await loadSessionFile(path);
+}
+
+function startSessionModalRename(path, idx) {
+  const form = document.getElementById(`sm-rename-${idx}`);
+  if (form) form.style.display = 'flex';
+  const input = document.getElementById(`sm-input-${idx}`);
+  if (input) { input.focus(); input.select(); }
+}
+function cancelSessionModalRename(idx) {
+  const form = document.getElementById(`sm-rename-${idx}`);
+  if (form) form.style.display = 'none';
+}
+async function submitSessionModalRename(path, idx) {
+  const input = document.getElementById(`sm-input-${idx}`);
+  if (!input) return;
+  const newName = input.value.trim();
+  if (!newName) return;
+  try {
+    const res  = await fetch('/api/rename-session', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, new_name: newName }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const nameEl = document.getElementById(`sm-name-${idx}`);
+      if (nameEl) nameEl.textContent = newName;
+      cancelSessionModalRename(idx);
+      await fetchStatus();
+    } else {
+      alert(`Rename failed: ${data.error}`);
+    }
+  } catch (e) { alert(`Rename error: ${e.message}`); }
+}
+
+async function _deleteSessionFromModal(path, event) {
+  event.stopPropagation();
+  const confirmed = await confirmDialog(
+    'Are you sure you want to delete this session?\n\nThis action cannot be undone.',
+    { confirmLabel: 'Delete', cancelLabel: 'Cancel', danger: true }
+  );
+  if (!confirmed) return;
+  try {
+    const res  = await fetch('/api/delete-session', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      await _renderSessionsModalBody();
+    } else {
+      alert(`Failed to delete session: ${data.error || 'Unknown error'}`);
+    }
+  } catch (e) { alert(`Delete error: ${e.message}`); }
+}
+
+// Rename current session from the position-bar pencil button
+async function promptRenameCurrentSession() {
+  const current = (document.getElementById('position-title')?.textContent || '').trim();
+  const newName = prompt('Rename session:', current);
+  if (!newName || !newName.trim() || newName.trim() === current) return;
+  try {
+    const res  = await fetch('/api/rename-current-session', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_name: newName.trim() }),
+    });
+    const data = await res.json();
+    if (data.ok) await fetchStatus();
+    else alert(`Rename failed: ${data.error}`);
+  } catch (e) { alert(`Rename error: ${e.message}`); }
+}
+
 function saveTabData() {
   try {
     // Save conversation history
@@ -516,6 +724,9 @@ async function loadTabContent(tab) {
       break;
     case 'cover-letter':
       await populateCoverLetterTab();
+      break;
+    case 'screening':
+      await populateScreeningTab();
       break;
   }
 }
@@ -1034,7 +1245,7 @@ async function sendMessage() {
     // Also send to backend to save in history and get LLM response
     setLoading(true);
     try {
-      const res = await fetch('/api/message', {
+      const res = await llmFetch('/api/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text })
@@ -1049,13 +1260,10 @@ async function sendMessage() {
         appendMessage('assistant', data.response);
       }
     } catch (error) {
-      console.error('=== QUESTION RESPONSE SAVE ERROR ===');
-      console.error('Error type:', error.name);
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
-      console.error('Question text:', text);
-      console.error('Full error:', error);
-      console.error('===================================');
+      if (error.name === 'AbortError') { /* user stopped request */ }
+      else {
+        console.error('=== QUESTION RESPONSE SAVE ERROR ===', error);
+      }
     }
     setLoading(false);
     
@@ -1078,7 +1286,7 @@ async function sendMessage() {
   setLoading(true);
 
   try {
-    const res = await fetch('/api/message', {
+    const res = await llmFetch('/api/message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text })
@@ -1164,7 +1372,9 @@ async function sendMessage() {
     console.error('User input:', text);
     console.error('Full error:', error);
     console.error('===================');
-    if (error instanceof TypeError || error.name === 'AbortError') {
+    if (error.name === 'AbortError') {
+      // user clicked Stop — message already shown in abortCurrentRequest()
+    } else if (error instanceof TypeError) {
       appendMessage('system', `⚠️ Cannot reach the server — is it still running? (${error.message})`);
     } else if (error instanceof SyntaxError) {
       appendMessage('system', `⚠️ The server returned an unexpected response: ${error.message}`);
@@ -1184,7 +1394,7 @@ async function analyzeJob() {
   setLoading(true);
   
   try {
-    const res = await fetch('/api/action', {
+    const res = await llmFetch('/api/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'analyze_job' })
@@ -1223,7 +1433,9 @@ async function analyzeJob() {
     console.error('Full error:', error);
     console.error('========================');
     removeLoadingMessage(loadingMsg);
-    appendMessage('system', 'Error: ' + error.message);
+    if (error.name !== 'AbortError') {
+      appendMessage('system', 'Error: ' + error.message);
+    }
   }
 
   setLoading(false);
@@ -4722,7 +4934,7 @@ async function sendAction(action) {
       payload.user_preferences = window.questionAnswers;
     }
     
-    const res = await fetch('/api/action', {
+    const res = await llmFetch('/api/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -4789,7 +5001,9 @@ async function sendAction(action) {
     console.error('Full error:', error);
     console.error('========================');
     removeLoadingMessage(loadingMsg);
-    appendMessage('system', 'Error: ' + error.message);
+    if (error.name !== 'AbortError') {
+      appendMessage('system', 'Error: ' + error.message);
+    }
   }
   
   setLoading(false);
@@ -4964,6 +5178,17 @@ function appendFormattedResponse(response) {
 
 function setLoading(loading, label) {
   isLoading = loading;
+
+  // Create / clear the AbortController for the in-flight LLM request
+  if (loading) {
+    window._currentAbortController = new AbortController();
+  } else {
+    window._currentAbortController = null;
+  }
+
+  // Drive the LLM status bar
+  _updateLLMStatusBar(loading);
+
   const buttons = document.querySelectorAll('button');
   buttons.forEach(btn => btn.disabled = loading);
 
@@ -5057,6 +5282,9 @@ function updatePositionTitle(status = {}) {
 
   positionEl.textContent = label;
   document.title = label ? `${label} — AI CV Customizer` : fallbackBrowserTitle;
+  // Show rename pencil when a session is loaded
+  const renameBtn = document.getElementById('rename-session-btn');
+  if (renameBtn) renameBtn.style.display = label ? '' : 'none';
 }
 
 async function fetchStatus() {
@@ -6067,4 +6295,241 @@ async function saveCoverLetter() {
 
 // ==== End Cover Letter Tab ====
 
-// Entry point called by DOMContentLoaded in ui-core.js
+// ==== Screening Tab ====
+
+/** Per-question draft state: { format, experienceIndices, responseText, topicTag, priorResponse } */
+const _screeningState = {};
+
+async function populateScreeningTab() {
+  const content = document.getElementById('document-content');
+  content.innerHTML = `
+    <div style="max-width:900px;margin:0 auto;padding:20px 10px;">
+      <h2 style="font-size:1.3em;font-weight:700;margin-bottom:8px;">📋 Screening Questions</h2>
+      <p class="sc-intro">Paste one or more screening questions below — one per line, or separated by blank lines. Click <strong>Parse Questions</strong> to generate tailored draft responses.</p>
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:20px;">
+        <textarea id="sc-input" rows="6" style="flex:1;padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.93em;resize:vertical;" placeholder="Paste screening questions here…&#10;&#10;E.g.&#10;Describe a time you led a cross-functional project.&#10;&#10;How do you handle tight deadlines?"></textarea>
+        <button class="btn btn-primary" onclick="parseScreeningQuestions()">Parse Questions</button>
+      </div>
+      <div id="sc-questions-container"></div>
+      <div class="sc-save-bar" id="sc-save-bar" style="display:none;">
+        <button class="btn btn-success" id="sc-save-btn" onclick="saveScreeningResponses()">💾 Save All Responses</button>
+      </div>
+    </div>`;
+}
+
+function parseScreeningQuestions() {
+  const raw = (document.getElementById('sc-input')?.value || '').trim();
+  if (!raw) { showAlertModal('⚠️ No Input', 'Please paste at least one screening question first.'); return; }
+
+  // Split on double-newline or numbered list patterns; fall back to single lines
+  let questions = raw.split(/\n\s*\n+/).map(q => q.trim()).filter(Boolean);
+  if (questions.length === 1) {
+    // Try splitting on numbered lines like "1. " or "Q1: " etc.
+    const numbered = raw.split(/\n(?=\d+[\.\)]\s|\bQ\d+[:\.\s])/).map(q => q.trim()).filter(Boolean);
+    if (numbered.length > 1) questions = numbered;
+  }
+
+  const container = document.getElementById('sc-questions-container');
+  container.innerHTML = questions.map((q, i) => renderQuestionBlock(q, i)).join('');
+  document.getElementById('sc-save-bar').style.display = questions.length ? '' : 'none';
+
+  // Kick off searches in parallel
+  questions.forEach((q, i) => searchForQuestion(q, i));
+}
+
+function renderQuestionBlock(question, idx) {
+  return `
+    <div class="sc-question-block" id="sc-block-${idx}" data-question="${escapeHtml(question)}">
+      <div class="sc-question-header">
+        <span class="sc-question-num">${idx + 1}</span>
+        <span>${escapeHtml(question)}</span>
+      </div>
+      <div class="sc-question-body">
+        <div id="sc-prior-${idx}"><em style="color:#94a3b8;font-size:0.87em;">Searching response library…</em></div>
+        <div id="sc-exp-${idx}"></div>
+        <div class="sc-format-row" id="sc-fmt-${idx}">
+          <span style="font-size:0.85em;font-weight:600;color:#374151;align-self:center;">Format:</span>
+          ${['direct','star','technical'].map(f => `
+            <button class="sc-format-btn${f === 'direct' ? ' active' : ''}" data-fmt="${f}" onclick="selectFormat(${idx},'${f}',this)">${_fmtLabel(f)}</button>`).join('')}
+        </div>
+        <button class="btn btn-primary btn-sm" id="sc-gen-btn-${idx}" onclick="generateScreeningResponse(${idx})">✨ Generate Draft</button>
+        <div id="sc-result-${idx}" style="margin-top:12px;"></div>
+        <div class="sc-topic-row" id="sc-topic-row-${idx}" style="display:none;">
+          <label for="sc-topic-${idx}">Topic tag:</label>
+          <input class="sc-topic-input" id="sc-topic-${idx}" type="text" placeholder="e.g. leadership, cross-functional, deadline-management">
+        </div>
+      </div>
+    </div>`;
+}
+
+function _fmtLabel(fmt) {
+  return { direct: 'Direct/Concise (150–200w)', star: 'STAR (250–350w)', technical: 'Technical Detail (400–500w)' }[fmt] || fmt;
+}
+
+function selectFormat(idx, fmt, btn) {
+  document.querySelectorAll(`#sc-fmt-${idx} .sc-format-btn`).forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (!_screeningState[idx]) _screeningState[idx] = {};
+  _screeningState[idx].format = fmt;
+}
+
+function _getSelectedFormat(idx) {
+  const active = document.querySelector(`#sc-fmt-${idx} .sc-format-btn.active`);
+  return active ? active.getAttribute('data-fmt') : 'direct';
+}
+
+async function searchForQuestion(question, idx) {
+  try {
+    const res  = await fetch('/api/screening/search', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ question }),
+    });
+    const data = await res.json();
+    if (!data.ok) { document.getElementById(`sc-prior-${idx}`).innerHTML = ''; return; }
+
+    // Render prior match
+    const priorEl = document.getElementById(`sc-prior-${idx}`);
+    if (data.prior) {
+      const p = data.prior;
+      priorEl.innerHTML = `
+        <div class="sc-prior-match">
+          <strong>📚 Similar prior response found</strong> — ${escapeHtml(p.company || '')} (${escapeHtml(p.date || '')})<br>
+          <em style="color:#78350f;">"${escapeHtml((p.question || '').substring(0, 120))}…"</em>
+          <div style="margin-top:6px;">
+            <label style="font-size:0.85em;">
+              <input type="checkbox" id="sc-use-prior-${idx}" onchange="togglePriorUse(${idx})"> Use as starting point
+            </label>
+          </div>
+        </div>`;
+      if (!_screeningState[idx]) _screeningState[idx] = {};
+      _screeningState[idx].priorResponse = p.response_text || '';
+    } else {
+      priorEl.innerHTML = '';
+    }
+
+    // Render experience cards
+    const expEl = document.getElementById(`sc-exp-${idx}`);
+    if (data.experiences && data.experiences.length) {
+      const cards = data.experiences.map(e => `
+        <label class="sc-exp-card">
+          <input type="checkbox" data-idx="${e.idx}" checked onchange="updateExpSelection(${idx})">
+          <div style="flex:1;">
+            <strong>${escapeHtml(e.title)}</strong> · ${escapeHtml(e.company)}
+            <span class="sc-score-badge">${Math.round(e.score * 100)}% match</span>
+            <div style="color:#64748b;margin-top:2px;">${escapeHtml(e.summary)}</div>
+          </div>
+        </label>`).join('');
+      expEl.innerHTML = `<p style="font-size:0.85em;font-weight:600;color:#374151;margin-bottom:6px;">Relevant experience:</p>
+        <div class="sc-exp-list">${cards}</div>`;
+      if (!_screeningState[idx]) _screeningState[idx] = {};
+      _screeningState[idx].experienceIndices = data.experiences.map(e => e.idx);
+    } else {
+      expEl.innerHTML = '';
+    }
+  } catch (_) {
+    document.getElementById(`sc-prior-${idx}`).innerHTML = '';
+  }
+}
+
+function togglePriorUse(idx) {
+  const cb = document.getElementById(`sc-use-prior-${idx}`);
+  if (!_screeningState[idx]) _screeningState[idx] = {};
+  _screeningState[idx].usePrior = cb?.checked ?? false;
+}
+
+function updateExpSelection(idx) {
+  const block     = document.getElementById(`sc-block-${idx}`);
+  const checked   = Array.from(block.querySelectorAll('input[type=checkbox][data-idx]'))
+    .filter(cb => cb.checked)
+    .map(cb => parseInt(cb.getAttribute('data-idx'), 10));
+  if (!_screeningState[idx]) _screeningState[idx] = {};
+  _screeningState[idx].experienceIndices = checked;
+}
+
+async function generateScreeningResponse(idx) {
+  const btn      = document.getElementById(`sc-gen-btn-${idx}`);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+
+  const question = document.getElementById(`sc-block-${idx}`)?.dataset.question || '';
+  const state    = _screeningState[idx] || {};
+  const fmt      = _getSelectedFormat(idx);
+  const prior    = (state.usePrior && state.priorResponse) ? state.priorResponse : '';
+  const expIdx   = state.experienceIndices ?? [];
+
+  try {
+    const res  = await fetch('/api/screening/generate', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        question,
+        format:              fmt,
+        experience_indices:  expIdx,
+        prior_response:      prior,
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) { showAlertModal('❌ Error', data.error || 'Generation failed.'); return; }
+
+    if (!_screeningState[idx]) _screeningState[idx] = {};
+    _screeningState[idx].responseText = data.text;
+    _screeningState[idx].format       = fmt;
+
+    document.getElementById(`sc-result-${idx}`).innerHTML = `
+      <textarea class="sc-response-textarea" id="sc-text-${idx}" rows="7"
+        oninput="_screeningState[${idx}] = _screeningState[${idx}] || {}; _screeningState[${idx}].responseText = this.value;"
+      >${escapeHtml(data.text)}</textarea>`;
+    document.getElementById(`sc-topic-row-${idx}`).style.display = '';
+  } catch (e) {
+    showAlertModal('❌ Error', 'Failed to contact server.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Generate Draft'; }
+  }
+}
+
+async function saveScreeningResponses() {
+  const btn = document.getElementById('sc-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
+
+  const responses = [];
+  document.querySelectorAll('.sc-question-block').forEach((block, i) => {
+    const qEl    = block.querySelector('.sc-question-header span:last-child');
+    const textEl = document.getElementById(`sc-text-${i}`);
+    const topicEl = document.getElementById(`sc-topic-${i}`);
+    if (!textEl) return; // not yet generated — skip
+
+    const question     = qEl ? qEl.textContent.trim() : '';
+    const responseText = (_screeningState[i]?.responseText) || textEl.value || '';
+    const fmt          = _getSelectedFormat(i);
+    const topicTag     = topicEl ? topicEl.value.trim() : '';
+
+    responses.push({ question, topic_tag: topicTag, format: fmt, response_text: responseText });
+  });
+
+  if (!responses.length) {
+    showAlertModal('⚠️ Nothing to Save', 'Please generate at least one response before saving.');
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save All Responses'; }
+    return;
+  }
+
+  try {
+    const res  = await fetch('/api/screening/save', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ responses }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showAlertModal('✅ Saved', `${data.count} response${data.count !== 1 ? 's' : ''} saved as <strong>${escapeHtml(data.filename)}</strong> and added to your response library.`);
+    } else {
+      showAlertModal('❌ Save Failed', data.error || 'Could not save responses.');
+    }
+  } catch (e) {
+    showAlertModal('❌ Error', 'Failed to contact server.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save All Responses'; }
+  }
+}
+
+// ==== End Screening Tab ====
+

@@ -138,6 +138,34 @@ def _catalog_discover_provider_models(provider: str) -> Optional[List[str]]:
         return None
 
 
+def _text_similarity(query: str, target: str) -> float:
+    """Simple word-overlap similarity score (0–1) for response library search."""
+    _STOP = {
+        'a', 'an', 'the', 'and', 'or', 'for', 'in', 'of', 'to', 'is',
+        'are', 'was', 'were', 'i', 'my', 'your', 'we', 'our', 'this',
+        'that', 'it', 'with', 'as', 'by', 'at', 'on', 'be', 'have',
+        'has', 'had', 'do', 'does', 'did', 'will', 'would', 'can',
+        'could', 'should', 'may', 'might', 'from', 'into', 'about',
+    }
+    def _tok(s: str) -> set:
+        return {w.lower() for w in re.findall(r'\w+', s) if w.lower() not in _STOP and len(w) > 2}
+    q_tok = _tok(query)
+    t_tok = _tok(target)
+    if not q_tok or not t_tok:
+        return 0.0
+    return len(q_tok & t_tok) / max(len(q_tok), len(t_tok))
+
+
+_SCREENING_FORMAT_GUIDANCE: dict = {
+    'direct':    ('Direct/Concise',    '150–200 words',
+                  'Be clear and direct. State the answer, give one concrete example, close concisely.'),
+    'star':      ('STAR',              '250–350 words',
+                  'Use the STAR framework: Situation, Task, Action, Result. 1–2 sentences each.'),
+    'technical': ('Technical Detail', '400–500 words',
+                  'Provide full technical depth: context, methodology, tools/technologies, outcomes with metrics.'),
+}
+
+
 def create_app(args) -> Flask:
     app = Flask(__name__, static_folder=None)
 
@@ -445,7 +473,10 @@ Job Description (excerpt):
             experiences = orchestrator.master_data.get('experience', [])
             all_experience_ids = [exp.get('id') for exp in experiences if exp.get('id')]
             all_achievements = orchestrator.master_data.get('selected_achievements', [])
-            professional_summaries = orchestrator.master_data.get('professional_summaries', {})
+            professional_summaries = dict(orchestrator.master_data.get('professional_summaries', {}))
+            # Merge in any LLM-generated summaries saved this session (e.g. 'ai_recommended')
+            session_summaries = conversation.state.get('session_summaries') or {}
+            professional_summaries.update(session_summaries)
 
             # Get all skills - handle both list and dict formats
             skills_data = orchestrator.master_data.get('skills', [])
@@ -483,6 +514,7 @@ Job Description (excerpt):
             "copilot_auth": auth_manager.status,
             "iterating": bool(conversation.state.get("iterating")),
             "reentry_phase": conversation.state.get("reentry_phase"),
+            "session_file": str(getattr(conversation, "session_file", "") or ""),
         })
 
     @app.get("/api/master-fields")
@@ -802,6 +834,220 @@ Close professionally with a call to action.
                 return jsonify({'ok': True, 'filename': filename})
             except Exception as e:
                 return jsonify({'ok': False, 'error': str(e)}), 500
+
+    # ── Phase 15: Screening Response endpoints ──────────────────────────────
+
+    @app.post("/api/screening/search")
+    def screening_search():
+        """For a single question, find the best prior library match and top 3 relevant experiences."""
+        try:
+            body     = request.get_json(force=True) or {}
+            question = (body.get('question') or '').strip()
+            if not question:
+                return jsonify({'ok': False, 'error': 'question required'}), 400
+
+            from utils.config import get_config
+            config   = get_config()
+            lib_path = Path(config.master_cv_path).parent / 'response_library.json'
+            library: list = []
+            if lib_path.exists():
+                with open(lib_path, encoding='utf-8') as f:
+                    library = json.load(f)
+
+            # Score every library entry against this question
+            scored_prior = sorted(
+                [
+                    {
+                        'score': _text_similarity(
+                            question,
+                            (e.get('question') or '') + ' ' + (e.get('response_text') or ''),
+                        ),
+                        'entry': e,
+                    }
+                    for e in library
+                ],
+                key=lambda x: x['score'],
+                reverse=True,
+            )
+            best_prior = scored_prior[0] if scored_prior and scored_prior[0]['score'] >= 0.25 else None
+
+            # Score experiences from master CV
+            with open(config.master_cv_path, encoding='utf-8') as f:
+                master = json.load(f)
+            exps = master.get('experience', [])
+
+            def _exp_text(e: dict) -> str:
+                return ' '.join([
+                    e.get('title', ''), e.get('company', ''), e.get('summary', ''),
+                    ' '.join(e.get('achievements', [])[:5]),
+                ])
+
+            scored_exps = sorted(
+                [{'score': _text_similarity(question, _exp_text(e)), 'exp': e, 'idx': i}
+                 for i, e in enumerate(exps)],
+                key=lambda x: x['score'],
+                reverse=True,
+            )[:3]
+
+            return jsonify({
+                'ok':     True,
+                'prior':  best_prior['entry'] if best_prior else None,
+                'experiences': [
+                    {
+                        'idx':        x['idx'],
+                        'score':      round(x['score'], 2),
+                        'title':      x['exp'].get('title', ''),
+                        'company':    x['exp'].get('company', ''),
+                        'date_range': x['exp'].get('date_range', ''),
+                        'summary':    (x['exp'].get('summary') or '')[:200],
+                    }
+                    for x in scored_exps
+                ],
+            })
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+    @app.post("/api/screening/generate")
+    def screening_generate():
+        """Generate a draft screening-question response via LLM."""
+        try:
+            body            = request.get_json(force=True) or {}
+            question        = (body.get('question') or '').strip()
+            fmt             = body.get('format', 'direct')
+            exp_indices     = body.get('experience_indices') or []
+            prior_response  = (body.get('prior_response') or '').strip()
+
+            if not question:
+                return jsonify({'ok': False, 'error': 'question required'}), 400
+
+            from utils.config import get_config
+            config = get_config()
+            with open(config.master_cv_path, encoding='utf-8') as f:
+                master = json.load(f)
+            exps     = master.get('experience', [])
+            selected = [exps[i] for i in exp_indices if isinstance(i, int) and 0 <= i < len(exps)]
+
+            fmt_name, word_range, fmt_instructions = _SCREENING_FORMAT_GUIDANCE.get(
+                fmt, _SCREENING_FORMAT_GUIDANCE['direct']
+            )
+
+            exp_blocks = '\n\n'.join(
+                f"Role: {e.get('title', '')} at {e.get('company', '')}\n"
+                f"Summary: {(e.get('summary') or '')[:300]}\n"
+                f"Key achievements: {'; '.join((e.get('achievements') or [])[:5])}"
+                for e in selected
+            ) or 'No specific experience provided.'
+
+            with _session_lock:
+                answers              = conversation.state.get('post_analysis_answers') or {}
+                cover_letter_snippet = (conversation.state.get('cover_letter_text') or '')[:400]
+
+            cl_context = (
+                '\n'.join(f'- {k}: {v}' for k, v in list(answers.items())[:8])
+                if answers else 'None provided.'
+            )
+
+            prior_block = (
+                f'\nUse the following prior response as a starting point, adapting it as needed:\n'
+                f'"""\n{prior_response}\n"""\n'
+            ) if prior_response else ''
+
+            prompt = (
+                f'You are drafting a screening-question response for a job application.\n'
+                f'Response format: {fmt_name} (~{word_range}). {fmt_instructions}\n\n'
+                f'Question:\n"{question}"\n\n'
+                f'Relevant experience:\n{exp_blocks}\n\n'
+                f'Applicant preferences / context:\n{cl_context}\n'
+                + (f'\nCover letter excerpt (for tone/context):\n{cover_letter_snippet}\n' if cover_letter_snippet else '')
+                + prior_block
+                + '\nWrite only the response text. No preamble, labels, or meta-commentary.'
+            )
+
+            try:
+                response_text = llm_client.chat(
+                    messages=[
+                        {'role': 'system', 'content': 'You write concise, tailored screening-question responses for job applications.'},
+                        {'role': 'user',   'content': prompt},
+                    ],
+                    temperature=0.7,
+                    max_tokens=700,
+                )
+            except Exception as e:
+                return jsonify({'ok': False, 'error': f'LLM error: {e}'}), 500
+
+            return jsonify({'ok': True, 'text': response_text.strip()})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+    @app.post("/api/screening/save")
+    def screening_save():
+        """Save screening responses to DOCX, update metadata.json, upsert response_library.json."""
+        try:
+            body         = request.get_json(force=True) or {}
+            responses_in = body.get('responses') or []
+            if not responses_in:
+                return jsonify({'ok': False, 'error': 'No responses to save.'}), 400
+
+            with _session_lock:
+                output_dir = Path(orchestrator.output_dir)
+                if not output_dir.exists():
+                    return jsonify({'ok': False, 'error': 'Output directory not found. Generate a CV first.'}), 400
+
+                from docx import Document as _DocxDoc
+                from docx.shared import Pt as _Pt
+                doc = _DocxDoc()
+                doc.add_heading('Screening Question Responses', 0)
+                for item in responses_in:
+                    doc.add_heading((item.get('question') or '')[:120], level=2)
+                    para = doc.add_paragraph(item.get('response_text') or '')
+                    para.style.font.size = _Pt(11)
+                    doc.add_paragraph()
+
+                date_str = datetime.now().strftime('%Y-%m-%d')
+                filename = f'Screening_Responses_{date_str}.docx'
+                doc_path = output_dir / filename
+                doc.save(str(doc_path))
+
+                # Update metadata.json
+                metadata_path = output_dir / 'metadata.json'
+                if metadata_path.exists():
+                    with open(metadata_path, encoding='utf-8') as f:
+                        metadata = json.load(f)
+                else:
+                    metadata = {}
+                metadata['screening_responses'] = responses_in
+                with open(metadata_path, 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f, indent=2)
+
+                # Upsert response_library.json
+                from utils.config import get_config
+                config   = get_config()
+                lib_path = Path(config.master_cv_path).parent / 'response_library.json'
+                library: list = []
+                if lib_path.exists():
+                    with open(lib_path, encoding='utf-8') as f:
+                        library = json.load(f)
+
+                job_analysis = conversation.state.get('job_analysis') or {}
+                company      = job_analysis.get('company', '') or ''
+                session_p    = str(output_dir)
+                for item in responses_in:
+                    library.append({
+                        'question':      item.get('question', ''),
+                        'topic_tag':     item.get('topic_tag', ''),
+                        'response_text': item.get('response_text', ''),
+                        'format':        item.get('format', ''),
+                        'company':       company,
+                        'date':          date_str,
+                        'session_path':  session_p,
+                    })
+                with open(lib_path, 'w', encoding='utf-8') as f:
+                    json.dump(library, f, indent=2)
+
+                conversation.state['screening_responses'] = responses_in
+                return jsonify({'ok': True, 'filename': filename, 'count': len(responses_in)})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
 
     # ── Copilot OAuth endpoints ──────────────────────────────────────────────
 
@@ -1518,6 +1764,94 @@ Close professionally with a call to action.
             traceback.print_exc()
             print("="*60 + "\n")
             return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/rename-current-session")
+    def rename_current_session():
+        """Rename the currently active session (no path needed)."""
+        data = request.get_json(silent=True) or {}
+        new_name = (data.get("new_name") or "").strip()[:200]
+        if not new_name:
+            return jsonify({"error": "Missing new_name"}), 400
+        conversation.state["position_name"] = new_name
+        conversation._save_session()
+        return jsonify({"ok": True, "new_name": new_name})
+
+    @app.post("/api/rename-session")
+    def rename_session():
+        """Rename a session's position_name in its session.json file."""
+        data = request.get_json(silent=True) or {}
+        path     = data.get("path")
+        new_name = (data.get("new_name") or "").strip()[:200]
+        if not path:
+            return jsonify({"error": "Missing path"}), 400
+        if not new_name:
+            return jsonify({"error": "Missing new_name"}), 400
+        session_file = Path(path)
+        if not session_file.exists():
+            return jsonify({"error": f"Session not found: {path}"}), 404
+        # Safety: must be inside the configured output base
+        try:
+            cfg = get_config()
+            output_base = Path(cfg.get("data.output_dir", "~/CV/files")).expanduser()
+            if not session_file.resolve().is_relative_to(output_base.resolve()):
+                return jsonify({"error": "Path is outside the output directory"}), 400
+        except Exception:
+            pass  # if we can't verify, proceed (path existence check above is sufficient)
+        try:
+            with open(session_file, "r", encoding="utf-8") as f:
+                session_data = json.load(f)
+            session_data.setdefault("state", {})["position_name"] = new_name
+            with open(session_file, "w", encoding="utf-8") as f:
+                json.dump(session_data, f, indent=2, default=str)
+            # If this is the currently-active session, sync in-memory state too
+            active = getattr(conversation, "session_file", None)
+            if active and str(Path(active).resolve()) == str(session_file.resolve()):
+                conversation.state["position_name"] = new_name
+                conversation._save_session()
+            return jsonify({"ok": True, "new_name": new_name})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.get("/api/context-stats")
+    def context_stats():
+        """Return a rough token-usage estimate for the current session."""
+        MODEL_CONTEXT_WINDOWS = {
+            "gemini-2.5-pro":    2_000_000,
+            "gemini-2.5-flash":  1_048_576,
+            "gemini-2.0-flash":  1_048_576,
+            "gemini-1.5-pro":    2_000_000,
+            "gemini-1.5-flash":  1_048_576,
+            "gpt-4o":              128_000,
+            "gpt-4o-mini":         128_000,
+            "gpt-4-turbo":         128_000,
+            "o1":                  200_000,
+            "o3-mini":             200_000,
+            "claude-3-5-sonnet":   200_000,
+            "claude-3-5-haiku":    200_000,
+            "claude-3-opus":       200_000,
+            "llama":               128_000,
+        }
+        try:
+            model_name     = getattr(orchestrator.llm, "model", "") or ""
+            context_window = 128_000
+            for key, size in MODEL_CONTEXT_WINDOWS.items():
+                if key.lower() in model_name.lower():
+                    context_window = size
+                    break
+            # Rough estimate: state JSON + history content, divided by 4 (chars per token)
+            state_chars   = len(json.dumps(conversation.state,                default=str))
+            history_chars = sum(len(str(m.get("content", ""))) for m in conversation.conversation_history)
+            base_overhead = 4_000   # boilerplate in the system prompt
+            estimated_tokens = (state_chars + history_chars + base_overhead) // 4
+            return jsonify({
+                "ok":               True,
+                "estimated_tokens": estimated_tokens,
+                "context_window":   context_window,
+                "model":            model_name,
+                "history_messages": len(conversation.conversation_history),
+            })
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
 
     @app.post("/api/reset")
     def reset():

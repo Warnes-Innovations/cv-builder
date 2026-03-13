@@ -50,6 +50,7 @@ class ConversationManager:
             'cover_letter_text':   None,   # str — finalized cover letter body (Phase 14)
             'cover_letter_params': None,   # Dict — generation params (tone, hiring_manager, …)
             'cover_letter_reused_from': None,  # str session path or None
+            'screening_responses': [],    # List[Dict] — saved screening responses (Phase 15)
         }
         self.session_dir: Optional[Path] = None
         # Readline history file
@@ -541,6 +542,7 @@ Ask questions that are specific to this job posting, not generic career question
                 user_preferences=user_preferences,
                 conversation_history=self.conversation_history
             )
+            self._normalize_recommendations(recommendations)
             self.state['customizations'] = recommendations
             self.state['phase'] = 'generation'
             
@@ -610,6 +612,7 @@ Ask questions that are specific to this job posting, not generic career question
                     user_preferences=self.state.get('post_analysis_answers') or {},
                     conversation_history=self.conversation_history
                 )
+                self._normalize_recommendations(recommendations)
                 self.state['customizations'] = recommendations
             
             # Ensure customizations is a dict
@@ -667,6 +670,11 @@ Ask questions that are specific to this job posting, not generic career question
                     customizations['summary_focus'] = summary_override
 
                 self.state['customizations'] = customizations
+
+            # Inject LLM-generated session summaries so the orchestrator can resolve them
+            session_summaries = self.state.get('session_summaries') or {}
+            if session_summaries:
+                customizations['session_summaries'] = session_summaries
 
             # Inject user-defined bullet ordering (Phase 9) into customizations
             achievement_orders = self.state.get('achievement_orders', {})
@@ -1044,6 +1052,7 @@ Ask questions that are specific to this job posting, not generic career question
                 user_preferences=user_prefs,
                 conversation_history=self.conversation_history,
             )
+            self._normalize_recommendations(recommendations)
             self.state['customizations'] = recommendations
             self.state['iterating']      = True
             self.state['reentry_phase']  = resolved
@@ -1137,6 +1146,21 @@ Ask questions that are specific to this job posting, not generic career question
         print("  5. Review and refine")
         print("\n" + "-"*70)
     
+    def _normalize_recommendations(self, recommendations: Dict) -> Dict:
+        """If ``summary_focus`` is a full-text paragraph rather than a lookup
+        key, save it as ``'ai_recommended'`` in ``session_summaries`` and
+        replace the field with that key so the orchestrator can resolve it.
+
+        Returns the (possibly mutated) recommendations dict.
+        """
+        summary_focus = recommendations.get('summary_focus', '')
+        if isinstance(summary_focus, str) and len(summary_focus) > 60 and ' ' in summary_focus:
+            session_summaries = self.state.get('session_summaries') or {}
+            session_summaries['ai_recommended'] = summary_focus
+            self.state['session_summaries'] = session_summaries
+            recommendations['summary_focus'] = 'ai_recommended'
+        return recommendations
+
     def _print_status(self):
         """Print current state."""
         print("\n" + "="*70)
@@ -1173,6 +1197,7 @@ Ask questions that are specific to this job posting, not generic career question
                 'cover_letter_text':   None,
                 'cover_letter_params': None,
                 'cover_letter_reused_from': None,
+                'screening_responses': [],
             }
             print("\n✓ Conversation reset. Let's start fresh!")
         else:
@@ -1396,6 +1421,7 @@ Ask questions that are specific to this job posting, not generic career question
             analysis,
             self.orchestrator.master_data
         )
+        self._normalize_recommendations(recommendations)
         self.state['customizations'] = recommendations
         print("✓ Recommendations complete")
         
