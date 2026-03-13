@@ -27,7 +27,12 @@ def _normalize_github_model_id(model: str) -> str:
 
 class LLMClient(ABC):
     """Abstract base class for LLM clients."""
-    
+
+    # Populated after each chat() call with the provider usage object.
+    # OpenAI/Groq/GitHub: .prompt_tokens/.completion_tokens
+    # Anthropic: .input_tokens/.output_tokens
+    last_usage: Any = None
+
     @abstractmethod
     def chat(
         self,
@@ -953,6 +958,7 @@ class OpenAIClient(LLMClient):
             temperature=temperature,
             max_tokens=max_tokens
         )
+        self.last_usage = response.usage
         return response.choices[0].message.content
     
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
@@ -1302,7 +1308,7 @@ class AnthropicClient(LLMClient):
             system=system_msg,
             messages=user_messages
         )
-        
+        self.last_usage = response.usage
         return response.content[0].text
     
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
@@ -1360,6 +1366,7 @@ class GeminiClient(LLMClient):
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        self.last_usage = getattr(response, 'usage', None)
 
         # any-llm can return slightly different response envelopes depending on
         # provider/model version. Prefer OpenAI-style choices[0].message.content,
@@ -1610,6 +1617,7 @@ class CopilotSdkClient(LLMClient):
             kwargs["max_tokens"] = max_tokens
 
         response = self._anyllm_completion(**kwargs)
+        self.last_usage = getattr(response, 'usage', None)
 
         content = None
         choices = getattr(response, "choices", None)
@@ -1806,7 +1814,7 @@ class LocalLLMClient(LLMClient):
             system=system_msg,
             messages=user_messages
         )
-        
+        self.last_usage = response.usage
         return response.content[0].text
     
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
@@ -1861,6 +1869,7 @@ class LocalLLMClient(LLMClient):
         prompt = self._format_messages(messages)
         
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+        prompt_tokens = inputs["input_ids"].shape[-1]
         
         outputs = self.model.generate(
             **inputs,
@@ -1868,6 +1877,12 @@ class LocalLLMClient(LLMClient):
             temperature=temperature,
             do_sample=True
         )
+        completion_tokens = outputs[0].shape[-1] - prompt_tokens
+        self.last_usage = {
+            "prompt_tokens":     prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens":      prompt_tokens + completion_tokens,
+        }
         
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         # Extract just the response part
@@ -2132,6 +2147,7 @@ class CopilotOAuthClient(LLMClient):
         if max_tokens:
             payload["max_tokens"] = max_tokens
         data = self._post(payload)
+        self.last_usage = data.get("usage")
         return data["choices"][0]["message"]["content"]
 
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:

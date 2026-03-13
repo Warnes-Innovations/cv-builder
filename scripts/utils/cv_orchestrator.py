@@ -1308,10 +1308,13 @@ If you need clarification, return:
                     prepend.append({'name': skill_name})
             selected_skills = prepend + selected_skills
 
-        # Select professional summary
-        summaries = self.master_data.get('professional_summaries', {})
-        summary_key = customizations.get('summary_focus', 'default')
-        selected_summary = summaries.get(summary_key) or summaries.get('default', '')
+        # Select professional summary — session_summaries (e.g. LLM-generated
+        # "ai_recommended") overlay master data so they take precedence.
+        master_summaries  = self.master_data.get('professional_summaries', {})
+        session_summaries = customizations.get('session_summaries', {})
+        all_summaries     = {**master_summaries, **session_summaries}
+        summary_key       = customizations.get('summary_focus', 'default')
+        selected_summary  = all_summaries.get(summary_key) or all_summaries.get('default', '')
 
         # Select publications — honour user accept/reject decisions if present
         accepted_pubs = customizations.get('accepted_publications')  # list of cite_keys or None

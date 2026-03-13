@@ -25,6 +25,8 @@ decisions, questions, and progress as the agent implements the approved 15-phase
 _Time estimates for pending phases are expressed as X.X hours (95% CI: Y.Y–Z.Z h), derived from
 the distribution of completed-phase durations (Phases 2–6: 0.1–1.7 h intra-session)._
 
+_Completed should show a date and time stamp._
+
 | Phase | Title | Status | Commit | Completed / Duration |
 |-------|-------|--------|--------|----------------------|
 | 0 | Update CLAUDE.md + copilot-instructions.md | ✅ Complete | `9b92e0e` | ~6.9 h (incl. session gap) |

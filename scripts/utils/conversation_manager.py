@@ -51,6 +51,12 @@ class ConversationManager:
             'cover_letter_params': None,   # Dict — generation params (tone, hiring_manager, …)
             'cover_letter_reused_from': None,  # str session path or None
             'screening_responses': [],    # List[Dict] — saved screening responses (Phase 15)
+            'experience_decisions':   {},   # Dict — per-experience keep/remove/modify decisions
+            'skill_decisions':         {},   # Dict — per-skill decisions
+            'achievement_decisions':   {},   # Dict — per-achievement decisions
+            'publication_decisions':   {},   # Dict — per-publication accept/reject decisions
+            'summary_focus_override':  None, # str — selected professional summary key
+            'extra_skills':            [],   # List[str] — LLM-suggested skills not in master CV
         }
         self.session_dir: Optional[Path] = None
         # Readline history file
@@ -1198,6 +1204,12 @@ Ask questions that are specific to this job posting, not generic career question
                 'cover_letter_params': None,
                 'cover_letter_reused_from': None,
                 'screening_responses': [],
+                'experience_decisions':   {},
+                'skill_decisions':         {},
+                'achievement_decisions':   {},
+                'publication_decisions':   {},
+                'summary_focus_override':  None,
+                'extra_skills':            [],
             }
             print("\n✓ Conversation reset. Let's start fresh!")
         else:

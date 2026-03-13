@@ -8,9 +8,10 @@
  * Centralized localStorage key management to avoid duplication
  */
 const StorageKeys = {
-  SESSION_ID: 'cv-builder-session-id',
-  TAB_DATA: 'cv-builder-tab-data',
-  CURRENT_TAB: 'cv-builder-current-tab',
+  SESSION_ID:   'cv-builder-session-id',
+  SESSION_PATH: 'cv-builder-session-path',
+  TAB_DATA:     'cv-builder-tab-data',
+  CURRENT_TAB:  'cv-builder-current-tab',
   CHAT_COLLAPSED: 'cv-builder-chat-collapsed'
 };
 

@@ -6,6 +6,21 @@
 
 // StorageKeys is defined in api-client.js (loaded before this file)
 
+/** Maps each workflow stage (top bar) to the tabs shown in the second nav bar. */
+const STAGE_TABS = {
+  job:            ['job'],
+  analysis:       ['analysis', 'questions'],
+  customizations: ['customizations', 'editor'],
+  rewrite:        ['rewrite'],
+  spell:          ['spell'],
+  generate:       ['cv'],
+  layout:         ['layout'],
+  finalise:       ['download', 'finalise', 'master', 'cover-letter', 'screening'],
+};
+
+/** Currently active stage — drives second-bar tab visibility. */
+let currentStage = 'job';
+
 /**
  * Custom confirm dialog — returns a Promise<boolean>.
  * Replaces browser confirm() which can be silently suppressed once the user
@@ -160,10 +175,59 @@ function setupEventListeners() {
 }
 
 /**
+ * Return the stage that owns a given tab, or null if unmapped.
+ * @param {string} tab
+ * @returns {string|null}
+ */
+function getStageForTab(tab) {
+  for (const [stage, tabs] of Object.entries(STAGE_TABS)) {
+    if (tabs.includes(tab)) return stage;
+  }
+  return null;
+}
+
+/**
+ * Show only the tabs that belong to the given stage in the second nav bar.
+ * @param {string} stage - Key from STAGE_TABS
+ */
+function updateTabBarForStage(stage) {
+  const stageTabs = STAGE_TABS[stage] || [];
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.style.display = stageTabs.includes(tab.dataset.tab) ? '' : 'none';
+  });
+}
+
+/**
+ * Activate a workflow stage: update second-bar visibility and navigate to the
+ * first (or already-active) tab within that stage.
+ * @param {string} stage - Key from STAGE_TABS
+ */
+function switchStage(stage) {
+  currentStage = stage;
+  updateTabBarForStage(stage);
+  const stageTabs = STAGE_TABS[stage] || [];
+  if (stageTabs.length === 0) return;
+  // Prefer whichever tab within this stage is already active; else use first
+  const activeTab = document.querySelector('.tab.active');
+  const activeTabName = activeTab ? activeTab.dataset.tab : null;
+  const target = (activeTabName && stageTabs.includes(activeTabName))
+    ? activeTabName
+    : stageTabs[0];
+  switchTab(target);
+}
+
+/**
  * Switch to a specific tab and load its content.
  * @param {string} tab - Tab name (job, analysis, customizations, cv, download)
  */
 function switchTab(tab) {
+  // Sync second-bar visibility to this tab's stage (without recursing into switchStage)
+  const tabStage = getStageForTab(tab);
+  if (tabStage && tabStage !== currentStage) {
+    currentStage = tabStage;
+    updateTabBarForStage(tabStage);
+  }
+
   // Update active tab button
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   const tabBtn = document.getElementById(`tab-${tab}`);
@@ -464,20 +528,18 @@ function handleStepClick(step) {
   const el = document.getElementById(`step-${step}`);
   if (!el) return;
 
-  if (step === 'job') { showLoadJobPanel(); return; }
+  if (step === 'job') {
+    if (el.classList.contains('completed')) {
+      switchStage('job');
+    } else {
+      showLoadJobPanel();
+    }
+    return;
+  }
 
   if (!el.classList.contains('completed') && !el.classList.contains('active')) return;
 
-  const stepToTab = {
-    analysis:       'analysis',
-    customizations: 'customizations',
-    rewrite:        'rewrite',
-    spell:          'spell',
-    generate:       'cv',
-    finalise:       'download',
-  };
-  const tabName = stepToTab[step];
-  if (tabName) switchTab(tabName);
+  if (STAGE_TABS[step]) switchStage(step);
 }
 
 /**

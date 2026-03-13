@@ -88,9 +88,9 @@
 │  │    - AnthropicClient (fallback)                          │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │  quarto_generator.py                        [NEW]        │  │
-│  │    - generate_qmd() - Create Quarto markdown             │  │
-│  │    - render_pdf() - Shell out to quarto CLI              │  │
+│  │  html_pdf_generator.py                                   │  │
+│  │    - render_html() - Jinja2 template rendering           │  │
+│  │    - generate_pdf() - WeasyPrint/Chrome rendering        │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │  docx_generator.py                          [NEW]        │  │
@@ -108,8 +108,9 @@
 │  └──────────────┘  └──────────────┘  └──────────────────────┘ │
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │ Quarto CLI (Local Process)                               │  │
-│  │   - Chrome headless for PDF rendering                    │  │
+│  │ PDF Rendering (WeasyPrint Primary, Chrome Fallback)      │  │
+│  │   - WeasyPrint: HTML → PDF (preferred for reliability)   │  │
+│  │   - Chrome headless: HTML → PDF (fallback if needed)     │  │
 │  └──────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
                  │
@@ -129,7 +130,7 @@
 ### 1.2 Design Principles
 
 1. **Simplicity First**: Single-user, local deployment ⇒ No complex infrastructure
-2. **Leverage Existing Tools**: Quarto (user's expertise), python-docx (battle-tested)
+2. **Leverage Existing Tools**: Jinja2 (templating), WeasyPrint (PDF), python-docx (battle-tested)
 3. **Stateless HTTP**: Each request is independent (session state in JSON files)
 4. **Progressive Enhancement**: Core workflow working ⇒ Add editor ⇒ Add generation
 5. **Fail Fast**: Validate inputs early, surface errors clearly
@@ -1104,7 +1105,11 @@ def generate_cv():
 
 ## 5. Document Generation Pipeline
 
-### 5.1 Quarto PDF Generation Flow
+### 5.1 Actual Implementation (Jinja2 + WeasyPrint)
+
+The specification document mentions Quarto, but the **actual implementation uses Jinja2 + WeasyPrint** for reliability and simplicity. No Quarto installation is required.
+
+#### HTML & PDF Generation Flow
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -1113,36 +1118,45 @@ def generate_cv():
                  │
                  ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  2. quarto_generator.generate_qmd()                          │
-│     - Load cv_template.qmd                                    │
-│     - Inject params into YAML                                │
-│     - Write cv_generated.qmd                                 │
+│  2. Jinja2 Template Rendering                                │
+│     - Load templates/cv-template.html                        │
+│     - Inject CV data into template context                   │
+│     - Include Schema.org/Person JSON-LD metadata             │
+│     - Render to self-contained HTML                          │
+└────────────────┬─────────────────────────────────────────────┘
+                 │
+                 ▼ (used directly for download & preview)
+ ┌──────────────────────────────────────────────────────────────┐
+│  3a. HTML Output (browser-ready)                              │
+│     - Self-contained (styles + structure inline)             │
+│     - Schema.org markup for ATS parsing                       │
+│     - Directly downloadable & previewable                     │
+└──────────────────────────────────────────────────────────────┘
+                 │
+                 ▼
+┌──────────────────────────────────────────────────────────────┐
+│  3b. PDF Generation (WeasyPrint Primary)                      │
+│     - WeasyPrint converts HTML → PDF                         │
+│     - Preserves styling, 2-column layout                      │
+│     - Embeds fonts for cross-system compatibility            │
+│     - Fallback: Chrome headless if WeasyPrint fails          │
 └────────────────┬─────────────────────────────────────────────┘
                  │
                  ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  3. Shell: quarto render cv_generated.qmd --to pdf          │
-│     - Quarto parses .qmd                                     │
-│     - Applies cv_styles.css                                  │
-│     - Generates HTML intermediate                            │
-└────────────────┬─────────────────────────────────────────────┘
-                 │
-                 ▼
-┌──────────────────────────────────────────────────────────────┐
-│  4. Chrome Headless (embedded in Quarto)                     │
-│     - Renders HTML with print media queries                  │
-│     - Applies page-break rules                               │
-│     - Generates PDF                                          │
-└────────────────┬─────────────────────────────────────────────┘
-                 │
-                 ▼
-┌──────────────────────────────────────────────────────────────┐
-│  5. Output: cv_generated.pdf                                 │
-│     - Multi-page, 2-column layout                            │
-│     - Professional styling                                   │
-│     - File size optimized (<5MB)                             │
+│  4. Output Files                                              │
+│     - *.html (self-contained, ATS-parseable)                 │
+│     - *.pdf (professional multi-page layout)                 │
+│     - Both generated from single Jinja2 render               │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+**Why Jinja2 + WeasyPrint?**
+- ✅ Lighter dependencies (no Quarto installation needed)
+- ✅ Better ATS compatibility (Schema.org markup native to template)
+- ✅ Simpler debugging (pure HTML/CSS, no .qmd compilation)
+- ✅ Reliable (both dependencies are battle-tested)
+- ✅ Single render produces HTML + metadata; PDF is optional render
 
 ### 5.2 DOCX ATS Generation Flow
 

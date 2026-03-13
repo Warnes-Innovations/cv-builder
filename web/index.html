@@ -26,20 +26,14 @@
     </div>
     <div style="display: flex; align-items: center; gap: 12px;">
       <button onclick="openSessionsModal()"
-        style="background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3);
-               border-radius: 4px; padding: 4px 10px; font-size: 0.8em; cursor: pointer;
-               white-space: nowrap; display: flex; align-items: center; gap: 5px;"
-        title="Open, switch, or rename sessions">
-        📂 Sessions
-      </button>
+        class="header-pill-btn"
+        title="Open, switch, or rename sessions"><span>📂 Sessions</span><span class="pill-chevron">&#9660;</span></button>
       <button id="model-selector-btn" onclick="openModelModal()"
-        style="background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3);
-               border-radius: 4px; padding: 4px 10px; font-size: 0.8em; cursor: pointer;
-               white-space: nowrap; display: flex; align-items: center; gap: 5px;">
+        class="header-pill-btn">
         <span style="opacity:0.7;">Model:</span>
         <span id="model-current-label">Loading…</span>
         <span id="model-test-badge" title="Connection test result" style="display:none; font-size:0.85em;"></span>
-        <span style="opacity:0.5; font-size:0.8em;">&#9660;</span>
+        <span class="pill-chevron">&#9660;</span>
       </button>
       <div id="copilot-auth-badge" class="auth-badge unauthenticated" onclick="openCopilotAuthModal()" title="Click to authenticate with GitHub Copilot">
         <span id="auth-badge-icon">&#x26A0;</span>
@@ -76,8 +70,9 @@
 
   <!-- Session conflict amber banner -->
   <div id="session-conflict-banner">
-    ⚠ Another session is active. Close the other tab or wait for it to complete.
-    <button onclick="document.getElementById('session-conflict-banner').style.display='none'" title="Dismiss">✕</button>
+    <span id="conflict-banner-text"></span><span id="conflict-countdown"></span>
+    <button id="conflict-retry-btn" onclick="conflictRetryNow()" title="Retry now" style="margin-left:10px;">↺ Retry Now</button>
+    <button onclick="conflictDismiss()" title="Dismiss">✕</button>
   </div>
 
   <!-- Workflow Steps -->
@@ -184,8 +179,14 @@
       <div class="modal-body" id="sessions-modal-body" style="padding:0; max-height:520px; overflow-y:auto;">
         <p style="padding:24px;text-align:center;color:#6b7280;">Loading sessions…</p>
       </div>
-      <div class="modal-footer">
-        <button class="action-btn" onclick="closeSessionsModal()">Close</button>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;">
+        <button class="action-btn" onclick="newSessionFromModal()"
+          style="background:#10b981;color:#fff;border-color:#10b981;"><span>+</span> New Session</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="sessions-trash-btn" class="action-btn" onclick="openTrashView()"
+            style="background:#f1f5f9;color:#64748b;border-color:#e2e8f0;">🗑 Trash</button>
+          <button class="action-btn" onclick="closeSessionsModal()">Close</button>
+        </div>
       </div>
     </div>
   </div>

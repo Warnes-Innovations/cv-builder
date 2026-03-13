@@ -206,6 +206,7 @@ def create_app(args) -> Flask:
         '/api/copilot-auth/start', '/api/copilot-auth/poll',
         '/api/copilot-auth/status', '/api/copilot-auth/logout',
         '/api/model', '/api/model/test', '/api/model-pricing/refresh',
+        '/api/trash', '/api/trash/restore', '/api/trash/empty', '/api/trash/delete',
     }
 
     @app.before_request
@@ -514,6 +515,12 @@ Job Description (excerpt):
             "copilot_auth": auth_manager.status,
             "iterating": bool(conversation.state.get("iterating")),
             "reentry_phase": conversation.state.get("reentry_phase"),
+            "experience_decisions":   conversation.state.get("experience_decisions")   or {},
+            "skill_decisions":         conversation.state.get("skill_decisions")         or {},
+            "achievement_decisions":   conversation.state.get("achievement_decisions")   or {},
+            "publication_decisions":   conversation.state.get("publication_decisions")   or {},
+            "summary_focus_override":  conversation.state.get("summary_focus_override"),
+            "extra_skills":            conversation.state.get("extra_skills")            or [],
             "session_file": str(getattr(conversation, "session_file", "") or ""),
         })
 
@@ -1831,6 +1838,17 @@ Close professionally with a call to action.
             "claude-3-opus":       200_000,
             "llama":               128_000,
         }
+        def _usage_prompt_tokens(usage) -> int | None:
+            """Extract prompt/input token count from a provider usage object or dict."""
+            if usage is None:
+                return None
+            if isinstance(usage, dict):
+                return usage.get("prompt_tokens") or usage.get("input_tokens")
+            return (
+                getattr(usage, "prompt_tokens", None)
+                or getattr(usage, "input_tokens", None)
+            )
+
         try:
             model_name     = getattr(orchestrator.llm, "model", "") or ""
             context_window = 128_000
@@ -1838,14 +1856,24 @@ Close professionally with a call to action.
                 if key.lower() in model_name.lower():
                     context_window = size
                     break
-            # Rough estimate: state JSON + history content, divided by 4 (chars per token)
-            state_chars   = len(json.dumps(conversation.state,                default=str))
-            history_chars = sum(len(str(m.get("content", ""))) for m in conversation.conversation_history)
-            base_overhead = 4_000   # boilerplate in the system prompt
-            estimated_tokens = (state_chars + history_chars + base_overhead) // 4
+
+            # Prefer exact prompt-token count from the last API response; fall back to
+            # a char-based estimate (chars / 4) when no real usage is available yet.
+            real_tokens  = _usage_prompt_tokens(getattr(orchestrator.llm, "last_usage", None))
+            if real_tokens is not None:
+                token_count  = real_tokens
+                token_source = "exact"
+            else:
+                state_chars   = len(json.dumps(conversation.state, default=str))
+                history_chars = sum(len(str(m.get("content", ""))) for m in conversation.conversation_history)
+                base_overhead = 4_000  # boilerplate in the system prompt
+                token_count   = (state_chars + history_chars + base_overhead) // 4
+                token_source  = "estimated"
+
             return jsonify({
                 "ok":               True,
-                "estimated_tokens": estimated_tokens,
+                "estimated_tokens": token_count,
+                "token_source":     token_source,
                 "context_window":   context_window,
                 "model":            model_name,
                 "history_messages": len(conversation.conversation_history),
@@ -1917,7 +1945,8 @@ Close professionally with a call to action.
     def save():
         try:
             conversation._save_session()
-            return jsonify({"ok": True})
+            session_file = str(conversation.session_dir / "session.json") if conversation.session_dir else None
+            return jsonify({"ok": True, "session_file": session_file})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
@@ -1928,9 +1957,13 @@ Close professionally with a call to action.
             from utils.config import get_config
             cfg = get_config()
             output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            trash_dir   = output_base / '.trash'
             sessions = []
             if output_base.exists():
                 for session_file in sorted(output_base.rglob("session.json"), reverse=True):
+                    # Exclude anything inside .trash
+                    if trash_dir in session_file.parents:
+                        continue
                     try:
                         import json as _json
                         with open(session_file) as f:
@@ -1961,8 +1994,11 @@ Close professionally with a call to action.
             from utils.config import get_config as _cfg
             cfg = _cfg()
             output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            trash_dir   = output_base / '.trash'
             if output_base.exists():
                 for session_file in sorted(output_base.rglob("session.json"), reverse=True):
+                    if trash_dir in session_file.parents:
+                        continue
                     try:
                         import json as _json
                         with open(session_file) as f:
@@ -2018,7 +2054,8 @@ Close professionally with a call to action.
         try:
             conversation.load_session(str(session_file))
             return jsonify({
-                "ok": True,
+                "ok":            True,
+                "session_file":  str(session_file),
                 "position_name": conversation.state.get("position_name"),
                 "phase":         conversation.state.get("phase"),
                 "has_job":       bool(conversation.state.get("job_description")),
@@ -2030,11 +2067,11 @@ Close professionally with a call to action.
 
     @app.post("/api/delete-session")
     def delete_session_endpoint():
-        """Delete a session and all associated generated files.
+        """Move a session directory to the .trash folder (recoverable).
 
         Accepts a JSON body with either:
-        - ``path``: full path to a ``session.json`` file → deletes its parent
-          directory (the entire job output directory).
+        - ``path``: full path to a ``session.json`` file → moves its parent
+          directory into ``<output_base>/.trash/``.
         - ``session_id``: legacy positional identifier (directory name or
           suffix) → falls back to a name-matching search for backward compat.
         """
@@ -2046,39 +2083,140 @@ Close professionally with a call to action.
         try:
             cfg = get_config()
             output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            trash_dir   = output_base / '.trash'
+
+            def _move_to_trash(job_dir: Path):
+                """Move job_dir into .trash, handling name collisions."""
+                trash_dir.mkdir(parents=True, exist_ok=True)
+                dest = trash_dir / job_dir.name
+                if dest.exists():
+                    dest = trash_dir / f"{job_dir.name}_{int(datetime.now().timestamp())}"
+                import shutil as _shutil
+                _shutil.move(str(job_dir), str(dest))
+                print(f"Trashed: {job_dir} → {dest}")
 
             # ── Preferred: caller supplies the full session.json path ──────────
             candidate = Path(path_param)
             if candidate.exists() and candidate.name == 'session.json':
                 job_dir = candidate.parent
-                # Safety: must be somewhere inside output_base
                 if job_dir.resolve().is_relative_to(output_base.resolve()):
-                    import shutil as _shutil
-                    _shutil.rmtree(job_dir)
-                    print(f"Deleted job directory: {job_dir}")
-                    return jsonify({"success": True, "message": "Session deleted successfully"})
+                    _move_to_trash(job_dir)
+                    return jsonify({"success": True, "message": "Session moved to Trash"})
                 else:
                     return jsonify({"error": "Path is outside the output directory"}), 400
 
             # ── Fallback: match by directory name or position name ────────────
             deleted = False
             for session_file in output_base.rglob('session.json'):
+                if trash_dir in session_file.parents:
+                    continue
                 job_dir = session_file.parent
                 if path_param in job_dir.name or job_dir.name == path_param:
-                    import shutil as _shutil
-                    _shutil.rmtree(job_dir)
+                    _move_to_trash(job_dir)
                     deleted = True
-                    print(f"Deleted job directory: {job_dir}")
                     break
 
             if deleted:
-                return jsonify({"success": True, "message": "Session deleted successfully"})
+                return jsonify({"success": True, "message": "Session moved to Trash"})
             return jsonify({"error": f"Session not found: {path_param}"}), 404
 
         except Exception as e:
             print(f"ERROR in delete_session: {e}")
             import traceback
             traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.get("/api/trash")
+    def list_trash():
+        """List sessions in the .trash folder."""
+        try:
+            cfg = get_config()
+            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            trash_dir   = output_base / '.trash'
+            items = []
+            if trash_dir.exists():
+                for session_file in sorted(trash_dir.rglob("session.json"), reverse=True):
+                    try:
+                        import json as _json
+                        with open(session_file) as f:
+                            data = _json.load(f)
+                        state = data.get('state', {})
+                        items.append({
+                            "path":          str(session_file),
+                            "position_name": state.get('position_name') or session_file.parent.name,
+                            "timestamp":     data.get('timestamp', ''),
+                            "phase":         state.get('phase', ''),
+                        })
+                    except Exception:
+                        pass
+            return jsonify({"items": items, "count": len(items)})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/trash/restore")
+    def trash_restore():
+        """Restore a trashed session back to the output directory."""
+        data = request.get_json(silent=True) or {}
+        path_param = data.get("path")
+        if not path_param:
+            return jsonify({"error": "Missing path"}), 400
+        try:
+            cfg = get_config()
+            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            trash_dir   = output_base / '.trash'
+            candidate   = Path(path_param)
+            if not candidate.exists() or candidate.name != 'session.json':
+                return jsonify({"error": "Session file not found"}), 404
+            job_dir = candidate.parent
+            if not job_dir.resolve().is_relative_to(trash_dir.resolve()):
+                return jsonify({"error": "Path is not inside trash"}), 400
+            dest = output_base / job_dir.name
+            if dest.exists():
+                dest = output_base / f"{job_dir.name}_restored_{int(datetime.now().timestamp())}"
+            import shutil as _shutil
+            _shutil.move(str(job_dir), str(dest))
+            print(f"Restored: {job_dir} → {dest}")
+            return jsonify({"success": True, "message": "Session restored"})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/trash/delete")
+    def trash_delete_one():
+        """Permanently delete a single item from trash."""
+        data = request.get_json(silent=True) or {}
+        path_param = data.get("path")
+        if not path_param:
+            return jsonify({"error": "Missing path"}), 400
+        try:
+            cfg = get_config()
+            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            trash_dir   = output_base / '.trash'
+            candidate   = Path(path_param)
+            if not candidate.exists() or candidate.name != 'session.json':
+                return jsonify({"error": "Session file not found"}), 404
+            job_dir = candidate.parent
+            if not job_dir.resolve().is_relative_to(trash_dir.resolve()):
+                return jsonify({"error": "Path is not inside trash"}), 400
+            import shutil as _shutil
+            _shutil.rmtree(job_dir)
+            print(f"Permanently deleted: {job_dir}")
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/trash/empty")
+    def trash_empty():
+        """Permanently delete everything in the .trash folder."""
+        try:
+            cfg = get_config()
+            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            trash_dir   = output_base / '.trash'
+            if trash_dir.exists():
+                import shutil as _shutil
+                _shutil.rmtree(trash_dir)
+                trash_dir.mkdir()
+            return jsonify({"success": True})
+        except Exception as e:
             return jsonify({"error": str(e)}), 500
 
     @app.post("/api/action")
@@ -2192,6 +2330,65 @@ Close professionally with a call to action.
             return jsonify({"ok": True, "experience_id": exp_id, "order": order})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+
+    @app.post("/api/post-analysis-draft-response")
+    def post_analysis_draft_response():
+        """Use the LLM to draft an answer for a single clarification question."""
+        try:
+            body          = request.get_json(force=True) or {}
+            question      = (body.get('question') or '').strip()
+            question_type = (body.get('question_type') or '').strip()
+            analysis      = body.get('analysis') or {}
+
+            if not question:
+                return jsonify({'ok': False, 'error': 'question required'}), 400
+
+            with _session_lock:
+                existing_answers = conversation.state.get('post_analysis_answers') or {}
+
+            context_items: List[str] = []
+            if isinstance(analysis, dict):
+                for key, label in [('job_title', 'Job Title'), ('company_name', 'Company'),
+                                   ('role_level', 'Role Level'), ('domain', 'Domain')]:
+                    if analysis.get(key):
+                        context_items.append(f"{label}: {analysis[key]}")
+            context = '\n'.join(context_items) or 'Not available'
+
+            prior_answers_block = (
+                '\n'.join(f'- {k}: {v}' for k, v in list(existing_answers.items())[:6])
+                if existing_answers else 'None yet.'
+            )
+
+            prompt = (
+                'You are helping a job applicant answer a clarifying question about their CV preferences.\n'
+                'The question was asked to better tailor their CV for a specific job.\n\n'
+                f'Job context:\n{context}\n\n'
+                f'Previously answered questions:\n{prior_answers_block}\n\n'
+                f'Question to answer:\n"{question}"\n\n'
+                'Write a concise, first-person DRAFT answer (1–3 sentences) the applicant could give.\n'
+                'Base it on the most sensible choice for someone applying to this role.\n'
+                'Write only the answer text. No preamble, no labels.'
+            )
+
+            try:
+                draft = llm_client.chat(
+                    messages=[
+                        {'role': 'system', 'content': 'You write concise draft answers for job application clarifying questions.'},
+                        {'role': 'user',   'content': prompt},
+                    ],
+                    temperature=0.7,
+                    max_tokens=200,
+                )
+            except Exception as e:
+                err_str = str(e)
+                if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str or 'quota' in err_str.lower() or 'rate' in err_str.lower():
+                    return jsonify({'ok': False, 'error': 'Rate limit reached — please wait a moment and try again.', 'rate_limited': True}), 429
+                return jsonify({'ok': False, 'error': f'LLM error: {e}'}), 500
+
+            return jsonify({'ok': True, 'text': draft.strip()})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
 
 
     @app.post("/api/post-analysis-questions")
@@ -2324,6 +2521,9 @@ Close professionally with a call to action.
             elif decision_type == 'achievements':
                 conversation.state['achievement_decisions'] = decisions
                 message = f"Saved decisions for {len(decisions)} achievements"
+            elif decision_type == 'publications':
+                conversation.state['publication_decisions'] = decisions
+                message = f"Saved decisions for {len(decisions)} publications"
             elif decision_type == 'summary_focus':
                 # decisions is a single string key here
                 conversation.state['summary_focus_override'] = decisions

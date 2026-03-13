@@ -1,381 +1,899 @@
 # CV Builder UI Review
-**Date:** 2026-03-11
-**Source:** web/index.html (5,493 lines, refactored)
-**Review Context:** Phase 11 Refactoring Complete — Infrastructure Modules Integrated
-**Stories Reviewed:** US-A (Applicant), US-U (UX Expert), US-P (Persuasion Expert)
-**Reference:** gaps.md (GAP-01 through GAP-18)
+**Date:** 2026-03-13
+**Source:** web/index.html, web/app.js, templates/cv-template.html
+**Stories reviewed:** US-A1–A12, US-U1–U9, US-R1–R7, US-H1–H7, US-P1–P6, US-T1–T6
 
 ---
 
-## Executive Summary
+## Summary
 
-### Overall Status
-- **Phase 11 (Refactoring):** ✅ **COMPLETE**
-  - 5 infrastructure modules extracted and imported into index.html
-  - All tests passing (10/10) ✅
-  - Code review issues fixed (5/5) ✅
-- **Current UI Implementation:** ⚠️ **PARTIAL**
-  - Core workflow scaffolding in place
-  - Major gaps: Progress indicator, accessibility, layout instructions
-  - Ready for Phase 12 (Layout Instructions) implementation
+### Acceptance Criteria Results
 
-### Result Tally
+| Status | Count |
+|--------|-------|
+| ✅ Pass | 55 |
+| ⚠️ Partial | 90 |
+| ❌ Fail | 18 |
+| 🔲 Not Implemented | 60 |
+| — N/A | 67 |
+| **Total evaluated** | **290** |
 
-| Status | Count | Significance |
-|--------|-------|--------------|
-| ✅ Pass | 18 | Core features working |
-| ⚠️ Partial | 24 | UX improvements needed |
-| ❌ Fail | 5 | Blocking issues |
-| 🔲 Not Implemented | 34 | Deferred by design |
-| — N/A | 8 | Backend/config concerns |
+### Top Acceptance Criteria Gaps
 
-### Critical Blockers for Phase 12
+**🔴 Critical — Fail / Not Implemented across multiple stories:**
 
-1. **GAP-14: Workflow Progress Indicator** ❌
-   - No persistent stage progress bar
-   - Required for user orientation (US-U1)
-   - Must be added before back-navigation work (US-A6, US-A12)
-
-2. **GAP-15: Accessibility Baseline** ❌
-   - No focus indicators, ARIA labels, or focus management
-   - Affects all UI components
-   - Requires retrofit before Phase 5+ features ship
-
-3. **GAP-18: Workflow Stage Re-run Affordance** ❌
-   - No "Re-analyse" or "Re-run" button visible on completed stages
-   - Required by US-A12
+- **Rewrite diff view** (US-U5, US-R3, US-R6) — Rewrite tab shell exists but no card structure, no inline red/green diff, no accept/reject/edit controls. GAP-06.
+- **ATS validation report** (US-T6) — 16 programmatic checks not implemented; no validation UI; downloads not gated. GAP-04.
+- **Phase back-navigation / re-run** (US-A12, US-U1) — Workflow bar is static; no re-run buttons, no confirmation dialog, no downstream-state preservation. GAP-18.
+- **Spell-check panel** (US-A4b, US-R7) — Tab exists; LanguageTool integration not connected; no flag/suggestion UI. GAP-08.
+- **Bulk accept/reject controls** (US-U4) — No Select All / Deselect All on tables with >8 rows. GAP-07.
+- **Bullet reordering** (US-R2, US-U4) — No up/down or drag controls in review tables. GAP-07.
+- **Page-count estimation warning** (US-R2) — No length check or warning UI. GAP-05.
+- **Candidate-to-confirm skill marking** (US-R5) — No visual indicator for weak-evidence skills in review UI. GAP-12.
+- **Cover letter validation** (US-P5) — No checks for opening pattern, company specificity, word count, or call-to-action.
+- **Cross-document consistency checks** (US-P6) — No harmonisation between CV, cover letter, and screening responses.
+- **Clarifying questions rendering** (US-A2) — Tab exists; no content structure for questions rendering.
+- **Post-generation keyword check UI** (US-T4) — Keyword validation not implemented; required keywords could be absent from ATS DOCX with no warning. GAP-04.
 
 ---
 
-## Phase 11 Refactoring Impact on UI
+## UI/UX Heuristic Evaluation
 
-### Infrastructure Modules Now Available (Imported into index.html)
+### Nielsen's 10 Heuristics
 
-✅ **web/utils.js** — 185 lines
-- Pure utility functions: `normalizeText()`, `fmtDate()`, `escapeHtml()`, `extractTitleAndCompanyFromJobText()`, `truncateText()`, `ordinal()`, `pluralize()`, `formatDuration()`
-- No DOM or state dependencies
-- Used throughout index.html for text processing
+| # | Heuristic | Rating | Key Evidence |
+|---|-----------|--------|--------------|
+| H1 | Visibility of system status | 🟡 Minor | LLM status bar (index.html:108–112) shows "Reasoning…" with pulsing dot. Workflow steps (lines 79–95) show active/completed/upcoming states via colour. Missing: real-time progress % for long ops, estimated time remaining for LLM calls. |
+| H2 | Match between system and the real world | 🟢 Good | Language is natural ("CV Customizer", "Analyze Job", "Generate CV"). Input methods match real-world workflows (paste, URL, file upload). Tab naming aligns with workflow phases. |
+| H3 | User control and freedom | 🟠 Major | Session conflict banner (lines 72–75) warns but provides no recovery action. Workflow is effectively forward-only—no confirm dialog before phase advancement that would discard downstream state. No "undo" after accepting rewrites. GAP-02, GAP-18. |
+| H4 | Consistency and standards | 🟡 Minor | Button styles are consistent (primary = #3b82f6, danger = #dc2626). However, emoji icons for tabs (📋, 🔍) sit alongside Unicode symbols (✕, ✅); modal close buttons use × (Unicode) while tabs use emoji. |
+| H5 | Error prevention | 🟠 Major | Session deletion requires confirmation (good). URL input contextual help distinguishes supported/unsupported sites (excellent). Missing: client-side file-size validation, confirmation dialogs before advancing workflow stages, field-level `aria-describedby` on form inputs. |
+| H6 | Recognition rather than recall | 🟢 Good | All tabs visible in nav bar (lines 140–155); workflow steps show stage names. Conversation history visible on left. Model selector shows current model in header. No hidden menus or command syntax to memorise. |
+| H7 | Flexibility and efficiency of use | 🟡 Minor | Enter to send message (ui-core.js:144–151), Escape to close modals (ui-core.js:161–165). No shortcuts for frequent actions (Analyze, Generate). 15-tab bar requires horizontal scrolling. No bulk accept/reject in review tables. |
+| H8 | Aesthetic and minimalist design | 🟢 Good | Clean layout using a restrained colour palette (#f8fafc, #1e293b, #3b82f6). Generous whitespace. Clear typographic hierarchy. The 15-tab bar is visually heavy; auxiliary tabs (Master CV, Cover Letter, Screening) clutter the primary workflow view. |
+| H9 | Help users recognise, diagnose, and recover from errors | 🔴 Critical | Server errors appear in chat as "❌ Network error" (app.js:1097), not next to the form that failed. File upload failures show no retry button. Session 409 conflict provides no retry link, countdown, or recovery path. No structured error recovery across the app. |
+| H10 | Help and documentation | 🟡 Minor | In-context help on URL input (app.js:1022–1030); hover titles on workflow steps (lines 80–94). No dedicated help section, no tooltips on confidence scoring or weak-evidence badges. |
 
-✅ **web/api-client.js** — 214 lines
-- Centralized HTTP layer: `apiCall()`, `loadSession()`, `fetchStatus()`, `sendAction()`, `generateCV()`, `downloadFile()`
-- All API calls routed through this client for consistent error handling and logging
-- Error recovery for 409 Conflict (session already active in another tab)
+### Additional UX Dimensions
 
-✅ **web/state-manager.js** — 311 lines
-- Session lifecycle: `initializeState()`, `loadStateFromLocalStorage()`, `saveStateToLocalStorage()`, `clearState()`
-- Session restoration: `restoreSession()`, `restoreBackendState()`
-- Centralized state getters/setters and localStorage persistence
+| Dimension | Rating | Observations |
+|-----------|--------|--------------|
+| Cognitive load | 🟠 Major | 15 tabs in the nav bar (index.html:140–155) are shown simultaneously regardless of current stage. Two-level navigation (workflow step bar + tab bar) is not visually cohesive. Users cannot tell which tabs are relevant now vs. later. |
+| Visual hierarchy | 🟡 Minor | Workflow steps use colour well (active = #dbeafe, completed = #dcfce7) but text contrast on those backgrounds is low. Header actions (auth badge, model selector, sessions button) all have similar styling—hard to distinguish primary vs. secondary actions. |
+| Information architecture | 🟡 Minor | Tab-to-stage mapping (ui-core.js:10–19 STAGE_TABS) is implicit; users don't see "you are in Analysis stage." Finalise stage groups unrelated tasks (download, archive, master data, cover letter, screening) that don't share a mental model. |
+| Workflow momentum | 🔴 Critical | Forward-only progression: once a phase is completed, re-running an earlier phase requires starting over with no "preserve downstream state" pathway. Session conflict banner (lines 72–75) blocks all work with no auto-recovery. GAP-02, GAP-18. |
+| Feedback loops | 🟠 Major | LLM status bar (lines 108–112) is good. Missing: inline validation feedback while typing, "parsing document… 40%" progress on file upload, confirmation toasts after successful actions, estimated time remaining for LLM calls. |
+| Error recovery | 🔴 Critical | Session conflict: no retry button or countdown. File upload failure: no retry affordance. Network timeouts: no retry mechanism. Phase reversal: no rollback path. Users must manually refresh or restart the workflow. |
+| Affordance clarity | 🟡 Minor | Buttons are visually distinct. Icon-only action buttons (✏️ Edit, ✅ Accept, ✕ Reject) rely on icon + colour alone with no fallback text for low-vision users. Tab bar scrollability is not signalled. Session modal rows lack hover state. |
 
-✅ **web/ui-core.js** — 415 lines
-- Core routing: `switchTab()`, `loadTabContent()`, `setupEventListeners()`
-- Modal management: `openModal()`, `closeModal()`, `closeAllModals()`
-- Entry point: `initialize()` called on DOMContentLoaded
-- Fetch interceptor for 409 session conflict handling
+### Top 5 UX Issues by Impact
 
-✅ **web/styles.css** — 763 lines
-- Complete stylesheet extracted from `<style>` block
-- Organized into 31 sections by component
-- No regressions; all visual styling preserved
+#### UX-1: Forward-Only Workflow Breaks Iterative Refinement — 🔴 Critical
+**Problem:** Once a workflow phase is completed, users cannot re-run an earlier phase (e.g., re-analyse with amended clarification answers, re-select experiences after seeing a rewrite) without abandoning current work. No "preserve downstream decisions" pathway exists. This directly blocks US-A6 and US-A12.
+**Affected area:** Workflow step bar (index.html:79–95), ui-core.js STAGE_TABS (lines 10–19), conversation_manager.py backend phase transitions. GAP-02 and GAP-18.
+**Remediation:** Implement phase back-navigation with an explicit confirmation dialog listing affected stages. Preserve all downstream approvals in session state so users can see diffs of what changed when re-running.
 
-### Integration Status
+#### UX-2: Error Recovery Is Absent — No Retry or Rollback Paths — 🔴 Critical
+**Problem:** Operation failures (file parse error, network timeout, session 409 conflict) surface error text in chat or a generic div but provide no recovery action. Users must manually refresh the page or restart the workflow after 10+ minutes of setup.
+**Affected area:** Session conflict banner (index.html:72–75), file upload error div (app.js:1053), network error handler (app.js:1096–1097). No retry UI patterns anywhere.
+**Remediation:** Add inline "Retry" buttons with error messages. For 409 conflicts, show a countdown timer and "Take control" option. For file upload, show progress with cancel option and re-upload affordance on failure.
 
-All 5 modules imported in index.html:
-```html
-<link rel="stylesheet" href="styles.css">
-<script src="utils.js"></script>
-<script src="api-client.js"></script>
-<script src="state-manager.js"></script>
-<script src="ui-core.js"></script>
-```
+#### UX-3: 15-Tab Navigation Causes Cognitive Overload — 🟠 Major
+**Problem:** All 15 tabs are visible simultaneously regardless of which workflow stage is active. Users on first use face all phases at once with no sense of which tabs are relevant now. Horizontal scrolling on the tab bar (styles.css:219–227) is not discoverable.
+**Affected area:** Tab bar (index.html:140–155), STAGE_TABS mapping (ui-core.js:10–19).
+**Remediation:** Show only tabs relevant to the current workflow stage. Collapse auxiliary tabs (Master CV, Cover Letter, Screening) into an "Advanced" dropdown. Add visible scroll affordance (arrow indicators) when the tab list overflows.
 
-Import order: utilities → state → API → UI core (entry point)
-**No circular dependencies** ✅
+#### UX-4: No Field-Level Validation or Error Association — 🟠 Major
+**Problem:** Form submission failures (invalid URL, malformed file, too-short paste) produce errors in chat or a generic div, not next to the field that failed. No `aria-describedby` linking error messages to inputs. Violates WCAG 2.1 Level A.
+**Affected area:** Job input form (app.js:1003–1058), file upload (app.js:1150–1199), URL fetch (app.js:1014–1031).
+**Remediation:** Add client-side validation (file size, URL format, minimum text length) with inline error messages. Use `aria-describedby` to associate errors with fields. Highlight invalid fields with a red border on blur.
 
----
-
-## Detailed Acceptance Criteria Review
-
-### US-A1: Discover and Queue a Job Opportunity
-
-**Scope:** Multi-mode job input (URL, paste text, file upload) with auto-extraction
-
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| URL and paste-text paths both work | ✅ | Mode selection via tabs; `submitJobText()`, `fetchJobFromURL()` functions wired via api-client.js |
-| Protected-site warning with fallback | ✅ | Backend detects protected sites (LinkedIn, Indeed); UI shows "Copy manually" guidance |
-| Company/role/date auto-extracted & editable | ⚠️ | Extracted by LLM analysis (backend); no inline-edit UI before proceeding to next step — field shown in position bar but not editable there |
-| Session persisted after confirmation | ✅ | localStorage + state-manager.js + `/api/save` endpoint |
-
-**Result:** ✅ **PASS with minor UX gap** — Editable confirmation step would improve clarity.
+#### UX-5: Session Conflict Blocks Work With No Recovery Affordance — 🟠 Major
+**Problem:** The session conflict amber banner (index.html:72–75) says "close the other tab or wait" but does not identify which tab, how long to wait, or provide any recovery action. Dismissing the banner removes it but leaves the user still blocked.
+**Affected area:** Session conflict banner (index.html:72–75), fetch interceptor (ui-core.js:84–91).
+**Remediation:** Show a countdown timer ("Auto-retrying in 30s…") with a manual retry button. Provide a "Take control of this session" option with a 5-second confirmation to prevent accidental work loss.
 
 ---
 
-### US-A2: Understand What the Job Requires
-
-**Scope:** LLM analysis results display with progress indicator and clarifying questions
-
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| Progress indicator within 1 s | ⚠️ Partial | `/api/status` polling updates progress (~2600 lines); visual indicator present but **status polling interval not guaranteed**. May be >1 s on slow connections. |
-| Required/preferred split displayed | 🔲 | **GAP-15:** Analysis rendering UI not specified. Backend produces `job_analysis` object; no corresponding UI component in index.html to display it. |
-| Mismatch analysis surfaced | 🔲 | Backend detects mismatches; UI display missing. **GAP-15.** |
-| Clarifying questions surfaced | ⚠️ Partial | `handlePostAnalysisQuestions()` function exists (~1680); questions shown as card buttons but structure not fully visible from code. |
-| Answers persist in session | ✅ | `window.questionAnswers` stored in state-manager.js; `saveStateToLocalStorage()`. |
-| Prior answers pre-populated | ⚠️ Partial | Restoration logic exists; verification of pre-population behavior requires runtime test. |
-| Survives browser refresh | ✅ | localStorage + `/api/status` restore backend state. |
-
-**Result:** ⚠️ **PARTIAL** — Progress display functional; analysis UI components not yet implemented. **See GAP-15 (CRITICAL).**
+## Persona Reviews
 
 ---
 
-### US-A3: Review and Approve Content Customisations
+### US-A* — Applicant
 
-**Scope:** DataTables for experiences, skills, publications with accept/reject/reorder
+#### US-A1: Discover and Queue a Job Opportunity
 
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| Every item shows relevance score + rationale | ⚠️ Partial | DataTables setup present; relevance score display depends on backend API response structure. Rationale not explicitly visible in HTML. |
-| Accept/reject toggles work individually | ⚠️ Partial | DataTables checkboxes present; behavior not explicitly coded but standard DataTables feature. |
-| Up/down buttons for reordering | 🔲 | **GAP-07:** Bullet/experience reordering not specified. Feature deferred. |
-| Bullet reordering within job supported | 🔲 | **GAP-07.** |
-| "Omit" suggestions explained | 🔲 | No UI for omit rationale. Deferred. |
-| Publications shown with relevance rank | 🔲 | **GAP-05:** Publication UI not implemented. Feature deferred. |
-| All-rejected publications omit section | ⚠️ Partial | Backend logic in orchestrator likely handles this; frontend not responsible. |
-| Decisions persist | ✅ | `interactiveState` + `saveStateToLocalStorage()`. |
+##### Acceptance Criteria
 
-**Result:** ⚠️ **PARTIAL** — Core selection working; reordering/publications deferred. **See GAP-07, GAP-05.**
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | URL and paste-text paths both work | 🔲 | No job input form visible in HTML |
+| 2 | Protected-site warning with fallback | 🔲 | No job input UI panel in viewer area |
+| 3 | Company/role/date auto-extracted and editable | 🔲 | No form fields visible |
+| 4 | Session persisted immediately | — | Backend concern |
 
----
+##### Failure Modes Present
 
-### US-A4: Review and Approve Text Rewrites
-
-**Scope:** Card-based before/after diff with weak-evidence badges and weak language checks
-
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| Before/after diff visible | ⚠️ Partial | **GAP-06:** Diff presentation not specified. `renderRewritePanel()` (~2250) exists; inline red/green styling not visible in code. Side-by-side comparison likely, not highlighted diff. |
-| Weak-evidence skill badges present | ✅ | Phase 10 implementation: `check_strong_action_verb()`, `check_passive_voice()`, etc. Persuasion warnings returned in `/api/rewrites`. Badges rendered in rewrite panel. |
-| Edited final text enters CV | ⚠️ Partial | Edit action in `handleRewriteDecision()` (~2290); backend stores edited version in `rewrite_decisions`. Likely correct but not explicitly traced. |
-| Submit blocked until all acted | ⚠️ Partial | Logic present; submit condition not explicitly visible in code. |
-| Rewrite audit persisted | ✅ | Session stores `rewrite_decisions`; API endpoint `/api/rewrites/approve` persists to session. |
-
-**Result:** ⚠️ **PARTIAL** — Weak language detection ✅ complete (Phase 10); diff UI styling needs specification. **See GAP-06.**
+| Failure mode | Present? |
+|--------------|----------|
+| Protected-site warning missing | ✅ Not present (form field not yet rendered) |
+| Extracted fields non-editable | ✅ Not present (form field not yet rendered) |
 
 ---
 
-### US-A4b: Spell & Grammar Check Before Generation
+#### US-A2: Understand What the Job Requires
 
-**Scope:** LanguageTool integration with flag review and accept/reject/edit controls
+##### Acceptance Criteria
 
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| LanguageTool integration | 🔲 | **GAP-08:** Not implemented. Phase 4b feature deferred. |
-| No-flags green banner | 🔲 | Not implemented. Deferred. |
-| Flag checklist with context | 🔲 | Not implemented. Deferred. |
-| Accept/Reject/Edit/ Add-to-Dict | 🔲 | Not implemented. Deferred. |
-| Proceed blocked while flags remain | 🔲 | Not implemented. Deferred. |
-| Spell audit persisted | 🔲 | Not implemented. Deferred. |
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Required/preferred split displayed | 🔲 | tab-analysis exists (line 142) but content area is an empty placeholder |
+| 2 | Mismatch analysis surfaced as clarifying questions | 🔲 | No analysis UI rendering |
+| 3 | At least one clarifying question surfaced | 🔲 | tab-questions exists (line 143) but empty |
+| 4–7 | Answers persist/pass downstream/survive refresh | — | Backend concerns |
 
-**Status:** 🔲 **NOT IMPLEMENTED** — **GAP-08 (MEDIUM severity).** Expected Phase 13 or later.
+##### Failure Modes Present
 
----
-
-### US-A5a & US-A5b: Generate and Layout Review
-
-**Scope:** HTML generation with progress display; layout instruction field with preview refresh
-
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| Only HTML generated (not PDF) | ⚠️ Partial | Backend supports; UI endpoint unclear. |
-| HTML preview opens auto | ⚠️ Partial | Preview display logic likely in place; not explicitly verified. |
-| Progress indicator shown | ✅ | Phase 10: `/api/status` returns `generation_progress` array with step names and elapsed_ms. index.html ~2600 displays "Generating CV: ✓ step (elapsed) • ✓ step…" |
-| Errors surface as messages | ⚠️ Partial | Error handling present; format varies. |
-| Archive/metadata created | ⚠️ Partial | Backend handles; frontend doesn't interact. |
-| Layout Instructions field present | 🔲 | **GAP-09:** Not implemented. Phase 12 feature (Natural-Language Layout Instructions). |
-| Instructions processed by LLM | 🔲 | **GAP-09 (Phase 12).** |
-| Preview refreshes after instruction | 🔲 | **GAP-09 (Phase 12).** |
-
-**Result:** ✅ **HTML Generation complete**; ⚠️ **Layout Review deferred to Phase 12.**
+| Failure mode | Present? |
+|--------------|----------|
+| Analysis results not displayed | ❌ Present — no rendering logic |
+| Clarifying questions missing | ❌ Present — tab exists; no content |
 
 ---
 
-### US-A5c: Generate Final Output (PDF + ATS DOCX)
+#### US-A3: Review and Approve Content Customisations
 
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| PDF/ATS from final confirmed HTML | ⚠️ Partial | Backend supports; frontend integration via `/api/generate`. |
-| Correct file naming convention | ⚠️ Partial | Backend generates names; frontend downloads via `downloadFile()` (~2750). Likely correct. |
-| Download links shown | ⚠️ Partial | `populateDownloadTab()` displays downloads; visibility not explicitly confirmed for all formats. |
-| Progress indicator | ✅ | Same as US-A5a; generation progress shown with step names. |
-| Errors surface | ⚠️ Partial | Error handling present. |
+##### Acceptance Criteria
 
-**Result:** ⚠️ **PARTIAL** — Core generation working; UX clarity (multiple format downloads) needs verification.
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Relevance score and rationale per recommended item | ⚠️ | tab-customizations (line 144); DataTables loaded (lines 264–265); no table HTML in static markup |
+| 2 | Include/exclude toggles per item | ⚠️ | No table structure or toggle controls |
+| 3 | Up/down buttons for reordering | ⚠️ | No reorder controls; GAP-07 |
+| 4 | Bullet reordering within entry | ⚠️ | No controls; GAP-07 |
+| 5 | Omit suggestions explained | ⚠️ | No rendering visible |
+| 6 | Publications pre-ranked with relevance | ⚠️ | No publications section in customizations tab |
+| 7 | Empty publications section omitted | — | Backend concern |
+| 8 | Decisions persist in session | — | Backend concern |
 
----
+##### Failure Modes Present
 
-### US-A6: Iterative Refinement
-
-**Scope:** Post-generation feedback → targeted re-entry into appropriate phase
-
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| Feedback triggers targeted re-entry | 🔲 | **GAP-02:** Back-transition logic not implemented. No affordance to return to customization/rewrite phase. Must restart from job input. |
-| Prior decisions preserved as defaults | 🔲 | **GAP-02.** Requires `back_to_phase()` method in conversation_manager.py. |
-| Each cycle updates archive | ⚠️ Partial | Backend supports; frontend workflow unclear. |
-
-**Result:** ❌ **FAIL** — Cannot re-enter prior phases. **See GAP-02 (HIGH severity).** Must implement `back_to_phase()` logic before this feature is usable.
+| Failure mode | Present? |
+|--------------|----------|
+| No table/grid for experiences, achievements, skills | ❌ Present — tab-customizations has no content rendering |
+| Relevance scores not displayed | ❌ Present — no score rendering structure |
 
 ---
 
-### US-U1: Workflow Orientation and Progress Visibility
+#### US-A4: Review and Approve Text Rewrites
 
-**Scope:** Persistent progress indicator showing current stage and completed/upcoming stages
+##### Acceptance Criteria
 
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| Step indicator with named stages | 🔲 | **GAP-14 (CRITICAL):** No workflow progress component visible in index.html. No persistent header/sidebar showing "Job Input → Analysis → Review → Generate → Layout → Finalise". **BLOCKING user orientation.** |
-| Completed state visual distinction | 🔲 | **GAP-14.** Without progress indicator, no styling for completed vs. active stages. |
-| Back-navigation preserves work | ⚠️ Partial | State preservation logic exists; no explicit back-nav affordance or confirmation UI. |
-| Session restoration shows context | ⚠️ Partial | Prior phase data restored from localStorage; no UI indicator that "you're resuming at Stage X". |
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Card-based before/after diff per proposal | ⚠️ | tab-rewrite exists (line 145); no card structure in static HTML; GAP-06 |
+| 2 | Keyword pills in rewrite cards | ⚠️ | No pill badge HTML |
+| 3 | Collapsible rationale + evidence citation | ⚠️ | No details/summary structure |
+| 4 | Accept / Edit / Reject per card | ⚠️ | No button group visible |
+| 5 | Weak-evidence additions badged with ⚠ | ⚠️ | No badge structure |
+| 6 | Edited text enters CV (not proposal) | — | Backend concern |
+| 7 | Submit All blocked until all cards actioned | ⚠️ | No submit-all button visible |
+| 8 | Rewrite audit persisted | — | Backend concern |
 
-**Result:** ❌ **FAIL** — Progress indicator completely missing. **This is the primary user-orientation mechanism**. **GAP-14 (CRITICAL).** Must be added before Phase 12 implementation.
+##### Failure Modes Present
 
-### Failure Modes Present
-| Mode | Status |
-|------|--------|
-| Linear next/back with no labels | ✅ Not present — Tab-based navigation used instead. |
-| Back silently discards content | ✅ Not present — State preservation prevents this. |
-| Blank state on session return | ⚠️ Likely not present — restoreSession() logic should load data; needs visual verification. |
-| Progress only updates on page reload | ⚠️ Likely not present — `/api/status` polling updates state in real-time. |
-
----
-
-### US-U7: Accessibility and Keyboard Navigation
-
-**Scope:** Focus management, ARIA labels, keyboard-operable tables, color-independent status
-
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| Focus management (move to modal, restore) | 🔲 | **GAP-15 (CRITICAL):** `openModal()` function (~2400) opens modal without moving/trapping focus. No `aria-modal="true"`, no focus trap, no focus restore on close. |
-| Visible focus indicator | 🔲 | **GAP-15.** No custom focus styling visible; default browser outline likely removed. Global `outline: none` likely present. |
-| Table keyboard nav | 🔲 | **GAP-15.** DataTables default may support Tab navigation, but explicit keyboard support for accept/reject not configured. |
-| ARIA labels on icon buttons | 🔲 | **GAP-15.** No `aria-label` attributes visible on icon-only buttons throughout UI. |
-| Color-independent status | ❌ | **Present.** Rewrite accept/reject badges color-coded (green/red) with no text labels. Status conveyed by color alone. |
-| Error aria-describedby | 🔲 | **GAP-15.** Form validation errors not associated with inputs via `aria-describedby`. |
-
-**Result:** ❌ **FAIL** — No accessibility baseline implemented. **GAP-15 (CRITICAL).** All Phase 5+ UI work must include accessibility from the start.
-
-### Failure Modes Present
-| Mode | Status | Evidence |
-|------|--------|----------|
-| `outline: none` global without replacement | ⚠️ Likely — No custom focus styling visible in code. Needs CSS inspection. |
-| Modal without focus move | ❌ Present — `openModal()` doesn't manage focus. **GAP-15.** |
-| Icon buttons without aria-label | ❌ Present — Likely all icon-only buttons lack labels. **GAP-15.** |
-| Status color-only (no text) | ❌ Present — Rewrite accept/reject indicators color-coded only. No text or icon. **GAP-15.** |
-| Keyboard-trapped UI or skipped tab order | ⚠️ Unknown — DataTables tab order not inspected. |
+| Failure mode | Present? |
+|--------------|----------|
+| Side-by-side card layout missing | ❌ Present — no card HTML |
+| Weak-evidence badge missing | ❌ Present — no badge HTML |
 
 ---
 
-### US-U8: Responsive Behaviour and Loading Performance
+#### US-A4b: Spell & Grammar Check Before Generation
 
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| Operable at 1280×800 without horizontal scroll | ⚠️ Partial | Layout uses flexbox (40% + 60% split); no explicit viewport test in code. Collapse toggle at 50px width suggests mobile support. Needs visual test at 1280×800. |
-| Table column collapsing at small widths | ⚠️ Partial | DataTables responsive plugin may be available; configuration not visible. |
-| Page load ≤2 s locally | ⚠️ Partial | index.html 5500 lines + external scripts (jQuery, DataTables) + modules (utils.js, api-client.js, etc.); total bundle likely >2 s. LLM-dependent content is async. |
-| No layout shift during async loads | ⚠️ Partial | Placeholder heights not explicitly set; potential for shift when content arrives. |
-| Long table scroll performance | ⚠️ Partial | DataTables may struggle with 50+ rows without virtual scrolling configuration. |
+##### Acceptance Criteria
 
-**Result:** ⚠️ **PARTIAL** — Layout structure operable; performance optimization (skeleton loaders, virtual scrolling) deferred.
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | tab-spell renders spell-check results | ⚠️ | tab-spell exists (line 146); no content; GAP-08 |
+| 2–4 | Flag display, controls, blocking logic | ⚠️ | No UI for any of these |
+| 5–8 | Dictionary, persistence, editing | — | Backend concerns |
 
----
+##### Failure Modes Present
 
-### US-P4: Rhetorical Quality of Bullet Points
-
-**Scope:** Strong action verbs, front-loading, conciseness, parallel structure
-
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| Strong opening verb enforced | ✅ | Phase 10: `check_strong_action_verb()` in llm_client.py; expert-curated 200-verb list. Warnings in rewrite review when weak verbs detected. |
-| Front-loading (impactful words first) | ⚠️ Partial | Not explicitly checked; depends on LLM rewrite quality and user editing. |
-| Conciseness (≤30 words) | ✅ | Phase 10: `check_word_count()` flags bullets >30 words. Warnings in rewrite review. |
-| Parallel structure | 🔲 | Not checked in Phase 10. Deferred. |
-
-**Result:** ✅ **PARTIAL IMPLEMENTATION** — Strong verbs and word count enforced (Phase 10); UI surface warnings in rewrite review (needs verification that warnings display).
+| Failure mode | Present? |
+|--------------|----------|
+| Spell-check UI missing | ❌ Present — GAP-08; no LanguageTool integration |
 
 ---
 
-## Critical Summary: Gaps Affecting Phase 12
+#### US-A5a: Generate HTML for Layout Review
 
-### Must Resolve Before Phase 12 Starts
+##### Acceptance Criteria
 
-**GAP-14: Workflow Progress Indicator** ❌ CRITICAL
-- Missing persistent progress bar/breadcrumb
-- Affects: US-U1 (user orientation), US-A6 (back-navigation), US-A12 (re-run affordances)
-- **Action:** Add progress indicator to index.html header; driven by session `phase` state
-
-**GAP-15: Accessibility Baseline** ❌ CRITICAL
-- No focus indicators, ARIA labels, focus management
-- Affects: Every UI component in Phase 5+
-- **Action:** Add accessibility checklist to Phase 12+ tasks; run axe/Lighthouse audit on completion
-
-**GAP-18: Workflow Stage Re-run Affordance** ❌ HIGH
-- No visible "Re-analyse" or "Re-run" button on completed stages
-- Affects: US-A12 (re-run any prior stage)
-- **Action:** Add re-run controls to progress indicator; implement backend `re_run_phase()` logic
-
-### Deferred (Scheduled for Phase 12 or Later)
-
-**GAP-06: Rewrite Diff Styling** — Inline red/green diff not specified
-**GAP-07: Bullet Reordering** — Up/down controls for experience bullets
-**GAP-08: Spell/Grammar Check** — Full LanguageTool integration + UI panel
-**GAP-09: Layout Instructions** — Natural-language instruction field + LLM processing
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 2 | HTML preview opens in inline pane | ⚠️ | document-viewer (line 157) exists; document-content (line 158) is a generic div, not iframe |
+| 4 | Progress indicator within 1 s | ⚠️ | llm-status-bar (line 108) generic; no step labels |
+| 1, 3, 5, 6 | Format selection, layout, errors, archive | — | Backend/template concerns |
 
 ---
 
-## Recommendations
+#### US-A5b: Review and Refine HTML Layout
 
-### For Phase 12 Preparation
+##### Acceptance Criteria
 
-1. ✅ **Infrastructure ready** — Phase 11 refactoring complete; all modules integrated and tested
-2. **TODO:** Implement workflow progress indicator (GAP-14) — **Must be done before Phase 12**
-3. **TODO:** Create accessibility checklist — add to all Phase 12+ task definitions
-4. **TODO:**Add re-run affordances to progress indicator (GAP-18) — **Should be done with progress indicator**
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Preview pane opens automatically | ⚠️ | tab-layout exists (line 149); no auto-open logic |
+| 2 | Layout Instructions text field | ⚠️ | No textarea visible |
+| 5 | Preview refreshes after each instruction | ⚠️ | No refresh mechanism |
+| 6 | Confirm Layout button present | ⚠️ | No button visible |
+| 3, 4, 7, 8 | Instruction types, structure-only edits, metadata, clarification | — | Backend concerns |
 
-### Phase 12 Scope
+##### Failure Modes Present
 
-- **Primary:** Natural-Language Layout Instructions (US-A5b)
-  - Layout Instructions text field
-  - Preview panel refresh after LLM processing
-  - Instruction history with Undo
-
-- **Secondary (if time permits):**
-  - Add progress indicator (GAP-14) + re-run controls (GAP-18)
-  - Analysis results display (GAP-15)
-  - Publication selection UI (GAP-05)
-
-### Phase 13+ Initiatives
-
-- Spell/Grammar Check (GAP-08) — Medium priority
-- Bullet reordering UI (GAP-07) — Medium priority
-- Back-navigation confirmation dialogs (GAP-02, GAP-18) — High priority if implementing iterative refinement
-- Accessibility retrofit (GAP-15) — High priority; affects all new UI work
+| Failure mode | Present? |
+|--------------|----------|
+| Layout instructions textarea missing | ❌ Present — no textarea |
+| Confirm Layout button missing | ❌ Present — no button |
 
 ---
 
-## Test Status Summary
+#### US-A5c: Generate Final Output
 
-| Category | Status | Notes |
-|----------|--------|-------|
-| Unit Tests | ✅ 10/10 passing | All tests pass with refactored modules |
-| Code Review | ✅ 5/5 issues fixed | Fixed: direct fetch calls, hardcoded storage keys, global state encapsulation, dead code |
-| Integration Tests | ✅ All passing | Web UI endpoints working with new modules |
-| UI Visual Test | ⚠️ Not conducted | Code review only; CSS styling not visually verified |
-| Accessibility Audit | ❌ Not conducted | No baseline yet; GAP-15 blocks comprehensive audit |
-| Performance Profile | ⚠️ Not conducted | Bundle size and load time not measured |
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 3 | Three formats available as download links | ⚠️ | tab-download exists (line 150); no link rendering |
+| 4 | Progress indicator shown within 1 s | ⚠️ | llm-status-bar generic |
+| 1, 2, 5, 6 | Generation, naming, errors, metadata | — | Backend concerns |
 
 ---
 
-**Report Date:** 2026-03-11 16:30 EDT
-**Phase Status:** Phase 11 ✅ COMPLETE; Phase 12 (Layout Instructions) ready to start after resolving GAP-14, GAP-15, GAP-18
-**Test Results:** 10/10 passing; zero regressions from refactoring
+#### US-A6: Review and Iteratively Refine
+
+All criteria are backend concerns (GAP-02). No re-entry UI visible in any tab.
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| No feedback entry point visible | ❌ Present — no form or text area for post-generation feedback |
+| Back-navigation UI missing | ❌ Present — no re-run or back affordances |
+
+---
+
+#### US-A7: Generate Cover Letter
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Cover letter generation triggered | ⚠️ | tab-cover-letter exists (line 153); no generation form |
+| 3 | Tone selector from preset options | ⚠️ | No selector visible |
+| 7 | Editable before saving | ⚠️ | No textarea |
+| 2, 4, 5, 6, 8 | Prior tone reuse, salutation, content, saves | — | Backend concerns |
+
+---
+
+#### US-A8: Handle Application Screening Questions
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Paste screening questions | ⚠️ | tab-screening exists (line 154); no textarea |
+| 4 | Response format selection | ⚠️ | No format selector |
+| 6 | Response editable inline | ⚠️ | No textarea |
+| 2, 3, 5, 7–9 | Prior responses, experiences, generation, saves | — | Backend concerns |
+
+---
+
+#### US-A9: Finalise, Archive, and Submit
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Archive folder contents shown | ⚠️ | tab-finalise exists (line 151); no file list |
+| 2 | Application status selector | ⚠️ | No status selector |
+| 3 | Notes field | ⚠️ | No textarea |
+| 5 | Confirmation summary shown | ⚠️ | No summary display |
+| 4 | Finalise button triggers metadata/Git/library | — | Backend concern; GAP-03 |
+
+---
+
+#### US-A10: Update Master CV Data
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Natural-language update input | ⚠️ | tab-master exists (line 152); no textarea |
+| 2 | Document ingestion | ⚠️ | No file upload area |
+| 3 | Proposed JSON diff shown | ⚠️ | No diff viewer |
+| 4 | Explicit confirmation required | ⚠️ | No confirmation dialog |
+| 5 | Git commit on confirmed update | — | Backend concern; GAP-01 |
+
+---
+
+#### US-A11: Session Master Data Harvest
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Harvest prompt after Finalise | ⚠️ | No harvest modal |
+| 2 | Candidate write-back items displayed | ⚠️ | No item list |
+| 3 | Before/after diff with rationale | ⚠️ | No diff display |
+| 4 | Checkboxes for opt-in selection | ⚠️ | No checkboxes |
+| 5 | Consolidated JSON diff before write | ⚠️ | No diff viewer |
+| 6 | Explicit confirmation required | ⚠️ | No confirmation |
+| 8 | Harvest skippable | ⚠️ | No skip button |
+| 7 | Git commit on confirmed harvest | — | Backend concern |
+
+---
+
+#### US-A12: Re-enter and Re-run Earlier Workflow Stages
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Re-run affordance on completed stages | ❌ | .workflow-steps (lines 79–95) are static divs; no re-run buttons; GAP-18 |
+| 2 | Confirmation dialog for re-run scope | ❌ | No modal for re-run confirmation |
+| 4 | Changed/new items highlighted for re-review | ❌ | No diff-highlighting mechanism in any tab |
+| 6 | Clarification answers amendable at re-run time | ❌ | No form for clarification answer editing |
+| 8 | Re-run accessible via keyboard shortcut | ❌ | No keyboard handler |
+| 3, 5, 7 | Original job text, unchanged state, audit log | — | Backend concerns |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Re-run buttons missing from progress indicator | ❌ Present — .workflow-steps divs are static text |
+| Confirmation dialog missing | ❌ Present — no modal |
+| Changed-item highlighting missing | ❌ Present — no visual diff |
+
+---
+
+### US-U* — UX Expert
+
+#### US-U1: Workflow Orientation and Progress Visibility
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Step indicator with named stages | ✅ | Workflow steps at index.html:78–96 with 8 named stages (📥 Job Input, 🔍 Analysis, ⚙️ Customise, ✏️ Rewrites, 🔤 Spell Check, 📄 Generate, 🎨 Layout, ✅ Finalise) |
+| 2 | Completed steps visually distinct | ✅ | styles.css: active (#dbeafe), completed (#dcfce7), upcoming (#f8fafc) — three clear states |
+| 3 | Back-navigation without losing work; destructive actions require confirmation | ⚠️ | Back-nav to completed steps supported (app.js:5905–5938); no confirmation dialog for potentially destructive navigation; GAP-18 |
+| 4 | Session restoration context | ⚠️ | Session list shows phase (app.js:395) but full restoration of last active stage with all data is only partial via restoreTabData() (app.js:121–150) |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Linear next/back with no state labels | ✅ Not present |
+| Back navigation silently discards approved content | ⚠️ Partially present — no confirmation dialog |
+| Returning to session shows blank state | ⚠️ Partially present — partial restoration only |
+| Progress indicator only updates on reload | ✅ Not present |
+
+---
+
+#### US-U2: Job Input and URL Ingestion UX
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | URL and paste-text modes clearly differentiated | ✅ | Tabs: "🔗 URL" and "📝 Paste Text" (app.js:997–1003) |
+| 2 | Protected-site guidance contextual and specific | ⚠️ | Detection for LinkedIn/Indeed/Glassdoor (app.js:1106–1170); fallback shown in modal, not inline; GAP-02 |
+| 3 | Fetch feedback with loading indicator ≤300 ms | ⚠️ | Loading state shown (app.js:1180–1185); no explicit 300 ms guarantee |
+| 4 | Extracted fields inline-editable | ✅ | Confirmation UI shows editable input fields (app.js:1190–1200) |
+| 5 | Character-count guidance on paste path | ❌ | No minimum character hint on paste textarea; GAP-16 |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| URL and text area presented simultaneously | ✅ Not present |
+| Protected-site error as raw status code | ⚠️ Present — modal-based, not inline |
+| Correcting extracted field requires restart | ✅ Not present |
+
+---
+
+#### US-U3: Analysis Results Readability
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | ≥4 visually distinct sections | ⚠️ | Analysis rendered as single HTML block (app.js:2164–2240); no explicit card separation; GAP-04 |
+| 2 | Keyword rank signal | ⚠️ | Keywords shown with colour badges (app.js:5295–5298); no rank numbering in analysis view |
+| 3 | Mismatch prominence above the fold | ⚠️ | .mismatch-callout present (app.js:2193) but inline; no above-fold summary count |
+| 4 | Clarifying questions one group at a time | ⚠️ | Questions tab (app.js:2010–2069); grouping not explicit; free-text in some cases |
+| 5 | Analysis duration feedback with label | ⚠️ | Step label shown (app.js:5305–5312); no >3 s threshold logic |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Full analysis as undifferentiated text block | ⚠️ Present — single HTML block without chunking |
+| Mismatch callouts below fold with no summary | ⚠️ Present — inline only, no above-fold count |
+
+---
+
+#### US-U4: Review Table Interaction Quality
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Accept/reject toggles visually obvious | ✅ | Button-based Accept/Reject (app.js:3206–3215), not small checkboxes |
+| 2 | Reorder controls discoverable without hover | ⚠️ | Not implemented; GAP-07 |
+| 3 | Row density sufficient for decisions | ⚠️ | Title + role + date + score visible; bullets not shown until expanded |
+| 4 | Bulk actions for tables >8 rows | ❌ | No bulk accept/reject; GAP-07 |
+| 5 | Inline row expansion (no page nav) | ✅ | .expand-details inline expansion (app.js:3224–3240) |
+| 6 | Relevance score labelled with scale | ⚠️ | Score displayed (app.js:3206) without consistent "/ 100" or scale context |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Small checkboxes as accept/reject | ✅ Not present |
+| No bulk accept/reject for large tables | ❌ Present |
+
+---
+
+#### US-U5: Rewrite Review Presentation
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Inline diff (red strikethrough / green additions) | ❌ | Before/after side-by-side (app.js:4342–4380), not inline diff; GAP-06 |
+| 2 | Accept/Reject/Edit collocated with diff | ⚠️ | Controls in same card (app.js:4356–4374) but in a separate row |
+| 3 | Reason visible within one click | ⚠️ | .rewrite-rationale collapsible (app.js:4334); accessible but not inline |
+| 4 | Edit path preserves diff view | ❌ | Edit mode (app.js:4368–4374) clears the diff highlight |
+| 5 | Sequential navigation for >3 rewrites | ⚠️ | No "Approve & Next" button; cards visible but no keyboard flow |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Side-by-side requiring cognitive comparison | ⚠️ Present — before/after as separate blocks |
+| No way to edit proposed text | ✅ Not present |
+
+---
+
+#### US-U6: Generation and Output State Feedback
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Step-labelled generation progress | ⚠️ | Progress bar exists (app.js:5345–5355); step labels not fully visible; GAP-16 |
+| 2 | Generated CV previewable in-browser | ⚠️ | Download tab shows file links (app.js:3914–4050); no inline iframe preview |
+| 3 | Download options: PDF + HTML/text | ✅ | PDF, ATS DOCX, HTML download buttons (app.js:3971–4010) |
+| 4 | Error recovery with user-readable message | ✅ | Generation errors caught and displayed (app.js:5134–5140) |
+| 5 | Output filename includes name/role/date | ✅ | Filename includes context; app.js:3971 shows formatted filenames |
+| 6 | Version label for multiple generations | ⚠️ | No version timestamp or "current" label; GAP-16 |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Generated output only via file path, no preview | ⚠️ Present — download links, no in-browser render |
+| Multiple versions not distinguished | ⚠️ Present — no version labels |
+
+---
+
+#### US-U7: Accessibility and Keyboard Navigation
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Focus management in modals | ⚠️ | Some modals move focus (app.js:425); no full focus trap cycle for all modals; GAP-15 |
+| 2 | Visible focus ring on all interactive elements | ✅ | Focus styles in styles.css:167, 205, 344, 650 with blue box-shadow |
+| 3 | Table keyboard navigation (Space/Enter, arrows) | ⚠️ | Tab nav works; table toggle/reorder keyboard shortcuts not implemented; GAP-15 |
+| 4 | ARIA labels on icon-only buttons | ✅ | Icon buttons have title/aria-label (index.html:30, 66, 74, 80; app.js:5996) |
+| 5 | Colour-independence for status indicators | ⚠️ | Buttons have text labels; some badges rely on colour only; GAP-15 |
+| 6 | Error messages via aria-describedby | ⚠️ | Alert modal has aria-describedby (index.html:194); form fields lack it; GAP-15 |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| outline:none globally applied | ✅ Not present |
+| Modal opened without moving focus | ⚠️ Partially present |
+| Icon-only buttons with no label | ✅ Not present |
+
+---
+
+#### US-U8: Responsive Behaviour and Loading Performance
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Fully operable at 1280×800 | ⚠️ | Flexbox layout (styles.css:64–78); no explicit 1280×800 viewport test |
+| 2 | Column collapsing in tables at smaller widths | ⚠️ | Media query at styles.css:691 (≤640 px); no explicit ≤1280 px strategy; GAP-16 |
+| 3 | Page load ≤2 s locally | ⚠️ | Assets loaded (index.html:8–12, 258–269); no load-time benchmark |
+| 4 | No layout shift during async loads | ⚠️ | Skeleton placeholders in some areas (app.js:5950); not consistently applied; GAP-16 |
+| 5 | Long table scroll performance (20+ rows) | ⚠️ | DataTables (index.html:264–265) provides some optimisation; no virtual scrolling |
+
+---
+
+#### US-U9: HTML Layout Review Interaction Quality
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Instruction field labelled with scope; placeholder example | ✅ | Placeholder (layout-instruction.js:37); scope label: "💡 Layout changes only — approved text is never modified" (line 32) |
+| 2 | Processing indicator ≤300 ms; preview refreshes | ✅ | #processing-indicator HTML (layout-instruction.js:44–47) |
+| 3 | Change attribution after instruction | ⚠️ | #confirmation-message element present (layout-instruction.js:49); "what changed" summary detail incomplete |
+| 4 | Clarification handling if LLM ambiguous | ⚠️ | Clarification structure exists (layout-instruction.js:200+); ask vs. guess logic not fully hardened |
+| 5 | Instruction history with per-entry Undo | ✅ | #instruction-history with history list and undo controls (layout-instruction.js:51–57) |
+| 6 | Single "Proceed to Final Generation" button | ✅ | #proceed-to-finalise-btn consistent label (layout-instruction.js:59–61) |
+| 7 | Content safety label | ✅ | "Affects layout only — approved text is never changed" (layout-instruction.js:32) |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| No feedback after instruction | ✅ Not present |
+| No instruction history | ✅ Not present |
+| Proceed button label varies | ✅ Not present |
+
+---
+
+### US-R* — Resume Expert
+
+#### US-R1: Job Description Analysis Quality
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Required and preferred qualifications in distinct sections | ✅ | app.js:2198–2218 — "Required Skills" (grid) vs. "Preferred / Nice-to-Have" (list) with distinct styling |
+| 2 | Synonyms and acronym pairs grouped | 🔲 | Backend logic (GAP-10); UI shows ranked keywords but no synonym grouping |
+| 3 | Domain inference with confidence level | ⚠️ | Domain/role_level meta-chips (app.js:2180–2182); no confidence level indicator |
+| 4 | Keyword frequency weighting | 🔲 | Backend concern; rank badges present (app.js:2224–2225) |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Required/preferred not separated | ✅ Not present |
+
+---
+
+#### US-R2: Content Selection Strategy
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Relevance score semantic + keyword (not recency) | 🔲 | Backend logic; no UI visibility |
+| 2 | Bullet reordering proposed and applied within entries | ❌ | No bullet reordering controls; GAP-07 |
+| 3 | Conditional section decisions with rationale | ⚠️ | Publications pane (app.js:2972–2978) shows "ranked by relevance"; no per-decision rationale |
+| 4 | Ranked publication shortlist with per-item scores | ⚠️ | Publications pane exists (app.js:2935); no per-item relevance scores |
+| 5 | System warns if CV length exceeds 3 pages | ❌ | No page-count estimation or warning; GAP-05 |
+| 6 | 4–6 achievements with diverse impact types | ⚠️ | Achievements pane exists; no impact-type diversity scoring |
+
+---
+
+#### US-R3: Rewrite Quality and Constraint Adherence
+
+All 4 criteria are backend logic concerns. Rewrite review UI not implemented (GAP-06) — no frontend surface for these constraints.
+
+---
+
+#### US-R4: Professional Summary Effectiveness
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Proposed summary role-specific | ⚠️ | Summary pane (app.js:2967) shows "AI recommendation pre-selected"; no comparison to stored variants |
+| 2 | Opening sentence contains role + years + differentiator | ⚠️ | No validation UI; user must read text manually |
+| 3 | No filler phrases injected | 🔲 | Backend validation (check_summary_generic_phrases); no UI indicator |
+
+---
+
+#### US-R5: Skills Section Optimisation
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Only approved skills appear | 🔲 | Skills review pane exists (app.js:2949); no approval history |
+| 2 | Skills ordered by relevance within categories | ⚠️ | "Sorted by relevance" note (app.js:2949); no visible category grouping |
+| 3 | Approved additions written back to master data | 🔲 | Backend write-back (GAP-13); no UI |
+| 4 | Candidate-to-confirm items flagged visually | ❌ | No visual indicator for weak-evidence skills; GAP-12 |
+
+---
+
+#### US-R6: Rewrite Audit Traceability
+
+All 3 criteria are backend data structure concerns. Rewrite review tab (index.html:145) defined but no handler in app.js — no audit trail UI exists. GAP-06.
+
+---
+
+#### US-R7: Spell & Grammar Check Quality
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 4 | Accepted corrections change only the flagged span | ⚠️ | Spell check UI exists (app.js:4843–4869); correction span isolation not confirmed |
+| 6 | Spell audit in metadata.json non-empty when flags exist | ⚠️ | spellAudit initialised (app.js:4822); posted to backend (app.js:4876) |
+| 1, 2, 3, 5 | Dictionary suppression, verb checks, context filtering, dedup | 🔲 | Backend logic; no UI validation |
+
+---
+
+### US-H* — Hiring Manager
+
+*Note: Hiring manager stories primarily concern the generated CV output (cv-template.html) rather than the web app UI. Criteria marked — are backend/template concerns.*
+
+#### US-H1: First Impression — Page 1 Layout
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Page 1 contains name, contact, summary, achievements, education without scrolling | ✅ | cv-template.html:443–533 — #page-one with overflow:hidden; sidebar (contact, education, awards) and main (header, summary, achievements) |
+| 2 | Summary is role-specific with title, years, differentiator | ⚠️ | Template renders {{ professional_summary }} (line 520); no content quality validation |
+| 3 | Page 1 no overflow | ✅ | height: 279.4mm; overflow: hidden (lines 64–66) |
+| 4 | Balanced whitespace in both columns | ⚠️ | Visual balance depends on content length; no template-level fill guarantee |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Page 1 overflow forces content to page 2 | ✅ Not present — overflow:hidden prevents bleed |
+| Font below 10pt | ✅ Not present — body 0.95rem; all > 10pt equiv. |
+
+---
+
+#### US-H2: Work Experience — Credibility and Relevance
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 4 | Job entries not split across pages | ✅ | .job-entry has page-break-inside: avoid (cv-template.html:281) |
+| 3 | Bullets ≤2 lines | ⚠️ | No max-width constraint on .job-details (lines 309–313); relies on backend curation |
+| 1, 2, 5, 6 | Action verbs, ≥2 bullets, relevance order, system warning | — | Backend/LLM generation concerns |
+
+---
+
+#### US-H3: Skills Section Readability
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Skills grouped into named categories | ✅ | .skills-grid with .skill-group iterating skills_by_category (cv-template.html:541–550) |
+| 4 | Skills section ≤1.5 sidebar columns | ✅ | Sidebar 32% width split across pages 2–3 (lines 92, 106) |
+| 2 | Categories ordered by relevance | — | Backend/orchestrator ordering |
+| 3 | No duplicate skills | — | Backend deduplication (GAP-11) |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Flat alphabetical skill list | ✅ Not present — categories displayed |
+| Skills crowding Experience | ✅ Not present — sidebar/main columns clearly separated |
+
+---
+
+#### US-H4: Multi-Page Flow and Readability
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | page-break-inside: avoid on every job entry | ✅ | .job-entry line 281; all entries use this class (lines 561, 606) |
+| 2 | Sidebar balanced across pages | ✅ | Page 1: contact/education/awards; Page 2: first 5 skill categories; Page 3: remaining skills |
+| 5 | Publications headed "Selected Publications" if subset | ✅ | Conditional heading (lines 634–638) |
+| 3 | Page count 2–3; warns outside range | — | Backend; GAP-05 |
+| 4 | Publications only if role-relevant | — | Backend customisation phase |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Job title split from bullets across pages | ✅ Not present — page-break-inside:avoid |
+| Page 3 sidebar empty | ✅ Not present — skills [5:] fill page 3 sidebar |
+
+---
+
+#### US-H5: Visual Identity and Professionalism
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Consistent colour scheme (navy, accent blue, grey) | ✅ | CSS variables (lines 17–25): --primary-color: #2c3e50, --accent-color: #2980b9 |
+| 2 | Serif for name, sans-serif for body | ✅ | .name: Merriweather serif (line 225); body: Inter sans-serif (line 34) |
+| 3 | Section titles uppercase with horizontal rule | ✅ | .section-title: text-transform uppercase (line 251), border-bottom (line 252) |
+| 4 | Icon-prefixed contact fields | ✅ | Font Awesome classes on all contact items (lines 448–464) |
+| 5 | Custom bullet points with accent colour | ✅ | .achievement-list li::before with --accent-color (lines 331–339) |
+| 6 | No visible pagination artefacts | ✅ | Fixed page heights and page-break-after on all pages (line 358) |
+
+---
+
+#### US-H6: Cover Letter Tone and Relevance
+
+All criteria are backend/generation concerns for a separate file. All marked —.
+
+---
+
+#### US-H7: Selected Publications
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Section heading "Selected Publications" when present | ✅ | Conditional heading (cv-template.html:634–638) |
+| 2 | Each entry: authors, title, venue, year | ✅ | {{ pub.formatted_citation }} (line 643); backend formats correctly |
+| 4 | Count notation "(N of M)" shown | ⚠️ | Removed per D7.4 design amendment; only heading text differentiates subset vs. full |
+| 5 | Publications as final section | ✅ | Publications page (lines 628–652) rendered last |
+| 6 | No entry without venue | ⚠️ | Template renders pub.formatted_citation without venue validation |
+| 3 | Count matches user confirmation | — | Backend orchestrator |
+
+---
+
+### US-P* — Persuasion Expert
+
+#### US-P1: Narrative Arc and Identity Alignment
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Summary opens with value-identity statement | 🔲 | No UI guidance or validation |
+| 2 | At least one forward-looking statement | 🔲 | No forward-looking framing check |
+| 3 | Warn if >2 equally-weighted narrative threads | 🔲 | No narrative analysis implemented |
+| 4 | Zero hedging language in proposed rewrites | ⚠️ | check_hedging_language (llm_client.py:441) detects hedging; warnings surface in rewrite review (app.js:4085–4230); not applied to summary rewrites |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Hedging language detected in bullets | ✅ Present — flagged by check_hedging_language; warning shown in rewrite tab |
+
+---
+
+#### US-P2: Social Proof and Authority Signals
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Named organisations within first 15 words | ⚠️ | check_named_institution_position (llm_client.py:484) warns; shown in rewrite tab only |
+| 2 | Publication/award omission decisions with rationale | 🔲 | No publication/award omission rationale UI |
+| 5 | Flags metric loss between original and rewrite | 🔲 | No metric-loss detection |
+| 6 | Quantified metrics preserved | ⚠️ | check_has_result_clause encourages metrics; no explicit preservation check |
+| 3, 4 | Publication ranking and authority signals | — | Backend rank_publications_for_job exists; no UI to surface it |
+
+---
+
+#### US-P3: Loss-Aversion and Urgency Framing
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | CAR structure identified and proposed | ⚠️ | check_car_structure (llm_client.py:541) flags absence; informational only; no proactive CAR restructuring |
+| 2 | Rewrites prefer positive-sum framing | 🔲 | No positive-sum framing check |
+| 3 | Summary checked for generic filler phrases | ✅ | check_summary_generic_phrases (llm_client.py:586); threshold 1 phrase max (line 614) |
+
+---
+
+#### US-P4: Rhetorical Quality of Bullet Points
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Bullets begin with strong action verb | ✅ | check_strong_action_verb (llm_client.py:296) against _STRONG_ACTION_VERBS; surfaced in rewrite tab |
+| 2 | Bullets >30 words flagged | ✅ | check_word_count (llm_client.py:374) flags >30 words with 'warn' severity |
+| 3 | Passive voice flagged | ✅ | check_passive_voice (llm_client.py:333); surfaced in rewrite tab |
+| 4 | Missing result clause flagged | ✅ | check_has_result_clause (llm_client.py:404) with 'info' severity |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Over-long bullets | ✅ Not present — check_word_count catches >30 words |
+| Passive voice | ✅ Not present — check_passive_voice detects all patterns |
+
+---
+
+#### US-P5: Cover Letter Persuasion Architecture
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Reject draft where first word is "I" | 🔲 | No opening-pattern validation in cover letter UI (app.js:6388) |
+| 2 | Company name + specific role requirement referenced | 🔲 | No validation after generation |
+| 3 | Word count check; >300 words triggers flag | 🔲 | No word count validation in cover letter UI (app.js:6273–6443) |
+| 4 | Closing sentence includes specific next step | 🔲 | No closing sentence validation |
+
+---
+
+#### US-P6: Consistency of Persuasive Register
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Clarification-answer context applied consistently across session | 🔲 | No cross-document consistency check; persuasion warnings apply only to rewrite tab |
+| 2 | Cover letter vs. summary framing cross-checked | 🔲 | No cross-document validation |
+| 3 | Screening answer terminology compared against CV keywords | 🔲 | Screening tab (app.js:6452–6637) generates independently; no harmonisation check |
+
+##### Failure Modes Present
+
+| Failure mode | Present? |
+|--------------|----------|
+| Summary assertive; bullets hedged | ⚠️ Partially present — hedging detected in bullets but no cross-check against summary tone |
+| CV and screening answer terminology diverge | 🔲 Not present (no consistency check) |
+
+---
+
+### US-T* — HR / ATS
+
+*Note: Nearly all HR/ATS acceptance criteria are backend/generation concerns (DOCX structure, font choices, heading styles). UI-relevant criteria noted below.*
+
+#### US-T1 through US-T3: File Ingestion, Section Recognition, Contact Parsing
+
+All criteria for these three stories are backend template and DOCX generation concerns. All marked —.
+
+---
+
+#### US-T4: Keyword Matching and Scoring
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Post-generation keyword check run | 🔲 | Not implemented; no keyword validation report UI; GAP-04 |
+| 2 | Results displayed: keyword / section / match type | 🔲 | No validation UI |
+| 3 | Warning when required keyword absent | 🔲 | No validation warning UI |
+| 5 | `knowsAbout` JSON-LD verified | 🔲 | No validation UI |
+| 4 | Keyword variant normalisation | — | Backend/orchestrator concern |
+
+---
+
+#### US-T5: Date and Employment History Parsing
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 4 | No overlapping date ranges (system validates) | 🔲 | No date validation UI |
+| 1, 2, 3, 5 | Date separator, month+year, one-line header, "Present" | — | Backend template concerns |
+
+---
+
+#### US-T6: ATS Output Validation Report
+
+##### Acceptance Criteria
+
+| # | Criterion (abbreviated) | Status | Notes / Line refs |
+|---|--------------------------|--------|-------------------|
+| 1 | Programmatic ATS validation checks run post-generation | 🔲 | Not implemented; GAP-04 |
+| 2 | Results displayed with pass/warn/fail per check | 🔲 | No validation report tab or modal |
+| 3 | Fails block download | 🔲 | Download tab (index.html:150) has no validation gate |
+| 4 | Warns allow download but show issue | 🔲 | No warning UI |
+| 5 | Validation results in metadata.json | 🔲 | Not written by backend |
+
+**All 16 sub-checks** (DOCX text selectability, zero tables, zero text boxes, contact in body, standard section headings, Heading 1 Word style, date format consistency, keyword presence, keyword density, JSON-LD block valid, `knowsAbout` populated, required JSON-LD fields, HTML renders correctly, PDF US Letter size, fonts embedded, no margin clipping) are **🔲 Not Implemented**. GAP-04.

@@ -7106,10 +7106,10 @@ function _validateCoverLetter(text) {
       warn: mentions === 1,
       label: 'Company reference',
       detail: mentions === 0
-        ? `“${escapeHtml(companyName)}” not mentioned — add specific references.`
+        ? `“${companyName}” not mentioned — add specific references.`
         : mentions === 1
-          ? `“${escapeHtml(companyName)}” mentioned once — a second specific reference strengthens the letter.`
-          : `“${escapeHtml(companyName)}” mentioned ${mentions} times — good specificity.`,
+          ? `“${companyName}” mentioned once — a second specific reference strengthens the letter.`
+          : `“${companyName}” mentioned ${mentions} times — good specificity.`,
     };
   }
 
