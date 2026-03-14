@@ -174,8 +174,7 @@ function saveStateToLocalStorage() {
  */
 function clearState() {
   initializeState();
-  localStorage.removeItem(StorageKeys.TAB_DATA);
-  localStorage.removeItem(StorageKeys.SESSION_ID);
+  Object.values(StorageKeys).forEach(key => localStorage.removeItem(key));
 }
 
 /**

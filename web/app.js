@@ -182,11 +182,8 @@ async function restoreSession() {
     if (historyRes.ok) {
       const historyData = await historyRes.json();
       
-      // Only restore from backend if localStorage doesn't have recent history
-      const saved = localStorage.getItem('cv-builder-tab-data');
-      const hasLocalHistory = saved && JSON.parse(saved).conversationHistory?.length > 0;
-      
-      if (!hasLocalHistory && historyData.history && historyData.history.length > 0) {
+      // Always restore from the server session file (authoritative history source).
+      if (historyData.history && historyData.history.length > 0) {
         const conversation = document.getElementById('conversation');
         conversation.innerHTML = ''; // Clear any loading messages
         
@@ -212,9 +209,7 @@ async function restoreSession() {
     const autoLoaded = await restoreBackendState();
 
     // Restore tab data from localStorage.
-    // If a session was auto-loaded from disk, skip re-rendering conversation history —
-    // loadSessionFile already rendered it from the freshly-loaded backend.
-    restoreTabData(!autoLoaded);
+    restoreTabData();
 
     isReconnecting = false;
     
@@ -290,6 +285,8 @@ async function loadSessionFile(path) {
       (historyData.history || []).forEach(msg => {
         if (msg.role !== 'system') appendMessage(msg.role, msg.content);
       });
+    } else {
+      appendMessage('system', '⚠ Could not restore conversation history.');
     }
 
     await fetchStatus();
@@ -652,27 +649,15 @@ async function promptRenameCurrentSession() {
 
 function saveTabData() {
   try {
-    // Save conversation history
-    const conversationDiv = document.getElementById('conversation');
-    const messages = [];
-    conversationDiv.querySelectorAll('.message').forEach(msgDiv => {
-      // appendMessage() sets class 'message user' / 'message assistant' / 'message system'
-      const role = msgDiv.classList.contains('user') ? 'user' :
-                   msgDiv.classList.contains('assistant') ? 'assistant' : 'system';
-      const contentEl = msgDiv.querySelector('.content');
-      const content = contentEl ? contentEl.innerHTML : msgDiv.innerText;
-      if (content && !content.includes('🔄') && !content.includes('Executing')) { // Skip loading messages
-        messages.push({ role, content, isHtml: !!contentEl });
-      }
-    });
-    
+    // Conversation history is NOT stored in localStorage — the server session file
+    // (saved by ConversationManager._save_session) is authoritative.  Restore is
+    // always done from /api/history on page load to keep the two in sync.
     localStorage.setItem('cv-builder-tab-data', JSON.stringify({
       tabData: tabData,
       currentTab: currentTab,
       pendingRecommendations: window.pendingRecommendations || null,
       interactiveState: interactiveState,
       activeReviewPane: window._activeReviewPane || 'experiences',
-      conversationHistory: messages,
       timestamp: Date.now()
     }));
   } catch (error) {
@@ -680,7 +665,7 @@ function saveTabData() {
   }
 }
 
-function restoreTabData(restoreConversation = true) {
+function restoreTabData() {
   try {
     const saved = localStorage.getItem('cv-builder-tab-data');
     if (saved) {
@@ -701,22 +686,7 @@ function restoreTabData(restoreConversation = true) {
         if (data.activeReviewPane) {
           window._activeReviewPane = data.activeReviewPane;
         }
-        
-        // Restore conversation history to UI (skipped when session was auto-loaded from disk,
-        // because loadSessionFile already rendered the authoritative backend history)
-        if (restoreConversation && data.conversationHistory && data.conversationHistory.length > 0) {
-          const conversationDiv = document.getElementById('conversation');
-          conversationDiv.innerHTML = ''; // Clear loading messages
-          data.conversationHistory.forEach(msg => {
-            if (msg.isHtml) {
-              appendMessageHtml(msg.role, msg.content);
-            } else {
-              appendMessage(msg.role, msg.content);
-            }
-          });
-          console.log(`Restored ${data.conversationHistory.length} conversation messages from localStorage`);
-        }
-        
+
         console.log('Restored tab data from localStorage');
       } else {
         // Clear old data
@@ -729,6 +699,9 @@ function restoreTabData(restoreConversation = true) {
 }
 
 async function init() {
+  // Initialize abort controller to null (set to new AbortController by setLoading(true))
+  window._currentAbortController = null;
+
   // Show loading message
   appendMessage('system', '🔄 Connecting to CV Builder...');
   
@@ -754,7 +727,7 @@ async function init() {
   // Auto-analyze job if loaded but not analyzed (only if not reconnecting)
   if (!isReconnecting) {
     const status = await getStatus();
-    if (status.job_description && !status.job_analysis) {
+    if (!status._error && status.job_description && !status.job_analysis) {
       appendMessage('system', 'Auto-analyzing loaded job description...');
       await analyzeJob();
       
@@ -824,7 +797,7 @@ function toggleChat() {
 function normalizeText(text) {
   return text
     .trim()  // Remove leading/trailing whitespace
-    .replace(/\\s+/g, ' ')  // Collapse internal whitespace
+    .replace(/\s+/g, ' ')  // Collapse internal whitespace
     .trim();
 }
 
@@ -929,11 +902,11 @@ async function populateJobTab() {
     if (data.job_description_text) {
       const jobText = data.job_description_text;
       const lines = jobText.split('\n');
-      let html = '<h1>' + lines[0] + '</h1>';
-      if (lines[1]) html += '<h2>' + lines[1] + '</h2>';
-      
-      html += '<div style="white-space: pre-wrap; line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + jobText + '</div>';
-      
+      let html = '<h1>' + escapeHtml(lines[0]) + '</h1>';
+      if (lines[1]) html += '<h2>' + escapeHtml(lines[1]) + '</h2>';
+
+      html += '<div style="white-space: pre-wrap; line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + escapeHtml(jobText) + '</div>';
+
       // Add action button to replace/edit job description
       html += '<div style="margin-top:20px;"><button onclick="showLoadJobPanel()" class="btn-secondary">📥 Load Different Job</button></div>';
       content.innerHTML = html;
@@ -1210,6 +1183,22 @@ function handleFileSelected(file) {
   const errEl   = document.getElementById('file-upload-error');
   const warnEl  = document.getElementById('file-size-warning');
 
+  // Validate file type by MIME prefix and extension fallback
+  const allowedMimes = ['application/pdf', 'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain', 'text/html'];
+  const allowedExts  = ['.pdf', '.doc', '.docx', '.txt', '.html', '.htm'];
+  const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+  const mimeOk = allowedMimes.some(m => file.type.startsWith(m)) || file.type === '';
+  const extOk  = allowedExts.includes(ext);
+  if (!mimeOk && !extOk) {
+    errEl.textContent   = `Unsupported file type "${ext || file.type}". Supported formats: PDF, Word (.doc/.docx), plain text, HTML.`;
+    errEl.style.display = 'block';
+    if (warnEl) warnEl.style.display = 'none';
+    document.getElementById('file-upload-btn').style.display = 'none';
+    return;
+  }
+
   // Block files over 20 MB
   if (file.size > 20 * 1024 * 1024) {
     errEl.textContent   = `File is too large (${sizeMb} MB). Maximum allowed size is 20 MB.`;
@@ -1464,18 +1453,20 @@ function showProtectedSiteModal(siteName, message, instructions) {
                       '</ol>';
   }
   
+  const safeName = escapeHtml(siteName);
+  const safeMessage = escapeHtml(message);
   const modalContent = `
     <div style=\"text-align: center; margin-bottom: 16px;\">
-      🔒 <strong>${siteName} requires manual input</strong>
+      🔒 <strong>${safeName} requires manual input</strong>
     </div>
-    <p>${message}</p>
+    <p>${safeMessage}</p>
     ${instructionsList}
     <div style=\"margin-top: 20px; padding: 12px; background: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 6px;\">
       <strong>💡 Tip:</strong> After copying the job description, click the \"Paste Text\" tab above to submit it directly.
     </div>
   `;
-  
-  showAlertModal(`${siteName} Input Required`, modalContent);
+
+  showAlertModal(`${safeName} Input Required`, modalContent);
 }
 
 function clearJobInput() {
@@ -1835,7 +1826,6 @@ function getSkillReasoning(skill, data) {
     return "This skill was identified as relevant to the position requirements.";
   }
   return "This skill was not specifically mentioned in the job requirements.";
-  return reasonings[Math.floor(Math.random() * reasonings.length)];
 }
 
 // ==== Achievement Recommendation Helpers ====
@@ -2342,7 +2332,7 @@ async function getStatus() {
     return await res.json();
   } catch (error) {
     console.error('Error fetching status:', error);
-    return {};
+    return { _error: true };
   }
 }
 
@@ -2570,24 +2560,24 @@ async function startInteractiveReview() {
       interactiveState.recommendedSet = new Set(data.recommended_experiences || []);
       
       // Store user's explicit exclusions (check both title and ID)
-      interactiveState.userExclusions = new Set(['tnt3', 'warnes wireless', 'warnes_wireless']);
+      interactiveState.userExclusions = new Set();
     } else {
       // Fallback to just recommended if we can't get all
       interactiveState.allExperiences = data.recommended_experiences || [];
       interactiveState.recommendedSet = new Set(data.recommended_experiences || []);
-      interactiveState.userExclusions = new Set(['tnt3', 'warnes wireless', 'warnes_wireless']);
+      interactiveState.userExclusions = new Set();
     }
   } catch (error) {
     console.warn('Could not fetch full experience list:', error);
     interactiveState.allExperiences = data.recommended_experiences || [];
     interactiveState.recommendedSet = new Set(data.recommended_experiences || []);
-    interactiveState.userExclusions = new Set(['tnt3', 'warnes wireless', 'warnes_wireless']);
+    interactiveState.userExclusions = new Set();
   }
   
   if (interactiveState.allExperiences && interactiveState.allExperiences.length > 0) {
     interactiveState.type = 'experiences';
     const totalCount = interactiveState.allExperiences.length;
-    const excludedCount = Array.from(interactiveState.allExperiences).filter(exp => 
+    const excludedCount = Array.from(interactiveState.allExperiences).filter(exp =>
       Array.from(interactiveState.userExclusions).some(excl => exp.toLowerCase().includes(excl.toLowerCase()))
     ).length;
     appendMessage('assistant', `Great! I'll walk you through all ${totalCount} experience entries${excludedCount > 0 ? ` (skipping ${excludedCount} you explicitly excluded)` : ''}. I'll ask about them one at a time.`);
@@ -2596,6 +2586,8 @@ async function startInteractiveReview() {
     interactiveState.type = 'skills';
     appendMessage('assistant', 'Let me walk you through the skill recommendations.');
     setTimeout(() => showSkillsSummary(), 800);
+  } else {
+    appendMessage('assistant', 'No experiences or skills to review. Please generate customization recommendations first.');
   }
 }
 
@@ -2765,8 +2757,15 @@ let cvEditorData = {
   experiences: [],
   skills: []
 };
+let _cvEditorLoading = false;
 
 async function populateCVEditorTab() {
+  if (_cvEditorLoading) return;
+  _cvEditorLoading = true;
+
+  // Reset to defaults so stale data doesn't persist if the fetch fails or is slow
+  cvEditorData = { personal_info: {}, summary: '', experiences: [], skills: [] };
+
   const content = document.getElementById('document-content');
   content.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading CV Editor…</p></div>';
 
@@ -2780,21 +2779,21 @@ async function populateCVEditorTab() {
         experiences: data.experiences || [],
         skills: data.skills || []
       };
-      renderCVEditor();
     } else {
       throw new Error('Failed to load CV data');
     }
   } catch (error) {
     console.error('Error loading CV data:', error);
-    // Show default empty editor
     cvEditorData = {
       personal_info: { name: '', email: '', phone: '', location: '' },
       summary: '',
       experiences: [],
       skills: []
     };
-    renderCVEditor();
+  } finally {
+    _cvEditorLoading = false;
   }
+  renderCVEditor();
 }
 
 function renderCVEditor() {
@@ -5551,10 +5550,18 @@ async function resetSession() {
   try {
     const res = await fetch('/api/reset', { method: 'POST' });
     const data = await res.json();
-    appendMessage('system', data.message || 'Session reset.');
-    // Clear conversation
+    // Clear all frontend state
+    clearState();
+    userSelections = { experiences: {}, skills: {} };
+    window.postAnalysisQuestions = [];
+    window.questionAnswers = {};
+    window.pendingRecommendations = null;
+    window._savedDecisions = {};
+    window._newSkillsFromLLM = [];
+    // Clear conversation and job content
     document.getElementById('conversation').innerHTML = '';
     await fetchStatus();
+    await showLoadJobPanel();
   } catch (error) {
     console.error('=== RESET SESSION ERROR ===');
     console.error('Error type:', error.name);

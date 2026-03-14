@@ -217,47 +217,6 @@ function switchStage(stage) {
 }
 
 /**
- * Switch to a specific tab and load its content.
- * @param {string} tab - Tab name (job, analysis, customizations, cv, download)
- */
-function switchTab(tab) {
-  // Sync second-bar visibility to this tab's stage (without recursing into switchStage)
-  const tabStage = getStageForTab(tab);
-  if (tabStage && tabStage !== currentStage) {
-    currentStage = tabStage;
-    updateTabBarForStage(tabStage);
-  }
-
-  // Update active tab button
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  const tabBtn = document.getElementById(`tab-${tab}`);
-  if (tabBtn) {
-    tabBtn.classList.add('active');
-  }
-
-  // Update current tab state via stateManager
-  try {
-    if (typeof stateManager !== 'undefined' && stateManager.setCurrentTab) {
-      stateManager.setCurrentTab(tab);
-    } else {
-      // Fallback: direct localStorage if stateManager not available
-      localStorage.setItem(StorageKeys.CURRENT_TAB, tab);
-    }
-  } catch (e) {
-    console.warn('Could not save current tab to localStorage');
-  }
-
-  // Adjust layout for CV tab (paper-sized) vs. others (full-width)
-  const content = document.getElementById('document-content');
-  if (content) {
-    content.classList.toggle('full-width', tab !== 'cv');
-  }
-
-  // Load content for the tab
-  loadTabContent(tab);
-}
-
-/**
  * Load content for a specific tab.
  * Routes to appropriate rendering function based on tab.
  * @param {string} tab - Tab name
@@ -520,29 +479,6 @@ function updatePhaseIndicator(status) {
 }
 
 /**
- * Handle click on a workflow step indicator.
- * Job step always opens the load-job panel; other steps navigate to their tab if completed/active.
- * @param {string} step - Step name matching step-{name} element IDs
- */
-function handleStepClick(step) {
-  const el = document.getElementById(`step-${step}`);
-  if (!el) return;
-
-  if (step === 'job') {
-    if (el.classList.contains('completed')) {
-      switchStage('job');
-    } else {
-      showLoadJobPanel();
-    }
-    return;
-  }
-
-  if (!el.classList.contains('completed') && !el.classList.contains('active')) return;
-
-  if (STAGE_TABS[step]) switchStage(step);
-}
-
-/**
  * Enable/disable controls based on workflow state.
  * @param {boolean} enabled - True to enable controls
  */
@@ -557,8 +493,11 @@ function setControlsEnabled(enabled) {
 let _modelData = null; // cached from last loadModelSelector() call
 let _modelDataTable = null;
 let _selectedModelProviders = new Set();
+let _modelSelectorLoading = false;
 
 async function loadModelSelector() {
+  if (_modelSelectorLoading) return;
+  _modelSelectorLoading = true;
   try {
     _modelData = await apiCall('GET', '/api/model');
     const label = document.getElementById('model-current-label');
@@ -572,6 +511,8 @@ async function loadModelSelector() {
     }
   } catch (e) {
     console.warn('Could not load model list:', e);
+  } finally {
+    _modelSelectorLoading = false;
   }
 }
 
@@ -722,9 +663,14 @@ function _buildModelTable() {
 
   // Tear down any existing DataTable before rebuilding rows.
   if (window.$ && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#model-table')) {
-    _modelDataTable = $('#model-table').DataTable();
-    _modelDataTable.destroy();
-    _modelDataTable = null;
+    try {
+      _modelDataTable = $('#model-table').DataTable();
+      _modelDataTable.destroy();
+    } catch (e) {
+      console.warn('DataTable.destroy() failed (table may already be torn down):', e);
+    } finally {
+      _modelDataTable = null;
+    }
   }
 
   // Prefer cross-provider list; fall back to current-provider available list
