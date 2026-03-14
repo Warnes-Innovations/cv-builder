@@ -54,6 +54,59 @@ Actions requiring explicit confirmation:
 - `skills` in master data can be either a list or category dict; existing code handles both—keep that compatibility.
 - Recommendation semantics are strict: each recommendation includes `recommendation`, `confidence`, and `reasoning` with project-specific enums (see prompt logic in `scripts/utils/llm_client.py` and `scripts/utils/conversation_manager.py`).
 - `scripts/llm_cv_generator.py` CLI currently restricts `--llm-provider` choices to `github|openai|anthropic|local`, while backend factory supports more providers (`copilot-oauth`, `copilot`, `gemini`, `groq`). Keep changes consistent when touching provider UX.
+- **Single-session architecture**: the Flask app has one global `ConversationManager` / `CVOrchestrator`. A `threading.Lock` enforces single-session-at-a-time. Avoid patterns that make multi-session keying harder.
+- **Rewrite audit key**: field is `final_text` in the spec but `final` in code (renamed in commit `576b75f`). Do not revert.
+
+## Configuration
+
+All configuration is in `config.yaml` (project root). **Precedence: env vars > `.env` > `config.yaml` > code defaults.**
+
+**There is no built-in default LLM provider** — the app fails on startup if `llm.default_provider` is unset.
+
+```yaml
+data:
+  master_cv:    string   # Path to Master_CV_Data.json. Default: ~/CV/Master_CV_Data.json
+  publications: string   # Path to publications.bib.  Default: ~/CV/publications.bib
+  output_dir:   string   # Root output dir.           Default: ~/CV/files
+
+llm:
+  default_provider: string   # REQUIRED. One of: copilot-oauth | copilot | github |
+                             #   openai | anthropic | gemini | groq | local
+  default_model:    string   # Model name; null = provider default.
+  temperature:      float    # Default: 0.7
+  max_tokens:       int|null # null = provider default.
+
+generation:
+  max_skills:        int   # Default: 20
+  max_achievements:  int   # Default: 5
+  max_publications:  int   # Default: 10
+  formats:
+    ats_docx:   bool  # Default: true
+    human_pdf:  bool  # Default: true
+    human_docx: bool  # Default: true
+
+session:
+  auto_save:    bool    # Default: true
+  session_dir:  string  # Default: ~/CV/files/sessions
+  history_file: string  # Default: ~/CV/files/input_history
+
+google_drive:
+  enabled:          bool    # Default: false (use OS-level Google Drive Desktop sync instead)
+  credentials_path: string
+  token_path:       string
+
+web:
+  host:  string  # Default: 127.0.0.1
+  port:  int     # Default: 5000
+  debug: bool    # Default: false
+
+logging:
+  level:   string      # DEBUG | INFO | WARNING | ERROR. Default: INFO
+  file:    string|null # null = console only.
+  log_dir: string      # Default: ~/CV/logs
+```
+
+`--llm-provider` and `--llm-model` flags on `web_app.py` / `llm_cv_generator.py` override `config.yaml` values.
 
 ## Integration points
 - LLM providers are selected through `get_llm_provider(...)` in `scripts/utils/llm_client.py`.
