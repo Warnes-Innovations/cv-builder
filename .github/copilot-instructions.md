@@ -83,10 +83,17 @@ Slash commands are defined in `~/src/vscode-config/.github/prompts/`. The most r
 
 ### /obo in cv-builder
 
-- Helper script: `.github/skills/one-by-one/obo_helper.py`
+- Helper script: `~/src/vscode-config/.github/skills/one-by-one/obo_helper.py`
+  - macOS: `/Users/warnes/src/vscode-config/.github/skills/one-by-one/obo_helper.py`
+  - Linux:  `/home/warnes/src/vscode-config/.github/skills/one-by-one/obo_helper.py`
 - Session dir: `.github/obo_sessions/`
 - Always check for existing sessions first:
-  `python .github/skills/one-by-one/obo_helper.py sessions --base-dir /Users/warnes/src/cv-builder`
+  ```bash
+  # macOS:
+  python /Users/warnes/src/vscode-config/.github/skills/one-by-one/obo_helper.py sessions --base-dir /Users/warnes/src/cv-builder
+  # Linux:
+  python /home/warnes/src/vscode-config/.github/skills/one-by-one/obo_helper.py sessions --base-dir /home/warnes/src/cv-builder
+  ```
 - Never pass item JSON directly as a shell argument — write to a temp file and pass via `--input-file`
 
 ---
