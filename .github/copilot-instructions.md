@@ -1,18 +1,5 @@
 # Copilot Instructions for cv-builder
 
-## 🛑🛑🛑 MANDATORY PRE-FLIGHT 🛑🛑🛑
-
-**BEFORE RESPONDING TO ANY REQUEST:** Execute `/preflight`.
-See `~/src/vscode-config/.github/prompts/preflight.prompt.md` for full requirements.
-
-☐ State which copilot-instructions.md sections apply to this request
-☐ List applicable Agent Skills explicitly
-☐ If multi-step: create todo list
-☐ Use `/codeReview` before finalising ANY code changes
-☐ Use "we" collaborative language; refer to user as "Dr. Greg"
-
----
-
 ## 🛑 CRITICAL: NEVER LOSE USER DATA
 
 1. **NEVER delete, drop, or destroy user data** by error, omission, or negligence
@@ -156,9 +143,5 @@ Slash commands are defined in `~/src/vscode-config/.github/prompts/`. The most r
 - Keep generated artifacts under configured output dirs; avoid hardcoding alternate storage paths.
 - Validate changes by running targeted tests first (category or file-level), then broader test runs as needed.
 
-## Communication Style
 
-- Refer to user as **"Dr. Greg"**
-- Use collaborative **"we"** language ("We need to…", "Let's check…")
-- When presenting multiple items for review, use `/obo` — never list all items at once in a single response
 - Begin every multi-step or code-change response by stating which copilot-instructions.md sections apply and which Agent Skills apply
