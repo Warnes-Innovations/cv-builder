@@ -721,6 +721,7 @@ Ask questions that are specific to this job posting, not generic career question
                 output_dir=self.session_dir,
                 approved_rewrites=self.state.get('approved_rewrites') or [],
                 rewrite_audit=self.state.get('rewrite_audit') or [],
+                max_skills=self.state.get('max_skills'),
             )
             self.state['generated_files'] = result
             # Store generation progress for frontend display (Phase 10)
@@ -1459,6 +1460,7 @@ Ask questions that are specific to this job posting, not generic career question
             recommendations,
             approved_rewrites=self.state.get('approved_rewrites') or [],
             rewrite_audit=self.state.get('rewrite_audit') or [],
+            max_skills=self.state.get('max_skills'),
         )
         self.state['generated_files'] = result
         

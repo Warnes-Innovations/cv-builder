@@ -98,6 +98,7 @@ class StatusResponse:
     summary_focus_override: Optional[str]
     extra_skills: List[Any]
     session_file: str
+    max_skills: int
 
 
 @dataclass
@@ -663,6 +664,7 @@ Job Description (excerpt):
             summary_focus_override=conversation.state.get("summary_focus_override"),
             extra_skills=conversation.state.get("extra_skills")            or [],
             session_file=str(getattr(conversation, "session_file", "") or ""),
+            max_skills=int(conversation.state.get("max_skills") or get_config().get("generation.max_skills", 20)),
         )))
 
     @app.get("/api/master-fields")
@@ -2040,6 +2042,26 @@ Close professionally with a call to action.
             })
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.post("/api/generation-settings")
+    def update_generation_settings():
+        """Update per-session generation settings (max_skills, etc.).
+
+        Request body: ``{"max_skills": int}``
+        All fields are optional; only provided fields are updated.
+        """
+        data = request.get_json(silent=True) or {}
+        if "max_skills" in data:
+            v = data["max_skills"]
+            if not isinstance(v, int) or not (1 <= v <= 100):
+                return jsonify({"error": "max_skills must be an integer between 1 and 100"}), 400
+            conversation.state["max_skills"] = v
+        conversation._save_session()
+        cfg_default = get_config().get("generation.max_skills", 20)
+        return jsonify({
+            "ok": True,
+            "max_skills": int(conversation.state.get("max_skills") or cfg_default),
+        })
 
     @app.post("/api/reset")
     def reset():

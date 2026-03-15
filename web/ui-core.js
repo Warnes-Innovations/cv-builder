@@ -493,7 +493,8 @@ function setControlsEnabled(enabled) {
 let _modelData = null; // cached from last loadModelSelector() call
 let _modelDataTable = null;
 let _selectedModelProviders = new Set();
-let _modelSelectorLoading = false;
+let _modelSelectorLoading = false;   // guard: loadModelSelector() in flight
+let _catalogRefreshing = false;      // guard: _refreshModelCatalogForSelection() in flight
 
 async function loadModelSelector() {
   if (_modelSelectorLoading) return;
@@ -565,14 +566,15 @@ function _renderProviderSelector() {
 }
 
 async function _refreshModelCatalogForSelection() {
-  if (!_modelData) return;
-
-  const selected = Array.from(_selectedModelProviders);
-  if (!selected.length) {
-    _selectedModelProviders = new Set([_modelData.provider]);
-  }
+  if (_catalogRefreshing || !_modelData) return;
+  _catalogRefreshing = true;
 
   try {
+    const selected = Array.from(_selectedModelProviders);
+    if (!selected.length) {
+      _selectedModelProviders = new Set([_modelData.provider]);
+    }
+
     const providersParam = encodeURIComponent(Array.from(_selectedModelProviders).join(','));
     const catalog = await apiCall('GET', `/api/model-catalog?providers=${providersParam}`);
     _modelData.all_models = catalog.all_models || [];
@@ -586,6 +588,8 @@ async function _refreshModelCatalogForSelection() {
     }
   } catch (error) {
     console.warn('Could not refresh model catalog for selected providers:', error);
+  } finally {
+    _catalogRefreshing = false;
   }
 
   _buildModelTable();

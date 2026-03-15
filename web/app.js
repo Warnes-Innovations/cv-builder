@@ -367,9 +367,13 @@ async function _renderSessionsModalBody() {
       </tr>`;
   });
   html += '</table>';
-  body.innerHTML = html;
+  // Wrap in a single-use div so listeners are destroyed when the div is replaced on the next render
+  const smWrapper = document.createElement('div');
+  smWrapper.innerHTML = html;
+  body.innerHTML = '';
+  body.appendChild(smWrapper);
   // Wire up session-modal action buttons via event delegation (avoids inline onclick with path data)
-  body.addEventListener('click', e => {
+  smWrapper.addEventListener('click', e => {
     const btn = e.target.closest('[data-sm-action]');
     if (!btn) return;
     const path   = btn.dataset.smPath;
@@ -381,7 +385,7 @@ async function _renderSessionsModalBody() {
     else if (action === 'load')          loadSessionAndCloseModal(path);
     else if (action === 'delete')        _deleteSessionFromModal(path, e);
   });
-  body.querySelectorAll('.sm-key-input').forEach(input => {
+  smWrapper.querySelectorAll('.sm-key-input').forEach(input => {
     input.addEventListener('keydown', e => {
       const path = input.dataset.smPath;
       const idx  = parseInt(input.dataset.smIdx, 10);
@@ -541,14 +545,18 @@ async function _renderTrashView() {
       </tr>`;
   });
   html += '</table>';
-  body.innerHTML = html;
+  // Wrap in a single-use div so listeners are destroyed when the div is replaced on the next render
+  const trashWrapper = document.createElement('div');
+  trashWrapper.innerHTML = html;
+  body.innerHTML = '';
+  body.appendChild(trashWrapper);
   // Wire up trash action buttons via event delegation
-  body.addEventListener('click', e => {
+  trashWrapper.addEventListener('click', e => {
     const btn = e.target.closest('[data-trash-action]');
     if (!btn) return;
     const path   = btn.dataset.trashPath;
     const action = btn.dataset.trashAction;
-    if      (action === 'restore')       restoreFromTrash(path);
+    if      (action === 'restore')        restoreFromTrash(path);
     else if (action === 'delete-forever') deleteForever(path);
   });
 }
@@ -672,6 +680,9 @@ function restoreTabData({ uiPrefsOnly = false } = {}) {
 async function init() {
   // Initialize abort controller to null (set to new AbortController by setLoading(true))
   window._currentAbortController = null;
+
+  // Flush any messages that were queued before DOMContentLoaded (defensive — should be empty in practice).
+  _flushMessageQueue();
 
   // Show loading message
   appendMessage('system', '🔄 Connecting to CV Builder...');
@@ -1455,6 +1466,162 @@ function clearURLInput() {
   document.getElementById('job-url-input').value = '';
 }
 
+// ---------------------------------------------------------------------------
+// sendMessage() dispatch table
+//
+// Each handler: { test(text) → bool, handle(text) → Promise<void> }
+// Handlers are checked in order; first match wins and sendMessage() returns.
+// To add a new message type: append a new entry here — no changes to
+// sendMessage() itself required.
+// ---------------------------------------------------------------------------
+
+/** Branch: default LLM message — POST to /api/message and display the response. */
+async function _handleLLMMessage(text) {
+  setLoading(true);
+  try {
+    const res = await llmFetch('/api/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+    const data = parseMessageResponse(await res.json());
+
+    if (data.error) {
+      const errorMsg = data.error.toString();
+      // Suppress CV-data echoes that the LLM sometimes includes in error messages
+      if (errorMsg.includes('personal_info') ||
+          errorMsg.includes('experience":') ||
+          errorMsg.includes('"name":') ||
+          errorMsg.match(/^\s*["'{]/)) {
+        console.warn('Backend error was CV data echo, suppressing:', errorMsg);
+      } else {
+        appendRetryMessage('❌ Error: ' + errorMsg, () => {
+          document.getElementById('message-input').value = text;
+          sendMessage();
+        });
+        console.error('Server error:', data.error);
+      }
+    } else if (data.response) {
+      try {
+        const cleanResponse = data.response;
+        // Check if response embeds customization JSON
+        const jsonMatch = cleanResponse.match(/\{[\s\S]*?"recommended_experiences"[\s\S]*?\}/);
+        if (jsonMatch) {
+          const textBeforeJson = cleanResponse.substring(0, jsonMatch.index).trim();
+          if (textBeforeJson && !textBeforeJson.includes('{"action":')) {
+            const filteredLines = textBeforeJson.split('\n')
+              .filter(line => {
+                const t = line.trim();
+                return t.length > 0 && !t.startsWith('"') &&
+                       !t.includes('personal_info') && !t.includes('experience') && !t.includes('}: {');
+              })
+              .join('\n');
+            if (filteredLines.trim().length > 0) appendMessage('assistant', filteredLines);
+          }
+          await handleCustomizationResponse(jsonMatch[0]);
+        } else {
+          // Regular conversation — filter CV data echoes before display
+          const filteredResponse = cleanResponse.split('\n')
+            .filter(line => {
+              const t = line.trim();
+              return t.length > 0 && !t.startsWith('"') &&
+                     !t.includes('personal_info') && !t.includes('experience":') &&
+                     !t.includes('education":') && !t.includes('skills":') &&
+                     !t.includes('publications":') &&
+                     !t.match(/^\s*"[a-z_]+":\s*[{\[]/) &&
+                     !t.match(/^\s*\{[\s\S]*"[a-z_]+"/);
+            })
+            .join('\n');
+          if (filteredResponse.trim().length > 0) {
+            appendMessage('assistant', filteredResponse);
+          } else {
+            console.warn('LLM response contained only CV data echoes, nothing to display');
+          }
+        }
+      } catch (err) {
+        console.error('Error processing message response:', err, data.response);
+        appendMessage('system', `⚠️ I encountered an issue processing that response: ${err.message}. The conversation has been saved.`);
+      }
+    }
+  } catch (error) {
+    console.error('=== MESSAGE ERROR ===', error.name, error.message, error.stack);
+    if (error.name === 'AbortError') {
+      // user clicked Stop — message already shown in abortCurrentRequest()
+    } else if (error instanceof TypeError) {
+      appendRetryMessage(`⚠️ Cannot reach the server — is it still running? (${error.message})`, () => {
+        document.getElementById('message-input').value = text; sendMessage();
+      });
+    } else if (error instanceof SyntaxError) {
+      appendRetryMessage(`⚠️ The server returned an unexpected response: ${error.message}`, () => {
+        document.getElementById('message-input').value = text; sendMessage();
+      });
+    } else {
+      appendRetryMessage('⚠️ ' + error.message, () => {
+        document.getElementById('message-input').value = text; sendMessage();
+      });
+    }
+  }
+  setLoading(false);
+  await fetchStatus();
+}
+
+// Handlers checked in order; first matching test() wins.
+const _messageHandlers = [
+  {
+    // "review" / "review recommendations" — show table-based review
+    test: t => t.toLowerCase().includes('review recommendations') || t.toLowerCase() === 'review',
+    handle: async () => showTableBasedReview(),
+  },
+  {
+    // Interactive experience review in progress
+    test: () => window.waitingForExperienceResponse,
+    handle: async t => handleExperienceResponse(t),
+  },
+  {
+    // Interactive skills review in progress
+    test: () => window.waitingForSkillsResponse,
+    handle: async t => handleSkillsResponse(t),
+  },
+  {
+    // Post-analysis question response — local handler + backend save.
+    // Falls through to LLM if question was NOT handled locally (questionHandled === false).
+    test: () => window.waitingForQuestionResponse,
+    handle: async t => {
+      const questionHandled = handleQuestionResponse(t);
+      setLoading(true);
+      try {
+        const res = await llmFetch('/api/message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: t }),
+        });
+        const data = parseMessageResponse(await res.json());
+        if (data.error) {
+          console.error('Backend error saving question response:', data.error);
+        } else if (data.response && !questionHandled) {
+          appendMessage('assistant', data.response);
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') console.error('=== QUESTION RESPONSE SAVE ERROR ===', err);
+      }
+      setLoading(false);
+      if (!questionHandled) await _handleLLMMessage(t);
+    },
+  },
+  {
+    // "proceed" — go to customizations or show recommendations
+    test: t => t.toLowerCase() === 'proceed',
+    handle: async () => window.pendingRecommendations
+      ? showTableBasedReview()
+      : sendAction('recommend_customizations'),
+  },
+  {
+    // Default: general LLM conversation
+    test: () => true,
+    handle: _handleLLMMessage,
+  },
+];
+
 async function sendMessage() {
   const input = document.getElementById('message-input');
   const text = normalizeText(input.value);
@@ -1462,172 +1629,13 @@ async function sendMessage() {
 
   appendMessage('user', text);
   input.value = '';
-  
-  // Handle special interactive review commands
-  if (text.toLowerCase().includes('review recommendations') || text.toLowerCase() === 'review') {
-    await showTableBasedReview();
-    return;
-  }
-  
-  // Handle responses during interactive review
-  if (window.waitingForExperienceResponse) {
-    handleExperienceResponse(text);
-    return;
-  }
-  
-  if (window.waitingForSkillsResponse) {
-    handleSkillsResponse(text);
-    return;
-  }
-  
-  // Handle post-analysis question responses
-  if (window.waitingForQuestionResponse) {
-    // Still process the question locally
-    const questionHandled = handleQuestionResponse(text);
-    
-    // Also send to backend to save in history and get LLM response
-    setLoading(true);
-    try {
-      const res = await llmFetch('/api/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
-      });
-      const data = parseMessageResponse(await res.json());
 
-      if (data.error) {
-        console.error('Backend error saving question response:', data.error);
-      } else if (data.response && !questionHandled) {
-        // Display backend response only if question wasn't handled locally
-        // This allows LLM to acknowledge or provide feedback
-        appendMessage('assistant', data.response);
-      }
-    } catch (error) {
-      if (error.name === 'AbortError') { /* user stopped request */ }
-      else {
-        console.error('=== QUESTION RESPONSE SAVE ERROR ===', error);
-      }
-    }
-    setLoading(false);
-    
-    if (questionHandled) {
+  for (const handler of _messageHandlers) {
+    if (handler.test(text)) {
+      await handler.handle(text);
       return;
     }
   }
-  
-  // Handle proceed command
-  if (text.toLowerCase() === 'proceed') {
-    if (window.pendingRecommendations) {
-      await showTableBasedReview();
-    } else {
-      // Generate customizations
-      await sendAction('recommend_customizations');
-    }
-    return;
-  }
-  
-  setLoading(true);
-
-  try {
-    const res = await llmFetch('/api/message', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text })
-    });
-    const data = parseMessageResponse(await res.json());
-
-    if (data.error) {
-      // Filter out error messages that are just CV data echoes
-      const errorMsg = data.error.toString();
-      if (errorMsg.includes('personal_info') || 
-          errorMsg.includes('experience":') ||
-          errorMsg.includes('"name":') ||
-          errorMsg.match(/^\s*["'{]/)) {
-        console.warn('Backend error was CV data echo, suppressing:', errorMsg);
-      } else {
-        appendRetryMessage('❌ Error: ' + errorMsg, () => { document.getElementById('message-input').value = text; sendMessage(); });
-        console.error('Server error:', data.error);
-      }
-    } else if (data.response) {
-      try {
-        // Remove any CV data echoes that the LLM might include
-        let cleanResponse = data.response;
-        
-        // Check if response contains customization JSON (even if mixed with text)
-        const jsonMatch = cleanResponse.match(/\{[\s\S]*?"recommended_experiences"[\s\S]*?\}/);
-        if (jsonMatch) {
-          // Extract just the text part before JSON
-          const textBeforeJson = cleanResponse.substring(0, jsonMatch.index).trim();
-          if (textBeforeJson && textBeforeJson.length > 0 && !textBeforeJson.includes('{"action":')) {
-            // Filter out CV data echoes (lines starting with quotes or containing personal_info)
-            const filteredLines = textBeforeJson.split('\n')
-              .filter(line => {
-                const trimmed = line.trim();
-                return trimmed.length > 0 && 
-                       !trimmed.startsWith('"') && 
-                       !trimmed.includes('personal_info') &&
-                       !trimmed.includes('experience') &&
-                       !trimmed.includes('}: {');
-              })
-              .join('\n');
-            
-            if (filteredLines.trim().length > 0) {
-              appendMessage('assistant', filteredLines);
-            }
-          }
-          // Handle the customization JSON
-          await handleCustomizationResponse(jsonMatch[0]);
-        } else {
-          // Regular conversation - just display as text, but filter CV data echoes
-          const filteredResponse = cleanResponse.split('\n')
-            .filter(line => {
-              const trimmed = line.trim();
-              return trimmed.length > 0 && 
-                     !trimmed.startsWith('"') && 
-                     !trimmed.includes('personal_info') &&
-                     !trimmed.includes('experience":') &&
-                     !trimmed.includes('education":') &&
-                     !trimmed.includes('skills":') &&
-                     !trimmed.includes('publications":') &&
-                     !trimmed.match(/^\s*"[a-z_]+":\s*[{\[]/) &&
-                     !trimmed.match(/^\s*\{[\s\S]*"[a-z_]+"/); // Don't show JSON objects
-            })
-            .join('\n');
-          
-          if (filteredResponse.trim().length > 0) {
-            appendMessage('assistant', filteredResponse);
-          } else {
-            // LLM returned only CV data echoes, nothing meaningful to show
-            console.warn('LLM response contained only CV data echoes, nothing to display');
-          }
-        }
-      } catch (error) {
-        console.error('Error processing message response:', error);
-        console.error('Raw response:', data.response);
-        appendMessage('system', `⚠️ I encountered an issue processing that response: ${error.message}. The conversation has been saved.`);
-      }
-    }
-  } catch (error) {
-    console.error('=== MESSAGE ERROR ===');
-    console.error('Error type:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
-    console.error('User input:', text);
-    console.error('Full error:', error);
-    console.error('===================');
-    if (error.name === 'AbortError') {
-      // user clicked Stop — message already shown in abortCurrentRequest()
-    } else if (error instanceof TypeError) {
-      appendRetryMessage(`⚠️ Cannot reach the server — is it still running? (${error.message})`, () => { document.getElementById('message-input').value = text; sendMessage(); });
-    } else if (error instanceof SyntaxError) {
-      appendRetryMessage(`⚠️ The server returned an unexpected response: ${error.message}`, () => { document.getElementById('message-input').value = text; sendMessage(); });
-    } else {
-      appendRetryMessage('⚠️ ' + error.message, () => { document.getElementById('message-input').value = text; sendMessage(); });
-    }
-  }
-  
-  setLoading(false);
-  await fetchStatus();
 }
 
 async function analyzeJob() {
@@ -3080,6 +3088,18 @@ async function populateCustomizationsTabWithReview(data) {
       <div class="pe-bar"><div class="pe-fill" id="pe-fill" style="width:0%;background:#86efac;"></div></div>
     </div>
 
+    <!-- Generation Settings -->
+    <details id="generation-settings-panel" style="margin:0 0 16px;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;background:#f8fafc;">
+      <summary style="cursor:pointer;font-weight:600;color:#374151;user-select:none;">⚙️ Generation Settings</summary>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
+        <label for="max-skills-input" style="font-size:0.9em;color:#4b5563;white-space:nowrap;">Max skills in CV:</label>
+        <input type="range" id="max-skills-input" min="1" max="60" step="1" value="20"
+          style="flex:1;accent-color:#3b82f6;">
+        <span id="max-skills-value" style="font-weight:600;color:#1e293b;min-width:2em;text-align:right;">20</span>
+        <span style="font-size:0.85em;color:#9ca3af;">(default: 20)</span>
+      </div>
+    </details>
+
     <!-- Sub-tab bar -->
     <div class="review-subtabs" id="review-subtab-bar">
       <button class="review-subtab active" data-pane="experiences"   onclick="switchReviewSubtab('experiences')">📊 Experiences</button>
@@ -3133,6 +3153,30 @@ async function populateCustomizationsTabWithReview(data) {
   `;
 
   content.innerHTML = html;
+
+  // Sync max-skills slider with current session value
+  (async () => {
+    const status = await getStatus();
+    const currentMax = status.max_skills || 20;
+    const slider = document.getElementById('max-skills-input');
+    const label  = document.getElementById('max-skills-value');
+    if (slider) {
+      slider.value = currentMax;
+      if (label) label.textContent = currentMax;
+      slider.addEventListener('input', () => {
+        if (label) label.textContent = slider.value;
+      });
+      slider.addEventListener('change', async () => {
+        const v = parseInt(slider.value, 10);
+        if (label) label.textContent = v;
+        try {
+          await apiCall('POST', '/api/generation-settings', { max_skills: v });
+        } catch (e) {
+          console.warn('Failed to save max_skills setting:', e);
+        }
+      });
+    }
+  })();
 
   // Track which panes have been loaded to avoid re-fetching
   window._reviewPaneLoaded = {};
@@ -5596,8 +5640,24 @@ function appendMessageHtml(type, html) {
   conversation.scrollTop = conversation.scrollHeight;
 }
 
+// Buffer for messages emitted before the #conversation div exists.
+// Flushed at the start of init() once the DOM is fully ready.
+const _messageQueue = [];
+
+function _flushMessageQueue() {
+  while (_messageQueue.length) {
+    const { type, text } = _messageQueue.shift();
+    appendMessage(type, text);
+  }
+}
+
 function appendMessage(type, text) {
   const conversation = document.getElementById('conversation');
+  if (!conversation) {
+    // DOM not ready yet — buffer until _flushMessageQueue() is called from init()
+    _messageQueue.push({ type, text });
+    return null;
+  }
   const message = document.createElement('div');
   message.className = `message ${type}`;
   const content = document.createElement('div');

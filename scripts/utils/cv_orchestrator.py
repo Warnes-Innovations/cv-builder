@@ -807,6 +807,7 @@ For manual generation:
         output_dir: Optional[Path] = None,
         approved_rewrites: Optional[List[Dict]] = None,
         rewrite_audit: Optional[List[Dict]] = None,
+        max_skills: Optional[int] = None,
     ) -> Dict:
         """
         Generate CV files based on LLM analysis and recommendations.
@@ -849,7 +850,8 @@ For manual generation:
         # Select content using hybrid approach (LLM + scoring)
         selected_content = self._select_content_hybrid(
             job_analysis,
-            customizations
+            customizations,
+            max_skills=max_skills,
         )
 
         # Apply any user-approved text rewrites before rendering
@@ -1115,7 +1117,8 @@ If you need clarification, return:
     def _select_content_hybrid(
         self,
         job_analysis: Dict,
-        customizations: Dict
+        customizations: Dict,
+        max_skills: Optional[int] = None,
     ) -> Dict:
         """
         Select content using hybrid LLM + rule-based approach.
@@ -1188,7 +1191,7 @@ If you need clarification, return:
         domain = job_analysis.get('domain', '')
         cfg    = get_config()
         max_ach    = cfg.get('generation.max_achievements', 5)
-        max_skills = cfg.get('generation.max_skills', 20)
+        max_skills = max_skills if max_skills is not None else cfg.get('generation.max_skills', 20)
 
         # ── Experiences ───────────────────────────────────────────────────────
         # Include ALL experiences; only exclude those explicitly omitted.
