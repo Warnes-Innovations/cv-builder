@@ -295,6 +295,39 @@ Files created:
 3. **Save Session**: Sessions auto-save on exit
 4. **Generate Cover Letter**: (Feature coming soon)
 
+## Testing
+
+### Python tests
+
+Run the full Python test suite via the orchestrator script (preferred):
+
+```bash
+conda activate cvgen
+python run_tests.py                                       # all tests
+python run_tests.py --categories unit component integration
+python run_tests.py --list                                # list available categories
+```
+
+Or run pytest directly:
+
+```bash
+pytest                        # all tests
+pytest tests/test_*.py        # specific files
+```
+
+### JavaScript tests
+
+The frontend utilities in `web/utils.js`, `web/api-client.js`, and `web/state-manager.js` are covered by Vitest unit tests.
+
+```bash
+npm install               # first time only — installs vitest + jsdom
+npm run test:js           # run all JS tests (104 tests across 3 files)
+npm run test:js:watch     # watch mode during development
+npm run test:js:cover     # run with coverage report
+```
+
+Test files live in `tests/js/`. The test runner is configured in `vitest.config.mjs`.
+
 ## Requirements
 
 See [REQUIREMENTS.md](REQUIREMENTS.md) for full system requirements and design specifications.

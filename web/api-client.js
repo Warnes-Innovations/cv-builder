@@ -236,3 +236,20 @@ function setLoading(isLoading) {
   }
   loadingElement.style.display = isLoading ? 'block' : 'none';
 }
+
+// CJS export shim — no-op in browsers (module is undefined)
+if (typeof module !== 'undefined') {
+  module.exports = {
+    StorageKeys,
+    apiCall,
+    loadSession, deleteSession, fetchStatus, fetchHistory,
+    saveSession, resetSession,
+    uploadJobFile, submitJobText, fetchJobFromUrl, loadJobFile, loadExistingItems,
+    analyzeJob, askPostAnalysisQuestions, submitPostAnalysisAnswers,
+    sendMessage, sendAction,
+    fetchCVData, updateCVData, updateExperience, fetchExperienceDetails,
+    fetchPublicationRecommendations, submitReviewDecisions,
+    fetchRewrites, approveRewrites,
+    generateCV, downloadFile, setLoading,
+  };
+}

@@ -6,6 +6,22 @@
 
 // StorageKeys is defined in api-client.js (loaded before this file)
 
+/**
+ * Mirror of the Python Phase enum in scripts/utils/conversation_manager.py.
+ * Python is the SOURCE OF TRUTH — update both files together whenever adding
+ * or renaming a phase.
+ */
+const PHASES = {
+  INIT:           'init',
+  JOB_ANALYSIS:   'job_analysis',
+  CUSTOMIZATION:  'customization',
+  REWRITE_REVIEW: 'rewrite_review',
+  SPELL_CHECK:    'spell_check',
+  GENERATION:     'generation',
+  LAYOUT_REVIEW:  'layout_review',
+  REFINEMENT:     'refinement',
+};
+
 // Global state variables (moved into module for clarity)
 let currentTab = 'job';
 let isLoading = false;
@@ -21,7 +37,7 @@ let interactiveState = {
   data: null
 };
 let sessionId = null;
-let lastKnownPhase = 'init';
+let lastKnownPhase = PHASES.INIT;
 let isReconnecting = false;
 
 // Export state getters/setters
@@ -82,7 +98,7 @@ function initializeState() {
   };
   window.postAnalysisQuestions = [];
   window.questionAnswers = {};
-  lastKnownPhase = 'init';
+  lastKnownPhase = PHASES.INIT;
 
   // Get or generate session ID
   let storedId = localStorage.getItem(StorageKeys.SESSION_ID);
@@ -250,7 +266,7 @@ async function restoreBackendState() {
 
     if (statusData) {
       // If we have job analysis data, try to restore it
-      if (statusData.phase === 'customization' || statusData.phase === 'rewrite_review' || statusData.phase === 'generation' || statusData.phase === 'refinement') {
+      if (statusData.phase === PHASES.CUSTOMIZATION || statusData.phase === PHASES.REWRITE_REVIEW || statusData.phase === PHASES.GENERATION || statusData.phase === PHASES.REFINEMENT) {
         const analysisData = statusData.job_analysis;
         if (analysisData) {
           tabData.analysis = analysisData;
@@ -261,7 +277,7 @@ async function restoreBackendState() {
       }
 
       // If we have customization data, try to restore it
-      if (statusData.phase === 'rewrite_review' || statusData.phase === 'generation' || statusData.phase === 'refinement') {
+      if (statusData.phase === PHASES.REWRITE_REVIEW || statusData.phase === PHASES.GENERATION || statusData.phase === PHASES.REFINEMENT) {
         const customizationData = statusData.customizations;
         if (customizationData) {
           tabData.customizations = customizationData;
@@ -273,7 +289,7 @@ async function restoreBackendState() {
       }
 
       // If we have generated CV, try to restore it
-      if (statusData.phase === 'refinement' && statusData.generated_files) {
+      if (statusData.phase === PHASES.REFINEMENT && statusData.generated_files) {
         tabData.cv = statusData.generated_files;
         if (currentTab === 'cv') {
           populateCVTab(statusData.generated_files);
@@ -306,4 +322,14 @@ async function loadSessionFile(path) {
     console.error('Failed to load session file:', error);
   }
   return null;
+}
+
+// CJS export shim — no-op in browsers (module is undefined)
+if (typeof module !== 'undefined') {
+  module.exports = {
+    PHASES,
+    stateManager,
+    initializeState, loadStateFromLocalStorage, saveStateToLocalStorage,
+    clearState, restoreSession, restoreBackendState, loadSessionFile,
+  };
 }

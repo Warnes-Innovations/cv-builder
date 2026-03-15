@@ -30,10 +30,16 @@ Actions requiring explicit confirmation:
 - If `--llm-provider` is omitted, `llm.default_provider` must be configured via env/config.
 - zsh tip: if shell autocorrect changes `github` to `.github`, escape or quote the provider value, e.g. `python scripts/web_app.py --llm-provider \github` (or `--llm-provider 'github'`).
 - Start CLI flow: `python scripts/llm_cv_generator.py`.
-- Run tests via orchestrator script (preferred):
+- Run Python tests via orchestrator script (preferred):
   - `python run_tests.py`
   - `python run_tests.py --categories unit component integration`
   - `python run_tests.py --list`
+- Run JavaScript tests (frontend utilities in `web/`):
+  - `npm run test:js`              — run all 104 JS tests
+  - `npm run test:js:watch`        — watch mode
+  - `npm run test:js:cover`        — with coverage
+  - Test files: `tests/js/utils.test.js`, `tests/js/api-client.test.js`, `tests/js/state-manager.test.js`
+  - Config: `vitest.config.mjs`; stack: Vitest 3 + jsdom
 
 ## Project-specific patterns and gotchas
 - Config precedence is intentional and must be preserved: env vars > `.env` > `config.yaml` > defaults (`scripts/utils/config.py`).

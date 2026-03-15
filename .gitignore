@@ -19,5 +19,8 @@ archive/
 .env
 .github/obo_sessions/
 
+# Node / JS tooling
+node_modules/
+
 # Execution artifacts
 *.log

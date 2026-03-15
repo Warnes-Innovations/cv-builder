@@ -182,3 +182,13 @@ function ordinal(n) {
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
+
+// CJS export shim — no-op in browsers (module is undefined)
+if (typeof module !== 'undefined') {
+  module.exports = {
+    normalizeText, fmtDate, cleanJsonResponse, escapeHtml,
+    extractTitleAndCompanyFromJobText, normalizePositionLabel,
+    stripHtml, truncateText, capitalizeWords, pluralize,
+    formatDuration, ordinal,
+  };
+}
