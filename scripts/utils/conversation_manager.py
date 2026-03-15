@@ -8,15 +8,27 @@ and user interaction.
 import json
 import re
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 import readline  # Enable line editing and history for input()
 
-from .llm_client import LLMClient
+from .llm_client import LLMClient, LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
 from .cv_orchestrator import CVOrchestrator
 from .config import get_config
 
 
+# SOURCE OF TRUTH for workflow phase names.
+# The JS mirror is PHASES in web/state-manager.js — update both files together.
+class Phase(str, Enum):
+    INIT          = 'init'
+    JOB_ANALYSIS  = 'job_analysis'
+    CUSTOMIZATION = 'customization'
+    REWRITE_REVIEW = 'rewrite_review'
+    SPELL_CHECK   = 'spell_check'
+    GENERATION    = 'generation'
+    LAYOUT_REVIEW = 'layout_review'
+    REFINEMENT    = 'refinement'
 
 
 class ConversationManager:
@@ -33,7 +45,7 @@ class ConversationManager:
         self.config = config or get_config()
         self.conversation_history: List[Dict[str, str]] = []
         self.state = {
-            'phase':              'init',  # init, job_analysis, customization, rewrite_review, spell_check, generation, layout_review, refinement
+            'phase':              Phase.INIT,
             'position_name':      None,
             'job_description':    None,
             'job_analysis':       None,
@@ -112,7 +124,7 @@ class ConversationManager:
         while True:
             try:
                 # Check if we're expecting multi-line input (e.g., job description)
-                if self.state['phase'] == 'init' and not self.state['job_description']:
+                if self.state['phase'] == Phase.INIT and not self.state['job_description']:
                     print("\nPlease provide the job description:")
                     job_text = self._get_multiline_input()
                     if not job_text:
@@ -130,7 +142,7 @@ class ConversationManager:
                         self.orchestrator.master_data
                     )
                     self.state['job_analysis'] = analysis
-                    self.state['phase'] = 'customization'
+                    self.state['phase'] = Phase.CUSTOMIZATION
                     print(f"✓ Job analysis complete:\n{json.dumps(analysis, indent=2)}")
                     # Prompt assistant to ask clarifying questions with specific context
                     contextual_prompt = f"""I've analyzed the job description. Here are the key findings:
@@ -214,11 +226,8 @@ Ask questions that are specific to this job posting, not generic career question
             {'role': 'system', 'content': system_msg}
         ] + self._strip_context_from_history(self.conversation_history)
         
-        # Get LLM response — request a generous token budget for free-form chat.
-        # The system prompt includes large context blobs (full CV JSON, job analysis,
-        # customizations) that consume input tokens; without an explicit output cap the
-        # provider may return a very small default, truncating long responses.
-        response = self.llm.chat(messages, temperature=0.7, max_tokens=4096)
+        # Get LLM response.
+        response = self.llm.chat(messages, temperature=0.7)
         
         # Add to history
         self.conversation_history.append({
@@ -377,13 +386,13 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
             base_prompt += candidate_info
         
         # Add phase-specific context
-        if self.state['phase'] == 'job_analysis' and self.state['job_analysis']:
+        if self.state['phase'] == Phase.JOB_ANALYSIS and self.state['job_analysis']:
             base_prompt += f"\n\nJob Analysis Complete:\n{json.dumps(self.state['job_analysis'], indent=2)}"
 
         if self.state['customizations']:
             base_prompt += f"\n\nRecommended Customizations:\n{json.dumps(self.state['customizations'], indent=2)}"
 
-        if self.state['phase'] == 'rewrite_review':
+        if self.state['phase'] == Phase.REWRITE_REVIEW:
             pending = self.state.get('pending_rewrites') or []
             base_prompt += (
                 f"\n\nPhase: Rewrite Review\n"
@@ -462,7 +471,7 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
                 self.orchestrator.master_data
             )
             self.state['job_analysis'] = analysis
-            self.state['phase'] = 'customization'
+            self.state['phase'] = Phase.CUSTOMIZATION
             self.state['post_analysis_questions'] = []
             self.state['post_analysis_answers'] = {}
 
@@ -499,7 +508,7 @@ Ask questions that are specific to this job posting, not generic career question
                     + self._strip_context_from_history(self.conversation_history)
                     + [{'role': 'user', 'content': contextual_prompt}]
                 )
-                questions_response = self.llm.chat(messages, temperature=0.7, max_tokens=4096)
+                questions_response = self.llm.chat(messages, temperature=0.7)
                 
                 # Add the questions to conversation history 
                 self.conversation_history.append({
@@ -517,6 +526,12 @@ Ask questions that are specific to this job posting, not generic career question
                         'job_analysis': analysis,
                         'post_analysis_questions': extracted_questions,
                     },
+                }
+            except LLMError as e:
+                print(f"LLM error generating contextual questions: {e}")
+                return {
+                    'text': f'✓ Job analysis complete. (Note: {e})',
+                    'context_data': {'job_analysis': analysis},
                 }
             except Exception as e:
                 print(f"Error generating contextual questions: {e}")
@@ -550,7 +565,7 @@ Ask questions that are specific to this job posting, not generic career question
             )
             self._normalize_recommendations(recommendations)
             self.state['customizations'] = recommendations
-            self.state['phase'] = 'generation'
+            self.state['phase'] = Phase.GENERATION
             
             return {
                 'text': f"✓ Customization recommendations generated ({len(recommendations.get('recommended_experiences', []))} experiences, {len(recommendations.get('recommended_skills', []))} skills).",
@@ -710,7 +725,7 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['generated_files'] = result
             # Store generation progress for frontend display (Phase 10)
             self.state['generation_progress'] = result.get('generation_progress', [])
-            self.state['phase'] = 'layout_review'
+            self.state['phase'] = Phase.LAYOUT_REVIEW
 
             files_list = "\n".join(f"  - {f}" for f in result['files'])
             return f"✓ CV generated successfully!\n\nOutput directory: {result['output_dir']}\n\nFiles created:\n{files_list}"
@@ -761,7 +776,7 @@ Ask questions that are specific to this job posting, not generic career question
 
         self.state['approved_rewrites'] = approved
         self.state['rewrite_audit']     = audit
-        self.state['phase']             = 'spell_check'
+        self.state['phase']             = Phase.SPELL_CHECK
         self._save_session()
 
         n_rejected = sum(1 for d in decisions if d.get('outcome') == 'reject')
@@ -783,7 +798,7 @@ Ask questions that are specific to this job posting, not generic career question
             ``{"flag_count": int, "accepted_count": int, "phase": "generation"}``
         """
         self.state['spell_audit'] = spell_audit or []
-        self.state['phase']       = 'generation'
+        self.state['phase']       = Phase.GENERATION
         self._save_session()
         spell_audit    = spell_audit or []
         flag_count     = len(spell_audit)
@@ -805,7 +820,7 @@ Ask questions that are specific to this job posting, not generic career question
             ``{"instructions_applied": int, "phase": "refinement"}``
         """
         self.state['layout_instructions'] = layout_instructions or []
-        self.state['phase'] = 'refinement'
+        self.state['phase'] = Phase.REFINEMENT
         self._save_session()
         instructions_applied = len(layout_instructions or [])
         return {
@@ -925,15 +940,15 @@ Ask questions that are specific to this job posting, not generic career question
 
     # ── Phase re-entry / iterative refinement ────────────────────────────────
 
-    # Mapping from logical step name (frontend) → internal phase string
-    _STEP_TO_PHASE: Dict[str, str] = {
-        'job':            'init',
-        'analysis':       'job_analysis',
-        'customizations': 'customization',
-        'rewrite':        'rewrite_review',
-        'spell':          'spell_check',
-        'generate':       'generation',
-        'layout':         'layout_review',
+    # Mapping from logical step name (frontend) → internal Phase enum value
+    _STEP_TO_PHASE: Dict[str, Phase] = {
+        'job':            Phase.INIT,
+        'analysis':       Phase.JOB_ANALYSIS,
+        'customizations': Phase.CUSTOMIZATION,
+        'rewrite':        Phase.REWRITE_REVIEW,
+        'spell':          Phase.SPELL_CHECK,
+        'generate':       Phase.GENERATION,
+        'layout':         Phase.LAYOUT_REVIEW,
     }
 
     def _build_downstream_context(self) -> str:
@@ -1030,7 +1045,7 @@ Ask questions that are specific to this job posting, not generic career question
         ctx = self._build_downstream_context()
 
         # ── Re-run phase-specific LLM call ───────────────────────────────────
-        if resolved in ('init', 'job_analysis'):
+        if resolved in (Phase.INIT, Phase.JOB_ANALYSIS):
             job_text = self.state.get('job_description')
             if not job_text:
                 return {'ok': False, 'error': 'No job description available'}
@@ -1042,10 +1057,10 @@ Ask questions that are specific to this job posting, not generic career question
             # Reset downstream flags so the user re-approves from the new analysis
             self.state['iterating']     = True
             self.state['reentry_phase'] = resolved
-            self.state['phase']         = 'customization'
+            self.state['phase']         = Phase.CUSTOMIZATION
             new_output = {'job_analysis': analysis}
 
-        elif resolved == 'customization':
+        elif resolved == Phase.CUSTOMIZATION:
             if not self.state.get('job_analysis'):
                 return {'ok': False, 'error': 'Job analysis not available'}
             prior_output = {'customizations': self.state.get('customizations')}
@@ -1062,10 +1077,10 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['customizations'] = recommendations
             self.state['iterating']      = True
             self.state['reentry_phase']  = resolved
-            self.state['phase']          = 'customization'
+            self.state['phase']          = Phase.CUSTOMIZATION
             new_output = {'customizations': recommendations}
 
-        elif resolved == 'rewrite_review':
+        elif resolved == Phase.REWRITE_REVIEW:
             if not self.state.get('job_analysis'):
                 return {'ok': False, 'error': 'Job analysis not available'}
             prior_output = {'pending_rewrites': self.state.get('pending_rewrites')}
@@ -1085,7 +1100,7 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['persuasion_warnings'] = persuasion_warnings
             self.state['iterating']           = True
             self.state['reentry_phase']       = resolved
-            self.state['phase']               = 'rewrite_review'
+            self.state['phase']               = Phase.REWRITE_REVIEW
             new_output = {
                 'pending_rewrites':    rewrites,
                 'persuasion_warnings': persuasion_warnings,
@@ -1106,7 +1121,7 @@ Ask questions that are specific to this job posting, not generic career question
     def add_job_description(self, job_text: str):
         """Add job description to state."""
         self.state['job_description'] = job_text
-        self.state['phase'] = 'job_analysis'
+        self.state['phase'] = Phase.JOB_ANALYSIS
     
     def _print_welcome(self):
         """Print welcome message."""
@@ -1189,7 +1204,7 @@ Ask questions that are specific to this job posting, not generic career question
         if confirm.lower() in ['yes', 'y']:
             self.conversation_history = []
             self.state = {
-                'phase':              'init',
+                'phase':              Phase.INIT,
                 'position_name':      None,
                 'job_description':    None,
                 'job_analysis':       None,

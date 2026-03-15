@@ -5,7 +5,9 @@ for JS-rendered SPA pages (e.g. Workday).
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 from bs4 import BeautifulSoup
 import json
@@ -68,7 +70,6 @@ def test_regular_html_extraction():
     result = extract_job_text_from_html(html)
     assert 'Software Engineer' in result
     assert 'Python' in result
-    print("✅ test_regular_html_extraction passed")
 
 
 def test_spa_json_ld_fallback():
@@ -96,7 +97,6 @@ def test_spa_json_ld_fallback():
     assert 'Principal Data Scientist' in result
     assert 'Python' in result
     assert len(result) > 100
-    print("✅ test_spa_json_ld_fallback passed")
 
 
 def test_spa_meta_og_fallback():
@@ -115,14 +115,13 @@ def test_spa_meta_og_fallback():
     result = extract_job_text_from_html(html)
     assert 'ML Engineer' in result
     assert 'PyTorch' in result
-    print("✅ test_spa_meta_og_fallback passed")
 
 
 def test_json_ld_preferred_over_meta():
     """JSON-LD should be preferred over og:description when both are present."""
-    ld_desc = "JSONLD: " + "Data Engineer role with Spark and Kafka experience. " * 10
-    meta_desc = "META: " + "Different content from og:description. " * 10
-    ld_json = json.dumps({"@type": "JobPosting", "description": ld_desc})
+    ld_desc   = "JSONLD: " + "Data Engineer role with Spark and Kafka experience. " * 10
+    meta_desc = "META: "   + "Different content from og:description. " * 10
+    ld_json   = json.dumps({"@type": "JobPosting", "description": ld_desc})
     html = f"""<html>
         <head>
             <meta property="og:description" content="{meta_desc}">
@@ -133,7 +132,6 @@ def test_json_ld_preferred_over_meta():
 
     result = extract_job_text_from_html(html)
     assert result.startswith('JSONLD:')
-    print("✅ test_json_ld_preferred_over_meta passed")
 
 
 if __name__ == '__main__':

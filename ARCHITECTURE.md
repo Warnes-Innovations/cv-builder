@@ -21,29 +21,29 @@
 ### 1.1 High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         User Layer                               │
-│                    (Web Browser - Chrome/Firefox/Safari)         │
-└────────────────┬────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                         User Layer                             │
+│                    (Web Browser - Chrome/Firefox/Safari)       │
+└────────────────┬───────────────────────────────────────────────┘
                  │ HTTP/HTTPS
                  │ WebSocket (future)
                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Presentation Layer                            │
+┌────────────────────────────────────────────────────────────────┐
+│                    Presentation Layer                          │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │  Static Web App (index.html + JavaScript)                │  │
 │  │  - DataTables for review                                 │  │
 │  │  - Rich text editor for CV content        [NEW]          │  │
 │  │  - Session state management                              │  │
 │  └──────────────────────────────────────────────────────────┘  │
-└────────────────┬────────────────────────────────────────────────┘
+└────────────────┬───────────────────────────────────────────────┘
                  │ REST API (JSON)
                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       API Layer (Flask)                          │
+┌────────────────────────────────────────────────────────────────┐
+│                       API Layer (Flask)                        │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │  web_app.py - HTTP Server                                │  │
-│  │  Routes:                                                  │  │
+│  │  Routes:                                                 │  │
 │  │    POST /api/chat - LLM conversation                     │  │
 │  │    POST /api/analyze - Job analysis                      │  │
 │  │    GET  /api/recommend - Get recommendations             │  │
@@ -51,11 +51,11 @@
 │  │    POST /api/edit - Update CV content    [NEW]           │  │
 │  │    POST /api/generate - Create PDF/DOCX  [NEW]           │  │
 │  └──────────────────────────────────────────────────────────┘  │
-└────────────────┬────────────────────────────────────────────────┘
+└────────────────┬───────────────────────────────────────────────┘
                  │
                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Business Logic Layer                         │
+┌────────────────────────────────────────────────────────────────┐
+│                     Business Logic Layer                       │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │  conversation_manager.py                                 │  │
 │  │    - Workflow state machine                              │  │
@@ -76,11 +76,11 @@
 │  │    - calculate_experience_relevance()                    │  │
 │  │    - rank_skills()                                       │  │
 │  └──────────────────────────────────────────────────────────┘  │
-└────────────────┬────────────────────────────────────────────────┘
+└────────────────┬───────────────────────────────────────────────┘
                  │
                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Integration Layer                             │
+┌────────────────────────────────────────────────────────────────┐
+│                    Integration Layer                           │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │  llm_client.py - LLM Adapter Pattern                     │  │
 │  │    - GitHubModelsClient (primary)                        │  │
@@ -96,27 +96,27 @@
 │  │  docx_generator.py                          [NEW]        │  │
 │  │    - generate_ats_docx() - python-docx generation        │  │
 │  └──────────────────────────────────────────────────────────┘  │
-└────────────────┬────────────────────────────────────────────────┘
+└────────────────┬───────────────────────────────────────────────┘
                  │
                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       External Services                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐ │
-│  │ GitHub       │  │ OpenAI       │  │ Anthropic Claude     │ │
-│  │ Models API   │  │ GPT-4 API    │  │ API                  │ │
-│  │ (Primary)    │  │ (Fallback)   │  │ (Fallback)           │ │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘ │
-│                                                                  │
+┌────────────────────────────────────────────────────────────────┐
+│                       External Services                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │ GitHub       │  │ OpenAI       │  │ Anthropic Claude     │  │
+│  │ Models API   │  │ GPT-4 API    │  │ API                  │  │
+│  │ (Primary)    │  │ (Fallback)   │  │ (Fallback)           │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+│                                                                │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │ PDF Rendering (WeasyPrint Primary, Chrome Fallback)      │  │
 │  │   - WeasyPrint: HTML → PDF (preferred for reliability)   │  │
 │  │   - Chrome headless: HTML → PDF (fallback if needed)     │  │
 │  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────────────────┘
                  │
                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Data Storage Layer                          │
+┌────────────────────────────────────────────────────────────────┐
+│                      Data Storage Layer                        │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │  File System (JSON)                                      │  │
 │  │    ~/CV/Master_CV_Data.json - Source of truth            │  │
@@ -124,7 +124,7 @@
 │  │    ./files/sessions/*.json - Conversation history        │  │
 │  │    ./files/{job_name}/*.{pdf,docx} - Generated CVs       │  │
 │  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1.2 Design Principles
@@ -1538,12 +1538,12 @@ open http://localhost:5000
 This architecture delivers a **production-ready MVP in 1 week** by:
 
 1. **Reusing existing components** (LLM client, conversation manager, review UI)
-2. **Leveraging mature tools** (Quarto, python-docx, DataTables)
+2. **Leveraging mature tools** (Jinja2 + WeasyPrint, python-docx, DataTables)
 3. **Simplifying deployment** (local-only, single-user)
 4. **Focusing on core value** (CV editing + document generation)
 
 **Key Architectural Decisions**:
-- ✅ Quarto for PDF generation (matches user's expertise)
+- ✅ Jinja2 + WeasyPrint for HTML/PDF generation (WeasyPrint primary; Chrome headless fallback)
 - ✅ python-docx for ATS DOCX (simple, reliable)
 - ✅ File-based storage (no database overhead)
 - ✅ Synchronous processing (acceptable for single-user)
@@ -1553,7 +1553,51 @@ This architecture delivers a **production-ready MVP in 1 week** by:
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: February 11, 2026  
+**Document Version**: 1.1  
+**Last Updated**: March 13, 2026  
 **Status**: Approved  
 **Author**: AI Architect (GitHub Copilot)
+
+---
+
+## 10. Architectural Concerns & Recommendations
+
+> Extracted from comprehensive architectural review, March 13, 2026.
+
+### 10.1 Minor Concerns
+
+**Documentation drift**: Original spec referenced Quarto; implementation uses Jinja2 + WeasyPrint. Quarto is not installed or required.
+
+**`web_app.py` size (~2,100 lines)**: Hard to navigate; new contributors struggle to find routes.  
+_Recommendation_: Refactor into Flask blueprints (`job_routes`, `session_routes`, `model_routes`, `generation_routes`, ~150–200 lines each).
+
+**`ConversationManager.state` dict mixes concerns**: All phases share one flat dict, making it harder to test individual phases independently.  
+_Recommendation_: Phase-specific state objects (deferred to post-MVP).
+
+### 10.2 Moderate Concerns
+
+**Single-session lock doesn't scale**: Two simultaneous browser tabs are blocked.  
+_Risk_: LOW for single-user assumption; blocks future multi-user or batch use.  
+_Recommendation_: Refactor to session-ID routing if concurrency ever needed (not urgent).
+
+**Global mutable `appState` in frontend**: Risk of unexpected mutations; harder to debug.  
+_Risk_: LOW given current feature set.  
+_Recommendation_: Consider immutable state (Immer.js) if complex UI features are added.
+
+**LLM malformed-response recovery is basic**: Users may see raw JSON in edge cases.  
+_Recommendation_: Improve error messages; retry with stricter prompt on parse failure.
+
+### 10.3 Recommendations for Next Phase
+
+**High priority:**
+1. Add integration tests for key API routes (analyze, recommend, generate); target ~80% core-module coverage.
+2. Add an ADR (Architecture Decision Records) section explaining file-backed/no-database/single-user trade-offs.
+
+**Medium priority:**
+1. Refactor Flask routes into blueprints.
+2. Expand E2E tests (pytest + playwright) to catch API↔UI regressions.
+
+**Low priority (deferred to scaling phase):**
+1. Multi-session concurrency via session-ID routing.
+2. SQLite for session metadata (richer queries).
+3. WebSocket push for live generation progress (replaces polling).

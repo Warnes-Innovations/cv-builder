@@ -25,8 +25,10 @@ sys.path.insert(0, str(Path(__file__).parent / 'scripts'))
 class TestRunner:
     """Orchestrates all CV Builder tests with proper setup and teardown."""
     
-    def __init__(self, verbose: bool = False):
+    def __init__(self, verbose: bool = False, llm_provider: Optional[str] = None, llm_model: Optional[str] = None):
         self.verbose = verbose
+        self.llm_provider = llm_provider
+        self.llm_model = llm_model
         self.results = {}
         self.start_time = time.time()
         self.server_pid: Optional[int] = None
@@ -53,9 +55,14 @@ class TestRunner:
                 return True
             
             # Start server in background
-            server_process = subprocess.Popen([
-                sys.executable, 'scripts/web_app.py'
-            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            cmd = [sys.executable, 'scripts/web_app.py']
+            if self.llm_provider:
+                cmd += ['--llm-provider', self.llm_provider]
+            if self.llm_model:
+                cmd += ['--llm-model', self.llm_model]
+            server_process = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
             
             # Give server time to start
             time.sleep(3)
@@ -91,8 +98,8 @@ class TestRunner:
         print("=" * 50)
         
         unit_tests = [
-            'test_copilot_auth.py',
-            'test_url_fetch.py',
+            'tests/test_copilot_auth.py',
+            'tests/test_url_fetch.py',
             'tests/test_scoring.py',
             'tests/test_template_renderer.py',
             'tests/test_cv_orchestrator.py',
@@ -115,7 +122,7 @@ class TestRunner:
         print("=" * 50)
         
         component_tests = [
-            'test_ats_generation.py',
+            'tests/test_ats_generation.py',
         ]
         
         results = {}
@@ -135,10 +142,10 @@ class TestRunner:
         print("=" * 50)
         
         integration_tests = [
-            'test_enhanced_job_input.py',
-            'test_linkedin_url_handling.py', 
-            'test_user_linkedin_url.py',
-            'test_web_ui_workflow.py',
+            'tests/test_enhanced_job_input.py',
+            'tests/test_linkedin_url_handling.py',
+            'tests/test_user_linkedin_url.py',
+            'tests/test_web_ui_workflow.py',
         ]
         
         results = {}
@@ -297,16 +304,25 @@ def main():
                        help='Test categories to run (default: all)')
     parser.add_argument('--list', '-l', action='store_true',
                        help='List available test files')
+    parser.add_argument('--llm-provider',
+                       choices=['copilot-oauth', 'copilot', 'github', 'openai', 'anthropic', 'gemini', 'groq', 'local', 'copilot-sdk'],
+                       help='LLM provider for the test server (default: from config.yaml)')
+    parser.add_argument('--llm-model',
+                       help='LLM model override for the test server')
     
     args = parser.parse_args()
     
     if args.list:
         print("Available test files:")
-        for test_file in Path('.').glob('test_*.py'):
+        for test_file in sorted(Path('tests').glob('test_*.py')):
             print(f"  {test_file}")
         return
     
-    runner = TestRunner(verbose=args.verbose)
+    runner = TestRunner(
+        verbose=args.verbose,
+        llm_provider=args.llm_provider,
+        llm_model=args.llm_model,
+    )
     success = runner.run_all_tests(args.categories)
     sys.exit(0 if success else 1)
 

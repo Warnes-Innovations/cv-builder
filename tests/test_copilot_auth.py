@@ -11,8 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Make scripts importable
-sys.path.insert(0, str(Path(__file__).parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 from utils.copilot_auth import CopilotAuthManager, poll_for_github_token
 from utils.llm_client import get_llm_provider, CopilotOAuthClient

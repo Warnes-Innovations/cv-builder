@@ -16,6 +16,76 @@ from typing import Dict, List, Optional, Any
 from abc import ABC, abstractmethod
 
 
+# ── Typed LLM error hierarchy ─────────────────────────────────────────────────
+
+class LLMError(RuntimeError):
+    """Base class for all LLM provider errors. Carries provider name and original exception."""
+    def __init__(self, message: str, provider: str = '', original: Optional[Exception] = None):
+        super().__init__(message)
+        self.provider = provider
+        self.original = original
+
+
+class LLMAuthError(LLMError):
+    """API key missing, invalid, or expired."""
+
+
+class LLMRateLimitError(LLMError):
+    """Provider rate limit or quota exceeded."""
+
+
+class LLMContextLengthError(LLMError):
+    """Input exceeds the model's context window."""
+
+
+class LLMProviderError(LLMError):
+    """Generic provider-side error (server error, model unavailable, etc.)."""
+
+
+def _classify_llm_error(exc: Exception, provider: str = '') -> LLMError:
+    """Map any provider exception to a typed LLMError with an actionable message."""
+    msg    = str(exc).lower()
+    status = getattr(exc, 'status_code', None) or getattr(exc, 'code', None)
+
+    # Auth signals — 401/403 or keyword patterns
+    if status in (401, 403) or any(k in msg for k in (
+        'authentication', 'api_key', 'api key', 'unauthorized',
+        'forbidden', 'invalid key', 'invalid api',
+    )):
+        return LLMAuthError(
+            f"Authentication failed with {provider or 'LLM provider'}. "
+            "Check that your API key is valid and has not expired.",
+            provider=provider, original=exc,
+        )
+
+    # Rate-limit signals — 429 or keyword patterns
+    if status == 429 or any(k in msg for k in (
+        'rate limit', 'rate_limit', 'ratelimit', 'quota', 'too many requests',
+    )):
+        return LLMRateLimitError(
+            f"Rate limited by {provider or 'LLM provider'}. "
+            "Wait a moment and retry, or switch to a different model.",
+            provider=provider, original=exc,
+        )
+
+    # Context-length signals
+    if any(k in msg for k in (
+        'context_length', 'context length', 'maximum context', 'token limit',
+        'max_tokens', 'input is too long', 'too long', 'exceeds the limit',
+        'prompt is too long',
+    )):
+        return LLMContextLengthError(
+            f"Input exceeds {provider or 'LLM provider'} context limit. "
+            "Try a shorter job description or reduce the number of experience items.",
+            provider=provider, original=exc,
+        )
+
+    return LLMProviderError(
+        f"LLM provider error ({provider or 'unknown'}): {exc}",
+        provider=provider, original=exc,
+    )
+
+
 def _normalize_github_model_id(model: str) -> str:
     """Normalize legacy GitHub Models IDs to currently accepted IDs."""
     legacy_aliases = {
@@ -722,7 +792,6 @@ Schema:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
-                max_tokens=800,
             )
             ranked_raw = self._parse_json_response(response)
             if not isinstance(ranked_raw, list):
@@ -901,7 +970,7 @@ Schema:
         ]
 
         try:
-            response = self.chat(messages, temperature=0.3, max_tokens=4096)
+            response = self.chat(messages, temperature=0.3)
             raw = self._parse_json_response(response)
             if not isinstance(raw, list):
                 raw = raw.get('rewrites') or raw.get('proposals') or []
@@ -952,14 +1021,17 @@ class OpenAIClient(LLMClient):
         max_tokens: Optional[int] = None
     ) -> str:
         """Send chat messages to OpenAI."""
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-        self.last_usage = response.usage
-        return response.choices[0].message.content
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            self.last_usage = response.usage
+            return response.choices[0].message.content
+        except Exception as exc:
+            raise _classify_llm_error(exc, provider='OpenAI') from exc
     
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
         """Analyze job description using GPT."""
@@ -1294,22 +1366,25 @@ class AnthropicClient(LLMClient):
         # Extract system message if present
         system_msg = None
         user_messages = []
-        
+
         for msg in messages:
             if msg['role'] == 'system':
                 system_msg = msg['content']
             else:
                 user_messages.append(msg)
-        
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens or 4096,
-            temperature=temperature,
-            system=system_msg,
-            messages=user_messages
-        )
-        self.last_usage = response.usage
-        return response.content[0].text
+
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens or 4096,
+                temperature=temperature,
+                system=system_msg,
+                messages=user_messages
+            )
+            self.last_usage = response.usage
+            return response.content[0].text
+        except Exception as exc:
+            raise _classify_llm_error(exc, provider='Anthropic') from exc
     
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
         """Analyze using Claude (similar to OpenAI implementation)."""
@@ -1358,14 +1433,17 @@ class GeminiClient(LLMClient):
         max_tokens: Optional[int] = None
     ) -> str:
         """Send chat messages to Gemini."""
-        response = self._anyllm_completion(
-            provider="gemini",
-            model=self.model,
-            api_key=self.api_key,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        try:
+            response = self._anyllm_completion(
+                provider="gemini",
+                model=self.model,
+                api_key=self.api_key,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        except Exception as exc:
+            raise _classify_llm_error(exc, provider='Gemini') from exc
         self.last_usage = getattr(response, 'usage', None)
 
         # any-llm can return slightly different response envelopes depending on
@@ -1616,7 +1694,10 @@ class CopilotSdkClient(LLMClient):
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
 
-        response = self._anyllm_completion(**kwargs)
+        try:
+            response = self._anyllm_completion(**kwargs)
+        except Exception as exc:
+            raise _classify_llm_error(exc, provider='GitHub Copilot') from exc
         self.last_usage = getattr(response, 'usage', None)
 
         content = None
@@ -1806,16 +1887,18 @@ class LocalLLMClient(LLMClient):
         # Convert messages format
         system_msg = next((m["content"] for m in messages if m["role"] == "system"), None)
         user_messages = [m for m in messages if m["role"] != "system"]
-        
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens or 4096,
-            temperature=temperature,
-            system=system_msg,
-            messages=user_messages
-        )
-        self.last_usage = response.usage
-        return response.content[0].text
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens or 4096,
+                temperature=temperature,
+                system=system_msg,
+                messages=user_messages
+            )
+            self.last_usage = response.usage
+            return response.content[0].text
+        except Exception as exc:
+            raise _classify_llm_error(exc, provider='Copilot/Anthropic') from exc
     
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
         """Analyze using Claude (similar to OpenAI implementation)."""
@@ -1865,30 +1948,33 @@ class LocalLLMClient(LLMClient):
         max_tokens: Optional[int] = None
     ) -> str:
         """Generate response using local model."""
-        # Format messages for instruction-following
-        prompt = self._format_messages(messages)
-        
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
-        prompt_tokens = inputs["input_ids"].shape[-1]
-        
-        outputs = self.model.generate(
-            **inputs,
-            max_new_tokens=max_tokens or 512,
-            temperature=temperature,
-            do_sample=True
-        )
-        completion_tokens = outputs[0].shape[-1] - prompt_tokens
-        self.last_usage = {
-            "prompt_tokens":     prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens":      prompt_tokens + completion_tokens,
-        }
-        
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        # Extract just the response part
-        response = response.split(prompt)[-1].strip()
-        
-        return response
+        try:
+            # Format messages for instruction-following
+            prompt = self._format_messages(messages)
+
+            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+            prompt_tokens = inputs["input_ids"].shape[-1]
+
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=max_tokens or 512,
+                temperature=temperature,
+                do_sample=True
+            )
+            completion_tokens = outputs[0].shape[-1] - prompt_tokens
+            self.last_usage = {
+                "prompt_tokens":     prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens":      prompt_tokens + completion_tokens,
+            }
+
+            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # Extract just the response part
+            response = response.split(prompt)[-1].strip()
+
+            return response
+        except Exception as exc:
+            raise _classify_llm_error(exc, provider='Local') from exc
     
     def _format_messages(self, messages: List[Dict[str, str]]) -> str:
         """Format messages for instruction model."""
@@ -2146,9 +2232,12 @@ class CopilotOAuthClient(LLMClient):
         }
         if max_tokens:
             payload["max_tokens"] = max_tokens
-        data = self._post(payload)
-        self.last_usage = data.get("usage")
-        return data["choices"][0]["message"]["content"]
+        try:
+            data = self._post(payload)
+            self.last_usage = data.get("usage")
+            return data["choices"][0]["message"]["content"]
+        except Exception as exc:
+            raise _classify_llm_error(exc, provider='GitHub Copilot OAuth') from exc
 
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
         """Delegate to OpenAIClient logic (same prompt format)."""

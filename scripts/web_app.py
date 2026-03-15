@@ -16,12 +16,14 @@ Then open http://localhost:5000
 
 import argparse
 import copy
+import dataclasses
 import json
 import os
 import subprocess
 import sys
 import threading
 import traceback
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -44,13 +46,104 @@ sys.path.insert(0, str(Path(__file__).parent))
 from utils.config import get_config, validate_config, ConfigurationError
 from utils.llm_client import get_llm_provider, PROVIDER_MODELS, PROVIDER_BILLING, MODEL_INFO
 from utils.cv_orchestrator import CVOrchestrator, validate_ats_report
-from utils.conversation_manager import ConversationManager
+from utils.conversation_manager import ConversationManager, Phase
+from utils.llm_client import LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
 from utils.copilot_auth import CopilotAuthManager
 from utils.pricing_cache import (
     get_cached_pricing, get_pricing_updated_at, get_pricing_source,
     refresh_pricing_cache, maybe_refresh_in_background, lookup_runtime_pricing_bulk, STATIC_PRICING,
 )
 from utils.spell_checker import SpellChecker
+
+
+# ---------------------------------------------------------------------------
+# API response DTOs — typed dataclasses for the most critical endpoints.
+#
+# Using dataclasses ensures:
+#   • All fields are always present in the JSON response (no silent omissions).
+#   • Shape changes (field additions / renames) surface as TypeError at the call site.
+#   • The expected response contract is documented in one place.
+#
+# JS mirror validators live in web/app.js (parseStatusResponse, etc.).
+# Update both sides together when adding/removing fields.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class StatusResponse:
+    """Response shape for GET /api/status."""
+    position_name: Optional[str]
+    phase: Optional[str]
+    llm_provider: str
+    llm_model: Optional[str]
+    job_description: bool
+    job_description_text: Optional[str]
+    job_analysis: Optional[Dict[str, Any]]
+    post_analysis_questions: List[Any]
+    post_analysis_answers: Dict[str, Any]
+    customizations: Optional[Dict[str, Any]]
+    generated_files: Optional[Dict[str, Any]]
+    generation_progress: List[Any]
+    persuasion_warnings: List[Any]
+    all_experience_ids: List[str]
+    all_skills: List[Any]
+    all_achievements: List[Any]
+    professional_summaries: Dict[str, Any]
+    copilot_auth: Dict[str, Any]
+    iterating: bool
+    reentry_phase: Optional[str]
+    experience_decisions: Dict[str, Any]
+    skill_decisions: Dict[str, Any]
+    achievement_decisions: Dict[str, Any]
+    publication_decisions: Dict[str, Any]
+    summary_focus_override: Optional[str]
+    extra_skills: List[Any]
+    session_file: str
+
+
+@dataclass
+class SessionItem:
+    """One entry in the SessionListResponse."""
+    path: str
+    position_name: str
+    timestamp: str
+    phase: str
+    has_job: bool
+    has_analysis: bool
+    has_customizations: bool
+
+
+@dataclass
+class SessionListResponse:
+    """Response shape for GET /api/sessions."""
+    sessions: List[SessionItem]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"sessions": [dataclasses.asdict(s) for s in self.sessions]}
+
+
+@dataclass
+class RewritesResponse:
+    """Response shape for GET /api/rewrites."""
+    ok: bool
+    rewrites: List[Any]
+    persuasion_warnings: List[Any]
+    phase: str
+
+
+@dataclass
+class MessageResponse:
+    """Response shape for POST /api/message."""
+    ok: bool
+    response: Any
+    phase: Optional[str]
+
+
+@dataclass
+class ActionResponse:
+    """Response shape for POST /api/action."""
+    ok: bool
+    result: Any
+    phase: Optional[str]
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +231,52 @@ def _catalog_discover_provider_models(provider: str) -> Optional[List[str]]:
         return None
 
 
+# ── Dynamic model catalog cache ───────────────────────────────────────────────
+# Populated at startup (background) and on demand; keyed by provider name.
+# Allows /api/model and /api/model-catalog to return the full live model list
+# without a blocking API call on every request.
+
+_dynamic_model_cache: Dict[str, List[str]] = {}
+_dynamic_model_cache_lock = threading.Lock()
+
+
+def _get_available_models(provider: str, current_model: Optional[str] = None) -> List[str]:
+    """Return the best-available model list for a provider.
+
+    Preference order: cached live list > static PROVIDER_MODELS fallback.
+    If *current_model* is provided and not already in the list it is prepended
+    so the active model is always visible in the selector.
+    """
+    cached = _dynamic_model_cache.get(provider)
+    models: List[str] = list(cached) if cached is not None else list(PROVIDER_MODELS.get(provider, []))
+    if current_model and current_model not in models:
+        models = [current_model] + models
+    return models
+
+
+def _refresh_dynamic_model_cache(provider: str) -> None:
+    """Fetch the live model list for *provider* and store it in the cache (blocking)."""
+    discovered = _catalog_discover_provider_models(provider)
+    if discovered:
+        with _dynamic_model_cache_lock:
+            _dynamic_model_cache[provider] = discovered
+
+
+def _maybe_refresh_dynamic_cache_in_background(provider: str) -> None:
+    """Kick off a background refresh for *provider* if not already cached."""
+    if provider not in _CATALOG_LIST_MODELS_CAPABLE:
+        return
+    if provider in _dynamic_model_cache:
+        return
+    t = threading.Thread(
+        target=_refresh_dynamic_model_cache,
+        args=(provider,),
+        daemon=True,
+        name=f"model-catalog-{provider}",
+    )
+    t.start()
+
+
 def _text_similarity(query: str, target: str) -> float:
     """Simple word-overlap similarity score (0–1) for response library search."""
     _STOP = {
@@ -175,6 +314,9 @@ def create_app(args) -> Flask:
 
     # Kick off a background pricing-cache refresh if the cache is stale
     maybe_refresh_in_background()
+
+    # Kick off a background dynamic model catalog refresh for the active provider
+    _maybe_refresh_dynamic_cache_in_background(args.llm_provider)
 
     # Copilot OAuth auth manager (shared across all requests)
     auth_manager = CopilotAuthManager()
@@ -374,7 +516,6 @@ Job Description (excerpt):
                 {"role": "user", "content": prompt},
             ],
             temperature=0.4,
-            max_tokens=600,
         )
 
         payload = _extract_json_payload(response)
@@ -494,35 +635,35 @@ Job Description (excerpt):
                         all_skills.extend(category_data)
             elif isinstance(skills_data, list):
                 all_skills = skills_data
-        return jsonify({
-            "position_name": conversation.state.get("position_name"),
-            "phase": conversation.state.get("phase"),
-            "llm_provider": _provider_name,
-            "llm_model": _current_model,
-            "job_description": bool(conversation.state.get("job_description")),
-            "job_description_text": conversation.state.get("job_description"),
-            "job_analysis": conversation.state.get("job_analysis"),  # Return full data, not just bool
-            "post_analysis_questions": conversation.state.get("post_analysis_questions") or [],
-            "post_analysis_answers": conversation.state.get("post_analysis_answers") or {},
-            "customizations": conversation.state.get("customizations"),  # Return full data, not just bool
-            "generated_files": conversation.state.get("generated_files"),
-            "generation_progress": conversation.state.get("generation_progress") or [],  # Phase 10
-            "persuasion_warnings": conversation.state.get("persuasion_warnings") or [],  # Phase 10
-            "all_experience_ids": all_experience_ids,
-            "all_skills": all_skills,
-            "all_achievements": all_achievements,
-            "professional_summaries": professional_summaries,
-            "copilot_auth": auth_manager.status,
-            "iterating": bool(conversation.state.get("iterating")),
-            "reentry_phase": conversation.state.get("reentry_phase"),
-            "experience_decisions":   conversation.state.get("experience_decisions")   or {},
-            "skill_decisions":         conversation.state.get("skill_decisions")         or {},
-            "achievement_decisions":   conversation.state.get("achievement_decisions")   or {},
-            "publication_decisions":   conversation.state.get("publication_decisions")   or {},
-            "summary_focus_override":  conversation.state.get("summary_focus_override"),
-            "extra_skills":            conversation.state.get("extra_skills")            or [],
-            "session_file": str(getattr(conversation, "session_file", "") or ""),
-        })
+        return jsonify(dataclasses.asdict(StatusResponse(
+            position_name=conversation.state.get("position_name"),
+            phase=conversation.state.get("phase"),
+            llm_provider=_provider_name,
+            llm_model=_current_model,
+            job_description=bool(conversation.state.get("job_description")),
+            job_description_text=conversation.state.get("job_description"),
+            job_analysis=conversation.state.get("job_analysis"),  # full data, not just bool
+            post_analysis_questions=conversation.state.get("post_analysis_questions") or [],
+            post_analysis_answers=conversation.state.get("post_analysis_answers") or {},
+            customizations=conversation.state.get("customizations"),  # full data, not just bool
+            generated_files=conversation.state.get("generated_files"),
+            generation_progress=conversation.state.get("generation_progress") or [],
+            persuasion_warnings=conversation.state.get("persuasion_warnings") or [],
+            all_experience_ids=all_experience_ids,
+            all_skills=all_skills,
+            all_achievements=all_achievements,
+            professional_summaries=professional_summaries,
+            copilot_auth=auth_manager.status,
+            iterating=bool(conversation.state.get("iterating")),
+            reentry_phase=conversation.state.get("reentry_phase"),
+            experience_decisions=conversation.state.get("experience_decisions")   or {},
+            skill_decisions=conversation.state.get("skill_decisions")         or {},
+            achievement_decisions=conversation.state.get("achievement_decisions")   or {},
+            publication_decisions=conversation.state.get("publication_decisions")   or {},
+            summary_focus_override=conversation.state.get("summary_focus_override"),
+            extra_skills=conversation.state.get("extra_skills")            or [],
+            session_file=str(getattr(conversation, "session_file", "") or ""),
+        )))
 
     @app.get("/api/master-fields")
     def master_fields():
@@ -779,7 +920,6 @@ Close professionally with a call to action.
                         {'role': 'user',   'content': prompt},
                     ],
                     temperature=0.7,
-                    max_tokens=800,
                 )
             except Exception as e:
                 return jsonify({'ok': False, 'error': f'LLM error: {e}'}), 500
@@ -977,7 +1117,6 @@ Close professionally with a call to action.
                         {'role': 'user',   'content': prompt},
                     ],
                     temperature=0.7,
-                    max_tokens=700,
                 )
             except Exception as e:
                 return jsonify({'ok': False, 'error': f'LLM error: {e}'}), 500
@@ -1120,7 +1259,7 @@ Close professionally with a call to action.
     def get_model():
         """Return current model, all provider models, and pricing metadata."""
         current   = _current_model or (llm_client.model if hasattr(llm_client, "model") else None)
-        available = PROVIDER_MODELS.get(_provider_name, [])
+        available = _get_available_models(_provider_name, current_model=current)
         billing   = PROVIDER_BILLING.get(_provider_name, {"type": "per_token", "note": ""})
         live      = get_cached_pricing()
         models_with_info = [
@@ -1136,7 +1275,8 @@ Close professionally with a call to action.
         ]
         # Cross-provider model list for the model-selection UI
         all_models = []
-        for prov, prov_models in PROVIDER_MODELS.items():
+        for prov in PROVIDER_MODELS:
+            prov_models       = _get_available_models(prov)
             prov_billing_type = PROVIDER_BILLING.get(prov, {}).get("type", "per_token")
             for m in prov_models:
                 pricing = live.get(m) or MODEL_INFO.get(m, {})
@@ -1144,7 +1284,7 @@ Close professionally with a call to action.
                 all_models.append({
                     "provider":           prov,
                     "model":              m,
-                    "source":             "fallback_static",
+                    "source":             "list_models" if prov in _dynamic_model_cache else "fallback_static",
                     "price_source":       price_source,
                     "billing_type":       prov_billing_type,
                     "context_window":     MODEL_INFO.get(m, {}).get("context_window"),
@@ -1193,7 +1333,15 @@ Close professionally with a call to action.
         runtime_candidates: List[tuple[str, str]] = []
 
         for provider in selected:
-            discovered = _catalog_discover_provider_models(provider)
+            # Use the in-process cache when available; otherwise do a blocking fetch
+            # and store the result so subsequent calls are fast.
+            if provider in _dynamic_model_cache:
+                discovered = _dynamic_model_cache[provider]
+            else:
+                discovered = _catalog_discover_provider_models(provider)
+                if discovered:
+                    with _dynamic_model_cache_lock:
+                        _dynamic_model_cache[provider] = discovered
             if discovered:
                 model_list = discovered
                 provider_sources[provider] = "list_models"
@@ -1754,11 +1902,23 @@ Close professionally with a call to action.
             return jsonify({"error": "Missing message"}), 400
         try:
             response = conversation._process_message(msg)
-            return jsonify({
-                "ok": True,
-                "response": response,
-                "phase": conversation.state.get("phase"),
-            })
+            return jsonify(dataclasses.asdict(MessageResponse(
+                ok=True,
+                response=response,
+                phase=conversation.state.get("phase"),
+            )))
+        except LLMAuthError as e:
+            print(f"LLM auth error in /api/message: {e}")
+            return jsonify({"error": str(e), "error_type": "auth"}), 401
+        except LLMRateLimitError as e:
+            print(f"LLM rate limit in /api/message: {e}")
+            return jsonify({"error": str(e), "error_type": "rate_limit"}), 429
+        except LLMContextLengthError as e:
+            print(f"LLM context length in /api/message: {e}")
+            return jsonify({"error": str(e), "error_type": "context_length"}), 400
+        except LLMError as e:
+            print(f"LLM provider error in /api/message: {e}")
+            return jsonify({"error": str(e), "error_type": "provider"}), 502
         except Exception as e:
             # Comprehensive error logging
             import traceback
@@ -1819,6 +1979,17 @@ Close professionally with a call to action.
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    def _usage_prompt_tokens(usage) -> int | None:
+        """Extract prompt/input token count from a provider usage object or dict."""
+        if usage is None:
+            return None
+        if isinstance(usage, dict):
+            return usage.get("prompt_tokens") or usage.get("input_tokens")
+        return (
+            getattr(usage, "prompt_tokens", None)
+            or getattr(usage, "input_tokens", None)
+        )
+
     @app.get("/api/context-stats")
     def context_stats():
         """Return a rough token-usage estimate for the current session."""
@@ -1838,17 +2009,6 @@ Close professionally with a call to action.
             "claude-3-opus":       200_000,
             "llama":               128_000,
         }
-        def _usage_prompt_tokens(usage) -> int | None:
-            """Extract prompt/input token count from a provider usage object or dict."""
-            if usage is None:
-                return None
-            if isinstance(usage, dict):
-                return usage.get("prompt_tokens") or usage.get("input_tokens")
-            return (
-                getattr(usage, "prompt_tokens", None)
-                or getattr(usage, "input_tokens", None)
-            )
-
         try:
             model_name     = getattr(orchestrator.llm, "model", "") or ""
             context_window = 128_000
@@ -1887,7 +2047,7 @@ Close professionally with a call to action.
         # For web, we reset directly.
         conversation.conversation_history = []
         conversation.state = {
-            "phase": "init",
+            "phase": Phase.INIT,
             "position_name": None,
             "job_description": None,
             "job_analysis": None,
@@ -1969,18 +2129,18 @@ Close professionally with a call to action.
                         with open(session_file) as f:
                             data = _json.load(f)
                         state = data.get('state', {})
-                        sessions.append({
-                            "path":          str(session_file),
-                            "position_name": state.get('position_name') or session_file.parent.name,
-                            "timestamp":     data.get('timestamp', ''),
-                            "phase":         state.get('phase', ''),
-                            "has_job":       bool(state.get('job_description')),
-                            "has_analysis":  bool(state.get('job_analysis')),
-                            "has_customizations": bool(state.get('customizations')),
-                        })
+                        sessions.append(SessionItem(
+                            path=str(session_file),
+                            position_name=state.get('position_name') or session_file.parent.name,
+                            timestamp=data.get('timestamp', ''),
+                            phase=state.get('phase', ''),
+                            has_job=bool(state.get('job_description')),
+                            has_analysis=bool(state.get('job_analysis')),
+                            has_customizations=bool(state.get('customizations')),
+                        ))
                     except Exception:
                         pass
-            return jsonify({"sessions": sessions[:20]})  # cap at 20 most recent
+            return jsonify(SessionListResponse(sessions=sessions[:20]).to_dict())  # cap at 20 most recent
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
@@ -2237,11 +2397,23 @@ Close professionally with a call to action.
             result = conversation._execute_action(payload)
             if not result:
                 return jsonify({"error": "Invalid or unsupported action"}), 400
-            return jsonify({
-                "ok": True,
-                "result": result,
-                "phase": conversation.state.get("phase"),
-            })
+            return jsonify(dataclasses.asdict(ActionResponse(
+                ok=True,
+                result=result,
+                phase=conversation.state.get("phase"),
+            )))
+        except LLMAuthError as e:
+            print(f"LLM auth error in /api/action: {e}")
+            return jsonify({"error": str(e), "error_type": "auth"}), 401
+        except LLMRateLimitError as e:
+            print(f"LLM rate limit in /api/action: {e}")
+            return jsonify({"error": str(e), "error_type": "rate_limit"}), 429
+        except LLMContextLengthError as e:
+            print(f"LLM context length in /api/action: {e}")
+            return jsonify({"error": str(e), "error_type": "context_length"}), 400
+        except LLMError as e:
+            print(f"LLM provider error in /api/action: {e}")
+            return jsonify({"error": str(e), "error_type": "provider"}), 502
         except Exception as e:
             print(f"Action execution error: {e}")
             return jsonify({"error": str(e)}), 500
@@ -2378,7 +2550,10 @@ Close professionally with a call to action.
                         {'role': 'user',   'content': prompt},
                     ],
                     temperature=0.7,
-                    max_tokens=200,
+                    # No max_tokens cap: thinking-capable models (e.g. Gemini 2.0 Flash)
+                    # count reasoning tokens against max_output_tokens, so a 200-token
+                    # limit leaves only a handful of tokens for the visible response.
+                    # The prompt already constrains output to 1-3 sentences.
                 )
             except Exception as e:
                 err_str = str(e)
@@ -2684,19 +2859,19 @@ Close professionally with a call to action.
                 conversation.state['persuasion_warnings'] = []
 
             if rewrites:
-                conversation.state['phase'] = 'rewrite_review'
-                phase = 'rewrite_review'
+                conversation.state['phase'] = Phase.REWRITE_REVIEW
+                phase = Phase.REWRITE_REVIEW
             else:
                 # No proposals (no LLM or nothing to rewrite) — skip review step
-                phase = 'generation'
+                phase = Phase.GENERATION
 
             conversation._save_session()
-            return jsonify({
-                "ok": True,
-                "rewrites": rewrites,
-                "persuasion_warnings": conversation.state.get('persuasion_warnings', []),
-                "phase": phase
-            })
+            return jsonify(dataclasses.asdict(RewritesResponse(
+                ok=True,
+                rewrites=rewrites,
+                persuasion_warnings=conversation.state.get('persuasion_warnings', []),
+                phase=phase,
+            )))
 
         except Exception as e:
             import traceback
@@ -3316,7 +3491,7 @@ Close professionally with a call to action.
                     git_error = str(git_exc)
 
                 # Advance phase
-                conversation.state['phase'] = 'refinement'
+                conversation.state['phase'] = Phase.REFINEMENT
                 conversation.save_session()
 
                 # Build keyword match summary
@@ -3640,9 +3815,52 @@ def parse_args():
 def main():
     args = parse_args()
     config = get_config()
-       
+
+    # ── Startup banner ────────────────────────────────────────────────────────
+    model_source = (
+        "env var"      if os.getenv("CV_LLM_MODEL")
+        else ".env"    if (Path(__file__).parent.parent / ".env").exists()
+                          and _env_file_has_value("CV_LLM_MODEL")
+        else "config.yaml"
+    )
+    provider_source = (
+        "env var"      if os.getenv("CV_LLM_PROVIDER")
+        else "CLI arg" if args.llm_provider != config.llm_provider
+        else ".env"    if (Path(__file__).parent.parent / ".env").exists()
+                          and _env_file_has_value("CV_LLM_PROVIDER")
+        else "config.yaml"
+    )
+    print(
+        f"\n"
+        f"  ┌─────────────────────────────────────────────────────┐\n"
+        f"  │                    CV Builder                       │\n"
+        f"  ├──────────┬──────────────────────────────────────────┤\n"
+        f"  │ provider │ {args.llm_provider:<24}  [{provider_source}]\n"
+        f"  │ model    │ {args.model or '(provider default)':<24}  [{model_source}]\n"
+        f"  │ port     │ {args.port}\n"
+        f"  │ data     │ {args.master_data}\n"
+        f"  │ output   │ {args.output_dir}\n"
+        f"  └──────────┴──────────────────────────────────────────┘\n",
+        flush=True,
+    )
+
     app = create_app(args)
     app.run(host=config.web_host, port=args.port, debug=args.debug)
+
+
+def _env_file_has_value(key: str) -> bool:
+    """Return True if *key* is set (uncommented) in the project .env file."""
+    env_path = Path(__file__).parent.parent / ".env"
+    try:
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("#") or "=" not in line:
+                continue
+            if line.split("=", 1)[0].strip() == key:
+                return True
+    except OSError:
+        pass
+    return False
 
 
 if __name__ == "__main__":

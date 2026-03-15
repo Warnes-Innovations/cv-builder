@@ -2,6 +2,74 @@
 window.postAnalysisQuestions = [];
 window.questionAnswers = {};
 
+// ---------------------------------------------------------------------------
+// API response validators (DTO mirrors of Python dataclasses in web_app.py).
+//
+// Each function checks that required fields are present in an API response and
+// logs a console.warn if any are missing or have an unexpected type.  Validators
+// return the original data object unchanged so they can be used inline.
+//
+// Update both this file and the Python dataclasses in web_app.py together
+// whenever adding or removing response fields.
+// ---------------------------------------------------------------------------
+
+/** Validate GET /api/status response. */
+function parseStatusResponse(data) {
+  const required = [
+    'phase', 'llm_provider', 'job_description',
+    'post_analysis_questions', 'post_analysis_answers',
+    'all_experience_ids', 'all_skills', 'all_achievements',
+    'professional_summaries', 'copilot_auth', 'iterating',
+    'experience_decisions', 'skill_decisions',
+    'achievement_decisions', 'publication_decisions',
+    'extra_skills', 'session_file',
+  ];
+  const missing = required.filter(k => !(k in data));
+  if (missing.length) {
+    console.warn('[parseStatusResponse] Missing fields:', missing, data);
+  }
+  if ('post_analysis_questions' in data && !Array.isArray(data.post_analysis_questions)) {
+    console.warn('[parseStatusResponse] post_analysis_questions should be an array:', data.post_analysis_questions);
+  }
+  if ('all_experience_ids' in data && !Array.isArray(data.all_experience_ids)) {
+    console.warn('[parseStatusResponse] all_experience_ids should be an array:', data.all_experience_ids);
+  }
+  return data;
+}
+
+/** Validate GET /api/sessions response. */
+function parseSessionListResponse(data) {
+  if (!Array.isArray(data.sessions)) {
+    console.warn('[parseSessionListResponse] sessions should be an array:', data);
+  } else {
+    const itemRequired = ['path', 'position_name', 'timestamp', 'phase', 'has_job', 'has_analysis', 'has_customizations'];
+    data.sessions.forEach((s, i) => {
+      const missing = itemRequired.filter(k => !(k in s));
+      if (missing.length) console.warn(`[parseSessionListResponse] sessions[${i}] missing fields:`, missing, s);
+    });
+  }
+  return data;
+}
+
+/** Validate GET /api/rewrites response. */
+function parseRewritesResponse(data) {
+  const required = ['ok', 'rewrites', 'persuasion_warnings', 'phase'];
+  const missing = required.filter(k => !(k in data));
+  if (missing.length) console.warn('[parseRewritesResponse] Missing fields:', missing, data);
+  if ('rewrites' in data && !Array.isArray(data.rewrites)) {
+    console.warn('[parseRewritesResponse] rewrites should be an array:', data.rewrites);
+  }
+  return data;
+}
+
+/** Validate POST /api/message and POST /api/action responses. */
+function parseMessageResponse(data) {
+  if (!data.ok && !data.error) {
+    console.warn('[parseMessageResponse] Response has neither ok nor error:', data);
+  }
+  return data;
+}
+
 // Global fetch interceptor — shows amber banner on 409 Conflict; auto-retries after countdown.
 const _conflictRetryQueue = [];
 let   _conflictTimerId     = null;
@@ -19,149 +87,6 @@ let   _conflictCountdown   = 0;
     return resp;
   };
 })();
-
-async function restoreSession() {
-  try {
-    isReconnecting = true;
-    
-    // Try to get session ID from localStorage
-    const storedSessionId = localStorage.getItem('cv-builder-session-id');
-    if (storedSessionId) {
-      sessionId = storedSessionId;
-    } else {
-      // Generate new session ID
-      sessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('cv-builder-session-id', sessionId);
-    }
-    
-    // Try to restore conversation history
-    const historyRes = await fetch('/api/history');
-    if (historyRes.ok) {
-      const historyData = await historyRes.json();
-      
-      // Restore conversation messages
-      if (historyData.history && historyData.history.length > 0) {
-        const conversation = document.getElementById('conversation');
-        conversation.innerHTML = ''; // Clear loading message
-        
-        historyData.history.forEach(msg => {
-          if (msg.role === 'user') {
-            appendMessage('user', msg.content);
-          } else if (msg.role === 'assistant') {
-            appendMessage('assistant', msg.content);
-          } else if (msg.role === 'system') {
-            appendMessage('system', msg.content);
-          }
-        });
-        
-        appendMessage('system', '🔄 Session restored. You can continue where you left off.');
-      }
-      
-      // Update phase
-      if (historyData.phase) {
-        lastKnownPhase = historyData.phase;
-      }
-    }
-    
-    // Try to restore backend state
-    await restoreBackendState();
-    
-    // Restore tab data from localStorage
-    restoreTabData();
-    
-    isReconnecting = false;
-    
-  } catch (error) {
-    console.warn('Session restoration failed:', error);
-    appendMessage('system', `⚠️ Could not restore previous session. Starting fresh. (${error.message})`);
-    isReconnecting = false;
-  }
-}
-
-async function restoreBackendState() {
-  try {
-    const statusRes = await fetch('/api/status');
-    if (statusRes.ok) {
-      const statusData = await statusRes.json();
-      
-      // If we have job analysis data, try to restore it
-      if (statusData.phase === 'customization' || statusData.phase === 'rewrite_review' || statusData.phase === 'generation' || statusData.phase === 'refinement') {
-        // Backend has analysis data - try to get it
-        const analysisData = statusData.job_analysis;
-        if (analysisData) {
-          tabData.analysis = analysisData;
-          // Don't auto-switch tab during restoration unless user is on analysis tab
-          if (currentTab === 'analysis') {
-            populateAnalysisTab(analysisData);
-          }
-        }
-      }
-      
-      // If we have customization data, try to restore it
-      if (statusData.phase === 'rewrite_review' || statusData.phase === 'generation' || statusData.phase === 'refinement') {
-        const customizationData = statusData.customizations;
-        if (customizationData) {
-          tabData.customizations = customizationData;
-          window.pendingRecommendations = customizationData;
-          if (currentTab === 'customizations') {
-            await populateCustomizationsTabWithReview(customizationData);
-          }
-        }
-      }
-      
-      // If we have generated CV, try to restore it
-      if ((statusData.phase === 'layout_review' || statusData.phase === 'refinement') && statusData.generated_files) {
-        tabData.cv = statusData.generated_files;
-        if (currentTab === 'cv') {
-          populateCVTab(statusData.generated_files);
-        } else if (currentTab === 'layout') {
-          initiateLayoutInstructions();
-        } else if (currentTab === 'download') {
-          await populateDownloadTab(statusData.generated_files);
-        }
-      }
-    }
-  } catch (error) {
-    console.warn('Failed to restore backend state:', error);
-  }
-}
-
-function restoreTabData() {
-  try {
-    const saved = localStorage.getItem('cv-builder-tab-data');
-    if (saved) {
-      const data = JSON.parse(saved);
-      
-      // Only restore if data is recent (within 24 hours)
-      const age = Date.now() - (data.timestamp || 0);
-      if (age < 24 * 60 * 60 * 1000) {
-        if (data.tabData) {
-          tabData = { ...tabData, ...data.tabData };
-        }
-        if (data.pendingRecommendations) {
-          window.pendingRecommendations = data.pendingRecommendations;
-        }
-        if (data.interactiveState) {
-          interactiveState = { ...interactiveState, ...data.interactiveState };
-        }
-        if (data.activeReviewPane) {
-          window._activeReviewPane = data.activeReviewPane;
-        }
-        
-        // Don't auto-switch tabs during restoration, but update the current tab content
-        if (data.currentTab && data.currentTab !== 'job') {
-          // User was on a specific tab, just load its content
-          loadTabContent(currentTab);
-        }
-      } else {
-        // Clear old data
-        localStorage.removeItem('cv-builder-tab-data');
-      }
-    }
-  } catch (error) {
-    console.warn('Failed to restore tab data:', error);
-  }
-}
 
 async function restoreSession() {
   try {
@@ -205,11 +130,14 @@ async function restoreSession() {
       }
     }
     
-    // Try to restore backend state
-    const autoLoaded = await restoreBackendState();
+    // Try to restore backend state.
+    // Returns true when server had live session data (in memory or loaded from disk).
+    const serverHasData = await restoreBackendState();
 
-    // Restore tab data from localStorage.
-    restoreTabData();
+    // Restore UI-only prefs (activeReviewPane) from localStorage.
+    // When the server already has core data, skip restoring tabData/interactiveState/
+    // pendingRecommendations from localStorage — server is authoritative for those.
+    restoreTabData({ uiPrefsOnly: serverHasData });
 
     isReconnecting = false;
     
@@ -221,23 +149,30 @@ async function restoreSession() {
 }
 
 async function restoreBackendState() {
+  // Returns true if the server had any live session data (in memory or loaded from disk).
+  // Callers use this to decide whether localStorage core fields should be skipped.
   try {
     const statusRes = await fetch('/api/status');
     if (!statusRes.ok) return false;
-    const statusData = await statusRes.json();
+    const statusData = parseStatusResponse(await statusRes.json());
+
+    let serverHasData = false;
 
     // If backend has live state, restore it into tabData
     if (statusData.job_analysis) {
       tabData.analysis = statusData.job_analysis;
+      serverHasData = true;
       console.log('Restored analysis data from backend memory');
     }
     if (statusData.customizations) {
       tabData.customizations = statusData.customizations;
       window.pendingRecommendations = statusData.customizations;
+      serverHasData = true;
       console.log('Restored customizations data from backend memory');
     }
     if (statusData.generated_files) {
       tabData.cv = statusData.generated_files;
+      serverHasData = true;
       console.log('Restored CV data from backend memory');
     }
 
@@ -251,7 +186,7 @@ async function restoreBackendState() {
       }
     }
 
-    return false;
+    return serverHasData;
   } catch (error) {
     console.warn('Failed to restore backend state:', error);
     return false;
@@ -291,7 +226,7 @@ async function loadSessionFile(path) {
 
     await fetchStatus();
     await populateJobTab();
-    appendMessage('system', `✅ Session restored: ${data.position_name || 'Unnamed'} (${data.phase || 'init'})`);
+    appendMessage('system', `✅ Session restored: ${data.position_name || 'Unnamed'} (${data.phase || PHASES.INIT})`);
     return true;
   } catch (err) {
     appendMessage('system', `❌ Error restoring session: ${err.message}`);
@@ -376,7 +311,7 @@ async function _renderSessionsModalBody() {
   let sessions = [];
   try {
     const res = await fetch('/api/sessions');
-    const data = await res.json();
+    const data = parseSessionListResponse(await res.json());
     sessions = data.sessions || [];
   } catch (e) {
     body.innerHTML = `<p style="padding:20px;color:#ef4444;">Could not load sessions: ${escapeHtml(e.message)}</p>`;
@@ -401,31 +336,31 @@ async function _renderSessionsModalBody() {
       s.has_analysis     ? '🔍' : '',
       s.has_customizations ? '⚙️' : '',
     ].filter(Boolean).join(' ');
-    const ep = escapeHtml(s.path);
+    const ep = escapeHtml(s.path); // HTML-safe for attributes; dataset read-back is decoded by browser
     html += `
       <tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;">
         <td style="padding:12px 16px;">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
             <span id="sm-name-${i}" style="font-weight:600;color:#1e293b;">${escapeHtml(s.position_name || 'Untitled')}</span>
-            <button onclick="startSessionModalRename('${ep}',${i})" title="Rename"
+            <button data-sm-action="rename" data-sm-path="${ep}" data-sm-idx="${i}" title="Rename"
               style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:0.85em;padding:1px 3px;">✏️</button>
           </div>
           <div id="sm-rename-${i}" style="display:none;align-items:center;gap:4px;margin-top:4px;">
             <input id="sm-input-${i}" type="text" value="${escapeHtml(s.position_name || '')}"
-              style="border:1px solid #3b82f6;border-radius:4px;padding:3px 8px;font-size:13px;flex:1;"
-              onkeydown="if(event.key==='Enter')submitSessionModalRename('${ep}',${i});if(event.key==='Escape')cancelSessionModalRename(${i})">
-            <button onclick="submitSessionModalRename('${ep}',${i})"
+              class="sm-key-input" data-sm-path="${ep}" data-sm-idx="${i}"
+              style="border:1px solid #3b82f6;border-radius:4px;padding:3px 8px;font-size:13px;flex:1;">
+            <button data-sm-action="submit-rename" data-sm-path="${ep}" data-sm-idx="${i}"
               style="background:#3b82f6;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer;">✓</button>
-            <button onclick="cancelSessionModalRename(${i})"
+            <button data-sm-action="cancel-rename" data-sm-idx="${i}"
               style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer;">✕</button>
           </div>
           <div style="font-size:12px;color:#94a3b8;margin-top:3px;">${ts ? ts + ' · ' : ''}${indicators} ${escapeHtml(s.phase || '')}</div>
         </td>
         <td style="padding:12px 16px;white-space:nowrap;vertical-align:middle;">
           <div style="display:flex;gap:6px;">
-            <button onclick="loadSessionAndCloseModal('${ep}')"
+            <button data-sm-action="load" data-sm-path="${ep}"
               style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;">Load</button>
-            <button onclick="_deleteSessionFromModal('${ep}',event)"
+            <button data-sm-action="delete" data-sm-path="${ep}"
               style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:6px 8px;font-size:13px;cursor:pointer;" title="Delete session">🗑</button>
           </div>
         </td>
@@ -433,6 +368,27 @@ async function _renderSessionsModalBody() {
   });
   html += '</table>';
   body.innerHTML = html;
+  // Wire up session-modal action buttons via event delegation (avoids inline onclick with path data)
+  body.addEventListener('click', e => {
+    const btn = e.target.closest('[data-sm-action]');
+    if (!btn) return;
+    const path   = btn.dataset.smPath;
+    const idx    = parseInt(btn.dataset.smIdx ?? '-1', 10);
+    const action = btn.dataset.smAction;
+    if      (action === 'rename')        startSessionModalRename(path, idx);
+    else if (action === 'submit-rename') submitSessionModalRename(path, idx);
+    else if (action === 'cancel-rename') cancelSessionModalRename(idx);
+    else if (action === 'load')          loadSessionAndCloseModal(path);
+    else if (action === 'delete')        _deleteSessionFromModal(path, e);
+  });
+  body.querySelectorAll('.sm-key-input').forEach(input => {
+    input.addEventListener('keydown', e => {
+      const path = input.dataset.smPath;
+      const idx  = parseInt(input.dataset.smIdx, 10);
+      if (e.key === 'Enter') submitSessionModalRename(path, idx);
+      else if (e.key === 'Escape') cancelSessionModalRename(idx);
+    });
+  });
 }
 
 async function loadSessionAndCloseModal(path) {
@@ -567,7 +523,7 @@ async function _renderTrashView() {
 
   let html = '<table style="width:100%;border-collapse:collapse;">';
   items.forEach(s => {
-    const ep = escapeHtml(s.path);
+    const ep = escapeHtml(s.path); // HTML-safe for attributes; dataset read-back is decoded by browser
     html += `
       <tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;">
         <td style="padding:12px 16px;">
@@ -576,9 +532,9 @@ async function _renderTrashView() {
         </td>
         <td style="padding:12px 16px;white-space:nowrap;vertical-align:middle;">
           <div style="display:flex;gap:6px;">
-            <button onclick="restoreFromTrash('${ep}')"
+            <button data-trash-action="restore" data-trash-path="${ep}"
               style="background:#dbeafe;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;">Restore</button>
-            <button onclick="deleteForever('${ep}')"
+            <button data-trash-action="delete-forever" data-trash-path="${ep}"
               style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:6px 8px;font-size:13px;cursor:pointer;" title="Delete permanently">✕</button>
           </div>
         </td>
@@ -586,6 +542,15 @@ async function _renderTrashView() {
   });
   html += '</table>';
   body.innerHTML = html;
+  // Wire up trash action buttons via event delegation
+  body.addEventListener('click', e => {
+    const btn = e.target.closest('[data-trash-action]');
+    if (!btn) return;
+    const path   = btn.dataset.trashPath;
+    const action = btn.dataset.trashAction;
+    if      (action === 'restore')       restoreFromTrash(path);
+    else if (action === 'delete-forever') deleteForever(path);
+  });
 }
 
 async function restoreFromTrash(path) {
@@ -665,29 +630,35 @@ function saveTabData() {
   }
 }
 
-function restoreTabData() {
+function restoreTabData({ uiPrefsOnly = false } = {}) {
+  // uiPrefsOnly: when true, only restore UI preferences (activeReviewPane) and skip
+  // core session data (tabData, interactiveState, pendingRecommendations) because
+  // the server is the authoritative source for those fields.
   try {
     const saved = localStorage.getItem('cv-builder-tab-data');
     if (saved) {
       const data = JSON.parse(saved);
-      
+
       // Only restore if data is recent (within 24 hours)
       const age = Date.now() - (data.timestamp || 0);
       if (age < 24 * 60 * 60 * 1000) {
-        if (data.tabData) {
-          tabData = { ...tabData, ...data.tabData };
+        if (!uiPrefsOnly) {
+          if (data.tabData) {
+            tabData = { ...tabData, ...data.tabData };
+          }
+          if (data.pendingRecommendations) {
+            window.pendingRecommendations = data.pendingRecommendations;
+          }
+          if (data.interactiveState) {
+            interactiveState = { ...interactiveState, ...data.interactiveState };
+          }
         }
-        if (data.pendingRecommendations) {
-          window.pendingRecommendations = data.pendingRecommendations;
-        }
-        if (data.interactiveState) {
-          interactiveState = { ...interactiveState, ...data.interactiveState };
-        }
+        // Always restore UI-only preferences regardless of server state
         if (data.activeReviewPane) {
           window._activeReviewPane = data.activeReviewPane;
         }
 
-        console.log('Restored tab data from localStorage');
+        console.log(`Restored tab data from localStorage (uiPrefsOnly=${uiPrefsOnly})`);
       } else {
         // Clear old data
         localStorage.removeItem('cv-builder-tab-data');
@@ -949,7 +920,7 @@ async function showLoadJobPanel() {
   }
 
   function phaseLabel(phase) {
-    const map = { init: '📋 Init', analysis: '🔍 Analysis', customization: '⚙️ Custom.', generation: '📄 Generate', refinement: '✅ Done' };
+    const map = { [PHASES.INIT]: '📋 Init', [PHASES.JOB_ANALYSIS]: '🔍 Analysis', [PHASES.CUSTOMIZATION]: '⚙️ Custom.', [PHASES.GENERATION]: '📄 Generate', [PHASES.REFINEMENT]: '✅ Done' };
     return map[phase] || (phase || '—');
   }
 
@@ -960,8 +931,8 @@ async function showLoadJobPanel() {
     const escapedItem = JSON.stringify(item).replace(/"/g, '&quot;');
     
     // Add delete button for sessions only
-    const deleteButton = item.kind === 'session' 
-      ? `<button onclick="deleteSession('${item.path}', event)" style="background:#ef4444;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;" title="Delete session">🗑️</button>`
+    const deleteButton = item.kind === 'session'
+      ? `<button data-delete-session="${escapeHtml(item.path)}" style="background:#ef4444;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;" title="Delete session">🗑️</button>`
       : '<span style="color:#9ca3af;">—</span>';
     
     return `<tr class="load-item-row" data-item="${escapedItem}" onclick="loadItemFromRow(this)" style="cursor:pointer;">
@@ -1082,6 +1053,13 @@ async function showLoadJobPanel() {
       </div>
     </div>
   `;
+  // Wire up session delete buttons via event delegation (data-delete-session avoids onclick path injection)
+  content.querySelector('tbody')?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-delete-session]');
+    if (!btn) return;
+    e.stopPropagation();
+    deleteSession(btn.dataset.deleteSession, e);
+  });
 }
 
 function loadItemFromRow(row) {
@@ -1515,8 +1493,8 @@ async function sendMessage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text })
       });
-      const data = await res.json();
-      
+      const data = parseMessageResponse(await res.json());
+
       if (data.error) {
         console.error('Backend error saving question response:', data.error);
       } else if (data.response && !questionHandled) {
@@ -1556,8 +1534,8 @@ async function sendMessage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text })
     });
-    const data = await res.json();
-    
+    const data = parseMessageResponse(await res.json());
+
     if (data.error) {
       // Filter out error messages that are just CV data echoes
       const errorMsg = data.error.toString();
@@ -1664,10 +1642,10 @@ async function analyzeJob() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'analyze_job' })
     });
-    const data = await res.json();
-    
+    const data = parseMessageResponse(await res.json());
+
     removeLoadingMessage(loadingMsg);
-    
+
     if (data.error) {
       appendRetryMessage('❌ Error: ' + data.error, analyzeJob);
     } else {
@@ -1707,125 +1685,94 @@ async function analyzeJob() {
   await fetchStatus();
 }
 
+// ---------------------------------------------------------------------------
+// Recommendation helpers
+//
+// Canonical shape (set by llm_client.py → recommend_customizations):
+//   data.experience_recommendations: [{id, recommendation, confidence, reasoning}]
+//   data.skill_recommendations:      [{skill, recommendation, confidence, reasoning}]
+//   data.recommended_experiences:    [id, ...]    ← backwards-compat flat list (Python populates)
+//   data.omitted_experiences:        [id, ...]    ← backwards-compat flat list
+//   data.recommended_skills:         [skill, ...] ← backwards-compat flat list
+//
+// If canonical arrays are absent (old session data), fall back to flat lists.
+// console.warn is emitted on first miss per lookup to aid schema-drift debugging.
+// ---------------------------------------------------------------------------
+
+/** Look up a single experience entry in experience_recommendations. */
+function _findExpRec(expId, data) {
+  if (!Array.isArray(data.experience_recommendations)) {
+    console.warn('[recommendation] experience_recommendations missing; using flat-list fallback for', expId);
+    return null;
+  }
+  return data.experience_recommendations.find(r => r.id === expId || r.experience_id === expId) || null;
+}
+
+/** Look up a single skill entry in skill_recommendations. */
+function _findSkillRec(skill, data) {
+  if (!Array.isArray(data.skill_recommendations)) {
+    console.warn('[recommendation] skill_recommendations missing; using flat-list fallback for', skill);
+    return null;
+  }
+  return data.skill_recommendations.find(r => r.skill === skill || r.name === skill) || null;
+}
+
+/** Parse a raw confidence string to a {level, text} object, or null if unrecognised. */
+function _parseConfidence(conf) {
+  const c = (conf || '').toLowerCase();
+  if (c.includes('very high')) return { level: 'very-high', text: 'Very High Confidence' };
+  if (c.includes('very low'))  return { level: 'very-low',  text: 'Very Low Confidence'  };
+  if (c.includes('high'))      return { level: 'high',      text: 'High Confidence'      };
+  if (c.includes('medium'))    return { level: 'medium',    text: 'Medium Confidence'    };
+  if (c.includes('low'))       return { level: 'low',       text: 'Low Confidence'       };
+  return null;
+}
+
 function getExperienceRecommendation(expId, data) {
-  // Extract recommendation level from LLM response
-  if (data.experience_recommendations && Array.isArray(data.experience_recommendations)) {
-    const rec = data.experience_recommendations.find(r => r.id === expId || r.experience_id === expId);
-    if (rec && rec.recommendation) {
-      return rec.recommendation; // Should be: "Emphasize", "Include", "De-emphasize", or "Omit"
-    }
-  }
-  
-  // Fallback: check if in emphasize/deemphasize/omit arrays
-  if (data.recommended_experiences && data.recommended_experiences.includes(expId)) {
-    return "Emphasize";
-  }
-  if (data.deemphasized_experiences && data.deemphasized_experiences.includes(expId)) {
-    return "De-emphasize";
-  }
-  if (data.omitted_experiences && data.omitted_experiences.includes(expId)) {
-    return "Omit";
-  }
-  
-  return "Include"; // Default
+  const rec = _findExpRec(expId, data);
+  if (rec && rec.recommendation) return rec.recommendation;
+  // Backwards-compat flat-list fallback (omitted_experiences takes priority over recommended_experiences)
+  if (data.omitted_experiences     && data.omitted_experiences.includes(expId))     return 'Omit';
+  if (data.recommended_experiences && data.recommended_experiences.includes(expId)) return 'Emphasize';
+  return 'Include';
 }
 
 function getConfidenceLevel(expId, data) {
-  // Extract confidence level from LLM response
-  if (data.experience_recommendations && Array.isArray(data.experience_recommendations)) {
-    const rec = data.experience_recommendations.find(r => r.id === expId || r.experience_id === expId);
-    if (rec && rec.confidence) {
-      const conf = rec.confidence.toLowerCase();
-      if (conf.includes('very high')) {
-        return { level: 'very-high', text: 'Very High Confidence' };
-      } else if (conf.includes('high')) {
-        return { level: 'high', text: 'High Confidence' };
-      } else if (conf.includes('medium')) {
-        return { level: 'medium', text: 'Medium Confidence' };
-      } else if (conf.includes('low') && !conf.includes('very')) {
-        return { level: 'low', text: 'Low Confidence' };
-      } else if (conf.includes('very low')) {
-        return { level: 'very-low', text: 'Very Low Confidence' };
-      }
-    }
-  }
-  
-  // Fallback to medium confidence if not specified
-  return { level: 'medium', text: 'Medium Confidence' };
+  const rec = _findExpRec(expId, data);
+  return (rec && _parseConfidence(rec.confidence)) || { level: 'medium', text: 'Medium Confidence' };
 }
 
 function getExperienceReasoning(expId, data) {
-  // Extract reasoning from LLM response
-  if (data.experience_recommendations && Array.isArray(data.experience_recommendations)) {
-    const rec = data.experience_recommendations.find(r => r.id === expId || r.experience_id === expId);
-    if (rec && rec.reasoning) {
-      return rec.reasoning;
-    }
-  }
-  
-  // Fallback reasoning if not provided
-  return "This experience was selected based on its relevance to the position requirements.";
+  const rec = _findExpRec(expId, data);
+  return (rec && rec.reasoning) || 'This experience was selected based on its relevance to the position requirements.';
 }
 
 function getSkillRecommendation(skill, data) {
-  // Extract recommendation level from LLM response
-  if (data.skill_recommendations && Array.isArray(data.skill_recommendations)) {
-    const rec = data.skill_recommendations.find(r => r.skill === skill || r.name === skill);
-    if (rec && rec.recommendation) {
-      return rec.recommendation; // Should be: "Emphasize", "Include", "De-emphasize", or "Omit"
-    }
-  }
-  
-  // Fallback: check if in recommended_skills array
-  if (data.recommended_skills && data.recommended_skills.includes(skill)) {
-    return "Include";
-  }
-  
-  return "Omit"; // Default for skills not mentioned
+  const rec = _findSkillRec(skill, data);
+  if (rec && rec.recommendation) return rec.recommendation;
+  if (data.recommended_skills && data.recommended_skills.includes(skill)) return 'Include';
+  return 'Omit';
 }
 
 function getSkillConfidence(skill, data) {
-  // Extract confidence level from LLM response for skills
-  if (data.skill_recommendations && Array.isArray(data.skill_recommendations)) {
-    const rec = data.skill_recommendations.find(r => r.skill === skill || r.name === skill);
-    if (rec && rec.confidence) {
-      const conf = rec.confidence.toLowerCase();
-      if (conf.includes('very high')) {
-        return { level: 'very-high', text: 'Very High Confidence' };
-      } else if (conf.includes('high')) {
-        return { level: 'high', text: 'High Confidence' };
-      } else if (conf.includes('medium')) {
-        return { level: 'medium', text: 'Medium Confidence' };
-      } else if (conf.includes('low') && !conf.includes('very')) {
-        return { level: 'low', text: 'Low Confidence' };
-      } else if (conf.includes('very low')) {
-        return { level: 'very-low', text: 'Very Low Confidence' };
-      }
-    }
+  const rec = _findSkillRec(skill, data);
+  if (rec) {
+    const parsed = _parseConfidence(rec.confidence);
+    if (parsed) return parsed;
   }
-  
-  // Fallback: if in recommended_skills, give medium confidence
   if (data.recommended_skills && data.recommended_skills.includes(skill)) {
     return { level: 'medium', text: 'Medium Confidence' };
   }
-  
   return { level: 'low', text: 'Low Confidence' };
 }
 
 function getSkillReasoning(skill, data) {
-  // Extract reasoning from LLM response for skills
-  if (data.skill_recommendations && Array.isArray(data.skill_recommendations)) {
-    const rec = data.skill_recommendations.find(r => r.skill === skill || r.name === skill);
-    if (rec && rec.reasoning) {
-      return rec.reasoning;
-    }
-  }
-  
-  // Fallback reasoning
+  const rec = _findSkillRec(skill, data);
+  if (rec && rec.reasoning) return rec.reasoning;
   if (data.recommended_skills && data.recommended_skills.includes(skill)) {
-    return "This skill was identified as relevant to the position requirements.";
+    return 'This skill was identified as relevant to the position requirements.';
   }
-  return "This skill was not specifically mentioned in the job requirements.";
+  return 'This skill was not specifically mentioned in the job requirements.';
 }
 
 // ==== Achievement Recommendation Helpers ====
@@ -2329,7 +2276,7 @@ function finishPostAnalysisQuestions() {
 async function getStatus() {
   try {
     const res = await fetch('/api/status');
-    return await res.json();
+    return parseStatusResponse(await res.json());
   } catch (error) {
     console.error('Error fetching status:', error);
     return { _error: true };
@@ -2552,7 +2499,7 @@ async function startInteractiveReview() {
   // Fetch ALL experiences from backend to review
   try {
     const statusRes = await fetch('/api/status');
-    const statusData = await statusRes.json();
+    const statusData = parseStatusResponse(await statusRes.json());
     
     // Get all experience IDs from master CV data
     if (statusData.all_experience_ids && statusData.all_experience_ids.length > 0) {
@@ -3236,7 +3183,7 @@ async function buildExperienceReviewTable() {
   let allExperienceIds = [];
   try {
     const statusRes = await fetch('/api/status');
-    const statusData = await statusRes.json();
+    const statusData = parseStatusResponse(await statusRes.json());
     allExperienceIds = statusData.all_experience_ids || data.recommended_experiences || [];
   } catch (error) {
     allExperienceIds = data.recommended_experiences || [];
@@ -3320,11 +3267,11 @@ async function buildExperienceReviewTable() {
         <td>${confidenceBadge}</td>
         <td style="max-width: 300px;"><small>${reasoningText}</small></td>
         <td class="action-btns">
-          <button class="icon-btn ${defaultAction === 'emphasize' ? 'active' : ''}" data-action="emphasize" title="Emphasize - Feature prominently with full details" onclick="handleActionClick('${expId}', 'emphasize', 'experience')" style="color: #10b981; font-size: 1.5em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Include - Standard treatment" onclick="handleActionClick('${expId}', 'include', 'experience')" style="font-size: 1.3em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize - Brief mention only" onclick="handleActionClick('${expId}', 'de-emphasize', 'experience')" style="color: #f59e0b; font-size: 1.5em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Exclude - Omit from CV" onclick="handleActionClick('${expId}', 'exclude', 'experience')" style="color: #ef4444; font-size: 1.3em;">✗</button>
-          <button class="icon-btn" title="Reorder bullet points for this experience" onclick="event.stopPropagation();showBulletReorder('${expId}', '${(title||'').replace(/'/g, '&#39;')}')" style="color:#6366f1;font-size:1.1em;">↕</button>
+          <button class="icon-btn ${defaultAction === 'emphasize' ? 'active' : ''}" data-action="emphasize" title="Emphasize - Feature prominently with full details" style="color: #10b981; font-size: 1.5em;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Include - Standard treatment" style="font-size: 1.3em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize - Brief mention only" style="color: #f59e0b; font-size: 1.5em;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Exclude - Omit from CV" style="color: #ef4444; font-size: 1.3em;">✗</button>
+          <button class="icon-btn" data-action="reorder" title="Reorder bullet points for this experience" style="color:#6366f1;font-size:1.1em;">↕</button>
         </td>
       </tr>
     `;
@@ -3336,6 +3283,23 @@ async function buildExperienceReviewTable() {
   `;
   
   container.innerHTML = tableHTML;
+
+  // Delegated click handler for experience action buttons (data-exp-id on <tr> avoids onclick injection)
+  container.querySelector('#experience-review-table tbody')?.addEventListener('click', e => {
+    const btn = e.target.closest('.icon-btn');
+    if (!btn) return;
+    const tr = btn.closest('tr[data-exp-id]');
+    if (!tr) return;
+    const expId  = tr.dataset.expId;
+    const action = btn.dataset.action;
+    if (action === 'reorder') {
+      e.stopPropagation();
+      const titleEl = tr.querySelector('strong');
+      showBulletReorder(expId, titleEl ? titleEl.textContent : '');
+    } else if (action) {
+      handleActionClick(expId, action, 'experience');
+    }
+  });
 
   // Bulk toolbar (injected before DataTable initialises so it sits above the search box)
   const expToolbar = document.createElement('div');
@@ -3368,7 +3332,7 @@ async function buildSkillsReviewTable() {
   let allSkills = [];
   try {
     const statusRes = await fetch('/api/status');
-    const statusData = await statusRes.json();
+    const statusData = parseStatusResponse(await statusRes.json());
     allSkills = statusData.all_skills || [];
   } catch (error) {
     console.error('Error fetching all skills:', error);
@@ -3460,10 +3424,10 @@ async function buildSkillsReviewTable() {
         <td>${confidenceBadge}</td>
         <td style="max-width: 300px;"><small>${escapeHtml(reasoningText)}</small></td>
         <td class="action-btns">
-          <button class="icon-btn ${defaultAction === 'emphasize' ? 'active' : ''}" data-action="emphasize" title="Emphasize - Feature prominently" onclick="handleActionClick('${escapeHtml(skillName)}', 'emphasize', 'skill')" style="color: #10b981; font-size: 1.5em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Include - Standard listing" onclick="handleActionClick('${escapeHtml(skillName)}', 'include', 'skill')" style="font-size: 1.3em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize - Brief mention" onclick="handleActionClick('${escapeHtml(skillName)}', 'de-emphasize', 'skill')" style="color: #f59e0b; font-size: 1.5em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Exclude - Omit from CV" onclick="handleActionClick('${escapeHtml(skillName)}', 'exclude', 'skill')" style="color: #ef4444; font-size: 1.3em;">✗</button>
+          <button class="icon-btn ${defaultAction === 'emphasize' ? 'active' : ''}" data-action="emphasize" title="Emphasize - Feature prominently" style="color: #10b981; font-size: 1.5em;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Include - Standard listing" style="font-size: 1.3em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize - Brief mention" style="color: #f59e0b; font-size: 1.5em;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Exclude - Omit from CV" style="color: #ef4444; font-size: 1.3em;">✗</button>
         </td>
       </tr>
     `;
@@ -3475,6 +3439,16 @@ async function buildSkillsReviewTable() {
   `;
   
   container.innerHTML = tableHTML;
+
+  // Delegated click handler for skill action buttons (data-skill on <tr> avoids onclick injection)
+  container.querySelector('#skills-review-table tbody')?.addEventListener('click', e => {
+    const btn = e.target.closest('.icon-btn');
+    if (!btn) return;
+    const tr = btn.closest('tr[data-skill]');
+    if (!tr) return;
+    const action = btn.dataset.action;
+    if (action) handleActionClick(tr.dataset.skill, action, 'skill');
+  });
 
   // Bulk toolbar
   const skillToolbar = document.createElement('div');
@@ -3591,10 +3565,10 @@ async function buildAchievementsReviewTable() {
         <td>${confidenceBadge}</td>
         <td style="max-width:280px;"><small>${escapeHtml(reasoning)}</small></td>
         <td class="action-btns">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    title="Emphasize — feature prominently"  onclick="handleAchievementAction('${escapeHtml(id)}', 'emphasize')"    style="color:#10b981;font-size:1.5em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      title="Include — standard treatment"      onclick="handleAchievementAction('${escapeHtml(id)}', 'include')"      style="font-size:1.3em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize — brief mention only"  onclick="handleAchievementAction('${escapeHtml(id)}', 'de-emphasize')" style="color:#f59e0b;font-size:1.5em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      title="Exclude — omit from CV"            onclick="handleAchievementAction('${escapeHtml(id)}', 'exclude')"      style="color:#ef4444;font-size:1.3em;">✗</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    title="Emphasize — feature prominently"  style="color:#10b981;font-size:1.5em;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      title="Include — standard treatment"      style="font-size:1.3em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize — brief mention only"  style="color:#f59e0b;font-size:1.5em;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      title="Exclude — omit from CV"            style="color:#ef4444;font-size:1.3em;">✗</button>
         </td>
       </tr>
     `;
@@ -3602,6 +3576,15 @@ async function buildAchievementsReviewTable() {
 
   tableHTML += '</tbody></table>';
   container.innerHTML = tableHTML;
+  // Delegated click handler for achievement action buttons (data-ach-id on <tr> avoids onclick injection)
+  container.querySelector('tbody')?.addEventListener('click', e => {
+    const btn = e.target.closest('.icon-btn');
+    if (!btn) return;
+    const tr = btn.closest('tr[data-ach-id]');
+    if (!tr) return;
+    const action = btn.dataset.action;
+    if (action) handleAchievementAction(tr.dataset.achId, action);
+  });
 }
 
 function handleAchievementAction(achId, action) {
@@ -3874,10 +3857,8 @@ async function buildPublicationsReviewTable() {
         <td>${reasoning}</td>
         <td class="action-btns">
           <button class="icon-btn${isAccepted ? ' active' : ''}" data-action="accept" title="Include in CV"
-              onclick="handlePubAction('${escapeHtml(citeKey)}', true)"
               style="color:#10b981;font-size:1.3em;" id="pub-accept-${rank}">✓</button>
           <button class="icon-btn${!isAccepted ? ' active' : ''}" data-action="reject" title="Exclude from CV"
-              onclick="handlePubAction('${escapeHtml(citeKey)}', false)"
               style="color:#ef4444;font-size:1.3em;" id="pub-reject-${rank}">✗</button>
         </td>
       </tr>
@@ -3886,6 +3867,16 @@ async function buildPublicationsReviewTable() {
 
   tableHTML += '</tbody></table>';
   container.innerHTML = tableHTML;
+  // Delegated click handler for publication action buttons (data-cite-key on <tr> avoids onclick injection)
+  container.querySelector('#publications-review-table tbody')?.addEventListener('click', e => {
+    const btn = e.target.closest('.icon-btn');
+    if (!btn) return;
+    const tr = btn.closest('tr[data-cite-key]');
+    if (!tr) return;
+    const action = btn.dataset.action;
+    if      (action === 'accept') handlePubAction(tr.dataset.citeKey, true);
+    else if (action === 'reject') handlePubAction(tr.dataset.citeKey, false);
+  });
 }
 
 function filterPublicationsTable(query) {
@@ -4521,7 +4512,7 @@ async function fetchAndReviewRewrites() {
   setLoading(true);
   try {
     const res = await fetch('/api/rewrites');
-    const data = await res.json();
+    const data = parseRewritesResponse(await res.json());
     removeLoadingMessage(loadingMsg);
     setLoading(false);
     if (!res.ok) {
@@ -4531,7 +4522,7 @@ async function fetchAndReviewRewrites() {
     const rewrites = data.rewrites || [];
     const warnings = data.persuasion_warnings || [];  // Phase 10
 
-    if (rewrites.length === 0 || data.phase === 'generation') {
+    if (rewrites.length === 0 || data.phase === PHASES.GENERATION) {
       // No rewrites — go straight to generation
       await sendAction('generate_cv');
       return;
@@ -5452,10 +5443,10 @@ async function sendAction(action) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    
+    const data = parseMessageResponse(await res.json());
+
     removeLoadingMessage(loadingMsg);
-    
+
     if (data.error) {
       appendRetryMessage('❌ Error: ' + data.error, () => sendAction(action));
     } else {
@@ -5473,7 +5464,7 @@ async function sendAction(action) {
 
           try {
             const statusRes = await fetch('/api/status');
-            const statusData = await statusRes.json();
+            const statusData = parseStatusResponse(await statusRes.json());
             const progress = statusData.generation_progress || [];
 
             if (progress.length > 0) {
@@ -5860,7 +5851,7 @@ function updatePositionTitle(status = {}) {
 async function fetchStatus() {
   try {
     const res = await fetch('/api/status');
-    const data = await res.json();
+    const data = parseStatusResponse(await res.json());
 
     if (Array.isArray(data.post_analysis_questions)) {
       window.postAnalysisQuestions = data.post_analysis_questions;
@@ -6275,11 +6266,11 @@ function updateWorkflowSteps(status) {
     job:            !!status.job_description,
     analysis:       !!status.job_analysis,
     customizations: !!status.customizations,
-    rewrite:        phase !== 'rewrite_review' && (!!status.customizations),
-    spell:          phase === 'generation' || phase === 'refinement',
+    rewrite:        phase !== PHASES.REWRITE_REVIEW && (!!status.customizations),
+    spell:          phase === PHASES.GENERATION || phase === PHASES.REFINEMENT,
     generate:       !!status.generated_files,
-    layout:         phase === 'refinement' && !!status.generated_files,
-    finalise:       phase === 'refinement' && !!status.generated_files,
+    layout:         phase === PHASES.REFINEMENT && !!status.generated_files,
+    finalise:       phase === PHASES.REFINEMENT && !!status.generated_files,
   };
 
   // Determine the active step from the backend phase string.
