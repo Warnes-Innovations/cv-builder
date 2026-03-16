@@ -1,6 +1,6 @@
 # Gaps Analysis: User Stories vs. Specifications & Implementation
 
-**Generated:** 2026-03-06  
+**Generated:** 2026-03-06 | **Last updated:** 2026-03-16
 **Sources:** `tasks/user-story-*.md`, `REQUIREMENTS.md`, `PROJECT_SPECIFICATION.md`, `tasks/rewrite-feature.md`
 
 This document identifies gaps between what the user stories require and what is currently specified or implemented.
@@ -18,7 +18,7 @@ Each gap has a severity, affected user stories, and a recommended resolution.
 
 **Severity:** HIGH  
 **Affected stories:** US-A10, US-A11  
-**Status:** Session-harvest path now specified in US-A11; NL update and document ingestion path (US-A10) still not specified, not implemented
+**Status:** PARTIAL — Session harvest path implemented (`_compile_harvest_candidates()`, `/api/harvest`, `/api/harvest-apply`); NL update and document ingestion path (US-A10) still not specified, not implemented
 
 **Description:**  
 US-A10 requires a "Manage Master Data" section where the user can update `Master_CV_Data.json` via
@@ -43,7 +43,7 @@ Add a `### X. Master Data Management` section to REQUIREMENTS.md covering:
 
 **Severity:** HIGH  
 **Affected stories:** US-A6  
-**Status:** Partially specified in REQUIREMENTS.md §1 (iterative step 8), not implemented in `conversation_manager.py`
+**Status:** PARTIAL — `back_to_phase()` implemented in `conversation_manager.py` (line 998) and exposed via `/api/back-to-phase`; feedback classification logic (text-level vs. structural keywords) and partial regeneration remain unspecified
 
 **Description:**  
 US-A6 requires that post-generation feedback triggers *targeted* re-entry into either the **rewrite review**
@@ -69,7 +69,7 @@ REQUIREMENTS.md §1 mentions "Allow iterative refinement" but does not specify:
 
 **Severity:** HIGH  
 **Affected stories:** US-A9  
-**Status:** Mentioned as acceptance criteria in US-A9; REQUIREMENTS.md §2 briefly mentions Drive integration; no implementation
+**Status:** RESOLVED — `/api/finalise` endpoint implemented (`web_app.py` line 3425); git commit with `feat: Add {Company}_{Role}_{Date} application` message implemented (line 3503); Drive sync still unimplemented
 
 **Description:**  
 US-A9 specifies that clicking "Finalise" triggers:
@@ -89,7 +89,7 @@ Neither the Git commit trigger/format nor the Drive sync mechanism is specified 
 
 **Severity:** HIGH  
 **Affected stories:** US-H6  
-**Status:** Mentioned in US-H6 acceptance criteria; not in REQUIREMENTS.md; not implemented
+**Status:** RESOLVED — `run_ats_validation_checks()` implements all 16 checks (`cv_orchestrator.py` line 2173); `/api/ats-validate` endpoint exposed; results include pass/warn/fail per check and page count; `validation_results` written to `metadata.json`
 
 **Description:**  
 US-H6 specifies a 16-point programmatic validation report run after generation covering DOCX structure,
@@ -108,9 +108,9 @@ validation logic.
 
 ## GAP-05: CV Length Estimation and Warning — Not Specified
 
-**Severity:** MEDIUM  
-**Affected stories:** US-R2, US-M4  
-**Status:** Not in REQUIREMENTS.md; not implemented
+**Severity:** MEDIUM
+**Affected stories:** US-R2, US-M4
+**Status:** PARTIAL — Page count is computed via WeasyPrint render (`cv_orchestrator.py` line 2427) and returned by `/api/ats-validate`; no threshold-based warn/fail check (1 page = warn, >3 pages = warn) has been added as a named validation check
 
 **Description:**  
 US-R2 requires the system to warn if the estimated CV length is outside 1.5–3 pages for a senior candidate.
@@ -129,7 +129,7 @@ No page-count estimation or post-generation page-count check exists anywhere in 
 
 **Severity:** MEDIUM  
 **Affected stories:** US-A4, US-U5  
-**Status:** Card UI behaviour is in US-A4; UX presentation criteria in US-U5; not in REQUIREMENTS.md or PROJECT_SPECIFICATION.md; Phase 5 (web UI) not started
+**Status:** RESOLVED — Rewrite card UI fully implemented in `web/app.js` (line 4725): before/after diff, keyword pill badges with rank numbers, weak-evidence `⚠` badge, collapsible rationale, and Submit-All blocking until all cards actioned
 
 **Description:**  
 US-A4 defines the full rewrite review card UI: before/after diff, keyword pill badges, collapsible rationale,
@@ -149,7 +149,7 @@ work (Phase 5 of rewrite-feature.md) has not started.
 
 **Severity:** MEDIUM  
 **Affected stories:** US-A3, US-R2  
-**Status:** Mentioned in US-A3 ("drag-and-drop or up/down controls"); not in REQUIREMENTS.md; not implemented in web UI
+**Status:** OPEN — No bullet reordering UI controls found in `web/index.html` or `web/app.js`; no system-proposed reordering logic in `cv_orchestrator.py`
 
 **Description:**  
 US-A3 and US-R2 both require that bullet ordering within an experience entry can be changed by the user
@@ -166,7 +166,7 @@ reordering logic nor the UI control for user override is specified in REQUIREMEN
 
 **Severity:** MEDIUM  
 **Affected stories:** US-A4b, US-R7  
-**Status:** Spec section exists (REQUIREMENTS.md §6); `rewrite-feature.md` Phases 4–6 do not include it; no implementation
+**Status:** RESOLVED — `SpellChecker` class implemented; `/api/spell-check-sections`, `/api/spell-check`, `/api/spell-check-complete` endpoints all present in `web_app.py` (lines 3134–3230); `custom_dictionary.json` read/write in place
 
 **Description:**  
 The Spell & Grammar Check is now fully specified in REQUIREMENTS.md §6 and user stories US-A4b and US-R7,
@@ -188,7 +188,7 @@ but it is not included in any implementation phase in `tasks/rewrite-feature.md`
 
 **Severity:** LOW  
 **Affected stories:** US-M2  
-**Status:** Specified in `tasks/rewrite-feature.md` §2.4 (`_enhance_achievement_for_ats`); not in REQUIREMENTS.md
+**Status:** OPEN — Logic implemented (`conversation_manager.py` line 892); spec still only in `tasks/rewrite-feature.md`, not in REQUIREMENTS.md
 
 **Description:**  
 US-M2 acceptance criterion: "System warns if a bullet lacks an action verb (per Phase 2.4 refactor)."
@@ -205,7 +205,7 @@ If the rewrite-feature spec changes, this acceptance criterion could become orph
 
 **Severity:** LOW  
 **Affected stories:** US-R1  
-**Status:** Mentioned in REQUIREMENTS.md §1 ("group synonyms"); no algorithm specified; not implemented
+**Status:** PARTIAL — Synonym map implemented (`synonym_map.json`, `canonical_skill_name()` in `cv_orchestrator.py`, `/api/canonical-skill` endpoint); grouping algorithm choice (curated map vs. LLM fallback) not formally specified in REQUIREMENTS.md
 
 **Description:**  
 US-R1 requires that synonyms ("ML" and "Machine Learning") be grouped rather than counted as separate
@@ -222,7 +222,7 @@ pre-defined synonym table, embedding similarity, or LLM call.
 
 **Severity:** LOW  
 **Affected stories:** US-R5  
-**Status:** Not in REQUIREMENTS.md; not specifically implemented
+**Status:** PARTIAL — `canonical_skill_name()` in `cv_orchestrator.py` normalises skill lookups via synonym map; formal `aliases` array schema per skill entry in `Master_CV_Data.json` not specified; deduplication rule on write-back not specified in REQUIREMENTS.md
 
 **Description:**  
 US-R5 requires that skills with the same underlying meaning appear as one canonical entry, not three
@@ -238,7 +238,7 @@ canonical-form selection rule is not specified.
 
 **Severity:** LOW  
 **Affected stories:** US-R5, US-A4  
-**Status:** Behaviour described in US-R5 (asterisk + footnote); not in REQUIREMENTS.md; partial in rewrite-feature.md
+**Status:** OPEN — Weak-evidence `⚠` badge shown on rewrite cards during review (`web/app.js`); no asterisk/footnote marking in generated HTML or ATS DOCX output; no decision recorded in REQUIREMENTS.md
 
 **Description:**  
 If the user accepts a `skill_add` proposal flagged as weak-evidence, the generated CV should mark that
@@ -256,7 +256,7 @@ This marking behaviour is described in US-R5 but not in REQUIREMENTS.md or the t
 
 **Severity:** MEDIUM  
 **Affected stories:** US-R5, US-A11  
-**Status:** Write-back path now specified in US-A11 (Session Harvest); deduplication rules, written field schema, and `finalise()` implementation still needed
+**Status:** RESOLVED — `_compile_harvest_candidates()` implemented (`web_app.py` line 3670); `/api/harvest` and `/api/harvest-apply` endpoints present; git commit on apply implemented (line 3640); deduplication rule on near-duplicate skill still unspecified in REQUIREMENTS.md
 
 **Description:**  
 US-R5 requires approved additional skills to be written back to `Master_CV_Data.json`. US-A11 now
@@ -279,7 +279,7 @@ following remain unspecified:
 
 **Severity:** HIGH  
 **Affected stories:** US-U1  
-**Status:** Not in REQUIREMENTS.md; not implemented in `web/index.html`
+**Status:** RESOLVED — `workflow-steps` div with named stage chips implemented in `web/index.html` (line 80); `.step.active`, `.step.completed`, `.step.upcoming` visual states in `web/styles.css` (lines 52–56); state transitions managed in `web/ui-core.js` (line 469); back-navigation via `handleStepClick()` preserves approved content
 
 **Description:**  
 US-U1 requires a persistent, visible workflow progress indicator showing named stages (e.g., Job Input →
@@ -304,7 +304,7 @@ this element. This is the primary orientation mechanism for a multi-step workflo
 
 **Severity:** HIGH  
 **Affected stories:** US-U7  
-**Status:** Not in REQUIREMENTS.md, PROJECT_SPECIFICATION.md, or any implementation file
+**Status:** OPEN — Some ARIA attributes present (`aria-label`, `aria-modal`, `aria-labelledby`, `aria-describedby` on modals); `web/styles.css` has `outline: none` on multiple focusable elements (lines 176, 213, 353, 717) violating WCAG focus indicator requirement; no focus-trap on modals; no comprehensive accessibility audit performed
 
 **Description:**  
 US-U7 defines a full accessibility baseline required for the web UI:
@@ -331,7 +331,7 @@ and require retrofit.
 
 **Severity:** MEDIUM  
 **Affected stories:** US-U2, US-U3, US-U4, US-U5, US-U6, US-U8  
-**Status:** Evaluation criteria exist in user stories; no corresponding REQUIREMENTS.md spec sections; no implementation
+**Status:** OPEN — Evaluation criteria exist in user stories; no corresponding REQUIREMENTS.md spec sections; individual features partially implemented but not against these specs
 
 **Description:**  
 The UX expert stories define concrete acceptance criteria for every major UI surface, but none of their
@@ -358,7 +358,7 @@ requirements are reflected in REQUIREMENTS.md or the Phase 5 implementation plan
 
 **Severity:** MEDIUM  
 **Affected stories:** US-P3, US-P4, US-P6  
-**Status:** Required by persuasion expert acceptance criteria; not in REQUIREMENTS.md, config.yaml, or any implementation file
+**Status:** RESOLVED — `LLMClient.check_strong_action_verb()` implemented (`llm_client.py` line 366); filler/passive phrase detection integrated in `conversation_manager.py` (line 892) as per-bullet persuasion checks; config-driven verb/phrase lists in place
 
 **Description:**  
 Three artefacts are referenced by persuasion expert stories but do not exist anywhere in the project:
@@ -384,7 +384,7 @@ Three artefacts are referenced by persuasion expert stories but do not exist any
 
 **Severity:** HIGH
 **Affected stories:** US-A12, US-U1, US-A6
-**Status:** Not in REQUIREMENTS.md; no implementation in `conversation_manager.py` or `web/index.html`
+**Status:** RESOLVED — `conversation_manager.back_to_phase()` (line 998) and `conversation_manager.re_run_phase()` (line 1025) implemented; `/api/back-to-phase` and `/api/re-run-phase` endpoints exposed in `web_app.py` (lines 2444, 2461); downstream context passed to re-run LLM calls via `_build_downstream_context()`; re-run controls accessible via workflow step chips
 
 **Description:**
 US-A12 requires that users can re-run any completed earlier workflow stage (e.g., re-trigger job analysis
@@ -420,3 +420,52 @@ Current gaps:
 - Amend the `/api/analyze` endpoint (and equivalent phase endpoints) to accept optional
   `downstream_context` payload when called as a re-run
 - Session audit log must record each re-run event: phase name, timestamp, changed item count
+
+---
+
+## GAP-19: Master CV Editor — No Structured Pre-Workflow Editing UI
+
+**Severity:** HIGH
+**Affected stories:** US-A10, US-A11
+**Status:** OPEN — `tab-editor` (CV Editor) disabled 2026-03-16; it edited a session-scoped copy of CV data, not `Master_CV_Data.json`; `tab-master` (Master CV tab) partially covers achievements and summaries only; no UI covers personal info, experiences, skills, education, or publications in the master file
+
+**Description:**
+The app has no pre-workflow entry point for creating or maintaining `Master_CV_Data.json`. The full
+JSON schema includes: `personal_info`, `professional_summaries`, `experience` (each with `achievements`
+array), `skills` (with proficiency, tags, domains), `education`, `publications`, and `certifications`.
+
+The current state:
+
+- **CV Editor tab** (now hidden): edited a session-scoped copy (`/api/cv-data`) with a simplified schema; changes were ephemeral and did not write back to `Master_CV_Data.json`
+- **Master CV tab**: covers only `selected_achievements` and `professional_summaries` via `/api/master-data/overview`; does not cover experiences, skills, education, publications, or personal info
+
+This means users have no in-app way to add a new job, update skills, or correct contact details. They
+must manually edit the JSON file in a text editor, which is error-prone and incompatible with
+non-technical users.
+
+**Recommended resolution:**
+Implement a **Master CV app mode** as a distinct UI context (not a tab in the job-application workflow),
+with sections covering:
+
+1. **Personal Info** — name, title, contact details, languages
+2. **Experience** — add/edit/delete experience entries; per-entry: title, company, location, dates, employment type, tags, importance; nested achievement bullets (add/edit/delete/reorder)
+3. **Skills** — add/edit/delete with proficiency level, domain tags, aliases
+4. **Education** — degree, institution, dates, relevant coursework
+5. **Publications** — title, authors, venue, year, URL, importance flag
+6. **Certifications** — name, issuer, date, URL
+7. **Professional Summaries** — keyed summary variants (already partially implemented)
+
+UX requirements:
+
+- Structured form fields (not raw JSON editing) for all sections
+- Per-section save with optimistic UI; full-file backup before any write
+- Import path: upload existing CV (PDF/DOCX/JSON) and parse into structured fields for review (overlap with GAP-01 NL/document ingestion path)
+- Export: download current `Master_CV_Data.json`
+- Preview: render a "full unfiltered CV" from master data to verify completeness
+- Git commit on save (same pattern as harvest apply)
+
+**Relationship to other gaps:**
+
+- GAP-01 covers the NL update and document ingestion path into master data — complement, not duplicate
+- GAP-11 (skills deduplication) and GAP-13 (skill write-back) should route through this editor's save logic
+- The existing Master CV tab (`tab-master`) should be merged into or replaced by this new mode

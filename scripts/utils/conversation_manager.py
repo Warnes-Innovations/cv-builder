@@ -565,7 +565,7 @@ Ask questions that are specific to this job posting, not generic career question
             )
             self._normalize_recommendations(recommendations)
             self.state['customizations'] = recommendations
-            self.state['phase'] = Phase.GENERATION
+            self.state['phase'] = Phase.REWRITE_REVIEW
             
             return {
                 'text': f"✓ Customization recommendations generated ({len(recommendations.get('recommended_experiences', []))} experiences, {len(recommendations.get('recommended_skills', []))} skills).",

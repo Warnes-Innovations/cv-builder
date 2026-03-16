@@ -2223,12 +2223,7 @@ async function submitAllAnswers() {
   }
 
   try {
-    const addedFollowUps = await appendFollowUpPostAnalysisQuestions();
-    if (addedFollowUps > 0) {
-      appendMessage('assistant', `✓ Thanks. I added ${addedFollowUps} follow-up question${addedFollowUps > 1 ? 's' : ''} to reduce remaining uncertainty.`);
-    } else {
-      appendMessage('assistant', `✓ Thank you! ${qs.length} answer${qs.length > 1 ? 's' : ''} saved. Click "Recommend Customizations" when ready.`);
-    }
+    appendMessage('assistant', `✓ Thank you! ${qs.length} answer${qs.length > 1 ? 's' : ''} saved. Click "Recommend Customizations" when ready.`);
     // Always re-render so all questions + answers remain visible.
     switchTab('questions');
   } finally {
@@ -5496,7 +5491,9 @@ async function sendAction(action) {
     } else {
       // Handle different action types
       if (action === 'recommend_customizations') {
-        await handleCustomizationResponse(data.result);
+        // data.result is {text, context_data: {customizations: {...}}} — unwrap to the actual recommendations
+        const customizationData = data.result?.context_data?.customizations ?? data.result;
+        await handleCustomizationResponse(customizationData);
       } else if (action === 'generate_cv') {
         // Show generation progress (Phase 10)
         const generationMsg = appendMessage('assistant', '⏳ Generating CV files (ATS DOCX → HTML → Human DOCX)...');

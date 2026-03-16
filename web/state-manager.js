@@ -266,7 +266,7 @@ async function restoreBackendState() {
 
     if (statusData) {
       // If we have job analysis data, try to restore it
-      if (statusData.phase === PHASES.CUSTOMIZATION || statusData.phase === PHASES.REWRITE_REVIEW || statusData.phase === PHASES.GENERATION || statusData.phase === PHASES.REFINEMENT) {
+      if (statusData.phase === PHASES.CUSTOMIZATION || statusData.phase === PHASES.REWRITE_REVIEW || statusData.phase === PHASES.SPELL_CHECK || statusData.phase === PHASES.GENERATION || statusData.phase === PHASES.LAYOUT_REVIEW || statusData.phase === PHASES.REFINEMENT) {
         const analysisData = statusData.job_analysis;
         if (analysisData) {
           tabData.analysis = analysisData;
@@ -277,7 +277,7 @@ async function restoreBackendState() {
       }
 
       // If we have customization data, try to restore it
-      if (statusData.phase === PHASES.REWRITE_REVIEW || statusData.phase === PHASES.GENERATION || statusData.phase === PHASES.REFINEMENT) {
+      if (statusData.phase === PHASES.REWRITE_REVIEW || statusData.phase === PHASES.SPELL_CHECK || statusData.phase === PHASES.GENERATION || statusData.phase === PHASES.LAYOUT_REVIEW || statusData.phase === PHASES.REFINEMENT) {
         const customizationData = statusData.customizations;
         if (customizationData) {
           tabData.customizations = customizationData;
@@ -289,7 +289,7 @@ async function restoreBackendState() {
       }
 
       // If we have generated CV, try to restore it
-      if (statusData.phase === PHASES.REFINEMENT && statusData.generated_files) {
+      if ((statusData.phase === PHASES.LAYOUT_REVIEW || statusData.phase === PHASES.REFINEMENT) && statusData.generated_files) {
         tabData.cv = statusData.generated_files;
         if (currentTab === 'cv') {
           populateCVTab(statusData.generated_files);
