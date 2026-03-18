@@ -6252,19 +6252,69 @@ async function backToPhase(step, feedback) {
  * Re-run the LLM call for a phase with downstream context included.
  * Shows a confirmation popover before proceeding.
  */
+const _STEP_ORDER = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise'];
+const _STEP_DISPLAY = {
+  job: 'Job Input', analysis: 'Job Analysis', customizations: 'Customisations',
+  rewrite: 'Rewrite Review', spell: 'Spell Check', generate: 'Generate CV',
+  layout: 'Layout Review', finalise: 'Finalise',
+};
+
+/**
+ * Show a downstream-aware confirmation modal before re-running or back-navigating.
+ * @param {string}   step      - The target step key
+ * @param {'rerun'|'back-nav'} mode
+ * @param {Function} onConfirm - Called if the user clicks Proceed
+ */
+function _showReRunConfirmModal(step, mode, onConfirm) {
+  const stepIdx    = _STEP_ORDER.indexOf(step);
+  const downstream = _STEP_ORDER.slice(stepIdx + 1);
+  const stepLabel  = _STEP_DISPLAY[step] || step;
+
+  const title = mode === 'rerun'
+    ? `↻ Re-run ${stepLabel}?`
+    : `← Navigate back to ${stepLabel}?`;
+  const bodyText = mode === 'rerun'
+    ? 'The following stages will see updated inputs and may show changed recommendations:'
+    : 'You are navigating back past the following completed stages:';
+  const note = 'All existing approvals and rewrites are preserved as context.';
+
+  const listHtml = downstream
+    .map(s => `<li style="padding:2px 0;">${_STEP_DISPLAY[s] || s}</li>`)
+    .join('');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'rerun-confirm-overlay';
+  overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.5);
+    z-index:10000;display:flex;align-items:center;justify-content:center;`;
+  overlay.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-labelledby="rerun-confirm-title"
+         style="background:#fff;border-radius:10px;padding:24px 28px;max-width:440px;
+                width:92%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <h3 id="rerun-confirm-title" style="margin:0 0 10px;font-size:1.1em;color:#1e293b;">
+        ${escapeHtml(title)}</h3>
+      <p style="margin:0 0 8px;font-size:0.9em;color:#475569;">${escapeHtml(bodyText)}</p>
+      <ul style="margin:0 0 12px;padding-left:20px;font-size:0.9em;color:#374151;">${listHtml}</ul>
+      <p style="margin:0 0 18px;font-size:0.85em;color:#6b7280;">${escapeHtml(note)}</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button id="rerun-cancel-btn" class="btn-secondary">Cancel</button>
+        <button id="rerun-proceed-btn" class="btn-primary">Proceed</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  _focusedElementBeforeModal = document.activeElement;
+  trapFocus('rerun-confirm-overlay');
+  document.getElementById('rerun-proceed-btn').focus();
+
+  const close = () => { overlay.remove(); restoreFocus(); };
+  document.getElementById('rerun-cancel-btn').addEventListener('click', close);
+  document.getElementById('rerun-proceed-btn').addEventListener('click', () => { close(); onConfirm(); });
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+}
+
 function confirmReRunPhase(step) {
-  const label = {
-    analysis:       'Job Analysis',
-    customizations: 'Customisations',
-    rewrite:        'Rewrite Review',
-  }[step] || step;
-
-  if (!confirm(
-    `Re-run ${label} using updated inputs?\n\n` +
-    `Prior approvals will be preserved and included as context.`
-  )) return;
-
-  reRunPhase(step);
+  _showReRunConfirmModal(step, 'rerun', () => reRunPhase(step));
 }
 
 async function reRunPhase(step) {
@@ -6625,6 +6675,19 @@ function handleStepClick(step) {
   };
   const tabName = stepToTab[step];
   if (tabName) {
+    const currentIdx = _STEP_ORDER.indexOf(currentStage);
+    const targetIdx  = _STEP_ORDER.indexOf(step);
+    const navigatingBack = targetIdx < currentIdx && el.classList.contains('completed');
+
+    if (navigatingBack) {
+      _showReRunConfirmModal(step, 'back-nav', () => {
+        currentStage = step;
+        if (typeof updateTabBarForStage === 'function') updateTabBarForStage(step);
+        switchTab(tabName);
+      });
+      return;
+    }
+
     if (typeof updateTabBarForStage === 'function') {
       currentStage = step;
       updateTabBarForStage(step);
