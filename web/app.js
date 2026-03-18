@@ -760,6 +760,20 @@ function closeAlertModal() {
   document.getElementById('alert-modal-overlay').style.display = 'none';
 }
 
+function showToast(message, type = 'success', duration = 3000) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  requestAnimationFrame(() => { requestAnimationFrame(() => { toast.classList.add('toast-show'); }); });
+  setTimeout(() => {
+    toast.classList.remove('toast-show');
+    toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+  }, duration);
+}
+
 function toggleChat() {
   const chatArea = document.getElementById('chat-area');
   const viewerArea = document.getElementById('viewer-area');
@@ -1910,6 +1924,7 @@ function normalizePostAnalysisQuestions(rawQuestions) {
 }
 
 function escapeHtml(text) {
+  if (text == null) return '';
   return String(text)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -2900,13 +2915,6 @@ function renderSkillChips() {
   `).join('');
 }
 
-function escapeHtml(text) {
-  if (typeof text !== 'string') return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
 function updatePersonalInfo(field, value) {
   cvEditorData.personal_info[field] = value;
 }
@@ -3108,8 +3116,8 @@ async function populateCustomizationsTabWithReview(data) {
     <div id="review-pane-experiences" class="review-pane" style="display:block;">
       <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">Sorted by date (most recent first). Click action buttons to override recommendations.</p>
       <div id="experience-table-container"></div>
-      <div class="nav-buttons" style="margin:16px 0;">
-        <button class="submit-btn" onclick="submitExperienceDecisions()">Save Experience Decisions</button>
+      <div class="nav-buttons nav-end" style="margin:16px 0;">
+        <button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Skills →</button>
       </div>
     </div>
 
@@ -3118,7 +3126,8 @@ async function populateCustomizationsTabWithReview(data) {
       <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">Sorted by relevance. Select how to feature each skill.</p>
       <div id="skills-table-container"></div>
       <div class="nav-buttons" style="margin:16px 0;">
-        <button class="submit-btn" onclick="submitSkillDecisions()">Save Skill Decisions</button>
+        <button class="back-btn" onclick="switchReviewSubtab('experiences')">← Back to Experiences</button>
+        <button class="continue-btn" onclick="submitSkillDecisions()">Continue to Achievements →</button>
       </div>
     </div>
 
@@ -3127,7 +3136,8 @@ async function populateCustomizationsTabWithReview(data) {
       <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">Select how to feature each key achievement. AI recommendations are pre-selected.</p>
       <div id="achievements-table-container"></div>
       <div class="nav-buttons" style="margin:16px 0;">
-        <button class="submit-btn" onclick="submitAchievementDecisions()">Save Achievement Decisions</button>
+        <button class="back-btn" onclick="switchReviewSubtab('skills')">← Back to Skills</button>
+        <button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Summary →</button>
       </div>
     </div>
 
@@ -3142,7 +3152,8 @@ async function populateCustomizationsTabWithReview(data) {
       <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">All publications ranked by relevance. Accept or reject each for your CV.</p>
       <div id="publications-table-container"></div>
       <div class="nav-buttons" style="margin:16px 0;">
-        <button class="submit-btn" onclick="submitPublicationDecisions()">Save Publication Decisions</button>
+        <button class="back-btn" onclick="switchReviewSubtab('summary')">← Back to Summary</button>
+        <button class="continue-btn" onclick="submitPublicationDecisions()">Continue to Rewrite →</button>
       </div>
     </div>
   `;
@@ -3646,13 +3657,14 @@ async function submitAchievementDecisions() {
       body: JSON.stringify({ type: 'achievements', decisions })
     });
     if (response.ok) {
-      showAlertModal('✅ Achievement Selections Saved', `Saved selections for ${count} achievements.`);
+      showToast(`Achievement selections saved (${count} items)`);
+      switchReviewSubtab('summary');
     } else {
       const err = await response.json();
-      showAlertModal('❌ Error', `Failed to save: ${err.error || 'Unknown error'}`);
+      showToast(`Error: ${err.error || 'Failed to save selections'}`, 'error');
     }
   } catch (e) {
-    showAlertModal('❌ Error', 'Failed to save achievement selections.');
+    showToast('Failed to save achievement selections. Please try again.', 'error');
   }
 }
 
@@ -3664,41 +3676,22 @@ async function buildSummaryFocusSection() {
 
   const data = window.pendingRecommendations;
 
+  // ── Load all known summaries (master + session) ──────────────────────────
   let professionalSummaries = {};
   try {
     const res = await fetch('/api/master-fields');
     const masterData = await res.json();
-    professionalSummaries = masterData.professional_summaries || {};
-  } catch (err) {
-    // fallback to status endpoint
-    try {
-      const res2 = await fetch('/api/status');
-      const statusData = await res2.json();
-      professionalSummaries = statusData.professional_summaries || {};
-    } catch (err2) {
-      container.innerHTML = '<p style="color:#ef4444;">Failed to load professional summaries.</p>';
-      return;
-    }
-  }
+    if (masterData.ok) Object.assign(professionalSummaries, masterData.professional_summaries || {});
+  } catch (_) { /* ignore */ }
+  // Pull session summaries (e.g. ai_generated) from /api/status
+  try {
+    const res2 = await fetch('/api/status');
+    const statusData = await res2.json();
+    Object.assign(professionalSummaries, statusData.professional_summaries || {});
+  } catch (_) { /* ignore */ }
 
-  const summaryKeys = Object.keys(professionalSummaries);
-  if (summaryKeys.length === 0) {
-    container.innerHTML = '<p style="color:#6b7280;font-size:0.9em;">No professional summaries configured in master CV data.</p>';
-    return;
-  }
-
-  // The LLM's summary_focus may be a free-text description rather than a key.
-  // Show it as guidance, and let the user pick a key.
-  const llmSummaryText = data.summary_focus || '';
-  const llmGuidanceHTML = llmSummaryText
-    ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px;margin-bottom:16px;">
-        <strong style="color:#166534;">💡 AI Recommendation:</strong>
-        <p style="margin:6px 0 0;color:#166534;font-size:0.9em;">${escapeHtml(llmSummaryText)}</p>
-       </div>`
-    : '';
-
-  // Suggested content reordering
-  const reorderingText = data.suggested_content_reordering || '';
+  // ── Suggested content reordering ─────────────────────────────────────────
+  const reorderingText = (data && data.suggested_content_reordering) || '';
   const reorderingHTML = reorderingText
     ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:16px;">
         <strong style="color:#1e40af;">📋 Suggested Content Order:</strong>
@@ -3706,40 +3699,141 @@ async function buildSummaryFocusSection() {
        </div>`
     : '';
 
-  // Default: pick key closest to llmSummaryText or 'default'; honour any previously saved choice
-  const llmDefaultKey = summaryKeys.find(k => llmSummaryText.toLowerCase().includes(k.replace(/_/g, ' '))) || 'default';
-  const defaultKey = window._savedDecisions?.summary_focus_override || window.selectedSummaryKey || llmDefaultKey;
-  window.selectedSummaryKey = defaultKey;
+  // ── Render skeleton while we generate ────────────────────────────────────
+  container.innerHTML = `
+    ${reorderingHTML}
+    <div id="ai-summary-panel" style="border:1px solid #d1fae5;border-radius:8px;padding:16px;margin-bottom:20px;background:#f0fdf4;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <strong style="color:#065f46;">AI-Generated Summary</strong>
+        <span id="ai-summary-status" style="font-size:0.8em;color:#6b7280;">Generating…</span>
+      </div>
+      <div id="ai-summary-text" style="font-size:0.9em;color:#374151;line-height:1.6;min-height:60px;white-space:pre-wrap;">
+        <em style="color:#9ca3af;">Generating a tailored summary for this application…</em>
+      </div>
+      <div style="margin-top:12px;">
+        <label style="font-size:0.85em;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Request changes (optional):</label>
+        <textarea id="summary-refinement-input" rows="2"
+          placeholder="e.g. 'Make it more concise', 'Emphasise my leadership experience', 'Use a more formal tone'…"
+          style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #d1d5db;border-radius:4px;font-size:0.85em;resize:vertical;"></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="ai-regenerate-btn" class="submit-btn" style="font-size:0.85em;padding:6px 14px;"
+            onclick="regenerateAISummary()">Regenerate</button>
+          <button class="submit-btn" style="font-size:0.85em;padding:6px 14px;background:#10b981;"
+            onclick="useAISummary()">Use This Summary</button>
+        </div>
+      </div>
+    </div>
+    <div id="summary-stored-section">
+      <details style="margin-bottom:8px;">
+        <summary style="cursor:pointer;font-size:0.85em;color:#6b7280;user-select:none;">
+          Use a stored summary variant instead
+        </summary>
+        <div id="summary-radios" style="margin-top:10px;"></div>
+        <div style="margin-top:8px;">
+          <button class="submit-btn" style="font-size:0.85em;padding:6px 14px;"
+            onclick="submitSummaryFocusDecision()">Use Selected Stored Summary</button>
+        </div>
+      </details>
+    </div>
+    <div class="nav-buttons" style="margin-top:16px;">
+      <button class="back-btn" onclick="switchReviewSubtab('achievements')">← Back to Achievements</button>
+      <button class="continue-btn" onclick="submitSummaryFocusDecision()">Continue to Publications →</button>
+    </div>`;
 
-  let radiosHTML = summaryKeys.map(key => {
-    const preview = (professionalSummaries[key] || '').slice(0, 180);
+  // Render stored summaries in the collapsible section
+  _renderStoredSummaryRadios(professionalSummaries);
+
+  // ── Auto-generate or load cached AI summary ───────────────────────────────
+  const cachedSummary = professionalSummaries['ai_generated'] || '';
+  if (cachedSummary) {
+    _showAISummary(cachedSummary, '(cached — click Regenerate to refresh)');
+    window.selectedSummaryKey = 'ai_generated';
+    await saveSummaryFocusToBackend('ai_generated');
+  } else {
+    await _callGenerateSummary(null, null);
+  }
+}
+
+function _renderStoredSummaryRadios(professionalSummaries) {
+  const radiosContainer = document.getElementById('summary-radios');
+  if (!radiosContainer) return;
+  const masterKeys = Object.keys(professionalSummaries).filter(k => k !== 'ai_generated');
+  if (masterKeys.length === 0) {
+    radiosContainer.innerHTML = '<p style="color:#9ca3af;font-size:0.85em;">No stored summaries available.</p>';
+    return;
+  }
+  const currentKey = window.selectedSummaryKey || '';
+  radiosContainer.innerHTML = masterKeys.map(key => {
+    const preview = (professionalSummaries[key] || '').slice(0, 200);
     const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const checked = key === defaultKey ? 'checked' : '';
+    const checked = key === currentKey ? 'checked' : '';
     return `
       <label style="display:block;border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-bottom:8px;cursor:pointer;${checked ? 'border-color:#10b981;background:#f0fdf4;' : ''}">
         <input type="radio" name="summary_key" value="${escapeHtml(key)}" ${checked}
           onchange="selectSummaryKey('${escapeHtml(key)}')" style="margin-right:8px;">
         <strong>${escapeHtml(label)}</strong>
-        <p style="margin:6px 0 0;font-size:0.85em;color:#6b7280;">${escapeHtml(preview)}${preview.length === 180 ? '…' : ''}</p>
+        <p style="margin:6px 0 0;font-size:0.85em;color:#6b7280;">${escapeHtml(preview)}${preview.length === 200 ? '…' : ''}</p>
       </label>`;
   }).join('');
+}
 
-  container.innerHTML = `
-    ${llmGuidanceHTML}
-    ${reorderingHTML}
-    <div id="summary-radios">${radiosHTML}</div>
-    <div style="margin-top:12px;">
-      <button class="submit-btn" onclick="submitSummaryFocusDecision()">Save Summary Selection</button>
-    </div>
-  `;
+function _showAISummary(text, statusLabel) {
+  const textEl   = document.getElementById('ai-summary-text');
+  const statusEl = document.getElementById('ai-summary-status');
+  if (textEl)   textEl.textContent = text;
+  if (statusEl) statusEl.textContent = statusLabel || '';
+  window._aiGeneratedSummary = text;
+}
 
-  // Pre-save the default so Generate CV picks it up even without explicit user click
-  await saveSummaryFocusToBackend(defaultKey);
+async function _callGenerateSummary(refinementPrompt, previousSummary) {
+  const btn      = document.getElementById('ai-regenerate-btn');
+  const statusEl = document.getElementById('ai-summary-status');
+  if (btn)      btn.disabled = true;
+  if (statusEl) statusEl.textContent = 'Generating…';
+
+  try {
+    const body = {};
+    if (refinementPrompt) body.refinement_prompt = refinementPrompt;
+    if (previousSummary)  body.previous_summary  = previousSummary;
+
+    const res  = await fetch('/api/generate-summary', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      _showAISummary(data.summary, '✓ generated');
+      window.selectedSummaryKey = 'ai_generated';
+      await saveSummaryFocusToBackend('ai_generated');
+    } else {
+      const textEl = document.getElementById('ai-summary-text');
+      if (statusEl) statusEl.textContent = '⚠ error';
+      if (textEl)   textEl.innerHTML = `<span style="color:#ef4444;">${escapeHtml(data.error || 'Generation failed.')}</span>`;
+    }
+  } catch (err) {
+    if (statusEl) statusEl.textContent = '⚠ network error';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function regenerateAISummary() {
+  const input   = document.getElementById('summary-refinement-input');
+  const prompt  = input ? input.value.trim() : '';
+  const current = window._aiGeneratedSummary || '';
+  await _callGenerateSummary(prompt || null, current || null);
+}
+
+async function useAISummary() {
+  window.selectedSummaryKey = 'ai_generated';
+  await saveSummaryFocusToBackend('ai_generated');
+  showToast('AI-generated summary selected for your CV');
 }
 
 function selectSummaryKey(key) {
   window.selectedSummaryKey = key;
-  // Update visual selection
   document.querySelectorAll('#summary-radios label').forEach(label => {
     const radio = label.querySelector('input[type=radio]');
     const isSelected = radio && radio.value === key;
@@ -3762,7 +3856,8 @@ async function submitSummaryFocusDecision() {
   const key = window.selectedSummaryKey;
   if (!key) return;
   await saveSummaryFocusToBackend(key);
-  showAlertModal('✅ Summary Selection Saved', `Selected summary: <strong>${key.replace(/_/g, ' ')}</strong>`);
+  showToast(`Summary selection saved: "${key.replace(/_/g, ' ')}"`);
+  switchReviewSubtab('publications');
 }
 
 // Track publication accept/reject decisions: cite_key → true (accept) | false (reject)
@@ -3940,7 +4035,7 @@ async function submitPublicationDecisions() {
   const decisions = window.publicationDecisions || {};
   const count = Object.keys(decisions).length;
   if (count === 0) {
-    showAlertModal('No Publications', 'No publication decisions to save.');
+    showToast('No publication decisions to save.', 'error');
     return;
   }
 
@@ -3955,17 +4050,15 @@ async function submitPublicationDecisions() {
     if (response.ok) {
       const accepted = Object.values(window.publicationDecisions).filter(Boolean).length;
       const rejected = count - accepted;
-      showAlertModal(
-        '✅ Publication Selections Saved',
-        `Kept <strong>${accepted}</strong> publication${accepted !== 1 ? 's' : ''}; excluded <strong>${rejected}</strong>.<br><br>These selections will be applied when generating your CV.`
-      );
+      showToast(`Publication selections saved: ${accepted} kept, ${rejected} excluded`);
+      switchTab('rewrite');
     } else {
       const err = await response.json();
-      showAlertModal('❌ Error', `Failed to save publication selections: ${err.error || 'Unknown error'}`);
+      showToast(`Error: ${err.error || 'Failed to save publication selections'}`, 'error');
     }
   } catch (err) {
     console.error('Error saving publication decisions:', err);
-    showAlertModal('❌ Error', 'Failed to save publication selections. Please try again.');
+    showToast('Failed to save publication selections. Please try again.', 'error');
   }
 }
 
@@ -4140,15 +4233,15 @@ async function submitExperienceDecisions() {
     });
     
     if (response.ok) {
-      const result = await response.json();
-      showAlertModal('✅ Experience Decisions Submitted', `Submitted decisions for ${count} experiences. ${result.message || 'Saved successfully!'}<br><br><strong>Next:</strong> Submit your skill decisions below.`);
+      showToast(`Experience decisions saved (${count} items)`);
+      switchReviewSubtab('skills');
     } else {
       const error = await response.json();
-      showAlertModal('❌ Error', `Error submitting decisions: ${error.error || 'Unknown error'}`);
+      showToast(`Error: ${error.error || 'Failed to save decisions'}`, 'error');
     }
   } catch (error) {
     console.error('Error submitting experience decisions:', error);
-    showAlertModal('❌ Error', 'Failed to submit decisions. Please try again.');
+    showToast('Failed to save decisions. Please try again.', 'error');
   }
 }
 
@@ -4179,21 +4272,16 @@ async function submitSkillDecisions() {
     });
 
     if (response.ok) {
-      const result = await response.json();
-      const extraNote = extraSkills.length > 0 ? `<br><small style="color:#dc7900;">⚠ ${extraSkills.length} AI-suggested skill(s) not in your CV profile will be added to this generated CV only.</small>` : '';
-      showAlertModal('✅ Skill Decisions Submitted', `Submitted decisions for ${count} skills. ${result.message || 'Saved successfully!'}${extraNote}<br><br><strong>You can now click "Generate CV" to create your customized CV.</strong>`);
-      
-      // Add confirmation message to conversation
-      if (Object.keys(userSelections.experiences).length > 0 && Object.keys(userSelections.skills).length > 0) {
-        appendMessage('assistant', '✅ All decisions recorded! You can now click "Generate CV" to create your customized CV, or adjust your selections in the Customizations tab.');
-      }
+      const extraNote = extraSkills.length > 0 ? ` (${extraSkills.length} AI-suggested skill(s) added for this CV only)` : '';
+      showToast(`Skill decisions saved (${count} items)${extraNote}`);
+      switchReviewSubtab('achievements');
     } else {
       const error = await response.json();
-      showAlertModal('❌ Error', `Error submitting decisions: ${error.error || 'Unknown error'}`);
+      showToast(`Error: ${error.error || 'Failed to save decisions'}`, 'error');
     }
   } catch (error) {
     console.error('Error submitting skill decisions:', error);
-    showAlertModal('❌ Error', 'Failed to submit decisions. Please try again.');
+    showToast('Failed to save decisions. Please try again.', 'error');
   }
 }
 
@@ -5839,6 +5927,9 @@ function extractTitleAndCompanyFromJobText(jobText) {
     return { title: '', company: '' };
   }
 
+  // Patterns that indicate email preamble lines (not job title lines)
+  const emailPreambleRe = /^(thanks|thank you|hi |hello |dear |hope|following up|as discussed|please find|per our|it was great|i wanted|attached|feel free|let me know|best,|regards,|sincerely,|cheers,)/i;
+
   const lines = jobText
     .split('\n')
     .map(line => line.trim())
@@ -5848,21 +5939,17 @@ function extractTitleAndCompanyFromJobText(jobText) {
     return { title: '', company: '' };
   }
 
-  const firstLine = lines[0] || '';
-  const secondLine = lines[1] || '';
-  const atMatch = firstLine.match(/^(.+?)\s+at\s+(.+)$/i);
+  // Find the first short line (≤80 chars) that doesn't look like email prose
+  const candidateLine = lines.find(line =>
+    line.length <= 80 && !emailPreambleRe.test(line) && !/[.?!,:;]$/.test(line)
+  ) || '';
 
+  const atMatch = candidateLine.match(/^(.+?)\s+at\s+(.+)$/i);
   if (atMatch) {
-    return {
-      title: atMatch[1].trim(),
-      company: atMatch[2].trim()
-    };
+    return { title: atMatch[1].trim(), company: atMatch[2].trim() };
   }
 
-  return {
-    title: firstLine,
-    company: secondLine
-  };
+  return { title: candidateLine, company: '' };
 }
 
 function normalizePositionLabel(title, company) {

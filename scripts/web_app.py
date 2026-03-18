@@ -787,6 +787,77 @@ Job Description (excerpt):
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+    @app.post("/api/generate-summary")
+    def generate_professional_summary():
+        """Generate (or refine) a custom LLM professional summary for this session.
+
+        Body (JSON, all optional):
+            refinement_prompt: str   — user instructions for iterative refinement
+            previous_summary:  str   — existing text to refine (required when
+                                       refinement_prompt is provided)
+
+        On success stores the result as ``session_summaries['ai_generated']`` and
+        auto-selects it via ``summary_focus_override``.
+
+        Returns:
+            {"ok": true, "summary": "<text>"}
+        """
+        try:
+            req = request.get_json() or {}
+            refinement_prompt = (req.get('refinement_prompt') or '').strip() or None
+            previous_summary  = (req.get('previous_summary')  or '').strip() or None
+
+            job_analysis = conversation.state.get('job_analysis')
+            if not job_analysis:
+                return jsonify({"ok": False, "error": "No job analysis found. Analyse a job description first."}), 400
+
+            # Build a compact list of selected experiences.
+            # Prefer the user's submitted decisions (experience_decisions) over the
+            # LLM's original recommendations, so the summary reflects what the user
+            # actually chose to include.
+            all_experiences = orchestrator.master_data.get('experience', []) if orchestrator and orchestrator.master_data else []
+            experience_decisions = conversation.state.get('experience_decisions') or {}
+            if experience_decisions:
+                # Include experiences the user accepted (emphasize or include)
+                selected_exp_ids = {
+                    eid for eid, action in experience_decisions.items()
+                    if action in ('emphasize', 'include')
+                }
+                selected_experiences = [e for e in all_experiences if e.get('id') in selected_exp_ids]
+            else:
+                # Fall back to LLM recommendations if user hasn't submitted yet
+                customizations = conversation.state.get('customizations') or {}
+                recommended_ids = set(customizations.get('recommended_experiences') or [])
+                selected_experiences = (
+                    [e for e in all_experiences if e.get('id') in recommended_ids]
+                    if recommended_ids else all_experiences
+                )
+
+            summary = llm_client.generate_professional_summary(
+                job_analysis=job_analysis,
+                master_data=orchestrator.master_data if orchestrator else {},
+                selected_experiences=selected_experiences,
+                refinement_prompt=refinement_prompt,
+                previous_summary=previous_summary,
+            )
+
+            if not summary:
+                return jsonify({"ok": False, "error": "LLM returned an empty summary. Please try again."}), 500
+
+            # Persist in session_summaries so the orchestrator can resolve it
+            session_summaries = conversation.state.get('session_summaries') or {}
+            session_summaries['ai_generated'] = summary
+            conversation.state['session_summaries'] = session_summaries
+            # Auto-select the generated summary
+            conversation.state['summary_focus_override'] = 'ai_generated'
+            conversation._save_session()
+
+            return jsonify({"ok": True, "summary": summary})
+
+        except Exception as exc:
+            traceback.print_exc()
+            return jsonify({"ok": False, "error": str(exc)}), 500
+
     # ── Cover Letter endpoints (Phase 14) ───────────────────────────────────
 
     _TONE_GUIDANCE: Dict[str, str] = {

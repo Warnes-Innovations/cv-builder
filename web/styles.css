@@ -577,10 +577,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 
 /* Navigation buttons */
 .nav-buttons { display: flex; justify-content: space-between; margin-top: 24px; padding-top: 24px; border-top: 1px solid #e2e8f0; }
+.nav-buttons.nav-end { justify-content: flex-end; }
 .submit-btn { background: #3b82f6; color: #fff; border: none; padding: 12px 32px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; }
 .submit-btn:hover { background: #2563eb; }
 .back-btn { background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 12px 32px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; }
 .back-btn:hover { background: #f1f5f9; }
+.continue-btn { background: #10b981; color: #fff; border: none; padding: 12px 32px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; }
+.continue-btn:hover { background: #059669; }
+
+/* Toast notifications */
+#toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { background: #1e293b; color: #f8fafc; padding: 12px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0; transform: translateY(8px); transition: opacity 0.2s ease, transform 0.2s ease; pointer-events: auto; max-width: 360px; word-break: break-word; }
+.toast.toast-show { opacity: 1; transform: translateY(0); }
+.toast.toast-success { border-left: 4px solid #10b981; }
+.toast.toast-error { border-left: 4px solid #ef4444; }
 
 /* ===== REWRITE REVIEW PANEL ===== */
 .rewrite-tally-bar { position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 2px solid #e2e8f0; padding: 12px 20px; display: flex; align-items: center; gap: 20px; font-size: 14px; font-weight: 500; margin: 0 -20px 20px; }

@@ -113,30 +113,244 @@ class LLMClient(ABC):
         """Send messages and get response."""
         pass
     
-    @abstractmethod
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
-        """Analyze job description using LLM."""
-        pass
-    
-    @abstractmethod
+        """Analyze job description using the LLM.
+
+        The prompt is provider-agnostic; subclasses only need to implement chat().
+        """
+        prompt = f"""Analyze this job description and extract:
+1. Key requirements (must-have vs. nice-to-have)
+2. Required skills and technologies
+3. Domain focus (data science, biostatistics, ML engineering, etc.)
+4. Role level (IC, senior IC, staff, principal, leadership)
+5. Company culture indicators
+6. Top 10 keywords for ATS optimization
+
+IMPORTANT: The text may begin with a recruiter email or cover note (greeting, pleasantries,
+pay/contract details, etc.) followed by the actual job posting. Ignore any email preamble,
+greeting, signature, or recruiter boilerplate. Extract the *formal job title* from the actual
+posting (it often appears as a standalone heading mid-document, e.g. "Senior R Package Developer")
+and the *hiring company* name (e.g. "Genentech"), not the recruiter's agency name.
+
+Job Description:
+{job_text}
+
+Return ONLY a JSON object — no prose, no markdown fences:
+{{
+  "title":                   "...",   // formal job title; not email subject line
+  "company":                 "...",   // hiring employer, not recruiter agency; "" if unknown
+  "domain":                  "...",   // e.g. "biostatistics", "ML engineering", "data science"
+  "role_level":              "...",   // one of: IC / Senior IC / Staff / Principal / Leadership
+  "required_skills":         ["..."], // must-have skills and technologies
+  "preferred_skills":        ["..."], // nice-to-have skills
+  "must_have_requirements":  ["..."], // explicit must-have requirement phrases
+  "nice_to_have_requirements": ["..."],
+  "culture_indicators":      ["..."], // e.g. "async-first", "fast-paced", "academic rigor"
+  "ats_keywords":            ["..."]  // top 10 keywords for ATS optimisation
+}}
+"""
+        messages = [
+            {"role": "system", "content": "You are an expert at analyzing job descriptions for CV optimization."},
+            {"role": "user", "content": prompt},
+        ]
+        response = self.chat(messages, temperature=0.3)
+        return self._parse_json_response(response)
+
     def recommend_customizations(
         self,
         job_analysis: Dict,
         master_data: Dict,
         user_preferences: Dict = None,
-        conversation_history: List[Dict] = None
+        conversation_history: List[Dict] = None,
     ) -> Dict:
-        """Get LLM recommendations for CV customization."""
-        pass
+        """Recommend CV customisations for a specific job using the LLM.
+
+        The prompt is provider-agnostic; subclasses only need to implement chat().
+        """
+        # ── Extract only the fields the prompt actually needs ─────────────────
+        job_summary = {
+            k: job_analysis.get(k)
+            for k in (
+                'title', 'company', 'domain', 'role_level',
+                'required_skills', 'preferred_skills',
+                'must_have_requirements', 'nice_to_have_requirements',
+                'ats_keywords', 'culture_indicators',
+            )
+            if job_analysis.get(k)
+        }
+
+        # ── User preferences block ─────────────────────────────────────────────
+        prefs_block = ""
+        if user_preferences:
+            lines = ["=" * 72,
+                     "CRITICAL USER INSTRUCTIONS — OVERRIDE ALL OTHER CONSIDERATIONS:",
+                     "=" * 72]
+            for pref_type, pref_value in user_preferences.items():
+                lines.append(f"\n{pref_type.upper()}:\n{pref_value}")
+            lines += [
+                "\n" + "=" * 72,
+                "COMPLIANCE REQUIRED:",
+                "- 'omit'/'exclude' a named company/experience → set its recommendation to Omit",
+                "- 'focus on'/'emphasize' a type of work → set those entries to Emphasize",
+                "- named achievements/projects to highlight → set related entries to Emphasize or Include",
+                "=" * 72 + "\n",
+            ]
+            prefs_block = "\n".join(lines) + "\n\n"
+
+        # ── Conversation history block ─────────────────────────────────────────
+        history_block = ""
+        if conversation_history:
+            lines = ["RECENT CONVERSATION (additional user preferences may be here):",
+                     "-" * 60]
+            for msg in conversation_history:
+                role = msg.get('role', 'unknown').capitalize()
+                text = msg.get('content', '')[:600]
+                lines.append(f"{role}: {text}")
+            lines.append("-" * 60 + "\n")
+            history_block = "\n".join(lines) + "\n"
+
+        # ── Experience and achievement lists ──────────────────────────────────
+        exp_lines = "\n".join(
+            f"- {exp.get('id', '')}: {exp.get('title', '')} at {exp.get('company', '')}"
+            for exp in master_data.get('experience', [])
+        )
+        ach_lines = "\n".join(
+            f"- {ach.get('id', '')}: {ach.get('title', '')} "
+            f"(relevant for: {', '.join(ach.get('relevant_for', []))})"
+            for ach in master_data.get('selected_achievements', [])
+        )
+
+        n_exp = len(master_data.get('experience', []))
+        n_ach = len(master_data.get('selected_achievements', []))
+
+        prompt = f"""{prefs_block}{history_block}Job Analysis:
+{json.dumps(job_summary, indent=2)}
+
+Available Experiences ({n_exp} total):
+{exp_lines or '(none)'}
+
+Available Key Achievements ({n_ach} total):
+{ach_lines or '(none)'}
+
+STEP 1 — Extract constraints from user instructions above (if any):
+- List any companies/experiences to OMIT
+- List any work types/skills to EMPHASIZE
+- List any achievements to HIGHLIGHT
+
+STEP 2 — For EACH experience, provide THREE independent assessments:
+
+1. RECOMMENDATION (job relevance):
+   "Emphasize"    — highly relevant, feature prominently
+   "Include"      — relevant, standard treatment
+   "De-emphasize" — marginally relevant, brief mention
+   "Omit"         — not relevant, exclude
+
+2. CONFIDENCE (how certain you are of the recommendation, not relevance):
+   "Very High" / "High" / "Medium" / "Low" / "Very Low"
+   Example: "Emphasize" + "Medium" = very relevant but CV evidence is sparse.
+
+3. REASONING — 2-3 sentences: why this recommendation, what evidence, any assumptions.
+
+STEP 3 — Same three-part structure for Key Achievements.
+
+For skills: only flag skills that are notably relevant (Emphasize/Include) or
+notably irrelevant/misleading (De-emphasize/Omit) — skip unremarkable ones.
+
+Return ONLY a JSON object — no prose, no markdown fences:
+{{
+  "experience_recommendations": [
+    {{
+      "id":             "exp_001",
+      "recommendation": "Emphasize|Include|De-emphasize|Omit",
+      "confidence":     "Very High|High|Medium|Low|Very Low",
+      "reasoning":      "..."
+    }}
+  ],
+  "skill_recommendations": [
+    {{
+      "skill":          "...",
+      "recommendation": "Emphasize|Include|De-emphasize|Omit",
+      "confidence":     "Very High|High|Medium|Low|Very Low",
+      "reasoning":      "..."
+    }}
+  ],
+  "recommended_skills": ["..."],
+  "achievement_recommendations": [
+    {{
+      "id":             "sa_001",
+      "recommendation": "Emphasize|Include|De-emphasize|Omit",
+      "confidence":     "Very High|High|Medium|Low|Very Low",
+      "reasoning":      "..."
+    }}
+  ],
+  "recommended_achievements": ["..."],
+  "summary_focus": "What to emphasise in the professional summary (incorporate culture_indicators where relevant)",
+  "reasoning":     "Overall CV customisation strategy for this role"
+}}
+
+Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs.
+"""
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert CV strategist. Given a job analysis and a candidate's "
+                    "experience history, you produce structured, evidence-based recommendations "
+                    "for which content to emphasise, include, or omit. "
+                    "Return only valid JSON — no markdown fences."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ]
+
+        response = self.chat(messages, temperature=0.4)
+
+        try:
+            result = self._parse_json_response(response)
+        except Exception as e:
+            print(f"Warning: recommend_customizations failed to parse response: {e}")
+            print(f"Response preview: {response[:500]}...")
+            result = {}
+
+        # Populate recommended_experiences from experience_recommendations for
+        # backwards compatibility with callers that read the flat ID list.
+        if 'experience_recommendations' in result and not result.get('recommended_experiences'):
+            result['recommended_experiences'] = [
+                rec['id'] for rec in result['experience_recommendations']
+                if rec.get('recommendation') in ('Emphasize', 'Include')
+            ]
+
+        return result or {
+            "experience_recommendations":  [],
+            "recommended_experiences":     [],
+            "skill_recommendations":       [],
+            "recommended_skills":          [],
+            "achievement_recommendations": [],
+            "recommended_achievements":    [],
+            "summary_focus":               "general",
+            "reasoning":                   "Failed to parse LLM response",
+        }
     
-    @abstractmethod
-    def semantic_match(
-        self,
-        content: str,
-        requirements: List[str]
-    ) -> float:
-        """Calculate semantic similarity score."""
-        pass
+    def semantic_match(self, content: str, requirements: List[str]) -> float:
+        """Calculate semantic similarity by asking the LLM to rate the match.
+
+        Subclasses with native embeddings APIs (e.g. OpenAIClient) override this
+        for higher accuracy.  This prompt-based fallback works for any chat model.
+        """
+        prompt = (
+            "Rate how well the content below matches the requirements on a scale "
+            "of 0.0 (no match) to 1.0 (perfect match).\n"
+            "Return ONLY the numeric score — no explanation.\n\n"
+            f"Content:\n{content[:500]}\n\n"
+            f"Requirements: {', '.join(requirements[:10])}\n\n"
+            "Score (0.0–1.0):"
+        )
+        response = self.chat([{"role": "user", "content": prompt}], temperature=0.1)
+        try:
+            return float(response.strip())
+        except ValueError:
+            return 0.5
 
     @abstractmethod
     def propose_rewrites(
@@ -181,6 +395,133 @@ class LLMClient(ABC):
             Always returns ``[]`` on parse/API failure — never raises.
         """
         pass
+
+    def generate_professional_summary(
+        self,
+        job_analysis: Dict,
+        master_data: Dict,
+        selected_experiences: List[Dict] = None,
+        refinement_prompt: str = None,
+        previous_summary: str = None,
+    ) -> str:
+        """Generate a custom professional summary tailored to a specific job.
+
+        Produces a 3–5 sentence summary that incorporates the job's ATS keywords
+        and highlights the candidate's most relevant experience.  When
+        *refinement_prompt* and *previous_summary* are both provided the model
+        refines the existing text rather than starting from scratch.
+
+        Args:
+            job_analysis:        Output of :meth:`analyze_job_description`.
+            master_data:         The candidate's master CV dictionary.
+            selected_experiences: Subset of experiences chosen for this application.
+                                  Falls back to all master experiences when ``None``.
+            refinement_prompt:   Optional user instructions for iterative refinement.
+            previous_summary:    The current generated text being refined.
+
+        Returns:
+            A plain-text professional summary string.
+        """
+        personal_info = master_data.get('personal_info', {})
+        candidate_name = personal_info.get('name', 'the candidate')
+
+        # Build compact experience snapshot
+        experiences = selected_experiences or master_data.get('experience', [])
+        exp_lines: List[str] = []
+        for exp in experiences[:8]:
+            title   = exp.get('title', '')
+            company = exp.get('company', '')
+            years   = exp.get('years', '') or exp.get('duration', '')
+            highlights = (exp.get('achievements') or [])[:2]
+            highlight_texts = []
+            for h in highlights:
+                t = h.get('text', '') if isinstance(h, dict) else str(h)
+                if t.strip():
+                    highlight_texts.append(t[:120])
+            bullet = f"- {title} at {company}"
+            if years:
+                bullet += f" ({years})"
+            if highlight_texts:
+                bullet += ": " + "; ".join(highlight_texts)
+            exp_lines.append(bullet)
+
+        # Skills snapshot
+        skills_data = master_data.get('skills', [])
+        skill_names: List[str] = []
+        if isinstance(skills_data, dict):
+            for cat_data in skills_data.values():
+                cat_skills = (
+                    cat_data.get('skills', []) if isinstance(cat_data, dict) else
+                    cat_data if isinstance(cat_data, list) else []
+                )
+                skill_names.extend(str(s) for s in cat_skills)
+        else:
+            skill_names = [str(s) for s in (skills_data or [])]
+
+        keywords = list(dict.fromkeys(
+            job_analysis.get('ats_keywords', []) +
+            job_analysis.get('required_skills', [])
+        ))
+
+        job_title   = job_analysis.get('title', 'the role')
+        job_company = job_analysis.get('company', '')
+        domain      = job_analysis.get('domain', '')
+        role_level  = job_analysis.get('role_level', '')
+
+        # Build the prompt
+        if refinement_prompt and previous_summary:
+            prompt = (
+                "Refine the professional summary below based on the user's instructions.\n\n"
+                "REQUIREMENTS (must still be met after refinement):\n"
+                "- 3–5 sentences (≈80–150 words)\n"
+                "- ATS-friendly: weave in 3–5 of the provided keywords naturally\n"
+                "- No generic filler (e.g. 'passionate', 'results-driven', 'hard-working')\n"
+                "- Grounded in the candidate's real experience — do not fabricate\n\n"
+                f"CURRENT SUMMARY:\n{previous_summary}\n\n"
+                f"USER INSTRUCTIONS:\n{refinement_prompt}\n\n"
+                f"JOB: {job_title}"
+                + (f" at {job_company}" if job_company else "")
+                + (f" | Domain: {domain}" if domain else "")
+                + (f" | Level: {role_level}" if role_level else "") + "\n"
+                f"KEY KEYWORDS: {', '.join(keywords[:20])}\n\n"
+                "Return ONLY the refined summary text — no labels, no bullet points, no preamble."
+            )
+        else:
+            prompt = (
+                "You are a professional CV writer. Write a compelling, ATS-optimised "
+                "professional summary for a CV application.\n\n"
+                "REQUIREMENTS:\n"
+                "- 3–5 sentences (≈80–150 words)\n"
+                "- Open with a strong positioning statement (title + years of experience)\n"
+                "- Weave in 3–5 of the provided ATS keywords naturally\n"
+                "- Reference 1–2 specific, quantified achievements from the experience list\n"
+                "- Close with a forward-looking statement aligned to the target role\n"
+                "- No generic filler (e.g. 'hard-working', 'passionate', 'results-driven')\n\n"
+                f"CANDIDATE: {candidate_name}\n"
+                f"TARGET JOB: {job_title}"
+                + (f" at {job_company}" if job_company else "")
+                + (f" | Domain: {domain}" if domain else "")
+                + (f" | Level: {role_level}" if role_level else "") + "\n\n"
+                f"KEY ATS KEYWORDS: {', '.join(keywords[:20])}\n\n"
+                f"RELEVANT EXPERIENCE:\n" + ("\n".join(exp_lines) or "(none)") + "\n\n"
+                f"KEY SKILLS: {', '.join(skill_names[:25])}\n\n"
+                "Return ONLY the summary text — no labels, no bullet points, no preamble."
+            )
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert CV writer who crafts sharp, specific, "
+                    "ATS-optimised professional summaries. Write in first-person-implied "
+                    "style (no 'I'), present tense for current role, past tense for prior."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ]
+
+        response = self.chat(messages, temperature=0.6)
+        return response.strip()
 
     def call_llm(
         self,
@@ -761,11 +1102,9 @@ class LLMClient(ABC):
                 f"{first_author}{venue_str}\n   {pub.get('title', '')}"
             )
 
-        prompt = f"""You are selecting publications for a CV tailored to this job.
-
-Job Analysis:
+        prompt = f"""Target role:
 - Domain: {job_analysis.get('domain', 'N/A')}
-- Role: {job_analysis.get('title', 'N/A')}
+- Title: {job_analysis.get('title', 'N/A')}
 - Required skills: {', '.join((job_analysis.get('required_skills') or [])[:15])}
 - ATS keywords: {', '.join((job_analysis.get('ats_keywords') or [])[:15])}
 
@@ -773,9 +1112,8 @@ Publications ({len(pub_lines)} total):
 {chr(10).join(pub_lines)}
 
 Select and rank up to {max_results} publications most relevant for this role.
-Return ONLY valid JSON — an array of objects. No extra text.
+Return ONLY a JSON array — no prose, no markdown fences.
 
-Schema:
 [
   {{
     "cite_key": "...",
@@ -788,7 +1126,7 @@ Schema:
         try:
             response = self.chat(
                 messages=[
-                    {"role": "system", "content": "You select relevant academic publications for a CV. Respond with strict JSON."},
+                    {"role": "system", "content": "You are an expert academic CV advisor. Select and rank publications by relevance to a target job. Return only valid JSON — a bare array, no markdown fences."},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
@@ -921,10 +1259,9 @@ Schema:
             history_section += "-" * 60 + "\n\n"
 
         prompt = (
-            "You are a CV optimization specialist. Propose targeted text rewrites "
-            "so the CV uses terminology from the job description.\n\n"
             f"{prefs_section}"
             f"{history_section}"
+            "Propose targeted text rewrites so the CV uses terminology from the job description.\n\n"
             "CONSTRAINTS — every proposal MUST:\n"
             '1. Preserve all numbers, metrics, and percentages '
             '(e.g. "40%", "12 engineers", "$2M")\n'
@@ -1033,268 +1370,6 @@ class OpenAIClient(LLMClient):
         except Exception as exc:
             raise _classify_llm_error(exc, provider='OpenAI') from exc
     
-    def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
-        """Analyze job description using GPT."""
-        prompt = f"""Analyze this job description and extract:
-1. Key requirements (must-have vs. nice-to-have)
-2. Required skills and technologies
-3. Domain focus (data science, biostatistics, ML engineering, etc.)
-4. Role level (IC, senior IC, staff, principal, leadership)
-5. Company culture indicators
-6. Top 10 keywords for ATS optimization
-
-Job Description:
-{job_text}
-
-Return as JSON with these fields:
-- title: str
-- company: str (if mentioned)
-- domain: str
-- role_level: str
-- required_skills: List[str]
-- preferred_skills: List[str]
-- must_have_requirements: List[str]
-- nice_to_have_requirements: List[str]
-- culture_indicators: List[str]
-- ats_keywords: List[str]
-"""
-        
-        messages = [
-            {"role": "system", "content": "You are an expert at analyzing job descriptions for CV optimization."},
-            {"role": "user", "content": prompt}
-        ]
-        
-        response = self.chat(messages, temperature=0.3)
-        
-        # Parse JSON response
-        try:
-            return json.loads(response)
-        except json.JSONDecodeError:
-            # Try to extract JSON from markdown code block
-            if "```json" in response:
-                json_str = response.split("```json")[1].split("```")[0].strip()
-                return json.loads(json_str)
-            raise
-    
-    def recommend_customizations(
-        self,
-        job_analysis: Dict,
-        master_data: Dict,
-        user_preferences: Dict = None,
-        conversation_history: List[Dict] = None
-    ) -> Dict:
-        """Get LLM recommendations for customization with 3-part structure."""
-        
-        # Extract skills list from master_data
-        skills_data = master_data.get('skills', [])
-        all_skills = []
-        if isinstance(skills_data, dict):
-            # If skills is a dict with categories, extract skills from each category
-            for category_data in skills_data.values():
-                if isinstance(category_data, dict) and 'skills' in category_data:
-                    # Each category has {'category': name, 'skills': [list of skills]}
-                    category_skills = category_data.get('skills', [])
-                    if isinstance(category_skills, list):
-                        all_skills.extend(category_skills)
-                elif isinstance(category_data, list):
-                    # Handle legacy format where category_data is directly a list
-                    all_skills.extend(category_data)
-        elif isinstance(skills_data, list):
-            all_skills = skills_data
-        
-        # Build user preferences context
-        user_context = ""
-        if user_preferences:
-            user_context = "\n\n" + "="*80 + "\n"
-            user_context += "🚨 CRITICAL USER INSTRUCTIONS - THESE OVERRIDE ALL OTHER CONSIDERATIONS:\n"
-            user_context += "="*80 + "\n"
-            for pref_type, pref_value in user_preferences.items():
-                user_context += f"\n{pref_type.upper()}:\n{pref_value}\n"
-            user_context += "\n" + "="*80 + "\n"
-            user_context += "COMPLIANCE REQUIRED:\n"
-            user_context += "- If user says 'omit' or 'exclude' specific companies/experiences by name, set recommendation to 'Omit'\n"
-            user_context += "- If user says 'focus on' or 'emphasize' specific types of work, set those to 'Emphasize'\n"
-            user_context += "- If user mentions specific achievements/projects to highlight, ensure related experiences are 'Emphasize' or 'Include'\n"
-            user_context += "- Extract company names and keywords from user instructions and apply them literally\n"
-            user_context += "="*80 + "\n\n"
-        
-        # Add conversation history if available
-        conversation_context = ""
-        if conversation_history:
-            conversation_context = "\n\nRecent Conversation History:\n"
-            conversation_context += "-"*80 + "\n"
-            for msg in conversation_history:
-                role = msg.get('role', 'unknown').capitalize()
-                content = msg.get('content', '')[:800]
-                conversation_context += f"{role}: {content}\n\n"
-            conversation_context += "-"*80 + "\n"
-            conversation_context += "Review this conversation for additional user preferences and instructions.\n\n"
-        
-        prompt = f"""Based on this job analysis and candidate's master CV data, provide detailed recommendations.{user_context}{conversation_context}
-
-Job Analysis:
-{json.dumps(job_analysis, indent=2)}
-
-Candidate Data Summary:
-- {len(master_data.get('experience', []))} experiences
-- {len(all_skills)} skills
-- {len(master_data.get('selected_achievements', []))} key achievements
-
-STEP 1: Before making recommendations, extract key instructions from user preferences above:
-- List any company names, organizations, or experience IDs user wants to OMIT/EXCLUDE
-- List any types of work, projects, or skills user wants to EMPHASIZE/FOCUS ON
-- List any specific achievements or awards user wants to HIGHLIGHT
-
-STEP 2: Review all experiences and match against user instructions:
-
-Available Experiences:"""
-            
-        # Add detailed experience list with company names
-        for exp in master_data.get('experience', []):
-            exp_id = exp.get('id', '')
-            title = exp.get('title', '')
-            company = exp.get('company', '')
-            prompt += f"\n- {exp_id}: {title} at {company}"
-
-        prompt += f"""
-
-Available Key Achievements:"""
-
-        for ach in master_data.get('selected_achievements', []):
-            ach_id = ach.get('id', '')
-            title = ach.get('title', '')
-            relevant_for = ', '.join(ach.get('relevant_for', []))
-            prompt += f"\n- {ach_id}: {title} (relevant for: {relevant_for})"
-
-        prompt += f"""
-
-STEP 3: For EACH experience above, provide THREE independent pieces of information:
-
-1. RECOMMENDATION LEVEL (choose exactly one - based on JOB RELEVANCE):
-   - "Emphasize": Highly relevant - feature prominently with full details
-   - "Include": Relevant - include with standard treatment
-   - "De-emphasize": Marginally relevant - brief mention only
-   - "Omit": Not relevant - exclude from this CV
-
-2. CONFIDENCE LEVEL (5-point scale - based on EVIDENCE STRENGTH):
-   - "Very High": Overwhelming evidence from CV that supports this recommendation
-   - "High": Strong evidence clearly supports this recommendation
-   - "Medium": Moderate evidence, some assumptions made
-   - "Low": Limited evidence, significant assumptions
-   - "Very Low": Very limited evidence, highly speculative
-
-   THIS IS ABOUT HOW CERTAIN YOU ARE ABOUT YOUR RECOMMENDATION, NOT RELEVANCE.
-
-3. REASONING: 2-3 sentences explaining:
-   - Why you made this recommendation (job match, relevance, etc.)
-   - What evidence supports your confidence level
-   - Any assumptions you made
-
-IMPORTANT: These are INDEPENDENT dimensions!
-- You can have "Emphasize" with "Medium Confidence" (very relevant but uncertain if CV truly demonstrates it)
-- You can have "De-emphasize" with "Very High Confidence" (clearly not relevant, very certain about this)
-- You can have "Include" with "High Confidence" (relevant and clearly demonstrated)
-
-For SKILLS, provide the same 3-part structure for skills that are particularly relevant or irrelevant.
-You don't need to provide recommendations for every single skill, but focus on:
-- Skills that are highly relevant to the job (Emphasize/Include)
-- Skills that might be misleading or irrelevant (De-emphasize/Omit)
-
-Return as JSON with:
-{{
-  "experience_recommendations": [
-    {{
-      "id": "exp_001",
-      "recommendation": "Emphasize|Include|De-emphasize|Omit",
-      "confidence": "Very High|High|Medium|Low|Very Low",
-      "reasoning": "Detailed explanation of why this recommendation was made and the evidence supporting it"
-    }},
-    ...
-  ],
-  "skill_recommendations": [
-    {{
-      "skill": "Python",
-      "recommendation": "Emphasize|Include|De-emphasize|Omit",
-      "confidence": "Very High|High|Medium|Low|Very Low",
-      "reasoning": "Brief explanation of relevance"
-    }},
-    ...
-  ],
-  "recommended_skills": ["skill1", "skill2", ...],
-  "achievement_recommendations": [
-    {{
-      "id": "sa_001",
-      "recommendation": "Emphasize|Include|De-emphasize|Omit",
-      "confidence": "Very High|High|Medium|Low|Very Low",
-      "reasoning": "Brief explanation of relevance to this role"
-    }},
-    ...
-  ],
-  "recommended_achievements": ["achievement_id1", ...],
-  "summary_focus": "Brief description of what to emphasize in professional summary",
-  "reasoning": "Overall strategy for this CV customization"
-}}
-
-Be thorough - provide recommendations for ALL {len(master_data.get('experience', []))} experiences and ALL {len(master_data.get('selected_achievements', []))} key achievements using their exact IDs."""
-        
-        messages = [
-            {"role": "system", "content": "You are an expert at CV optimization. You provide structured recommendations with clear reasoning and confidence assessments."},
-            {"role": "user", "content": prompt}
-        ]
-        
-        response = self.chat(messages, temperature=0.5)
-        
-        try:
-            result = json.loads(response)
-            # Add backwards compatibility - populate recommended_experiences from experience_recommendations
-            if 'experience_recommendations' in result and not result.get('recommended_experiences'):
-                result['recommended_experiences'] = [
-                    rec['id'] for rec in result['experience_recommendations']
-                    if rec.get('recommendation') in ['Emphasize', 'Include']
-                ]
-            return result
-        except json.JSONDecodeError as e:
-            print(f"Warning: Failed to parse LLM response as JSON: {e}")
-            print(f"Response preview: {response[:500]}...")
-            
-            # Try to extract JSON from markdown code block
-            if "```json" in response:
-                json_str = response.split("```json")[1].split("```")[0].strip()
-                result = json.loads(json_str)
-                # Add backwards compatibility
-                if 'experience_recommendations' in result and not result.get('recommended_experiences'):
-                    result['recommended_experiences'] = [
-                        rec['id'] for rec in result['experience_recommendations']
-                        if rec.get('recommendation') in ['Emphasize', 'Include']
-                    ]
-                return result
-            elif "```" in response:
-                # Try any code block
-                json_str = response.split("```")[1].split("```")[0].strip()
-                # Remove language identifier if present
-                if json_str.startswith('json\n'):
-                    json_str = json_str[5:]
-                result = json.loads(json_str)
-                # Add backwards compatibility
-                if 'experience_recommendations' in result and not result.get('recommended_experiences'):
-                    result['recommended_experiences'] = [
-                        rec['id'] for rec in result['experience_recommendations']
-                        if rec.get('recommendation') in ['Emphasize', 'Include']
-                    ]
-                return result
-            
-            # Return a default response structure with new format
-            print("Warning: Returning default recommendations")
-            return {
-                "experience_recommendations": [],
-                "recommended_experiences": [],  # Keep for backwards compatibility
-                "recommended_skills": [],
-                "achievement_recommendations": [],
-                "recommended_achievements": [],
-                "summary_focus": "general",
-                "reasoning": "Failed to parse LLM response"
-            }
-    
     def semantic_match(
         self,
         content: str,
@@ -1386,21 +1461,6 @@ class AnthropicClient(LLMClient):
         except Exception as exc:
             raise _classify_llm_error(exc, provider='Anthropic') from exc
     
-    def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
-        """Analyze using Claude (similar to OpenAI implementation)."""
-        # Implementation similar to OpenAI but using Claude's format
-        # ... (similar logic)
-        pass
-    
-    def recommend_customizations(self, job_analysis: Dict, master_data: Dict, user_preferences: Optional[Dict] = None, conversation_history: Optional[List[Dict]] = None) -> Dict:
-        """Get recommendations from Claude."""
-        pass
-    
-    def semantic_match(self, content: str, requirements: List[str]) -> float:
-        """Semantic matching using Claude."""
-        # Claude doesn't have native embeddings API, use prompting
-        pass
-
     def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via Anthropic Claude. Delegates to shared implementation."""
         return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
@@ -1512,143 +1572,6 @@ class GeminiClient(LLMClient):
             return "".join(text_parts).strip()
         return str(content)
     
-    def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
-        """Analyze job description using Gemini."""
-        prompt = f"""Analyze this job description and extract:
-1. Key requirements (must-have vs. nice-to-have)
-2. Required skills and technologies
-3. Domain focus (data science, biostatistics, ML engineering, etc.)
-4. Role level (IC, senior IC, staff, principal, leadership)
-5. Company culture indicators
-6. Top 10 keywords for ATS optimization
-
-Job Description:
-{job_text}
-
-Return as JSON with these fields:
-- title: str
-- company: str (if mentioned)
-- domain: str
-- role_level: str
-- required_skills: List[str]
-- preferred_skills: List[str]
-- must_have_requirements: List[str]
-- nice_to_have_requirements: List[str]
-- culture_indicators: List[str]
-- ats_keywords: List[str]
-"""
-        
-        messages = [
-            {"role": "system", "content": "You are an expert at analyzing job descriptions for CV optimization."},
-            {"role": "user", "content": prompt}
-        ]
-        
-        response = self.chat(messages, temperature=0.3)
-        
-        # Parse JSON response
-        try:
-            return json.loads(response)
-        except json.JSONDecodeError:
-            # Try to extract JSON from markdown code block
-            if "```json" in response:
-                json_str = response.split("```json")[1].split("```")[0].strip()
-                return json.loads(json_str)
-            raise
-    
-    def recommend_customizations(
-        self,
-        job_analysis: Dict,
-        master_data: Dict,
-        user_preferences: Dict = None,
-        conversation_history: List[Dict] = None
-    ) -> Dict:
-        """Get LLM recommendations for customization."""
-        prompt = f"""Based on this job analysis and candidate's master CV data, recommend:
-1. Which experiences to emphasize (list IDs and reasons)
-2. Which skills to highlight
-3. Which achievements to feature
-4. Professional summary focus
-5. Suggested content reordering
-
-Job Analysis:
-{json.dumps(job_analysis, indent=2)}
-
-Candidate Data Summary:
-- {len(master_data.get('experience', []))} experiences
-- {len(master_data.get('skills', {}))} skill categories
-- {len(master_data.get('selected_achievements', []))} key achievements
-
-Available Experience IDs: {', '.join([exp.get('id', '') for exp in master_data.get('experience', [])])}
-
-Return as JSON with:
-- recommended_experiences: List[str] (use exact IDs from the list above, e.g., ["exp_001", "exp_005"])
-- recommended_skills: List[str]
-- achievement_recommendations: List[Dict] (each with id, recommendation, confidence, reasoning)
-- recommended_achievements: List[str] (IDs)
-- summary_focus: str
-- reasoning: str
-"""
-        
-        messages = [
-            {"role": "system", "content": "You are an expert at CV optimization and content selection."},
-            {"role": "user", "content": prompt}
-        ]
-        
-        response = self.chat(messages, temperature=0.5)
-        
-        try:
-            return json.loads(response)
-        except json.JSONDecodeError as e:
-            print(f"Warning: Failed to parse LLM response as JSON: {e}")
-            print(f"Response preview: {response[:500]}...")
-            
-            # Try to extract JSON from markdown code block
-            if "```json" in response:
-                json_str = response.split("```json")[1].split("```")[0].strip()
-                return json.loads(json_str)
-            elif "```" in response:
-                # Try any code block
-                json_str = response.split("```")[1].split("```")[0].strip()
-                # Remove language identifier if present
-                if json_str.startswith('json\n'):
-                    json_str = json_str[5:]
-                return json.loads(json_str)
-            
-            # Return a default response structure
-            print("Warning: Returning default recommendations")
-            return {
-                "recommended_experiences": [],
-                "recommended_skills": [],
-                "achievement_recommendations": [],
-                "recommended_achievements": [],
-                "summary_focus": "general",
-                "reasoning": "Failed to parse LLM response"
-            }
-    
-    def semantic_match(
-        self,
-        content: str,
-        requirements: List[str]
-    ) -> float:
-        """Calculate semantic similarity using Gemini."""
-        # Gemini doesn't have a native embeddings API yet, use prompting
-        prompt = f"""Rate how well this content matches these requirements on a scale of 0.0 to 1.0.
-Only return the numeric score.
-
-Content: {content[:500]}
-
-Requirements: {', '.join(requirements[:10])}
-
-Score (0.0-1.0):"""
-        
-        messages = [{"role": "user", "content": prompt}]
-        response = self.chat(messages, temperature=0.1)
-        
-        try:
-            return float(response.strip())
-        except ValueError:
-            return 0.5  # Default middle score
-
     def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via Gemini. Delegates to shared implementation."""
         return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
@@ -1722,130 +1645,6 @@ class CopilotSdkClient(LLMClient):
             return "".join(part.get("text", "") for part in content if isinstance(part, dict)).strip()
         return str(content)
 
-    def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
-        """Analyze job description using GitHub Copilot."""
-        prompt = f"""Analyze this job description and extract:
-1. Key requirements (must-have vs. nice-to-have)
-2. Required skills and technologies
-3. Domain focus (data science, biostatistics, ML engineering, etc.)
-4. Role level (IC, senior IC, staff, principal, leadership)
-5. Company culture indicators
-6. Top 10 keywords for ATS optimization
-
-Job Description:
-{job_text}
-
-Return as JSON with these fields:
-- title: str
-- company: str (if mentioned)
-- domain: str
-- role_level: str
-- required_skills: List[str]
-- preferred_skills: List[str]
-- must_have_requirements: List[str]
-- nice_to_have_requirements: List[str]
-- culture_indicators: List[str]
-- ats_keywords: List[str]
-"""
-
-        messages = [
-            {"role": "system", "content": "You are an expert at analyzing job descriptions for CV optimization."},
-            {"role": "user",   "content": prompt},
-        ]
-
-        response = self.chat(messages, temperature=0.3)
-
-        try:
-            return json.loads(response)
-        except json.JSONDecodeError:
-            if "```json" in response:
-                json_str = response.split("```json")[1].split("```")[0].strip()
-                return json.loads(json_str)
-            elif "```" in response:
-                json_str = response.split("```")[1].split("```")[0].strip()
-                if json_str.startswith("json\n"):
-                    json_str = json_str[5:]
-                return json.loads(json_str)
-            raise
-
-    def recommend_customizations(
-        self,
-        job_analysis: Dict,
-        master_data: Dict,
-        user_preferences: Dict = None,
-        conversation_history: List[Dict] = None,
-    ) -> Dict:
-        """Get LLM recommendations for customization."""
-        prompt = f"""Based on this job analysis and candidate's master CV data, recommend:
-1. Which experiences to emphasize (list IDs and reasons)
-2. Which skills to highlight
-3. Which achievements to feature
-4. Professional summary focus
-5. Suggested content reordering
-
-Job Analysis:
-{json.dumps(job_analysis, indent=2)}
-
-Candidate Data Summary:
-- {len(master_data.get('experience', []))} experiences
-- {len(master_data.get('skills', {}))} skill categories
-- {len(master_data.get('selected_achievements', []))} key achievements
-
-Available Experience IDs: {', '.join([exp.get('id', '') for exp in master_data.get('experience', [])])}
-
-Return as JSON with:
-- recommended_experiences: List[str] (use exact IDs from the list above, e.g., ["exp_001", "exp_005"])
-- recommended_skills: List[str]
-- recommended_achievements: List[str] (IDs)
-- summary_focus: str
-- reasoning: str
-"""
-
-        messages = [
-            {"role": "system", "content": "You are an expert at CV optimization and content selection."},
-            {"role": "user",   "content": prompt},
-        ]
-
-        response = self.chat(messages, temperature=0.5)
-
-        try:
-            return json.loads(response)
-        except json.JSONDecodeError as e:
-            print(f"Warning: Failed to parse LLM response as JSON: {e}")
-            print(f"Response preview: {response[:500]}...")
-            if "```json" in response:
-                json_str = response.split("```json")[1].split("```")[0].strip()
-                return json.loads(json_str)
-            elif "```" in response:
-                json_str = response.split("```")[1].split("```")[0].strip()
-                if json_str.startswith("json\n"):
-                    json_str = json_str[5:]
-                return json.loads(json_str)
-            return {
-                "recommended_experiences": [],
-                "recommended_skills":      [],
-                "recommended_achievements": [],
-                "summary_focus":  "general",
-                "reasoning":      "Failed to parse LLM response",
-            }
-
-    def semantic_match(self, content: str, requirements: List[str]) -> float:
-        """Calculate semantic similarity via Copilot prompt scoring."""
-        prompt = f"""Rate how well this content matches these requirements on a scale of 0.0 to 1.0.
-Only return the numeric score.
-
-Content: {content[:500]}
-
-Requirements: {', '.join(requirements[:10])}
-
-Score (0.0-1.0):"""
-
-        response = self.chat([{"role": "user", "content": prompt}], temperature=0.1)
-        try:
-            return float(response.strip())
-        except ValueError:
-            return 0.5
-
     def propose_rewrites(
         self,
         content: Dict,
@@ -1900,21 +1699,6 @@ class LocalLLMClient(LLMClient):
         except Exception as exc:
             raise _classify_llm_error(exc, provider='Copilot/Anthropic') from exc
     
-    def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
-        """Analyze using Claude (similar to OpenAI implementation)."""
-        # Implementation similar to OpenAI but using Claude's format
-        # ... (similar logic)
-        pass
-    
-    def recommend_customizations(self, job_analysis: Dict, master_data: Dict, user_preferences: Optional[Dict] = None, conversation_history: Optional[List[Dict]] = None) -> Dict:
-        """Get recommendations from Claude."""
-        pass
-    
-    def semantic_match(self, content: str, requirements: List[str]) -> float:
-        """Semantic matching using Claude."""
-        # Claude doesn't have native embeddings API, use prompting
-        pass
-
     def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites not supported by this stub client."""
         return []
@@ -1990,15 +1774,6 @@ class LocalLLMClient(LLMClient):
                 formatted.append(f"Assistant: {content}")
         formatted.append("Assistant: ")
         return "\n\n".join(formatted)
-    
-    def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
-        """Analyze using local model."""
-        # Similar to OpenAI but may need simpler prompts
-        pass
-    
-    def recommend_customizations(self, job_analysis: Dict, master_data: Dict, user_preferences: Optional[Dict] = None, conversation_history: Optional[List[Dict]] = None) -> Dict:
-        """Get recommendations from local model."""
-        pass
     
     def semantic_match(self, content: str, requirements: List[str]) -> float:
         """Semantic matching using local embeddings."""
@@ -2238,41 +2013,6 @@ class CopilotOAuthClient(LLMClient):
             return data["choices"][0]["message"]["content"]
         except Exception as exc:
             raise _classify_llm_error(exc, provider='GitHub Copilot OAuth') from exc
-
-    def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
-        """Delegate to OpenAIClient logic (same prompt format)."""
-        from utils.llm_client import OpenAIClient as _OAI
-        dummy = object.__new__(_OAI)
-        dummy.model = self.model
-        dummy.client = None   # not used — we override chat()
-        # Bind our chat method into the dummy so prompts work unchanged
-        import types
-        dummy.chat = types.MethodType(lambda self_, msgs, **kw: self.chat(msgs, **kw), dummy)
-        return _OAI.analyze_job_description(dummy, job_text, master_data)
-
-    def recommend_customizations(
-        self,
-        job_analysis: Dict,
-        master_data: Dict,
-        user_preferences: Dict = None,
-        conversation_history: List[Dict] = None,
-    ) -> Dict:
-        from utils.llm_client import OpenAIClient as _OAI
-        import types
-        dummy = object.__new__(_OAI)
-        dummy.model = self.model
-        dummy.chat = types.MethodType(lambda self_, msgs, **kw: self.chat(msgs, **kw), dummy)
-        return _OAI.recommend_customizations(
-            dummy, job_analysis, master_data, user_preferences, conversation_history
-        )
-
-    def semantic_match(self, content: str, requirements: List[str]) -> float:
-        from utils.llm_client import OpenAIClient as _OAI
-        import types
-        dummy = object.__new__(_OAI)
-        dummy.model = self.model
-        dummy.chat = types.MethodType(lambda self_, msgs, **kw: self.chat(msgs, **kw), dummy)
-        return _OAI.semantic_match(dummy, content, requirements)
 
     def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via Copilot OAuth. Delegates to shared implementation."""
