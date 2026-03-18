@@ -2620,6 +2620,48 @@ Close professionally with a call to action.
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @app.get("/api/proposed-bullet-order")
+    def proposed_bullet_order():
+        """Return relevance-ranked bullet order for one experience based on job keywords.
+
+        Query param: ``?experience_id=exp_001``
+        Returns ``{"proposed_order": [2, 0, 1], "has_job_analysis": true}``.
+        Indices are original achievement positions sorted by keyword relevance (highest first).
+        Returns natural order when no job analysis is available.
+        """
+        exp_id = request.args.get("experience_id")
+        if not exp_id:
+            return jsonify({"error": "Missing experience_id"}), 400
+        try:
+            master_data = conversation.orchestrator.master_data
+            experiences_list = master_data.get("experiences") or master_data.get("experience", [])
+            experience = next((e for e in experiences_list if e.get("id") == exp_id), None)
+            if not experience:
+                return jsonify({"error": f"Experience {exp_id} not found"}), 404
+
+            achievements = list(experience.get("achievements") or [])
+            if not achievements:
+                return jsonify({"proposed_order": [], "has_job_analysis": False})
+
+            job_analysis = conversation.state.get("job_analysis") or {}
+            job_keywords = {kw.lower() for kw in job_analysis.get("ats_keywords", [])}
+
+            if not job_keywords:
+                return jsonify({
+                    "proposed_order": list(range(len(achievements))),
+                    "has_job_analysis": False,
+                })
+
+            def ach_score(ach):
+                text = (ach.get("text", "") if isinstance(ach, dict) else str(ach)).lower()
+                tokens = set(re.findall(r'\b\w+\b', text))
+                return len(tokens & job_keywords)
+
+            proposed = sorted(range(len(achievements)), key=lambda i: ach_score(achievements[i]), reverse=True)
+            return jsonify({"proposed_order": proposed, "has_job_analysis": True})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
 
     @app.post("/api/post-analysis-draft-response")
     def post_analysis_draft_response():

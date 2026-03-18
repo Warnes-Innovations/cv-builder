@@ -295,13 +295,16 @@ async function openSessionsModal() {
   const overlay = document.getElementById('sessions-modal-overlay');
   if (!overlay) return;
   overlay.style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
   await _renderSessionsModalBody();
   _refreshTrashBadge();
+  trapFocus('sessions-modal-overlay');
 }
 
 function closeSessionsModal() {
   const overlay = document.getElementById('sessions-modal-overlay');
   if (overlay) overlay.style.display = 'none';
+  restoreFocus();
 }
 
 async function _renderSessionsModalBody() {
@@ -754,10 +757,14 @@ function showAlertModal(title, message) {
   document.getElementById('alert-modal-title').textContent = title;
   document.getElementById('alert-modal-message').innerHTML = message.replace(/\n/g, '<br>');
   document.getElementById('alert-modal-overlay').style.display = 'block';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('alert-modal-overlay');
+  trapFocus('alert-modal-overlay');
 }
 
 function closeAlertModal() {
   document.getElementById('alert-modal-overlay').style.display = 'none';
+  restoreFocus();
 }
 
 function showToast(message, type = 'success', duration = 3000) {
@@ -2396,7 +2403,7 @@ function populateAnalysisTab(result) {
         const isMissing = masterSkills.length > 0 && !masterSkills.some(
           ms => ms.includes(skill.toLowerCase()) || skill.toLowerCase().includes(ms)
         );
-        html += `<span class="skill-badge${isMissing ? ' missing' : ''}" title="${isMissing ? 'Not in master CV' : 'Found in master CV'}">${skill}</span>`;
+        html += `<span class="skill-badge${isMissing ? ' missing' : ''}" title="${isMissing ? 'Not in master CV' : 'Found in master CV'}">${skill}${isMissing ? '<span class="sr-only"> (not in master CV)</span>' : ''}</span>`;
       });
       html += '</div></div>';
     }
@@ -6122,6 +6129,9 @@ async function openCopilotAuthModal() {
   document.getElementById('auth-verify-link').textContent  = flow.verification_uri || 'github.com/login/device';
   document.getElementById('auth-status-msg').textContent   = 'Waiting for you to enter the code at GitHub…';
   document.getElementById('auth-modal-overlay').classList.add('visible');
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('auth-modal-overlay');
+  trapFocus('auth-modal-overlay');
 
   // Kick off server-side polling
   await fetch('/api/copilot-auth/poll', { method: 'POST' });
@@ -6152,6 +6162,7 @@ function openAuthGitHub() {
 function closeCopilotAuthModal() {
   document.getElementById('auth-modal-overlay').classList.remove('visible');
   if (_authPollTimer) { clearInterval(_authPollTimer); _authPollTimer = null; }
+  restoreFocus();
 }
 
 // ==== Phase Re-entry / Iterative Refinement ====
@@ -6251,15 +6262,23 @@ async function reRunPhase(step) {
 // ==== Phase 9: Bullet Reorder Functions ====
 
 async function showBulletReorder(expId, expTitle) {
-  // Fetch current achievements for this experience
+  // Fetch current achievements and proposed order in parallel
   let achievements = [];
+  let proposedOrder = null;
+  let hasJobAnalysis = false;
   try {
-    const res  = await fetch('/api/experience-details', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({experience_id: expId}),
-    });
-    const data = await res.json();
-    achievements = (data.experience && data.experience.achievements) || [];
+    const [detailsRes, proposedRes] = await Promise.all([
+      fetch('/api/experience-details', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({experience_id: expId}),
+      }),
+      fetch(`/api/proposed-bullet-order?experience_id=${encodeURIComponent(expId)}`),
+    ]);
+    const detailsData  = await detailsRes.json();
+    const proposedData = await proposedRes.json();
+    achievements  = (detailsData.experience && detailsData.experience.achievements) || [];
+    proposedOrder = proposedData.proposed_order || null;
+    hasJobAnalysis = proposedData.has_job_analysis || false;
   } catch (e) {
     appendRetryMessage('⚠ Could not load bullets: ' + e.message, () => showBulletReorder(expId, expTitle));
     return;
@@ -6275,6 +6294,12 @@ async function showBulletReorder(expId, expTitle) {
   modal.style.cssText = `
     position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);
     z-index:9999;display:flex;align-items:center;justify-content:center;`;
+
+  const suggestedBtn = hasJobAnalysis
+    ? `<button class="btn-secondary" id="use-llm-order-btn" title="Apply job-relevance ranking from your job analysis"
+         style="color:#6366f1;border-color:#6366f1;">✨ Use Suggested Order</button>`
+    : '';
+
   modal.innerHTML = `
     <div style="background:#fff;border-radius:8px;padding:24px;max-width:640px;width:92%;
                 max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
@@ -6293,6 +6318,7 @@ async function showBulletReorder(expId, expTitle) {
       <ol id="bullet-reorder-list" style="padding:0;margin:0;list-style:none;">
       </ol>
       <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
+        ${suggestedBtn}
         <button class="btn-secondary" onclick="resetBulletOrder('${expId}')">↺ Reset to Auto</button>
         <button class="btn-primary"   onclick="saveBulletOrder('${expId}')">Save Order</button>
       </div>
@@ -6318,6 +6344,29 @@ async function showBulletReorder(expId, expTitle) {
       </div>
       <span style="flex:1;font-size:0.9em;">${text}</span>`;
     list.appendChild(li);
+  });
+  _updateBulletArrows();
+
+  // Wire up "Use Suggested Order" button if job analysis is available
+  if (hasJobAnalysis && proposedOrder) {
+    document.getElementById('use-llm-order-btn')?.addEventListener('click', () => {
+      _applyBulletOrder(proposedOrder);
+    });
+  }
+}
+
+function _applyBulletOrder(order) {
+  const list = document.getElementById('bullet-reorder-list');
+  if (!list) return;
+  const items = Array.from(list.querySelectorAll('li'));
+  // Build a map from origIndex → li element
+  const byOrig = {};
+  items.forEach(li => { byOrig[parseInt(li.dataset.origIndex, 10)] = li; });
+  // Re-append in proposed order, then any not listed
+  const listed = new Set(order.map(Number));
+  order.forEach(idx => { if (byOrig[idx]) list.appendChild(byOrig[idx]); });
+  items.forEach(li => {
+    if (!listed.has(parseInt(li.dataset.origIndex, 10))) list.appendChild(li);
   });
   _updateBulletArrows();
 }
@@ -6790,6 +6839,9 @@ function showAddAchievementModal() {
   document.getElementById('ach-modal-importance-input').value = '7';
   document.getElementById('master-ach-modal-title').textContent = 'Add Achievement';
   document.getElementById('master-ach-modal-overlay').style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('master-ach-modal-overlay');
+  trapFocus('master-ach-modal-overlay');
   document.getElementById('ach-modal-title-input').focus();
 }
 
@@ -6801,11 +6853,14 @@ function editMasterAchievement(ach) {
   document.getElementById('ach-modal-importance-input').value = ach.importance || 7;
   document.getElementById('master-ach-modal-title').textContent = 'Edit Achievement';
   document.getElementById('master-ach-modal-overlay').style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  trapFocus('master-ach-modal-overlay');
   document.getElementById('ach-modal-title-input').focus();
 }
 
 function closeMasterAchModal() {
   document.getElementById('master-ach-modal-overlay').style.display = 'none';
+  restoreFocus();
 }
 
 async function saveMasterAchievement() {
@@ -6846,6 +6901,8 @@ function showAddSummaryModal() {
   document.getElementById('sum-modal-text-input').value = '';
   document.getElementById('master-sum-modal-title').textContent = 'Add Professional Summary';
   document.getElementById('master-sum-modal-overlay').style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  trapFocus('master-sum-modal-overlay');
   document.getElementById('sum-modal-key-input').focus();
 }
 
@@ -6854,11 +6911,14 @@ function editMasterSummary(obj) {
   document.getElementById('sum-modal-text-input').value = obj.text || '';
   document.getElementById('master-sum-modal-title').textContent = 'Edit Professional Summary';
   document.getElementById('master-sum-modal-overlay').style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  trapFocus('master-sum-modal-overlay');
   document.getElementById('sum-modal-key-input').focus();
 }
 
 function closeMasterSumModal() {
   document.getElementById('master-sum-modal-overlay').style.display = 'none';
+  restoreFocus();
 }
 
 async function saveMasterSummary() {

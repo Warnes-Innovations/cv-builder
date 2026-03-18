@@ -243,6 +243,75 @@ def test_page_count_validation_exceeds_maximum():
     assert 'exceeds' in checks[0]['detail']
 
 
+# ──────────────────────────────────────────────────────────────────
+# GAP-07: Proposed Bullet Ordering Tests
+# ──────────────────────────────────────────────────────────────────
+
+import re as _re
+
+
+def _ach_keyword_score(ach, job_keywords):
+    """Mirrors the scoring logic in /api/proposed-bullet-order."""
+    text = (ach.get("text", "") if isinstance(ach, dict) else str(ach)).lower()
+    tokens = set(_re.findall(r'\b\w+\b', text))
+    return len(tokens & {kw.lower() for kw in job_keywords})
+
+
+def _compute_proposed_order(achievements, job_keywords):
+    """Return achievement indices sorted by keyword relevance (highest first)."""
+    return sorted(range(len(achievements)), key=lambda i: _ach_keyword_score(achievements[i], job_keywords), reverse=True)
+
+
+def test_proposed_order_sorts_by_keyword_relevance():
+    """Achievements with more job keyword matches should rank higher."""
+    achievements = [
+        {"text": "Managed budgets and spreadsheets"},          # 0 — no keywords
+        {"text": "Built Python API with FastAPI and Docker"},  # 1 — python, api, docker
+        {"text": "Deployed Docker containers on Kubernetes"},  # 2 — docker, kubernetes
+    ]
+    job_keywords = {"python", "api", "docker", "kubernetes"}
+    proposed = _compute_proposed_order(achievements, job_keywords)
+    # Index 1 has 3 matches (python, api, docker), index 2 has 2 (docker, kubernetes), index 0 has 0
+    assert proposed[0] == 1
+    assert proposed[1] == 2
+    assert proposed[2] == 0
+
+
+def test_proposed_order_empty_achievements():
+    """Empty achievements list returns empty proposed order."""
+    proposed = _compute_proposed_order([], {"python", "api"})
+    assert proposed == []
+
+
+def test_proposed_order_no_job_keywords_returns_natural_order():
+    """With no job keywords all scores are 0, so stable sort returns original order."""
+    achievements = [{"text": "A"}, {"text": "B"}, {"text": "C"}]
+    # No keywords → all scores are 0; sorted with reverse=True is stable so order preserved
+    proposed = _compute_proposed_order(achievements, set())
+    assert proposed == [0, 1, 2]
+
+
+def test_proposed_order_string_achievements():
+    """Plain string achievements (not dicts) are handled correctly."""
+    achievements = ["Deployed Kubernetes clusters", "Wrote documentation", "Built Python services"]
+    job_keywords = {"python", "kubernetes"}
+    proposed = _compute_proposed_order(achievements, job_keywords)
+    # Index 0 has 1 match (kubernetes), index 2 has 1 match (python), index 1 has 0
+    # Both 0 and 2 score 1; index 1 must be last
+    assert proposed[-1] == 1
+
+
+def test_proposed_order_case_insensitive():
+    """Keyword matching is case-insensitive."""
+    achievements = [
+        {"text": "Led PYTHON development"},
+        {"text": "Managed team communications"},
+    ]
+    job_keywords = {"Python"}
+    proposed = _compute_proposed_order(achievements, job_keywords)
+    assert proposed[0] == 0  # PYTHON matches 'python' keyword
+
+
 if __name__ == '__main__':
     import pytest, sys
     sys.exit(pytest.main([__file__, '-v']))
