@@ -5620,12 +5620,8 @@ async function fetchWithRetry(url, options = {}, maxRetries = 3) {
 async function sendAction(action) {
   if (isLoading) return;
   
-  const _actionLabels = {
-    recommend_customizations: 'Selecting experiences & skills…',
-    generate_cv: 'Generating CV…',
-  };
   const loadingMsg = appendLoadingMessage(`Executing ${action}...`);
-  setLoading(true, _actionLabels[action] || `${action.replace(/_/g, ' ')}…`);
+  setLoading(true, _ACTION_LABELS[action] || `${action.replace(/_/g, ' ')}…`);
   
   try {
     // Include user preferences if available and action is recommend_customizations
@@ -6228,8 +6224,8 @@ async function backToPhase(step, feedback) {
       appendRetryMessage('⚠ Could not navigate back: ' + (data.error || 'Unknown error'), () => backToPhase(step, feedback));
       return;
     }
-    const feedbackNote = feedback ? `\n\nFeedback: "${feedback}"` : '';
-    appendMessage('assistant', `↻ Navigating back to ${step}. Prior decisions and approvals are preserved.${feedbackNote}`);
+    appendMessage('assistant', `↻ Navigating back to ${step}. Prior decisions and approvals are preserved.`);
+    if (feedback) appendMessage('system', `Refinement feedback queued: "${feedback}"`);
     await fetchStatus();
 
     // Switch to the appropriate viewer tab
@@ -6257,6 +6253,10 @@ const _STEP_DISPLAY = {
   job: 'Job Input', analysis: 'Job Analysis', customizations: 'Customisations',
   rewrite: 'Rewrite Review', spell: 'Spell Check', generate: 'Generate CV',
   layout: 'Layout Review', finalise: 'Finalise',
+};
+const _ACTION_LABELS = {
+  recommend_customizations: 'Selecting experiences & skills…',
+  generate_cv: 'Generating CV…',
 };
 
 /**
