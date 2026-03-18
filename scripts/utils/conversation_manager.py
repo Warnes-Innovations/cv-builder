@@ -7,6 +7,7 @@ and user interaction.
 
 import json
 import re
+import uuid
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -71,6 +72,7 @@ class ConversationManager:
             'extra_skills':            [],   # List[str] — LLM-suggested skills not in master CV
         }
         self.session_dir: Optional[Path] = None
+        self.session_id: Optional[str] = None
         # Readline history file
         self.history_file: Path = Path(self.config.get('session.history_file', 'files/.input_history'))
     
@@ -1245,7 +1247,11 @@ Ask questions that are specific to this job posting, not generic career question
                 print(f"Creating session directory: {self.session_dir}")
                 self.session_dir.mkdir(parents=True, exist_ok=True)
             
+            if self.session_id is None:
+                self.session_id = uuid.uuid4().hex[:8]
+
             session_data = {
+                'session_id': self.session_id,
                 'timestamp': datetime.now().isoformat(),
                 'state': self.state,
                 'conversation_history': self.conversation_history
@@ -1419,7 +1425,7 @@ Ask questions that are specific to this job posting, not generic career question
         """Load previous session."""
         with open(session_file, 'r', encoding='utf-8') as f:
             session_data = json.load(f)
-        
+
         self.state = session_data['state']
         if 'post_analysis_questions' not in self.state:
             self.state['post_analysis_questions'] = []
@@ -1437,6 +1443,13 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['rewrite_audit'] = []
         self.conversation_history = session_data['conversation_history']
         self.session_dir = Path(session_file).parent
+
+        # Load session_id; generate and save back if absent (backward compat)
+        if 'session_id' in session_data:
+            self.session_id = session_data['session_id']
+        else:
+            self.session_id = uuid.uuid4().hex[:8]
+            self._save_session()
     
     def run_automated(self) -> Dict:
         """Run automated generation (non-interactive)."""
