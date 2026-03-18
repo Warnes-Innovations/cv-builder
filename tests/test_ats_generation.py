@@ -4,6 +4,7 @@ Tests for ATS DOCX generation and ATS compatibility scoring (CVOrchestrator).
 """
 
 import json
+import re as _re
 import sys
 import pytest
 from pathlib import Path
@@ -246,9 +247,6 @@ def test_page_count_validation_exceeds_maximum():
 # ──────────────────────────────────────────────────────────────────
 # GAP-07: Proposed Bullet Ordering Tests
 # ──────────────────────────────────────────────────────────────────
-
-import re as _re
-
 
 def _ach_keyword_score(ach, job_keywords):
     """Mirrors the scoring logic in /api/proposed-bullet-order."""

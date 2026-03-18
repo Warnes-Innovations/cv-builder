@@ -6854,8 +6854,8 @@ function editMasterAchievement(ach) {
   document.getElementById('master-ach-modal-title').textContent = 'Edit Achievement';
   document.getElementById('master-ach-modal-overlay').style.display = 'flex';
   _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('master-ach-modal-overlay');
   trapFocus('master-ach-modal-overlay');
-  document.getElementById('ach-modal-title-input').focus();
 }
 
 function closeMasterAchModal() {
@@ -6902,8 +6902,8 @@ function showAddSummaryModal() {
   document.getElementById('master-sum-modal-title').textContent = 'Add Professional Summary';
   document.getElementById('master-sum-modal-overlay').style.display = 'flex';
   _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('master-sum-modal-overlay');
   trapFocus('master-sum-modal-overlay');
-  document.getElementById('sum-modal-key-input').focus();
 }
 
 function editMasterSummary(obj) {
@@ -6912,8 +6912,8 @@ function editMasterSummary(obj) {
   document.getElementById('master-sum-modal-title').textContent = 'Edit Professional Summary';
   document.getElementById('master-sum-modal-overlay').style.display = 'flex';
   _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('master-sum-modal-overlay');
   trapFocus('master-sum-modal-overlay');
-  document.getElementById('sum-modal-key-input').focus();
 }
 
 function closeMasterSumModal() {

@@ -483,11 +483,13 @@ function closeAllModals() {
   document.querySelectorAll('[role="dialog"]').forEach(modal => {
     modal.classList.remove('visible');
     modal.setAttribute('aria-hidden', 'true');
+    if (modal.style.display && modal.style.display !== 'none') {
+      modal.style.display = 'none';
+    }
   });
   document.body.style.overflow = '';
   // Restore focus
   restoreFocus();
-}
 }
 
 /**
@@ -758,11 +760,15 @@ async function openModelModal() {
   _renderProviderSelector();
   await _refreshModelCatalogForSelection();
   overlay.style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('model-modal-overlay');
+  trapFocus('model-modal-overlay');
 }
 
 function closeModelModal() {
   const overlay = document.getElementById('model-modal-overlay');
   if (overlay) overlay.style.display = 'none';
+  restoreFocus();
 }
 
 function _applyModelRowVisualState(tr, isActive) {
