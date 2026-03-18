@@ -253,18 +253,40 @@ function abortCurrentRequest() {
 }
 
 // ── LLM status bar ────────────────────────────────────────────────────────
-function _updateLLMStatusBar(loading) {
+let _llmElapsedTimer = null;
+let _llmStartTime    = null;
+
+function _updateLLMStatusBar(loading, label) {
   const bar       = document.getElementById('llm-status-bar');
   const thinking  = document.getElementById('llm-thinking');
   const abortBtn  = document.getElementById('llm-abort-btn');
+  const stepLabel = document.getElementById('llm-step-label');
+  const elapsedEl = document.getElementById('llm-elapsed');
   if (!bar) return;
   if (loading) {
     bar.style.display    = 'flex';
     if (thinking) thinking.style.display = 'flex';
     if (abortBtn) abortBtn.style.display  = '';
+    if (stepLabel) stepLabel.textContent  = label || 'Reasoning…';
+    if (elapsedEl) elapsedEl.textContent  = '';
+    // Start elapsed-time ticker
+    _llmStartTime = Date.now();
+    clearInterval(_llmElapsedTimer);
+    _llmElapsedTimer = setInterval(() => {
+      if (!elapsedEl) return;
+      const secs = Math.floor((Date.now() - _llmStartTime) / 1000);
+      if (secs >= 3) {
+        elapsedEl.textContent = ` · ${secs}s`;
+      }
+    }, 1000);
   } else {
+    clearInterval(_llmElapsedTimer);
+    _llmElapsedTimer = null;
+    _llmStartTime    = null;
     if (thinking) thinking.style.display = 'none';
     if (abortBtn) abortBtn.style.display  = 'none';
+    if (stepLabel) stepLabel.textContent  = 'Reasoning…';
+    if (elapsedEl) elapsedEl.textContent  = '';
     // Refresh token count (non-blocking); hides bar if fetch fails
     _refreshContextStats();
   }
@@ -1111,7 +1133,7 @@ function loadItemFromRow(row) {
 
 async function _loadServerJobFile(filename, label) {
   appendMessage('system', `📄 Loading job file: ${label || filename}…`);
-  setLoading(true);
+  setLoading(true, `Loading job file…`);
   try {
     const res = await fetch('/api/load-job-file', {
       method: 'POST',
@@ -1375,8 +1397,8 @@ async function submitJobText() {
     return;
   }
   _clearFieldError('job-text-input', 'paste-error');
-  
-  setLoading(true);
+
+  setLoading(true, 'Analysing job description…');
   appendMessage('user', 'Submitting job description...');
   
   try {
@@ -1429,7 +1451,7 @@ async function fetchJobFromURL() {
     return;
   }
   
-  setLoading(true);
+  setLoading(true, 'Fetching job from URL…');
   appendMessage('user', `Fetching job description from URL: ${url}`);
   
   try {
@@ -1528,7 +1550,7 @@ function clearURLInput() {
 
 /** Branch: default LLM message — POST to /api/message and display the response. */
 async function _handleLLMMessage(text) {
-  setLoading(true);
+  setLoading(true, 'Thinking…');
   try {
     const res = await llmFetch('/api/message', {
       method: 'POST',
@@ -1613,7 +1635,7 @@ const _messageHandlers = [
     test: () => window.waitingForQuestionResponse,
     handle: async t => {
       const questionHandled = handleQuestionResponse(t);
-      setLoading(true);
+      setLoading(true, 'Thinking…');
       try {
         const res = await llmFetch('/api/message', {
           method: 'POST',
@@ -1667,7 +1689,7 @@ async function analyzeJob() {
   if (isLoading) return;
   
   const loadingMsg = appendLoadingMessage('Analyzing job description...');
-  setLoading(true);
+  setLoading(true, 'Analysing job description…');
   
   try {
     const res = await llmFetch('/api/action', {
@@ -4637,23 +4659,35 @@ async function populateDownloadTab(cvData) {
   // Append persuasion panel to main output
   out += persuasionHtml;
 
-  // ── Refine buttons ────────────────────────────────────────────────────
+  // ── Refine buttons + feedback textarea ──────────────────────────────
   out += `<div style="margin-top:24px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;
             border-radius:8px;">
     <div style="font-weight:600;margin-bottom:10px;color:#374151;">↻ Iterative Refinement</div>
     <div style="font-size:0.9em;color:#6b7280;margin-bottom:12px;">
       Go back to refine an earlier step — all prior decisions and approvals are preserved.
     </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="btn-secondary" onclick="backToPhase('customizations')" title="Return to Customisations step">
-        ↻ Refine Customisations
+    <div style="margin-bottom:14px;">
+      <label for="refine-feedback" style="display:block;font-weight:600;font-size:0.9em;color:#374151;margin-bottom:6px;">
+        Feedback <span style="font-weight:400;color:#6b7280;">(optional — describe what to improve)</span>
+      </label>
+      <textarea id="refine-feedback" rows="3" placeholder="e.g. Emphasise leadership experience more; include recent Python projects…"
+        style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;
+               font-size:0.9em;resize:vertical;box-sizing:border-box;"></textarea>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <select id="refine-phase-select"
+        style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.9em;background:#fff;">
+        <option value="customizations">Customisations</option>
+        <option value="rewrite">Rewrite Review</option>
+        <option value="analysis">Job Analysis</option>
+      </select>
+      <button class="btn-primary" onclick="backToPhaseWithFeedback()" style="white-space:nowrap;">
+        ↻ Re-run with Feedback
       </button>
-      <button class="btn-secondary" onclick="backToPhase('rewrite')" title="Return to Rewrite Review step">
-        ↻ Refine Rewrites
-      </button>
-      <button class="btn-secondary" onclick="backToPhase('analysis')" title="Return to Analysis step">
-        ↻ Re-analyse Job
-      </button>
+      <span style="color:#6b7280;font-size:0.85em;">or jump directly:</span>
+      <button class="btn-secondary" onclick="backToPhase('customizations')">↻ Customisations</button>
+      <button class="btn-secondary" onclick="backToPhase('rewrite')">↻ Rewrites</button>
+      <button class="btn-secondary" onclick="backToPhase('analysis')">↻ Re-analyse</button>
     </div>
   </div>`;
 
@@ -4667,7 +4701,7 @@ let persuasionWarningsAcknowledged = false;  // Phase 10: track if user reviewed
 
 async function fetchAndReviewRewrites() {
   const loadingMsg = appendLoadingMessage('Checking for text improvements...');
-  setLoading(true);
+  setLoading(true, 'Reviewing rewrites…');
   try {
     const res = await fetch('/api/rewrites');
     const data = parseRewritesResponse(await res.json());
@@ -4962,7 +4996,7 @@ async function submitRewriteDecisions() {
   }));
 
   const loadingMsg = appendLoadingMessage('Submitting rewrite decisions...');
-  setLoading(true);
+  setLoading(true, 'Submitting rewrite decisions…');
   try {
     const res = await fetch('/api/rewrites/approve', {
       method: 'POST',
@@ -5538,7 +5572,7 @@ async function submitSpellCheckDecisions() {
   spellAudit = audit;
 
   const loadingMsg = appendLoadingMessage('Saving spell check decisions…');
-  setLoading(true);
+  setLoading(true, 'Saving spell-check decisions…');
   try {
     const res  = await fetch('/api/spell-check-complete', {
       method: 'POST',
@@ -5586,8 +5620,12 @@ async function fetchWithRetry(url, options = {}, maxRetries = 3) {
 async function sendAction(action) {
   if (isLoading) return;
   
+  const _actionLabels = {
+    recommend_customizations: 'Selecting experiences & skills…',
+    generate_cv: 'Generating CV…',
+  };
   const loadingMsg = appendLoadingMessage(`Executing ${action}...`);
-  setLoading(true);
+  setLoading(true, _actionLabels[action] || `${action.replace(/_/g, ' ')}…`);
   
   try {
     // Include user preferences if available and action is recommend_customizations
@@ -5924,7 +5962,7 @@ function setLoading(loading, label) {
   }
 
   // Drive the LLM status bar
-  _updateLLMStatusBar(loading);
+  _updateLLMStatusBar(loading, label);
 
   const buttons = document.querySelectorAll('button');
   buttons.forEach(btn => btn.disabled = loading);
@@ -6171,19 +6209,27 @@ function closeCopilotAuthModal() {
  * Navigate back to a prior workflow step without clearing downstream state.
  * Called by "Refine" buttons in Download tab and ↻ workflow-step icons.
  */
-async function backToPhase(step) {
+function backToPhaseWithFeedback() {
+  const phase    = document.getElementById('refine-phase-select')?.value || 'customizations';
+  const feedback = (document.getElementById('refine-feedback')?.value || '').trim();
+  backToPhase(phase, feedback);
+}
+
+async function backToPhase(step, feedback) {
   try {
+    const body = feedback ? {phase: step, feedback} : {phase: step};
     const res  = await fetch('/api/back-to-phase', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({phase: step}),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok || !data.ok) {
-      appendRetryMessage('⚠ Could not navigate back: ' + (data.error || 'Unknown error'), () => backToPhase(step));
+      appendRetryMessage('⚠ Could not navigate back: ' + (data.error || 'Unknown error'), () => backToPhase(step, feedback));
       return;
     }
-    appendMessage('assistant', `↻ Navigating back to ${step}. Prior decisions and approvals are preserved.`);
+    const feedbackNote = feedback ? `\n\nFeedback: "${feedback}"` : '';
+    appendMessage('assistant', `↻ Navigating back to ${step}. Prior decisions and approvals are preserved.${feedbackNote}`);
     await fetchStatus();
 
     // Switch to the appropriate viewer tab
@@ -6223,7 +6269,7 @@ function confirmReRunPhase(step) {
 
 async function reRunPhase(step) {
   const loadingMsg = appendLoadingMessage(`↻ Re-running ${step}…`);
-  setLoading(true);
+  setLoading(true, `Re-running ${step}…`);
   try {
     const res  = await fetch('/api/re-run-phase', {
       method: 'POST',

@@ -2539,8 +2539,11 @@ Close professionally with a call to action.
     def back_to_phase():
         """Navigate back to a prior phase without clearing downstream state.
 
-        Body: ``{"phase": "analysis"|"customizations"|"rewrite"|"spell"|...}``
+        Body: ``{"phase": "analysis"|"customizations"|"rewrite"|"spell"|...,
+                 "feedback": "optional refinement note"}``
         Resolves frontend step labels to internal phase strings automatically.
+        If ``feedback`` is provided it is injected as a user message so the
+        next LLM call sees it as context.
         """
         data = request.get_json(silent=True) or {}
         target = data.get("phase")
@@ -2548,6 +2551,12 @@ Close professionally with a call to action.
             return jsonify({"error": "Missing phase"}), 400
         try:
             result = conversation.back_to_phase(target)
+            feedback = (data.get("feedback") or "").strip()
+            if feedback:
+                conversation.conversation_history.append({
+                    "role": "user",
+                    "content": f"[Refinement feedback for {target}]: {feedback}",
+                })
             return jsonify(result)
         except Exception as e:
             return jsonify({"error": str(e)}), 500

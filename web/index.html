@@ -107,7 +107,7 @@
       
       <!-- LLM status bar: thinking indicator / token count / stop button -->
       <div id="llm-status-bar">
-        <div id="llm-thinking"><span class="llm-dot">●</span> Reasoning…</div>
+        <div id="llm-thinking"><span class="llm-dot">●</span> <span id="llm-step-label">Reasoning…</span><span id="llm-elapsed"></span></div>
         <span id="llm-token-count" title="Estimated tokens used vs context window"></span>
         <button id="llm-abort-btn" onclick="abortCurrentRequest()" title="Stop the current request">■ Stop</button>
       </div>
