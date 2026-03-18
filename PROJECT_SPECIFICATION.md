@@ -588,7 +588,193 @@ These checks are non-blocking for the user workflow but provide critical quality
 
 ---
 
-## 7. Risk Management
+## 7. Workflow & User Experience
+
+### 7.1 Rewrite Review Card Interface
+
+The Rewrite Review Card Interface enables users to systematically review and approve/modify all LLM-proposed text rewrites before finalizing the CV. This phase occurs after content customisations have been confirmed but before spell-check and document generation.
+
+#### Overview
+
+Users encounter a paginated or scrollable set of individual **rewrite cards**, one for each proposed bullet point enhancement. Each card displays:
+1. The original text (what the system learned from Master CV data)
+2. The proposed rewrite (LLM-generated enhancement)
+3. Keywords introduced (with rank numbers showing priority)
+4. Weak-evidence flagging (⚠) if the skill recommendation had low confidence
+5. Collapsible rationale explaining why the rewrite was proposed
+6. Three action buttons: **Accept | Edit | Reject**
+
+A **sticky summary bar** at the top tracks decision progress and blocks submission until all cards are actioned.
+
+#### Card Layout & Components
+
+**Sticky Summary Bar** (sticky position, always visible at top)
+- **Format**: `✓ Accepted: N | ✗ Rejected: N | ⏳ Pending: N` [blue submit button]
+- **Height**: 70px with padding
+- **Background**: White with bottom border (2px solid #e2e8f0)
+- **Submit Button State**:
+  - **Enabled** (blue #3b82f6): when pending count = 0
+  - **Disabled** (gray, 45% opacity): when any card is still pending
+
+**Individual Rewrite Card Layout** (one card per proposal):
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ [TYPE BADGE] [LOCATION TITLE]                  [⚠ IF WEAK]     │ Header
+├─────────────────────────────────────────────────────────────────┤
+│ BEFORE:     <original text with strikethrough formatting>       │
+│ PROPOSED:   <new text with green highlight formatting>          │ Inline Diff
+│                                                                 │
+│ Keywords Introduced: [#1 Keyword1] [#2 Keyword2] [...]         │
+│                                                                 │
+│ <details>                                                       │
+│  <summary>Rationale & Evidence</summary>                        │
+│  <p>LLM explanation of why this rewrite strengthens the CV      │ Collapsible
+│  narrative...</p>                                               │ Rationale
+│  <p style="color:#9ca3af;font-size:0.85em;">                   │
+│   Evidence citation (e.g., "from job_analysis.keywords")       │
+│  </p>                                                           │
+│ </details>                                                      │
+│                                                                 │
+│ [✓ Accept]  [✎ Edit]  [✗ Reject]                         Actions │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Visual Styling
+
+**Card States** (border and background colors):
+- **Default** (pending): Light gray border (#e2e8f0), light blue background (#f8fafc)
+- **Accepted** (user clicked Accept): Green border (#10b981), light green background (#f0fdf4)
+- **Rejected** (user clicked Reject): Light red background (#fef2f2), 70% opacity (dimmed)
+- **Edited** (user saved an edit): Same as Accepted (green styling)
+
+**Type Badge** (e.g., "SKILL ADD", "BULLET REWRITE")
+- Font: 11px bold, uppercase
+- Color: Dark slate (#64748b)
+- Background: Light gray (#e2e8f0)
+- Padding: 2px 8px | Border-radius: 12px
+
+**Weak-Evidence Badge** (appears if evidence_strength='weak')
+- Text: `⚠ Candidate to confirm`
+- Color: Dark amber (#92400e)
+- Background: Light amber (#fef3c7)
+- Font: 11px bold
+- Padding: 2px 8px | Border-radius: 12px
+
+**Inline Diff Formatting**:
+- **Removed text** (`<del>` tags):
+  - Strikethrough (text-decoration: line-through)
+  - Color: Red (#dc2626)
+  - Background: Light red (#fee2e2)
+  - Padding: 0–2px with 2px border-radius
+
+- **Added text** (`<ins>` tags):
+  - No strikethrough
+  - Color: Dark green (#166534)
+  - Background: Light green (#dcfce7)
+  - Padding: 0–2px with 2px border-radius
+
+**Keyword Pills**:
+- Background: Light blue (#dbeafe)
+- Text Color: Dark blue (#1e40af)
+- Font: 11px bold with rank number badge
+- **Rank Number Styling**: Dark blue background (#1e40af), white text, 8px border-radius, 10px font
+- Format: `[#1 Keyword1] [#2 Keyword2]` etc., with 4px gap between pills
+
+**Action Buttons** (Accept, Edit, Reject):
+- Font: 13px bold
+- Padding: 5px 14px
+- Border: 1px solid #d1d5db
+- Border-radius: 6px
+- Transition: all 0.15s
+- **Default State** (pending): White background with colored border matching action
+- **Active/Clicked State** (user has taken action):
+  - Accept: Green background (#10b981), white text
+  - Edit: Blue background (#2563eb), white text
+  - Reject: Red background (#dc2626), white text
+
+**Rationale Section** (HTML `<details>` element):
+- Default: Collapsed (user clicks "Rationale & Evidence" to expand)
+- On expand: Shows LLM explanation paragraph + evidence citation (smaller, gray text)
+- Font: 13px for explanation, 11px gray (#9ca3af) for citation
+
+#### User Interaction Flows
+
+**ACCEPT Flow**:
+1. User clicks **✓ Accept** button
+2. Card immediately turns green (border #10b981, background #f0fdf4)
+3. Button gets `.active` styling (green background, white text)
+4. Decision recorded: `{ outcome: 'accept', final_text: null }`
+5. Tally bar updates: pending count -1, accepted count +1
+6. If all cards now have actions, Submit button becomes enabled
+
+**EDIT Flow**:
+1. User clicks **✎ Edit** button
+2. Inline diff section is hidden
+3. Textarea appears: width 100%, min-height 60px, pre-filled with the proposed text (not original)
+4. Outline: 1px solid #10b981 (green)
+5. User edits the text and clicks **Save** button
+6. System computes word-level diff (LCS algorithm) comparing original vs. edited text
+7. New inline diff is displayed (showing edits the user made relative to the original)
+8. Card turns green (treated as approved/accepted)
+9. Button gets `.active` styling
+10. Decision recorded: `{ outcome: 'edit', final_text: userEditedText }`
+11. Pending count -1, accepted count +1; tally bar updates
+
+**REJECT Flow**:
+1. User clicks **✗ Reject** button
+2. Card turns light red/dimmed (background #fef2f2, opacity 0.7)
+3. Button gets `.active` styling (red background #dc2626, white text)
+4. Decision recorded: `{ outcome: 'reject', final_text: null }`
+5. Tally bar updates: pending count -1, rejected count +1
+6. Rejected rewrites are excluded from final CV generation
+
+**SUBMIT ALL Flow**:
+1. User clicks **Submit All Decisions** button (only enabled when pending = 0)
+2. System collects all decisions from cards: `{ id, outcome, final_text }`
+3. POST to `/api/rewrites/approve` with payload:
+   ```json
+   {
+     "decisions": [
+       { "id": "rwid_1", "outcome": "accept", "final_text": null },
+       { "id": "rwid_2", "outcome": "edit", "final_text": "user edited text here" },
+       { "id": "rwid_3", "outcome": "reject", "final_text": null }
+     ]
+   }
+   ```
+4. Backend applies approved rewrites (including user edits) to CV data
+5. Route advances to **Spell Check** phase
+6. Rewrite audit logged to session state for metadata
+
+#### User Story Alignment
+
+This interface fully satisfies **US-A4** (Rewrite Review) acceptance criteria:
+
+| Criterion | Implementation |
+|-----------|-----------------|
+| Before/after diff visible | ✅ Word-level LCS diff with color-coded `<del>` and `<ins>` tags |
+| Weak-evidence flagging | ✅ Amber `⚠ Candidate to confirm` badge; cannot be silently accepted |
+| Edited text used in CV | ✅ `final_text` from edit flow sent to backend; original LLM proposal discarded |
+| Submit blocked until complete | ✅ Button disabled while `pending > 0`; enabled only when all cards actioned |
+| Audit persisted | ✅ All decisions + outcomes sent to `/api/rewrites/approve` and logged |
+
+#### Implementation Reference
+
+- **Frontend**: `/Users/warnes/src/cv-builder/web/app.js` lines 4702–4983
+  - `renderRewritePanel()` — Panel container (lines 4702–4757)
+  - `renderRewriteCard()` — Individual card HTML (lines 4813–4858)
+  - `applyRewriteAction()` — User interaction handler (lines 4860–4902)
+  - `updateRewriteTally()` — Tally bar updates (lines 4931–4948)
+
+- **Styling**: `/Users/warnes/src/cv-builder/web/styles.css` lines 615–649
+  - `.rewrite-tally-bar` — Sticky summary bar
+  - `.rewrite-card`, `.accepted`, `.rejected` — Card state styles
+  - `.rewrite-inline-diff`, `<del>`, `<ins>` — Diff formatting
+  - `.rewrite-keyword`, `.rewrite-rationale` — Component styles
+
+---
+
+## 8. Risk Management
 
 ### 7.1 Technical Risks
 
@@ -619,7 +805,7 @@ These checks are non-blocking for the user workflow but provide critical quality
 
 ---
 
-## 8. Dependencies & Prerequisites
+## 9. Dependencies & Prerequisites
 
 ### 8.1 Software Dependencies
 
@@ -676,7 +862,7 @@ These checks are non-blocking for the user workflow but provide critical quality
 
 ---
 
-## 9. Post-MVP Roadmap (Phase 2)
+## 10. Post-MVP Roadmap (Phase 2)
 
 ### Priority #3: Cover Letter Generation
 - Same workflow as CV generation
@@ -707,7 +893,7 @@ These checks are non-blocking for the user workflow but provide critical quality
 
 ---
 
-## 10. Conclusion
+## 11. Conclusion
 
 This specification defines a **focused 1-week MVP** that delivers core value: generating customized, professional CVs quickly. By leveraging existing code (LLM analysis, review interface) and the Jinja2 HTML template + WeasyPrint pipeline, the implementation is achievable within the timeline.
 
