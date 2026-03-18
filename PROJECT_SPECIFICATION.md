@@ -1138,6 +1138,132 @@ This interface fully satisfies **US-A4** (Rewrite Review) acceptance criteria:
 - ✅ Focus on "must have" success criteria only
 - ✅ "Nice to have" items explicitly marked as optional
 
+### 7.9 Master CV Editor (GAP-19)
+
+**Scope:** Pre-workflow UI for creating and maintaining `Master_CV_Data.json` and `publications.bib`.
+
+#### Editor Overview
+
+The Master CV Editor is a **distinct app mode** accessible from the main navigation (separate from the job-application workflow tabs). It provides structured form-based editing for all sections of the master CV profile. Changes write directly to `Master_CV_Data.json` and/or `publications.bib` on disk, with full undo/redo history and git-tracking on save.
+
+#### Editor Sections
+
+The editor is organised into 7 tabbed sections:
+
+| Tab | File | Data covered |
+| --- | --- | --- |
+| Personal Info | `Master_CV_Data.json` | Name, headline, contact details, languages |
+| Experience | `Master_CV_Data.json` | Job entries + nested achievement bullets |
+| Skills | `Master_CV_Data.json` | Skills with proficiency, domain tags, aliases |
+| Education | `Master_CV_Data.json` | Degrees, institutions, dates |
+| Publications | `publications.bib` | BibTeX entries — structured form + raw editor + file upload |
+| Certifications | `Master_CV_Data.json` | Certifications with issuer, date, URL |
+| Summaries | `Master_CV_Data.json` | Named professional summary variants (existing) |
+
+#### Per-Section Behaviour
+
+**Personal Info** — single flat form; Save writes the `personal_info` block.
+
+**Experience** — list of experience records. Each record expands inline to show:
+
+- Fields: title, company, location, start/end dates, employment type, importance (1–10), tags
+- Nested achievement bullets sub-list: add/edit/delete/reorder per bullet
+- Reorder experience entries via drag handle or up/down controls
+
+**Skills** — list of skill records. Each record: name, proficiency level, domain tags, aliases array.
+
+**Education / Certifications** — simple list-of-records tables with add/edit/delete.
+
+**Publications** — three modes switchable per-session:
+
+1. **Structured form** — one form per BibTeX entry (type, title, authors, year, venue/journal, DOI/URL)
+2. **Raw BibTeX editor** — full-text edit of the `.bib` file with syntax highlight
+3. **File upload** — upload a `.bib` file to replace or merge with current; diff preview before confirm
+
+**Summaries** — existing behaviour retained (already implemented).
+
+#### Save, Backup & Git
+
+Every Save operation (any section):
+
+1. Creates a timestamped `.bak` copy before writing: `Master_CV_Data.json.YYYYMMDD_HHMMSS.bak` (or `.bib.YYYYMMDD_HHMMSS.bak`)
+2. Writes the updated file
+3. Runs `git add <file>` so the change is picked up by the next Finalise commit
+4. Reloads `orchestrator.master_data` in-process so the running app sees the new state immediately
+5. Runs history pruning (see § 7.10)
+
+#### Import
+
+Two import modes accessible from an **Import** button in the editor toolbar:
+
+| Mode | Description |
+| --- | --- |
+| **Load JSON** | Upload a `Master_CV_Data.json` file. System parses it and shows a structured diff vs. the current file (added records green, removed red, changed amber). User confirms field-by-field or bulk-confirms, then writes. |
+| **Import document(s)** | Upload one or more files in any format (PDF, DOCX, LinkedIn export, etc.). Files are passed to the LLM with a structured extraction prompt. LLM returns a proposed `Master_CV_Data.json`; user reviews the structured preview and confirms before writing. Multiple files are merged into a single proposed output. |
+
+#### Export & Preview
+
+- **Export** button: downloads current `Master_CV_Data.json` directly.
+- **Preview** button: renders a "full unfiltered CV" from master data (all experiences, all skills, etc.) using the existing HTML template, displayed in an iframe.
+
+---
+
+### 7.10 Undo/Redo — Master CV Editor (GAP-19)
+
+**Scope:** History management for `Master_CV_Data.json` and `publications.bib` edits.
+
+#### Three-Tier Undo Architecture
+
+| Tier | Trigger | Storage | Behaviour |
+| --- | --- | --- | --- |
+| **Field** | While a form field has focus | Native browser | `Ctrl+Z` undoes last keystroke within the field. Browser-native; no custom code. |
+| **Record** | While a record form is open (no field focused) | In-memory (page session) | `Ctrl+Z` restores the record to its state when the form was opened. Lost on page reload. |
+| **Save** | After any Save click | Server-side `.bak` files | `Ctrl+Z` (or toolbar button) restores the full file to its pre-save state. Persists across reloads. |
+
+#### Undo/Redo UI
+
+**Split-button toolbar** (in Master CV editor header):
+
+```
+[ ↩ Undo ▾ ]   [ ↪ Redo ▾ ]
+```
+
+- **Main button** (`↩ Undo`): restores one save step back.
+- **Dropdown arrow** (`▾`): opens a history picker showing all `.bak` snapshots with timestamps and a description of what changed. User can jump to any point.
+- Same pattern for Redo (forward through history after an undo).
+
+**Keyboard shortcuts:**
+
+- `Cmd+Z` / `Ctrl+Z` — undo (context-sensitive: field → record → save tier)
+- `Cmd+Shift+Z` / `Ctrl+Y` — redo
+- Shortcuts are scoped to the Master CV editor; they do not fire when a text input has focus (field-tier is handled natively).
+
+#### History Storage & Pruning
+
+`.bak` files are written alongside the source files (same directory). Pruning runs automatically after each Save:
+
+**Keep rule:** retain a `.bak` file if **either** condition is true:
+- It is among the **50 most recent** saves for that file, **OR**
+- It was created within the last **90 days**
+
+Files that satisfy neither condition are deleted. Defaults configurable in `config.yaml`:
+
+```yaml
+master_editor:
+  min_history: 50       # always keep at least this many saves
+  history_days: 90      # always keep saves within this many days
+```
+
+#### History Management UI
+
+A **History** panel (accessible from the ▾ dropdown or a dedicated "Manage History" link) shows:
+
+- Total `.bak` file count for each tracked file
+- Total disk space occupied
+- List of entries: timestamp, file, approximate change description
+- **Delete selected** and **Delete all older than N days** bulk actions
+- Auto-prune status: next prune will delete N files / free X MB
+
 ---
 
 ## 9. Dependencies & Prerequisites

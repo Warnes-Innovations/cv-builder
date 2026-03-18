@@ -45,6 +45,7 @@ _Completed should show a date and time stamp._
 | 13 | Master data management + accessibility baseline | ✅ Complete | `a7c3597` | 2026-03-11 |
 | 14 | Cover letter generation | ✅ Complete | `9a42f87` | 2026-03-11 |
 | 15 | Interview screening question responses | ✅ Complete | `6c66e0c` | 2026-03-11 |
+| 16 | Master CV Editor (GAP-19) | 🔲 Not Started | — | — |
 
 ---
 
@@ -523,6 +524,68 @@ Design decisions and implementation notes will be added here as each phase is im
 
 ---
 
+## Phase 16 — Master CV Editor (GAP-19)
+
+**Status**: 🔲 Not Started | **Spec**: §§ 7.9–7.10 of `PROJECT_SPECIFICATION.md`
+
+### Overview
+
+A standalone pre-workflow editor for `Master_CV_Data.json` and `publications.bib`, accessible from a persistent toolbar button. Provides structured form-based editing, undo/redo (three-tier), import, export, and preview.
+
+### Implementation Steps
+
+| # | Step | Status | Files | Notes |
+| --- | --- | --- | --- | --- |
+| 16.1 | Backend: `/api/master-cv` CRUD endpoints | 🔲 | `scripts/web_app.py` | GET (read), PUT (write + git add + bak + prune), DELETE record, POST reorder |
+| 16.2 | Backend: `.bak` file pruning utility | 🔲 | `scripts/utils/cv_orchestrator.py` or new `scripts/utils/history.py` | Hybrid rule: keep last 50 OR last 90 days; runs after every PUT |
+| 16.3 | Backend: `/api/master-cv/history` endpoint | 🔲 | `scripts/web_app.py` | List `.bak` files for a given source file; return count, disk size, timestamps |
+| 16.4 | Backend: `/api/master-cv/restore` endpoint | 🔲 | `scripts/web_app.py` | Restore a named `.bak` file; returns new file state; used by undo/redo UI |
+| 16.5 | Backend: `/api/master-cv/import` endpoint | 🔲 | `scripts/web_app.py` | Mode A: parse native JSON + return diff; Mode B: pass file(s) to LLM for extraction |
+| 16.6 | Backend: `/api/master-cv/config` for pruning defaults | 🔲 | `scripts/utils/config.py` | Read `master_editor.min_history` / `master_editor.history_days` from `config.yaml` |
+| 16.7 | Frontend: Master CV tab in nav bar | 🔲 | `web/index.html`, `web/app.js` | Top-level nav item (separate from job-workflow tabs); renders editor shell |
+| 16.8 | Frontend: 7-tab editor layout (Personal Info, Experience, Skills, Education, Publications, Certifications, Summaries) | 🔲 | `web/app.js`, `web/styles.css` | Tab switcher + section container; lazy-load each section on first activate |
+| 16.9 | Frontend: Personal Info form | 🔲 | `web/app.js` | Flat form for `personal_info` block; Save calls PUT `/api/master-cv` |
+| 16.10 | Frontend: Experience section (list + inline expand + bullet sub-list) | 🔲 | `web/app.js` | Add/edit/delete entries; drag-handle or up/down reorder; nested bullet management |
+| 16.11 | Frontend: Skills section | 🔲 | `web/app.js` | List with proficiency level, domain tags, aliases |
+| 16.12 | Frontend: Education & Certifications sections | 🔲 | `web/app.js` | Simple table-of-records pattern; add/edit/delete |
+| 16.13 | Frontend: Publications tab (structured + raw BibTeX + file upload) | 🔲 | `web/app.js` | Three mode-switcher; structured form per BibTeX entry; CodeMirror or `<textarea>` for raw; file upload triggers diff preview |
+| 16.14 | Frontend: Summaries section | 🔲 | `web/app.js` | Retain existing behaviour; wire to new PUT endpoint |
+| 16.15 | Frontend: Split-button undo/redo toolbar | 🔲 | `web/app.js`, `web/styles.css` | `[ ↩ Undo ▾ ]` / `[ ↪ Redo ▾ ]`; main btn = one step; dropdown = history picker with timestamps |
+| 16.16 | Frontend: Record-level in-memory undo | 🔲 | `web/app.js` | Capture record state on form open; `Ctrl+Z` restores when field not focused |
+| 16.17 | Frontend: Keyboard shortcut scoping (Cmd+Z / Cmd+Shift+Z) | 🔲 | `web/app.js` | Scoped to Master CV editor; no-op when a text input has focus |
+| 16.18 | Frontend: History Management panel | 🔲 | `web/app.js` | Accessible from ▾ dropdown; shows count, disk size, list with timestamps; bulk delete controls; calls `/api/master-cv/history` |
+| 16.19 | Frontend: Import modal | 🔲 | `web/app.js` | Mode A: JSON load with diff preview (field-by-field confirm); Mode B: multi-file upload → LLM extraction preview |
+| 16.20 | Frontend: Export & Preview buttons | 🔲 | `web/app.js` | Export → download `Master_CV_Data.json`; Preview → iframe with full unfiltered CV render |
+| 16.21 | Config: add `master_editor` block to `config.yaml` | 🔲 | `config.yaml` | `min_history: 50`, `history_days: 90` |
+| 16.22 | Tests: backend unit tests (CRUD, pruning, history, restore, import) | 🔲 | `tests/test_master_cv_editor.py` (new) | Aim for ≥ 20 tests |
+| 16.23 | Tests: UI smoke tests for Master CV editor | 🔲 | `tests/ui/test_ui_master_cv.py` (new) | Tab visible, section loads, save triggers bak file |
+
+### Design Decisions (Phase 16)
+
+**D16.1 — On-demand endpoint, not pre-loaded.**
+Master CV data is loaded by the editor on tab activation via `GET /api/master-cv`, not embedded in the page HTML. This keeps the initial page load fast and avoids stale data issues.
+
+**D16.2 — `.bak` files stored alongside source files.**
+`Master_CV_Data.json.YYYYMMDD_HHMMSS.bak` lives in the same directory as the source. This is simple to enumerate and avoids a separate backup directory. `history.py` utility handles the glob pattern.
+
+**D16.3 — Hybrid pruning: last 50 OR last 90 days (whichever covers more).**
+A file that is edited frequently will keep 50 saves. A file untouched for months will keep its entire history if within 90 days. Files older than 90 days AND beyond position 50 are deleted. This balances storage with usefulness.
+
+**D16.4 — Publications tab edits `publications.bib` directly.**
+The `publications.bib` file is the authoritative store for bibliography data (parsed by `bibtex_parser.py`). The structured form is a parsed view; saving writes back to the `.bib` file, not to `Master_CV_Data.json`.
+
+**D16.5 — Record-level undo is in-memory only.**
+Record-level undo (restoring a record to its state when the form opened) is stored in a JS map keyed by record ID. It is intentionally lost on page reload — save-level undo covers cross-session recovery.
+
+**D16.6 — Import mode B uses LLM extraction.**
+Multiple uploaded files (PDF, DOCX, LinkedIn export, etc.) are base64-encoded and sent to the LLM with a structured extraction prompt. The LLM returns a proposed `Master_CV_Data.json`. The user sees a structured preview before any write occurs.
+
+### Test Results
+
+_To be filled in when implementation is complete._
+
+---
+
 ## Environment Notes
 
 | Item | Value |
@@ -534,4 +597,4 @@ Design decisions and implementation notes will be added here as each phase is im
 
 ---
 
-_Last updated by agent: 2026-03-11 (Phase 12 complete)_
+_Last updated by agent: 2026-03-18 (Phase 16 spec added — GAP-19 Master CV Editor)_

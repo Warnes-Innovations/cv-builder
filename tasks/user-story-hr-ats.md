@@ -232,3 +232,68 @@ Senior Biostatistician | Genentech | South San Francisco, CA | January 2022–Pr
 - Any fail blocks download with a clear explanation.
 - Any warn allows download but shows the specific issue.
 - Validation results included in `metadata.json`.
+
+---
+
+## US-H7: ATS Match Score Visibility
+
+**As an** HR staffer reviewing applicant materials,  
+**I want** to know that the submitted CV’s skills vocabulary aligns with the job requisition keywords,  
+**So that** I can trust that the application will rank well in the ATS screener.
+
+**Context (what the ATS does):**
+- Traditional ATS: counts keyword occurrences from a predefined keyword list.
+- Modern ATS (Google for Jobs / Workday Skill Match): computes a structured-data match between the `knowsAbout` array in the HTML JSON-LD and the job posting’s required skills.
+- A visible pre-submission score gives the applicant confidence without gaming the system.
+
+**Acceptance Criteria:**
+- Overall match score (0–100%) is computed and displayed after job analysis.
+- Score is weighted: hard skill matches count twice as much as soft skill matches (hard skills are more ATS-deterministic).
+- Score updates live as the user approves/rejects customization items — no page reload required.
+- Score is persisted to `metadata.json` at generation time for audit purposes.
+- The score UI clearly labels the three per-skill states: Matched ✅, Missing ❌, Bonus ★ (candidate has skill not in JD).
+
+---
+
+## US-H8: Hard / Soft Skill Distinction in ATS Output
+
+**As an** HR staffer,  
+**I want** the ATS to correctly distinguish hard technical skills from soft interpersonal skills,  
+**So that** the candidate’s record is correctly categorised and searchable by the hiring manager.
+
+**Context (what the ATS does):**
+- Some ATS (e.g. Workday, Greenhouse) have separate structured fields for technical skills vs. interpersonal competencies.
+- `knowsAbout` entries in the HTML JSON-LD can optionally carry a `@type` or `additionalType` annotation — this enables richer structured-data parsing.
+- Hard skills are typically the primary screener signal; soft skills are secondary.
+
+**ATS Failure Modes:**
+- All skills listed as a flat comma-separated string with no type distinction — modern ATS cannot categorise them.
+- Soft skills mixed into the Technical Skills section of the DOCX — confuses ATS skill-extraction heuristics.
+- Hard/soft mislabelling: listing "Python" as a soft skill or "Communication" as a hard skill reduces match accuracy.
+
+**Required Format (ATS DOCX):**
+```
+Technical Skills
+Programming: Python, R, SQL, Julia
+ML/AI: Scikit-learn, PyTorch, Hugging Face, LangChain
+Cloud & MLOps: AWS (EC2, S3, SageMaker), Docker, Kubernetes
+
+Core Competencies
+Cross-functional team leadership | Executive stakeholder communication | Mentoring
+```
+
+**Required Format (HTML JSON-LD `knowsAbout`):**
+```json
+"knowsAbout": [
+  {"@type": "DefinedTerm", "name": "Python",        "additionalType": "HardSkill"},
+  {"@type": "DefinedTerm", "name": "Communication",  "additionalType": "SoftSkill"}
+]
+```
+
+**Acceptance Criteria:**
+- LLM classifies every extracted skill as hard or soft during job analysis.
+- Candidate’s master CV skills are also classified and the classification persisted in `Master_CV_Data.json`.
+- The ATS DOCX separates skills into a “Technical Skills” section (hard) and a “Core Competencies” section (soft).
+- The HTML JSON-LD `knowsAbout` entries include `"additionalType": "HardSkill"` or `"SoftSkill"`.
+- User can override any classification in the UI; the override propagates to the generated documents.
+- Missing hard skills are highlighted more prominently than missing soft skills in the match score display.

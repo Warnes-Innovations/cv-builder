@@ -427,7 +427,7 @@ Current gaps:
 
 **Severity:** HIGH
 **Affected stories:** US-A10, US-A11
-**Status:** OPEN — `tab-editor` (CV Editor) disabled 2026-03-16; it edited a session-scoped copy of CV data, not `Master_CV_Data.json`; `tab-master` (Master CV tab) partially covers achievements and summaries only; no UI covers personal info, experiences, skills, education, or publications in the master file
+**Status:** SPEC COMPLETE — full specification written in `PROJECT_SPECIFICATION.md` §§ 7.9–7.10 (2026-03-18); implementation plan in `IMPLEMENTATION_PLAN.md` Phase 16 (steps 16.1–16.23); implementation not yet started
 
 **Description:**
 The app has no pre-workflow entry point for creating or maintaining `Master_CV_Data.json`. The full
