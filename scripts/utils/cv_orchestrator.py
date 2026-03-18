@@ -1676,7 +1676,7 @@ If you need clarification, return:
             return achievement
 
         text = achievement.strip()
-        if not any(text.startswith(v) for v in self._STRONG_VERBS):
+        if text.split()[0].lower() not in self._STRONG_VERBS_LOWER if text.split() else True:
             print(
                 f"Warning: _enhance_achievement_for_ats: bullet does not start "
                 f"with a strong action verb: {text[:60]!r}"
@@ -1696,12 +1696,19 @@ If you need clarification, return:
         'Raised', 'Reduced', 'Refactored', 'Scaled', 'Shipped',
         'Spearheaded', 'Streamlined', 'Transformed', 'Tripled',
     })
+    _STRONG_VERBS_LOWER: frozenset = frozenset(v.lower() for v in _STRONG_VERBS)
 
     _WEAK_VERBS: frozenset = frozenset({
         'Assisted', 'Contributed', 'Helped', 'Participated',
         'Supported', 'Supervised', 'Worked', 'Was responsible',
         'Was involved', 'Collaborated', 'Cooperated',
     })
+    _WEAK_VERBS_LOWER: frozenset = frozenset(v.lower() for v in _WEAK_VERBS)
+    # First-word lookup used in check_persuasion — multi-word entries like
+    # 'Was responsible' match on 'was' so passive constructions are caught.
+    _WEAK_VERB_FIRST_WORDS_LOWER: frozenset = frozenset(
+        v.split()[0].lower() for v in _WEAK_VERBS
+    )
 
     _VAGUE_PHRASES: tuple = (
         'various tasks', 'multiple tasks', 'several tasks',
@@ -1709,15 +1716,22 @@ If you need clarification, return:
         'various responsibilities', 'general support', 'helped to',
         'assisted with', 'participated in', 'was part of',
         'involved in', 'worked on various', 'worked on multiple',
+        'responsible for', 'key player', 'hands-on experience', 'wearing many hats',
+    )
+
+    _VAGUE_PHRASES_RE = re.compile(
+        r'\b(' + '|'.join(re.escape(phrase) for phrase in _VAGUE_PHRASES) + r')\b',
+        re.IGNORECASE,
     )
 
     _METRIC_RE = re.compile(
-        r'(\d[\d,]*%?'             # digit-based metric
+        r'(?!(?:19|20)\d{2}(?:[–\-]\d{4})?)'  # negative lookahead: exclude year patterns like 2020-2024
+        r'((?:\d{1,3}(?:[,\s]\d{3})*|\d+)\s*%?'  # digit-based metric with optional commas/spaces and %
         r'|\$[\d,]+[kmb]?'         # dollar amount
         r'|£[\d,]+[kmb]?'          # pound amount
+        r'|€[\d,]+[kmb]?'          # euro amount
         r'|\b\d+\s*x\b'            # multiplier (3x)
-        r'|\b\d+[-–]\d+\b'         # range
-        r'|\b(one|two|three|four|five|six|seven|eight|nine|ten)\b)',  # spelled-out small numbers
+        r'|\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fifteen|twenty|hundred|thousand)\b)',  # spelled-out numbers
         re.IGNORECASE,
     )
 
@@ -1751,8 +1765,8 @@ If you need clarification, return:
                 issues = []
                 first_word = text.split()[0] if text.split() else ''
 
-                # Weak opening verb
-                if any(text.lower().startswith(wv.lower()) for wv in self._WEAK_VERBS):
+                # Weak opening verb — exact first-word match (no prefix collisions)
+                if first_word.lower() in self._WEAK_VERB_FIRST_WORDS_LOWER:
                     issues.append({
                         'type':       'weak_verb',
                         'severity':   'warning',
@@ -1761,7 +1775,7 @@ If you need clarification, return:
                             '(e.g. Led, Built, Delivered, Reduced, Improved).'
                         ),
                     })
-                elif not any(text.startswith(sv) for sv in self._STRONG_VERBS):
+                elif first_word.lower() not in self._STRONG_VERBS_LOWER:
                     issues.append({
                         'type':       'no_strong_verb',
                         'severity':   'info',
@@ -1784,17 +1798,16 @@ If you need clarification, return:
 
                 # Vague language
                 text_lower = text.lower()
-                for phrase in self._VAGUE_PHRASES:
-                    if phrase in text_lower:
-                        issues.append({
-                            'type':       'vague_language',
-                            'severity':   'warning',
-                            'suggestion': (
-                                f'Replace vague phrase "{phrase}" with a specific, '
-                                'measurable description of impact.'
-                            ),
-                        })
-                        break
+                vague_matches = self._VAGUE_PHRASES_RE.findall(text_lower)
+                for phrase in vague_matches:
+                    issues.append({
+                        'type':       'vague_language',
+                        'severity':   'warning',
+                        'suggestion': (
+                            f'Replace vague phrase "{phrase}" with a specific, '
+                            'measurable description of impact.'
+                        ),
+                    })
 
                 # Too short
                 if len(text.split()) < 8:
@@ -2267,11 +2280,25 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 'certifications', 'achievements', 'awards', 'objective',
                 'work experience', 'professional experience', 'technical skills',
                 'professional summary', 'selected publications', 'publications', 'contact',
+                'portfolio', 'languages', 'volunteering', 'projects', 'career history',
             })
             heading_paras = [p for p in paragraphs if p.style.name.startswith('Heading')]
             heading_texts = [p.text.strip() for p in heading_paras if p.text.strip()]
+
+            # Check if a heading matches a standard heading with word boundaries
+            def is_standard_heading(text: str, standards: frozenset) -> bool:
+                text_lower = text.lower()
+                # Exact match
+                if text_lower in standards:
+                    return True
+                # Word-boundary match: check if any standard heading appears as a complete word
+                for standard in standards:
+                    if _re.search(r'\b' + _re.escape(standard) + r'\b', text_lower):
+                        return True
+                return False
+
             unexpected    = [t for t in heading_texts
-                             if not any(s in t.lower() for s in STANDARD)]
+                             if not is_standard_heading(t, STANDARD)]
             if not unexpected:
                 _chk('docx_standard_headings', 'Standard heading text', 'docx', 'pass',
                      f'{len(heading_texts)} standard section heading(s) found')
@@ -2292,6 +2319,12 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 (_re.compile(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\b'),
                  'Mon YYYY'),
                 (_re.compile(r'\b\d{1,2}/\d{4}\b'), 'MM/YYYY'),
+                (_re.compile(r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b'),
+                 'Full Month YYYY'),
+                (_re.compile(r'\b\d{4}-\d{2}(?:-\d{2})?\b'), 'ISO (YYYY-MM or YYYY-MM-DD)'),
+                (_re.compile(r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December).*?(?:–|-|—).*?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December|Present|Current)'),
+                 'Date Range'),
+                (_re.compile(r'\b(?:Present|Current)\b', _re.IGNORECASE), 'Present/Current'),
             ]
             found_fmts = {name for pat, name in date_pats if pat.search(docx_text)}
             if len(found_fmts) <= 1:
@@ -2469,5 +2502,28 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
         except Exception as exc:
             _chk('pdf_us_letter', 'PDF page size is US Letter', 'pdf', 'fail',
                  f'PDF check error: {exc}')
+
+    # ── Page Count Validation ──────────────────────────────────────────────
+    # Check CV length against ideal and absolute limits
+    cfg = get_config()
+    ideal_min = cfg.get('generation.page_count.ideal_min', 2)
+    ideal_max = cfg.get('generation.page_count.ideal_max', 3)
+    absolute_max = cfg.get('generation.page_count.absolute_max', 4)
+
+    if page_count is None:
+        _chk('cv_page_count', 'CV page count', 'pdf', 'fail',
+             'Page count could not be determined (HTML render failed)')
+    elif page_count == 1:
+        _chk('cv_page_count', 'CV page count', 'pdf', 'warn',
+             f'{page_count} page — consider {ideal_min}–{ideal_max} pages for senior candidates')
+    elif ideal_min <= page_count <= ideal_max:
+        _chk('cv_page_count', 'CV page count', 'pdf', 'pass',
+             f'{page_count} pages — within ideal {ideal_min}–{ideal_max} page range')
+    elif page_count > absolute_max:
+        _chk('cv_page_count', 'CV page count', 'pdf', 'fail',
+             f'{page_count} pages — exceeds {absolute_max}-page maximum; consider condensing')
+    else:  # ideal_max < page_count <= absolute_max
+        _chk('cv_page_count', 'CV page count', 'pdf', 'warn',
+             f'{page_count} pages — exceeds {ideal_max}-page ideal range')
 
     return checks, page_count

@@ -6,6 +6,110 @@
 
 // StorageKeys is defined in api-client.js (loaded before this file)
 
+// ─────────────────────────────────────────────────────────────────────────
+// Accessibility: Focus Management for Modals
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Stores the element that opened the current modal (for focus restoration on close). */
+let _focusedElementBeforeModal = null;
+
+/** Stores the current keydown listener for focus trap (to enable cleanup). */
+let _currentFocusTrapListener = null;
+
+/**
+ * Get all focusable elements within a container.
+ * @param {HTMLElement} container - The modal or container element
+ * @returns {HTMLElement[]} Array of focusable elements
+ */
+function getFocusableElements(container) {
+  const focusableSelectors = [
+    'a[href]', 'button:not([disabled])', 'input:not([disabled])',
+    'textarea:not([disabled])', 'select:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(', ');
+  return Array.from(container.querySelectorAll(focusableSelectors));
+}
+
+/**
+ * Set initial focus to the first focusable element in a modal.
+ * Prioritizes elements with id="[modalId]-focus-target" if present.
+ * @param {string} modalId - ID of the modal
+ */
+function setInitialFocus(modalId) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+
+  // Try to focus an explicit target (e.g., input field with class/id)
+  const focusTarget = modal.querySelector('[data-focus-target="true"]') ||
+                      modal.querySelector('input[type="text"]') ||
+                      modal.querySelector('button');
+
+  if (focusTarget) {
+    // Small delay to ensure modal render + actual display
+    setTimeout(() => focusTarget.focus(), 50);
+  }
+}
+
+/**
+ * Trap focus within a modal using Tab/Shift+Tab.
+ * Prevents user tabbing to elements outside the modal.
+ * @param {string} modalId - ID of the modal
+ */
+function trapFocus(modalId) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+
+  // Remove any previous trap listener
+  if (_currentFocusTrapListener) {
+    document.removeEventListener('keydown', _currentFocusTrapListener);
+  }
+
+  const focusableElements = getFocusableElements(modal);
+  if (focusableElements.length === 0) return;
+
+  const firstElement = focusableElements[0];
+  const lastElement = focusableElements[focusableElements.length - 1];
+
+  _currentFocusTrapListener = (e) => {
+    if (e.key !== 'Tab') return;
+
+    const isShift = e.shiftKey;
+    const activeEl = document.activeElement;
+
+    if (isShift) {
+      // Shift+Tab from first element → focus last element
+      if (activeEl === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+      }
+    } else {
+      // Tab from last element → focus first element
+      if (activeEl === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    }
+  };
+
+  document.addEventListener('keydown', _currentFocusTrapListener);
+}
+
+/**
+ * Restore focus to the element that opened the modal.
+ */
+function restoreFocus() {
+  if (_focusedElementBeforeModal && typeof _focusedElementBeforeModal.focus === 'function') {
+    _focusedElementBeforeModal.focus();
+  }
+  _focusedElementBeforeModal = null;
+
+  // Clean up focus trap listener
+  if (_currentFocusTrapListener) {
+    document.removeEventListener('keydown', _currentFocusTrapListener);
+    _currentFocusTrapListener = null;
+  }
+}
+
 /** Maps each workflow stage (top bar) to the tabs shown in the second nav bar. */
 const STAGE_TABS = {
   job:            ['job'],
@@ -136,6 +240,27 @@ function setupEventListeners() {
       const tabName = e.target.id.replace('tab-', '');
       switchTab(tabName);
     });
+
+    // Add arrow key navigation for tabs (WCAG 2.1 AA Tabs pattern)
+    tab.addEventListener('keydown', (e) => {
+      if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+        e.preventDefault();
+        const tabs = Array.from(document.querySelectorAll('.tab:not([style*="display: none"])'));
+        const currentIndex = tabs.indexOf(e.target);
+
+        let nextTab;
+        if (e.key === 'ArrowLeft' || e.key === 'Home') {
+          nextTab = e.key === 'Home' ? tabs[0] : tabs[(currentIndex - 1 + tabs.length) % tabs.length];
+        } else {
+          nextTab = e.key === 'End' ? tabs[tabs.length - 1] : tabs[(currentIndex + 1) % tabs.length];
+        }
+
+        if (nextTab) {
+          nextTab.focus();
+          nextTab.click(); // Activate the tab
+        }
+      }
+    });
   });
 
   // Message input (Enter key to send)
@@ -187,6 +312,18 @@ function getStageForTab(tab) {
 }
 
 /**
+ * Show/hide the scroll arrow buttons based on whether the tab bar is scrollable.
+ */
+function updateTabScrollButtons() {
+  const tabBar  = document.getElementById('tab-bar');
+  const leftBtn = document.getElementById('tab-scroll-left');
+  const rightBtn = document.getElementById('tab-scroll-right');
+  if (!tabBar || !leftBtn || !rightBtn) return;
+  leftBtn.style.display  = tabBar.scrollLeft > 0 ? '' : 'none';
+  rightBtn.style.display = tabBar.scrollLeft < tabBar.scrollWidth - tabBar.clientWidth - 1 ? '' : 'none';
+}
+
+/**
  * Show only the tabs that belong to the given stage in the second nav bar.
  * @param {string} stage - Key from STAGE_TABS
  */
@@ -195,6 +332,10 @@ function updateTabBarForStage(stage) {
   document.querySelectorAll('.tab').forEach(tab => {
     tab.style.display = stageTabs.includes(tab.dataset.tab) ? '' : 'none';
   });
+  // Reset scroll position to show active tab, then refresh arrow visibility
+  const tabBar = document.getElementById('tab-bar');
+  if (tabBar) tabBar.scrollLeft = 0;
+  updateTabScrollButtons();
 }
 
 /**
@@ -303,10 +444,17 @@ function toggleChat() {
 function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) {
+    // Save focus before opening modal
+    _focusedElementBeforeModal = document.activeElement;
+
     modal.classList.add('visible');
     modal.setAttribute('aria-hidden', 'false');
     // Lock body scroll
     document.body.style.overflow = 'hidden';
+
+    // Set initial focus and trap focus within modal
+    setInitialFocus(modalId);
+    trapFocus(modalId);
   }
 }
 
@@ -323,6 +471,8 @@ function closeModal(modalId) {
     if (!document.querySelector('[role="dialog"].visible')) {
       document.body.style.overflow = '';
     }
+    // Restore focus
+    restoreFocus();
   }
 }
 
@@ -335,6 +485,9 @@ function closeAllModals() {
     modal.setAttribute('aria-hidden', 'true');
   });
   document.body.style.overflow = '';
+  // Restore focus
+  restoreFocus();
+}
 }
 
 /**
@@ -922,5 +1075,20 @@ async function refreshModelPricing() {
 // Initialize on page load — delegates to app.js init() which is loaded after this file
 document.addEventListener('DOMContentLoaded', () => {
   loadModelSelector();
+
+  // Wire up tab scroll arrow buttons
+  const tabBar   = document.getElementById('tab-bar');
+  const leftBtn  = document.getElementById('tab-scroll-left');
+  const rightBtn = document.getElementById('tab-scroll-right');
+  if (tabBar && leftBtn && rightBtn) {
+    leftBtn.addEventListener('click',  () => { tabBar.scrollBy({ left: -160, behavior: 'smooth' }); });
+    rightBtn.addEventListener('click', () => { tabBar.scrollBy({ left:  160, behavior: 'smooth' }); });
+    tabBar.addEventListener('scroll', updateTabScrollButtons);
+    new ResizeObserver(updateTabScrollButtons).observe(tabBar);
+  }
+
+  // Show only the Job tab until fetchStatus resolves the actual stage
+  updateTabBarForStage('job');
+
   if (typeof init === 'function') init();
 });

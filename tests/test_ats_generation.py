@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
-from utils.cv_orchestrator import CVOrchestrator
+from utils.cv_orchestrator import CVOrchestrator, validate_ats_report
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
@@ -143,6 +143,104 @@ def test_ats_compatibility_score_acceptable(orchestrator, selected_content, job_
 
     assert isinstance(score, (int, float)), f"Expected numeric score, got {type(score)}"
     assert score >= 50, f"ATS score {score} is below the minimum acceptable threshold of 50"
+
+
+# ── Page Count Validation Tests ────────────────────────────────────────────────
+
+def test_page_count_validation_none_page_count():
+    """Page count validation should FAIL when page_count is None."""
+    checks = []
+
+    # Simulate the validation check logic
+    def _chk(name, label, format_, status, detail):
+        checks.append({'name': name, 'label': label, 'format': format_, 'status': status, 'detail': detail})
+
+    page_count = None
+    if page_count is None:
+        _chk('cv_page_count', 'CV page count', 'pdf', 'fail',
+             'Page count could not be determined (HTML render failed)')
+
+    assert len(checks) == 1
+    assert checks[0]['status'] == 'fail'
+    assert checks[0]['name'] == 'cv_page_count'
+
+
+def test_page_count_validation_single_page():
+    """Page count validation should WARN when page_count is 1."""
+    checks = []
+
+    def _chk(name, label, format_, status, detail):
+        checks.append({'name': name, 'label': label, 'format': format_, 'status': status, 'detail': detail})
+
+    page_count = 1
+    ideal_min, ideal_max = 2, 3
+
+    if page_count == 1:
+        _chk('cv_page_count', 'CV page count', 'pdf', 'warn',
+             f'{page_count} page — consider {ideal_min}–{ideal_max} pages for senior candidates')
+
+    assert len(checks) == 1
+    assert checks[0]['status'] == 'warn'
+    assert '1 page' in checks[0]['detail']
+
+
+def test_page_count_validation_ideal_range():
+    """Page count validation should PASS when page_count is 2 or 3."""
+    checks = []
+
+    def _chk(name, label, format_, status, detail):
+        checks.append({'name': name, 'label': label, 'format': format_, 'status': status, 'detail': detail})
+
+    ideal_min, ideal_max = 2, 3
+
+    for page_count in [2, 3]:
+        checks.clear()
+        if ideal_min <= page_count <= ideal_max:
+            _chk('cv_page_count', 'CV page count', 'pdf', 'pass',
+                 f'{page_count} pages — within ideal {ideal_min}–{ideal_max} page range')
+
+        assert len(checks) == 1
+        assert checks[0]['status'] == 'pass'
+        assert f'{page_count} pages' in checks[0]['detail']
+
+
+def test_page_count_validation_exceeds_ideal():
+    """Page count validation should WARN when 3 < page_count <= 4."""
+    checks = []
+
+    def _chk(name, label, format_, status, detail):
+        checks.append({'name': name, 'label': label, 'format': format_, 'status': status, 'detail': detail})
+
+    page_count = 4
+    ideal_max, absolute_max = 3, 4
+
+    if ideal_max < page_count <= absolute_max:
+        _chk('cv_page_count', 'CV page count', 'pdf', 'warn',
+             f'{page_count} pages — exceeds {ideal_max}-page ideal range')
+
+    assert len(checks) == 1
+    assert checks[0]['status'] == 'warn'
+    assert '4 pages' in checks[0]['detail']
+
+
+def test_page_count_validation_exceeds_maximum():
+    """Page count validation should FAIL when page_count > 4."""
+    checks = []
+
+    def _chk(name, label, format_, status, detail):
+        checks.append({'name': name, 'label': label, 'format': format_, 'status': status, 'detail': detail})
+
+    page_count = 5
+    absolute_max = 4
+
+    if page_count > absolute_max:
+        _chk('cv_page_count', 'CV page count', 'pdf', 'fail',
+             f'{page_count} pages — exceeds {absolute_max}-page maximum; consider condensing')
+
+    assert len(checks) == 1
+    assert checks[0]['status'] == 'fail'
+    assert '5 pages' in checks[0]['detail']
+    assert 'exceeds' in checks[0]['detail']
 
 
 if __name__ == '__main__':

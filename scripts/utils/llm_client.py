@@ -1031,23 +1031,67 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
     def _parse_json_response(self, response: str) -> Any:
         """Parse a JSON value from an LLM response, tolerating markdown fences.
 
-        Tries direct ``json.loads``, then extracts the payload from a
-        triple-backtick ``json`` or bare triple-backtick code block.
+        Scans for the first '{' or '[' and uses bracket-depth counting to
+        locate the matching close, then json.loads() that span.  This is
+        immune to multiple code blocks, backtick noise inside strings, and
+        missing closing fences.
+
         Raises ``ValueError`` when no extractable JSON is found.
         """
+        # Fast path: response is already clean JSON.
         try:
             return json.loads(response)
         except json.JSONDecodeError:
             pass
-        if '```json' in response:
-            return json.loads(response.split('```json')[1].split('```')[0].strip())
-        if '```' in response:
-            block = response.split('```')[1].split('```')[0].strip()
-            if block.startswith('json\n'):
-                block = block[5:]
-            return json.loads(block)
+
+        # Find the first JSON container character.
+        start = -1
+        open_char: str = ''
+        for i, ch in enumerate(response):
+            if ch in ('{', '['):
+                start = i
+                open_char = ch
+                break
+        if start == -1:
+            raise ValueError(
+                f"Cannot extract JSON from LLM response: {response[:200]!r}"
+            )
+
+        # Walk forward with bracket-depth counting to find the matching close.
+        close_char = '}' if open_char == '{' else ']'
+        depth = 0
+        in_string = False
+        escape_next = False
+        for j in range(start, len(response)):
+            ch = response[j]
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == '\\' and in_string:
+                escape_next = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == open_char:
+                depth += 1
+            elif ch == close_char:
+                depth -= 1
+                if depth == 0:
+                    candidate = response[start:j + 1]
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError as exc:
+                        raise ValueError(
+                            f"Found JSON-like span but failed to parse: {exc}\n"
+                            f"Span (first 200 chars): {candidate[:200]!r}"
+                        ) from exc
+
         raise ValueError(
-            f"Cannot extract JSON from LLM response: {response[:200]!r}"
+            f"Unmatched '{open_char}' — no closing '{close_char}' found in LLM response: "
+            f"{response[:200]!r}"
         )
 
     def rank_publications_for_job(
@@ -1091,22 +1135,31 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         # Build a compact publication list for the prompt.
         pub_lines = []
         for i, pub in enumerate(publications[:60]):  # cap at 60 to stay in context
-            first_author = ''
-            if candidate_name and pub.get('authors'):
-                last_name = candidate_name.split()[-1] if candidate_name else ''
-                first_author = ' [FIRST_AUTHOR]' if last_name and last_name.lower() in pub['authors'].lower() and pub['authors'].lower().startswith(last_name.lower()) else ''
             venue = pub.get('journal') or pub.get('booktitle') or pub.get('publisher') or ''
             venue_str = f" | {venue}" if venue else ' | [no venue]'
+            authors_str = pub.get('authors', '')
             pub_lines.append(
                 f"{i+1}. key={pub.get('key', '')} ({pub.get('year', '?')})"
-                f"{first_author}{venue_str}\n   {pub.get('title', '')}"
+                f"{venue_str}\n   {pub.get('title', '')}"
+                + (f"\n   authors: {authors_str}" if authors_str else '')
             )
+
+        candidate_note = (
+            f"The candidate's full name is: {candidate_name}. "
+            "For each publication, set is_first_author=true if their surname appears "
+            "as the first author (handle surname-first, initials, hyphenated, and "
+            "cultural prefix variants)."
+            if candidate_name else
+            "is_first_author should be false for all entries (no candidate name provided)."
+        )
 
         prompt = f"""Target role:
 - Domain: {job_analysis.get('domain', 'N/A')}
 - Title: {job_analysis.get('title', 'N/A')}
 - Required skills: {', '.join((job_analysis.get('required_skills') or [])[:15])}
 - ATS keywords: {', '.join((job_analysis.get('ats_keywords') or [])[:15])}
+
+{candidate_note}
 
 Publications ({len(pub_lines)} total):
 {chr(10).join(pub_lines)}
@@ -1119,6 +1172,7 @@ Return ONLY a JSON array — no prose, no markdown fences.
     "cite_key": "...",
     "relevance_score": 1-10,
     "confidence": "High|Medium|Low",
+    "is_first_author": true,
     "rationale": "1-2 sentence explanation"
   }}
 ]
@@ -1149,13 +1203,10 @@ Return ONLY a JSON array — no prose, no markdown fences.
             pub = pub_by_key.get(cite_key)
             if not pub:
                 continue
-            # Authority signals
+            # Authority signals — is_first_author determined by the LLM above.
             authority_signals = []
-            if candidate_name:
-                last_name = candidate_name.split()[-1]
-                authors_str = pub.get('authors', '')
-                if last_name and last_name.lower() in authors_str.lower() and authors_str.lower().startswith(last_name.lower()):
-                    authority_signals.append('first_author')
+            if item.get('is_first_author'):
+                authority_signals.append('first_author')
             if pub.get('journal'):
                 authority_signals.append(f"journal: {pub['journal']}")
             elif pub.get('booktitle'):

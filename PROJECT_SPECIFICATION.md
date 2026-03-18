@@ -536,6 +536,16 @@ doc.save(output_path)
 - ✅ No graphics, images, or special characters
 - ✅ No headers/footers with content
 - ✅ File size <5MB
+- ✅ CV Length (2–3 pages ideal; warn if 1 page or >3 pages; fail if >4 pages)
+
+#### CV Length Validation Rules
+Post-generation validation checks page count with the following thresholds (configurable in config.yaml):
+- **1 page**: WARN — Too brief for senior candidates; consider expanding with additional experiences or detail
+- **2–3 pages**: PASS — Ideal range for senior candidates
+- **>3 to 4 pages**: WARN — Exceeds ideal range; consider condensing to fit in 3 pages
+- **>4 pages**: FAIL — Exceeds maximum; ATS systems often truncate or reject; strong recommendation to condense before submission
+
+These checks are non-blocking for the user workflow but provide critical quality feedback for ATS compatibility.
 
 ---
 

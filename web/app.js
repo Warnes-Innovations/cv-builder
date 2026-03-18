@@ -1011,9 +1011,12 @@ async function showLoadJobPanel() {
           <!-- Paste -->
           <div class="input-method active" id="paste-method">
             <textarea id="job-text-input" placeholder="Paste the job description here…" rows="12"
-              aria-describedby="paste-error"
-              onblur="_validatePasteField()"
+              aria-required="true"
+              aria-describedby="paste-char-count paste-error"
+              onblur="_validatePasteField()" oninput="_updatePasteCharCount()"
               style="width:100%;font-family:inherit;font-size:14px;padding:12px;border:1px solid #d1d5db;border-radius:6px;resize:vertical;margin-top:8px;"></textarea>
+            <div id="paste-char-count" aria-live="polite"
+              style="font-size:12px;color:#94a3b8;margin-top:4px;min-height:18px;"></div>
             <span id="paste-error" class="field-error" aria-live="polite"></span>
             <div style="margin-top:10px;display:flex;gap:12px;">
               <button onclick="submitJobText()" class="btn-primary">Submit Job Description</button>
@@ -1025,6 +1028,7 @@ async function showLoadJobPanel() {
           <div class="input-method" id="url-method">
             <p style="margin:8px 0 10px;">Enter a URL to automatically extract the job description:</p>
             <input type="url" id="job-url-input" placeholder="https://company.com/job-posting"
+              aria-required="true"
               aria-describedby="url-error"
               onblur="_validateURLField()"
               style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:6px;" />
@@ -1243,20 +1247,46 @@ function _showFieldError(inputId, errorId, msg) {
   const inp  = document.getElementById(inputId);
   const span = document.getElementById(errorId);
   if (span)  { span.textContent = msg; span.classList.add('visible'); }
-  if (inp)   { inp.classList.add('field-invalid'); }
+  if (inp)   {
+    inp.classList.add('field-invalid');
+    inp.setAttribute('aria-invalid', 'true');
+  }
 }
 
 function _clearFieldError(inputId, errorId) {
   const inp  = document.getElementById(inputId);
   const span = document.getElementById(errorId);
   if (span)  { span.textContent = ''; span.classList.remove('visible'); }
-  if (inp)   { inp.classList.remove('field-invalid'); }
+  if (inp)   {
+    inp.classList.remove('field-invalid');
+    inp.setAttribute('aria-invalid', 'false');
+  }
+}
+
+const PASTE_MIN_CHARS = 200;
+
+function _updatePasteCharCount() {
+  const val = (document.getElementById('job-text-input')?.value || '').trim();
+  const countEl = document.getElementById('paste-char-count');
+  if (!countEl) return;
+  const n = val.length;
+  if (n === 0) {
+    countEl.style.color = '#94a3b8';
+    countEl.textContent = '';
+  } else if (n < PASTE_MIN_CHARS) {
+    countEl.style.color = '#ef4444';
+    countEl.textContent = `${n} / ${PASTE_MIN_CHARS} minimum — Too short, aim for at least ${PASTE_MIN_CHARS} characters`;
+  } else {
+    countEl.style.color = '#16a34a';
+    countEl.textContent = `${n} / ${PASTE_MIN_CHARS} minimum ✓`;
+  }
 }
 
 function _validatePasteField() {
   const val = (document.getElementById('job-text-input')?.value || '').trim();
-  if (val.length > 0 && val.length < 50) {
-    _showFieldError('job-text-input', 'paste-error', 'Job description is too short — please paste at least 50 characters.');
+  _updatePasteCharCount();
+  if (val.length > 0 && val.length < PASTE_MIN_CHARS) {
+    _showFieldError('job-text-input', 'paste-error', `Job description is too short — please paste at least ${PASTE_MIN_CHARS} characters.`);
   } else {
     _clearFieldError('job-text-input', 'paste-error');
   }
@@ -1332,8 +1362,8 @@ async function submitJobText() {
     textInput.focus();
     return;
   }
-  if (jobText.length < 50) {
-    _showFieldError('job-text-input', 'paste-error', 'Job description is too short — please paste at least 50 characters.');
+  if (jobText.length < PASTE_MIN_CHARS) {
+    _showFieldError('job-text-input', 'paste-error', `Job description is too short — please paste at least ${PASTE_MIN_CHARS} characters.`);
     textInput.focus();
     return;
   }
@@ -1502,54 +1532,28 @@ async function _handleLLMMessage(text) {
 
     if (data.error) {
       const errorMsg = data.error.toString();
-      // Suppress CV-data echoes that the LLM sometimes includes in error messages
-      if (errorMsg.includes('personal_info') ||
-          errorMsg.includes('experience":') ||
-          errorMsg.includes('"name":') ||
-          errorMsg.match(/^\s*["'{]/)) {
-        console.warn('Backend error was CV data echo, suppressing:', errorMsg);
-      } else {
-        appendRetryMessage('❌ Error: ' + errorMsg, () => {
-          document.getElementById('message-input').value = text;
-          sendMessage();
-        });
-        console.error('Server error:', data.error);
-      }
+      appendRetryMessage('❌ Error: ' + errorMsg, () => {
+        document.getElementById('message-input').value = text;
+        sendMessage();
+      });
+      console.error('Server error:', data.error);
     } else if (data.response) {
       try {
         const cleanResponse = data.response;
         // Check if response embeds customization JSON
-        const jsonMatch = cleanResponse.match(/\{[\s\S]*?"recommended_experiences"[\s\S]*?\}/);
-        if (jsonMatch) {
-          const textBeforeJson = cleanResponse.substring(0, jsonMatch.index).trim();
+        const parsedCustomization = extractFirstJsonObject(cleanResponse);
+        if (parsedCustomization && (parsedCustomization.recommended_experiences || parsedCustomization.recommended_skills)) {
+          // Show any prose that preceded the JSON block
+          const jsonStart = cleanResponse.indexOf('{');
+          const textBeforeJson = jsonStart > 0 ? cleanResponse.substring(0, jsonStart).trim() : '';
           if (textBeforeJson && !textBeforeJson.includes('{"action":')) {
-            const filteredLines = textBeforeJson.split('\n')
-              .filter(line => {
-                const t = line.trim();
-                return t.length > 0 && !t.startsWith('"') &&
-                       !t.includes('personal_info') && !t.includes('experience') && !t.includes('}: {');
-              })
-              .join('\n');
-            if (filteredLines.trim().length > 0) appendMessage('assistant', filteredLines);
+            appendMessage('assistant', textBeforeJson);
           }
-          await handleCustomizationResponse(jsonMatch[0]);
+          await handleCustomizationResponse(parsedCustomization);
         } else {
-          // Regular conversation — filter CV data echoes before display
-          const filteredResponse = cleanResponse.split('\n')
-            .filter(line => {
-              const t = line.trim();
-              return t.length > 0 && !t.startsWith('"') &&
-                     !t.includes('personal_info') && !t.includes('experience":') &&
-                     !t.includes('education":') && !t.includes('skills":') &&
-                     !t.includes('publications":') &&
-                     !t.match(/^\s*"[a-z_]+":\s*[{\[]/) &&
-                     !t.match(/^\s*\{[\s\S]*"[a-z_]+"/);
-            })
-            .join('\n');
-          if (filteredResponse.trim().length > 0) {
-            appendMessage('assistant', filteredResponse);
-          } else {
-            console.warn('LLM response contained only CV data echoes, nothing to display');
+          // Display the response as-is (server should not include raw CV data)
+          if (cleanResponse.trim().length > 0) {
+            appendMessage('assistant', cleanResponse);
           }
         }
       } catch (err) {
@@ -2301,20 +2305,55 @@ async function getStatus() {
   }
 }
 
+/**
+ * Extract and parse the first complete JSON object or array from an LLM
+ * response string using bracket-depth counting.  Immune to greedy-regex
+ * issues (multiple JSON blocks, backticks inside strings, missing fences).
+ *
+ * Returns the parsed value, or null if no valid JSON container is found.
+ */
+function extractFirstJsonObject(text) {
+  if (text == null) return null;
+  if (typeof text !== 'string') return text;
+
+  // Fast path: already clean JSON.
+  try { return JSON.parse(text); } catch (_) { /* fall through */ }
+
+  const openers = new Set(['{', '[']);
+  const closers = { '{': '}', '[': ']' };
+  let start = -1;
+  let openChar = '';
+  for (let i = 0; i < text.length; i++) {
+    if (openers.has(text[i])) { start = i; openChar = text[i]; break; }
+  }
+  if (start === -1) return null;
+
+  const closeChar = closers[openChar];
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let j = start; j < text.length; j++) {
+    const ch = text[j];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === openChar) depth++;
+    else if (ch === closeChar) {
+      depth--;
+      if (depth === 0) {
+        try { return JSON.parse(text.slice(start, j + 1)); } catch (_) { return null; }
+      }
+    }
+  }
+  return null;
+}
+
 function cleanJsonResponse(text) {
   if (typeof text !== 'string') return text;
-  
-  // Remove markdown code fences first
-  text = text.replace(/^```json\s*/gm, '').replace(/\s*```$/gm, '');
-  
-  // Try to find a complete JSON object
-  const match = text.match(/\{[\s\S]*\}/);
-  if (match) {
-    return match[0].trim();
-  }
-  
-  // If no JSON object found, return as-is (not JSON)
-  return text;
+  const parsed = extractFirstJsonObject(text);
+  // Return parsed object if we got one; otherwise return text as-is (not JSON).
+  return parsed !== null ? parsed : text;
 }
 
 function populateAnalysisTab(result) {
@@ -2409,28 +2448,13 @@ function populateAnalysisTab(result) {
 
 async function handleCustomizationResponse(response) {
   try {
-    const cleanResult = cleanJsonResponse(response);
-    
-    // Try to parse as JSON
-    let data;
-    if (typeof cleanResult === 'string') {
-      // Check if it looks like JSON
-      if (cleanResult.trim().startsWith('{') && cleanResult.trim().endsWith('}')) {
-        try {
-          data = JSON.parse(cleanResult);
-        } catch (parseError) {
-          // Not valid JSON, treat as text
-          console.log('Not JSON, displaying as text:', parseError);
-          appendMessage('assistant', response);
-          return;
-        }
-      } else {
-        // Doesn't look like JSON, treat as text
-        appendMessage('assistant', response);
-        return;
-      }
-    } else {
-      data = cleanResult;
+    // Accept a pre-parsed object or a raw string (parse at boundary).
+    const data = (response !== null && typeof response === 'object')
+      ? response
+      : extractFirstJsonObject(response);
+    if (!data) {
+      appendMessage('assistant', typeof response === 'string' ? response : '');
+      return;
     }
     
     if (data && (data.recommended_experiences || data.recommended_skills)) {
@@ -5922,34 +5946,14 @@ function setLoading(loading, label) {
   });
 }
 
-function extractTitleAndCompanyFromJobText(jobText) {
-  if (!jobText || typeof jobText !== 'string') {
-    return { title: '', company: '' };
-  }
-
-  // Patterns that indicate email preamble lines (not job title lines)
-  const emailPreambleRe = /^(thanks|thank you|hi |hello |dear |hope|following up|as discussed|please find|per our|it was great|i wanted|attached|feel free|let me know|best,|regards,|sincerely,|cheers,)/i;
-
-  const lines = jobText
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean);
-
-  if (lines.length === 0) {
-    return { title: '', company: '' };
-  }
-
-  // Find the first short line (≤80 chars) that doesn't look like email prose
-  const candidateLine = lines.find(line =>
-    line.length <= 80 && !emailPreambleRe.test(line) && !/[.?!,:;]$/.test(line)
-  ) || '';
-
-  const atMatch = candidateLine.match(/^(.+?)\s+at\s+(.+)$/i);
-  if (atMatch) {
-    return { title: atMatch[1].trim(), company: atMatch[2].trim() };
-  }
-
-  return { title: candidateLine, company: '' };
+function extractTitleAndCompanyFromJobText(_jobText) {
+  // This function is a last-resort fallback reached only when both
+  // status.position_name and status.job_analysis are absent (i.e. the LLM
+  // has not yet responded). Rather than guessing from raw text — which
+  // produces wrong results when the job description is pasted with an email
+  // preamble — return empty and let the UI show a neutral placeholder until
+  // the LLM result arrives via the /api/analyze-job response.
+  return { title: '', company: '' };
 }
 
 function normalizePositionLabel(title, company) {
@@ -6476,6 +6480,12 @@ function updateWorkflowSteps(status) {
     s.textContent = '.step.completed:hover .step-rerun { opacity: 1 !important; }';
     document.head.appendChild(s);
   }
+
+  // Sync second-bar tab visibility to the active workflow step
+  if (typeof updateTabBarForStage === 'function') {
+    currentStage = activeStep;
+    updateTabBarForStage(activeStep);
+  }
 }
 
 // Back-navigation: clicking a completed workflow step navigates to its viewer tab.
@@ -6519,7 +6529,13 @@ function handleStepClick(step) {
     finalise:       'finalise',
   };
   const tabName = stepToTab[step];
-  if (tabName) switchTab(tabName);
+  if (tabName) {
+    if (typeof updateTabBarForStage === 'function') {
+      currentStage = step;
+      updateTabBarForStage(step);
+    }
+    switchTab(tabName);
+  }
 }
 
 // Show/hide the 409 session-conflict banner.
@@ -7334,12 +7350,19 @@ function parseScreeningQuestions() {
   const raw = (document.getElementById('sc-input')?.value || '').trim();
   if (!raw) { showAlertModal('⚠️ No Input', 'Please paste at least one screening question first.'); return; }
 
-  // Split on double-newline or numbered list patterns; fall back to single lines
+  // Split on blank lines (preferred) or numbered list patterns; filter empty results
   let questions = raw.split(/\n\s*\n+/).map(q => q.trim()).filter(Boolean);
   if (questions.length === 1) {
-    // Try splitting on numbered lines like "1. " or "Q1: " etc.
-    const numbered = raw.split(/\n(?=\d+[\.\)]\s|\bQ\d+[:\.\s])/).map(q => q.trim()).filter(Boolean);
+    // Try numbered patterns like "1. " or "1) " or "Q1:" without requiring space after
+    const numbered = raw.split(/\n(?=\d+[.\)]\s*(?=[A-Z])|Q\d+[:\.]?\s*(?=[A-Z]))/)
+      .map(q => q.trim())
+      .filter(Boolean);
     if (numbered.length > 1) questions = numbered;
+  }
+  if (questions.length === 1) {
+    // Last resort: split on any single newline if we still have just one "question"
+    const singleLine = raw.split(/\n+/).map(q => q.trim()).filter(q => q.length > 0);
+    if (singleLine.length > 1) questions = singleLine;
   }
 
   const container = document.getElementById('sc-questions-container');

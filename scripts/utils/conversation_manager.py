@@ -141,7 +141,7 @@ class ConversationManager:
                         job_text,
                         self.orchestrator.master_data
                     )
-                    self.state['job_analysis'] = analysis
+                    self._store_job_analysis(analysis)
                     self.state['phase'] = Phase.CUSTOMIZATION
                     print(f"✓ Job analysis complete:\n{json.dumps(analysis, indent=2)}")
                     # Prompt assistant to ask clarifying questions with specific context
@@ -409,17 +409,14 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
     
     def _parse_action_from_response(self, response: str) -> Optional[Dict]:
         """Extract action request from LLM response."""
-        # Look for JSON action blocks
-        if '{"action":' in response:
-            try:
-                # Extract JSON
-                start = response.find('{"action":')
-                end = response.find('}', start) + 1
-                action_json = response[start:end]
-                return json.loads(action_json)
-            except json.JSONDecodeError:
-                return None
-        return None
+        start = response.find('{"action":')
+        if start == -1:
+            return None
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(response, start)
+            return obj
+        except json.JSONDecodeError:
+            return None
 
     def _extract_structured_questions(self, text: str) -> List[Dict[str, object]]:
         """Extract numbered clarifying questions from free-form LLM text.
@@ -470,7 +467,7 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
                 job_text,
                 self.orchestrator.master_data
             )
-            self.state['job_analysis'] = analysis
+            self._store_job_analysis(analysis)
             self.state['phase'] = Phase.CUSTOMIZATION
             self.state['post_analysis_questions'] = []
             self.state['post_analysis_answers'] = {}
@@ -1054,7 +1051,7 @@ Ask questions that are specific to this job posting, not generic career question
             analysis = self.llm.analyze_job_description(
                 job_text, self.orchestrator.master_data
             )
-            self.state['job_analysis'] = analysis
+            self._store_job_analysis(analysis)
             # Reset downstream flags so the user re-approves from the new analysis
             self.state['iterating']     = True
             self.state['reentry_phase'] = resolved
@@ -1267,6 +1264,18 @@ Ask questions that are specific to this job posting, not generic career question
             traceback.print_exc()
             raise
 
+    def _store_job_analysis(self, analysis: dict) -> None:
+        """Store job analysis and update position_name from LLM-extracted title/company."""
+        self.state['job_analysis'] = analysis
+        title   = (analysis.get('title')   or '').strip()
+        company = (analysis.get('company') or '').strip()
+        if title and company:
+            self.state['position_name'] = f"{title} at {company}"
+        elif title:
+            self.state['position_name'] = title
+        elif company:
+            self.state['position_name'] = company
+
     def _rename_session_dir(self, company: str, role: str) -> None:
         """Rename the session directory from ``pending_<ts>`` to
         ``{Company}_{RoleSlug}_{date}`` once company and role are known.
@@ -1440,7 +1449,7 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['job_description'],
             self.orchestrator.master_data
         )
-        self.state['job_analysis'] = analysis
+        self._store_job_analysis(analysis)
         print("✓ Job analysis complete")
         
         # Get recommendations
@@ -1452,7 +1461,7 @@ Ask questions that are specific to this job posting, not generic career question
         self._normalize_recommendations(recommendations)
         self.state['customizations'] = recommendations
         print("✓ Recommendations complete")
-        
+
         # Generate
         print("Generating CV...")
         result = self.orchestrator.generate_cv(
@@ -1463,5 +1472,49 @@ Ask questions that are specific to this job posting, not generic career question
             max_skills=self.state.get('max_skills'),
         )
         self.state['generated_files'] = result
-        
+
         return result
+
+    @staticmethod
+    def normalize_skills_data(skills_data) -> List[str]:
+        """Normalize skills data to a canonical flat list format.
+
+        Accepts multiple schema formats:
+        - Flat list: []
+        - Dict of categories with 'skills' key: {cat_name: {skills: [...]}}
+        - Dict of lists (legacy): {cat_name: [...]}
+
+        Returns a flat list [skills...] as the canonical format.
+
+        Parameters
+        ----------
+        skills_data
+            Raw skills data in any of the supported formats
+
+        Returns
+        -------
+        List[str]
+            Normalized flat list of skills
+        """
+        if not skills_data:
+            return []
+
+        # Already a flat list
+        if isinstance(skills_data, list):
+            return skills_data
+
+        # Dict of categories
+        if isinstance(skills_data, dict):
+            all_skills = []
+            for category_data in skills_data.values():
+                # Category with nested 'skills' key
+                if isinstance(category_data, dict) and 'skills' in category_data:
+                    category_skills = category_data.get('skills', [])
+                    if isinstance(category_skills, list):
+                        all_skills.extend(category_skills)
+                # Legacy: category_data is directly a list
+                elif isinstance(category_data, list):
+                    all_skills.extend(category_data)
+            return all_skills
+
+        return []

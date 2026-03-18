@@ -20,7 +20,14 @@ generation:
   max_skills: 20
   max_achievements: 5
   max_publications: 10
-  
+
+  # CV Length Constraints
+  page_count:
+    warn_single: true       # Warn if output is 1 page
+    ideal_min: 2            # Ideal minimum pages
+    ideal_max: 3            # Ideal maximum pages (warn if exceeded)
+    absolute_max: 4         # Absolute maximum (fail if exceeded)
+
   # Output formats to generate
   formats:
     ats_docx: true       # ATS-optimized DOCX (machine-parseable)

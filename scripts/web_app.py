@@ -395,37 +395,76 @@ def create_app(args) -> Flask:
 
         return label[:120] if label else None
 
+    def _coerce_to_dict(value: Any) -> Dict[str, Any]:
+        """Return value as a dict, parsing from JSON string if necessary.
+
+        Defensive helper for session state fields that older sessions may have
+        persisted as a JSON string rather than a nested object.
+        """
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+        return {}
+
     def _extract_json_payload(text: str) -> Any:
-        """Best-effort extraction of JSON array/object from model output."""
+        """Best-effort extraction of JSON array/object from model output.
+
+        Uses bracket-depth counting to locate the outermost JSON container
+        rather than greedy regexes, so it handles multiple code blocks,
+        backticks inside strings, and JSON embedded in prose correctly.
+        """
         if not text:
             return None
 
+        # Fast path: already clean JSON.
         try:
             return json.loads(text)
-        except Exception:
+        except json.JSONDecodeError:
             pass
 
-        if "```json" in text:
-            try:
-                json_str = text.split("```json", 1)[1].split("```", 1)[0].strip()
-                return json.loads(json_str)
-            except Exception:
-                pass
+        # Find the first JSON container character.
+        start = -1
+        open_char = ''
+        for i, ch in enumerate(text):
+            if ch in ('{', '['):
+                start = i
+                open_char = ch
+                break
+        if start == -1:
+            return None
 
-        object_match = re.search(r"\{[\s\S]*\}", text)
-        if object_match:
-            try:
-                return json.loads(object_match.group(0))
-            except Exception:
-                pass
-
-        array_match = re.search(r"\[[\s\S]*\]", text)
-        if array_match:
-            try:
-                return json.loads(array_match.group(0))
-            except Exception:
-                pass
-
+        close_char = '}' if open_char == '{' else ']'
+        depth = 0
+        in_string = False
+        escape_next = False
+        for j in range(start, len(text)):
+            ch = text[j]
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == '\\' and in_string:
+                escape_next = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == open_char:
+                depth += 1
+            elif ch == close_char:
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(text[start:j + 1])
+                    except json.JSONDecodeError:
+                        return None
         return None
 
     def _fallback_post_analysis_questions(analysis: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -621,21 +660,9 @@ Job Description (excerpt):
             session_summaries = conversation.state.get('session_summaries') or {}
             professional_summaries.update(session_summaries)
 
-            # Get all skills - handle both list and dict formats
+            # Get all skills - use canonical flat list format
             skills_data = orchestrator.master_data.get('skills', [])
-            if isinstance(skills_data, dict):
-                # If skills is a dict with categories, extract skills from each category
-                for category_data in skills_data.values():
-                    if isinstance(category_data, dict) and 'skills' in category_data:
-                        # Each category has {'category': name, 'skills': [list of skills]}
-                        category_skills = category_data.get('skills', [])
-                        if isinstance(category_skills, list):
-                            all_skills.extend(category_skills)
-                    elif isinstance(category_data, list):
-                        # Handle legacy format where category_data is directly a list
-                        all_skills.extend(category_data)
-            elif isinstance(skills_data, list):
-                all_skills = skills_data
+            all_skills = conversation.normalize_skills_data(skills_data)
         return jsonify(dataclasses.asdict(StatusResponse(
             position_name=conversation.state.get("position_name"),
             phase=conversation.state.get("phase"),
@@ -919,10 +946,7 @@ Job Description (excerpt):
 
             # Build skills/summary snippet from master data
             skills_raw = master.get('skills', [])
-            if isinstance(skills_raw, dict):
-                all_skills = [s for lst in skills_raw.values() if isinstance(lst, list) for s in lst]
-            else:
-                all_skills = list(skills_raw)
+            all_skills = conversation.normalize_skills_data(skills_raw)
             top_skills = ', '.join(all_skills[:12]) if all_skills else '(see attached CV)'
 
             summaries = master.get('professional_summaries', {})
@@ -2664,12 +2688,11 @@ Close professionally with a call to action.
         """Generate post-analysis clarifying questions, preferably via LLM."""
         data = request.get_json(silent=True) or {}
 
-        analysis = data.get("analysis") or conversation.state.get("job_analysis")
+        analysis = _coerce_to_dict(
+            data.get("analysis") or conversation.state.get("job_analysis")
+        )
 
-        if isinstance(analysis, str):
-            analysis = _extract_json_payload(analysis)
-
-        if not isinstance(analysis, dict):
+        if not analysis:
             return jsonify({"ok": True, "questions": []})
 
         # Pass prior answers so the LLM avoids re-asking already-covered topics.
@@ -2705,23 +2728,8 @@ Close professionally with a call to action.
         })
 
     def normalize_experience_id(exp_id):
-        """Normalize various experience ID formats to match master data."""
-        if not exp_id:
-            return exp_id
-        
-        # Convert to lowercase
-        normalized = exp_id.lower()
-        
-        # Handle formats like "EXP-03" -> "exp_003", "EXP_3" -> "exp_003"
-        if normalized.startswith('exp'):
-            # Extract number part
-            import re
-            match = re.search(r'(\d+)$', normalized.replace('-', '_').replace('_', ''))
-            if match:
-                num = int(match.group(1))
-                normalized = f"exp_{num:03d}"
-        
-        return normalized
+        """Return the experience ID unchanged for direct lookup against master data."""
+        return exp_id
     
     @app.post("/api/experience-details")
     def get_experience_details():
@@ -2855,21 +2863,8 @@ Close professionally with a call to action.
                 
                 # Get skills
                 skills_data = master_data.get('skills', [])
-                if isinstance(skills_data, dict):
-                    # Extract skills from categories
-                    all_skills = []
-                    for category_data in skills_data.values():
-                        if isinstance(category_data, dict) and 'skills' in category_data:
-                            category_skills = category_data.get('skills', [])
-                            if isinstance(category_skills, list):
-                                all_skills.extend(category_skills)
-                        elif isinstance(category_data, list):
-                            all_skills.extend(category_data)
-                    cv_data['skills'] = all_skills
-                elif isinstance(skills_data, list):
-                    cv_data['skills'] = skills_data
-                else:
-                    cv_data['skills'] = []
+                all_skills = conversation.normalize_skills_data(skills_data)
+                cv_data['skills'] = all_skills
             
             return jsonify(cv_data)
             
@@ -3410,13 +3405,7 @@ Close professionally with a call to action.
             if not output_dir.is_dir():
                 return jsonify({'ok': False, 'error': f'Output directory not found: {output_dir}'}), 404
 
-            job_analysis = conversation.state.get('job_analysis') or {}
-            if isinstance(job_analysis, str):
-                import json as _json
-                try:
-                    job_analysis = _json.loads(job_analysis)
-                except Exception:
-                    job_analysis = {}
+            job_analysis = _coerce_to_dict(conversation.state.get('job_analysis'))
 
             checks, page_count = validate_ats_report(output_dir, job_analysis)
 
@@ -3428,6 +3417,14 @@ Close professionally with a call to action.
                 'pass': sum(1 for c in checks if c['status'] == 'pass'),
                 'warn': sum(1 for c in checks if c['status'] == 'warn'),
                 'fail': sum(1 for c in checks if c['status'] == 'fail'),
+            }
+
+            # Cache validation results for finalise (includes page_count and all checks)
+            conversation.state['validation_results'] = {
+                'page_count': page_count,
+                'checks': checks,
+                'summary': summary,
+                'validation_date': datetime.now().isoformat(),
             }
 
             return jsonify({
@@ -3460,14 +3457,8 @@ Close professionally with a call to action.
             generated = conversation.state.get('generated_files')
             if generated:
                 # Re-derive selected content from current state
-                job_analysis   = conversation.state.get('job_analysis') or {}
+                job_analysis   = _coerce_to_dict(conversation.state.get('job_analysis'))
                 customizations = conversation.state.get('customizations') or {}
-                if isinstance(job_analysis, str):
-                    import json as _json
-                    try:
-                        job_analysis = _json.loads(job_analysis)
-                    except Exception:
-                        job_analysis = {}
                 try:
                     selected = conversation.orchestrator._select_content_hybrid(
                         job_analysis, customizations
@@ -3534,6 +3525,7 @@ Close professionally with a call to action.
                 metadata['clarification_answers'] = conversation.state.get('post_analysis_answers') or {}
                 metadata['spell_audit']           = conversation.state.get('spell_audit') or []
                 metadata['layout_instructions']   = conversation.state.get('layout_instructions') or []
+                metadata['validation_results']    = conversation.state.get('validation_results') or {}
 
                 # Upsert screening responses into response_library.json (if any)
                 screening = metadata.get('screening_responses') or []

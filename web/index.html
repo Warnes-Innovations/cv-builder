@@ -43,9 +43,9 @@
   </div>
 
   <!-- Copilot Auth Modal -->
-  <div class="auth-modal-overlay" id="auth-modal-overlay">
+  <div class="auth-modal-overlay" id="auth-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" aria-describedby="auth-modal-desc">
     <div class="auth-modal">
-      <h2>&#x1F512; Authenticate with GitHub Copilot</h2>
+      <h2 id="auth-modal-title">&#x1F512; Authenticate with GitHub Copilot</h2>
       <p id="auth-modal-desc">Sign in to use GitHub Copilot for LLM-powered CV generation.</p>
       <div class="auth-code" id="auth-user-code">&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;</div>
       <p style="text-align:center; font-size:13px; color:#64748b;">Enter this code at:</p>
@@ -138,22 +138,26 @@
 
     <!-- Viewer Area -->
     <div class="viewer-area" id="viewer-area">
-      <div class="tabs" role="tablist" aria-label="Application workflow tabs">
-        <div class="tab active" id="tab-job"            data-tab="job"            role="tab" aria-selected="true"  aria-controls="document-content">📋 Job</div>
-        <div class="tab"        id="tab-analysis"       data-tab="analysis"       role="tab" aria-selected="false" aria-controls="document-content">🔍 Analysis</div>
-        <div class="tab"        id="tab-questions"      data-tab="questions"      role="tab" aria-selected="false" aria-controls="document-content">💬 Questions</div>
-        <div class="tab"        id="tab-customizations" data-tab="customizations" role="tab" aria-selected="false" aria-controls="document-content">⚙️ Recommendations</div>
-        <div class="tab"        id="tab-rewrite"        data-tab="rewrite"        role="tab" aria-selected="false" aria-controls="document-content">✏️ Rewrites</div>
-        <div class="tab"        id="tab-spell"          data-tab="spell"          role="tab" aria-selected="false" aria-controls="document-content">🔤 Spell Check</div>
-        <!-- CV Editor tab disabled: session-copy editing superseded by Master CV app mode (GAP-19) -->
-        <div class="tab"        id="tab-editor"         data-tab="editor"         role="tab" aria-selected="false" aria-controls="document-content" style="display:none">📝 CV Editor</div>
-        <div class="tab"        id="tab-cv"             data-tab="cv"             role="tab" aria-selected="false" aria-controls="document-content">📄 Generated CV</div>
-        <div class="tab"        id="tab-layout"         data-tab="layout"         role="tab" aria-selected="false" aria-controls="document-content">🎨 Layout</div>
-        <div class="tab"        id="tab-download"       data-tab="download"       role="tab" aria-selected="false" aria-controls="document-content">⬇️ Download</div>
-        <div class="tab"        id="tab-finalise"       data-tab="finalise"       role="tab" aria-selected="false" aria-controls="document-content">✅ Finalise</div>
-        <div class="tab"        id="tab-master"         data-tab="master"         role="tab" aria-selected="false" aria-controls="document-content">📚 Master CV</div>
-        <div class="tab"        id="tab-cover-letter"  data-tab="cover-letter"  role="tab" aria-selected="false" aria-controls="document-content">📩 Cover Letter</div>
-        <div class="tab"        id="tab-screening"     data-tab="screening"     role="tab" aria-selected="false" aria-controls="document-content">📋 Screening</div>
+      <div class="tab-bar-wrapper">
+        <button class="tab-scroll-btn tab-scroll-left" id="tab-scroll-left" aria-label="Scroll tabs left" style="display:none">&#8249;</button>
+        <div class="tabs" id="tab-bar" role="tablist" aria-label="Application workflow tabs">
+          <div class="tab active" id="tab-job"            data-tab="job"            role="tab" aria-selected="true"  aria-controls="document-content">📋 Job</div>
+          <div class="tab"        id="tab-analysis"       data-tab="analysis"       role="tab" aria-selected="false" aria-controls="document-content">🔍 Analysis</div>
+          <div class="tab"        id="tab-questions"      data-tab="questions"      role="tab" aria-selected="false" aria-controls="document-content">💬 Questions</div>
+          <div class="tab"        id="tab-customizations" data-tab="customizations" role="tab" aria-selected="false" aria-controls="document-content">⚙️ Recommendations</div>
+          <div class="tab"        id="tab-rewrite"        data-tab="rewrite"        role="tab" aria-selected="false" aria-controls="document-content">✏️ Rewrites</div>
+          <div class="tab"        id="tab-spell"          data-tab="spell"          role="tab" aria-selected="false" aria-controls="document-content">🔤 Spell Check</div>
+          <!-- CV Editor tab disabled: session-copy editing superseded by Master CV app mode (GAP-19) -->
+          <div class="tab"        id="tab-editor"         data-tab="editor"         role="tab" aria-selected="false" aria-controls="document-content" style="display:none">📝 CV Editor</div>
+          <div class="tab"        id="tab-cv"             data-tab="cv"             role="tab" aria-selected="false" aria-controls="document-content">📄 Generated CV</div>
+          <div class="tab"        id="tab-layout"         data-tab="layout"         role="tab" aria-selected="false" aria-controls="document-content">🎨 Layout</div>
+          <div class="tab"        id="tab-download"       data-tab="download"       role="tab" aria-selected="false" aria-controls="document-content">⬇️ Download</div>
+          <div class="tab"        id="tab-finalise"       data-tab="finalise"       role="tab" aria-selected="false" aria-controls="document-content">✅ Finalise</div>
+          <div class="tab"        id="tab-master"         data-tab="master"         role="tab" aria-selected="false" aria-controls="document-content">📚 Master CV</div>
+          <div class="tab"        id="tab-cover-letter"   data-tab="cover-letter"   role="tab" aria-selected="false" aria-controls="document-content">📩 Cover Letter</div>
+          <div class="tab"        id="tab-screening"      data-tab="screening"      role="tab" aria-selected="false" aria-controls="document-content">📋 Screening</div>
+        </div>
+        <button class="tab-scroll-btn tab-scroll-right" id="tab-scroll-right" aria-label="Scroll tabs right" style="display:none">&#8250;</button>
       </div>
       
       <div class="document-viewer">
@@ -171,10 +175,10 @@
 
 
   <!-- Sessions Modal -->
-  <div class="modal-overlay" id="sessions-modal-overlay" style="display: none;" onclick="if(event.target===this)closeSessionsModal()">
+  <div class="modal-overlay" id="sessions-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" onclick="if(event.target===this)closeSessionsModal()">
     <div class="modal" style="max-width: 680px; width: 92%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 style="margin:0;">📂 Saved Sessions</h2>
+        <h2 id="sessions-modal-title" style="margin:0;">📂 Saved Sessions</h2>
         <button onclick="closeSessionsModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
       </div>
       <div class="modal-body" id="sessions-modal-body" style="padding:0; max-height:520px; overflow-y:auto;">
@@ -211,10 +215,10 @@
   </div>
 
   <!-- Model Selection Modal -->
-  <div class="modal-overlay" id="model-modal-overlay" style="display: none;" onclick="if(event.target===this)closeModelModal()">
+  <div class="modal-overlay" id="model-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="model-modal-title" onclick="if(event.target===this)closeModelModal()">
     <div class="modal" style="max-width: 1020px; width: 95%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 style="margin:0;">Select Model</h2>
+        <h2 id="model-modal-title" style="margin:0;">Select Model</h2>
         <button onclick="closeModelModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
       </div>
       <div class="modal-body" style="padding: 0;">
