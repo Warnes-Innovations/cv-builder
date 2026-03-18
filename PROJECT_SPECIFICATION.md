@@ -37,6 +37,21 @@ Four formats are generated per CV run:
 - **ATS DOCX** (`*_ATS.docx`): python-docx generated, single-column, plain-text, keyword-optimized per ATS guidelines.
 - **Human DOCX** (`*.docx`): docxtpl (Jinja2) renders `templates/cv-template.docx` → Word-native editable DOCX (Calibri, standard margins). Independently styled from the PDF — no visual parity requirement.
 
+#### **Priority #3: ATS Match Score Display**
+After job analysis, compute and display a keyword match score comparing the job description's required skills against the candidate's approved skills:
+- Overall match percentage (0–100%) shown prominently in the Analysis tab
+- Per-skill match status: matched / missing / bonus (candidate has skill not in JD)
+- Breakdown by skill type: hard skills vs. soft skills (see §5.x)
+- Score recalculates live as the user approves/rejects customization items
+- Score included in `metadata.json` for archival
+
+#### **Priority #4: Hard / Soft Skill Classification**
+All skills — both those extracted from the job description and those in the candidate's master CV — are classified into two mutually exclusive categories:
+- **Hard skills**: Specific, teachable, measurable abilities (programming languages, tools, methodologies, domain knowledge, certifications). Examples: Python, SQL, WeasyPrint, CRISPR, Scrum.
+- **Soft skills**: Interpersonal and self-management traits (communication, leadership, adaptability, problem-solving). Examples: Cross-functional collaboration, stakeholder communication, mentoring.
+
+Classification is performed by the LLM during job analysis and applied to both the JD-required skills and the candidate's own skill inventory. The UI surfaces both lists in clearly labelled sections so the user can verify and override.
+
 #### **Core Workflow** (Already Implemented):
 - Job description upload/paste
 - LLM semantic analysis (GitHub Models)
@@ -46,9 +61,7 @@ Four formats are generated per CV run:
 
 ### 1.2 Out of Scope (Phase 2)
 
-**Deferred Features** (ranked #3-#10):
-- Cover letter generation
-- Interview screening question responses
+**Deferred Features**:
 - Job application tracking
 - ~~Google Drive integration~~ — **dropped** (git-only archiving; no Drive integration planned)
 - Analytics and insights
@@ -107,6 +120,32 @@ Four formats are generated per CV run:
 - ✅ Professional styling with proper typography
 - ✅ Multi-page support with intelligent page breaks
 - ✅ Consistent branding and visual hierarchy
+
+### US-5: ATS Match Score Display
+**As a** job applicant  
+**I want** to see how well my CV matches the target job description  
+**So that** I can make informed decisions about which skills and experiences to include
+
+**Acceptance Criteria**:
+- Overall match percentage displayed prominently after job analysis
+- Score distinguishes hard skill matches from soft skill matches
+- Per-skill status shows: matched (in both JD and CV), missing (required by JD but absent from CV), bonus (in CV but not required by JD)
+- Score recalculates live whenever the user approves or rejects items in the customization review
+- Score is saved to `metadata.json` at generation time
+- Score display does not block or delay the rest of the workflow
+
+### US-6: Hard / Soft Skill Classification
+**As a** job applicant reviewing my customization options  
+**I want** skills categorised as hard or soft  
+**So that** I can quickly see which technical gaps exist and which interpersonal strengths to highlight
+
+**Acceptance Criteria**:
+- During job analysis the LLM classifies every skill extracted from the JD as hard or soft
+- The candidate’s own skills in the master CV are also classified (persisted in `Master_CV_Data.json`)
+- The Analysis tab and Customization tab each display skills in two clearly labelled groups: Hard Skills and Soft Skills
+- User can override any classification via a toggle in the UI; override is saved to session state
+- Classification label (hard/soft) is included in the `knowsAbout` entries of the HTML JSON-LD block
+- Missing hard skills are surfaced more prominently than missing soft skills in the match score UI (hard skills are weighted 2× in the overall score calculation)
 
 ---
 
@@ -549,6 +588,144 @@ These checks are non-blocking for the user workflow but provide critical quality
 
 ---
 
+## 5.x ATS Match Score and Hard/Soft Skill Classification
+
+### 5.x.1 Skill Classification Schema
+
+Every skill object — whether extracted from the JD or from `Master_CV_Data.json` — carries a `skill_type` field:
+
+```json
+{
+  "name": "Python",
+  "skill_type": "hard",
+  "source": "jd",
+  "match_status": "matched"
+}
+```
+
+| Field | Values | Notes |
+|-------|--------|-------|
+| `skill_type` | `"hard"` \| `"soft"` | Set by LLM during analysis; overridable by user |
+| `source` | `"jd"` \| `"cv"` \| `"both"` | Where the skill was found |
+| `match_status` | `"matched"` \| `"missing"` \| `"bonus"` | Relative to the JD requirements |
+
+**Classification rules applied by the LLM prompt:**
+- Hard skill: Any specific tool, language, framework, methodology, certification, domain technique, or quantifiable technical ability.
+- Soft skill: Any interpersonal, communication, leadership, or self-management trait. These are not tools or measurable technical competencies.
+- When ambiguous (e.g. "project management"), classify as hard if a certification or tool is implied (PMP, Jira) and soft if the trait is behavioural.
+
+### 5.x.2 ATS Match Score Calculation
+
+```
+hard_matched  = count of hard skills with match_status == "matched"
+hard_required = count of hard skills extracted from JD
+soft_matched  = count of soft skills with match_status == "matched"
+soft_required = count of soft skills extracted from JD
+
+hard_score = hard_matched / max(hard_required, 1)   # 0.0–1.0
+soft_score = soft_matched / max(soft_required, 1)   # 0.0–1.0
+
+overall_score = round((2 * hard_score + soft_score) / 3 * 100)  # weighted: hard 2×, soft 1×
+```
+
+Displayed as:
+- **Overall match: 78%** (large, prominent)
+- Hard skills: 8 / 10 matched (80%)
+- Soft skills: 3 / 5 matched (60%)
+
+### 5.x.3 Live Score Recalculation
+
+The score is recalculated in the browser (no round-trip to the server) whenever:
+- A skill is approved or rejected in the Customization review table
+- A user adds an extra skill via the free-text skill entry
+- A user overrides a hard/soft classification
+
+The score widget updates immediately using the current `skillDecisions` state from `state-manager.js`.
+
+### 5.x.4 API Changes
+
+**Enhanced `GET /api/status` response** — `job_analysis.skills` array gains `skill_type` and `match_status` per skill:
+```json
+{
+  "job_analysis": {
+    "skills": [
+      {"name": "Python", "skill_type": "hard", "match_status": "matched"},
+      {"name": "Communication", "skill_type": "soft", "match_status": "missing"}
+    ],
+    "ats_match_score": {
+      "overall": 78,
+      "hard": {"matched": 8, "required": 10, "score": 80},
+      "soft": {"matched": 3, "required": 5, "score": 60}
+    }
+  }
+}
+```
+
+**`metadata.json` addition** — `ats_match_score` block saved at generation time.
+
+### 5.x.5 UI Placement
+
+| Tab | New element |
+|-----|-------------|
+| Analysis | Match score widget below job summary; hard/soft skill lists side-by-side |
+| Customization | Skills DataTable gains a "Type" column (Hard / Soft badge) and a "Status" column (Matched / Missing / Bonus badge); missing hard skills sorted to top |
+| Generation summary | Final score shown alongside file download links |
+
+---
+
+### 5.x.6 Persuasion Quality Checks (GAP-09)
+
+Three warn-level quality checks run automatically during rewrite generation and before any bullet is presented for review. They surface issues for user decision — they never hard-block generation.
+
+#### Action Verb Validation (US-M2, US-P4)
+
+Every proposed bullet must begin with a verb from the `strong_action_verbs` list in `config.yaml`. If a bullet begins with a weak, passive, or absent verb:
+
+- `conversation_manager.py` logs a warning (implemented at line 892).
+- The rewrite card displays a `⚠ Weak action verb` badge alongside the proposal.
+- The user may still accept the bullet as-is; the badge is advisory only.
+
+Implementation: `LLMClient.check_strong_action_verb()` (`llm_client.py` line 366) runs per-bullet and returns `{is_strong: bool, detected_verb: str}`.
+
+#### Filler Phrase Detection (US-P3, US-P4)
+
+Summaries and bullet points are scanned for weak/passive constructions before presentation. Phrases flagged (case-insensitive):
+
+> "results-driven", "responsible for", "helped to", "assisted with", "was involved in", "passionate about", "team player", "detail-oriented"
+
+- If >1 filler phrase in a summary, an amber `⚠ Generic language` badge appears on the summary card.
+- If a bullet contains a passive construction ("was involved in", "responsible for"), the rewrite card is pre-flagged to draw user attention.
+
+The full phrase list is maintained in `config.yaml` under `persuasion_checks.weak_phrases`.
+
+#### CAR Structure Detection (US-P3)
+
+If a bullet already contains challenge language (e.g., "Despite", "When faced with", "After X failed"), the LLM prompt includes an instruction to restructure as **Challenge → Action → Result**. The rewrite card indicates the CAR restructuring intent in the rationale.
+
+---
+
+### 5.x.7 Weak-Evidence Skill Marking in Generated Output (GAP-12)
+
+When a user accepts a `skill_add` rewrite proposal that was flagged `evidence_strength = "weak"` (shown with the `⚠ Candidate to confirm` badge during review), the generated output handles the skill as follows:
+
+**Decision:** Mark in HTML/PDF output; omit mark in ATS DOCX output.
+
+| Output format | Treatment |
+| --- | --- |
+| HTML / PDF | Skill name followed by `*`; footnote at page bottom: `* Candidate to confirm in interview` |
+| ATS DOCX | Skill name only, no mark (clean for ATS parsing) |
+
+This ensures the candidate is reminded to be prepared to discuss the skill in interview, while the ATS DOCX remains uncluttered for machine parsing.
+
+**Implementation notes:**
+
+- The `weak_evidence` flag on accepted skills is stored in session rewrite decisions.
+- The HTML Jinja2 template adds the `*` annotation and footnote block when `skill.weak_evidence == true`.
+- The ATS DOCX template omits the annotation.
+- This behaviour is specced here to disambiguate from the rewrite-review badge (which is UI-only, not in generated output).
+
+---
+
 ## 6. Success Metrics
 
 ### 6.1 MVP Success Criteria (1 Week)
@@ -566,6 +743,11 @@ These checks are non-blocking for the user workflow but provide critical quality
 - ✅ Error messages are clear and actionable
 - ✅ Downloads work in all major browsers
 - ✅ README and USER_GUIDE complete
+- [ ] ATS match score displayed after job analysis (US-5)
+- [ ] Skills split into Hard / Soft groups in Analysis and Customization tabs (US-6)
+- [ ] Per-skill matched/missing/bonus status visible in score UI
+- [ ] Score recalculates live on approve/reject decisions
+- [ ] Hard/soft classification overridable by user
 
 #### **Nice to Have** (Optional):
 - ⭕ Keyboard shortcuts for editor
@@ -771,6 +953,159 @@ This interface fully satisfies **US-A4** (Rewrite Review) acceptance criteria:
   - `.rewrite-card`, `.accepted`, `.rejected` — Card state styles
   - `.rewrite-inline-diff`, `<del>`, `<ins>` — Diff formatting
   - `.rewrite-keyword`, `.rewrite-rationale` — Component styles
+
+### 7.2 Job Input and URL Ingestion UX (US-U2)
+
+**Scope:** Job Input step — URL fetch and paste-text input paths.
+
+**Acceptance Criteria:**
+
+- URL and paste-text modes are clearly delineated as separate, equal-weight options (tabs or labelled panels); the active mode state is visually obvious.
+- Protected-site detection (LinkedIn, Indeed, Glassdoor) triggers an inline, contextual copy-paste instruction naming the specific site — not a generic "fetch failed" error.
+- A fetch loading state (spinner or progress bar) appears **within 300 ms** of URL submission.
+- Extracted fields (company name, role title, date) are inline-editable at the confirmation UI; editing does not restart the workflow.
+- Paste text area shows a minimum character guidance hint.
+
+**Failure modes to guard against:**
+
+- URL and text area presented simultaneously with no clear hierarchy.
+- Raw status code or generic error on protected-site fetch failure.
+- Fetch taking >3 s with no visible progress indicator.
+- Correcting an extracted field requires restarting the step.
+
+---
+
+### 7.3 Analysis Results Readability (US-U3)
+
+**Scope:** Analysis results display — how LLM output is presented to the user.
+
+**Acceptance Criteria:**
+
+- Analysis result has **at minimum 4 visually distinct sections**: required quals, preferred quals, keywords, and role/domain inference.
+- Keywords displayed with a visual rank signal (ordered list with rank numbers, badge, or font-weight differentiation) — not a flat comma-separated list.
+- Mismatch callouts (skills required by JD but absent from master CV) visible **above the fold**. If >3 mismatches, a summary count appears above the fold with expandable detail below.
+- Clarifying questions presented in logical groups of ≤3 per screen; each group is answered and confirmed before the next group appears.
+- Loading state for analysis includes a descriptive label (e.g., "Analysing job description against your CV…") and an estimated duration indicator.
+
+**Failure modes to guard against:**
+
+- Full analysis output as a single scrolling prose block.
+- Keywords listed alphabetically with no rank differentiation.
+- Mismatch callouts placed below the fold with no above-fold summary.
+- All clarifying questions presented simultaneously as a long form.
+
+---
+
+### 7.4 Review Table Interaction Quality (US-U4)
+
+**Scope:** Experience, Achievement, and Skills review tables in the Customisation phase.
+
+**Acceptance Criteria:**
+
+- Accept/reject state is legible from ≥60 cm viewing distance (sufficient contrast and size; icon buttons with active states, not small checkboxes).
+- Reorder controls (up/down or drag handle) are **visible without hover**; keyboard navigation is supported (arrow keys or keyboard shortcut to reorder).
+- Bullet/row expansion is **in-place** (no page navigation away); smooth expand animation. Scroll position is preserved on expand/collapse.
+- Relevance scores labelled with scale (e.g., "Relevance: 92 / 100") or letter grade with legend — never a raw 0–1 float.
+- **Bulk accept/reject controls** present when table row count > 8.
+- Tables show enough content per row (title, company, date, first bullet excerpt) to make a decision without expanding every row.
+
+**Failure modes to guard against:**
+
+- Small checkboxes as accept/reject with no visual state change.
+- Reorder controls only visible on hover (inaccessible, undiscoverable).
+- Row expansion navigates away and resets scroll position.
+- No bulk controls on large skill tables (30+ entries).
+
+---
+
+### 7.5 Rewrite Review Presentation (US-U5)
+
+**Scope:** Proposed rewrite review step — how individual rewrite proposals are presented.
+
+**Acceptance Criteria:**
+
+- All rewrite proposals display **inline diff**: red/strikethrough for removals, green for additions, unchanged text intact. Side-by-side "before box / after box" without character-level diff highlighting is not acceptable.
+- Accept, Reject, and Edit controls appear **within the same card as the diff** — not in a separate panel.
+- LLM rewrite reason is visible within one click or hover (not a full modal navigation).
+- Edit mode allows free-text editing of the proposed text and **preserves the original for comparison** during editing. Editing does not require accepting the LLM version first.
+- A sequential navigation control ("Approve & Next" or equivalent) is present when more than 3 rewrites exist.
+
+**Failure modes to guard against:**
+
+- Side-by-side text boxes requiring cognitive comparison with no visual diff highlighting.
+- Accept/Reject buttons separated from the text they govern (scroll required to act).
+- No way to edit the proposed text — only accept as-is or reject entirely.
+- Rationale completely hidden behind a full modal navigation.
+
+---
+
+### 7.6 Generation and Output State Feedback (US-U6)
+
+**Scope:** Document generation step — progress feedback and output presentation.
+
+**Acceptance Criteria:**
+
+- Generation progress is **step-labelled**; each completed step (HTML render → PDF conversion → ATS DOCX) shows a checkmark before the next begins. A spinner alone with no step labels is not acceptable.
+- Generated CV rendered **inline** (iframe or embedded PDF viewer) with a prominently placed download button alongside.
+- Download filename follows the `CV_{Company}_{Role}_{Date}` convention (ATS DOCX adds `_ATS` suffix).
+- Generation error surfaces a **user-readable message** explaining what failed, with at least one fallback or recovery action (e.g., "Download HTML instead").
+- When multiple generated versions exist in a session, they are listed with timestamps and a "current" label on the most recent.
+
+**Output filename format:**
+```
+{Surname}-{Role}-{Company}-{YYYY-MM-DD}.pdf
+{Surname}-{Role}-{Company}-{YYYY-MM-DD}_ATS.docx
+```
+
+**Failure modes to guard against:**
+
+- Spinner running >10 s with no step labels or progress indication.
+- Generated output accessible only via raw file path link, not in-browser preview.
+- Generic filename (`cv_output.pdf`) with no job or date context.
+- Raw stack trace or `500 Internal Server Error` shown to user on generation failure.
+- Multiple prior versions not distinguished; user downloads an old version accidentally.
+
+---
+
+### 7.7 Accessibility Requirements (US-U7)
+
+**Scope:** Accessibility baseline — all interactive elements across the web UI.
+
+**Acceptance Criteria:**
+
+- All interactive elements have a **visible, styled focus indicator**. The global `outline: none` CSS rule is prohibited; if default outlines are removed, a styled replacement ring must be provided.
+- Modal dialogs **trap focus** while open (Tab/Shift-Tab cycle within the modal) and restore focus to the opener element on close.
+- All icon-only controls (up/down reorder arrows, ✕ close buttons, action icons) have `aria-label` or `title` attributes with descriptive text.
+- Accept/reject status communicated by **both colour and a text label or icon** — not colour alone.
+- Tab order is logical and matches visual reading order; no interactive elements are skipped.
+- Form validation errors associated with their input via `aria-describedby` and announced to screen readers on appearance.
+
+**Failure modes to guard against:**
+
+- `outline: none` applied globally with no styled replacement focus ring.
+- Modal opened without moving focus inside it.
+- Icon-only buttons with no tooltip or ARIA label.
+- Status distinguishable only by background colour (green/red) with no accompanying label.
+
+---
+
+### 7.8 Responsive Behaviour and Loading Performance (US-U8)
+
+**Scope:** Minimum viable layout and performance at 1280 × 800.
+
+**Acceptance Criteria:**
+
+- Core workflow is **fully operable at 1280 × 800** without horizontal scrolling. Review tables may scroll horizontally within a defined container, but the page structure must not break.
+- Lower-priority table columns (internal IDs, raw score floats) are **hidden or collapsed** at viewport widths ≤1400 px. Column collapse behaviour is documented in component config.
+- Application shell (HTML + CSS + base JS) renders in **≤2 s on localhost** with no external blocking resources.
+- Async content areas have **skeleton placeholders** that match the approximate dimensions of the arriving content, preventing layout shift on LLM response arrival.
+- Tables with 20+ rows (skills table) must not exhibit scroll jank.
+
+**Failure modes to guard against:**
+
+- Review table overflows viewport horizontally at 1280 × 800 causing full-page horizontal scroll.
+- Page blank-whites for >2 s on first load.
+- Content areas collapsing to zero height and jumping on LLM response arrival.
 
 ---
 

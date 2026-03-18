@@ -149,7 +149,7 @@ work (Phase 5 of rewrite-feature.md) has not started.
 
 **Severity:** MEDIUM  
 **Affected stories:** US-A3, US-R2  
-**Status:** OPEN — No bullet reordering UI controls found in `web/index.html` or `web/app.js`; no system-proposed reordering logic in `cv_orchestrator.py`
+**Status:** RESOLVED — Up/down controls in reorder modal; `/api/proposed-bullet-order` endpoint returns relevance-ranked order from job keywords; modal shows `✨ Use Suggested Order` button when job analysis is available; `_applyBulletOrder()` re-sorts list; user override via Save still takes precedence (`web/app.js`, `scripts/web_app.py`)
 
 **Description:**  
 US-A3 and US-R2 both require that bullet ordering within an experience entry can be changed by the user
@@ -188,7 +188,7 @@ but it is not included in any implementation phase in `tasks/rewrite-feature.md`
 
 **Severity:** LOW  
 **Affected stories:** US-M2  
-**Status:** OPEN — Logic implemented (`conversation_manager.py` line 892); spec still only in `tasks/rewrite-feature.md`, not in REQUIREMENTS.md
+**Status:** RESOLVED — Action verb validation, filler phrase detection, and CAR structure detection specified in `PROJECT_SPECIFICATION.md` § 5.x.6; implementation cross-referenced to `llm_client.py` line 366 and `conversation_manager.py` line 892
 
 **Description:**  
 US-M2 acceptance criterion: "System warns if a bullet lacks an action verb (per Phase 2.4 refactor)."
@@ -238,7 +238,7 @@ canonical-form selection rule is not specified.
 
 **Severity:** LOW  
 **Affected stories:** US-R5, US-A4  
-**Status:** OPEN — Weak-evidence `⚠` badge shown on rewrite cards during review (`web/app.js`); no asterisk/footnote marking in generated HTML or ATS DOCX output; no decision recorded in REQUIREMENTS.md
+**Status:** RESOLVED — Decision recorded in `PROJECT_SPECIFICATION.md` § 5.x.7: HTML/PDF output adds `*` footnote for weak-evidence skills; ATS DOCX omits mark for clean machine parsing
 
 **Description:**  
 If the user accepts a `skill_add` proposal flagged as weak-evidence, the generated CV should mark that
@@ -331,7 +331,7 @@ and require retrofit.
 
 **Severity:** MEDIUM  
 **Affected stories:** US-U2, US-U3, US-U4, US-U5, US-U6, US-U8  
-**Status:** OPEN — Evaluation criteria exist in user stories; no corresponding REQUIREMENTS.md spec sections; individual features partially implemented but not against these specs
+**Status:** RESOLVED — US-U2–U8 acceptance criteria transcribed to `PROJECT_SPECIFICATION.md` §§ 7.2–7.8 (Job Input UX, Analysis Readability, Review Tables, Rewrite Presentation, Generation Feedback, Accessibility, Responsive Performance)
 
 **Description:**  
 The UX expert stories define concrete acceptance criteria for every major UI surface, but none of their
