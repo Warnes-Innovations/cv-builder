@@ -17,6 +17,7 @@ import argparse
 import json
 import sys
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, call, mock_open, patch
 
@@ -51,13 +52,18 @@ def _make_app():
     mock_conversation = MagicMock()
     mock_conversation.state = {'phase': 'refinement'}
 
-    with patch('scripts.web_app.get_llm_provider', return_value=mock_llm), \
-         patch('scripts.web_app.CVOrchestrator', return_value=mock_orchestrator), \
-         patch('scripts.web_app.ConversationManager', return_value=mock_conversation):
-        app = create_app(_make_args())
+    stack = ExitStack()
+    stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
+    stack.enter_context(patch('scripts.web_app.CVOrchestrator', return_value=mock_orchestrator))
+    stack.enter_context(patch('scripts.web_app.ConversationManager', return_value=mock_conversation))
 
+    app = create_app(_make_args())
     app.config['TESTING'] = True
-    return app, mock_orchestrator
+
+    with app.test_client() as tmp_client:
+        sid = tmp_client.post('/api/sessions/new').get_json()['session_id']
+
+    return app, mock_orchestrator, sid, stack
 
 
 # ---------------------------------------------------------------------------
@@ -82,12 +88,12 @@ class TestMasterDataOverview(unittest.TestCase):
 
     def test_overview_returns_counts_and_profile(self):
         """Overview endpoint returns name, headline, email, and section counts."""
-        app, _ = _make_app()
+        app, _, sid, stack = _make_app()
         master_json = json.dumps(self._MASTER)
 
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=master_json)):
-            res  = client.get('/api/master-data/overview')
+            res  = client.get('/api/master-data/overview', query_string={'session_id': sid})
             data = res.get_json()
 
         self.assertEqual(res.status_code, 200)
@@ -104,21 +110,21 @@ class TestMasterDataOverview(unittest.TestCase):
 
     def test_overview_skills_dict_counts_all_values(self):
         """Skills as a category dict are summed across all categories."""
-        app, _ = _make_app()
+        app, _, sid, stack = _make_app()
         master = dict(self._MASTER)
         master['skills'] = {'ML': ['scikit-learn', 'PyTorch'], 'Languages': ['Python', 'R', 'Go']}
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=json.dumps(master))):
-            data = client.get('/api/master-data/overview').get_json()
+            data = client.get('/api/master-data/overview', query_string={'session_id': sid}).get_json()
 
         self.assertEqual(data['skill_count'], 5)
 
     def test_overview_missing_sections_return_zeros(self):
         """Minimal master data (empty doc) yields zero counts and empty strings."""
-        app, _ = _make_app()
-        with app.test_client() as client, \
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=json.dumps({}))):
-            data = client.get('/api/master-data/overview').get_json()
+            data = client.get('/api/master-data/overview', query_string={'session_id': sid}).get_json()
 
         self.assertTrue(data['ok'])
         self.assertEqual(data['name'],             '')
@@ -127,10 +133,10 @@ class TestMasterDataOverview(unittest.TestCase):
 
     def test_overview_io_error_returns_500(self):
         """File read failure returns 500 with ok=False."""
-        app, _ = _make_app()
-        with app.test_client() as client, \
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
              patch('builtins.open', side_effect=IOError('disk error')):
-            res  = client.get('/api/master-data/overview')
+            res  = client.get('/api/master-data/overview', query_string={'session_id': sid})
             data = res.get_json()
 
         self.assertEqual(res.status_code, 500)
@@ -151,7 +157,7 @@ class TestMasterDataUpdateAchievement(unittest.TestCase):
 
     def test_update_existing_achievement(self):
         """POSTing an existing id patches only the supplied fields."""
-        app, _ = _make_app()
+        app, _, sid, stack = _make_app()
         master_json = json.dumps(self._EXISTING_MASTER)
 
         written = {}
@@ -159,23 +165,22 @@ class TestMasterDataUpdateAchievement(unittest.TestCase):
         def fake_open(path, mode='r', **kw):
             if 'w' in mode:
                 m = mock_open()()
-                # capture what json.dump would write
                 return m
             return mock_open(read_data=master_json)()
 
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch('builtins.open', side_effect=fake_open), \
              patch('json.dump') as mock_dump, \
              patch('subprocess.run'):
 
             res  = client.post('/api/master-data/update-achievement',
-                               json={'id': 'sa_001', 'title': 'New Title', 'importance': 9})
+                               json={'id': 'sa_001', 'title': 'New Title', 'importance': 9,
+                                     'session_id': sid})
             data = res.get_json()
 
         self.assertEqual(res.status_code, 200)
         self.assertTrue(data['ok'])
         self.assertEqual(data['action'], 'updated')
-        # Verify json.dump was called with the updated achievement
         dumped_master = mock_dump.call_args[0][0]
         updated_ach = next(a for a in dumped_master['selected_achievements'] if a['id'] == 'sa_001')
         self.assertEqual(updated_ach['title'],      'New Title')
@@ -183,16 +188,17 @@ class TestMasterDataUpdateAchievement(unittest.TestCase):
 
     def test_add_new_achievement(self):
         """POSTing a new id appends the achievement."""
-        app, _ = _make_app()
+        app, _, sid, stack = _make_app()
         master_json = json.dumps({'selected_achievements': []})
 
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=master_json)), \
              patch('json.dump') as mock_dump, \
              patch('subprocess.run'):
 
             res  = client.post('/api/master-data/update-achievement',
-                               json={'id': 'sa_new', 'title': 'Brand new achievement'})
+                               json={'id': 'sa_new', 'title': 'Brand new achievement',
+                                     'session_id': sid})
             data = res.get_json()
 
         self.assertEqual(res.status_code, 200)
@@ -204,10 +210,10 @@ class TestMasterDataUpdateAchievement(unittest.TestCase):
 
     def test_missing_id_returns_400(self):
         """Missing or empty id field returns 400."""
-        app, _ = _make_app()
-        with app.test_client() as client:
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
             res = client.post('/api/master-data/update-achievement',
-                              json={'title': 'No id here'})
+                              json={'title': 'No id here', 'session_id': sid})
         self.assertEqual(res.status_code, 400)
         self.assertIn('id', res.get_json()['error'])
 
@@ -220,16 +226,16 @@ class TestMasterDataUpdateSummary(unittest.TestCase):
 
     def test_update_existing_summary_key(self):
         """POSTing an existing key replaces its text."""
-        app, _ = _make_app()
+        app, _, sid, stack = _make_app()
         master_json = json.dumps({'professional_summaries': {'ml': 'Old text'}})
 
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=master_json)), \
              patch('json.dump') as mock_dump, \
              patch('subprocess.run'):
 
             res  = client.post('/api/master-data/update-summary',
-                               json={'key': 'ml', 'text': 'New text!'})
+                               json={'key': 'ml', 'text': 'New text!', 'session_id': sid})
             data = res.get_json()
 
         self.assertEqual(res.status_code, 200)
@@ -240,16 +246,17 @@ class TestMasterDataUpdateSummary(unittest.TestCase):
 
     def test_add_new_summary_key(self):
         """POSTing a new key adds the summary variant."""
-        app, _ = _make_app()
+        app, _, sid, stack = _make_app()
         master_json = json.dumps({'professional_summaries': {}})
 
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=master_json)), \
              patch('json.dump') as mock_dump, \
              patch('subprocess.run'):
 
             res  = client.post('/api/master-data/update-summary',
-                               json={'key': 'leadership', 'text': 'Led large teams.'})
+                               json={'key': 'leadership', 'text': 'Led large teams.',
+                                     'session_id': sid})
             data = res.get_json()
 
         self.assertEqual(res.status_code, 200)
@@ -260,26 +267,29 @@ class TestMasterDataUpdateSummary(unittest.TestCase):
 
     def test_missing_key_or_text_returns_400(self):
         """Missing key or text field returns 400."""
-        app, _ = _make_app()
-        with app.test_client() as client:
-            res_no_key  = client.post('/api/master-data/update-summary', json={'text': 'hi'})
-            res_no_text = client.post('/api/master-data/update-summary', json={'key': 'k'})
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res_no_key  = client.post('/api/master-data/update-summary',
+                                     json={'text': 'hi', 'session_id': sid})
+            res_no_text = client.post('/api/master-data/update-summary',
+                                     json={'key': 'k', 'session_id': sid})
 
         self.assertEqual(res_no_key.status_code,  400)
         self.assertEqual(res_no_text.status_code, 400)
 
     def test_list_summaries_migrated_to_dict(self):
         """If professional_summaries is stored as a list, it is migrated to a dict."""
-        app, _ = _make_app()
+        app, _, sid, stack = _make_app()
         master_json = json.dumps({'professional_summaries': ['Old summary']})
 
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=master_json)), \
              patch('json.dump') as mock_dump, \
              patch('subprocess.run'):
 
             res  = client.post('/api/master-data/update-summary',
-                               json={'key': 'new_key', 'text': 'New summary text'})
+                               json={'key': 'new_key', 'text': 'New summary text',
+                                     'session_id': sid})
             data = res.get_json()
 
         self.assertEqual(res.status_code, 200)

@@ -47,7 +47,12 @@ Actions requiring explicit confirmation:
 - `skills` in master data can be either a list or category dict; existing code handles both—keep that compatibility.
 - Recommendation semantics are strict: each recommendation includes `recommendation`, `confidence`, and `reasoning` with project-specific enums (see prompt logic in `scripts/utils/llm_client.py` and `scripts/utils/conversation_manager.py`).
 - `scripts/llm_cv_generator.py` CLI currently restricts `--llm-provider` choices to `github|openai|anthropic|local`, while backend factory supports more providers (`copilot-oauth`, `copilot`, `gemini`, `groq`). Keep changes consistent when touching provider UX.
-- **Single-session architecture**: the Flask app has one global `ConversationManager` / `CVOrchestrator`. A `threading.Lock` enforces single-session-at-a-time. Avoid patterns that make multi-session keying harder.
+- **Multi-session architecture**: the Flask app uses a `SessionRegistry` singleton (`scripts/utils/session_registry.py`) that manages independent `SessionEntry` objects, each holding its own `ConversationManager` and `CVOrchestrator`. Sessions are keyed by `session_id` (UUID). There is no global manager and no threading lock on session access.
+  - **session_id delivery**: GET requests pass `?session_id=<uuid>` as a query parameter; POST/PUT/DELETE requests include `"session_id": "<uuid>"` in the JSON body. `_get_session(required=True)` in `web_app.py` resolves the session from either location and returns HTTP 400 if not found.
+  - **Ownership model**: sessions can be *unclaimed* (`owner_token is None`, no token needed) or *claimed* (`owner_token` set by `POST /api/sessions/claim`). `_validate_owner(entry)` skips validation for unclaimed sessions and returns HTTP 403 for wrong-token requests on claimed ones.
+  - **Session lifecycle endpoints** (no `session_id` needed): `POST /api/sessions/new`, `POST /api/sessions/claim`, `POST /api/sessions/takeover`, `GET /api/sessions/active`, `DELETE /api/sessions/<id>/evict`.
+  - **Session-free endpoints** (model/pricing metadata): `/api/model-catalog`, `/api/pricing`, `/api/models`.
+  - All other API routes require a valid `session_id`; never bypass `_get_session()` in new routes.
 - **Rewrite audit key**: field is `final_text` in the spec but `final` in code (renamed in commit `576b75f`). Do not revert.
 
 ## Configuration
@@ -112,6 +117,7 @@ logging:
   - `~/Library/Application Support/Code/User/`
   - Managed from `~/src/vscode-config` via `setup-symlinks.sh`.
 - Treat this file as project-specific guidance; user-level instructions still apply unless they conflict with explicit repo requirements.
+- Codex bridge: repo-local prompt-to-skill conversions live under `codex-skills/`; install them plus shared `~/src/vscode-config/skills` into `~/.codex/skills` with `bash scripts/install_codex_skills.sh`.
 
 ## Available Slash Commands
 

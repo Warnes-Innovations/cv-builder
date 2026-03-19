@@ -28,6 +28,7 @@ import argparse
 import json
 import sys
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
 
@@ -59,7 +60,11 @@ def _make_args(**overrides) -> argparse.Namespace:
 
 
 def _make_app(state_overrides=None):
-    """Create Flask test app with fully mocked conversation + orchestrator."""
+    """Create Flask test app with fully mocked conversation + orchestrator.
+
+    Returns (app, mock_conversation, mock_orchestrator, session_id, stack).
+    The ExitStack keeps patches active until stack.close() is called.
+    """
     mock_llm          = MagicMock()
     mock_orchestrator = MagicMock()
     mock_orchestrator.master_data      = {'experience': [], 'skills': []}
@@ -83,13 +88,18 @@ def _make_app(state_overrides=None):
     mock_conversation.state = state
     mock_conversation.run_persuasion_checks.return_value = []
 
-    with patch('scripts.web_app.get_llm_provider', return_value=mock_llm), \
-         patch('scripts.web_app.CVOrchestrator', return_value=mock_orchestrator), \
-         patch('scripts.web_app.ConversationManager', return_value=mock_conversation):
-        app = create_app(_make_args())
+    stack = ExitStack()
+    stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
+    stack.enter_context(patch('scripts.web_app.CVOrchestrator', return_value=mock_orchestrator))
+    stack.enter_context(patch('scripts.web_app.ConversationManager', return_value=mock_conversation))
 
+    app = create_app(_make_args())
     app.config['TESTING'] = True
-    return app, mock_conversation, mock_orchestrator
+
+    with app.test_client() as tmp_client:
+        sid = tmp_client.post('/api/sessions/new').get_json()['session_id']
+
+    return app, mock_conversation, mock_orchestrator, sid, stack
 
 
 # ---------------------------------------------------------------------------
@@ -100,10 +110,10 @@ class TestFinaliseEndpoint(unittest.TestCase):
 
     def test_finalise_normal_path(self):
         """Finalise archives metadata and advances phase to 'refinement'."""
-        app, conv, orch = _make_app(state_overrides={'phase': 'generation'})
+        app, conv, orch, sid, stack = _make_app(state_overrides={'phase': 'generation'})
         metadata_content = json.dumps({'company': 'Acme', 'role': 'Engineer'})
 
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch('pathlib.Path.exists', return_value=True), \
              patch('builtins.open', mock_open(read_data=metadata_content)), \
              patch('json.dump') as mock_dump, \
@@ -112,44 +122,42 @@ class TestFinaliseEndpoint(unittest.TestCase):
             mock_sub.return_value = MagicMock(returncode=0, stdout='[main abc1234]', stderr='')
 
             res  = client.post('/api/finalise',
-                               json={'status': 'ready', 'notes': 'Great company'})
+                               json={'status': 'ready', 'notes': 'Great company', 'session_id': sid})
             data = res.get_json()
 
         self.assertEqual(res.status_code, 200)
         self.assertTrue(data['ok'])
-        # Phase should be advanced
         self.assertEqual(conv.state['phase'], 'refinement')
-        # Summary should contain generated file info
         self.assertIn('files', data['summary'])
 
     def test_finalise_no_generated_files_returns_400(self):
         """Finalise without a generated CV returns 400."""
-        app, conv, _ = _make_app(state_overrides={'generated_files': None})
-        with app.test_client() as client:
-            res = client.post('/api/finalise', json={'status': 'ready'})
+        app, conv, _, sid, stack = _make_app(state_overrides={'generated_files': None})
+        with stack, app.test_client() as client:
+            res = client.post('/api/finalise', json={'status': 'ready', 'session_id': sid})
         self.assertEqual(res.status_code, 400)
         self.assertIn('error', res.get_json())
 
     def test_finalise_invalid_status_returns_400(self):
         """Finalise with unknown status value returns 400."""
-        app, _, _ = _make_app()
-        with app.test_client() as client, \
+        app, _, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
              patch('pathlib.Path.exists', return_value=False):
-            res = client.post('/api/finalise', json={'status': 'unknown'})
+            res = client.post('/api/finalise', json={'status': 'unknown', 'session_id': sid})
         self.assertEqual(res.status_code, 400)
         self.assertIn('status', res.get_json()['error'])
 
     def test_finalise_valid_statuses(self):
         """draft, ready, and sent are all accepted."""
         for status in ('draft', 'ready', 'sent'):
-            app, _, _ = _make_app()
+            app, _, _, sid, stack = _make_app()
             metadata_content = json.dumps({'company': 'ACME', 'role': 'Dev'})
-            with app.test_client() as client, \
+            with stack, app.test_client() as client, \
                  patch('pathlib.Path.exists', return_value=True), \
                  patch('builtins.open', mock_open(read_data=metadata_content)), \
                  patch('json.dump'), \
                  patch('subprocess.run', return_value=MagicMock(returncode=1, stdout='', stderr='nothing')):
-                res = client.post('/api/finalise', json={'status': status})
+                res = client.post('/api/finalise', json={'status': status, 'session_id': sid})
             self.assertIn(res.status_code, (200,), msg=f"status={status} should return 200")
 
     def test_finalise_upserts_screening_into_response_library(self):
@@ -161,22 +169,21 @@ class TestFinaliseEndpoint(unittest.TestCase):
             'screening_responses': screening,
         })
 
-        app, _, _ = _make_app()
+        app, _, _, sid, stack = _make_app()
         dumped_calls = []
 
         def conditional_exists(self_path):
             return 'response_library' not in str(self_path)
 
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch.object(_Path, 'exists', conditional_exists), \
              patch('pathlib.Path.mkdir'), \
              patch('builtins.open', mock_open(read_data=metadata_content)), \
              patch('json.dump', side_effect=lambda obj, f, **kw: dumped_calls.append(obj)), \
              patch('subprocess.run', return_value=MagicMock(returncode=0, stdout='abc1234', stderr='')):
-            res = client.post('/api/finalise', json={'status': 'ready'})
+            res = client.post('/api/finalise', json={'status': 'ready', 'session_id': sid})
 
         self.assertEqual(res.status_code, 200)
-        # First json.dump call should be the response library write
         self.assertTrue(len(dumped_calls) >= 1)
         library_dump = dumped_calls[0]
         self.assertIn('leadership', library_dump)
@@ -192,19 +199,19 @@ class TestFinaliseEndpoint(unittest.TestCase):
             'screening_responses': screening,
         })
 
-        app, _, _ = _make_app()
+        app, _, _, sid, stack = _make_app()
         dumped_calls = []
 
         def conditional_exists(self_path):
             return 'response_library' not in str(self_path)
 
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch.object(_Path, 'exists', conditional_exists), \
              patch('pathlib.Path.mkdir'), \
              patch('builtins.open', mock_open(read_data=metadata_content)), \
              patch('json.dump', side_effect=lambda obj, f, **kw: dumped_calls.append(obj)), \
              patch('subprocess.run', return_value=MagicMock(returncode=0, stdout='abc1234', stderr='')):
-            res = client.post('/api/finalise', json={'status': 'ready'})
+            res = client.post('/api/finalise', json={'status': 'ready', 'session_id': sid})
 
         self.assertEqual(res.status_code, 200)
         self.assertTrue(len(dumped_calls) >= 1)
@@ -222,9 +229,9 @@ class TestHarvestCandidates(unittest.TestCase):
 
     def test_empty_session_returns_empty_candidates(self):
         """No approved rewrites or new skills → empty candidates list."""
-        app, _, _ = _make_app()
-        with app.test_client() as client:
-            res  = client.get('/api/harvest/candidates')
+        app, _, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res  = client.get('/api/harvest/candidates', query_string={'session_id': sid})
             data = res.get_json()
         self.assertEqual(res.status_code, 200)
         self.assertTrue(data['ok'])
@@ -240,9 +247,9 @@ class TestHarvestCandidates(unittest.TestCase):
             'context':  'exp_001',
             'rationale': 'Adds metric.',
         }
-        app, _, _ = _make_app(state_overrides={'approved_rewrites': [rewrite]})
-        with app.test_client() as client:
-            data = client.get('/api/harvest/candidates').get_json()
+        app, _, _, sid, stack = _make_app(state_overrides={'approved_rewrites': [rewrite]})
+        with stack, app.test_client() as client:
+            data = client.get('/api/harvest/candidates', query_string={'session_id': sid}).get_json()
         candidates = data['candidates']
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0]['type'], 'improved_bullet')
@@ -254,18 +261,18 @@ class TestHarvestCandidates(unittest.TestCase):
             'id': 'rw2', 'section': 'experience',
             'original': 'Same text.', 'proposed': 'Same text.',
         }
-        app, _, _ = _make_app(state_overrides={'approved_rewrites': [rewrite]})
-        with app.test_client() as client:
-            data = client.get('/api/harvest/candidates').get_json()
+        app, _, _, sid, stack = _make_app(state_overrides={'approved_rewrites': [rewrite]})
+        with stack, app.test_client() as client:
+            data = client.get('/api/harvest/candidates', query_string={'session_id': sid}).get_json()
         self.assertEqual(data['candidates'], [])
 
     def test_new_skill_candidate(self):
         """A skill in customizations.new_skills_added appears as new_skill candidate."""
-        app, _, _ = _make_app(state_overrides={
+        app, _, _, sid, stack = _make_app(state_overrides={
             'customizations': {'new_skills_added': ['Kubernetes']},
         })
-        with app.test_client() as client:
-            data = client.get('/api/harvest/candidates').get_json()
+        with stack, app.test_client() as client:
+            data = client.get('/api/harvest/candidates', query_string={'session_id': sid}).get_json()
         types = [c['type'] for c in data['candidates']]
         self.assertIn('new_skill', types)
         skill_cand = next(c for c in data['candidates'] if c['type'] == 'new_skill')
@@ -278,20 +285,20 @@ class TestHarvestCandidates(unittest.TestCase):
             'original': 'Experienced engineer.',
             'proposed': 'Senior ML engineer with 15 years of production experience.',
         }
-        app, _, _ = _make_app(state_overrides={'approved_rewrites': [rewrite]})
-        with app.test_client() as client:
-            data = client.get('/api/harvest/candidates').get_json()
+        app, _, _, sid, stack = _make_app(state_overrides={'approved_rewrites': [rewrite]})
+        with stack, app.test_client() as client:
+            data = client.get('/api/harvest/candidates', query_string={'session_id': sid}).get_json()
         types = [c['type'] for c in data['candidates']]
         self.assertIn('summary_variant', types)
         self.assertNotIn('improved_bullet', types)
 
     def test_skill_gap_confirmed_candidate(self):
         """skill_gap_* key with truthy answer produces skill_gap_confirmed candidate."""
-        app, _, _ = _make_app(state_overrides={
+        app, _, _, sid, stack = _make_app(state_overrides={
             'post_analysis_answers': {'skill_gap_Docker': 'yes'},
         })
-        with app.test_client() as client:
-            data = client.get('/api/harvest/candidates').get_json()
+        with stack, app.test_client() as client:
+            data = client.get('/api/harvest/candidates', query_string={'session_id': sid}).get_json()
         types = [c['type'] for c in data['candidates']]
         self.assertIn('skill_gap_confirmed', types)
         cand = next(c for c in data['candidates'] if c['type'] == 'skill_gap_confirmed')
@@ -299,11 +306,11 @@ class TestHarvestCandidates(unittest.TestCase):
 
     def test_skill_gap_no_answer_excluded(self):
         """skill_gap_* with 'no' answer is not included."""
-        app, _, _ = _make_app(state_overrides={
+        app, _, _, sid, stack = _make_app(state_overrides={
             'post_analysis_answers': {'skill_gap_Terraform': 'no'},
         })
-        with app.test_client() as client:
-            data = client.get('/api/harvest/candidates').get_json()
+        with stack, app.test_client() as client:
+            data = client.get('/api/harvest/candidates', query_string={'session_id': sid}).get_json()
         self.assertEqual(data['candidates'], [])
 
 
@@ -315,27 +322,27 @@ class TestHarvestApply(unittest.TestCase):
 
     def test_no_selected_ids_returns_zero_written(self):
         """Empty selected_ids returns ok with written_count=0."""
-        app, _, _ = _make_app()
-        with app.test_client() as client:
-            res  = client.post('/api/harvest/apply', json={'selected_ids': []})
+        app, _, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res  = client.post('/api/harvest/apply', json={'selected_ids': [], 'session_id': sid})
             data = res.get_json()
         self.assertTrue(data['ok'])
         self.assertEqual(data['written_count'], 0)
 
     def test_apply_skill_candidate(self):
         """Applying a new_skill candidate adds it to master data."""
-        app, conv, orch = _make_app(state_overrides={
+        app, conv, orch, sid, stack = _make_app(state_overrides={
             'customizations': {'new_skills_added': ['FastAPI']},
         })
         orch.master_data = {'skills': ['Python']}
 
         master_json = json.dumps({'skills': ['Python']})
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=master_json)), \
              patch('json.dump') as mock_dump, \
              patch('subprocess.run', return_value=MagicMock(returncode=0, stdout='abc')):
             res  = client.post('/api/harvest/apply',
-                               json={'selected_ids': ['skill_FastAPI']})
+                               json={'selected_ids': ['skill_FastAPI'], 'session_id': sid})
             data = res.get_json()
 
         self.assertTrue(data['ok'])
@@ -343,14 +350,14 @@ class TestHarvestApply(unittest.TestCase):
 
     def test_apply_unknown_id_silently_skipped(self):
         """An unknown id in selected_ids is silently skipped."""
-        app, _, _ = _make_app()
+        app, _, _, sid, stack = _make_app()
         master_json = json.dumps({'skills': []})
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=master_json)), \
              patch('json.dump'), \
              patch('subprocess.run', return_value=MagicMock(returncode=0, stdout='')):
             res  = client.post('/api/harvest/apply',
-                               json={'selected_ids': ['does_not_exist']})
+                               json={'selected_ids': ['does_not_exist'], 'session_id': sid})
             data = res.get_json()
         self.assertTrue(data['ok'])
         self.assertEqual(data['written_count'], 0)
@@ -479,10 +486,10 @@ class TestMasterFieldsEndpoint(unittest.TestCase):
                 'default': 'Experienced data scientist...',
             },
         }
-        app, _, _ = _make_app()
-        with app.test_client() as client, \
+        app, _, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=json.dumps(master_data))):
-            res  = client.get('/api/master-fields')
+            res  = client.get('/api/master-fields', query_string={'session_id': sid})
             data = res.get_json()
         self.assertEqual(res.status_code, 200)
         self.assertTrue(data['ok'])
@@ -492,10 +499,10 @@ class TestMasterFieldsEndpoint(unittest.TestCase):
 
     def test_returns_empty_lists_when_fields_absent(self):
         """If master data lacks the fields, returns empty defaults without error."""
-        app, _, _ = _make_app()
-        with app.test_client() as client, \
+        app, _, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=json.dumps({}))):
-            res  = client.get('/api/master-fields')
+            res  = client.get('/api/master-fields', query_string={'session_id': sid})
             data = res.get_json()
         self.assertEqual(res.status_code, 200)
         self.assertTrue(data['ok'])
@@ -504,10 +511,10 @@ class TestMasterFieldsEndpoint(unittest.TestCase):
 
     def test_returns_500_on_read_error(self):
         """If the master file cannot be read, returns 500 with ok=False."""
-        app, _, _ = _make_app()
-        with app.test_client() as client, \
+        app, _, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
              patch('builtins.open', side_effect=OSError('file not found')):
-            res  = client.get('/api/master-fields')
+            res  = client.get('/api/master-fields', query_string={'session_id': sid})
             data = res.get_json()
         self.assertEqual(res.status_code, 500)
         self.assertFalse(data['ok'])

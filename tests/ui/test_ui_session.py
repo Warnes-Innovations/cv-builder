@@ -130,9 +130,13 @@ class TestSessionRestore:
 
 
 class TestSessionConflict:
-    def test_session_conflict_banner_on_409(self, page: Page):
-        """A 409 response from any API shows the session conflict banner."""
-        page.route(
+    def test_session_conflict_banner_on_409(self, job_stage_page: Page):
+        """A 409 response from any API shows the session conflict banner.
+
+        Uses job_stage_page (init phase) so #analyze-btn is visible
+        (stage-aware action bar shows it only in the job stage).
+        """
+        job_stage_page.route(
             "**/api/action",
             lambda r: r.fulfill(
                 status=409,
@@ -140,15 +144,17 @@ class TestSessionConflict:
                 body=json.dumps({"error": "Session busy"}),
             ),
         )
-        page.locator("#analyze-btn").click()
-        page.wait_for_timeout(800)
+        job_stage_page.locator("#analyze-btn").click()
+        job_stage_page.wait_for_timeout(800)
 
-        banner = page.locator("#session-conflict-banner")
+        banner = job_stage_page.locator("#session-conflict-banner")
         assert banner.count() > 0, \
             "#session-conflict-banner should exist in DOM"
         # It may or may not be visible depending on display logic
         # Just verify it's in the DOM and the page didn't crash
-        assert page.evaluate("() => document.readyState") == "complete"
+        assert job_stage_page.evaluate(
+            "() => document.readyState"
+        ) == "complete"
 
 
 # ---------------------------------------------------------------------------

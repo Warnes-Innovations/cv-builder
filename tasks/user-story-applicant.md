@@ -457,3 +457,35 @@ I have proceeded to the Customisations or Rewrite Review step and realise the jo
 - Re-run triggers only available by navigating back with no way to return to the current stage without losing work.
 - No visual indication of which previously approved items were affected by the re-run.
 - User must re-answer all clarifying questions from scratch even when only one answer changed.
+
+---
+
+## Review Status
+
+Reviewed at (US Eastern): 2026-03-19 11:26:25 EDT
+
+Reviewed against:
+- web/index.html
+- web/app.js
+- web/ui-core.js
+- web/state-manager.js
+- web/styles.css
+- scripts/web_app.py
+- scripts/utils/conversation_manager.py
+
+Story outcomes:
+- US-A1: ⚠️ Partial
+- US-A2: ⚠️ Partial
+- US-A3: ⚠️ Partial
+- US-A4: ✅ Pass
+- US-A4b: ⚠️ Partial
+- US-A5a: ❌ Fail
+- US-A5b: ❌ Fail
+- US-A5c: ⚠️ Partial
+- US-A6: ⚠️ Partial
+- US-A7: ⚠️ Partial
+- US-A8: ⚠️ Partial
+- US-A9: ⚠️ Partial
+- US-A10: ❌ Fail
+- US-A11: ⚠️ Partial
+- US-A12: ⚠️ Partial

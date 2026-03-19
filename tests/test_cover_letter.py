@@ -17,6 +17,7 @@ import json
 import sys
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, call, mock_open, patch
 
@@ -70,13 +71,18 @@ def _make_app(state_overrides=None):
     mock_conversation = MagicMock()
     mock_conversation.state = state
 
-    with patch('scripts.web_app.get_llm_provider', return_value=mock_llm), \
-         patch('scripts.web_app.CVOrchestrator', return_value=mock_orchestrator), \
-         patch('scripts.web_app.ConversationManager', return_value=mock_conversation):
-        app = create_app(_make_args())
+    stack = ExitStack()
+    stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
+    stack.enter_context(patch('scripts.web_app.CVOrchestrator', return_value=mock_orchestrator))
+    stack.enter_context(patch('scripts.web_app.ConversationManager', return_value=mock_conversation))
 
+    app = create_app(_make_args())
     app.config['TESTING'] = True
-    return app, mock_conversation, mock_llm
+
+    with app.test_client() as tmp_client:
+        sid = tmp_client.post('/api/sessions/new').get_json()['session_id']
+
+    return app, mock_conversation, mock_llm, sid, stack
 
 
 # ---------------------------------------------------------------------------
@@ -102,8 +108,8 @@ class TestCoverLetterPrior(unittest.TestCase):
 
     def test_returns_sessions_with_cover_letter(self):
         """Sessions that have cover_letter_text are returned in the list."""
-        app, _, _ = _make_app()
-        with tempfile.TemporaryDirectory() as tmpdir:
+        app, _, _, _, stack = _make_app()
+        with stack, tempfile.TemporaryDirectory() as tmpdir:
             self._write_session(Path(tmpdir), cover_letter_text='Dear Hiring Manager, I am excited…')
 
             mock_cfg = MagicMock()
@@ -125,8 +131,8 @@ class TestCoverLetterPrior(unittest.TestCase):
 
     def test_skips_sessions_without_cover_letter(self):
         """Sessions without cover_letter_text are excluded."""
-        app, _, _ = _make_app()
-        with tempfile.TemporaryDirectory() as tmpdir:
+        app, _, _, _, stack = _make_app()
+        with stack, tempfile.TemporaryDirectory() as tmpdir:
             self._write_session(Path(tmpdir), cover_letter_text=None)
 
             mock_cfg = MagicMock()
@@ -140,9 +146,9 @@ class TestCoverLetterPrior(unittest.TestCase):
 
     def test_full_text_included_for_reuse(self):
         """full_text field is the complete cover_letter_text (not truncated to 200 chars)."""
-        app, _, _ = _make_app()
+        app, _, _, _, stack = _make_app()
         long_letter = 'A' * 500
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with stack, tempfile.TemporaryDirectory() as tmpdir:
             self._write_session(Path(tmpdir), cover_letter_text=long_letter)
 
             mock_cfg = MagicMock()
@@ -165,12 +171,13 @@ class TestCoverLetterGenerate(unittest.TestCase):
 
     def test_generate_returns_text_and_stores_in_state(self):
         """Generate endpoint calls LLM and stores cover_letter_text in session state."""
-        app, conv, mock_llm = _make_app()
+        app, conv, mock_llm, sid, stack = _make_app()
         mock_llm.chat.return_value = 'Dear Hiring Manager,\n\nI am delighted…\n\nSincerely,\nDr. Test'
 
-        with app.test_client() as client:
+        with stack, app.test_client() as client:
             res  = client.post('/api/cover-letter/generate',
-                               json={'tone': 'startup/tech', 'hiring_manager': 'Dr. Smith'})
+                               json={'tone': 'startup/tech', 'hiring_manager': 'Dr. Smith',
+                                     'session_id': sid})
             data = res.get_json()
 
         self.assertEqual(res.status_code, 200)
@@ -181,12 +188,13 @@ class TestCoverLetterGenerate(unittest.TestCase):
 
     def test_generate_includes_date_header(self):
         """Generated letter text is prefixed with a date block."""
-        app, conv, mock_llm = _make_app()
+        app, conv, mock_llm, sid, stack = _make_app()
         mock_llm.chat.return_value = 'Dear Dr. Jones,\n\nBody text.'
 
-        with app.test_client() as client:
+        with stack, app.test_client() as client:
             res  = client.post('/api/cover-letter/generate',
-                               json={'tone': 'academia', 'company_address': '123 Elm St'})
+                               json={'tone': 'academia', 'company_address': '123 Elm St',
+                                     'session_id': sid})
             data = res.get_json()
 
         text = data['text']
@@ -195,11 +203,12 @@ class TestCoverLetterGenerate(unittest.TestCase):
 
     def test_generate_llm_error_returns_500(self):
         """LLM failure returns 500 with ok=False."""
-        app, _, mock_llm = _make_app()
+        app, _, mock_llm, sid, stack = _make_app()
         mock_llm.chat.side_effect = RuntimeError('LLM down')
 
-        with app.test_client() as client:
-            res  = client.post('/api/cover-letter/generate', json={'tone': 'academia'})
+        with stack, app.test_client() as client:
+            res  = client.post('/api/cover-letter/generate',
+                               json={'tone': 'academia', 'session_id': sid})
             data = res.get_json()
 
         self.assertEqual(res.status_code, 500)
@@ -208,13 +217,13 @@ class TestCoverLetterGenerate(unittest.TestCase):
 
     def test_generate_stores_params(self):
         """cover_letter_params is stored in session state with correct fields."""
-        app, conv, mock_llm = _make_app()
+        app, conv, mock_llm, sid, stack = _make_app()
         mock_llm.chat.return_value = 'Dear Team, body.'
 
-        with app.test_client() as client:
+        with stack, app.test_client() as client:
             client.post('/api/cover-letter/generate',
                         json={'tone': 'financial', 'hiring_manager': 'Ms Jones',
-                              'highlight': 'Grew revenue 3x'})
+                              'highlight': 'Grew revenue 3x', 'session_id': sid})
 
         params = conv.state['cover_letter_params']
         self.assertEqual(params['tone'],            'financial')
@@ -230,42 +239,42 @@ class TestCoverLetterSave(unittest.TestCase):
 
     def test_save_writes_docx_and_updates_metadata(self):
         """Save writes a DOCX file and appends cover_letter_text to metadata.json."""
-        app, conv, _ = _make_app()
+        app, conv, _, sid, stack = _make_app()
         existing_meta = json.dumps({'company': 'Acme', 'role': 'Scientist'})
 
         mock_doc = MagicMock()
 
-        with app.test_client() as client, \
+        with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=existing_meta)), \
              patch('pathlib.Path.exists', return_value=True), \
              patch('json.dump') as mock_dump, \
              patch('docx.Document', return_value=mock_doc):
 
             res  = client.post('/api/cover-letter/save',
-                               json={'text': 'Dear Hiring Manager,\n\nGreat role!'})
+                               json={'text': 'Dear Hiring Manager,\n\nGreat role!',
+                                     'session_id': sid})
             data = res.get_json()
 
         self.assertEqual(res.status_code, 200)
         self.assertTrue(data['ok'])
         self.assertIn('CoverLetter_', data['filename'])
         self.assertIn('.docx', data['filename'])
-        # metadata.json should include cover_letter_text
         dumped_meta = mock_dump.call_args[0][0]
         self.assertEqual(dumped_meta['cover_letter_text'], 'Dear Hiring Manager,\n\nGreat role!')
 
     def test_save_empty_text_returns_400(self):
         """Sending empty or missing text returns 400."""
-        app, _, _ = _make_app()
-        with app.test_client() as client:
-            res = client.post('/api/cover-letter/save', json={'text': ''})
+        app, _, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = client.post('/api/cover-letter/save', json={'text': '', 'session_id': sid})
         self.assertEqual(res.status_code, 400)
 
     def test_save_without_generated_cv_returns_400(self):
         """Save without a generated CV in session state returns 400."""
-        app, _, _ = _make_app(state_overrides={'generated_files': None})
-        with app.test_client() as client:
+        app, _, _, sid, stack = _make_app(state_overrides={'generated_files': None})
+        with stack, app.test_client() as client:
             res = client.post('/api/cover-letter/save',
-                              json={'text': 'Dear Hiring Manager, …'})
+                              json={'text': 'Dear Hiring Manager, …', 'session_id': sid})
         self.assertEqual(res.status_code, 400)
         self.assertIn('generate', res.get_json()['error'].lower())
 

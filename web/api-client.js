@@ -15,6 +15,132 @@ const StorageKeys = {
   CHAT_COLLAPSED: 'cv-builder-chat-collapsed'
 };
 
+const OWNER_TOKEN_KEY = 'cv-builder-owner-token';
+
+function getSessionIdFromURL() {
+  if (typeof window === 'undefined' || !window.location) return null;
+  return new URLSearchParams(window.location.search).get('session');
+}
+
+function setSessionIdInURL(sessionId, { replace = false } = {}) {
+  if (typeof window === 'undefined' || !window.location || !window.history || !sessionId) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('session', sessionId);
+  if (replace) {
+    window.history.replaceState({}, '', url.toString());
+  } else {
+    window.history.pushState({}, '', url.toString());
+  }
+}
+
+function getOwnerToken() {
+  if (typeof sessionStorage === 'undefined') return null;
+  let token = sessionStorage.getItem(OWNER_TOKEN_KEY);
+  if (!token) {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      token = crypto.randomUUID();
+    } else {
+      token = `tab-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+    }
+    sessionStorage.setItem(OWNER_TOKEN_KEY, token);
+  }
+  return token;
+}
+
+function getScopedTabDataStorageKey(sessionId = null) {
+  const scopedSessionId = sessionId || getSessionIdFromURL();
+  return scopedSessionId
+    ? `${StorageKeys.TAB_DATA}-${scopedSessionId}`
+    : StorageKeys.TAB_DATA;
+}
+
+function _isSessionManagementPath(pathname) {
+  return pathname === '/api/sessions/new'
+    || pathname === '/api/sessions/claim'
+    || pathname === '/api/sessions/takeover';
+}
+
+function _buildSessionAwareRequest(input, init = {}) {
+  if (typeof window === 'undefined' || !window.location) {
+    return [input, init];
+  }
+
+  const url = new URL(typeof input === 'string' ? input : input.url, window.location.origin);
+  if (!url.pathname.startsWith('/api/')) {
+    return [input, init];
+  }
+
+  const ownerToken = getOwnerToken();
+  if (!url.searchParams.has('owner_token') && !_isSessionManagementPath(url.pathname) && ownerToken) {
+    url.searchParams.set('owner_token', ownerToken);
+  }
+
+  const sessionId = getSessionIdFromURL();
+  if (!sessionId) {
+    return [url.toString(), init];
+  }
+
+  const method = (init.method || 'GET').toUpperCase();
+  const nextInit = { ...init };
+  const headers = new Headers(init.headers || {});
+
+  if (!url.searchParams.has('session_id') && !_isSessionManagementPath(url.pathname)) {
+    url.searchParams.set('session_id', sessionId);
+  }
+
+  const needsBodyContext = !['GET', 'HEAD'].includes(method);
+  const body = nextInit.body;
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+  const isURLSearchParams = typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams;
+  const contentType = headers.get('Content-Type') || '';
+
+  if (needsBodyContext && !isFormData && !isURLSearchParams) {
+    let payload = {};
+    if (typeof body === 'string' && body.trim()) {
+      try {
+        payload = JSON.parse(body);
+      } catch (_) {
+        return [url.toString(), nextInit];
+      }
+    } else if (body == null) {
+      payload = {};
+    } else if (typeof body === 'object') {
+      payload = { ...body };
+    }
+
+    if (payload.session_id == null && !_isSessionManagementPath(url.pathname)) {
+      payload.session_id = sessionId;
+    }
+    if (payload.owner_token == null && !_isSessionManagementPath(url.pathname)) {
+      if (ownerToken) payload.owner_token = ownerToken;
+    }
+
+    nextInit.body = JSON.stringify(payload);
+    if (!contentType) {
+      headers.set('Content-Type', 'application/json');
+    }
+  }
+
+  nextInit.headers = headers;
+  return [url.toString(), nextInit];
+}
+
+const _nativeFetch = typeof window !== 'undefined' && typeof window.fetch === 'function'
+  ? window.fetch.bind(window)
+  : (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null);
+
+async function sessionAwareFetch(input, init = {}) {
+  if (_nativeFetch == null) {
+    throw new Error('fetch is not available');
+  }
+  const [nextInput, nextInit] = _buildSessionAwareRequest(input, init);
+  return _nativeFetch(nextInput, nextInit);
+}
+
+if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+  window.fetch = sessionAwareFetch;
+}
+
 /**
  * Base API call function with error handling and logging.
  * @param {string} method - HTTP method (GET, POST, etc.)
@@ -33,7 +159,7 @@ async function apiCall(method, endpoint, data = null) {
   }
 
   try {
-    const response = await fetch(endpoint, options);
+    const response = await sessionAwareFetch(endpoint, options);
 
     // Handle 409 Conflict (session already active)
     if (response.status === 409) {
@@ -69,6 +195,10 @@ async function apiCall(method, endpoint, data = null) {
 
 async function loadSession(sessionId) {
   return apiCall('GET', `/api/load-session?id=${encodeURIComponent(sessionId)}`);
+}
+
+async function createSession() {
+  return apiCall('POST', '/api/sessions/new');
 }
 
 async function deleteSession(sessionId) {
@@ -241,8 +371,15 @@ function setLoading(isLoading) {
 if (typeof module !== 'undefined') {
   module.exports = {
     StorageKeys,
+    OWNER_TOKEN_KEY,
     apiCall,
+    getSessionIdFromURL,
+    setSessionIdInURL,
+    getOwnerToken,
+    getScopedTabDataStorageKey,
+    sessionAwareFetch,
     loadSession, deleteSession, fetchStatus, fetchHistory,
+    createSession,
     saveSession, resetSession,
     uploadJobFile, submitJobText, fetchJobFromUrl, loadJobFile, loadExistingItems,
     analyzeJob, askPostAnalysisQuestions, submitPostAnalysisAnswers,

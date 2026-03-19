@@ -75,11 +75,33 @@ const _conflictRetryQueue = [];
 let   _conflictTimerId     = null;
 let   _conflictCountdown   = 0;
 
+const SESSION_PHASE_LABELS = {
+  init: 'init',
+  job_analysis: 'analysis',
+  customization: 'customization',
+  rewrite_review: 'rewrite',
+  spell_check: 'spell check',
+  generation: 'generation',
+  layout_review: 'layout review',
+  refinement: 'finalise',
+};
+
+function _shouldHandleBusyConflict(args) {
+  try {
+    const rawUrl = typeof args[0] === 'string' ? args[0] : args[0]?.url;
+    if (!rawUrl) return true;
+    const url = new URL(rawUrl, window.location.origin);
+    return url.pathname !== '/api/sessions/claim' && url.pathname !== '/api/sessions/takeover';
+  } catch (_) {
+    return true;
+  }
+}
+
 (function() {
   const _origFetch = window.fetch;
   window.fetch = async function(...args) {
     const resp = await _origFetch.apply(this, args);
-    if (resp.status === 409) {
+    if (resp.status === 409 && _shouldHandleBusyConflict(args)) {
       showSessionConflictBanner();
       const shouldRetry = await new Promise(resolve => _conflictRetryQueue.push(resolve));
       if (shouldRetry) return _origFetch.apply(this, args);
@@ -88,19 +110,353 @@ let   _conflictCountdown   = 0;
   };
 })();
 
+async function createNewSessionAndNavigate() {
+  const data = await createSession();
+  if (!data.session_id) throw new Error('Failed to create session');
+  window.location.assign(data.redirect_url || `/?session=${data.session_id}`);
+}
+
+async function createNewSessionInNewTab() {
+  const data = await createSession();
+  if (!data.session_id) throw new Error('Failed to create session');
+  window.open(data.redirect_url || `/?session=${data.session_id}`, '_blank', 'noopener');
+}
+
+function formatSessionPhaseLabel(phase) {
+  if (!phase) return 'init';
+  return SESSION_PHASE_LABELS[phase] || String(phase).replace(/_/g, ' ');
+}
+
+function _getCurrentSessionIdValue() {
+  if (typeof getSessionIdFromURL === 'function') {
+    return getSessionIdFromURL();
+  }
+  try {
+    return new URLSearchParams(window.location.search).get('session');
+  } catch (_) {
+    return null;
+  }
+}
+
+function _getCurrentOwnerTokenValue() {
+  if (typeof getOwnerToken === 'function') {
+    return getOwnerToken();
+  }
+  try {
+    return sessionStorage.getItem('cv-builder-owner-token');
+  } catch (_) {
+    return null;
+  }
+}
+
+function buildSessionSwitcherLabel(status = {}) {
+  const positionName = (status.position_name || '').toString().trim();
+  const phase = formatSessionPhaseLabel(status.phase);
+  if (positionName) {
+    return `${positionName} · ${phase}`;
+  }
+  return _getCurrentSessionIdValue() ? `Session · ${phase}` : '📂 Sessions';
+}
+
+function getActiveSessionOwnershipMeta(session, {
+  currentSessionId = _getCurrentSessionIdValue(),
+} = {}) {
+  if (!session || typeof session !== 'object') {
+    return { label: 'Unknown', className: 'session-status-unclaimed', isCurrent: false };
+  }
+
+  const isCurrentSession = Boolean(currentSessionId) && session.session_id === currentSessionId;
+  const sameOwner = Boolean(session.owned_by_requester);
+
+  if (isCurrentSession && sameOwner) {
+    return { label: 'Current tab', className: 'session-status-current', isCurrent: true };
+  }
+  if (sameOwner) {
+    return { label: 'Owned by this tab', className: 'session-status-current', isCurrent: false };
+  }
+  if (session.claimed) {
+    return { label: 'Owned by another tab', className: 'session-status-owned', isCurrent: false };
+  }
+  return { label: 'Unclaimed', className: 'session-status-unclaimed', isCurrent: false };
+}
+
+function formatSessionTimestamp(timestamp, { includeTime = true } = {}) {
+  if (!timestamp) return '—';
+  try {
+    return new Date(timestamp).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      ...(includeTime ? { hour: 'numeric', minute: '2-digit' } : {}),
+    });
+  } catch (_) {
+    return String(timestamp).replace('T', ' ').slice(0, includeTime ? 16 : 10);
+  }
+}
+
+function _renderActiveSessionRows(activeSessions) {
+  if (!activeSessions.length) {
+    return '<p class="session-switcher-empty">No active in-memory sessions.</p>';
+  }
+
+  const currentSessionId = _getCurrentSessionIdValue();
+
+  return `<div class="session-switcher-list">${activeSessions.map(session => {
+    const ownership = getActiveSessionOwnershipMeta(session, { currentSessionId });
+    const openHref = `/?session=${encodeURIComponent(session.session_id || '')}`;
+    const actionHtml = ownership.isCurrent
+      ? '<span class="session-switcher-btn" aria-disabled="true">Current</span>'
+      : `<a class="session-switcher-link" href="${openHref}">Open</a>`;
+    return `
+      <div class="session-switcher-row">
+        <div class="session-switcher-row-main">
+          <div class="session-switcher-row-title">
+            <strong>${escapeHtml(session.position_name || 'Untitled')}</strong>
+            <span class="session-status-pill ${ownership.className}"><span class="session-status-dot"></span>${escapeHtml(ownership.label)}</span>
+          </div>
+          <div class="session-switcher-row-meta">
+            ${escapeHtml(formatSessionPhaseLabel(session.phase))} · Created ${escapeHtml(formatSessionTimestamp(session.created))} · Last modified ${escapeHtml(formatSessionTimestamp(session.last_modified))}
+          </div>
+        </div>
+        <div class="session-switcher-actions">${actionHtml}</div>
+      </div>`;
+  }).join('')}</div>`;
+}
+
+function _renderSavedSessionRows(savedSessions, { includeManagement = false } = {}) {
+  if (!savedSessions.length) {
+    return '<p class="session-switcher-empty">No saved sessions found.</p>';
+  }
+
+  return `<div class="session-switcher-list">${savedSessions.map((session, index) => {
+    const escapedPath = escapeHtml(session.path || '');
+    const managementHtml = includeManagement
+      ? `
+        <button data-sm-action="rename" data-sm-path="${escapedPath}" data-sm-idx="${index}" class="session-switcher-btn" title="Rename session">Rename</button>
+        <button data-sm-action="delete" data-sm-path="${escapedPath}" class="session-switcher-btn danger" title="Delete session">Delete</button>`
+      : '';
+
+    return `
+      <div class="session-switcher-row">
+        <div class="session-switcher-row-main">
+          <div class="session-switcher-row-title">
+            <strong id="sm-name-${index}">${escapeHtml(session.position_name || 'Untitled')}</strong>
+            <span class="session-status-pill session-status-saved"><span class="session-status-dot"></span>Saved</span>
+          </div>
+          <div id="sm-rename-${index}" style="display:none;align-items:center;gap:6px;margin:8px 0 4px;">
+            <input id="sm-input-${index}" type="text" value="${escapeHtml(session.position_name || '')}" class="sm-key-input" data-sm-path="${escapedPath}" data-sm-idx="${index}" style="border:1px solid #3b82f6;border-radius:6px;padding:6px 10px;font-size:13px;flex:1;min-width:0;">
+            <button data-sm-action="submit-rename" data-sm-path="${escapedPath}" data-sm-idx="${index}" class="session-switcher-btn">Save</button>
+            <button data-sm-action="cancel-rename" data-sm-idx="${index}" class="session-switcher-btn">Cancel</button>
+          </div>
+          <div class="session-switcher-row-meta">
+            ${escapeHtml(formatSessionPhaseLabel(session.phase))} · Saved ${escapeHtml(formatSessionTimestamp(session.timestamp))}
+          </div>
+        </div>
+        <div class="session-switcher-actions">
+          <button data-sm-action="load" data-sm-path="${escapedPath}" class="session-switcher-link">Load</button>
+          ${managementHtml}
+        </div>
+      </div>`;
+  }).join('')}</div>`;
+}
+
+function _renderSessionSwitcherSections(activeSessions, savedSessions, { includeSavedManagement = false } = {}) {
+  const savedSectionNote = includeSavedManagement
+    ? 'Load from disk, rename, or delete saved work.'
+    : 'Load saved work from disk.';
+
+  return `
+    <div class="session-switcher-sections">
+      <section class="session-switcher-section">
+        <div class="session-switcher-section-header">
+          <h3>Active Sessions</h3>
+          <span class="session-switcher-section-note">In-memory sessions that can be opened directly.</span>
+        </div>
+        ${_renderActiveSessionRows(activeSessions)}
+      </section>
+      <section class="session-switcher-section">
+        <div class="session-switcher-section-header">
+          <h3>Saved Sessions</h3>
+          <span class="session-switcher-section-note">${savedSectionNote}</span>
+        </div>
+        ${_renderSavedSessionRows(savedSessions, { includeManagement: includeSavedManagement })}
+      </section>
+    </div>`;
+}
+
+function _updateSessionSwitcherHeader(status = {}) {
+  const label = buildSessionSwitcherLabel(status);
+  const switcherLabelEl = document.getElementById('session-switcher-label');
+  const switcherBtn = document.getElementById('session-switcher-btn');
+  const subtitleEl = document.getElementById('header-session-name');
+  const hasSession = Boolean(_getCurrentSessionIdValue());
+
+  if (switcherLabelEl) switcherLabelEl.textContent = label;
+  if (switcherBtn) switcherBtn.classList.toggle('is-session-active', hasSession);
+  if (subtitleEl) {
+    subtitleEl.textContent = hasSession ? `Current session: ${label}` : 'Select or create a session';
+  }
+}
+
+function showOwnershipConflictDialog(message = 'This session is currently claimed by another browser tab.') {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('ownership-conflict-overlay');
+    const messageEl = document.getElementById('ownership-conflict-message');
+    const loadDifferentBtn = document.getElementById('ownership-load-different-btn');
+    const newSessionBtn = document.getElementById('ownership-new-session-btn');
+    const takeoverBtn = document.getElementById('ownership-takeover-btn');
+    if (!overlay || !messageEl || !loadDifferentBtn || !newSessionBtn || !takeoverBtn) {
+      resolve('different');
+      return;
+    }
+
+    const cleanup = (choice) => {
+      overlay.style.display = 'none';
+      restoreFocus();
+      loadDifferentBtn.onclick = null;
+      newSessionBtn.onclick = null;
+      takeoverBtn.onclick = null;
+      resolve(choice);
+    };
+
+    messageEl.textContent = message;
+    overlay.style.display = 'flex';
+    _focusedElementBeforeModal = document.activeElement;
+    setInitialFocus('ownership-conflict-overlay');
+    trapFocus('ownership-conflict-overlay');
+
+    loadDifferentBtn.onclick = () => cleanup('different');
+    newSessionBtn.onclick = () => cleanup('new');
+    takeoverBtn.onclick = () => cleanup('takeover');
+  });
+}
+
+function closeOwnershipConflictDialog(choice = 'different') {
+  const overlay = document.getElementById('ownership-conflict-overlay');
+  if (overlay) overlay.style.display = 'none';
+  restoreFocus();
+  const loadDifferentBtn = document.getElementById('ownership-load-different-btn');
+  if (loadDifferentBtn && typeof loadDifferentBtn.onclick === 'function') {
+    loadDifferentBtn.onclick();
+    return;
+  }
+  return choice;
+}
+
+async function _claimCurrentSession(sessionIdToClaim) {
+  const res = await fetch('/api/sessions/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionIdToClaim,
+      owner_token: getOwnerToken(),
+    }),
+  });
+
+  if (res.ok) return true;
+
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 409 && data.error === 'session_owned') {
+    const action = await showOwnershipConflictDialog(
+      'This session is currently claimed by another browser tab. You can take it over, start a new session, or load a different one.'
+    );
+    if (action === 'new') {
+      await createNewSessionAndNavigate();
+      return false;
+    }
+    if (action !== 'takeover') {
+      showSessionsLandingPanel('Select a different session or create a new one.');
+      openSessionsModal();
+      return false;
+    }
+
+    const takeoverRes = await fetch('/api/sessions/takeover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionIdToClaim,
+        owner_token: getOwnerToken(),
+      }),
+    });
+    const takeoverData = await takeoverRes.json().catch(() => ({}));
+    if (!takeoverRes.ok) {
+      throw new Error(takeoverData.error || 'Failed to take over session');
+    }
+    return true;
+  }
+
+  if (res.status === 404) {
+    showSessionsLandingPanel('That session is no longer active. Load it from disk or create a new one.');
+    openSessionsModal();
+    return false;
+  }
+
+  throw new Error(data.error || `Failed to claim session (${res.status})`);
+}
+
+async function openSavedSessionFromLanding(path) {
+  try {
+    await loadSessionFile(path);
+  } catch (error) {
+    appendMessage('system', `❌ Could not load session: ${error.message}`);
+  }
+}
+
+function openActiveSessionFromLanding(sessionIdToOpen) {
+  if (!sessionIdToOpen) return;
+  window.location.assign(`/?session=${encodeURIComponent(sessionIdToOpen)}`);
+}
+
+function showSessionsLandingPanel(message = '') {
+  currentTab = 'job';
+  currentStage = 'job';
+  updateActionButtons('job');
+  updatePositionTitle({});
+
+  const content = document.getElementById('document-content');
+  if (!content) return;
+
+  content.innerHTML = `
+    <div class="session-switcher-landing-shell">
+      <div class="session-switcher-landing-header">
+        <div class="session-switcher-landing-copy">
+          <h2>Select a Session</h2>
+          <p>Each browser tab now works against its own URL-scoped session.</p>
+        </div>
+        <div class="session-switcher-landing-actions">
+          <button class="action-btn" onclick="createNewSessionInNewTab()">＋ New Session in New Tab</button>
+        </div>
+      </div>
+      ${message ? `<p style="margin-bottom:20px;color:#b45309;font-weight:600;">${escapeHtml(message)}</p>` : ''}
+      <div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
+        <button class="action-btn primary" onclick="createNewSessionAndNavigate()">+ New Session</button>
+      </div>
+    </div>
+  `;
+}
+
+async function ensureSessionContext() {
+  const urlSessionId = getSessionIdFromURL();
+  if (!urlSessionId) {
+    showSessionsLandingPanel();
+    openSessionsModal();
+    return false;
+  }
+
+  sessionId = urlSessionId;
+  localStorage.setItem(StorageKeys.SESSION_ID, sessionId);
+  return _claimCurrentSession(urlSessionId);
+}
+
 async function restoreSession() {
   try {
     isReconnecting = true;
-    
-    // Try to get session ID from localStorage
-    const storedSessionId = localStorage.getItem('cv-builder-session-id');
-    if (storedSessionId) {
-      sessionId = storedSessionId;
-    } else {
-      // Generate new session ID
-      sessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('cv-builder-session-id', sessionId);
+
+    const storedSessionId = getSessionIdFromURL() || localStorage.getItem(StorageKeys.SESSION_ID);
+    if (!storedSessionId) {
+      isReconnecting = false;
+      return;
     }
+    sessionId = storedSessionId;
+    localStorage.setItem(StorageKeys.SESSION_ID, storedSessionId);
     
     // Try to restore conversation history from backend
     const historyRes = await fetch('/api/history');
@@ -208,6 +564,11 @@ async function loadSessionFile(path) {
     }
     const data = await res.json();
 
+    if (data.redirect_url && getSessionIdFromURL() !== data.session_id) {
+      window.location.assign(data.redirect_url);
+      return true;
+    }
+
     // Persist the loaded path so auto-reload can find it after the next server restart
     localStorage.setItem(StorageKeys.SESSION_PATH, data.session_file || path);
 
@@ -225,7 +586,63 @@ async function loadSessionFile(path) {
     }
 
     await fetchStatus();
-    await populateJobTab();
+
+    // Rehydrate tabData and switch to the correct tab for the restored phase
+    const sessionPhase = data.phase || PHASES.INIT;
+    const phaseTabMap = {
+      [PHASES.INIT]:           'job',
+      [PHASES.JOB_ANALYSIS]:   'analysis',
+      [PHASES.CUSTOMIZATION]:  'exp-review',
+      [PHASES.REWRITE_REVIEW]: 'rewrite',
+      [PHASES.SPELL_CHECK]:    'spell',
+      [PHASES.GENERATION]:     'generate',
+      [PHASES.LAYOUT_REVIEW]:  'layout',
+      [PHASES.REFINEMENT]:     'finalise',
+    };
+    const targetTab = phaseTabMap[sessionPhase] || 'job';
+
+    // For phases that need customizations data, rehydrate from status
+    const customizationPhases = [
+      PHASES.CUSTOMIZATION, PHASES.REWRITE_REVIEW, PHASES.SPELL_CHECK,
+      PHASES.GENERATION, PHASES.LAYOUT_REVIEW, PHASES.REFINEMENT,
+    ];
+    if (customizationPhases.includes(sessionPhase)) {
+      try {
+        const s2 = await fetch('/api/status');
+        const sd = await s2.json();
+        if (sd.customizations) {
+          tabData.customizations = sd.customizations;
+          window.pendingRecommendations = sd.customizations;
+        }
+        if (sd.job_analysis) tabData.analysis = sd.job_analysis;
+        if (sd.generated_files) tabData.cv = sd.generated_files;
+        // Restore achievement edits so the editor shows session-specific bullets, not master CV
+        if (sd.achievement_edits && Object.keys(sd.achievement_edits).length > 0) {
+          window.achievementEdits = {};
+          for (const [k, v] of Object.entries(sd.achievement_edits)) {
+            window.achievementEdits[parseInt(k, 10)] = Array.isArray(v) ? v : [v];
+          }
+        }
+      } catch (_) { /* non-fatal */ }
+    }
+
+    // For rewrite_review phase, pre-populate the rewrite panel cache so the Rewrites tab renders
+    if (sessionPhase === PHASES.REWRITE_REVIEW) {
+      try {
+        const rr = await fetch('/api/rewrites');
+        if (rr.ok) {
+          const rd = parseRewritesResponse(await rr.json());
+          const rewrites = rd.rewrites || [];
+          const warnings = rd.persuasion_warnings || [];
+          if (rewrites.length > 0) {
+            rewriteDecisions = {};
+            renderRewritePanel(rewrites, warnings);
+          }
+        }
+      } catch (_) { /* non-fatal */ }
+    }
+
+    switchTab(targetTab);
     appendMessage('system', `✅ Session restored: ${data.position_name || 'Unnamed'} (${data.phase || PHASES.INIT})`);
     return true;
   } catch (err) {
@@ -332,66 +749,22 @@ function closeSessionsModal() {
 async function _renderSessionsModalBody() {
   const body = document.getElementById('sessions-modal-body');
   if (!body) return;
-  body.innerHTML = '<p style="padding:24px;text-align:center;color:#6b7280;">Loading sessions…</p>';
+  body.innerHTML = '<div style="padding:24px;display:flex;align-items:center;justify-content:center;gap:10px;color:#6b7280;"><span class="loading-spinner"></span> Loading sessions…</div>';
+  let activeSessions = [];
   let sessions = [];
   try {
-    const res = await fetch('/api/sessions');
-    const data = parseSessionListResponse(await res.json());
-    sessions = data.sessions || [];
+    const [activeRes, savedRes] = await Promise.all([
+      fetch('/api/sessions/active'),
+      fetch('/api/sessions'),
+    ]);
+    activeSessions = activeRes.ok ? ((await activeRes.json()).sessions || []) : [];
+    const savedData = savedRes.ok ? parseSessionListResponse(await savedRes.json()) : { sessions: [] };
+    sessions = savedData.sessions || [];
   } catch (e) {
     body.innerHTML = `<p style="padding:20px;color:#ef4444;">Could not load sessions: ${escapeHtml(e.message)}</p>`;
     return;
   }
-  if (sessions.length === 0) {
-    body.innerHTML = '<p style="padding:24px;text-align:center;color:#6b7280;">No saved sessions found.</p>';
-    return;
-  }
-
-  function fmtDate(ts) {
-    if (!ts) return '';
-    try { return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
-    catch { return ts.slice(0, 10); }
-  }
-
-  let html = '<table style="width:100%;border-collapse:collapse;">';
-  sessions.forEach((s, i) => {
-    const ts = fmtDate(s.timestamp);
-    const indicators = [
-      s.has_job          ? '📋' : '',
-      s.has_analysis     ? '🔍' : '',
-      s.has_customizations ? '⚙️' : '',
-    ].filter(Boolean).join(' ');
-    const ep = escapeHtml(s.path); // HTML-safe for attributes; dataset read-back is decoded by browser
-    html += `
-      <tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;">
-        <td style="padding:12px 16px;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-            <span id="sm-name-${i}" style="font-weight:600;color:#1e293b;">${escapeHtml(s.position_name || 'Untitled')}</span>
-            <button data-sm-action="rename" data-sm-path="${ep}" data-sm-idx="${i}" title="Rename"
-              style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:0.85em;padding:1px 3px;">✏️</button>
-          </div>
-          <div id="sm-rename-${i}" style="display:none;align-items:center;gap:4px;margin-top:4px;">
-            <input id="sm-input-${i}" type="text" value="${escapeHtml(s.position_name || '')}"
-              class="sm-key-input" data-sm-path="${ep}" data-sm-idx="${i}"
-              style="border:1px solid #3b82f6;border-radius:4px;padding:3px 8px;font-size:13px;flex:1;">
-            <button data-sm-action="submit-rename" data-sm-path="${ep}" data-sm-idx="${i}"
-              style="background:#3b82f6;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer;">✓</button>
-            <button data-sm-action="cancel-rename" data-sm-idx="${i}"
-              style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer;">✕</button>
-          </div>
-          <div style="font-size:12px;color:#94a3b8;margin-top:3px;">${ts ? ts + ' · ' : ''}${indicators} ${escapeHtml(s.phase || '')}</div>
-        </td>
-        <td style="padding:12px 16px;white-space:nowrap;vertical-align:middle;">
-          <div style="display:flex;gap:6px;">
-            <button data-sm-action="load" data-sm-path="${ep}"
-              style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;">Load</button>
-            <button data-sm-action="delete" data-sm-path="${ep}"
-              style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:6px 8px;font-size:13px;cursor:pointer;" title="Delete session">🗑</button>
-          </div>
-        </td>
-      </tr>`;
-  });
-  html += '</table>';
+  const html = _renderSessionSwitcherSections(activeSessions, sessions, { includeSavedManagement: true });
   // Wrap in a single-use div so listeners are destroyed when the div is replaced on the next render
   const smWrapper = document.createElement('div');
   smWrapper.innerHTML = html;
@@ -427,7 +800,7 @@ async function loadSessionAndCloseModal(path) {
 
 async function newSessionFromModal() {
   closeSessionsModal();
-  await resetSession();
+  await createNewSessionAndNavigate();
 }
 
 function startSessionModalRename(path, idx) {
@@ -650,7 +1023,7 @@ function saveTabData() {
     // Conversation history is NOT stored in localStorage — the server session file
     // (saved by ConversationManager._save_session) is authoritative.  Restore is
     // always done from /api/history on page load to keep the two in sync.
-    localStorage.setItem('cv-builder-tab-data', JSON.stringify({
+    localStorage.setItem(getScopedTabDataStorageKey(sessionId), JSON.stringify({
       tabData: tabData,
       currentTab: currentTab,
       pendingRecommendations: window.pendingRecommendations || null,
@@ -668,7 +1041,7 @@ function restoreTabData({ uiPrefsOnly = false } = {}) {
   // core session data (tabData, interactiveState, pendingRecommendations) because
   // the server is the authoritative source for those fields.
   try {
-    const saved = localStorage.getItem('cv-builder-tab-data');
+    const saved = localStorage.getItem(getScopedTabDataStorageKey(sessionId));
     if (saved) {
       const data = JSON.parse(saved);
 
@@ -694,7 +1067,7 @@ function restoreTabData({ uiPrefsOnly = false } = {}) {
         console.log(`Restored tab data from localStorage (uiPrefsOnly=${uiPrefsOnly})`);
       } else {
         // Clear old data
-        localStorage.removeItem('cv-builder-tab-data');
+        localStorage.removeItem(getScopedTabDataStorageKey(sessionId));
       }
     }
   } catch (error) {
@@ -711,13 +1084,19 @@ async function init() {
 
   // Show loading message
   appendMessage('system', '🔄 Connecting to CV Builder...');
+
+  const hasActiveSession = await ensureSessionContext();
+  if (!hasActiveSession) {
+    setupEventListeners();
+    return;
+  }
   
   // Restore session state first
   await restoreSession();
   
   // Initialize the rest
   await fetchStatus();
-  await populateJobTab();
+  if (currentTab === 'job') await populateJobTab();
   setupEventListeners();
   
   // Set up periodic state saving
@@ -727,7 +1106,7 @@ async function init() {
   window.addEventListener('beforeunload', () => {
     saveTabData();
     if (sessionId) {
-      localStorage.setItem('cv-builder-session-id', sessionId);
+      localStorage.setItem(StorageKeys.SESSION_ID, sessionId);
     }
   });
   
@@ -760,7 +1139,7 @@ function setupEventListeners() {
     if (e.key === 'Enter') sendMessage();
   });
 
-  // Action buttons
+  // Action buttons — one per workflow stage
   document.getElementById('analyze-btn').addEventListener('click', analyzeJob);
   document.getElementById('recommend-btn').addEventListener('click', () => sendAction('recommend_customizations'));
   document.getElementById('generate-btn').addEventListener('click', async () => {
@@ -772,6 +1151,11 @@ function setupEventListeners() {
     }
     await fetchAndReviewRewrites();
   });
+  document.getElementById('rewrite-btn').addEventListener('click', submitRewriteDecisions);
+  document.getElementById('spell-btn').addEventListener('click', submitSpellCheckDecisions);
+  document.getElementById('generate-proceed-btn').addEventListener('click', () => switchTab('layout'));
+  document.getElementById('layout-btn').addEventListener('click', completeLayoutReview);
+  document.getElementById('finalise-action-btn').addEventListener('click', () => switchTab('finalise'));
   document.getElementById('reset-btn').addEventListener('click', resetSession);
 }
 
@@ -826,6 +1210,38 @@ function normalizeText(text) {
     .trim();
 }
 
+/** All stage-specific primary action button IDs (excludes reset which is always visible). */
+const _STAGE_BUTTONS = [
+  'analyze-btn', 'recommend-btn', 'generate-btn',
+  'rewrite-btn', 'spell-btn', 'generate-proceed-btn',
+  'layout-btn', 'finalise-action-btn',
+];
+
+/** Maps each workflow stage to its one primary action button. */
+const _STAGE_BUTTON_MAP = {
+  job:            'analyze-btn',
+  analysis:       'recommend-btn',
+  customizations: 'generate-btn',
+  rewrite:        'rewrite-btn',
+  spell:          'spell-btn',
+  generate:       'generate-proceed-btn',
+  layout:         'layout-btn',
+  finalise:       'finalise-action-btn',
+};
+
+/**
+ * Show only the primary action button for the given workflow stage.
+ * Reset is always visible. All other stage buttons are hidden.
+ * @param {string} stage - Key from STAGE_TABS / _STEP_ORDER
+ */
+function updateActionButtons(stage) {
+  const activeId = _STAGE_BUTTON_MAP[stage] || null;
+  _STAGE_BUTTONS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = (id === activeId) ? '' : 'none';
+  });
+}
+
 function switchTab(tab) {
   // Sync second-bar visibility to this tab's stage
   if (typeof getStageForTab === 'function' && typeof updateTabBarForStage === 'function') {
@@ -833,6 +1249,7 @@ function switchTab(tab) {
     if (tabStage) {
       currentStage = tabStage;
       updateTabBarForStage(tabStage);
+      updateActionButtons(tabStage);
     }
   }
 
@@ -850,7 +1267,7 @@ function switchTab(tab) {
 
   // All tabs except 'cv' use full-width layout (no paper-sized centering)
   const content = document.getElementById('document-content');
-  content.classList.toggle('full-width', tab !== 'cv');
+  content.classList.toggle('full-width', tab !== 'generate');
 
   // Load content for tab
   loadTabContent(tab);
@@ -874,16 +1291,38 @@ async function loadTabContent(tab) {
       populateQuestionsTab();
       break;
     case 'customizations':
-      if (tabData.customizations) {
-        await populateCustomizationsTabWithReview(tabData.customizations);
+      // Legacy: redirect to new flat tab structure
+      switchTab('exp-review');
+      return;
+    case 'exp-review':
+      await populateReviewTab('experiences');
+      break;
+    case 'ach-editor':
+      await buildAchievementsEditor();
+      break;
+    case 'skills-review':
+      await populateReviewTab('skills');
+      break;
+    case 'achievements-review':
+      await populateReviewTab('achievements');
+      break;
+    case 'summary-review':
+      await populateReviewTab('summary');
+      break;
+    case 'publications-review':
+      await populateReviewTab('publications');
+      break;
+    case 'rewrite':
+      if (_rewritePanelCache) {
+        renderRewritePanel(_rewritePanelCache.rewrites, _rewritePanelCache.warnings);
       } else {
-        content.innerHTML = '<div class="empty-state"><div class="icon">⚙️</div><h3>Customizations</h3><p>Click "Recommend Customizations" to generate recommendations</p></div>';
+        content.innerHTML = '<div class="empty-state"><div class="icon">✏️</div><h3>Rewrites</h3><p>Complete customizations to reach this step</p></div>';
       }
       break;
     case 'editor':
       await populateCVEditorTab();
       break;
-    case 'cv':
+    case 'generate':
       if (tabData.cv) {
         populateCVTab(tabData.cv);
       } else {
@@ -926,9 +1365,13 @@ async function populateJobTab() {
     
     if (data.job_description_text) {
       const jobText = data.job_description_text;
+      // Use LLM-extracted position name as header when available; fall back to raw first line
+      const positionName = data.position_name || null;
       const lines = jobText.split('\n');
-      let html = '<h1>' + escapeHtml(lines[0]) + '</h1>';
-      if (lines[1]) html += '<h2>' + escapeHtml(lines[1]) + '</h2>';
+      const h1 = positionName || lines[0];
+      let html = '<h1>' + escapeHtml(h1) + '</h1>';
+      // Only show a raw second line as h2 when we don't have a clean extracted title
+      if (!positionName && lines[1]) html += '<h2>' + escapeHtml(lines[1]) + '</h2>';
 
       html += '<div style="white-space: pre-wrap; line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + escapeHtml(jobText) + '</div>';
 
@@ -1418,8 +1861,15 @@ async function submitJobText() {
       tabData.job = jobText;
       saveTabData();
       appendMessage('assistant', '✅ Job description submitted successfully.');
+
+      // Keep the Job tab visible while analysis runs.
+      if (typeof updateTabBarForStage === 'function') {
+        currentStage = 'job';
+        updateTabBarForStage('job');
+      }
+      switchTab('job');
+
       await populateJobTab(); // Refresh the tab
-      await fetchStatus(); // Update workflow status
       setLoading(false);
       await analyzeJob(); // Auto-trigger analysis
       return;
@@ -1710,14 +2160,17 @@ async function analyzeJob() {
       const analysisData = typeof result === 'object' && result !== null
         ? (result.context_data?.job_analysis ?? result)
         : result;
-      const structuredQuestions = (typeof result === 'object' && result !== null)
-        ? result.context_data?.post_analysis_questions
-        : null;
+      const structuredQuestions = mergePostAnalysisQuestions(
+        (typeof result === 'object' && result !== null)
+          ? result.context_data?.post_analysis_questions
+          : null,
+        extractStructuredQuestionsFromAssistantText(analysisText)
+      );
 
       if (analysisText) appendMessage('assistant', analysisText);
       appendFormattedAnalysis(analysisData);
+      tabData.analysis = analysisData;
       switchTab('analysis');
-      populateAnalysisTab(analysisData);
 
       // Await post-analysis questions while still loading to prevent
       // user input race conditions during the LLM question-generation call.
@@ -1954,6 +2407,28 @@ function normalizePostAnalysisQuestions(rawQuestions) {
       type: (q.type || `clarification_${idx + 1}`).toString(),
       choices: Array.isArray(q.choices) ? q.choices : [],
     }));
+}
+
+function extractStructuredQuestionsFromAssistantText(text) {
+  if (typeof text !== 'string' || !text.trim()) return [];
+
+  const normalized = text.replace(/\r\n/g, '\n');
+  const blocks = normalized.split(/^\s*\d+\.\s+/m);
+  if (blocks.length <= 1) return [];
+
+  return blocks
+    .slice(1)
+    .map((block, idx) => {
+      const question = block.trim();
+      if (!question) return null;
+      return {
+        question: question.slice(0, 4000),
+        type: `clarification_${idx + 1}`,
+        choices: [],
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
 }
 
 function escapeHtml(text) {
@@ -2495,11 +2970,8 @@ async function handleCustomizationResponse(response) {
       if (!isReconnecting) {
         appendMessage('assistant', '✅ Customizations generated! Please review the **Experiences** and **Skills** in the **Customizations** tab. Select your preferences using the action buttons, then submit your decisions.');
         
-        // Switch to customizations tab to show the full view
-        switchTab('customizations');
-        
-        // Populate with interactive review tables
-        await populateCustomizationsTabWithReview(data);
+        // Switch to the experiences review tab.
+        switchTab('exp-review');
       }
     } else {
       if (!isReconnecting) {
@@ -2938,19 +3410,20 @@ function renderExperienceCards() {
           </div>
           <div class="form-group form-grid-full">
             <label class="form-label">Location</label>
-            <input type="text" class="form-input" value="${escapeHtml(exp.location || '')}" oninput="updateExperience(${index}, 'location', this.value)" placeholder="City, State/Country">
+            <input type="text" class="form-input" value="${escapeHtml(typeof exp.location === 'string' ? exp.location : (exp.location && typeof exp.location === 'object' ? Object.values(exp.location).filter(Boolean).join(', ') : ''))}" oninput="updateExperience(${index}, 'location', this.value)" placeholder="City, State/Country">
           </div>
         </div>
         
         <div class="form-group">
           <label class="form-label">Key Achievements</label>
           <div class="achievements-list">
-            ${(exp.achievements || []).map((achievement, achIndex) => `
-              <div class="achievement-item">
-                <textarea class="form-input form-textarea" oninput="updateAchievement(${index}, ${achIndex}, this.value)" placeholder="Describe a key achievement..." rows="2">${escapeHtml(achievement)}</textarea>
+            ${(exp.achievements || []).map((achievement, achIndex) => {
+              const achText = typeof achievement === 'string' ? achievement : (achievement && typeof achievement === 'object' ? (achievement.text || achievement.description || achievement.content || '') : '');
+              return `<div class="achievement-item">
+                <textarea class="form-input form-textarea" oninput="updateAchievement(${index}, ${achIndex}, this.value)" placeholder="Describe a key achievement..." rows="2">${escapeHtml(achText)}</textarea>
                 <button class="remove-achievement" onclick="removeAchievement(${index}, ${achIndex})">×</button>
-              </div>
-            `).join('')}
+              </div>`;
+            }).join('')}
           </div>
           <button class="add-achievement" onclick="addAchievement(${index})">+ Add Achievement</button>
         </div>
@@ -2960,12 +3433,15 @@ function renderExperienceCards() {
 }
 
 function renderSkillChips() {
-  return cvEditorData.skills.map((skill, index) => `
+  return cvEditorData.skills.map((skill, index) => {
+    const skillName = typeof skill === 'string' ? skill : (skill && typeof skill === 'object' ? (skill.name || skill.category || '') : String(skill));
+    return `
     <div class="skill-chip">
-      ${escapeHtml(skill)}
+      ${escapeHtml(skillName)}
       <button class="remove-skill" onclick="removeSkill(${index})" title="Remove skill">×</button>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function updatePersonalInfo(field, value) {
@@ -3103,7 +3579,7 @@ async function resetCVEditor() {
 
 function previewCV() {
   // Switch to the CV tab to show preview
-  switchTab('cv');
+  switchTab('generate');
   // Optionally trigger CV generation with current editor data
   // This would require backend integration
 }
@@ -3121,12 +3597,107 @@ async function showTableBasedReview() {
     return;
   }
   
-  // Switch to customizations tab and populate it with review tables
-  await populateCustomizationsTabWithReview(window.pendingRecommendations);
-  switchTab('customizations');
-  
+  // Switch to the experiences review tab.
+  switchTab('exp-review');
+
   // Inform user in conversation
-  appendMessage('assistant', '✅ Customizations generated! Please review the **Experiences** and **Skills** in the **Customizations** tab. Select your preferences using the action buttons, then submit your decisions.');
+  appendMessage('assistant', '✅ Customizations generated! Please review the **Experiences** and **Skills** tabs. Select your preferences using the action buttons, then submit your decisions.');
+}
+
+/**
+ * Renders one of the 5 review panes as a top-level tab.
+ * Replaces the old sub-tab approach with a flat single-level tab structure.
+ */
+async function populateReviewTab(pane) {
+  const content = document.getElementById('document-content');
+
+  if (!window.pendingRecommendations || !tabData.customizations) {
+    content.innerHTML = '<div class="empty-state"><div class="icon">⚙️</div><h3>Review Customizations</h3><p>Click "Recommend Customizations" to generate recommendations.</p></div>';
+    return;
+  }
+
+  const paneConfig = {
+    experiences:   { title: '', desc: 'Sorted by date (most recent first). Click action buttons to override recommendations.',         container: 'experience-table-container'   },
+    skills:        { title: '🛠️ Skills',           desc: 'Sorted by relevance. Select how to feature each skill.',                             container: 'skills-table-container'       },
+    achievements:  { title: '🏆 Achievements',      desc: 'Select how to feature each key achievement. AI recommendations are pre-selected.',  container: 'achievements-table-container'  },
+    summary:       { title: '📝 Professional Summary', desc: 'Select which professional summary to use. The AI\'s recommendation is pre-selected.', container: 'summary-focus-container'    },
+    publications:  { title: '📄 Publications',      desc: 'All publications ranked by relevance. Accept or reject each for your CV.',          container: 'publications-table-container' },
+  };
+  const cfg = paneConfig[pane] || {};
+
+  const headerHtml = pane === 'experiences' ? `
+    <h1>⚙️ Review Customization Recommendations</h1>
+    <p style="color:#6b7280;margin-bottom:16px;">Review the AI's recommendations. Use the action buttons to adjust each item, then save your decisions before generating the CV.</p>
+    <div id="page-estimate-widget" class="page-estimate ok">
+      <span id="pe-icon">📄</span>
+      <span id="pe-label">Estimated length: calculating…</span>
+      <div class="pe-bar"><div class="pe-fill" id="pe-fill" style="width:0%;background:#86efac;"></div></div>
+    </div>
+    <details id="generation-settings-panel" style="margin:0 0 16px;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;background:#f8fafc;">
+      <summary style="cursor:pointer;font-weight:600;color:#374151;user-select:none;">⚙️ Generation Settings</summary>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
+        <label for="max-skills-input" style="font-size:0.9em;color:#4b5563;white-space:nowrap;">Max skills in CV:</label>
+        <input type="range" id="max-skills-input" min="1" max="60" step="1" value="20" style="flex:1;accent-color:#3b82f6;">
+        <span id="max-skills-value" style="font-weight:600;color:#1e293b;min-width:2em;text-align:right;">20</span>
+        <span style="font-size:0.85em;color:#9ca3af;">(default: 20)</span>
+      </div>
+    </details>
+  ` : (cfg.title ? `<h2 style="margin:0 0 12px;">${cfg.title}</h2>` : '');
+
+  const navBack = {
+    skills:       `<button class="back-btn" onclick="switchTab('ach-editor')">← Back to Edit Achievements</button>`,
+    achievements: `<button class="back-btn" onclick="switchTab('skills-review')">← Back to Skills</button>`,
+    publications: `<button class="back-btn" onclick="switchTab('summary-review')">← Back to Summary</button>`,
+  };
+  const navContinue = {
+    experiences:  `<button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Edit Achievements →</button>`,
+    skills:       `<button class="continue-btn" onclick="submitSkillDecisions()">Continue to Achievements →</button>`,
+    achievements: `<button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Summary →</button>`,
+    publications: `<button class="continue-btn" onclick="submitPublicationDecisions()">Continue to Rewrite →</button>`,
+  };
+  // Summary nav is rendered inside buildSummaryFocusSection
+  const navHtml = pane === 'summary' ? '' : `
+    <div class="nav-buttons${pane === 'experiences' ? ' nav-end' : ''}" style="margin:16px 0;">
+      ${navBack[pane] || ''}
+      ${navContinue[pane] || ''}
+    </div>`;
+
+  content.innerHTML = `
+    ${headerHtml}
+    ${cfg.desc ? `<p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">${escapeHtml(cfg.desc)}</p>` : ''}
+    <div id="${cfg.container}"></div>
+    ${navHtml}
+  `;
+
+  // Sync slider for experiences tab
+  if (pane === 'experiences') {
+    (async () => {
+      const status = await getStatus();
+      const currentMax = status.max_skills || 20;
+      const slider = document.getElementById('max-skills-input');
+      const label  = document.getElementById('max-skills-value');
+      if (slider) {
+        slider.value = currentMax;
+        if (label) label.textContent = currentMax;
+        slider.addEventListener('input', () => { if (label) label.textContent = slider.value; });
+        slider.addEventListener('change', async () => {
+          const v = parseInt(slider.value, 10);
+          if (label) label.textContent = v;
+          try { await apiCall('POST', '/api/generation-settings', { max_skills: v }); }
+          catch (e) { console.warn('Failed to save max_skills setting:', e); }
+        });
+      }
+    })();
+  }
+
+  window._activeReviewPane = pane;
+  switch (pane) {
+    case 'experiences':  await buildExperienceReviewTable(); _updatePageEstimate(); break;
+    case 'skills':       await buildSkillsReviewTable();     break;
+    case 'achievements': await buildAchievementsReviewTable(); break;
+    case 'summary':      await buildSummaryFocusSection();   break;
+    case 'publications': await buildPublicationsReviewTable(); break;
+  }
 }
 
 async function populateCustomizationsTabWithReview(data) {
@@ -3170,7 +3741,7 @@ async function populateCustomizationsTabWithReview(data) {
       <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">Sorted by date (most recent first). Click action buttons to override recommendations.</p>
       <div id="experience-table-container"></div>
       <div class="nav-buttons nav-end" style="margin:16px 0;">
-        <button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Skills →</button>
+        <button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Edit Achievements →</button>
       </div>
     </div>
 
@@ -3281,6 +3852,10 @@ async function _loadReviewPane(pane) {
 async function buildExperienceReviewTable() {
   const data = window.pendingRecommendations;
   const container = document.getElementById('experience-table-container');
+  if (!container) return;
+
+  // Surface progress immediately while we fetch and sort full experience details.
+  container.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading experience recommendations…</p></div>';
   
   // Get all experiences with details
   let allExperienceIds = [];
@@ -3578,6 +4153,7 @@ async function buildSkillsReviewTable() {
 // ==== Achievements Review ====
 
 window.achievementDecisions = {};
+window._achievementsOrdered = null;   // cached ordered array for the review table
 
 async function buildAchievementsReviewTable() {
   const container = document.getElementById('achievements-table-container');
@@ -3611,82 +4187,178 @@ async function buildAchievementsReviewTable() {
   const data = window.pendingRecommendations || {};
   const recommendedSet = new Set(data.recommended_achievements || []);
 
-  // Sort: recommended first, then by importance descending
-  allAchievements = [...allAchievements].sort((a, b) => {
-    const aRec = recommendedSet.has(a.id) ? 1 : 0;
-    const bRec = recommendedSet.has(b.id) ? 1 : 0;
-    if (bRec !== aRec) return bRec - aRec;
-    return (b.importance || 0) - (a.importance || 0);
-  });
+  // Sort: recommended first, then by importance descending (only on first load)
+  if (!window._achievementsOrdered) {
+    allAchievements = [...allAchievements].sort((a, b) => {
+      const aRec = recommendedSet.has(a.id) ? 1 : 0;
+      const bRec = recommendedSet.has(b.id) ? 1 : 0;
+      if (bRec !== aRec) return bRec - aRec;
+      return (b.importance || 0) - (a.importance || 0);
+    });
+    window._achievementsOrdered = allAchievements;
+  }
 
   // Initialise decisions
   window.achievementDecisions = {};
-  allAchievements.forEach(ach => {
+  window._achievementsOrdered.forEach(ach => {
     const rec = getAchievementRecommendation(ach.id, data);
     let defaultAction = 'include';
-    if (rec === 'Emphasize')    defaultAction = 'emphasize';
-    else if (rec === 'Include') defaultAction = 'include';
+    if (rec === 'Emphasize')         defaultAction = 'emphasize';
+    else if (rec === 'Include')      defaultAction = 'include';
     else if (rec === 'De-emphasize') defaultAction = 'de-emphasize';
-    else if (rec === 'Omit')    defaultAction = 'exclude';
+    else if (rec === 'Omit')         defaultAction = 'exclude';
     window.achievementDecisions[ach.id] = defaultAction;
   });
   // Apply any previously saved user decisions over the LLM defaults
   const savedAchDecs = window._savedDecisions?.achievement_decisions || {};
   if (Object.keys(savedAchDecs).length > 0) Object.assign(window.achievementDecisions, savedAchDecs);
 
-  let tableHTML = `
-    <table id="achievements-review-table" class="review-table">
+  // Also handle AI-suggested achievements
+  const suggestedAchs = data.suggested_achievements || [];
+  suggestedAchs.forEach((_, i) => {
+    const suggId = `sugg::${i}`;
+    if (!(suggId in window.achievementDecisions)) window.achievementDecisions[suggId] = 'include';
+  });
+
+  _renderAchievementsTable(container);
+}
+
+function _renderAchievementsTable(container) {
+  if (!container) container = document.getElementById('achievements-table-container');
+  if (!container) return;
+
+  const data = window.pendingRecommendations || {};
+  const orderedAchs  = window._achievementsOrdered || [];
+  const suggestedAchs = (data.suggested_achievements || []);
+
+  // Build filter + table HTML
+  let html = `
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+      <input type="text" id="ach-review-filter"
+        placeholder="Filter achievements…"
+        oninput="_filterAchievementsTable(this.value)"
+        style="flex:1;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:0.9em;">
+      <span id="ach-review-count" style="font-size:0.85em;color:#6b7280;white-space:nowrap;">${orderedAchs.length + suggestedAchs.length} achievements</span>
+    </div>
+    <table id="achievements-review-table" class="review-table" style="width:100%;border-collapse:collapse;">
       <thead>
         <tr>
           <th>Achievement</th>
           <th>Recommendation</th>
           <th>Confidence</th>
           <th>Reasoning</th>
-          <th>Your Selection</th>
+          <th>Selection</th>
         </tr>
       </thead>
       <tbody>
   `;
 
-  allAchievements.forEach(ach => {
-    const id            = ach.id || ach.title || '';
-    const title         = ach.title || id;
-    const desc          = ach.description || '';
+  orderedAchs.forEach((ach, rowIdx) => {
+    const id             = ach.id || ach.title || '';
+    const title          = ach.title || id;
+    const desc           = ach.description || '';
     const recommendation = getAchievementRecommendation(id, data);
-    const confidence    = getAchievementConfidence(id, data, ach.importance);
-    const reasoning     = getAchievementReasoning(id, data, ach);
-    const defaultAction = window.achievementDecisions[id];
+    const confidence     = getAchievementConfidence(id, data, ach.importance);
+    const reasoning      = getAchievementReasoning(id, data, ach);
+    const defaultAction  = window.achievementDecisions[id] || 'include';
     const confidenceBadge = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
+    const isFirst = rowIdx === 0;
+    const isLast  = rowIdx === orderedAchs.length - 1;
 
-    tableHTML += `
+    html += `
       <tr data-ach-id="${escapeHtml(id)}">
         <td>
           <strong>${escapeHtml(title)}</strong>
-          ${desc ? `<br><small style="color:#6b7280;">${escapeHtml(desc.slice(0, 120))}${desc.length > 120 ? '…' : ''}</small>` : ''}
+          ${desc ? `<br><small style="color:#6b7280;" id="ach-desc-${escapeHtml(id)}">${escapeHtml(desc.slice(0, 120))}${desc.length > 120 ? '…' : ''}</small>` : ''}
         </td>
         <td><strong>${escapeHtml(recommendation)}</strong></td>
         <td>${confidenceBadge}</td>
-        <td style="max-width:280px;"><small>${escapeHtml(reasoning)}</small></td>
-        <td class="action-btns">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    title="Emphasize — feature prominently"  style="color:#10b981;font-size:1.5em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      title="Include — standard treatment"      style="font-size:1.3em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize — brief mention only"  style="color:#f59e0b;font-size:1.5em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      title="Exclude — omit from CV"            style="color:#ef4444;font-size:1.3em;">✗</button>
+        <td style="max-width:240px;"><small>${escapeHtml(reasoning)}</small></td>
+        <td class="action-btns" style="white-space:nowrap;">
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    title="Emphasize — feature prominently"  style="color:#10b981;font-size:1.4em;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      title="Include — standard treatment"      style="font-size:1.2em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize — brief mention only"  style="color:#f59e0b;font-size:1.4em;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      title="Exclude — omit from CV"            style="color:#ef4444;font-size:1.2em;">✗</button>
+          <button class="icon-btn" title="AI rewrite suggestion" onclick="aiRewriteTopLevelAchievement('${escapeHtml(id)}')" style="font-size:1.2em;">✨</button>
+          <button class="icon-btn" title="Move up"   ${isFirst ? 'disabled' : ''} onclick="moveAchievementRow('${escapeHtml(id)}',-1)" style="font-size:1.0em;padding:2px 5px;">↑</button>
+          <button class="icon-btn" title="Move down" ${isLast  ? 'disabled' : ''} onclick="moveAchievementRow('${escapeHtml(id)}',+1)" style="font-size:1.0em;padding:2px 5px;">↓</button>
         </td>
       </tr>
     `;
   });
 
-  tableHTML += '</tbody></table>';
-  container.innerHTML = tableHTML;
-  // Delegated click handler for achievement action buttons (data-ach-id on <tr> avoids onclick injection)
+  // AI-suggested achievements
+  suggestedAchs.forEach((sugg, i) => {
+    const suggId    = `sugg::${i}`;
+    const confRaw   = (sugg.confidence || 'Medium').toLowerCase();
+    const confLevel = confRaw.includes('high') ? 'high' : confRaw.includes('low') ? 'low' : 'medium';
+    const confText  = sugg.confidence || 'Medium';
+    const defaultAction = window.achievementDecisions[suggId] || 'include';
+
+    html += `
+      <tr data-ach-id="${escapeHtml(suggId)}" style="background:#fefce8;">
+        <td>
+          <span style="display:inline-block;background:#f59e0b;color:#fff;font-size:0.7em;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:6px;vertical-align:middle;">⭐ AI Suggested</span>
+          <strong>${escapeHtml(sugg.title || '')}</strong>
+          ${sugg.description ? `<br><small style="color:#6b7280;">${escapeHtml(sugg.description.slice(0, 120))}${sugg.description.length > 120 ? '…' : ''}</small>` : ''}
+          ${sugg.experience_id ? `<br><small style="color:#9ca3af;">Experience: ${escapeHtml(sugg.experience_id)}</small>` : ''}
+        </td>
+        <td><strong>Add New</strong></td>
+        <td><span class="confidence-badge confidence-${confLevel}">${escapeHtml(confText)}</span></td>
+        <td style="max-width:240px;"><small>${escapeHtml(sugg.rationale || '')}</small></td>
+        <td class="action-btns" style="white-space:nowrap;">
+          <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Add to CV" style="font-size:1.2em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Skip — do not add" style="color:#ef4444;font-size:1.2em;">✗</button>
+        </td>
+      </tr>
+    `;
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+
+  // Bulk toolbar above the filter row
+  const achToolbar = document.createElement('div');
+  achToolbar.className = 'bulk-toolbar';
+  achToolbar.innerHTML = `
+    <span>Bulk:</span>
+    <button class="bulk-btn bulk-recommended" onclick="bulkAchievementAction('recommended')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
+    <button class="bulk-btn bulk-emphasize"   onclick="bulkAchievementAction('emphasize')">➕ Emphasize All</button>
+    <button class="bulk-btn bulk-include"     onclick="bulkAchievementAction('include')">✓ Include All</button>
+    <button class="bulk-btn bulk-exclude"     onclick="bulkAchievementAction('exclude')">✗ Exclude All</button>
+  `;
+  container.insertBefore(achToolbar, container.firstChild);
+
+  // Delegated click handler for decision buttons
   container.querySelector('tbody')?.addEventListener('click', e => {
-    const btn = e.target.closest('.icon-btn');
+    const btn = e.target.closest('.icon-btn[data-action]');
     if (!btn) return;
     const tr = btn.closest('tr[data-ach-id]');
     if (!tr) return;
     const action = btn.dataset.action;
     if (action) handleAchievementAction(tr.dataset.achId, action);
+  });
+}
+
+function bulkAchievementAction(action) {
+  const data = window.pendingRecommendations || {};
+  document.querySelectorAll('#achievements-review-table tbody tr[data-ach-id]').forEach(row => {
+    if (row.style.display === 'none') return;   // respect filter
+    const achId = row.dataset.achId;
+    if (!achId) return;
+    let resolvedAction = action;
+    if (action === 'recommended') {
+      if (achId.startsWith('sugg::')) {
+        resolvedAction = 'include'; // AI-suggested items default to include when accepting all
+      } else {
+        const rec = getAchievementRecommendation(achId, data);
+        if (rec === 'Emphasize')         resolvedAction = 'emphasize';
+        else if (rec === 'Include')      resolvedAction = 'include';
+        else if (rec === 'De-emphasize') resolvedAction = 'de-emphasize';
+        else                             resolvedAction = 'exclude';
+      }
+    }
+    handleAchievementAction(achId, resolvedAction);
   });
 }
 
@@ -3700,24 +4372,354 @@ function handleAchievementAction(achId, action) {
 }
 
 async function submitAchievementDecisions() {
-  const decisions = window.achievementDecisions;
-  const count = Object.keys(decisions).length;
+  const allDecisions = window.achievementDecisions || {};
+  // Separate existing achievements from AI-suggested ones
+  const decisions = {};
+  const suggestedDecisions = {};
+  for (const [k, v] of Object.entries(allDecisions)) {
+    if (k.startsWith('sugg::')) suggestedDecisions[k] = v;
+    else decisions[k] = v;
+  }
+  const count = Object.keys(allDecisions).length;
   if (count === 0) return;
+  // Resolve suggested achievement objects that were accepted
+  const suggestedAchs = (window.pendingRecommendations || {}).suggested_achievements || [];
+  const acceptedSuggestions = suggestedAchs
+    .filter((_, i) => suggestedDecisions[`sugg::${i}`] === 'include')
+    .map(s => ({ title: s.title, description: s.description, experience_id: s.experience_id, rationale: s.rationale }));
   try {
     const response = await fetch('/api/review-decisions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'achievements', decisions })
+      body: JSON.stringify({ type: 'achievements', decisions, accepted_suggestions: acceptedSuggestions })
     });
     if (response.ok) {
       showToast(`Achievement selections saved (${count} items)`);
-      switchReviewSubtab('summary');
+      switchTab('summary-review');
     } else {
       const err = await response.json();
       showToast(`Error: ${err.error || 'Failed to save selections'}`, 'error');
     }
   } catch (e) {
     showToast('Failed to save achievement selections. Please try again.', 'error');
+  }
+}
+
+// ==== Achievements Editor Tab ====
+
+/**
+ * Build the per-experience achievements editor tab.
+ * Each experience gets a collapsible card with its achievements listed.
+ * Each achievement supports: inline edit, reorder (↑↓), delete, and LLM rewrite.
+ */
+async function buildAchievementsEditor() {
+  const container = document.getElementById('document-content');
+  if (!container) return;
+
+  container.innerHTML = '<p style="padding:20px;text-align:center;color:#6b7280;">Loading achievements editor…</p>';
+
+  // Fetch experiences + their achievements from master fields
+  let experiences = [];
+  try {
+    const res = await fetch('/api/master-fields');
+    const data = await res.json();
+    experiences = data.experiences || [];
+  } catch (_) {}
+
+  if (experiences.length === 0) {
+    container.innerHTML = '<p style="padding:20px;color:#6b7280;">No experiences found in master CV.</p>';
+    return;
+  }
+
+  // Initialise edits store — keyed by experience index, value is array of achievement strings
+  window.achievementEdits = window.achievementEdits || {};
+  experiences.forEach((exp, expIdx) => {
+    if (!window.achievementEdits[expIdx]) {
+      // Normalise achievements to plain strings
+      window.achievementEdits[expIdx] = (exp.key_achievements || exp.achievements || []).map(a =>
+        typeof a === 'string' ? a : (a && (a.text || a.description || a.content || '')) || ''
+      );
+    }
+  });
+
+  let html = `
+    <div style="padding:16px;">
+      <h2 style="margin:0 0 4px;">✏️ Edit Achievements</h2>
+      <p style="color:#6b7280;margin:0 0 16px;font-size:0.9em;">
+        Edit, reorder, delete, or AI-rewrite individual achievement bullets per experience.
+        Changes are saved automatically and used during CV generation.
+      </p>
+  `;
+
+  experiences.forEach((exp, expIdx) => {
+    const title    = escapeHtml(exp.title || exp.position || `Experience ${expIdx + 1}`);
+    const company  = escapeHtml(exp.company || exp.organization || '');
+    const achCount = window.achievementEdits[expIdx].length;
+
+    html += `
+      <details open style="margin-bottom:12px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+        <summary style="padding:12px 16px;background:#f9fafb;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;">
+          <span style="flex:1;">${title}${company ? ` <span style="font-weight:400;color:#6b7280;">@ ${company}</span>` : ''}</span>
+          <span style="font-size:0.8em;color:#9ca3af;">${achCount} achievement${achCount !== 1 ? 's' : ''}</span>
+        </summary>
+        <div style="padding:12px 16px;" id="ach-editor-exp-${expIdx}">
+          <div id="ach-list-${expIdx}"></div>
+          <button class="btn-secondary" style="margin-top:8px;font-size:0.85em;"
+            onclick="addAchievementRow(${expIdx})">+ Add Achievement</button>
+        </div>
+      </details>
+    `;
+  });
+
+  html += `
+    <div style="margin-top:20px;display:flex;gap:12px;align-items:center;">
+      <button class="back-btn" onclick="switchTab('exp-review')">← Back to Experiences</button>
+      <button class="continue-btn" onclick="saveAchievementEditsAndContinue()">Save &amp; Continue to Skills →</button>
+    </div>
+    </div>
+  `;
+
+  container.innerHTML = html;
+
+  // Render achievement rows for each experience
+  experiences.forEach((_, expIdx) => renderAchievementEditorRows(expIdx));
+}
+
+/**
+ * Render the editable achievement rows for one experience.
+ */
+function renderAchievementEditorRows(expIdx) {
+  const listEl = document.getElementById(`ach-list-${expIdx}`);
+  if (!listEl) return;
+  const achs = window.achievementEdits[expIdx] || [];
+
+  if (achs.length === 0) {
+    listEl.innerHTML = '<p style="color:#9ca3af;font-size:0.85em;padding:4px 0;">No achievements yet.</p>';
+    return;
+  }
+
+  listEl.innerHTML = achs.map((text, achIdx) => `
+    <div id="ach-row-${expIdx}-${achIdx}" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
+      <div style="display:flex;flex-direction:column;gap:2px;padding-top:4px;">
+        <button class="icon-btn" title="Move up"   onclick="moveAchievement(${expIdx},${achIdx},-1)" style="font-size:0.9em;padding:2px 6px;">▲</button>
+        <button class="icon-btn" title="Move down" onclick="moveAchievement(${expIdx},${achIdx},+1)" style="font-size:0.9em;padding:2px 6px;">▼</button>
+      </div>
+      <textarea id="ach-text-${expIdx}-${achIdx}"
+        rows="2"
+        style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:0.9em;resize:vertical;"
+        onchange="updateAchievementText(${expIdx},${achIdx},this.value)"
+        onblur="updateAchievementText(${expIdx},${achIdx},this.value)"
+      >${escapeHtml(text)}</textarea>
+      <div style="display:flex;flex-direction:column;gap:4px;padding-top:2px;">
+        <button class="icon-btn" title="Ask AI to rewrite"
+          onclick="rewriteAchievementWithLLM(${expIdx},${achIdx})"
+          style="font-size:0.85em;padding:3px 8px;white-space:nowrap;">✨ AI</button>
+        <button class="icon-btn" title="Delete"
+          onclick="deleteAchievement(${expIdx},${achIdx})"
+          style="font-size:0.85em;padding:3px 8px;color:#ef4444;">🗑</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateAchievementText(expIdx, achIdx, value) {
+  if (!window.achievementEdits[expIdx]) return;
+  window.achievementEdits[expIdx][achIdx] = value;
+}
+
+function moveAchievement(expIdx, achIdx, dir) {
+  const achs = window.achievementEdits[expIdx];
+  if (!achs) return;
+  const newIdx = achIdx + dir;
+  if (newIdx < 0 || newIdx >= achs.length) return;
+  // Flush current textarea value before moving
+  const ta = document.getElementById(`ach-text-${expIdx}-${achIdx}`);
+  if (ta) achs[achIdx] = ta.value;
+  [achs[achIdx], achs[newIdx]] = [achs[newIdx], achs[achIdx]];
+  renderAchievementEditorRows(expIdx);
+}
+
+function deleteAchievement(expIdx, achIdx) {
+  const achs = window.achievementEdits[expIdx];
+  if (!achs) return;
+  achs.splice(achIdx, 1);
+  renderAchievementEditorRows(expIdx);
+}
+
+function addAchievementRow(expIdx) {
+  if (!window.achievementEdits[expIdx]) window.achievementEdits[expIdx] = [];
+  window.achievementEdits[expIdx].push('');
+  renderAchievementEditorRows(expIdx);
+  // Focus the new textarea
+  const newIdx = window.achievementEdits[expIdx].length - 1;
+  const ta = document.getElementById(`ach-text-${expIdx}-${newIdx}`);
+  if (ta) ta.focus();
+}
+
+let _rewriteSuggestionHistory = [];
+let _lastRewriteLogId = null;
+
+async function rewriteAchievementWithLLM(expIdx, achIdx) {
+  const ta = document.getElementById(`ach-text-${expIdx}-${achIdx}`);
+  if (!ta) return;
+  const originalText = ta.value.trim();
+  if (!originalText) { showToast('Please enter achievement text first.', 'error'); return; }
+
+  _rewriteSuggestionHistory = [];
+  _lastRewriteLogId = null;
+  _openRewriteModal(expIdx, achIdx, originalText, '', null);
+  await _runAchievementRewrite(expIdx, achIdx, originalText);
+}
+
+function _openRewriteModal(expIdx, achIdx, originalText, currentInstructions, currentSuggestion) {
+  const suggestedHtml = currentSuggestion != null
+    ? `<p id="ach-rewrite-suggestion" style="margin:4px 0 0;min-height:2.4em;">${escapeHtml(currentSuggestion)}</p>`
+    : `<p id="ach-rewrite-suggestion" style="margin:4px 0 0;min-height:2.4em;color:#9ca3af;font-style:italic;">⏳ Generating…</p>`;
+
+  document.getElementById('alert-modal-title').textContent = '✨ AI Rewrite';
+  document.getElementById('alert-modal-message').innerHTML = `
+    <div style="margin-bottom:10px;">
+      <strong>Original:</strong>
+      <p style="color:#6b7280;margin:4px 0 0;font-style:italic;font-size:0.92em;">${escapeHtml(originalText)}</p>
+    </div>
+    <div style="margin-bottom:12px;">
+      <strong>Suggested:</strong>
+      ${suggestedHtml}
+    </div>
+    <div style="margin-bottom:16px;">
+      <label for="ach-rewrite-instructions" style="font-weight:600;font-size:0.92em;display:block;margin-bottom:4px;">Instructions <span style="font-weight:400;color:#6b7280;">(optional)</span></label>
+      <textarea id="ach-rewrite-instructions"
+        rows="2"
+        placeholder="e.g. make it more concise, emphasise leadership, add a metric"
+        style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:0.9em;resize:vertical;"
+      >${escapeHtml(currentInstructions)}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn-secondary" id="ach-rewrite-reject-btn" onclick="_recordRewriteOutcome('rejected'); closeAlertModal()">Reject</button>
+      <button class="btn-secondary" id="ach-rewrite-generate-btn">Generate</button>
+      <button class="continue-btn"  id="ach-rewrite-accept-btn">Accept</button>
+    </div>`;
+
+  document.getElementById('alert-modal-overlay').style.display = 'block';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('alert-modal-overlay');
+  trapFocus('alert-modal-overlay');
+
+  document.getElementById('ach-rewrite-generate-btn').onclick = () =>
+    _runAchievementRewrite(expIdx, achIdx, originalText);
+
+  _updateRewriteAcceptBtn(expIdx, achIdx, currentSuggestion);
+}
+
+function _updateRewriteAcceptBtn(expIdx, achIdx, suggestion) {
+  const acceptBtn = document.getElementById('ach-rewrite-accept-btn');
+  if (!acceptBtn) return;
+  acceptBtn.disabled = suggestion == null;
+  acceptBtn.onclick = suggestion == null ? null : () => {
+    const ta = document.getElementById(`ach-text-${expIdx}-${achIdx}`);
+    updateAchievementText(expIdx, achIdx, suggestion);
+    if (ta) ta.value = suggestion;
+    _recordRewriteOutcome('accepted', suggestion);
+    closeAlertModal();
+    showToast('Achievement updated.');
+  };
+}
+
+async function _recordRewriteOutcome(outcome, acceptedText) {
+  if (!_lastRewriteLogId) return;
+  const logId = _lastRewriteLogId;
+  _lastRewriteLogId = null;
+  const body = { log_id: logId, outcome };
+  if (acceptedText != null) body.accepted_text = acceptedText;
+  try {
+    await fetch('/api/rewrite-achievement-outcome', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (_) { /* fire-and-forget — don't disrupt the UI */ }
+}
+
+async function _runAchievementRewrite(expIdx, achIdx, originalText) {
+  const instructionsEl = document.getElementById('ach-rewrite-instructions');
+  const userInstructions = instructionsEl ? instructionsEl.value.trim() : '';
+
+  const generateBtn  = document.getElementById('ach-rewrite-generate-btn');
+  const acceptBtn    = document.getElementById('ach-rewrite-accept-btn');
+  const rejectBtn    = document.getElementById('ach-rewrite-reject-btn');
+  const suggestionEl = document.getElementById('ach-rewrite-suggestion');
+
+  // Capture the current suggestion as a rejected prior attempt before overwriting
+  if (suggestionEl) {
+    const prev = suggestionEl.textContent.trim();
+    if (prev && prev !== 'Generating…' && !prev.startsWith('Error:') && !_rewriteSuggestionHistory.includes(prev)) {
+      _rewriteSuggestionHistory.push(prev);
+    }
+  }
+
+  if (generateBtn) { generateBtn.disabled = true; generateBtn.textContent = '⏳'; }
+  if (acceptBtn)   { acceptBtn.disabled = true; }
+  if (suggestionEl) { suggestionEl.style.color = '#9ca3af'; suggestionEl.style.fontStyle = 'italic'; suggestionEl.textContent = 'Generating…'; }
+
+  try {
+    const res = await fetch('/api/rewrite-achievement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        achievement_text:     originalText,
+        experience_index:     expIdx,
+        user_instructions:    userInstructions,
+        previous_suggestions: _rewriteSuggestionHistory,
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Rewrite failed');
+
+    const rewritten = data.rewritten || '';
+    _lastRewriteLogId = data.log_id || null;
+    if (suggestionEl) {
+      suggestionEl.style.color = '';
+      suggestionEl.style.fontStyle = '';
+      suggestionEl.textContent = rewritten;
+    }
+    _updateRewriteAcceptBtn(expIdx, achIdx, rewritten);
+  } catch (err) {
+    if (suggestionEl) { suggestionEl.style.color = '#ef4444'; suggestionEl.style.fontStyle = ''; suggestionEl.textContent = `Error: ${err.message}`; }
+    showToast(`AI rewrite failed: ${err.message}`, 'error');
+  } finally {
+    if (generateBtn) { generateBtn.disabled = false; generateBtn.textContent = 'Generate'; }
+    if (rejectBtn)   { rejectBtn.disabled = false; }
+  }
+}
+
+async function saveAchievementEditsAndContinue() {
+  try {
+    // Flush any currently-focused textareas
+    document.querySelectorAll('[id^="ach-text-"]').forEach(ta => {
+      const parts = ta.id.split('-');
+      if (parts.length >= 4) {
+        const expIdx = parseInt(parts[2]);
+        const achIdx = parseInt(parts[3]);
+        if (!isNaN(expIdx) && !isNaN(achIdx) && window.achievementEdits[expIdx]) {
+          window.achievementEdits[expIdx][achIdx] = ta.value;
+        }
+      }
+    });
+
+    const res = await fetch('/api/save-achievement-edits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ edits: window.achievementEdits })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(`Error saving: ${err.error || 'Unknown error'}`, 'error');
+      return;
+    }
+    showToast('Achievement edits saved.');
+    switchTab('skills-review');
+  } catch (e) {
+    showToast('Failed to save achievement edits.', 'error');
   }
 }
 
@@ -3789,7 +4791,7 @@ async function buildSummaryFocusSection() {
       </details>
     </div>
     <div class="nav-buttons" style="margin-top:16px;">
-      <button class="back-btn" onclick="switchReviewSubtab('achievements')">← Back to Achievements</button>
+      <button class="back-btn" onclick="switchTab('achievements-review')">← Back to Achievements</button>
       <button class="continue-btn" onclick="submitSummaryFocusDecision()">Continue to Publications →</button>
     </div>`;
 
@@ -3841,8 +4843,14 @@ function _showAISummary(text, statusLabel) {
 async function _callGenerateSummary(refinementPrompt, previousSummary) {
   const btn      = document.getElementById('ai-regenerate-btn');
   const statusEl = document.getElementById('ai-summary-status');
+  const textEl   = document.getElementById('ai-summary-text');
   if (btn)      btn.disabled = true;
   if (statusEl) statusEl.textContent = 'Generating…';
+  // Show a prominent spinner inside the summary text area while waiting
+  if (textEl)   textEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;color:#6b7280;padding:8px 0;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;"></div><em>Generating a tailored summary…</em></div>';
+
+  // Use the global LLM status bar for visibility
+  setLoading(true, 'Generating summary…');
 
   try {
     const body = {};
@@ -3861,14 +4869,15 @@ async function _callGenerateSummary(refinementPrompt, previousSummary) {
       window.selectedSummaryKey = 'ai_generated';
       await saveSummaryFocusToBackend('ai_generated');
     } else {
-      const textEl = document.getElementById('ai-summary-text');
       if (statusEl) statusEl.textContent = '⚠ error';
       if (textEl)   textEl.innerHTML = `<span style="color:#ef4444;">${escapeHtml(data.error || 'Generation failed.')}</span>`;
     }
   } catch (err) {
     if (statusEl) statusEl.textContent = '⚠ network error';
+    if (textEl)   textEl.innerHTML = '<span style="color:#ef4444;">Network error — please try again.</span>';
   } finally {
     if (btn) btn.disabled = false;
+    setLoading(false);
   }
 }
 
@@ -3910,7 +4919,7 @@ async function submitSummaryFocusDecision() {
   if (!key) return;
   await saveSummaryFocusToBackend(key);
   showToast(`Summary selection saved: "${key.replace(/_/g, ' ')}"`);
-  switchReviewSubtab('publications');
+  switchTab('publications-review');
 }
 
 // Track publication accept/reject decisions: cite_key → true (accept) | false (reject)
@@ -4104,7 +5113,7 @@ async function submitPublicationDecisions() {
       const accepted = Object.values(window.publicationDecisions).filter(Boolean).length;
       const rejected = count - accepted;
       showToast(`Publication selections saved: ${accepted} kept, ${rejected} excluded`);
-      switchTab('rewrite');
+      await fetchAndReviewRewrites();
     } else {
       const err = await response.json();
       showToast(`Error: ${err.error || 'Failed to save publication selections'}`, 'error');
@@ -4287,7 +5296,7 @@ async function submitExperienceDecisions() {
     
     if (response.ok) {
       showToast(`Experience decisions saved (${count} items)`);
-      switchReviewSubtab('skills');
+      switchTab('ach-editor');
     } else {
       const error = await response.json();
       showToast(`Error: ${error.error || 'Failed to save decisions'}`, 'error');
@@ -4327,7 +5336,7 @@ async function submitSkillDecisions() {
     if (response.ok) {
       const extraNote = extraSkills.length > 0 ? ` (${extraSkills.length} AI-suggested skill(s) added for this CV only)` : '';
       showToast(`Skill decisions saved (${count} items)${extraNote}`);
-      switchReviewSubtab('achievements');
+      switchTab('achievements-review');
     } else {
       const error = await response.json();
       showToast(`Error: ${error.error || 'Failed to save decisions'}`, 'error');
@@ -4697,6 +5706,7 @@ async function populateDownloadTab(cvData) {
 // ==== Rewrite Review Functions ====
 
 let rewriteDecisions = {};  // { id: { outcome: 'accept'|'reject'|'edit', final_text: null|string } }
+let _rewritePanelCache = null;  // { rewrites, warnings } — last rendered data for tab re-navigation
 let persuasionWarningsAcknowledged = false;  // Phase 10: track if user reviewed warnings
 
 async function fetchAndReviewRewrites() {
@@ -4730,9 +5740,9 @@ async function fetchAndReviewRewrites() {
     // Show rewrite review panel
     rewriteDecisions = {};
     renderRewritePanel(rewrites, warnings);  // Pass warnings to panel
-    switchTab('customizations');
+    switchTab('rewrite');
     const n = rewrites.length;
-    appendMessage('assistant', `✏️ I found **${n}** text improvement${n > 1 ? 's' : ''} to review. Look over each suggestion in the **Customizations** tab, then accept, edit, or reject each one before generating your CV.`);
+    appendMessage('assistant', `✏️ I found **${n}** text improvement${n > 1 ? 's' : ''} to review. Look over each suggestion in the **Rewrites** tab, then accept, edit, or reject each one before generating your CV.`);
   } catch (err) {
     removeLoadingMessage(loadingMsg);
     setLoading(false);
@@ -4741,6 +5751,7 @@ async function fetchAndReviewRewrites() {
 }
 
 function renderRewritePanel(rewrites, warnings = []) {
+  _rewritePanelCache = { rewrites, warnings };
   const content = document.getElementById('document-content');
 
   // Build persuasion warnings section (Phase 10)
@@ -5367,6 +6378,7 @@ async function populateSpellCheckTab() {
     <div id="spell-results" style="display:none;"></div>
   `;
   spellAudit = [];
+  window._spellSugMap = {};
 
   try {
     // Fetch sections to check
@@ -5386,6 +6398,10 @@ async function populateSpellCheckTab() {
 
     // Check each section
     const flaggedSections = [];
+    const aggregateStats = sectionsData.aggregate_stats || {};
+    let incorrectWords = 0;
+    let grammarIssues = 0;
+    let customDictSize = sectionsData.custom_dict_size || 0;
     for (const section of sections) {
       const res  = await fetch('/api/spell-check', {
         method: 'POST',
@@ -5393,6 +6409,11 @@ async function populateSpellCheckTab() {
         body: JSON.stringify({ text: section.text, context: section.context })
       });
       const data = await res.json();
+      if (data.stats) {
+        if (data.custom_dict_size) customDictSize = data.custom_dict_size;
+        incorrectWords += data.stats.unknown_word_count || 0;
+        grammarIssues += data.stats.grammar_issue_count || 0;
+      }
       if (data.ok && data.suggestions && data.suggestions.length > 0) {
         flaggedSections.push({ section, suggestions: data.suggestions });
       }
@@ -5402,12 +6423,30 @@ async function populateSpellCheckTab() {
 
     if (flaggedSections.length === 0) {
       // Zero-flag fast-path
-      await completeSpellCheckFastPath(`Spell check passed — ${sections.length} section${sections.length !== 1 ? 's' : ''} checked, no issues found.`);
+      await completeSpellCheckFastPath(
+        'Spell check passed — no issues found.',
+        buildSpellStatsSummary({
+          total_sections: sections.length,
+          total_words: aggregateStats.word_count || 0,
+          unique_words: aggregateStats.unique_words || 0,
+          custom_dict_words: aggregateStats.custom_dict_words || 0,
+          incorrect_words: incorrectWords,
+          grammar_issues: grammarIssues,
+        }),
+        customDictSize,
+      );
       return;
     }
 
     // Render suggestions panel
-    renderSpellSuggestions(flaggedSections, sections.length);
+    renderSpellSuggestions(flaggedSections, sections.length, {
+      total_sections: sections.length,
+      total_words: aggregateStats.word_count || 0,
+      unique_words: aggregateStats.unique_words || 0,
+      custom_dict_words: aggregateStats.custom_dict_words || 0,
+      incorrect_words: incorrectWords,
+      grammar_issues: grammarIssues,
+    }, customDictSize);
 
   } catch (err) {
     console.error('Spell check error:', err);
@@ -5415,7 +6454,7 @@ async function populateSpellCheckTab() {
   }
 }
 
-async function completeSpellCheckFastPath(message) {
+async function completeSpellCheckFastPath(message, statsLine = '', customDictSize = 0) {
   // Save empty audit and advance to generation
   const res  = await fetch('/api/spell-check-complete', {
     method: 'POST',
@@ -5424,10 +6463,14 @@ async function completeSpellCheckFastPath(message) {
   });
   const data = await res.json();
   const content = document.getElementById('document-content');
+  const statsParts = [];
+  if (statsLine) statsParts.push(`<p style="color:#6b7280;font-size:0.95em;margin:8px 0 0;">${escapeHtml(statsLine)}</p>`);
+  if (customDictSize > 0) statsParts.push(`<p style="color:#6b7280;font-size:0.9em;margin:4px 0 0;">Custom dictionary: ${customDictSize.toLocaleString()} word${customDictSize !== 1 ? 's' : ''}</p>`);
   content.innerHTML = `
     <div style="text-align:center;padding:60px 20px;">
       <div style="font-size:3em;margin-bottom:16px;">✅</div>
-      <h2 style="color:#166534;">${message}</h2>
+      <h2 style="color:#166534;">${escapeHtml(message)}</h2>
+      ${statsParts.join('\n')}
       <p style="color:#6b7280;margin:16px 0 24px;">Advancing to CV generation…</p>
     </div>
   `;
@@ -5436,15 +6479,29 @@ async function completeSpellCheckFastPath(message) {
   await sendAction('generate_cv');
 }
 
-function renderSpellSuggestions(flaggedSections, totalSections) {
+function buildSpellStatsSummary(stats = {}) {
+  return [
+    `${(stats.total_sections || 0).toLocaleString()} section${stats.total_sections === 1 ? '' : 's'} checked`,
+    `${(stats.total_words || 0).toLocaleString()} words`,
+    `${(stats.unique_words || 0).toLocaleString()} unique`,
+    `${(stats.custom_dict_words || 0).toLocaleString()} custom dictionary match${stats.custom_dict_words === 1 ? '' : 'es'}`,
+    `${(stats.incorrect_words || 0).toLocaleString()} unknown/incorrect`,
+    `${(stats.grammar_issues || 0).toLocaleString()} grammar issue${stats.grammar_issues === 1 ? '' : 's'}`,
+  ].join(' · ');
+}
+
+function renderSpellSuggestions(flaggedSections, totalSections, stats = {}, customDictSize = 0) {
   const results = document.getElementById('spell-results');
   results.style.display = '';
+  const statsLine = buildSpellStatsSummary(stats);
 
   let html = `
     <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:24px;">
       <strong>⚠ ${flaggedSections.reduce((t, f) => t + f.suggestions.length, 0)} issue${flaggedSections.reduce((t, f) => t + f.suggestions.length, 0) !== 1 ? 's' : ''}</strong> found
       across ${flaggedSections.length} of ${totalSections} section${totalSections !== 1 ? 's' : ''}.
       Review each suggestion below, then click <strong>Done</strong>.
+      <div style="margin-top:8px;font-size:0.92em;color:#6b7280;">${escapeHtml(statsLine)}</div>
+      ${customDictSize > 0 ? `<div style="margin-top:4px;font-size:0.88em;color:#6b7280;">Custom dictionary size: ${customDictSize.toLocaleString()} word${customDictSize !== 1 ? 's' : ''}</div>` : ''}
     </div>
   `;
 
@@ -5485,10 +6542,13 @@ function renderSpellSuggestions(flaggedSections, totalSections) {
       // Register in audit as pending
       if (!window._spellSugMap) window._spellSugMap = {};
       window._spellSugMap[`${section.id}_${idx}`] = {
+        section_id:    section.id,
         context_type: section.context,
         location:     section.label,
         original:     sug.flagged,
         suggestion:   (reps[0] || ''),
+        offset:       sug.offset,
+        length:       sug.length,
         rule:         sug.rule_id || '',
         outcome:      'pending',
         final:        sug.flagged,
@@ -5684,7 +6744,6 @@ async function sendAction(action) {
 
         appendMessage('assistant', 'CV generated successfully! Review your layout below.');
         tabData.cv = data.result;
-        populateCVTab(data.result);
         switchTab('layout');
       } else {
         appendMessage('assistant', data.result);
@@ -5735,6 +6794,9 @@ async function resetSession() {
   try {
     const res = await fetch('/api/reset', { method: 'POST' });
     const data = await res.json();
+    if (!res.ok || data.error) {
+      throw new Error(data.error || `Reset failed (${res.status})`);
+    }
     // Clear all frontend state
     clearState();
     userSelections = { experiences: {}, skills: {} };
@@ -5743,10 +6805,21 @@ async function resetSession() {
     window.pendingRecommendations = null;
     window._savedDecisions = {};
     window._newSkillsFromLLM = [];
+    window._activeReviewPane = 'experiences';
+    if (typeof _pendingUploadFile !== 'undefined') {
+      _pendingUploadFile = null;
+    }
     // Clear conversation and job content
     document.getElementById('conversation').innerHTML = '';
     await fetchStatus();
     await showLoadJobPanel();
+
+    // Ensure load inputs are blank after starting a new session.
+    clearJobInput();
+    clearURLInput();
+    _clearFieldError('job-text-input', 'paste-error');
+    _clearFieldError('job-url-input', 'url-error');
+    _updatePasteCharCount();
   } catch (error) {
     console.error('=== RESET SESSION ERROR ===');
     console.error('Error type:', error.name);
@@ -6035,6 +7108,10 @@ function updatePositionTitle(status = {}) {
   // Show rename pencil when a session is loaded
   const renameBtn = document.getElementById('rename-session-btn');
   if (renameBtn) renameBtn.style.display = label ? '' : 'none';
+  _updateSessionSwitcherHeader({
+    position_name: label,
+    phase: status.phase || null,
+  });
 }
 
 async function fetchStatus() {
@@ -6232,10 +7309,10 @@ async function backToPhase(step, feedback) {
     const tabMap = {
       job:            null,
       analysis:       'analysis',
-      customizations: 'customizations',
+      customizations: 'exp-review',
       rewrite:        'rewrite',
       spell:          'spell',
-      generate:       'cv',
+      generate:       'generate',
     };
     const resolvedTab = tabMap[step] || tabMap[data.phase] || null;
     if (resolvedTab) switchTab(resolvedTab);
@@ -6267,7 +7344,11 @@ const _ACTION_LABELS = {
  */
 function _showReRunConfirmModal(step, mode, onConfirm) {
   const stepIdx    = _STEP_ORDER.indexOf(step);
-  const downstream = _STEP_ORDER.slice(stepIdx + 1);
+  // Only show downstream stages that have actually been completed
+  const downstream = _STEP_ORDER.slice(stepIdx + 1).filter(s => {
+    const el = document.getElementById(`step-${s}`);
+    return el && el.classList.contains('completed');
+  });
   const stepLabel  = _STEP_DISPLAY[step] || step;
 
   const title = mode === 'rerun'
@@ -6358,25 +7439,45 @@ async function reRunPhase(step) {
 // ==== Phase 9: Bullet Reorder Functions ====
 
 async function showBulletReorder(expId, expTitle) {
-  // Fetch current achievements and proposed order in parallel
+  // Fetch achievements (required) and suggested order (best-effort).
   let achievements = [];
   let proposedOrder = null;
   let hasJobAnalysis = false;
   try {
-    const [detailsRes, proposedRes] = await Promise.all([
-      fetch('/api/experience-details', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({experience_id: expId}),
-      }),
-      fetch(`/api/proposed-bullet-order?experience_id=${encodeURIComponent(expId)}`),
-    ]);
-    const detailsData  = await detailsRes.json();
-    const proposedData = await proposedRes.json();
+    const detailsRes = await fetch('/api/experience-details', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({experience_id: expId}),
+    });
+    if (!detailsRes.ok) {
+      let detailsErr = `HTTP ${detailsRes.status}`;
+      try {
+        const payload = await detailsRes.json();
+        detailsErr = payload.error || payload.message || detailsErr;
+      } catch (_) { /* keep status-based error */ }
+      throw new Error(detailsErr);
+    }
+
+    const detailsData = await detailsRes.json();
     achievements  = (detailsData.experience && detailsData.experience.achievements) || [];
-    proposedOrder = proposedData.proposed_order || null;
-    hasJobAnalysis = proposedData.has_job_analysis || false;
+
+    // Suggested order is optional; failures should not block opening the modal.
+    try {
+      const proposedRes = await fetch(`/api/proposed-bullet-order?experience_id=${encodeURIComponent(expId)}`);
+      if (proposedRes.ok) {
+        const proposedData = await proposedRes.json();
+        proposedOrder = proposedData.proposed_order || null;
+        hasJobAnalysis = proposedData.has_job_analysis || false;
+      } else {
+        console.warn('Could not load suggested bullet order:', proposedRes.status);
+      }
+    } catch (e) {
+      console.warn('Could not load suggested bullet order:', e);
+    }
   } catch (e) {
-    appendRetryMessage('⚠ Could not load bullets: ' + e.message, () => showBulletReorder(expId, expTitle));
+    const errorText = e.message === 'Failed to fetch'
+      ? 'Failed to fetch (server unavailable).'
+      : e.message;
+    appendRetryMessage('⚠ Could not load bullets: ' + errorText, () => showBulletReorder(expId, expTitle));
     return;
   }
   if (!achievements.length) {
@@ -6642,7 +7743,16 @@ function handleStepClick(step) {
   // Job step: show job content if a job is loaded, otherwise open the load panel.
   if (step === 'job') {
     if (el.classList.contains('completed')) {
-      switchTab('job');
+      // Show confirmation if any downstream stages are completed
+      const hasCompletedDownstream = _STEP_ORDER.slice(1).some(s => {
+        const sEl = document.getElementById(`step-${s}`);
+        return sEl && sEl.classList.contains('completed');
+      });
+      if (hasCompletedDownstream) {
+        _showReRunConfirmModal('job', 'back-nav', () => switchTab('job'));
+      } else {
+        switchTab('job');
+      }
     } else {
       showLoadJobPanel();
     }
@@ -6666,10 +7776,10 @@ function handleStepClick(step) {
 
   const stepToTab = {
     analysis:       hasUnansweredPostAnalysisQuestions() ? 'questions' : 'analysis',
-    customizations: 'customizations',
+    customizations: 'exp-review',
     rewrite:        'rewrite',
     spell:          'spell',
-    generate:       'cv',
+    generate:       'generate',
     layout:         'layout',
     finalise:       'finalise',
   };
@@ -7738,3 +8848,13 @@ async function saveScreeningResponses() {
 
 // ==== End Screening Tab ====
 
+// CJS export shim — no-op in browsers (module is undefined)
+if (typeof module !== 'undefined') {
+  module.exports = {
+    showBulletReorder,
+    formatSessionPhaseLabel,
+    buildSessionSwitcherLabel,
+    getActiveSessionOwnershipMeta,
+    extractStructuredQuestionsFromAssistantText,
+  };
+}

@@ -9,9 +9,9 @@ Serves a single-page web app with endpoints to:
 - Save session
 
 Run:
-    python scripts/web_app.py --llm-provider github
+    python scripts/web_app.py
 
-Then open http://localhost:5000
+Then open http://localhost:5001
 """
 
 import argparse
@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
-from flask import Flask, jsonify, request, send_file, send_from_directory
+from flask import Flask, jsonify, redirect, request, send_file, send_from_directory, url_for
 import requests
 from urllib.parse import urlparse
 import re
@@ -54,6 +54,9 @@ from utils.pricing_cache import (
     refresh_pricing_cache, maybe_refresh_in_background, lookup_runtime_pricing_bulk, STATIC_PRICING,
 )
 from utils.spell_checker import SpellChecker
+from utils.session_registry import (
+    SessionRegistry, SessionNotFoundError, SessionOwnedError
+)
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +102,7 @@ class StatusResponse:
     extra_skills: List[Any]
     session_file: str
     max_skills: int
+    achievement_edits: Dict[str, Any]
 
 
 @dataclass
@@ -306,6 +310,29 @@ _SCREENING_FORMAT_GUIDANCE: dict = {
 }
 
 
+def _web_app_build_objects(args, auth_manager):
+    """
+    Instantiate LLMClient, CVOrchestrator, and ConversationManager from CLI args.
+
+    Defined at module level so tests can patch ``CVOrchestrator`` and
+    ``ConversationManager`` in ``scripts.web_app`` and have the patches
+    take effect when ``session_registry.create()`` calls this factory.
+    """
+    llm_client = get_llm_provider(
+        provider=args.llm_provider,
+        model=args.model,
+        auth_manager=auth_manager,
+    )
+    orchestrator = CVOrchestrator(
+        master_data_path=args.master_data,
+        publications_path=args.publications,
+        output_dir=args.output_dir,
+        llm_client=llm_client,
+    )
+    conversation = ConversationManager(orchestrator=orchestrator, llm_client=llm_client)
+    return conversation, orchestrator
+
+
 def create_app(args) -> Flask:
     app = Flask(__name__, static_folder=None)
 
@@ -323,53 +350,74 @@ def create_app(args) -> Flask:
     auth_manager = CopilotAuthManager()
     _auth_poll: dict = {"polling": False, "error": None, "device_code": None, "interval": 5}
 
-    # Initialize dependencies
-    _provider_name: str  = args.llm_provider
+    # ── Provider / model state ───────────────────────────────────────────────
+    _provider_name: str = args.llm_provider
     _current_model: Optional[str] = args.model  # short form; updated by set_model()
-    llm_client = get_llm_provider(provider=_provider_name, model=args.model, auth_manager=auth_manager)
-    orchestrator = CVOrchestrator(
-        master_data_path=args.master_data,
-        publications_path=args.publications,
-        output_dir=args.output_dir,
-        llm_client=llm_client,
-    )
-    conversation = ConversationManager(orchestrator=orchestrator, llm_client=llm_client)
 
-    # ── Single-session guard ────────────────────────────────────────────────
-    # Prevents two browser tabs from corrupting shared ConversationManager
-    # state concurrently. Any state-mutating POST that arrives while the lock
-    # is held returns 409 Conflict; the JS client shows the amber banner.
-    # RLock (reentrant) is required because before_request acquires the lock
-    # and some endpoint handlers also use `with _session_lock:` internally.
-    _session_lock = threading.RLock()
-    # Endpoints that are read-only or session-management: never blocked.
-    _LOCK_EXEMPT_PATHS = {
-        '/api/status', '/api/history', '/api/sessions', '/api/load-items',
-        '/api/positions', '/api/save', '/api/load-session', '/api/delete-session',
-        '/api/copilot-auth/start', '/api/copilot-auth/poll',
-        '/api/copilot-auth/status', '/api/copilot-auth/logout',
-        '/api/model', '/api/model/test', '/api/model-pricing/refresh',
-        '/api/trash', '/api/trash/restore', '/api/trash/empty', '/api/trash/delete',
-    }
+    # One shared LLM client used by model-catalog / test endpoints.
+    # Per-session LLM clients are created inside each SessionEntry.
+    llm_client = get_llm_provider(
+        provider=_provider_name, model=args.model, auth_manager=auth_manager
+    )
+
+    # ── Session registry ─────────────────────────────────────────────────────
+    # Replaces the single global conversation + orchestrator pair.
+    # Each browser tab gets its own session identified by a short UUID.
+    _app_config = get_config()
+
+    def _build_objects_for_registry(_config_ignored):
+        """Factory passed to SessionRegistry; uses the app's CLI args."""
+        return _web_app_build_objects(args, auth_manager)
+
+    session_registry = SessionRegistry(
+        idle_timeout_minutes=_app_config.idle_timeout_minutes,
+        build_objects=_build_objects_for_registry,
+    )
 
     @app.before_request
-    def _acquire_session_lock():
-        if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
-            if request.path.startswith('/api/') and request.path not in _LOCK_EXEMPT_PATHS:
-                acquired = _session_lock.acquire(blocking=False)
-                if not acquired:
-                    return jsonify({
-                        "error": "Session busy",
-                        "message": "Another session is active. Close the other tab or wait for it to complete.",
-                    }), 409
-                request.environ['_session_lock_acquired'] = True
+    def _evict_idle_sessions():
+        """Lazily evict stale sessions on every request."""
+        session_registry.evict_idle()
 
-    @app.teardown_request
-    def _release_session_lock(exc=None):
-        if request.environ.get('_session_lock_acquired'):
-            _session_lock.release()
-            request.environ['_session_lock_acquired'] = False
-    # ── end single-session guard ────────────────────────────────────────────
+    # ── Session helpers ──────────────────────────────────────────────────────
+
+    def _get_session(required: bool = True):
+        """Extract session_id from the request and return the SessionEntry.
+
+        For GET requests reads from query string.
+        For POST/PUT/DELETE reads from query string OR JSON body.
+        Returns None (does not raise) when required=False and session_id absent.
+        Aborts 400 when required=True and session_id absent.
+        Aborts 404 when session_id present but not in registry.
+        """
+        from flask import abort as _abort
+        sid = request.args.get('session_id')
+        if not sid and request.is_json:
+            sid = (request.get_json(silent=True) or {}).get('session_id')
+        if not sid:
+            if required:
+                _abort(400, description='session_id is required')
+            return None
+        try:
+            return session_registry.get_or_404(sid)
+        except SessionNotFoundError:
+            _abort(404, description=f'Session not found: {sid}')
+
+    def _validate_owner(entry) -> None:
+        """Validate that the request's owner_token matches the session's owner.
+
+        Reads owner_token from the JSON body or query string (GET requests).
+        Aborts 403 if the token does not match.
+        Skips validation if the session has no owner set yet (unclaimed).
+        """
+        from flask import abort as _abort
+        if entry.owner_token is None:
+            return  # unclaimed — allow any caller
+        token = (request.get_json(silent=True) or {}).get('owner_token')
+        if token is None:
+            token = request.args.get('owner_token')
+        if token != entry.owner_token:
+            _abort(403, description='Not the session owner')
 
     def _infer_position_name(job_text: str) -> Optional[str]:
         """Infer a concise position label from job text."""
@@ -587,41 +635,51 @@ Job Description (excerpt):
 
         return cleaned[:4]
 
-    # Preload job description if provided
+    # Preload job description if provided — create a session for it
+    _preload_session_id: Optional[str] = None
     if args.job_file:
         job_file_path = Path(args.job_file)
         if job_file_path.exists():
             job_text = job_file_path.read_text(encoding="utf-8")
-            conversation.add_job_description(job_text)
+            _preload_sid, _preload_entry = session_registry.create(_app_config)
+            _preload_session_id = _preload_sid
+            _preload_conv = _preload_entry.manager
+            _preload_conv.add_job_description(job_text)
             # Extract position name from filename (remove date suffix and extension)
             position_name = job_file_path.stem
-            # Remove date pattern like _2026-01-14 from end
-            import re
             position_name = re.sub(r'_\d{4}-\d{2}-\d{2}$', '', position_name)
-            conversation.state["position_name"] = position_name
+            _preload_conv.state["position_name"] = position_name
             print(f"✓ Position name set to: {position_name}")
-            
+            print(f"✓ Pre-loaded session ID: {_preload_sid}")
+
             # Try to load the most recent session for this position
             try:
-                loaded = conversation._load_latest_session_for_position(position_name)
+                loaded = _preload_conv._load_latest_session_for_position(position_name)
                 if loaded:
                     print(f"✓ Restored previous session for: {position_name}")
                 else:
-                    # No existing session, add placeholder to conversation history
-                    conversation.conversation_history.append({
+                    _preload_conv.conversation_history.append({
                         "role": "system",
-                        "content": f"Job description loaded: {job_text.split(chr(10))[0]} at {job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company'}",
+                        "content": (
+                            f"Job description loaded: {job_text.split(chr(10))[0]} at "
+                            + (job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company')
+                        ),
                     })
             except Exception as e:
                 print(f"⚠ Could not load previous session: {e}")
-                # Add placeholder to conversation history
-                conversation.conversation_history.append({
+                _preload_conv.conversation_history.append({
                     "role": "system",
-                    "content": f"Job description loaded: {job_text.split(chr(10))[0]} at {job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company'}",
+                    "content": (
+                        f"Job description loaded: {job_text.split(chr(10))[0]} at "
+                        + (job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company')
+                    ),
                 })
+            session_registry.touch(_preload_sid)
 
     @app.get("/")
     def index():
+        if _preload_session_id and not request.args.get("session"):
+            return redirect(url_for("index", session=_preload_session_id))
         page_path = Path(__file__).parent.parent / "web" / "index.html"
         return send_file(page_path)
 
@@ -646,6 +704,10 @@ Job Description (excerpt):
 
     @app.get("/api/status")
     def status():
+        # Read-only: no lock, no touch.
+        entry = _get_session()
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
         # Get all experience IDs from master data
         all_experience_ids = []
         all_skills = []
@@ -692,6 +754,7 @@ Job Description (excerpt):
             extra_skills=conversation.state.get("extra_skills")            or [],
             session_file=str(getattr(conversation, "session_file", "") or ""),
             max_skills=int(conversation.state.get("max_skills") or get_config().get("generation.max_skills", 20)),
+            achievement_edits=conversation.state.get("achievement_edits")       or {},
         )))
 
     @app.get("/api/master-fields")
@@ -701,6 +764,8 @@ Job Description (excerpt):
         This endpoint re-reads directly from disk to bypass any in-memory state
         issues, ensuring the data is always fresh and available.
         """
+        entry = _get_session()
+        orchestrator = entry.orchestrator
         try:
             with open(orchestrator.master_data_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -708,6 +773,7 @@ Job Description (excerpt):
                 "ok": True,
                 "selected_achievements":   data.get('selected_achievements', []),
                 "professional_summaries":  data.get('professional_summaries', {}),
+                "experiences":             data.get('experience', []),
             })
         except Exception as e:
             return jsonify({
@@ -715,6 +781,7 @@ Job Description (excerpt):
                 "error": str(e),
                 "selected_achievements":  [],
                 "professional_summaries": {},
+                "experiences":            [],
             }), 500
 
     # ── Master data management endpoints ────────────────────────────────────
@@ -722,6 +789,8 @@ Job Description (excerpt):
     @app.get("/api/master-data/overview")
     def master_data_overview():
         """Return a profile summary (counts + personal info) from the master CV file."""
+        entry = _get_session()
+        orchestrator = entry.orchestrator
         try:
             with open(orchestrator.master_data_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -752,6 +821,9 @@ Job Description (excerpt):
     @app.post("/api/master-data/update-achievement")
     def master_data_update_achievement():
         """Update an existing selected achievement or add a new one to the master CV."""
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
         req  = request.get_json() or {}
         ach_id = (req.get('id') or '').strip()
         if not ach_id:
@@ -788,6 +860,9 @@ Job Description (excerpt):
     @app.post("/api/master-data/update-summary")
     def master_data_update_summary():
         """Update or add a named professional summary variant in the master CV."""
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
         req  = request.get_json() or {}
         key  = (req.get('key') or '').strip()
         text = (req.get('text') or '').strip()
@@ -829,6 +904,11 @@ Job Description (excerpt):
         Returns:
             {"ok": true, "summary": "<text>"}
         """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
+        sid = entry.session_id
         try:
             req = request.get_json() or {}
             refinement_prompt = (req.get('refinement_prompt') or '').strip() or None
@@ -860,24 +940,26 @@ Job Description (excerpt):
                     if recommended_ids else all_experiences
                 )
 
-            summary = llm_client.generate_professional_summary(
-                job_analysis=job_analysis,
-                master_data=orchestrator.master_data if orchestrator else {},
-                selected_experiences=selected_experiences,
-                refinement_prompt=refinement_prompt,
-                previous_summary=previous_summary,
-            )
+            with entry.lock:
+                summary = llm_client.generate_professional_summary(
+                    job_analysis=job_analysis,
+                    master_data=orchestrator.master_data if orchestrator else {},
+                    selected_experiences=selected_experiences,
+                    refinement_prompt=refinement_prompt,
+                    previous_summary=previous_summary,
+                )
 
-            if not summary:
-                return jsonify({"ok": False, "error": "LLM returned an empty summary. Please try again."}), 500
+                if not summary:
+                    return jsonify({"ok": False, "error": "LLM returned an empty summary. Please try again."}), 500
 
-            # Persist in session_summaries so the orchestrator can resolve it
-            session_summaries = conversation.state.get('session_summaries') or {}
-            session_summaries['ai_generated'] = summary
-            conversation.state['session_summaries'] = session_summaries
-            # Auto-select the generated summary
-            conversation.state['summary_focus_override'] = 'ai_generated'
-            conversation._save_session()
+                # Persist in session_summaries so the orchestrator can resolve it
+                session_summaries = conversation.state.get('session_summaries') or {}
+                session_summaries['ai_generated'] = summary
+                conversation.state['session_summaries'] = session_summaries
+                # Auto-select the generated summary
+                conversation.state['summary_focus_override'] = 'ai_generated'
+                conversation._save_session()
+            session_registry.touch(sid)
 
             return jsonify({"ok": True, "summary": summary})
 
@@ -932,7 +1014,12 @@ Job Description (excerpt):
     @app.post("/api/cover-letter/generate")
     def cover_letter_generate():
         """Generate a cover letter using the LLM and current session context."""
-        with _session_lock:
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
+        sid = entry.session_id
+        with entry.lock:
             body            = request.get_json(silent=True) or {}
             tone            = body.get('tone', 'startup/tech')
             hiring_manager  = (body.get('hiring_manager') or 'Hiring Manager').strip()
@@ -947,7 +1034,11 @@ Job Description (excerpt):
             # Build skills/summary snippet from master data
             skills_raw = master.get('skills', [])
             all_skills = conversation.normalize_skills_data(skills_raw)
-            top_skills = ', '.join(all_skills[:12]) if all_skills else '(see attached CV)'
+            skill_names = [
+                s.get('name', str(s)) if isinstance(s, dict) else str(s)
+                for s in all_skills
+            ]
+            top_skills = ', '.join(skill_names[:12]) if skill_names else '(see attached CV)'
 
             summaries = master.get('professional_summaries', {})
             if isinstance(summaries, dict) and summaries:
@@ -1028,12 +1119,17 @@ Close professionally with a call to action.
                 'tone': tone, 'hiring_manager': hiring_manager,
                 'company_address': company_address, 'highlight': highlight,
             }
-            return jsonify({'ok': True, 'text': letter_text})
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'text': letter_text})
 
     @app.post("/api/cover-letter/save")
     def cover_letter_save():
         """Save cover letter text to DOCX in the output directory and update metadata.json."""
-        with _session_lock:
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        with entry.lock:
             text = (request.get_json(silent=True) or {}).get('text', '').strip()
             if not text:
                 return jsonify({'error': 'text is required'}), 400
@@ -1075,6 +1171,7 @@ Close professionally with a call to action.
                     json.dump(metadata, f, indent=2)
 
                 conversation.state['cover_letter_text'] = text
+                session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename})
             except Exception as e:
                 return jsonify({'ok': False, 'error': str(e)}), 500
@@ -1182,9 +1279,10 @@ Close professionally with a call to action.
                 for e in selected
             ) or 'No specific experience provided.'
 
-            with _session_lock:
-                answers              = conversation.state.get('post_analysis_answers') or {}
-                cover_letter_snippet = (conversation.state.get('cover_letter_text') or '')[:400]
+            entry = _get_session()
+            conversation = entry.manager
+            answers              = conversation.state.get('post_analysis_answers') or {}
+            cover_letter_snippet = (conversation.state.get('cover_letter_text') or '')[:400]
 
             cl_context = (
                 '\n'.join(f'- {k}: {v}' for k, v in list(answers.items())[:8])
@@ -1225,13 +1323,18 @@ Close professionally with a call to action.
     @app.post("/api/screening/save")
     def screening_save():
         """Save screening responses to DOCX, update metadata.json, upsert response_library.json."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
+        sid = entry.session_id
         try:
             body         = request.get_json(force=True) or {}
             responses_in = body.get('responses') or []
             if not responses_in:
                 return jsonify({'ok': False, 'error': 'No responses to save.'}), 400
 
-            with _session_lock:
+            with entry.lock:
                 output_dir = Path(orchestrator.output_dir)
                 if not output_dir.exists():
                     return jsonify({'ok': False, 'error': 'Output directory not found. Generate a CV first.'}), 400
@@ -1288,6 +1391,7 @@ Close professionally with a call to action.
                     json.dump(library, f, indent=2)
 
                 conversation.state['screening_responses'] = responses_in
+                session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename, 'count': len(responses_in)})
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
@@ -1542,8 +1646,10 @@ Close professionally with a call to action.
             llm_client     = candidate_client
             _provider_name = provider
             _current_model = model
-            orchestrator.llm = llm_client
-            conversation.llm = llm_client
+            # Update all active sessions with the new LLM client
+            for _entry in session_registry.all_active():
+                _entry.orchestrator.llm = llm_client
+                _entry.manager.llm = llm_client
             return jsonify({"ok": True, "provider": provider, "model": model})
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
@@ -1580,28 +1686,38 @@ Close professionally with a call to action.
 
     @app.post("/api/job")
     def submit_job():
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         job_text: Optional[str] = data.get("job_text")
         if not job_text:
             return jsonify({"error": "Missing job_text"}), 400
-        # Store job description in state and also add to conversation history
-        conversation.add_job_description(job_text)
-        conversation.state["position_name"] = _infer_position_name(job_text)
-        conversation.conversation_history.append({
-            "role": "user",
-            "content": job_text,
-        })
+        with entry.lock:
+            # Store job description in state and also add to conversation history
+            conversation.add_job_description(job_text)
+            conversation.state["position_name"] = _infer_position_name(job_text)
+            conversation.conversation_history.append({
+                "role": "user",
+                "content": job_text,
+            })
+        session_registry.touch(sid)
         return jsonify({"ok": True, "message": "Job description added."})
     
     @app.post("/api/fetch-job-url")
     def fetch_job_url():
         """Fetch job description from URL with enhanced error handling"""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         url = data.get("url")
-        
+
         if not url:
             return jsonify({"error": "Missing URL"}), 400
-        
+
         try:
             # Validate URL format
             parsed = urlparse(url)
@@ -1791,9 +1907,10 @@ Close professionally with a call to action.
                 }), 400
             
             # Store job description in state
-            conversation.add_job_description(job_text)
-            conversation.state["position_name"] = _infer_position_name(job_text)
-            
+            with entry.lock:
+                conversation.add_job_description(job_text)
+                conversation.state["position_name"] = _infer_position_name(job_text)
+            session_registry.touch(sid)
             print(f"✅ Successfully fetched {len(job_text)} characters from {domain}")
             
             return jsonify({
@@ -1936,31 +2053,37 @@ Close professionally with a call to action.
     @app.post("/api/load-job-file")
     def load_job_file():
         """Load a job description from a file."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         filename = data.get("filename")
         if not filename:
             return jsonify({"error": "Missing filename"}), 400
-        
+
         # Look for the file in sample_jobs directory
         job_file_path = Path(__file__).parent.parent / "sample_jobs" / filename
-        
+
         # Also check CV directory for other job files
         if not job_file_path.exists():
             cv_path = Path.home() / "CV" / "files" / filename
             if cv_path.exists():
                 job_file_path = cv_path
-        
+
         if not job_file_path.exists():
             return jsonify({"error": f"File not found: {filename}"}), 404
-        
+
         try:
             with open(job_file_path, 'r', encoding='utf-8') as f:
                 job_text = f.read()
-            
-            # Store job description in state
-            conversation.add_job_description(job_text)
-            conversation.state["position_name"] = _infer_position_name(job_text)
-            
+
+            with entry.lock:
+                # Store job description in state
+                conversation.add_job_description(job_text)
+                conversation.state["position_name"] = _infer_position_name(job_text)
+            session_registry.touch(sid)
+
             return jsonify({
                 "ok": True,
                 "job_text": job_text,
@@ -1972,6 +2095,8 @@ Close professionally with a call to action.
     @app.get("/api/positions")
     def positions():
         # Reuse ConversationManager helper to list positions
+        entry = _get_session()
+        conversation = entry.manager
         try:
             names = conversation._list_positions()
             return jsonify({"positions": names})
@@ -1980,25 +2105,37 @@ Close professionally with a call to action.
 
     @app.post("/api/position")
     def set_position():
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         name = data.get("name")
         open_latest = bool(data.get("open_latest"))
         if not name:
             return jsonify({"error": "Missing name"}), 400
-        conversation.state["position_name"] = name
-        loaded = False
-        if open_latest:
-            loaded = conversation._load_latest_session_for_position(name)
+        with entry.lock:
+            conversation.state["position_name"] = name
+            loaded = False
+            if open_latest:
+                loaded = conversation._load_latest_session_for_position(name)
+        session_registry.touch(sid)
         return jsonify({"ok": True, "loaded": loaded, "position_name": name})
 
     @app.post("/api/message")
     def send_message():
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         msg: Optional[str] = data.get("message")
         if not msg:
             return jsonify({"error": "Missing message"}), 400
         try:
-            response = conversation._process_message(msg)
+            with entry.lock:
+                response = conversation._process_message(msg)
+            session_registry.touch(sid)
             return jsonify(dataclasses.asdict(MessageResponse(
                 ok=True,
                 response=response,
@@ -2032,17 +2169,24 @@ Close professionally with a call to action.
     @app.post("/api/rename-current-session")
     def rename_current_session():
         """Rename the currently active session (no path needed)."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         new_name = (data.get("new_name") or "").strip()[:200]
         if not new_name:
             return jsonify({"error": "Missing new_name"}), 400
-        conversation.state["position_name"] = new_name
-        conversation._save_session()
+        with entry.lock:
+            conversation.state["position_name"] = new_name
+            conversation._save_session()
+        session_registry.touch(sid)
         return jsonify({"ok": True, "new_name": new_name})
 
     @app.post("/api/rename-session")
     def rename_session():
         """Rename a session's position_name in its session.json file."""
+        # This is a disk-level rename; it does NOT require an active session_id.
         data = request.get_json(silent=True) or {}
         path     = data.get("path")
         new_name = (data.get("new_name") or "").strip()[:200]
@@ -2067,11 +2211,12 @@ Close professionally with a call to action.
             session_data.setdefault("state", {})["position_name"] = new_name
             with open(session_file, "w", encoding="utf-8") as f:
                 json.dump(session_data, f, indent=2, default=str)
-            # If this is the currently-active session, sync in-memory state too
-            active = getattr(conversation, "session_file", None)
-            if active and str(Path(active).resolve()) == str(session_file.resolve()):
-                conversation.state["position_name"] = new_name
-                conversation._save_session()
+            # If this is an active in-memory session, sync in-memory state too
+            for _entry in session_registry.all_active():
+                _active = getattr(_entry.manager, "session_file", None)
+                if _active and str(Path(_active).resolve()) == str(session_file.resolve()):
+                    _entry.manager.state["position_name"] = new_name
+                    _entry.manager._save_session()
             return jsonify({"ok": True, "new_name": new_name})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -2090,6 +2235,9 @@ Close professionally with a call to action.
     @app.get("/api/context-stats")
     def context_stats():
         """Return a rough token-usage estimate for the current session."""
+        entry = _get_session()
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
         MODEL_CONTEXT_WINDOWS = {
             "gemini-2.5-pro":    2_000_000,
             "gemini-2.5-flash":  1_048_576,
@@ -2145,13 +2293,22 @@ Close professionally with a call to action.
         Request body: ``{"max_skills": int}``
         All fields are optional; only provided fields are updated.
         """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         if "max_skills" in data:
             v = data["max_skills"]
             if not isinstance(v, int) or not (1 <= v <= 100):
                 return jsonify({"error": "max_skills must be an integer between 1 and 100"}), 400
-            conversation.state["max_skills"] = v
-        conversation._save_session()
+            with entry.lock:
+                conversation.state["max_skills"] = v
+                conversation._save_session()
+        else:
+            with entry.lock:
+                conversation._save_session()
+        session_registry.touch(sid)
         cfg_default = get_config().get("generation.max_skills", 20)
         return jsonify({
             "ok": True,
@@ -2162,22 +2319,33 @@ Close professionally with a call to action.
     def reset():
         # Call the reset logic via the existing method (requires user confirmation in CLI).
         # For web, we reset directly.
-        conversation.conversation_history = []
-        conversation.state = {
-            "phase": Phase.INIT,
-            "position_name": None,
-            "job_description": None,
-            "job_analysis": None,
-            "post_analysis_questions": [],
-            "post_analysis_answers": {},
-            "customizations": None,
-            "generated_files": None,
-        }
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        with entry.lock:
+            conversation.conversation_history = []
+            conversation.state = {
+                "phase": Phase.INIT,
+                "position_name": None,
+                "job_description": None,
+                "job_analysis": None,
+                "post_analysis_questions": [],
+                "post_analysis_answers": {},
+                "customizations": None,
+                "generated_files": None,
+            }
+            conversation._save_session()
+        session_registry.touch(sid)
         return jsonify({"ok": True, "message": "Conversation reset."})
 
     @app.post("/api/post-analysis-responses")
     def post_analysis_responses():
         """Persist generated post-analysis questions and user answers into session state."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         questions = data.get("questions") or []
         answers = data.get("answers") or {}
@@ -2208,9 +2376,11 @@ Close professionally with a call to action.
             if clean_value:
                 cleaned_answers[clean_key] = clean_value[:1000]
 
-        conversation.state["post_analysis_questions"] = cleaned_questions
-        conversation.state["post_analysis_answers"] = cleaned_answers
-        conversation._save_session()
+        with entry.lock:
+            conversation.state["post_analysis_questions"] = cleaned_questions
+            conversation.state["post_analysis_answers"] = cleaned_answers
+            conversation._save_session()
+        session_registry.touch(sid)
 
         return jsonify({
             "ok": True,
@@ -2220,8 +2390,11 @@ Close professionally with a call to action.
 
     @app.post("/api/save")
     def save():
+        entry = _get_session()
+        conversation = entry.manager
         try:
-            conversation._save_session()
+            with entry.lock:
+                conversation._save_session()
             session_file = str(conversation.session_dir / "session.json") if conversation.session_dir else None
             return jsonify({"ok": True, "session_file": session_file})
         except Exception as e:
@@ -2320,7 +2493,7 @@ Close professionally with a call to action.
 
     @app.post("/api/load-session")
     def load_session_endpoint():
-        """Load a saved session file into the running conversation state."""
+        """Load a saved session file and register it in the session registry."""
         data = request.get_json(silent=True) or {}
         path = data.get("path")
         if not path:
@@ -2329,9 +2502,12 @@ Close professionally with a call to action.
         if not session_file.exists():
             return jsonify({"error": f"Session file not found: {path}"}), 404
         try:
-            conversation.load_session(str(session_file))
+            sid, entry = session_registry.load_from_file(str(session_file), _app_config)
+            conversation = entry.manager
             return jsonify({
                 "ok":            True,
+                "session_id":    sid,
+                "redirect_url":  f"/?session={sid}",
                 "session_file":  str(session_file),
                 "position_name": conversation.state.get("position_name"),
                 "phase":         conversation.state.get("phase"),
@@ -2498,22 +2674,28 @@ Close professionally with a call to action.
 
     @app.post("/api/action")
     def do_action():
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         action = data.get("action")
         if not action:
             return jsonify({"error": "Missing action"}), 400
-        
+
         # Format the payload correctly for _execute_action
         payload = {"action": action}
         if data.get("job_text"):
             payload["job_text"] = data["job_text"]
         if data.get("user_preferences"):
             payload["user_preferences"] = data["user_preferences"]
-            
+
         try:
-            result = conversation._execute_action(payload)
+            with entry.lock:
+                result = conversation._execute_action(payload)
             if not result:
                 return jsonify({"error": "Invalid or unsupported action"}), 400
+            session_registry.touch(sid)
             return jsonify(dataclasses.asdict(ActionResponse(
                 ok=True,
                 result=result,
@@ -2545,18 +2727,24 @@ Close professionally with a call to action.
         If ``feedback`` is provided it is injected as a user message so the
         next LLM call sees it as context.
         """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         target = data.get("phase")
         if not target:
             return jsonify({"error": "Missing phase"}), 400
         try:
-            result = conversation.back_to_phase(target)
-            feedback = (data.get("feedback") or "").strip()
-            if feedback:
-                conversation.conversation_history.append({
-                    "role": "user",
-                    "content": f"[Refinement feedback for {target}]: {feedback}",
-                })
+            with entry.lock:
+                result = conversation.back_to_phase(target)
+                feedback = (data.get("feedback") or "").strip()
+                if feedback:
+                    conversation.conversation_history.append({
+                        "role": "user",
+                        "content": f"[Refinement feedback for {target}]: {feedback}",
+                    })
+            session_registry.touch(sid)
             return jsonify(result)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -2568,14 +2756,20 @@ Close professionally with a call to action.
         Body: ``{"phase": "analysis"|"customizations"|"rewrite"}``
         Returns ``{ok, phase, prior_output, new_output}``.
         """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         target = data.get("phase")
         if not target:
             return jsonify({"error": "Missing phase"}), 400
         try:
-            result = conversation.re_run_phase(target)
+            with entry.lock:
+                result = conversation.re_run_phase(target)
             if not result.get("ok"):
                 return jsonify(result), 400
+            session_registry.touch(sid)
             return jsonify(result)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -2589,6 +2783,8 @@ Close professionally with a call to action.
         Returns ``{term, canonical, found}`` — ``found`` is False when no
         mapping exists (canonical == term in that case).
         """
+        entry = _get_session()
+        conversation = entry.manager
         term = request.args.get("term", "").strip()
         if not term:
             return jsonify({"error": "Missing term query parameter"}), 400
@@ -2598,6 +2794,8 @@ Close professionally with a call to action.
     @app.get("/api/synonym-map")
     def synonym_map():
         """Return the full synonym map as ``{alias: canonical}``."""
+        entry = _get_session()
+        conversation = entry.manager
         return jsonify(conversation.orchestrator._synonym_map)
 
     @app.post("/api/reorder-bullets")
@@ -2609,6 +2807,10 @@ Close professionally with a call to action.
         display order.  Pass an empty list to reset to relevance-sorted order.
         Returns ``{ok: true}``.
         """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         exp_id = data.get("experience_id")
         order  = data.get("order")
@@ -2619,12 +2821,14 @@ Close professionally with a call to action.
         if not isinstance(order, list):
             return jsonify({"error": "order must be a list of integers"}), 400
         try:
-            achievement_orders = conversation.state.setdefault("achievement_orders", {})
-            if order:
-                achievement_orders[exp_id] = [int(i) for i in order]
-            else:
-                achievement_orders.pop(exp_id, None)  # reset → use auto relevance sort
-            conversation._save_session()
+            with entry.lock:
+                achievement_orders = conversation.state.setdefault("achievement_orders", {})
+                if order:
+                    achievement_orders[exp_id] = [int(i) for i in order]
+                else:
+                    achievement_orders.pop(exp_id, None)  # reset → use auto relevance sort
+                conversation._save_session()
+            session_registry.touch(sid)
             return jsonify({"ok": True, "experience_id": exp_id, "order": order})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -2638,6 +2842,8 @@ Close professionally with a call to action.
         Indices are original achievement positions sorted by keyword relevance (highest first).
         Returns natural order when no job analysis is available.
         """
+        entry = _get_session()
+        conversation = entry.manager
         exp_id = request.args.get("experience_id")
         if not exp_id:
             return jsonify({"error": "Missing experience_id"}), 400
@@ -2675,6 +2881,8 @@ Close professionally with a call to action.
     @app.post("/api/post-analysis-draft-response")
     def post_analysis_draft_response():
         """Use the LLM to draft an answer for a single clarification question."""
+        entry = _get_session()
+        conversation = entry.manager
         try:
             body          = request.get_json(force=True) or {}
             question      = (body.get('question') or '').strip()
@@ -2684,8 +2892,7 @@ Close professionally with a call to action.
             if not question:
                 return jsonify({'ok': False, 'error': 'question required'}), 400
 
-            with _session_lock:
-                existing_answers = conversation.state.get('post_analysis_answers') or {}
+            existing_answers = conversation.state.get('post_analysis_answers') or {}
 
             context_items: List[str] = []
             if isinstance(analysis, dict):
@@ -2737,6 +2944,10 @@ Close professionally with a call to action.
     @app.post("/api/post-analysis-questions")
     def post_analysis_questions():
         """Generate post-analysis clarifying questions, preferably via LLM."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
 
         analysis = _coerce_to_dict(
@@ -2765,14 +2976,18 @@ Close professionally with a call to action.
         if not questions:
             questions = _fallback_post_analysis_questions(analysis)
 
-        conversation.state["post_analysis_questions"] = questions
-        conversation._save_session()
+        with entry.lock:
+            conversation.state["post_analysis_questions"] = questions
+            conversation._save_session()
+        session_registry.touch(sid)
 
         return jsonify({"ok": True, "questions": questions, "source": source})
 
     @app.get("/api/history")
     def history():
         # Return the conversation history for chat-style rendering
+        entry = _get_session()
+        conversation = entry.manager
         return jsonify({
             "history": conversation.conversation_history,
             "phase": conversation.state.get("phase"),
@@ -2784,15 +2999,17 @@ Close professionally with a call to action.
     
     @app.post("/api/experience-details")
     def get_experience_details():
+        entry = _get_session()
+        conversation = entry.manager
         data = request.get_json(silent=True) or {}
         experience_id = data.get("experience_id")
         if not experience_id:
             return jsonify({"error": "Missing experience_id"}), 400
-            
+
         try:
             # Normalize the ID to match master data format
             normalized_id = normalize_experience_id(experience_id)
-            
+
             # Look up experience details in master data
             master_data = conversation.orchestrator.master_data
             experience = None
@@ -2823,17 +3040,21 @@ Close professionally with a call to action.
     @app.route('/api/review-decisions', methods=['POST'])
     def save_review_decisions():
         """Save user's review decisions for experiences/skills"""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.json
-        
+
         if not data:
             return jsonify({"error": "No data provided"}), 400
-        
+
         decision_type = data.get('type')  # 'experiences' or 'skills'
         decisions = data.get('decisions', {})
-        
+
         if not decision_type or not decisions:
             return jsonify({"error": "Missing type or decisions"}), 400
-        
+
         try:
             # Store decisions in conversation state
             if decision_type == 'experiences':
@@ -2847,7 +3068,12 @@ Close professionally with a call to action.
                 message = f"Saved decisions for {len(decisions)} skills"
             elif decision_type == 'achievements':
                 conversation.state['achievement_decisions'] = decisions
-                message = f"Saved decisions for {len(decisions)} achievements"
+                accepted_suggestions = data.get('accepted_suggestions', [])
+                if accepted_suggestions:
+                    conversation.state['accepted_suggested_achievements'] = accepted_suggestions
+                message = f"Saved decisions for {len(decisions)} achievements" + (
+                    f" (+{len(accepted_suggestions)} AI suggestions accepted)" if accepted_suggestions else ""
+                )
             elif decision_type == 'publications':
                 conversation.state['publication_decisions'] = decisions
                 message = f"Saved decisions for {len(decisions)} publications"
@@ -2860,19 +3086,124 @@ Close professionally with a call to action.
             
             # Save the updated state
             conversation._save_session()
-            
+
             print(f"Saved {decision_type} decisions: {decisions}")
+            session_registry.touch(sid)
             return jsonify({"success": True, "message": message})
-            
+
         except Exception as e:
             print(f"ERROR in save_review_decisions: {e}")
             import traceback
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
+    @app.route('/api/save-achievement-edits', methods=['POST'])
+    def save_achievement_edits():
+        """Save per-experience achievement edits from the achievements editor tab."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.json or {}
+        edits = data.get('edits', {})
+        if not edits:
+            return jsonify({"error": "No edits provided"}), 400
+        # Convert string keys (from JSON) to int if needed
+        normalized = {int(k): v for k, v in edits.items() if str(k).lstrip("-").isdigit()}
+        with entry.lock:
+            conversation.state['achievement_edits'] = normalized
+            conversation._save_session()
+        session_registry.touch(sid)
+        total = sum(len(v) for v in normalized.values())
+        return jsonify({"success": True, "message": f"Saved edits for {len(normalized)} experiences ({total} achievements)"})
+
+    @app.route('/api/rewrite-achievement', methods=['POST'])
+    def rewrite_achievement():
+        """Ask the LLM to rewrite a single achievement bullet."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
+        data = request.json or {}
+        achievement_text = data.get('achievement_text', '').strip()
+        experience_index = data.get('experience_index')
+        user_instructions    = data.get('user_instructions', '').strip()
+        previous_suggestions = data.get('previous_suggestions') or []
+        if not isinstance(previous_suggestions, list):
+            previous_suggestions = []
+
+        if not achievement_text:
+            return jsonify({"error": "achievement_text is required"}), 400
+
+        # Gather context: experience title + job description
+        experience_context = ''
+        if experience_index is not None:
+            try:
+                exp_idx = int(experience_index)
+                with open(orchestrator.master_data_path, 'r', encoding='utf-8') as _f:
+                    _master = json.load(_f)
+                experiences = _master.get('experience', [])
+                if 0 <= exp_idx < len(experiences):
+                    exp = experiences[exp_idx]
+                    title   = exp.get('title', exp.get('position', ''))
+                    company = exp.get('company', exp.get('organization', ''))
+                    experience_context = f"{title} at {company}".strip(' at')
+            except (ValueError, TypeError, OSError):
+                pass
+
+        job_description = conversation.state.get('job_description') or ''
+
+        try:
+            rewritten = llm_client.rewrite_achievement(
+                achievement_text=achievement_text,
+                experience_context=experience_context,
+                job_description=job_description,
+                user_instructions=user_instructions,
+                previous_suggestions=previous_suggestions,
+            )
+            log_id = conversation.log_achievement_rewrite(
+                original_text=achievement_text,
+                experience_context=experience_context,
+                user_instructions=user_instructions,
+                previous_suggestions=previous_suggestions,
+                suggested_text=rewritten,
+            )
+            return jsonify({"rewritten": rewritten, "log_id": log_id})
+        except Exception as e:
+            print(f"ERROR rewriting achievement: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/api/rewrite-achievement-outcome', methods=['POST'])
+    def rewrite_achievement_outcome():
+        """Record the user's accept/reject decision for an AI rewrite suggestion."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        data = request.json or {}
+        log_id = data.get('log_id', '').strip()
+        outcome = data.get('outcome', '').strip()
+        accepted_text = data.get('accepted_text') or None
+
+        if not log_id:
+            return jsonify({"error": "log_id is required"}), 400
+        if outcome not in ('accepted', 'rejected'):
+            return jsonify({"error": "outcome must be 'accepted' or 'rejected'"}), 400
+
+        found = conversation.update_achievement_rewrite_outcome(
+            log_id=log_id,
+            outcome=outcome,
+            accepted_text=accepted_text,
+        )
+        if not found:
+            return jsonify({"error": "log_id not found"}), 404
+        return jsonify({"ok": True})
+
     @app.route('/api/cv-data', methods=['GET'])
     def get_cv_data():
         """Get current CV data for editing"""
+        entry = _get_session()
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
         try:
             # Get CV data from orchestrator's master data
             cv_data = {
@@ -2881,7 +3212,7 @@ Close professionally with a call to action.
                 'experiences': [],
                 'skills': []
             }
-            
+
             if orchestrator and orchestrator.master_data:
                 master_data = orchestrator.master_data
                 
@@ -2928,15 +3259,21 @@ Close professionally with a call to action.
     @app.route('/api/cv-data', methods=['POST'])
     def save_cv_data():
         """Save edited CV data"""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         try:
             data = request.json
             if not data:
                 return jsonify({"error": "No data provided"}), 400
-            
+
             # Store the edited CV data in the conversation state for now
             # In a full implementation, you'd want to update the master data file
-            conversation.state['edited_cv_data'] = data
-            conversation._save_session()
+            with entry.lock:
+                conversation.state['edited_cv_data'] = data
+                conversation._save_session()
+            session_registry.touch(sid)
             
             # Log the changes
             print(f"CV data updated:")
@@ -2969,7 +3306,22 @@ Close professionally with a call to action.
         no LLM is configured or the LLM found nothing to rewrite) so the
         frontend can fall through gracefully.
         """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
+        sid = entry.session_id
         try:
+            # Return cached rewrites on restore rather than re-running the LLM
+            stored_rewrites = conversation.state.get('pending_rewrites')
+            if stored_rewrites:
+                return jsonify(dataclasses.asdict(RewritesResponse(
+                    ok=True,
+                    rewrites=stored_rewrites,
+                    persuasion_warnings=conversation.state.get('persuasion_warnings', []),
+                    phase=Phase.REWRITE_REVIEW,
+                )))
+
             job_analysis = conversation.state.get('job_analysis')
             if not job_analysis:
                 return jsonify({"error": "Job analysis not available. Analyse the job first."}), 400
@@ -3005,6 +3357,7 @@ Close professionally with a call to action.
                 phase = Phase.GENERATION
 
             conversation._save_session()
+            session_registry.touch(sid)
             return jsonify(dataclasses.asdict(RewritesResponse(
                 ok=True,
                 rewrites=rewrites,
@@ -3030,6 +3383,10 @@ Close professionally with a call to action.
         builds ``approved_rewrites``, ``rewrite_audit``, advances the phase to
         ``'generation'``, and persists the session.
         """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         data = request.get_json(silent=True) or {}
         decisions = data.get('decisions')
         if decisions is None:
@@ -3038,7 +3395,9 @@ Close professionally with a call to action.
             return jsonify({"error": "decisions must be a list"}), 400
 
         try:
-            summary = conversation.submit_rewrite_decisions(decisions)
+            with entry.lock:
+                summary = conversation.submit_rewrite_decisions(decisions)
+            session_registry.touch(sid)
             return jsonify({
                 "ok":             True,
                 "approved_count": summary['approved_count'],
@@ -3059,6 +3418,10 @@ Close professionally with a call to action.
         computes them from `orchestrator.publications` + `session.job_analysis`.
         Computation runs at most once per session (cached in state).
         """
+        entry = _get_session()
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
+        sid = entry.session_id
         try:
             # Return cached recommendations if available.
             cached = conversation.state.get('publication_recommendations')
@@ -3153,6 +3516,7 @@ Close professionally with a call to action.
 
             conversation.state['publication_recommendations'] = recommendations
             conversation._save_session()
+            session_registry.touch(sid)
 
             total_count = len(recommendations)
             return jsonify({"ok": True, "recommendations": recommendations, "source": source, "total_count": total_count})
@@ -3165,6 +3529,8 @@ Close professionally with a call to action.
     @app.get("/api/download/<filename>")
     def download_file(filename):
         """Download generated CV files"""
+        entry = _get_session()
+        conversation = entry.manager
         try:
             # Get generated files from conversation state
             generated_files = conversation.state.get('generated_files', {})
@@ -3227,66 +3593,205 @@ Close professionally with a call to action.
     # Lazy singleton — the LanguageTool JVM starts on first call.
     _spell_checker: SpellChecker = SpellChecker()
 
-    def _prepopulate_spell_dict() -> None:
-        """Load skill names from master data into the custom dictionary once."""
+    def _prepopulate_spell_dict(orchestrator_inst) -> None:
+        """Load domain terms and proper nouns from master data into the custom dictionary."""
         try:
-            skills = orchestrator.master_data.get('skills', {})
-            # skills may be a list, dict of categories, or flat list
+            master = orchestrator_inst.master_data or {}
+            skills = master.get('skills', {})
             all_names: list = []
+
+            def _collect_names(values) -> None:
+                for value in values or []:
+                    if isinstance(value, dict):
+                        name = (
+                            value.get('name', '')
+                            or value.get('title', '')
+                            or value.get('degree', '')
+                            or value.get('institution', '')
+                            or value.get('company', '')
+                            or value.get('issuer', '')
+                            or value.get('language', '')
+                            or value.get('proficiency', '')
+                        )
+                        if name:
+                            all_names.append(str(name))
+                    elif value:
+                        all_names.append(str(value))
+
             if isinstance(skills, dict):
                 for cat_skills in skills.values():
                     if isinstance(cat_skills, list):
-                        all_names.extend(cat_skills)
+                        _collect_names(cat_skills)
             elif isinstance(skills, list):
-                all_names = [s if isinstance(s, str) else str(s) for s in skills]
-            # Also add candidate name
-            pinfo = orchestrator.master_data.get('personal_info', {})
-            name = pinfo.get('name', '')
-            if name:
-                all_names.append(name)
+                _collect_names(skills)
+
+            pinfo = master.get('personal_info', {})
+            all_names.extend(filter(None, [
+                pinfo.get('name', ''),
+                pinfo.get('title', ''),
+            ]))
+
+            for exp in master.get('experience', []) or []:
+                if isinstance(exp, dict):
+                    all_names.extend(filter(None, [
+                        exp.get('company', ''),
+                        exp.get('title', ''),
+                    ]))
+
+            for edu in master.get('education', []) or []:
+                if isinstance(edu, dict):
+                    all_names.extend(filter(None, [
+                        edu.get('institution', ''),
+                        edu.get('degree', ''),
+                        edu.get('field', ''),
+                    ]))
+
+            for award in master.get('awards', []) or []:
+                if isinstance(award, dict):
+                    all_names.extend(filter(None, [
+                        award.get('degree', ''),
+                        award.get('title', ''),
+                    ]))
+
+            for cert in master.get('certifications', []) or []:
+                if isinstance(cert, dict):
+                    all_names.extend(filter(None, [
+                        cert.get('name', ''),
+                        cert.get('issuer', ''),
+                    ]))
+
+            for lang in pinfo.get('languages', []) or []:
+                if isinstance(lang, dict):
+                    all_names.extend(filter(None, [
+                        lang.get('language', ''),
+                        lang.get('proficiency', ''),
+                    ]))
+                else:
+                    all_names.append(str(lang))
+
             _spell_checker.prepopulate_from_skills(all_names)
         except Exception:
             pass
 
     @app.get("/api/spell-check-sections")
     def spell_check_sections():
-        """Return the text sections that need spell checking for the current session."""
+        """Return the text sections that need spell checking for the current session.
+
+        Covers the professional summary and every non-omitted achievement bullet
+        from the selected work experiences, with approved rewrites already applied
+        so the spell-checked text matches what the CV will actually render.
+        """
+        entry = _get_session()
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
         sections = []
+
+        def _append_section(section_id: str, label: str, text: str, context: str = 'skill') -> None:
+            text = (text or '').strip()
+            if not text:
+                return
+            sections.append({
+                'id':      section_id,
+                'label':   label,
+                'text':    text,
+                'context': context,
+            })
         try:
-            state = conversation.state
-
-            # Professional summary (from master data or post-analysis answers)
-            post_answers = state.get('post_analysis_answers') or {}
-            summary_text = post_answers.get('custom_summary', '')
-            if not summary_text:
-                summaries = orchestrator.master_data.get('professional_summaries', {})
-                summary_text = summaries.get('default', '') or next(iter(summaries.values()), '')
-            if summary_text:
-                sections.append({
-                    'id':      'summary',
-                    'label':   'Professional Summary',
-                    'text':    summary_text,
-                    'context': 'summary',
-                })
-
-            # Approved rewrite proposed texts
+            state             = conversation.state
+            job_analysis      = state.get('job_analysis') or {}
+            customizations    = state.get('customizations') or {}
             approved_rewrites = state.get('approved_rewrites') or []
-            for r in approved_rewrites:
-                proposed = r.get('proposed', '')
-                if not proposed:
+            spell_audit       = state.get('spell_audit') or []
+
+            _prepopulate_spell_dict(orchestrator)
+            selected_content = orchestrator.build_render_ready_content(
+                job_analysis,
+                customizations,
+                approved_rewrites=approved_rewrites,
+                spell_audit=spell_audit,
+                max_skills=state.get('max_skills'),
+                use_semantic_match=False,
+            )
+
+            cv_data = orchestrator._prepare_cv_data_for_template(selected_content, job_analysis)
+
+            _append_section('summary', 'Professional Summary', cv_data.get('professional_summary', ''), 'summary')
+
+            for i, ach in enumerate(selected_content.get('achievements', []) or []):
+                text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
+                _append_section(f'selected_ach_{i}', f'Selected Achievement {i + 1}', text, 'bullet')
+
+            for idx, skill in enumerate(selected_content.get('skills', []) or []):
+                if isinstance(skill, dict):
+                    rendered_skill = skill.get('name', '')
+                    if skill.get('years'):
+                        rendered_skill += f" ({skill['years']} yrs)"
+                else:
+                    rendered_skill = str(skill)
+                _append_section(f'skill_{idx}', f'Skill {idx + 1}', rendered_skill, 'skill')
+
+            for idx, edu in enumerate(selected_content.get('education', []) or []):
+                if not isinstance(edu, dict):
                     continue
-                location = r.get('id', '') or r.get('section', 'bullet')
-                sections.append({
-                    'id':      f"rewrite_{r.get('id', location)}",
-                    'label':   f"Rewrite: {location}",
-                    'text':    proposed,
-                    'context': 'bullet',
-                })
+                _append_section(f'edu_{idx}_degree', f'Education {idx + 1} — Degree', edu.get('degree', ''), 'skill')
+                _append_section(f'edu_{idx}_field', f'Education {idx + 1} — Field', edu.get('field', ''), 'skill')
+                _append_section(f'edu_{idx}_institution', f'Education {idx + 1} — Institution', edu.get('institution', ''), 'skill')
+
+            for idx, award in enumerate(selected_content.get('awards', []) or []):
+                if not isinstance(award, dict):
+                    continue
+                _append_section(
+                    f'award_{idx}_title',
+                    f'Award {idx + 1}',
+                    award.get('degree', '') or award.get('title', ''),
+                    'skill',
+                )
+
+            for idx, cert in enumerate(selected_content.get('certifications', []) or []):
+                if not isinstance(cert, dict):
+                    continue
+                _append_section(f'cert_{idx}_name', f'Certification {idx + 1} — Name', cert.get('name', ''), 'skill')
+                _append_section(f'cert_{idx}_issuer', f'Certification {idx + 1} — Issuer', cert.get('issuer', ''), 'skill')
+
+            for idx, lang in enumerate(selected_content.get('personal_info', {}).get('languages', []) or []):
+                if isinstance(lang, dict):
+                    _append_section(f'lang_{idx}_language', f'Language {idx + 1}', lang.get('language', ''), 'skill')
+                    _append_section(f'lang_{idx}_proficiency', f'Language {idx + 1} — Proficiency', lang.get('proficiency', ''), 'skill')
+                else:
+                    _append_section(f'lang_{idx}', f'Language {idx + 1}', str(lang), 'skill')
+
+            for idx, pub in enumerate(selected_content.get('publications', []) or []):
+                if not isinstance(pub, dict):
+                    continue
+                if pub.get('formatted'):
+                    _append_section(f'pub_{idx}_formatted', f'Publication {idx + 1}', pub.get('formatted', ''), 'skill')
+                else:
+                    _append_section(f'pub_{idx}_title', f'Publication {idx + 1} — Title', pub.get('title', ''), 'skill')
+                    _append_section(f'pub_{idx}_authors', f'Publication {idx + 1} — Authors', pub.get('authors', ''), 'skill')
+                    _append_section(f'pub_{idx}_journal', f'Publication {idx + 1} — Venue', pub.get('journal', '') or pub.get('booktitle', ''), 'skill')
+
+            # Experience bullets from every selected experience (rewrites already applied)
+            for exp in cv_data.get('experiences', []) or []:
+                exp_id  = exp.get('id', '')
+                company = exp.get('company', 'Experience')
+                role    = exp.get('title', '')
+                label   = f"{company} \u2014 {role}" if role else company
+
+                ach_list = exp.get('ordered_achievements') or exp.get('achievements') or []
+                for i, ach in enumerate(ach_list):
+                    text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
+                    _append_section(f"exp_{exp_id}_ach_{i}", f"{label} (bullet {i + 1})", text, 'bullet')
 
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-        return jsonify({'ok': True, 'sections': sections})
+        aggregate_stats = _spell_checker.aggregate_stats([s['text'] for s in sections])
+        return jsonify({
+            'ok':               True,
+            'sections':         sections,
+            'aggregate_stats':  aggregate_stats,
+            'custom_dict_size': len(_spell_checker.get_custom_dict()),
+        })
 
     @app.post("/api/spell-check")
     def spell_check_text():
@@ -3295,6 +3800,8 @@ Close professionally with a call to action.
         Body: ``{"text": "...", "context": "bullet"|"summary"|"skill"}``
         Returns: ``{"ok": true, "suggestions": [...]}``
         """
+        entry = _get_session()
+        orchestrator = entry.orchestrator
         try:
             body    = request.get_json(force=True) or {}
             text    = body.get('text', '')
@@ -3302,9 +3809,15 @@ Close professionally with a call to action.
             if context not in ('bullet', 'summary', 'skill'):
                 context = 'bullet'
 
-            _prepopulate_spell_dict()
-            suggestions = _spell_checker.check(text, context=context)
-            return jsonify({'ok': True, 'suggestions': suggestions})
+            _prepopulate_spell_dict(orchestrator)
+            result = _spell_checker.check(text, context=context)
+            custom_dict_size = len(_spell_checker.get_custom_dict())
+            return jsonify({
+                'ok':              True,
+                'suggestions':     result['suggestions'],
+                'stats':           result['stats'],
+                'custom_dict_size': custom_dict_size,
+            })
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
@@ -3341,10 +3854,16 @@ Close professionally with a call to action.
         Body: ``{"spell_audit": [...]}``
         Each audit entry: ``{context_type, location, original, suggestion, rule, outcome, final}``
         """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         try:
             body        = request.get_json(force=True) or {}
             spell_audit = body.get('spell_audit', [])
-            result      = conversation.complete_spell_check(spell_audit)
+            with entry.lock:
+                result = conversation.complete_spell_check(spell_audit)
+            session_registry.touch(sid)
             return jsonify({'ok': True, **result})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
@@ -3352,6 +3871,33 @@ Close professionally with a call to action.
     # ------------------------------------------------------------------ #
     # Layout Instructions (Phase 12)                                      #
     # ------------------------------------------------------------------ #
+
+    @app.get("/api/layout-html")
+    def get_layout_html():
+        """Return the HTML content of the most recently generated CV.
+
+        Reads the ``.html`` file from the session's generated output directory.
+        Used by the layout-preview panel on first load when tabData.cv has no
+        inline HTML.
+
+        Returns: ``{"ok": true, "html": "..."}`` or ``{"error": "..."}``
+        """
+        entry = _get_session()
+        conversation = entry.manager
+        try:
+            generated = conversation.state.get('generated_files')
+            if not generated or not isinstance(generated, dict):
+                return jsonify({'error': 'No generated CV found — generate your CV first.'}), 404
+            output_dir = Path(generated.get('output_dir', ''))
+            if not output_dir.is_dir():
+                return jsonify({'error': f'Output directory not found: {output_dir}'}), 404
+            html_files = sorted(output_dir.glob('*.html'))
+            if not html_files:
+                return jsonify({'error': 'No HTML file found in output directory.'}), 404
+            html_content = html_files[0].read_text(encoding='utf-8', errors='replace')
+            return jsonify({'ok': True, 'html': html_content})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
     @app.post("/api/layout-instruction")
     def apply_layout_instruction():
@@ -3365,6 +3911,8 @@ Close professionally with a call to action.
             Clarification: ``{"ok": false, "error": "clarify", "question": "..."}``
             Error: ``{"ok": false, "error": "error_type", "details": "..."}``
         """
+        entry = _get_session()
+        conversation = entry.manager
         try:
             body = request.get_json(force=True) or {}
             instruction_text = body.get('instruction', '').strip()
@@ -3408,6 +3956,8 @@ Close professionally with a call to action.
         Returns:
             ``{"instructions": [...], "count": int}``
         """
+        entry = _get_session()
+        conversation = entry.manager
         try:
             instructions = conversation.state.get('layout_instructions', [])
             return jsonify({
@@ -3427,10 +3977,16 @@ Close professionally with a call to action.
         Returns:
             ``{"ok": true, "instructions_applied": int, "phase": "refinement"}``
         """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
         try:
             body = request.get_json(force=True) or {}
             layout_instructions = body.get('layout_instructions', [])
-            result = conversation.complete_layout_review(layout_instructions)
+            with entry.lock:
+                result = conversation.complete_layout_review(layout_instructions)
+            session_registry.touch(sid)
             return jsonify({'ok': True, **result})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
@@ -3447,6 +4003,9 @@ Close professionally with a call to action.
             ``{"ok": true, "checks": [...], "page_count": int|null,
                "summary": {"pass": N, "warn": N, "fail": N}}``
         """
+        entry = _get_session()
+        conversation = entry.manager
+        sid = entry.session_id
         try:
             generated = conversation.state.get('generated_files')
             if not generated or not isinstance(generated, dict):
@@ -3477,6 +4036,7 @@ Close professionally with a call to action.
                 'summary': summary,
                 'validation_date': datetime.now().isoformat(),
             }
+            session_registry.touch(sid)
 
             return jsonify({
                 'ok':         True,
@@ -3501,6 +4061,8 @@ Close professionally with a call to action.
         Each finding has: ``exp_id``, ``bullet_index``, ``text``, ``severity``,
         ``issues`` (list of ``{type, severity, suggestion}``).
         """
+        entry = _get_session()
+        conversation = entry.manager
         try:
             experiences = None
 
@@ -3546,7 +4108,11 @@ Close professionally with a call to action.
         Returns:
             { ok, commit_hash, summary } on success
         """
-        with _session_lock:
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        with entry.lock:
             generated = conversation.state.get('generated_files')
             if not generated or not generated.get('output_dir'):
                 return jsonify({'error': 'No generated CV to finalise. Please generate first.'}), 400
@@ -3629,6 +4195,7 @@ Close professionally with a call to action.
                 # Advance phase
                 conversation.state['phase'] = Phase.REFINEMENT
                 conversation.save_session()
+                session_registry.touch(sid)
 
                 # Build keyword match summary
                 job_analysis   = conversation.state.get('job_analysis') or {}
@@ -3662,13 +4229,14 @@ Close professionally with a call to action.
         Returns:
             { candidates: List[{id, type, label, original, proposed, rationale}] }
         """
-        with _session_lock:
-            try:
-                candidates = _compile_harvest_candidates(conversation)
-                return jsonify({'ok': True, 'candidates': candidates})
-            except Exception as e:
-                traceback.print_exc()
-                return jsonify({'error': str(e)}), 500
+        entry = _get_session()
+        conversation = entry.manager
+        try:
+            candidates = _compile_harvest_candidates(conversation)
+            return jsonify({'ok': True, 'candidates': candidates})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({'error': str(e)}), 500
 
     @app.post("/api/harvest/apply")
     def harvest_apply():
@@ -3680,7 +4248,11 @@ Close professionally with a call to action.
         Returns:
             { ok, written_count, diff_summary, commit_hash }
         """
-        with _session_lock:
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        with entry.lock:
             try:
                 body         = request.get_json(silent=True) or {}
                 selected_ids = body.get('selected_ids') or []
@@ -3763,6 +4335,7 @@ Close professionally with a call to action.
                     git_error = str(git_exc)
 
                 written_count = sum(1 for d in diff_summary if d.get('applied'))
+                session_registry.touch(sid)
                 return jsonify({
                     'ok':           True,
                     'written_count': written_count,
@@ -3773,6 +4346,101 @@ Close professionally with a call to action.
             except Exception as e:
                 traceback.print_exc()
                 return jsonify({'error': str(e)}), 500
+
+    # ── Session management endpoints ─────────────────────────────────────────
+
+    @app.post("/api/sessions/new")
+    def sessions_new():
+        """Create a new session and return its ID.
+
+        Returns ``{"ok": true, "session_id": "abcd1234", "redirect_url": "/?session=abcd1234"}``.
+        """
+        sid, _entry = session_registry.create(_app_config)
+        return jsonify({"ok": True, "session_id": sid, "redirect_url": f"/?session={sid}"})
+
+    @app.post("/api/sessions/claim")
+    def sessions_claim():
+        """Claim ownership of a session with a tab token.
+
+        Body: ``{"session_id": "...", "owner_token": "..."}``
+        Returns ``{"ok": true}`` or 409 if already owned by another token.
+        """
+        body = request.get_json(silent=True) or {}
+        sid = body.get("session_id")
+        token = body.get("owner_token")
+        if not sid or not token:
+            return jsonify({"error": "session_id and owner_token required"}), 400
+        try:
+            session_registry.claim(sid, token)
+            return jsonify({"ok": True})
+        except SessionNotFoundError as e:
+            return jsonify({"error": str(e)}), 404
+        except SessionOwnedError as e:
+            return jsonify({"error": "session_owned", "message": str(e)}), 409
+
+    @app.post("/api/sessions/takeover")
+    def sessions_takeover():
+        """Forcibly take over a session (e.g. after page reload).
+
+        Body: ``{"session_id": "...", "owner_token": "..."}``
+        Returns ``{"ok": true}``.
+        """
+        body = request.get_json(silent=True) or {}
+        sid = body.get("session_id")
+        token = body.get("owner_token")
+        if not sid or not token:
+            return jsonify({"error": "session_id and owner_token required"}), 400
+        try:
+            session_registry.takeover(sid, token)
+            return jsonify({"ok": True})
+        except SessionNotFoundError as e:
+            return jsonify({"error": str(e)}), 404
+
+    @app.get("/api/sessions/active")
+    def sessions_active():
+        """Return a list of all active in-memory sessions.
+
+        Returns ``{"sessions": [{"session_id": "...", "created": "...",
+        "last_modified": "...", "position_name": "...", "phase": "...",
+        "owner_token": "..."}]}``.
+        """
+        entries = session_registry.all_active()
+        requester_token = request.args.get("owner_token")
+        return jsonify({
+            "sessions": [
+                {
+                    "session_id":          e.session_id,
+                    "position_name":       (e.manager.state or {}).get("position_name"),
+                    "phase":               (e.manager.state or {}).get("phase"),
+                    "created":             e.created.isoformat(),
+                    "last_modified":       e.last_modified.isoformat(),
+                    "claimed":             e.owner_token is not None,
+                    "owned_by_requester":  bool(
+                        requester_token
+                        and e.owner_token
+                        and requester_token == e.owner_token
+                    ),
+                }
+                for e in entries
+            ]
+        })
+
+    @app.delete("/api/sessions/<session_id>/evict")
+    def sessions_evict(session_id):
+        """Save and remove a specific session from the registry.
+
+        Returns ``{"ok": true}``.
+        """
+        entry = session_registry.get(session_id)
+        if entry is None:
+            return jsonify({"error": f"Session not found: {session_id}"}), 404
+        _validate_owner(entry)
+        try:
+            entry.manager._save_session()
+        except Exception:
+            pass
+        session_registry.remove(session_id)
+        return jsonify({"ok": True})
 
     return app
 

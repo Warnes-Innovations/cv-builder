@@ -70,6 +70,7 @@ class ConversationManager:
             'publication_decisions':   {},   # Dict — per-publication accept/reject decisions
             'summary_focus_override':  None, # str — selected professional summary key
             'extra_skills':            [],   # List[str] — LLM-suggested skills not in master CV
+            'achievement_rewrite_log': [],   # List[Dict] — AI rewrite interactions per achievement
         }
         self.session_dir: Optional[Path] = None
         self.session_id: Optional[str] = None
@@ -720,6 +721,7 @@ Ask questions that are specific to this job posting, not generic career question
                 output_dir=self.session_dir,
                 approved_rewrites=self.state.get('approved_rewrites') or [],
                 rewrite_audit=self.state.get('rewrite_audit') or [],
+                spell_audit=self.state.get('spell_audit') or [],
                 max_skills=self.state.get('max_skills'),
             )
             self.state['generated_files'] = result
@@ -1225,11 +1227,63 @@ Ask questions that are specific to this job posting, not generic career question
                 'publication_decisions':   {},
                 'summary_focus_override':  None,
                 'extra_skills':            [],
+                'achievement_rewrite_log': [],
             }
             print("\n✓ Conversation reset. Let's start fresh!")
         else:
             print("\n✓ Reset cancelled.")
-    
+
+    def log_achievement_rewrite(
+        self,
+        original_text: str,
+        experience_context: str,
+        user_instructions: str,
+        previous_suggestions: list,
+        suggested_text: str,
+    ) -> str:
+        """Record one AI rewrite generation in the session and persist.
+
+        Returns the unique ``log_id`` for this entry so the caller can later
+        update its outcome via :meth:`update_achievement_rewrite_outcome`.
+        """
+        log_id = uuid.uuid4().hex[:12]
+        entry: Dict = {
+            'log_id':              log_id,
+            'timestamp':           datetime.now().isoformat(),
+            'original_text':       original_text,
+            'experience_context':  experience_context,
+            'user_instructions':   user_instructions,
+            'previous_suggestions': list(previous_suggestions),
+            'suggested_text':      suggested_text,
+            'outcome':             'pending',
+            'accepted_text':       None,
+        }
+        if 'achievement_rewrite_log' not in self.state:
+            self.state['achievement_rewrite_log'] = []
+        self.state['achievement_rewrite_log'].append(entry)
+        self._save_session()
+        return log_id
+
+    def update_achievement_rewrite_outcome(
+        self,
+        log_id: str,
+        outcome: str,
+        accepted_text: Optional[str] = None,
+    ) -> bool:
+        """Update the outcome of a previously logged AI rewrite entry.
+
+        ``outcome`` should be ``"accepted"`` or ``"rejected"``.  Returns
+        ``True`` if the entry was found and updated, ``False`` otherwise.
+        """
+        for entry in self.state.get('achievement_rewrite_log') or []:
+            if entry.get('log_id') == log_id:
+                entry['outcome'] = outcome
+                if accepted_text is not None:
+                    entry['accepted_text'] = accepted_text
+                self._save_session()
+                return True
+        return False
+
     def save_session(self):
         """Public alias for _save_session."""
         self._save_session()
@@ -1441,6 +1495,8 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['approved_rewrites'] = []
         if 'rewrite_audit' not in self.state:
             self.state['rewrite_audit'] = []
+        if 'achievement_rewrite_log' not in self.state:
+            self.state['achievement_rewrite_log'] = []
         self.conversation_history = session_data['conversation_history']
         self.session_dir = Path(session_file).parent
 
@@ -1482,6 +1538,7 @@ Ask questions that are specific to this job posting, not generic career question
             recommendations,
             approved_rewrites=self.state.get('approved_rewrites') or [],
             rewrite_audit=self.state.get('rewrite_audit') or [],
+            spell_audit=self.state.get('spell_audit') or [],
             max_skills=self.state.get('max_skills'),
         )
         self.state['generated_files'] = result

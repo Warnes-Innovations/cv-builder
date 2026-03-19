@@ -36,6 +36,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .header-pill-btn { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap; color: #fff; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.3); transition: background 0.2s; }
 .header-pill-btn:hover { background: rgba(255,255,255,0.22); }
 .header-pill-btn .pill-chevron { opacity: 0.55; font-size: 0.75em; }
+#session-switcher-btn.is-session-active { background: rgba(191, 219, 254, 0.18); border-color: rgba(191, 219, 254, 0.5); }
 
 /* ===== AUTH MODAL ===== */
 .auth-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
@@ -72,6 +73,48 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 /* ===== SESSION CONFLICT BANNER ===== */
 #session-conflict-banner { display: none; background: #fef3c7; color: #92400e; border-bottom: 1px solid #fcd34d; padding: 10px 20px; font-size: 14px; text-align: center; position: sticky; top: 0; z-index: 1000; }
 #session-conflict-banner button { background: none; border: none; cursor: pointer; font-weight: bold; margin-left: 12px; color: #92400e; font-size: 16px; }
+
+/* ===== SESSION SWITCHER ===== */
+.session-switcher-sections { display: grid; gap: 18px; padding: 16px; }
+.session-switcher-section { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; overflow: hidden; }
+.session-switcher-section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+.session-switcher-section-header h3 { font-size: 15px; font-weight: 700; color: #1e293b; }
+.session-switcher-section-note { font-size: 12px; color: #64748b; }
+.session-switcher-empty { padding: 18px 16px; color: #64748b; font-size: 14px; }
+.session-switcher-list { display: grid; gap: 0; }
+.session-switcher-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; }
+.session-switcher-row:last-child { border-bottom: none; }
+.session-switcher-row-main { min-width: 0; flex: 1; }
+.session-switcher-row-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.session-switcher-row-title strong { color: #0f172a; font-size: 14px; }
+.session-switcher-row-meta { font-size: 12px; color: #64748b; line-height: 1.5; }
+.session-switcher-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.session-switcher-link,
+.session-switcher-btn { border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; }
+.session-switcher-link { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.session-switcher-link:hover { background: #dbeafe; }
+.session-switcher-btn { background: #fff; color: #475569; border: 1px solid #cbd5e1; }
+.session-switcher-btn:hover { background: #f8fafc; }
+.session-switcher-btn.danger { background: #fff1f2; color: #be123c; border-color: #fecdd3; }
+.session-switcher-btn.danger:hover { background: #ffe4e6; }
+.session-status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.session-status-dot { width: 8px; height: 8px; border-radius: 999px; background: currentColor; display: inline-block; }
+.session-status-current { color: #166534; background: #dcfce7; }
+.session-status-owned { color: #92400e; background: #fef3c7; }
+.session-status-unclaimed { color: #1d4ed8; background: #dbeafe; }
+.session-status-saved { color: #475569; background: #e2e8f0; }
+.session-switcher-landing-shell { max-width: 1040px; margin: 32px auto; padding: 0 12px; }
+.session-switcher-landing-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.session-switcher-landing-copy h2 { margin: 0 0 8px; color: #0f172a; }
+.session-switcher-landing-copy p { margin: 0; color: #64748b; }
+.session-switcher-landing-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+@media (max-width: 720px) {
+  .session-switcher-row { flex-direction: column; }
+  .session-switcher-actions { width: 100%; flex-wrap: wrap; }
+  .session-switcher-link,
+  .session-switcher-btn { flex: 1; text-align: center; justify-content: center; }
+}
 
 /* ===== MAIN LAYOUT ===== */
 .main-container { display: flex; height: calc(100vh - 210px); gap: 0; min-height: 500px; }
@@ -749,12 +792,12 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .cl-wc-fill                        { height:100%; border-radius:3px; transition:width 0.3s,background 0.3s; }
 
 /* ===== LAYOUT INSTRUCTIONS (Phase 12) ===== */
-.layout-instruction-panel { display: flex; gap: 24px; height: calc(100vh - 240px); min-height: 500px; }
-.layout-preview-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.layout-instruction-panel { display: flex; gap: 20px; height: calc(100vh - 240px); min-height: 500px; align-items: stretch; }
+.layout-preview-pane { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
 .layout-preview-pane h3 { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px; }
-.preview-iframe-container { flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: white; }
+.preview-iframe-container { flex: 1; min-width: 0; border: 1px solid #e2e8f0; border-radius: 8px; overflow: auto; background: #f8fafc; }
 .layout-preview-iframe { width: 100%; height: 100%; border: none; }
-.layout-input-pane { width: 360px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
+.layout-input-pane { width: 320px; flex: 0 0 320px; display: flex; flex-direction: column; gap: 12px; }
 .layout-input-pane h3 { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 0; }
 .layout-scope-label { font-size: 12px; color: #64748b; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 6px 10px; margin: 0; }
 .layout-instruction-textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit; resize: vertical; line-height: 1.5; }
@@ -772,6 +815,17 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .instruction-time { color: #94a3b8; font-size: 11px; margin-bottom: 3px; }
 .instruction-text { font-weight: 500; color: #374151; margin-bottom: 3px; }
 .instruction-summary { color: #64748b; font-style: italic; margin-bottom: 6px; }
+
+@media (max-width: 1280px) {
+  .layout-instruction-panel { gap: 16px; }
+  .layout-input-pane { width: 300px; flex-basis: 300px; }
+}
+
+@media (max-width: 1100px) {
+  .layout-instruction-panel { flex-direction: column; height: auto; }
+  .layout-preview-pane { min-height: 60vh; }
+  .layout-input-pane { width: 100%; flex-basis: auto; }
+}
 
 /* ==== Master CV Management Tab ==== */
 .master-profile-card { background: linear-gradient(135deg, #1e40af, #3b82f6); color: #fff; border-radius: 12px; padding: 24px; margin-bottom: 24px; }

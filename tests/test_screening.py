@@ -18,6 +18,7 @@ import json
 import sys
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -107,13 +108,18 @@ def _make_app(state_overrides=None, output_dir: str = '/tmp/cv_test_output'):
     mock_conversation       = MagicMock()
     mock_conversation.state = state
 
-    with patch('scripts.web_app.get_llm_provider', return_value=mock_llm), \
-         patch('scripts.web_app.CVOrchestrator',    return_value=mock_orchestrator), \
-         patch('scripts.web_app.ConversationManager', return_value=mock_conversation):
-        app = create_app(_make_args(output_dir=output_dir))
+    stack = ExitStack()
+    stack.enter_context(patch('scripts.web_app.get_llm_provider',    return_value=mock_llm))
+    stack.enter_context(patch('scripts.web_app.CVOrchestrator',       return_value=mock_orchestrator))
+    stack.enter_context(patch('scripts.web_app.ConversationManager',  return_value=mock_conversation))
 
+    app = create_app(_make_args(output_dir=output_dir))
     app.config['TESTING'] = True
-    return app, mock_conversation, mock_llm
+
+    with app.test_client() as tmp_client:
+        sid = tmp_client.post('/api/sessions/new').get_json()['session_id']
+
+    return app, mock_conversation, mock_llm, sid, stack
 
 
 def _make_mock_cfg(master_cv_path: str = '/tmp/fake/Master_CV_Data.json'):
@@ -130,11 +136,11 @@ class TestScreeningSearch(unittest.TestCase):
 
     def _search(self, question: str, master: dict = None, library: list = None):
         """Helper: call /api/screening/search with mocked filesystem."""
-        app, _, _ = _make_app()
+        app, _, _, _, stack = _make_app()
         m = master if master is not None else _MASTER_DATA
         lib = library if library is not None else []
 
-        with tempfile.TemporaryDirectory() as td:
+        with stack, tempfile.TemporaryDirectory() as td:
             lib_path    = Path(td) / 'response_library.json'
             master_path = Path(td) / 'Master_CV_Data.json'
             lib_path.write_text(json.dumps(lib))
@@ -182,8 +188,8 @@ class TestScreeningSearch(unittest.TestCase):
             self.assertIn(field, exp, f'Missing field: {field}')
 
     def test_returns_400_when_question_missing(self):
-        app, _, _ = _make_app()
-        with app.test_client() as client:
+        app, _, _, _, stack = _make_app()
+        with stack, app.test_client() as client:
             res = client.post('/api/screening/search', json={})
             self.assertEqual(res.status_code, 400)
 
@@ -196,17 +202,17 @@ class TestScreeningGenerate(unittest.TestCase):
 
     def _generate(self, payload: dict, llm_response: str = 'Draft response text.',
                   state_overrides: dict = None):
-        app, conv, mock_llm = _make_app(state_overrides=state_overrides)
+        app, conv, mock_llm, sid, stack = _make_app(state_overrides=state_overrides)
         mock_llm.chat.return_value = llm_response
 
-        with tempfile.TemporaryDirectory() as td:
+        with stack, tempfile.TemporaryDirectory() as td:
             master_path = Path(td) / 'Master_CV_Data.json'
             master_path.write_text(json.dumps(_MASTER_DATA))
             cfg = _make_mock_cfg(master_cv_path=str(master_path))
 
             with app.test_client() as client, \
                  patch('utils.config.get_config', return_value=cfg):
-                res  = client.post('/api/screening/generate', json=payload)
+                res  = client.post('/api/screening/generate', json={**payload, 'session_id': sid})
                 return res.get_json(), res.status_code, mock_llm
 
     def test_returns_draft_text(self):
@@ -245,10 +251,10 @@ class TestScreeningGenerate(unittest.TestCase):
         self.assertFalse(data['ok'])
 
     def test_returns_500_on_llm_error(self):
-        app, conv, mock_llm = _make_app()
+        app, conv, mock_llm, sid, stack = _make_app()
         mock_llm.chat.side_effect = RuntimeError('LLM unavailable')
 
-        with tempfile.TemporaryDirectory() as td:
+        with stack, tempfile.TemporaryDirectory() as td:
             master_path = Path(td) / 'Master_CV_Data.json'
             master_path.write_text(json.dumps(_MASTER_DATA))
             cfg = _make_mock_cfg(master_cv_path=str(master_path))
@@ -256,7 +262,8 @@ class TestScreeningGenerate(unittest.TestCase):
             with app.test_client() as client, \
                  patch('utils.config.get_config', return_value=cfg):
                 res  = client.post('/api/screening/generate',
-                                   json={'question': 'Tell me about yourself.', 'format': 'direct'})
+                                   json={'question': 'Tell me about yourself.', 'format': 'direct',
+                                         'session_id': sid})
                 self.assertEqual(res.status_code, 500)
                 self.assertIn('LLM error', res.get_json()['error'])
 
@@ -291,36 +298,33 @@ class TestScreeningSave(unittest.TestCase):
             lib_path.write_text(json.dumps([]))
             cfg = _make_mock_cfg(master_cv_path=str(master_path))
 
-            app, conv, _ = _make_app(output_dir=str(out_dir))
+            app, conv, _, sid, stack = _make_app(output_dir=str(out_dir))
 
-            with app.test_client() as client, \
+            with stack, app.test_client() as client, \
                  patch('utils.config.get_config', return_value=cfg):
                 res  = client.post('/api/screening/save',
-                                   json={'responses': self._RESPONSES})
+                                   json={'responses': self._RESPONSES, 'session_id': sid})
                 data = res.get_json()
 
             self.assertEqual(res.status_code, 200)
             self.assertTrue(data['ok'])
             self.assertEqual(data['count'], 2)
 
-            # DOCX written
             docx_files = list(out_dir.glob('Screening_Responses_*.docx'))
             self.assertEqual(len(docx_files), 1)
 
-            # metadata.json updated
             meta = json.loads((out_dir / 'metadata.json').read_text())
             self.assertEqual(len(meta['screening_responses']), 2)
             self.assertEqual(meta['screening_responses'][0]['topic_tag'], 'leadership')
 
-            # response_library.json upserted
             lib = json.loads(lib_path.read_text())
             self.assertEqual(len(lib), 2)
             self.assertEqual(lib[0]['question'], 'Describe a leadership challenge.')
 
     def test_save_returns_400_when_no_responses(self):
-        app, _, _ = _make_app()
-        with app.test_client() as client:
-            res = client.post('/api/screening/save', json={'responses': []})
+        app, _, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = client.post('/api/screening/save', json={'responses': [], 'session_id': sid})
             self.assertEqual(res.status_code, 400)
 
     def test_save_updates_conversation_state(self):
@@ -330,13 +334,12 @@ class TestScreeningSave(unittest.TestCase):
             master_path.write_text(json.dumps(_MASTER_DATA))
             cfg = _make_mock_cfg(master_cv_path=str(master_path))
 
-            app, conv, _ = _make_app(output_dir=str(out_dir))
+            app, conv, _, sid, stack = _make_app(output_dir=str(out_dir))
 
-            with app.test_client() as client, \
+            with stack, app.test_client() as client, \
                  patch('utils.config.get_config', return_value=cfg):
-                client.post('/api/screening/save', json={'responses': self._RESPONSES})
+                client.post('/api/screening/save', json={'responses': self._RESPONSES, 'session_id': sid})
 
-        # Verify state was updated on the mock conversation
         self.assertEqual(conv.state['screening_responses'], self._RESPONSES)
 
 

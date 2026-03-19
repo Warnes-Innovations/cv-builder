@@ -525,7 +525,7 @@
                     <h2 class="section-title"><i class="fas fa-trophy"></i> Selected Achievements</h2>
                     <ul class="achievement-list">
                         {% for ach in achievements %}
-                        <li>{{ ach.text or ach }}</li>
+                        <li>{{ ach.text if ach is mapping else ach }}</li>
                         {% endfor %}
                     </ul>
                 </section>
@@ -568,7 +568,7 @@
                         {% if ach_list %}
                         <ul class="job-details">
                             {% for ac in ach_list %}
-                            <li>{{ ac.text or ac }}</li>
+                            <li>{{ ac.text if ac is mapping else ac }}</li>
                             {% endfor %}
                         </ul>
                         {% endif %}
@@ -613,7 +613,7 @@
                         {% if ach_list %}
                         <ul class="job-details">
                             {% for ac in ach_list %}
-                            <li>{{ ac.text or ac }}</li>
+                            <li>{{ ac.text if ac is mapping else ac }}</li>
                             {% endfor %}
                         </ul>
                         {% endif %}

@@ -12,7 +12,7 @@ import json
 
 def test_enhanced_url_fetching(require_server=None):
     """Test enhanced URL fetching with various scenarios"""
-    base_url = "http://localhost:5001"
+    base_url = "http://127.0.0.1:5001"
     
     print("🧪 Testing Enhanced URL Fetching")
     print("=" * 50)
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     
     try:
         # Check if server is running
-        response = requests.get("http://localhost:5001/api/status", timeout=2)
+        response = requests.get("http://127.0.0.1:5001/api/status", timeout=2)
         if response.status_code != 200:
             print("❌ Server not responding properly")
             sys.exit(1)
@@ -132,7 +132,7 @@ if __name__ == "__main__":
         print("\\n🎉 URL fetching workflow gap has been resolved!")
         
     except requests.ConnectionError:
-        print("❌ Cannot connect to server at http://localhost:5001")
+        print("❌ Cannot connect to server at http://127.0.0.1:5001")
         print("💡 Please start the web server first:")
         print("   conda activate cvgen && python scripts/web_app.py --port 5001")
         sys.exit(1)

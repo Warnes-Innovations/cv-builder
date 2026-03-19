@@ -8,7 +8,7 @@ import json
 
 def test_user_linkedin_url(require_server=None):
     """Test the specific LinkedIn URL the user provided"""
-    base_url = "http://localhost:5001"
+    base_url = "http://127.0.0.1:5001"
     
     # The exact URL the user tried to use
     linkedin_url = "https://www.linkedin.com/jobs/view/4264067121/?trk=eml-email_job_alert_digest_01-primary_job_list-0-jobcard_body_1_jobid_4264067121_ssid_15520843548_fmid_cyj15~mlthy4gk~ct&refId=xEE%2Fs7tzmEpnqYa0EMJnAg%3D%3D&trackingId=jrPRXOSOy%2BetYtopJFZyMw%3D%3D"

@@ -26,8 +26,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from tests.ui.fixtures.mock_responses import (
     SAMPLE_JOB_TEXT,
     API_JOB_OK,
+    API_STATUS_INIT,
     API_STATUS_JOB_LOADED,
     API_STATUS_ANALYSIS_DONE,
+    API_STATUS_IN_ANALYSIS,
+    API_STATUS_REWRITE,
+    API_STATUS_SPELL,
+    API_STATUS_FINALISE,
     API_ACTION_ANALYZE_OK,
     API_ACTION_RECOMMEND_OK,
     API_POST_ANALYSIS_OK,
@@ -262,5 +267,82 @@ def seeded_page(browser, live_server):
     p.goto(live_server)
     p.wait_for_selector("#analyze-btn", timeout=10_000)
 
+    yield p
+    context.close()
+
+
+@pytest.fixture
+def analysis_seeded_page(browser, live_server):
+    """
+    Page in job_analysis phase with analysis data available.
+    The tab bar shows the analysis-stage tabs (tab-analysis, tab-questions).
+    """
+    context = browser.new_context()
+    p = context.new_page()
+    p.set_default_timeout(10_000)
+
+    _install_mock_routes(p, status_response=API_STATUS_IN_ANALYSIS)
+
+    p.goto(live_server)
+    p.wait_for_selector("#analyze-btn", timeout=10_000)
+
+    yield p
+    context.close()
+
+
+@pytest.fixture
+def job_stage_page(browser, live_server):
+    """
+    Page in init/job phase where the Analyze Job action button is visible.
+    Use this for tests that need to interact with #analyze-btn.
+    """
+    context = browser.new_context()
+    p = context.new_page()
+    p.set_default_timeout(10_000)
+
+    _install_mock_routes(p, status_response=API_STATUS_INIT)
+
+    p.goto(live_server)
+    p.wait_for_selector("#analyze-btn", timeout=10_000)
+
+    yield p
+    context.close()
+
+
+@pytest.fixture
+def rewrite_stage_page(browser, live_server):
+    """Page in rewrite_review phase — #tab-rewrite is visible."""
+    context = browser.new_context()
+    p = context.new_page()
+    p.set_default_timeout(10_000)
+    _install_mock_routes(p, status_response=API_STATUS_REWRITE)
+    p.goto(live_server)
+    p.wait_for_selector("#analyze-btn", timeout=10_000)
+    yield p
+    context.close()
+
+
+@pytest.fixture
+def spell_stage_page(browser, live_server):
+    """Page in spell_check phase — #tab-spell is visible."""
+    context = browser.new_context()
+    p = context.new_page()
+    p.set_default_timeout(10_000)
+    _install_mock_routes(p, status_response=API_STATUS_SPELL)
+    p.goto(live_server)
+    p.wait_for_selector("#analyze-btn", timeout=10_000)
+    yield p
+    context.close()
+
+
+@pytest.fixture
+def finalise_stage_page(browser, live_server):
+    """Page in refinement phase — #tab-download and #tab-finalise are visible."""
+    context = browser.new_context()
+    p = context.new_page()
+    p.set_default_timeout(10_000)
+    _install_mock_routes(p, status_response=API_STATUS_FINALISE)
+    p.goto(live_server)
+    p.wait_for_selector("#analyze-btn", timeout=10_000)
     yield p
     context.close()

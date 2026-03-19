@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
-from utils.llm_client import LLMClient, OpenAIClient, CopilotClient, GitHubModelsClient, GeminiClient, CopilotSdkClient, get_llm_provider, _normalize_github_model_id
+from utils.llm_client import LLMClient, OpenAIClient, AnthropicClient, CopilotClient, GitHubModelsClient, GeminiClient, CopilotSdkClient, get_llm_provider, _normalize_github_model_id
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +347,64 @@ class TestStubImplementations(unittest.TestCase):
         client = object.__new__(LocalLLMClient)
         result = client.propose_rewrites(SAMPLE_CONTENT, SAMPLE_JOB_ANALYSIS)
         self.assertEqual(result, [])
+
+
+class TestAnthropicClient(unittest.TestCase):
+    """Validate Anthropic payload normalization for current Messages API."""
+
+    def test_chat_sends_system_as_text_blocks(self):
+        client = object.__new__(AnthropicClient)
+        client.model = 'claude-sonnet-4-6'
+        client.client = MagicMock()
+        client.client.messages.create.return_value = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=12, output_tokens=3),
+            content=[SimpleNamespace(text='ready')],
+        )
+
+        result = client.chat(
+            messages=[
+                {'role': 'system', 'content': 'Answer in one word.'},
+                {'role': 'user', 'content': 'Say ready'},
+            ],
+            temperature=0,
+            max_tokens=8,
+        )
+
+        self.assertEqual(result, 'ready')
+        client.client.messages.create.assert_called_once_with(
+            model='claude-sonnet-4-6',
+            max_tokens=8,
+            temperature=0,
+            system=[{'type': 'text', 'text': 'Answer in one word.'}],
+            messages=[
+                {
+                    'role': 'user',
+                    'content': [{'type': 'text', 'text': 'Say ready'}],
+                }
+            ],
+        )
+
+    def test_chat_omits_system_when_not_present(self):
+        client = object.__new__(AnthropicClient)
+        client.model = 'claude-sonnet-4-6'
+        client.client = MagicMock()
+        client.client.messages.create.return_value = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=8, output_tokens=2),
+            content=[SimpleNamespace(text='ready')],
+        )
+
+        client.chat(
+            messages=[{'role': 'user', 'content': 'Say ready'}],
+            temperature=0,
+            max_tokens=8,
+        )
+
+        kwargs = client.client.messages.create.call_args.kwargs
+        self.assertNotIn('system', kwargs)
+        self.assertEqual(
+            kwargs['messages'],
+            [{'role': 'user', 'content': [{'type': 'text', 'text': 'Say ready'}]}],
+        )
 
 
 class TestGitHubModelNormalization(unittest.TestCase):

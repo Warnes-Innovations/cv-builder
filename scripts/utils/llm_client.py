@@ -95,6 +95,49 @@ def _normalize_github_model_id(model: str) -> str:
     return legacy_aliases.get(model, model)
 
 
+def _anthropic_text_blocks(content: Any) -> List[Dict[str, str]]:
+    """Normalize text content into Anthropic content blocks."""
+    if content is None:
+        return []
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    if isinstance(content, list):
+        blocks: List[Dict[str, str]] = []
+        for item in content:
+            if isinstance(item, dict):
+                if item.get("type") == "text" and isinstance(item.get("text"), str):
+                    blocks.append({"type": "text", "text": item["text"]})
+                elif isinstance(item.get("content"), str):
+                    blocks.append({"type": "text", "text": item["content"]})
+            elif isinstance(item, str):
+                blocks.append({"type": "text", "text": item})
+        return blocks
+    return [{"type": "text", "text": str(content)}]
+
+
+def _anthropic_messages_payload(
+    messages: List[Dict[str, Any]],
+) -> tuple[List[Dict[str, str]], List[Dict[str, Any]]]:
+    """Split chat messages into Anthropic system blocks and message blocks."""
+    system_blocks: List[Dict[str, str]] = []
+    payload_messages: List[Dict[str, Any]] = []
+
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content")
+        if role == "system":
+            system_blocks.extend(_anthropic_text_blocks(content))
+            continue
+        if role not in {"user", "assistant"}:
+            continue
+        payload_messages.append({
+            "role":    role,
+            "content": _anthropic_text_blocks(content),
+        })
+
+    return system_blocks, payload_messages
+
+
 class LLMClient(ABC):
     """Abstract base class for LLM clients."""
 
@@ -253,6 +296,15 @@ STEP 2 — For EACH experience, provide THREE independent assessments:
 
 STEP 3 — Same three-part structure for Key Achievements.
 
+STEP 4 — Suggest NEW achievements not already in the list above.
+For each experience where you can infer a strong, evidence-backed accomplishment
+from the job description, industry context, or role level that is NOT already
+listed, propose it as a suggested achievement. Only suggest achievements that:
+- Are credible given the experience's title, company, and time period
+- Are directly relevant to this specific job posting
+- Are NOT already captured in the Available Key Achievements list above
+Limit to at most 2 suggestions per experience; omit if none are credible.
+
 For skills: only flag skills that are notably relevant (Emphasize/Include) or
 notably irrelevant/misleading (De-emphasize/Omit) — skip unremarkable ones.
 
@@ -284,6 +336,15 @@ Return ONLY a JSON object — no prose, no markdown fences:
     }}
   ],
   "recommended_achievements": ["..."],
+  "suggested_achievements": [
+    {{
+      "experience_id": "exp_001",
+      "title":         "Short achievement headline (≤12 words)",
+      "description":   "One sentence describing the achievement and its impact",
+      "rationale":     "Why this is credible and relevant to the job posting",
+      "confidence":    "High|Medium|Low"
+    }}
+  ],
   "summary_focus": "What to emphasise in the professional summary (incorporate culture_indicators where relevant)",
   "reasoning":     "Overall CV customisation strategy for this role"
 }}
@@ -328,10 +389,48 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             "recommended_skills":          [],
             "achievement_recommendations": [],
             "recommended_achievements":    [],
+            "suggested_achievements":      [],
             "summary_focus":               "general",
             "reasoning":                   "Failed to parse LLM response",
         }
-    
+
+    def rewrite_achievement(
+        self,
+        achievement_text: str,
+        experience_context: str = '',
+        job_description: str = '',
+        user_instructions: str = '',
+        previous_suggestions: List[str] | None = None,
+    ) -> str:
+        """Rewrite a single achievement bullet for stronger impact and job fit.
+
+        Returns the rewritten achievement string.
+        """
+        context_line = f"Role context: {experience_context}\n" if experience_context else ''
+        jd_line = f"Target job description (excerpt):\n{job_description}\n\n" if job_description else ''
+        instructions_line = f"Additional instructions: {user_instructions}\n" if user_instructions.strip() else ''
+        prior = previous_suggestions or []
+        history_line = (
+            "Previous suggestions (already rejected — do not repeat these):\n"
+            + ''.join(f"  - {s}\n" for s in prior)
+            + "\n"
+        ) if prior else ''
+        prompt = (
+            "You are an expert CV writer. Rewrite the following achievement bullet to be more "
+            "impactful, action-oriented, and tailored to the target role. "
+            "Keep it to one concise sentence (≤30 words). "
+            "Use strong action verbs, include quantifiable results where plausible, "
+            "and emphasise relevance to the job.\n\n"
+            f"{context_line}"
+            f"{jd_line}"
+            f"Original achievement:\n{achievement_text}\n\n"
+            f"{history_line}"
+            f"{instructions_line}"
+            "Rewritten achievement (one sentence only, no bullet prefix):"
+        )
+        response = self.chat([{"role": "user", "content": prompt}], temperature=0.4)
+        return response.strip().lstrip('•-– ').strip()
+
     def semantic_match(self, content: str, requirements: List[str]) -> float:
         """Calculate semantic similarity by asking the LLM to rate the match.
 
@@ -1489,24 +1588,19 @@ class AnthropicClient(LLMClient):
         max_tokens: Optional[int] = None
     ) -> str:
         """Send chat messages to Claude."""
-        # Extract system message if present
-        system_msg = None
-        user_messages = []
-
-        for msg in messages:
-            if msg['role'] == 'system':
-                system_msg = msg['content']
-            else:
-                user_messages.append(msg)
+        system_blocks, payload_messages = _anthropic_messages_payload(messages)
 
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=max_tokens or 4096,
-                temperature=temperature,
-                system=system_msg,
-                messages=user_messages
-            )
+            request_kwargs = {
+                "model":       self.model,
+                "max_tokens":  max_tokens or 4096,
+                "temperature": temperature,
+                "messages":    payload_messages,
+            }
+            if system_blocks:
+                request_kwargs["system"] = system_blocks
+
+            response = self.client.messages.create(**request_kwargs)
             self.last_usage = response.usage
             return response.content[0].text
         except Exception as exc:

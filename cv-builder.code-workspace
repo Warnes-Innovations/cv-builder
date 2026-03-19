@@ -21,7 +21,8 @@
 	],
 	"settings": {
 		"chat.tools.terminal.autoApprove": {
-			"/usr/local/Caskroom/miniconda/base/envs/cvgen/bin/python": true
+			"/usr/local/Caskroom/miniconda/base/envs/cvgen/bin/python": true,
+			"timeout": true
 		}
 	}
 }

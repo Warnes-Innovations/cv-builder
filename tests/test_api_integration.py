@@ -15,6 +15,7 @@ import json
 import sys
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -82,16 +83,17 @@ SAMPLE_MASTER_DATA = {
 
 
 def _make_app_and_client(tmp_dir: Path):
-    """Create a test Flask app and client with isolated file system."""
-    # Write master data
+    """Create a test Flask app and client with isolated file system.
+
+    Returns (app, session_id, stack) where the ExitStack keeps the LLM
+    and pricing patches active until stack.close() is called.
+    """
     master_path = tmp_dir / 'Master_CV_Data.json'
     master_path.write_text(json.dumps(SAMPLE_MASTER_DATA), encoding='utf-8')
 
-    # Create empty publications file
     pubs_path = tmp_dir / 'publications.bib'
     pubs_path.touch()
 
-    # Create args
     args = argparse.Namespace(
         llm_provider='local',
         model=None,
@@ -101,34 +103,28 @@ def _make_app_and_client(tmp_dir: Path):
         job_file=None,
     )
 
-    # Create app with mocked LLM and pricing
-    with patch('scripts.web_app.get_llm_provider') as mock_get_llm, \
-         patch('scripts.web_app.get_cached_pricing') as mock_pricing, \
-         patch('scripts.web_app.get_pricing_updated_at') as mock_updated_at, \
-         patch('scripts.web_app.get_pricing_source') as mock_source:
-        
-        mock_llm = MagicMock()
-        mock_llm.chat.return_value = {
-            'response': 'Analysis complete',
-            'stop_reason': 'end_turn',
-            'usage': {'prompt_tokens': 100, 'completion_tokens': 50},
-        }
-        mock_llm.model = 'local-model'
-        mock_get_llm.return_value = mock_llm
-        
-        # Mock pricing functions
-        mock_pricing.return_value = {}
-        mock_updated_at.return_value = '2024-01-01'
-        mock_source.return_value = 'static'
+    mock_llm = MagicMock()
+    mock_llm.chat.return_value = {
+        'response': 'Analysis complete',
+        'stop_reason': 'end_turn',
+        'usage': {'prompt_tokens': 100, 'completion_tokens': 50},
+    }
+    mock_llm.model = 'local-model'
 
-        app = create_app(args)
-        app.config['TESTING'] = True
-        client = app.test_client()
+    stack = ExitStack()
+    stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
+    stack.enter_context(patch('scripts.web_app.get_cached_pricing', return_value={}))
+    stack.enter_context(patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01'))
+    stack.enter_context(patch('scripts.web_app.get_pricing_source', return_value='static'))
 
-        # Store reference to mocked LLM for test access
-        app.mock_llm = mock_llm
+    app = create_app(args)
+    app.config['TESTING'] = True
+    app.mock_llm = mock_llm
 
-    return app, client
+    with app.test_client() as tmp_client:
+        session_id = tmp_client.post('/api/sessions/new').get_json()['session_id']
+
+    return app, session_id, stack
 
 
 # ---------------------------------------------------------------------------
@@ -141,37 +137,36 @@ class TestStatusAPI(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self.tmp.name)
-        self.app, self.client = _make_app_and_client(self.tmp_path)
+        self.app, self.session_id, self._stack = _make_app_and_client(self.tmp_path)
+        self.client = self.app.test_client()
+        self.addCleanup(self._stack.close)
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def test_status_endpoint_accessible(self):
         """GET /api/status returns HTTP 200."""
-        response = self.client.get('/api/status')
+        response = self.client.get('/api/status', query_string={'session_id': self.session_id})
         self.assertEqual(response.status_code, 200)
 
     def test_status_returns_json(self):
         """GET /api/status returns valid JSON."""
-        response = self.client.get('/api/status')
+        response = self.client.get('/api/status', query_string={'session_id': self.session_id})
         data = response.get_json()
         self.assertIsNotNone(data)
 
     def test_status_includes_required_fields(self):
         """Status response includes phase and LLM provider."""
-        response = self.client.get('/api/status')
+        response = self.client.get('/api/status', query_string={'session_id': self.session_id})
         data = response.get_json()
-        
-        # Should have essential fields
         self.assertIn('phase', data)
         self.assertIn('llm_provider', data)
 
     def test_status_phase_initially_init(self):
         """Initial status phase should be 'init' or similar."""
-        response = self.client.get('/api/status')
+        response = self.client.get('/api/status', query_string={'session_id': self.session_id})
         data = response.get_json()
         phase = data.get('phase', '')
-        # Phase should be one of the workflow phases
         self.assertIn(phase, ['init', 'job_analysis', 'customization', 'generation'])
 
 
@@ -181,22 +176,28 @@ class TestMasterDataAPI(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self.tmp.name)
-        self.app, self.client = _make_app_and_client(self.tmp_path)
+        self.app, self.session_id, self._stack = _make_app_and_client(self.tmp_path)
+        self.client = self.app.test_client()
+        self.addCleanup(self._stack.close)
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def test_master_data_overview_accessible(self):
         """GET /api/master-data/overview returns HTTP 200."""
-        response = self.client.get('/api/master-data/overview')
+        response = self.client.get(
+            '/api/master-data/overview',
+            query_string={'session_id': self.session_id},
+        )
         self.assertEqual(response.status_code, 200)
 
     def test_master_data_overview_returns_structure(self):
         """Master data overview includes counts and personal info."""
-        response = self.client.get('/api/master-data/overview')
+        response = self.client.get(
+            '/api/master-data/overview',
+            query_string={'session_id': self.session_id},
+        )
         data = response.get_json()
-        
-        # Should have overview of loaded data
         self.assertIn('ok', data)
         self.assertIn('name', data)
         self.assertIn('email', data)
@@ -206,11 +207,12 @@ class TestMasterDataAPI(unittest.TestCase):
 
     def test_master_fields_endpoint_accessible(self):
         """GET /api/master-fields returns field definitions."""
-        response = self.client.get('/api/master-fields')
+        response = self.client.get(
+            '/api/master-fields',
+            query_string={'session_id': self.session_id},
+        )
         self.assertEqual(response.status_code, 200)
-        
         data = response.get_json()
-        # Should describe available fields
         self.assertIsInstance(data, (dict, list))
 
 
@@ -220,7 +222,9 @@ class TestModelAPI(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self.tmp.name)
-        self.app, self.client = _make_app_and_client(self.tmp_path)
+        self.app, _sid, self._stack = _make_app_and_client(self.tmp_path)
+        self.client = self.app.test_client()
+        self.addCleanup(self._stack.close)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -259,7 +263,9 @@ class TestErrorHandlingAPI(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self.tmp.name)
-        self.app, self.client = _make_app_and_client(self.tmp_path)
+        self.app, _sid, self._stack = _make_app_and_client(self.tmp_path)
+        self.client = self.app.test_client()
+        self.addCleanup(self._stack.close)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -287,40 +293,104 @@ class TestMultipleEndpointsIntegration(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self.tmp.name)
-        self.app, self.client = _make_app_and_client(self.tmp_path)
+        self.app, self.session_id, self._stack = _make_app_and_client(self.tmp_path)
+        self.client = self.app.test_client()
+        self.addCleanup(self._stack.close)
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def test_status_and_master_data_consistency(self):
         """Status and master-data endpoints report consistent state."""
-        status_response = self.client.get('/api/status')
+        status_response = self.client.get(
+            '/api/status', query_string={'session_id': self.session_id}
+        )
         self.assertEqual(status_response.status_code, 200)
 
-        overview_response = self.client.get('/api/master-data/overview')
+        overview_response = self.client.get(
+            '/api/master-data/overview', query_string={'session_id': self.session_id}
+        )
         self.assertEqual(overview_response.status_code, 200)
 
-        # Both should have loaded master data
-        status_data = status_response.get_json()
         overview_data = overview_response.get_json()
-        
-        # Overview should contain the loaded data
         self.assertIn('ok', overview_data)
         self.assertIn('name', overview_data)
 
     def test_api_resilience_with_multiple_requests(self):
         """API handles multiple sequential requests without state corruption."""
-        # Make multiple status requests
         for i in range(5):
-            response = self.client.get('/api/status')
+            response = self.client.get(
+                '/api/status', query_string={'session_id': self.session_id}
+            )
             self.assertEqual(response.status_code, 200)
             data = response.get_json()
             self.assertIn('phase', data)
 
-        # Final request should still be consistent
-        final_response = self.client.get('/api/status')
+        final_response = self.client.get(
+            '/api/status', query_string={'session_id': self.session_id}
+        )
         final_data = final_response.get_json()
         self.assertIsNotNone(final_data.get('phase'))
+
+
+class TestStartupSessionRedirect(unittest.TestCase):
+    """Test startup behavior when the server preloads a job file."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp.name)
+
+        master_path = self.tmp_path / 'Master_CV_Data.json'
+        master_path.write_text(json.dumps(SAMPLE_MASTER_DATA), encoding='utf-8')
+
+        pubs_path = self.tmp_path / 'publications.bib'
+        pubs_path.touch()
+
+        job_path = self.tmp_path / 'target_role_2026-03-18.txt'
+        job_path.write_text(
+            'Target Role\nExample Co\nBuild ML systems.',
+            encoding='utf-8',
+        )
+
+        args = argparse.Namespace(
+            llm_provider='local',
+            model=None,
+            master_data=str(master_path),
+            publications=str(pubs_path),
+            output_dir=str(self.tmp_path / 'output'),
+            job_file=str(job_path),
+        )
+
+        mock_llm = MagicMock()
+        mock_llm.model = 'local-model'
+
+        self._stack = ExitStack()
+        self._stack.enter_context(
+            patch('scripts.web_app.get_llm_provider', return_value=mock_llm)
+        )
+        self._stack.enter_context(
+            patch('scripts.web_app.get_cached_pricing', return_value={})
+        )
+        self._stack.enter_context(
+            patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01')
+        )
+        self._stack.enter_context(
+            patch('scripts.web_app.get_pricing_source', return_value='static')
+        )
+
+        self.app = create_app(args)
+        self.app.config['TESTING'] = True
+        self.client = self.app.test_client()
+        self.addCleanup(self._stack.close)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_root_redirects_to_preloaded_session(self):
+        response = self.client.get('/', follow_redirects=False)
+        self.assertEqual(response.status_code, 302)
+        location = response.headers.get('Location', '')
+        self.assertTrue(location.startswith('/?session='))
 
 
 if __name__ == '__main__':

@@ -16,7 +16,7 @@ from pathlib import Path
 
 def test_enhanced_job_input(require_server=None):
     """Test all three job input methods"""
-    base_url = "http://localhost:5001"
+    base_url = "http://127.0.0.1:5001"
     
     print("🧪 Testing Enhanced Job Input Functionality")
     print("=" * 60)

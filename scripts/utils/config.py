@@ -191,6 +191,11 @@ class Config:
     def history_file(self) -> str:
         """Input history file."""
         return self.get('session.history_file', 'files/.input_history')
+
+    @property
+    def idle_timeout_minutes(self) -> int:
+        """Idle session eviction timeout in minutes."""
+        return int(self.get('session.idle_timeout_minutes', 120))
     
     # Google Drive
     @property

@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 def test_web_ui_workflow(require_server=None):
     """Test complete workflow with web server"""
-    base_url = "http://localhost:5001"
+    base_url = "http://127.0.0.1:5001"
 
     print("🧪 Testing Complete Web UI Workflow Integration")
     print("=" * 60)
@@ -76,7 +76,7 @@ Responsibilities:
     if response.status_code == 200:
         result = response.json()
         print("  ✅ Job analysis completed successfully")
-        print(f"  📝 Response: {result.get('result', 'No result message')[:100]}...")
+        print(f"  📝 Response: {str(result.get('result', 'No result message'))[:100]}...")
     else:
         print(f"  ❌ Job analysis failed: {response.status_code}")
         print(f"  💬 Error: {response.text}")
@@ -90,7 +90,7 @@ Responsibilities:
     if response.status_code == 200:
         result = response.json()
         print("  ✅ Customizations generated successfully")
-        print(f"  📝 Response: {result.get('result', 'No result message')[:100]}...")
+        print(f"  📝 Response: {str(result.get('result', 'No result message'))[:100]}...")
     else:
         print(f"  ❌ Customization generation failed: {response.status_code}")
         print(f"  💬 Error: {response.text}")
@@ -118,7 +118,7 @@ Responsibilities:
     if response.status_code == 200:
         result = response.json()
         print("  ✅ CV generation initiated successfully")
-        print(f"  📝 Response: {result.get('result', 'No result message')[:100]}...")
+        print(f"  📝 Response: {str(result.get('result', 'No result message'))[:100]}...")
     else:
         print(f"  ❌ CV generation failed: {response.status_code}")
         print(f"  💬 Error: {response.text}")

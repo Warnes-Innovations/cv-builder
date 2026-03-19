@@ -194,6 +194,80 @@ class TestFormatPublications(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# apply_accepted_spell_fixes
+# ---------------------------------------------------------------------------
+
+class TestApplyAcceptedSpellFixes(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_summary_fix_applied_by_offset(self):
+        content = {'summary': 'Experienced scientst.', 'experiences': []}
+        audit = [{
+            'section_id': 'summary',
+            'outcome': 'accept',
+            'original': 'scientst',
+            'final': 'scientist',
+            'offset': 12,
+            'length': 8,
+        }]
+
+        result = self.orc.apply_accepted_spell_fixes(content, audit)
+
+        self.assertEqual(result['summary'], 'Experienced scientist.')
+        self.assertEqual(content['summary'], 'Experienced scientst.')
+
+    def test_bullet_fix_applied_to_ordered_and_base_achievements(self):
+        content = {
+            'summary': '',
+            'experiences': [{
+                'id': 'exp_001',
+                'achievements': [{'text': 'Built dashbaords for executives.'}],
+                'ordered_achievements': [{'text': 'Built dashbaords for executives.'}],
+            }],
+        }
+        audit = [{
+            'section_id': 'exp_exp_001_ach_0',
+            'outcome': 'accept',
+            'original': 'dashbaords',
+            'final': 'dashboards',
+            'offset': 6,
+            'length': 10,
+        }]
+
+        result = self.orc.apply_accepted_spell_fixes(content, audit)
+
+        self.assertEqual(
+            result['experiences'][0]['achievements'][0]['text'],
+            'Built dashboards for executives.',
+        )
+        self.assertEqual(
+            result['experiences'][0]['ordered_achievements'][0]['text'],
+            'Built dashboards for executives.',
+        )
+
+    def test_rejected_fix_is_ignored(self):
+        content = {'summary': 'Experienced scientst.', 'experiences': []}
+        audit = [{
+            'section_id': 'summary',
+            'outcome': 'reject',
+            'original': 'scientst',
+            'final': 'scientist',
+            'offset': 12,
+            'length': 8,
+        }]
+
+        result = self.orc.apply_accepted_spell_fixes(content, audit)
+
+        self.assertEqual(result['summary'], 'Experienced scientst.')
+
+
+# ---------------------------------------------------------------------------
 # _prepare_cv_data_for_template
 # ---------------------------------------------------------------------------
 
@@ -240,7 +314,7 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
         sel = self._selected()
         sel['personal_info']['languages'] = [{'language': 'English', 'proficiency': 'Native'}]
         result = self.orc._prepare_cv_data_for_template(sel, self._job())
-        self.assertEqual(len(result['personal_info']['languages']), 1)
+        self.assertEqual(result['personal_info']['languages'], ['English (Native)'])
 
     def test_skills_by_category_is_list(self):
         result = self.orc._prepare_cv_data_for_template(self._selected(), self._job())
@@ -270,6 +344,49 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
         sel['personal_info']['contact']['address'] = {'city': 'Boston', 'state': 'MA'}
         result = self.orc._prepare_cv_data_for_template(sel, self._job())
         self.assertEqual(result['personal_info']['contact']['address_display'], 'Boston, MA')
+
+    def test_selected_achievements_are_normalized_to_text_field(self):
+        sel = self._selected({
+            'achievements': [
+                {
+                    'id': 'sa_001',
+                    'title': 'Selected publication impact',
+                    'description': 'Created widely used R packages with 7,000+ citations.',
+                }
+            ]
+        })
+
+        result = self.orc._prepare_cv_data_for_template(sel, self._job())
+
+        self.assertEqual(len(result['achievements']), 1)
+        self.assertEqual(
+            result['achievements'][0]['text'],
+            'Created widely used R packages with 7,000+ citations.',
+        )
+
+    def test_experience_achievements_are_normalized_to_text_field(self):
+        sel = self._selected({
+            'experiences': [
+                {
+                    'id': 'exp_001',
+                    'company': 'Acme Corp',
+                    'title': 'Scientist',
+                    'achievements': [
+                        {
+                            'title': 'Pipeline automation',
+                            'description': 'Automated QC reporting for clinical datasets.',
+                        }
+                    ],
+                }
+            ]
+        })
+
+        result = self.orc._prepare_cv_data_for_template(sel, self._job())
+
+        self.assertEqual(
+            result['experiences'][0]['achievements'][0]['text'],
+            'Automated QC reporting for clinical datasets.',
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -998,4 +1115,3 @@ class TestBulletOrderInSelectContent(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-

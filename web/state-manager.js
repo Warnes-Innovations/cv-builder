@@ -276,15 +276,12 @@ async function restoreBackendState() {
         }
       }
 
-      // If we have customization data, try to restore it
-      if (statusData.phase === PHASES.REWRITE_REVIEW || statusData.phase === PHASES.SPELL_CHECK || statusData.phase === PHASES.GENERATION || statusData.phase === PHASES.LAYOUT_REVIEW || statusData.phase === PHASES.REFINEMENT) {
+      // If we have customization data, restore it
+      if (statusData.phase === PHASES.CUSTOMIZATION || statusData.phase === PHASES.REWRITE_REVIEW || statusData.phase === PHASES.SPELL_CHECK || statusData.phase === PHASES.GENERATION || statusData.phase === PHASES.LAYOUT_REVIEW || statusData.phase === PHASES.REFINEMENT) {
         const customizationData = statusData.customizations;
         if (customizationData) {
           tabData.customizations = customizationData;
           window.pendingRecommendations = customizationData;
-          if (currentTab === 'customizations') {
-            await populateCustomizationsTabWithReview(customizationData);
-          }
         }
       }
 

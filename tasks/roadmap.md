@@ -12,7 +12,7 @@ Items here are approved in concept but not yet scheduled for development.
 ### ROAD-01 — Multi-User Server Mode
 
 **Priority:** Low
-**Depends on:** ROAD-01 requires multiple concurrent sessions (currently in-progress) as a prerequisite.
+**Depends on:** ROAD-01 requires multiple concurrent sessions (now complete — `SessionRegistry` implemented) as a prerequisite.
 
 **Description:**
 Support multiple distinct users accessing a shared cv-builder server instance, each with their own

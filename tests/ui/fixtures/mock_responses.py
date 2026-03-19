@@ -233,3 +233,38 @@ API_LOAD_JOB_FILE_OK = {
     "ok":       True,
     "job_text": SAMPLE_JOB_TEXT,
 }
+
+# GET /api/status — analysis complete but still in job_analysis phase (tab-analysis visible)
+API_STATUS_IN_ANALYSIS = {
+    **API_STATUS_ANALYSIS_DONE,
+    "phase": "job_analysis",
+}
+
+# GET /api/status — in rewrite_review phase (rewrite stage: #tab-rewrite visible)
+API_STATUS_REWRITE = {
+    **API_STATUS_ANALYSIS_DONE,
+    "phase": "rewrite_review",
+}
+
+# GET /api/status — in spell_check phase (spell stage: #tab-spell visible)
+API_STATUS_SPELL = {
+    **API_STATUS_ANALYSIS_DONE,
+    "phase": "spell_check",
+}
+
+# GET /api/status — in generation phase (generate stage: #tab-generate visible)
+API_STATUS_GENERATE = {
+    **API_STATUS_ANALYSIS_DONE,
+    "phase": "generation",
+    "generated_files": {
+        "ats_docx": "CV_Test_ATS.docx",
+        "html": "CV_Test.html",
+        "pdf": "CV_Test.pdf",
+    },
+}
+
+# GET /api/status — in refinement phase (finalise stage: #tab-download, #tab-finalise visible)
+API_STATUS_FINALISE = {
+    **API_STATUS_GENERATE,
+    "phase": "refinement",
+}

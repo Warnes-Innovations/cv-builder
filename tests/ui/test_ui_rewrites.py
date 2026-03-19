@@ -21,17 +21,19 @@ from tests.ui.fixtures.mock_responses import (
 
 
 class TestRewritesTab:
-    def test_rewrites_tab_present(self, page: Page):
-        expect(page.locator("#tab-rewrite")).to_be_visible()
+    def test_rewrites_tab_present(self, rewrite_stage_page: Page):
+        """#tab-rewrite exists and is visible in the rewrite stage."""
+        expect(rewrite_stage_page.locator("#tab-rewrite")).to_be_visible()
 
-    def test_click_rewrites_tab(self, page: Page):
-        page.locator("#tab-rewrite").click()
-        expect(page.locator("#document-content")).to_be_visible()
+    def test_click_rewrites_tab(self, rewrite_stage_page: Page):
+        """Clicking the rewrites tab updates the document-content area."""
+        rewrite_stage_page.locator("#tab-rewrite").click()
+        expect(rewrite_stage_page.locator("#document-content")).to_be_visible()
 
     def test_generate_btn_fetches_rewrites(self, seeded_page: Page):
         """
-        Clicking Generate CV triggers GET /api/rewrites.
-        Rewrites are fetched via the Generate button, not the tab click.
+        Clicking Generate CV (customizations stage) triggers GET /api/rewrites.
+        seeded_page is in customization phase where #generate-btn is shown.
         """
         api_calls = []
 
@@ -46,11 +48,16 @@ class TestRewritesTab:
         seeded_page.route("**/api/rewrites", capture)
         seeded_page.locator("#generate-btn").click()
         seeded_page.wait_for_timeout(800)
-        assert any("/api/rewrites" in url for url in api_calls), \
+        assert any("/api/rewrites" in url for url in api_calls), (
             "Expected GET /api/rewrites when Generate CV is clicked"
+        )
 
     def test_rewrite_cards_rendered(self, seeded_page: Page):
-        """After clicking rewrite tab, document-content area is visible."""
+        """After clicking Generate CV, document-content area shows rewrite cards.
+
+        The rewrite panel is triggered by the Generate CV button
+        (fetchAndReviewRewrites), not by clicking the rewrite tab directly.
+        """
         seeded_page.route(
             "**/api/rewrites",
             lambda r: r.fulfill(
@@ -59,7 +66,7 @@ class TestRewritesTab:
                 body=json.dumps(API_REWRITES_GET),
             ),
         )
-        seeded_page.locator("#tab-rewrite").click()
+        seeded_page.locator("#generate-btn").click()
         seeded_page.wait_for_timeout(800)
 
         content = seeded_page.locator("#document-content")
@@ -86,7 +93,7 @@ class TestRewritesTab:
                 body=json.dumps(API_REWRITES_GET),
             ),
         )
-        seeded_page.locator("#tab-rewrite").click()
+        seeded_page.locator("#generate-btn").click()
         seeded_page.wait_for_timeout(800)
 
         content_html = seeded_page.locator("#document-content").inner_html()

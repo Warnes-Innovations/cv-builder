@@ -99,10 +99,11 @@ class CVOrchestrator:
         template_variant: str = 'standard'
     ) -> Dict:
         """Prepare CV data in the format expected by the HTML resume template."""
-        
-        # Get personal info from selected content
-        personal_info = selected_content.get('personal_info', {})
-        
+
+        # Work on copies so template-specific normalization never mutates the
+        # session's selected content in place.
+        personal_info = copy.deepcopy(selected_content.get('personal_info', {}))
+
         # Validate contact information
         contact = personal_info.get('contact', {})
         address = contact.get('address', {})
@@ -114,7 +115,11 @@ class CVOrchestrator:
         # Ensure languages key exists (template expects it)
         if 'languages' not in personal_info:
             personal_info['languages'] = []
-        
+        else:
+            personal_info['languages'] = self._normalize_language_entries(
+                personal_info.get('languages', [])
+            )
+
         # Get professional summary
         professional_summary = selected_content.get('summary', '')
         if not professional_summary.strip():
@@ -128,7 +133,14 @@ class CVOrchestrator:
         
         # Format publications
         publications = self._format_publications(selected_content.get('publications', []))
-        
+
+        experiences = self._normalize_experiences_for_template(
+            copy.deepcopy(selected_content.get('experiences', []))
+        )
+        achievements = self._normalize_achievement_entries(
+            copy.deepcopy(selected_content.get('achievements', []))
+        )
+
         # Get awards and certifications
         awards = selected_content.get('awards', [])
         certifications = selected_content.get('certifications', [])
@@ -145,7 +157,8 @@ class CVOrchestrator:
         cv_data = {
             'personal_info': personal_info,
             'professional_summary': professional_summary,
-            'experiences': selected_content.get('experiences', []),
+            'experiences': experiences,
+            'achievements': achievements,
             'education': selected_content.get('education', []),
             'skills_by_category': skills_by_category,
             'awards': awards,
@@ -153,9 +166,91 @@ class CVOrchestrator:
             'publications': publications,
             'template_metadata': template_metadata
         }
-        
+
         return cv_data
-    
+
+    @staticmethod
+    def _extract_display_text(item: Any, preferred_fields: Optional[List[str]] = None) -> str:
+        """Extract the best human-readable text from a template item."""
+        if item is None:
+            return ''
+        if isinstance(item, str):
+            return item.strip()
+        if not isinstance(item, dict):
+            return str(item).strip()
+
+        field_order = preferred_fields or []
+        fallback_fields = [
+            'text',
+            'description',
+            'summary',
+            'formatted',
+            'formatted_citation',
+            'title',
+            'name',
+            'degree',
+            'institution',
+            'language',
+            'value',
+        ]
+
+        for field_name in field_order + fallback_fields:
+            value = item.get(field_name)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        return ''
+
+    def _normalize_achievement_entries(self, achievements: List[Any]) -> List[Any]:
+        """Ensure achievement-like entries always expose a human-readable ``text``."""
+        normalized = []
+        for achievement in achievements or []:
+            if isinstance(achievement, dict):
+                entry = dict(achievement)
+                entry['text'] = self._extract_display_text(
+                    entry,
+                    preferred_fields=['text', 'description', 'summary', 'title', 'name'],
+                )
+                normalized.append(entry)
+            else:
+                normalized.append(achievement)
+        return normalized
+
+    def _normalize_experiences_for_template(self, experiences: List[Any]) -> List[Any]:
+        """Normalize experience achievement payloads before template rendering."""
+        normalized = []
+        for experience in experiences or []:
+            if not isinstance(experience, dict):
+                normalized.append(experience)
+                continue
+
+            entry = dict(experience)
+            for key in ('ordered_achievements', 'achievements'):
+                if isinstance(entry.get(key), list):
+                    entry[key] = self._normalize_achievement_entries(entry.get(key, []))
+            normalized.append(entry)
+        return normalized
+
+    def _normalize_language_entries(self, languages: List[Any]) -> List[str]:
+        """Convert language records to simple display strings for the template."""
+        normalized = []
+        for language in languages or []:
+            if isinstance(language, dict):
+                name = self._extract_display_text(
+                    language,
+                    preferred_fields=['language', 'name'],
+                )
+                proficiency = str(language.get('proficiency', '')).strip()
+                if name and proficiency:
+                    normalized.append(f"{name} ({proficiency})")
+                elif name:
+                    normalized.append(name)
+            else:
+                text = str(language).strip()
+                if text:
+                    normalized.append(text)
+        return normalized
+
     def _organize_skills_by_category(self, skills: List[Dict], variant: str) -> List[Dict]:
         """Organize skills by category, deduplicating by canonical synonym name."""
         if not skills:
@@ -798,6 +893,216 @@ For manual generation:
 
         return result
 
+    def apply_accepted_spell_fixes(
+        self, content: Dict, spell_audit: List[Dict]
+    ) -> Dict:
+        """Apply accepted spell-check fixes to the selected content.
+
+        Accepted fixes are grouped by ``section_id`` and applied against the
+        exact span that LanguageTool flagged. Offsets are processed in reverse
+        order so multiple fixes in the same section do not shift one another.
+        """
+        result = copy.deepcopy(content)
+        accepted_by_section: Dict[str, List[Dict]] = defaultdict(list)
+
+        for item in spell_audit or []:
+            if item.get('outcome') != 'accept':
+                continue
+            section_id = (item.get('section_id') or '').strip()
+            replacement = item.get('final') or item.get('suggestion') or ''
+            if not section_id or not replacement:
+                continue
+            accepted_by_section[section_id].append(item)
+
+        for section_id, fixes in accepted_by_section.items():
+            if section_id == 'summary':
+                summary_text = result.get('summary', '')
+                result['summary'] = self._apply_spell_fixes_to_text(summary_text, fixes)
+                continue
+
+            match = re.match(r'^selected_ach_(\d+)$', section_id)
+            if match:
+                ach_idx = int(match.group(1))
+                achievements = result.get('achievements') or []
+                self._apply_spell_fixes_to_list_item(achievements, ach_idx, fixes)
+                continue
+
+            match = re.match(r'^exp_(.+)_ach_(\d+)$', section_id)
+            if not match:
+                match = re.match(r'^skill_(\d+)$', section_id)
+                if match:
+                    skills = result.get('skills') or []
+                    self._apply_spell_fixes_to_skill(skills, int(match.group(1)), fixes)
+                    continue
+
+                match = re.match(r'^edu_(\d+)_(degree|field|institution)$', section_id)
+                if match:
+                    self._apply_spell_fixes_to_named_field(
+                        result.get('education') or [],
+                        int(match.group(1)),
+                        match.group(2),
+                        fixes,
+                    )
+                    continue
+
+                match = re.match(r'^award_(\d+)_title$', section_id)
+                if match:
+                    awards = result.get('awards') or []
+                    award_idx = int(match.group(1))
+                    if 0 <= award_idx < len(awards):
+                        award = awards[award_idx]
+                        field_name = 'degree' if isinstance(award, dict) and award.get('degree') else 'title'
+                        self._apply_spell_fixes_to_named_field(awards, award_idx, field_name, fixes)
+                    continue
+
+                match = re.match(r'^cert_(\d+)_(name|issuer)$', section_id)
+                if match:
+                    self._apply_spell_fixes_to_named_field(
+                        result.get('certifications') or [],
+                        int(match.group(1)),
+                        match.group(2),
+                        fixes,
+                    )
+                    continue
+
+                match = re.match(r'^lang_(\d+)(?:_(language|proficiency))?$', section_id)
+                if match:
+                    languages = result.get('personal_info', {}).get('languages') or []
+                    lang_idx = int(match.group(1))
+                    field_name = match.group(2)
+                    self._apply_spell_fixes_to_language(languages, lang_idx, field_name, fixes)
+                    continue
+
+                match = re.match(r'^pub_(\d+)_(formatted|title|authors|journal|booktitle)$', section_id)
+                if match:
+                    publications = result.get('publications') or []
+                    pub_idx = int(match.group(1))
+                    field_name = match.group(2)
+                    self._apply_spell_fixes_to_named_field(publications, pub_idx, field_name, fixes)
+                    continue
+
+                print(
+                    f"Warning: apply_accepted_spell_fixes: cannot parse "
+                    f"section id {section_id!r}"
+                )
+                continue
+
+            exp_id = match.group(1)
+            ach_idx = int(match.group(2))
+            exp = next(
+                (item for item in result.get('experiences', []) if item.get('id') == exp_id),
+                None,
+            )
+            if exp is None:
+                print(
+                    f"Warning: apply_accepted_spell_fixes: experience "
+                    f"{exp_id!r} not found for section {section_id!r}"
+                )
+                continue
+
+            for key in ('ordered_achievements', 'achievements'):
+                achievements = exp.get(key) or []
+                if not (0 <= ach_idx < len(achievements)):
+                    continue
+                achievement = achievements[ach_idx]
+                current_text = (
+                    achievement.get('text', '')
+                    if isinstance(achievement, dict)
+                    else str(achievement)
+                )
+                updated_text = self._apply_spell_fixes_to_text(current_text, fixes)
+                if isinstance(achievement, dict):
+                    achievement['text'] = updated_text
+                else:
+                    achievements[ach_idx] = updated_text
+
+        return result
+
+    def _apply_spell_fixes_to_list_item(
+        self, items: List[Any], item_idx: int, fixes: List[Dict]
+    ) -> None:
+        """Apply accepted spell fixes to a list item with optional ``text`` field."""
+        if not (0 <= item_idx < len(items)):
+            return
+        item = items[item_idx]
+        current_text = item.get('text', '') if isinstance(item, dict) else str(item)
+        updated_text = self._apply_spell_fixes_to_text(current_text, fixes)
+        if isinstance(item, dict):
+            item['text'] = updated_text
+        else:
+            items[item_idx] = updated_text
+
+    def _apply_spell_fixes_to_skill(
+        self, skills: List[Any], skill_idx: int, fixes: List[Dict]
+    ) -> None:
+        """Apply accepted spell fixes to a skill name."""
+        if not (0 <= skill_idx < len(skills)):
+            return
+        skill = skills[skill_idx]
+        current_text = skill.get('name', '') if isinstance(skill, dict) else str(skill)
+        updated_text = self._apply_spell_fixes_to_text(current_text, fixes)
+        if isinstance(skill, dict):
+            skill['name'] = updated_text
+        else:
+            skills[skill_idx] = updated_text
+
+    def _apply_spell_fixes_to_named_field(
+        self, items: List[Any], item_idx: int, field_name: str, fixes: List[Dict]
+    ) -> None:
+        """Apply accepted spell fixes to a specific named field on a list item."""
+        if not (0 <= item_idx < len(items)):
+            return
+        item = items[item_idx]
+        if not isinstance(item, dict) or field_name not in item:
+            return
+        item[field_name] = self._apply_spell_fixes_to_text(str(item.get(field_name, '')), fixes)
+
+    def _apply_spell_fixes_to_language(
+        self, languages: List[Any], lang_idx: int, field_name: Optional[str], fixes: List[Dict]
+    ) -> None:
+        """Apply accepted spell fixes to language entries."""
+        if not (0 <= lang_idx < len(languages)):
+            return
+        item = languages[lang_idx]
+        if isinstance(item, dict):
+            target_field = field_name or ('language' if 'language' in item else None)
+            if target_field and target_field in item:
+                item[target_field] = self._apply_spell_fixes_to_text(str(item.get(target_field, '')), fixes)
+        else:
+            languages[lang_idx] = self._apply_spell_fixes_to_text(str(item), fixes)
+
+    @staticmethod
+    def _apply_spell_fixes_to_text(text: str, fixes: List[Dict]) -> str:
+        """Apply accepted spell fixes to a single text fragment."""
+        if not text:
+            return text
+
+        updated = text
+        sortable_fixes = []
+        for item in fixes or []:
+            try:
+                offset = int(item.get('offset'))
+                length = int(item.get('length'))
+            except (TypeError, ValueError):
+                continue
+            sortable_fixes.append((offset, length, item))
+
+        for offset, length, item in sorted(sortable_fixes, key=lambda row: row[0], reverse=True):
+            replacement = item.get('final') or item.get('suggestion') or ''
+            if not replacement:
+                continue
+            if offset < 0 or length < 0 or offset + length > len(updated):
+                continue
+
+            original = item.get('original', '')
+            current_span = updated[offset:offset + length]
+            if original and current_span != original:
+                continue
+
+            updated = updated[:offset] + replacement + updated[offset + length:]
+
+        return updated
+
     # ── CV generation ─────────────────────────────────────────────────────────
 
     def generate_cv(
@@ -807,6 +1112,7 @@ For manual generation:
         output_dir: Optional[Path] = None,
         approved_rewrites: Optional[List[Dict]] = None,
         rewrite_audit: Optional[List[Dict]] = None,
+        spell_audit: Optional[List[Dict]] = None,
         max_skills: Optional[int] = None,
     ) -> Dict:
         """
@@ -847,16 +1153,12 @@ For manual generation:
         
         print(f"Output directory: {job_output_dir}")
         
-        # Select content using hybrid approach (LLM + scoring)
-        selected_content = self._select_content_hybrid(
+        selected_content = self.build_render_ready_content(
             job_analysis,
             customizations,
+            approved_rewrites=approved_rewrites,
+            spell_audit=spell_audit,
             max_skills=max_skills,
-        )
-
-        # Apply any user-approved text rewrites before rendering
-        selected_content = self.apply_approved_rewrites(
-            selected_content, approved_rewrites or []
         )
 
         # Prepare template data once — shared by all format generators.
@@ -928,6 +1230,7 @@ For manual generation:
             'customizations':  customizations,
             'approved_rewrites': approved_rewrites or [],
             'rewrite_audit':   rewrite_audit or [],
+            'spell_audit':     spell_audit or [],
             'selected_content_summary': {
                 'experiences_count': len(selected_content['experiences']),
                 'skills_count': len(selected_content['skills']),
@@ -953,6 +1256,31 @@ For manual generation:
             'metadata': metadata,
             'generation_progress': generation_progress,
         }
+
+    def build_render_ready_content(
+        self,
+        job_analysis: Dict,
+        customizations: Dict,
+        approved_rewrites: Optional[List[Dict]] = None,
+        spell_audit: Optional[List[Dict]] = None,
+        max_skills: Optional[int] = None,
+        use_semantic_match: bool = True,
+    ) -> Dict:
+        """Build the selected content exactly as it will be rendered."""
+        selected_content = self._select_content_hybrid(
+            job_analysis,
+            customizations,
+            max_skills=max_skills,
+            use_semantic_match=use_semantic_match,
+        )
+        selected_content = self.apply_approved_rewrites(
+            selected_content,
+            approved_rewrites or [],
+        )
+        return self.apply_accepted_spell_fixes(
+            selected_content,
+            spell_audit or [],
+        )
 
     def _serialize_html_for_context(self, html: str) -> str:
         """Convert HTML to human-readable outline for LLM context.
@@ -1119,6 +1447,7 @@ If you need clarification, return:
         job_analysis: Dict,
         customizations: Dict,
         max_skills: Optional[int] = None,
+        use_semantic_match: bool = True,
     ) -> Dict:
         """
         Select content using hybrid LLM + rule-based approach.
@@ -1205,7 +1534,7 @@ If you need clarification, return:
             llm_score     = 10.0 if exp_id in recommended_exp_ids else 0.0
             keyword_score = calculate_relevance_score(exp, job_keywords, job_requirements, domain)
             semantic_score = 0.0
-            if self.llm:
+            if self.llm and use_semantic_match:
                 semantic_score = self.llm.semantic_match(json.dumps(exp), job_requirements) * 10
 
             scored_experiences.append((exp, llm_score + keyword_score + semantic_score))
@@ -1268,7 +1597,7 @@ If you need clarification, return:
             llm_score     = 10.0 if ach_id in recommended_achievement_ids else 0.0
             keyword_score = calculate_relevance_score(ach, job_keywords, job_requirements, domain)
             semantic_score = 0.0
-            if self.llm:
+            if self.llm and use_semantic_match:
                 semantic_score = self.llm.semantic_match(json.dumps(ach), job_requirements) * 10
 
             scored_achievements.append((ach, llm_score + keyword_score + semantic_score))
@@ -1343,6 +1672,7 @@ If you need clarification, return:
             'achievements': selected_achievements,
             'skills': selected_skills,
             'education': self.master_data.get('education', []),
+            'certifications': self.master_data.get('certifications', []),
             'publications': selected_publications,
             'awards': self.master_data.get('awards', [])
         }

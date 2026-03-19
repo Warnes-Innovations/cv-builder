@@ -68,9 +68,12 @@ function initiateLayoutInstructions() {
   }
 
   // Load and display current HTML preview
-  const currentHtml = window.tabData?.cv?.['*.html'] || '';
-  if (currentHtml) {
-    displayLayoutPreview(currentHtml);
+  const cachedHtml = window.tabData?.cv?.['*.html'] || '';
+  if (cachedHtml) {
+    displayLayoutPreview(cachedHtml);
+  } else {
+    // HTML is on disk — fetch it from the backend
+    _fetchAndDisplayLayoutPreview();
   }
 
   // Restore any prior instructions from session
@@ -178,11 +181,35 @@ async function submitLayoutInstruction(instructionText) {
 }
 
 /**
+ * Fetch the generated CV HTML from the backend and display it.
+ * Also caches the result in tabData.cv for subsequent re-renders.
+ */
+function _fetchAndDisplayLayoutPreview() {
+  fetch('/api/layout-html')
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok && data.html) {
+        displayLayoutPreview(data.html);
+        if (!window.tabData) window.tabData = {};
+        if (!window.tabData.cv || typeof window.tabData.cv !== 'object') {
+          window.tabData.cv = {};
+        }
+        window.tabData.cv['*.html'] = data.html;
+      } else {
+        console.warn('Layout preview not available:', data.error || 'no HTML returned');
+      }
+    })
+    .catch(err => console.warn('Could not load layout preview:', err));
+}
+
+/**
  * Display HTML preview in iframe.
  */
 function displayLayoutPreview(html) {
   const preview = document.getElementById('layout-preview');
   if (!preview) return;
+
+  preview.onload = () => fitLayoutPreviewToPane(preview);
 
   // Set iframe content safely
   const doc = preview.contentDocument || preview.contentWindow?.document;
@@ -190,7 +217,40 @@ function displayLayoutPreview(html) {
     doc.open();
     doc.write(html);
     doc.close();
+    fitLayoutPreviewToPane(preview);
   }
+}
+
+/**
+ * Scale the preview so an entire CV page width fits within the preview pane.
+ */
+function fitLayoutPreviewToPane(preview) {
+  const doc = preview?.contentDocument || preview?.contentWindow?.document;
+  const container = preview?.closest('.preview-iframe-container');
+  if (!doc || !container) return;
+
+  const pageContainer = doc.querySelector('.page-container') || doc.body;
+  if (!pageContainer) return;
+
+  const containerWidth = Math.max(container.clientWidth - 24, 1);
+  const contentWidth = Math.max(
+    Math.ceil(pageContainer.scrollWidth || 0),
+    Math.ceil(pageContainer.getBoundingClientRect().width || 0),
+    1
+  );
+  const scale = Math.min(1, containerWidth / contentWidth);
+
+  doc.documentElement.style.background = '#f8fafc';
+  doc.body.style.margin = '0';
+  doc.body.style.padding = '0';
+  doc.body.style.background = '#f8fafc';
+  doc.body.style.overflowX = 'auto';
+
+  pageContainer.style.zoom = `${scale}`;
+  pageContainer.style.transform = '';
+  pageContainer.style.transformOrigin = '';
+  pageContainer.style.margin = '12px';
+  preview.style.minWidth = '';
 }
 
 /**
@@ -203,35 +263,44 @@ function addToInstructionHistory(instruction) {
   }
 
   window.layoutInstructions.push(instruction);
+  renderInstructionHistory();
+}
 
+/**
+ * Render instruction history from current state without mutating it.
+ */
+function renderInstructionHistory() {
   const historyList = document.getElementById('instruction-history');
   if (!historyList) return;
 
-  const entry = document.createElement('div');
-  entry.className = 'instruction-history-entry';
-  entry.innerHTML = `
-    <div class="instruction-time">${instruction.timestamp}</div>
-    <div class="instruction-text">${htmlEscape(instruction.instruction_text)}</div>
-    <div class="instruction-summary"><em>${instruction.change_summary}</em></div>
-    <button class="btn btn-small" onclick="undoInstruction(${window.layoutInstructions.length - 1})">
-      Undo
-    </button>
-  `;
+  historyList.innerHTML = '';
+  (window.layoutInstructions || []).forEach((instruction, index) => {
+    const entry = document.createElement('div');
+    entry.className = 'instruction-history-entry';
+    entry.innerHTML = `
+      <div class="instruction-time">${instruction.timestamp || ''}</div>
+      <div class="instruction-text">${htmlEscape(instruction.instruction_text || '')}</div>
+      <div class="instruction-summary"><em>${htmlEscape(instruction.change_summary || '')}</em></div>
+      <button class="btn btn-small" onclick="undoInstruction(${index})">
+        Undo
+      </button>
+    `;
 
-  historyList.appendChild(entry);
+    historyList.appendChild(entry);
+  });
 
   // Update count
-  document.getElementById('instruction-count').textContent = window.layoutInstructions.length;
+  document.getElementById('instruction-count').textContent = (window.layoutInstructions || []).length;
 }
 
 /**
  * Restore instruction history from session state.
  */
 function restoreInstructionHistory() {
-  const instructions = window.layoutInstructions || [];
-  instructions.forEach(addToInstructionHistory);
+  renderInstructionHistory();
 
   // Show proceed button if any instructions applied
+  const instructions = window.layoutInstructions || [];
   if (instructions.length > 0) {
     document.getElementById('proceed-to-finalise-btn').style.display = 'block';
   }
@@ -294,10 +363,16 @@ function undoInstruction(index) {
   // Update history display
   const historyList = document.getElementById('instruction-history');
   if (historyList) {
-    historyList.innerHTML = '';
-    window.layoutInstructions.forEach(addToInstructionHistory);
+    renderInstructionHistory();
   }
 }
+
+window.addEventListener('resize', () => {
+  const preview = document.getElementById('layout-preview');
+  if (preview) {
+    fitLayoutPreviewToPane(preview);
+  }
+});
 
 /**
  * Complete layout review and advance to finalise phase.

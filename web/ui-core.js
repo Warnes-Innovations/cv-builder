@@ -114,10 +114,10 @@ function restoreFocus() {
 const STAGE_TABS = {
   job:            ['job'],
   analysis:       ['analysis', 'questions'],
-  customizations: ['customizations', 'editor'],
+  customizations: ['exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'summary-review', 'publications-review'],
   rewrite:        ['rewrite'],
   spell:          ['spell'],
-  generate:       ['cv'],
+  generate:       ['generate'],
   layout:         ['layout'],
   finalise:       ['download', 'finalise', 'master', 'cover-letter', 'screening'],
 };
@@ -188,7 +188,15 @@ function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', d
   const _origFetch = window.fetch;
   window.fetch = async function(...args) {
     const resp = await _origFetch.apply(this, args);
-    if (resp.status === 409) {
+    let shouldShowBanner = true;
+    try {
+      const rawUrl = typeof args[0] === 'string' ? args[0] : args[0]?.url;
+      const url = new URL(rawUrl, window.location.origin);
+      shouldShowBanner = url.pathname !== '/api/sessions/claim' && url.pathname !== '/api/sessions/takeover';
+    } catch (_) {
+      shouldShowBanner = true;
+    }
+    if (resp.status === 409 && shouldShowBanner) {
       showSessionConflictBanner();
     }
     return resp;
@@ -238,6 +246,24 @@ function setupEventListeners() {
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', (e) => {
       const tabName = e.target.id.replace('tab-', '');
+
+      // Guard: if the user is clicking into an earlier stage, show the same
+      // downstream-aware confirmation modal used by the stage progress bar.
+      const targetStage = getStageForTab(tabName);
+      if (
+        targetStage &&
+        typeof _STEP_ORDER !== 'undefined' &&
+        typeof _showReRunConfirmModal === 'function'
+      ) {
+        const targetIdx  = _STEP_ORDER.indexOf(targetStage);
+        const currentIdx = _STEP_ORDER.indexOf(currentStage);
+        const targetStepEl = document.getElementById(`step-${targetStage}`);
+        if (targetIdx < currentIdx && targetStepEl && targetStepEl.classList.contains('completed')) {
+          _showReRunConfirmModal(targetStage, 'back-nav', () => switchTab(tabName));
+          return;
+        }
+      }
+
       switchTab(tabName);
     });
 
@@ -392,7 +418,7 @@ async function loadTabContent(tab) {
         }
         break;
 
-      case 'cv':
+      case 'generate':
         if (typeof populateCVTab === 'function' && tabData.cv) {
           populateCVTab(tabData.cv);
         } else {
@@ -899,13 +925,29 @@ function _buildModelTable() {
   });
 
   // Rebind row click using delegation so sorting/filter redraws still work.
-  tbody.onclick = (event) => {
+  tbody.onclick = async (event) => {
     const tr = event.target.closest('tr');
     if (!tr) return;
     const provider = tr.getAttribute('data-provider');
     const model = tr.getAttribute('data-model');
     if (!model) return;
-    setModel(model, provider);
+
+    // Immediate feedback while the API call is in-flight
+    tr.style.cssText = 'background:#fef3c7; cursor:wait; opacity:0.85;';
+    const modelCell = tr.cells && tr.cells[1];
+    if (modelCell) {
+      modelCell.innerHTML =
+        `<span class="loading-spinner" style="width:14px;height:14px;border-width:2px;vertical-align:middle;margin-right:6px;"></span>${escapeHtml(model)}`;
+    }
+    const status = document.getElementById('model-test-status');
+    if (status) {
+      status.style.display = '';
+      status.style.color   = '#92400e';
+      status.innerHTML     =
+        `<span class="loading-spinner" style="width:14px;height:14px;border-width:2px;vertical-align:middle;margin-right:6px;"></span> Switching to ${escapeHtml(model)}\u2026`;
+    }
+
+    await setModel(model, provider);
   };
 
   // Enhance with DataTables for sorting/searching; keep paging disabled.
@@ -977,6 +1019,7 @@ async function setModel(model, provider) {
   } catch (e) {
     console.error('Failed to switch model:', e);
     const msg = e.message || String(e);
+    _syncModelTableSelection();
     const status = document.getElementById('model-test-status');
     if (status) {
       status.style.display = '';
