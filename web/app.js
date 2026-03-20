@@ -602,6 +602,10 @@ async function loadSessionFile(path) {
     // Persist the loaded path so auto-reload can find it after the next server restart
     localStorage.setItem(StorageKeys.SESSION_PATH, data.session_file || path);
 
+    // Reset session-scoped suggestion state so a new session's suggestions
+    // don't inherit IDs or decisions from the previous session.
+    window._suggestedAchsOrdered = null;
+
     // Reload conversation history and status from the freshly-loaded backend
     const historyRes = await fetch('/api/history');
     if (historyRes.ok) {
@@ -5199,7 +5203,7 @@ async function aiRewriteSuggestedAchievement(suggId) {
     experienceIndex: null,
     onAccept: async (suggestion) => {
       saveSuggestedAchievementField(suggId, 'description', suggestion);
-      const descEl = document.getElementById(`ach-desc-${CSS.escape(suggId)}`);
+      const descEl = document.getElementById(`ach-desc-${suggId}`);
       if (descEl) descEl.value = suggestion;
       _recordRewriteOutcome('accepted', suggestion);
       showToast('Achievement updated.');
@@ -5227,8 +5231,9 @@ function moveSuggestedAchievementRow(suggId, direction) {
  * Remove a suggested achievement from the list after confirmation.
  * Stable IDs mean no other decision keys need remapping.
  */
-function deleteSuggestedAchievement(suggId) {
-  if (!confirm('Remove this AI suggestion?')) return;
+async function deleteSuggestedAchievement(suggId) {
+  const confirmed = await confirmDialog('Remove this AI suggestion?', { confirmLabel: 'Remove', danger: true });
+  if (!confirmed) return;
   window._suggestedAchsOrdered = (window._suggestedAchsOrdered || []).filter(s => s._suggId !== suggId);
   delete window.achievementDecisions[suggId];
   _renderAchievementsReviewTable(document.getElementById('achievements-table-container'));
@@ -10598,5 +10603,8 @@ if (typeof module !== 'undefined') {
     updateAtsBadge,
     refreshAtsScore,
     scheduleAtsRefresh,
+    saveSuggestedAchievementField,
+    moveSuggestedAchievementRow,
+    deleteSuggestedAchievement,
   };
 }
