@@ -414,20 +414,38 @@ window.addEventListener('resize', () => {
 });
 
 /**
- * Complete layout review: confirm layout via staged generation contract, then
- * also call the legacy /api/layout-complete to advance the conversation phase.
+ * Complete layout review: confirm layout via staged generation contract,
+ * trigger final PDF/DOCX generation from the confirmed HTML, then advance
+ * the conversation phase via the legacy /api/layout-complete endpoint.
  */
 async function completeLayoutReview() {
   try {
     showProcessing(true);
 
-    // Confirm layout in the staged generation state (GAP-20)
+    // Confirm layout and generate final outputs when staged flow is active (GAP-20).
     const genState = stateManager?.getGenerationState?.() || {};
     if (genState.previewAvailable || genState.phase === 'layout_review') {
       try {
         await apiCall('POST', '/api/cv/confirm-layout', {});
       } catch (_e) {
-        // non-fatal: continue with legacy completion
+        // non-fatal: continue to final generation attempt
+      }
+
+      // Produce final PDF/DOCX from the confirmed HTML.
+      try {
+        const finalRes = await apiCall('POST', '/api/cv/generate-final', {});
+        if (finalRes && finalRes.ok && finalRes.outputs) {
+          if (!window.tabData) window.tabData = {};
+          window.tabData.cv = finalRes.outputs;
+          stateManager?.setGenerationState?.({ phase: 'final_complete' });
+        }
+      } catch (_e) {
+        // non-fatal: legacy outputs remain available for download
+      }
+
+      // Refresh ATS badge after final generation (GAP-21).
+      if (typeof scheduleAtsRefresh === 'function') {
+        scheduleAtsRefresh('post_generation');
       }
     }
 
@@ -440,7 +458,7 @@ async function completeLayoutReview() {
       return;
     }
 
-    appendMessage('assistant', '✅ Layout confirmed. Ready to generate final output.');
+    appendMessage('assistant', '✅ Layout confirmed and final output generated.');
 
     // Update phase and switch to download/generation tab
     stateManager.setPhase('refinement');

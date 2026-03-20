@@ -1,7 +1,7 @@
 # UI Gap Implementation Plan
 
 **Created:** 2026-03-19  
-**Status:** Phase 0 complete; Phase 1 in progress (2026-03-19)  
+**Status:** Phase 1 complete; Phase 2 (ATS) next (2026-03-19)  
 **Source basis:** `tasks/ui-review.md` and `tasks/gaps.md` refreshed on 2026-03-19
 
 ## Overview
@@ -239,7 +239,7 @@ This plan does not treat lower-priority persuasion or broad master-data ingestio
 - Produced `tasks/contracts/phase0-contract.md` covering staged generation artifacts, ATS score schema, skill typing, and rerun diffing.
 - Identified files and tests to be touched by each workstream.
 
-### Phase 1: Staged Generation Slice — **IN PROGRESS (2026-03-19)**
+### Phase 1: Staged Generation Slice — **COMPLETE (2026-03-19)**
 
 Phase 1 deliverables status:
 - [x] Backend endpoints: `/api/cv/generate-preview`, `/api/cv/layout-refine`, `/api/cv/confirm-layout`, `/api/cv/generate-final`, `/api/cv/generation-state` — implemented in `scripts/web_app.py`
@@ -248,8 +248,9 @@ Phase 1 deliverables status:
 - [x] `app.session_registry` exposed on Flask app object for test isolation
 - [x] Bug fix: `Path("").is_dir()` fallback resolves to cwd — fixed with non-empty string guard
 - [x] Regression tests: 26 tests in `tests/test_staged_generation.py` covering all endpoints, guards, happy paths, and session persistence
-- [ ] Frontend staged generation UI (preview pane + confirm button wired to new endpoints) — pending
-- [ ] ATS score badge integration — pending (foundation exists in HTML/CSS)
+- [x] Frontend staged generation UI: `layout-instruction.js` has preview pane, instruction loop, confirm button — all wired to new endpoints with legacy fallback
+- [x] `completeLayoutReview()` now calls `/api/cv/generate-final` after confirming layout; updates `tabData.cv` with final outputs and refreshes ATS badge
+- [x] Generation state synced from backend on session restore: `restoreBackendState()` in `state-manager.js` now calls `/api/cv/generation-state` after restoring other session data
 
 ### Phase 1: Staged Generation Slice
 

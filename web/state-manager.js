@@ -366,6 +366,24 @@ async function restoreBackendState() {
         }
       }
     }
+
+    // Sync staged generation state from backend (GAP-20) so the layout tab
+    // can decide which endpoints to use after a page reload.
+    try {
+      const genData = await apiCall('GET', '/api/cv/generation-state');
+      if (genData && genData.phase) {
+        stateManager.setGenerationState({
+          phase:                    genData.phase,
+          previewAvailable:         genData.preview_available         ?? false,
+          layoutConfirmed:          genData.layout_confirmed          ?? false,
+          pageCountEstimate:        genData.page_count_estimate       ?? null,
+          pageWarning:              genData.page_length_warning       ?? false,
+          layoutInstructionsCount:  genData.layout_instructions_count ?? 0,
+        });
+      }
+    } catch (_e) {
+      // Non-fatal: stale localStorage value will be used
+    }
   } catch (error) {
     console.warn('Failed to restore backend state:', error);
   }
