@@ -108,14 +108,14 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ### Tier 1
 
-- [ ] **M04 — `web/fetch-utils.js`** (~200 lines)
+- [x] **M04 — `web/fetch-utils.js`** (~200 lines)
   - Functions: `llmFetch`, `abortCurrentRequest`, `_updateLLMStatusBar`,
     `_refreshContextStats`, `_shouldHandleBusyConflict`
   - Constants: `SESSION_PHASE_LABELS`, `_conflictRetryQueue`, `_llmStartTime`
   - Tests: `tests/js/fetch-utils.test.js`
   - Notes: wraps `apiCall`; abort controller; conflict retry queue
 
-- [ ] **M05 — `web/message-queue.js`** (~250 lines)
+- [x] **M05 — `web/message-queue.js`** (~250 lines)
   - Functions: `appendMessage`, `appendMessageHtml`, `appendRawHtml`,
     `appendLoadingMessage`, `removeLoadingMessage`, `appendRetryMessage`,
     `appendFormattedAnalysis`, `appendFormattedResponse`, `setLoading`,
@@ -313,6 +313,7 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
 |------|------------------|-------|
 | 2026-03-20 | — | Plan created, Phase 2 bundle complete |
 | 2026-03-20 | M01 M02 M03 | Tier 0 complete: validators, recommendation-helpers, ui-helpers (76 tests) |
+| 2026-03-20 | M04 M05 | Tier 1 complete: fetch-utils, message-queue (51 tests). Note: fetch interceptor IIFE captures window.fetch at import time — tests must hold reference to mock before vi.resetModules()+import. |
 
 ---
 
