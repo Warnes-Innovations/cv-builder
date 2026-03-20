@@ -1,9 +1,10 @@
 /**
  * scripts/build.mjs — esbuild bundler for cv-builder web assets.
  *
- * Bundles web/src/main.js (utils + api-client + state-manager) into
- * web/modules.js using an IIFE wrapper so that all exports are assigned
- * to `window` and remain accessible to the Phase-2 legacy global scripts.
+ * Bundles web/src/main.js (utils + api-client + state-manager + ui-core +
+ * layout-instruction) into web/bundle.js using an IIFE wrapper so that all
+ * exports are assigned to `window` and remain accessible to app.js (still a
+ * plain legacy script in Phase 2).
  *
  * Usage:
  *   node scripts/build.mjs            # development build (unminified)
@@ -28,13 +29,13 @@ const sourcemap = args.has('--sourcemap') || !isProd;
 const config = {
   entryPoints: [resolve(root, 'web/src/main.js')],
   bundle:      true,
-  outfile:     resolve(root, 'web/modules.js'),
+  outfile:     resolve(root, 'web/bundle.js'),
   format:      'iife',   // wraps in (function(){ … })() — safe for <script> tags
   target:      ['es2020'],
   minify:      isProd,
   sourcemap:   sourcemap ? 'inline' : false,
   banner: {
-    js: '/* cv-builder modules — built by esbuild, do not edit directly */',
+    js: '/* cv-builder bundle — built by esbuild, do not edit directly */',
   },
 };
 
@@ -42,11 +43,11 @@ if (isWatch) {
   const ctx = await esbuild.context(config);
   await ctx.watch();
   const kb = '(watching)';
-  console.log(`⏳ esbuild watching web/src/main.js → web/modules.js`);
+  console.log(`⏳ esbuild watching web/src/main.js → web/bundle.js`);
 } else {
   const result = await esbuild.build({ ...config, metafile: true });
   const kb = (
     Object.values(result.metafile.outputs)[0].bytes / 1024
   ).toFixed(1);
-  console.log(`✓ web/modules.js  ${kb} KB${isProd ? '  (minified)' : ''}`);
+  console.log(`✓ web/bundle.js  ${kb} KB${isProd ? '  (minified)' : ''}`);
 }

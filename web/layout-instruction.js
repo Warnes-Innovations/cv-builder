@@ -2,11 +2,10 @@
  * layout-instruction.js
  * Frontend UI for natural-language layout instruction workflow.
  * Handles instruction submission, preview updates, and instruction history.
- *
- * DEPENDENCIES:
- * - utils.js (for htmlEscape function)
- * - api-client.js (for apiCall function)
  */
+
+import { apiCall } from './api-client.js';
+import { stateManager } from './state-manager.js';
 
 /**
  * Initialize layout instruction UI and event handlers.
@@ -474,3 +473,6 @@ async function completeLayoutReview() {
     showProcessing(false);
   }
 }
+
+// ── ES module exports ──────────────────────────────────────────────────────
+export { initiateLayoutInstructions, completeLayoutReview };
