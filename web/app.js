@@ -2784,7 +2784,9 @@ async function askPostAnalysisQuestions(analysisResult, preferredQuestions = nul
       renderQuestionsPanel();
       switchTab('questions');
     } else {
-      appendMessage('assistant', 'Analysis complete! Click "Recommend Customizations" when ready.');
+      // No clarifying questions — auto-advance directly to customizations.
+      appendMessage('assistant', 'Analysis complete! No clarifying questions needed. Generating customization recommendations…');
+      await sendAction('recommend_customizations');
     }
   } catch (e) {
     console.error('Error parsing analysis for questions:', e);
@@ -2803,7 +2805,7 @@ function populateQuestionsTab() {
 
   const hasQuestions = Array.isArray(window.postAnalysisQuestions) && window.postAnalysisQuestions.length > 0;
   if (!hasQuestions) {
-    content.innerHTML = '<div class="empty-state"><div class="icon">✅</div><h3>Questions Complete</h3><p>No pending clarifying questions. Click "Recommend Customizations" when ready.</p></div>';
+    content.innerHTML = '<div class="empty-state"><div class="icon">✅</div><h3>Questions Complete</h3><p>No pending clarifying questions — customization recommendations will be generated automatically.</p></div>';
     return;
   }
 
@@ -2976,11 +2978,12 @@ async function submitAllAnswers() {
   }
 
   try {
-    appendMessage('assistant', `✓ Thank you! ${qs.length} answer${qs.length > 1 ? 's' : ''} saved. Click "Recommend Customizations" when ready.`);
-    // Always re-render so all questions + answers remain visible.
-    switchTab('questions');
+    appendMessage('assistant', `✓ Thank you! ${qs.length} answer${qs.length > 1 ? 's' : ''} saved. Generating customization recommendations…`);
+    // Auto-advance: kick off recommend_customizations immediately so the user
+    // doesn't have to click the button manually.
+    await sendAction('recommend_customizations');
   } finally {
-    // btn may be detached after switchTab re-renders — that is harmless.
+    // btn may be detached after sendAction navigates away — that is harmless.
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = 'Submit Answers';
@@ -3875,12 +3878,12 @@ async function populateReviewTab(pane) {
   ` : (cfg.title ? `<h2 style="margin:0 0 12px;">${cfg.title}</h2>` : '');
 
   const navBack = {
-    skills:       `<button class="back-btn" onclick="switchTab('ach-editor')">← Back to Edit Experience Bullets</button>`,
+    skills:       `<button class="back-btn" onclick="switchTab('ach-editor')">← Back to Experience Bullets</button>`,
     achievements: `<button class="back-btn" onclick="switchTab('skills-review')">← Back to Skills</button>`,
     publications: `<button class="back-btn" onclick="switchTab('summary-review')">← Back to Summary</button>`,
   };
   const navContinue = {
-    experiences:  `<button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Edit Experience Bullets →</button>`,
+    experiences:  `<button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Experience Bullets →</button>`,
     skills:       `<button class="continue-btn" onclick="submitSkillDecisions()">Continue to Achievements →</button>`,
     achievements: `<button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Summary →</button>`,
     publications: `<button class="continue-btn" onclick="submitPublicationDecisions()">Continue to Rewrite →</button>`,
@@ -3971,7 +3974,7 @@ async function populateCustomizationsTabWithReview(data) {
       <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">Sorted by date (most recent first). Click action buttons to override recommendations.</p>
       <div id="experience-table-container"></div>
       <div class="nav-buttons nav-end" style="margin:16px 0;">
-        <button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Edit Experience Bullets →</button>
+        <button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Experience Bullets →</button>
       </div>
     </div>
 
@@ -4819,7 +4822,7 @@ async function buildAchievementsEditor() {
 
   let html = `
     <div style="padding:16px;">
-      <h2 style="margin:0 0 4px;">✏️ Edit Experience Bullets</h2>
+      <h2 style="margin:0 0 4px;">✏️ Experience Bullets</h2>
       <p style="color:#6b7280;margin:0 0 16px;font-size:0.9em;">
         Edit, reorder, delete, or AI-rewrite individual experience bullets per role.
         Changes are saved automatically and used during CV generation.
