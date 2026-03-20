@@ -29,9 +29,9 @@ class TestFullWorkflow:
         expect(job_stage_page.locator("#conversation")).to_be_visible()
         expect(job_stage_page.locator(".workflow-steps")).to_be_visible()
 
-    def test_step1_job_input_tab_visible(self, page: Page):
-        """The Job Description tab is present and active on load."""
-        tab = page.locator("#tab-job")
+    def test_step1_job_input_tab_visible(self, job_stage_page: Page):
+        """#tab-job is visible when the app is in the job/init stage."""
+        tab = job_stage_page.locator("#tab-job")
         expect(tab).to_be_visible()
 
     def test_step2_analyze_button_triggers_api(self, job_stage_page: Page):
@@ -55,11 +55,11 @@ class TestFullWorkflow:
                 }),
             )
 
-        job_stage_page.route("**/api/action", capture)
+        job_stage_page.route("**/api/action**", capture)
 
         # Submit a job first (mock /api/job)
         job_stage_page.route(
-            "**/api/job",
+            "**/api/job**",
             lambda r: r.fulfill(
                 status=200,
                 content_type="application/json",
@@ -122,7 +122,7 @@ class TestFullWorkflow:
                 body=json.dumps({"rewrites": [], "persuasion_warnings": []}),
             )
 
-        seeded_page.route("**/api/rewrites", capture_rewrites)
+        seeded_page.route("**/api/rewrites**", capture_rewrites)
         seeded_page.locator("#generate-btn").click()
         seeded_page.wait_for_timeout(800)
         assert len(rewrites_calls) > 0, \
@@ -144,7 +144,7 @@ class TestFullWorkflow:
                 body=json.dumps({"ok": True, "phase": "init"}),
             )
 
-        page.route("**/api/reset", capture)
+        page.route("**/api/reset**", capture)
         page.locator("#reset-btn").click()
         page.wait_for_timeout(500)
         assert any("/api/reset" in url for url in api_calls), \
@@ -156,7 +156,7 @@ class TestFullWorkflow:
         page.on("pageerror", lambda err: errors.append(str(err)))
         # Re-navigate to trigger fresh load
         page.reload()
-        page.wait_for_selector("#analyze-btn", timeout=10_000)
+        page.wait_for_load_state("networkidle")
         assert not errors, f"JS errors on page load: {errors}"
 
     def test_all_workflow_step_elements_rendered(self, page: Page):

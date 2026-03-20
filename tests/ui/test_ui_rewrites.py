@@ -45,7 +45,7 @@ class TestRewritesTab:
                 body=json.dumps(API_REWRITES_GET),
             )
 
-        seeded_page.route("**/api/rewrites", capture)
+        seeded_page.route("**/api/rewrites**", capture)
         seeded_page.locator("#generate-btn").click()
         seeded_page.wait_for_timeout(800)
         assert any("/api/rewrites" in url for url in api_calls), (
@@ -59,7 +59,7 @@ class TestRewritesTab:
         (fetchAndReviewRewrites), not by clicking the rewrite tab directly.
         """
         seeded_page.route(
-            "**/api/rewrites",
+            "**/api/rewrites**",
             lambda r: r.fulfill(
                 status=200,
                 content_type="application/json",
@@ -86,7 +86,7 @@ class TestRewritesTab:
         A warning indicator should appear when cards are rendered.
         """
         seeded_page.route(
-            "**/api/rewrites",
+            "**/api/rewrites**",
             lambda r: r.fulfill(
                 status=200,
                 content_type="application/json",
@@ -128,25 +128,27 @@ class TestRewritesTab:
             )
 
         seeded_page.route(
-            "**/api/rewrites",
+            "**/api/rewrites**",
             lambda r: r.fulfill(
                 status=200,
                 content_type="application/json",
                 body=json.dumps(API_REWRITES_GET),
             ),
         )
-        seeded_page.route("**/api/rewrites/approve", capture_approve)
+        seeded_page.route("**/api/rewrites/approve**", capture_approve)
 
         # Generate button fetches rewrites and renders the card panel.
         seeded_page.locator("#generate-btn").click()
         seeded_page.wait_for_timeout(1_000)
 
         # Cards render with "✓ Accept" buttons.
-        accept_btn = seeded_page.locator("button:has-text('Accept')")
+        accept_btn = seeded_page.locator("button:has-text('Accept')").first
         if accept_btn.count() == 0:
             pytest.skip("No Accept button found after generate")
-        accept_btn.first.click()
-        seeded_page.wait_for_timeout(300)
+        # Accept all rewrite cards so Submit All Decisions becomes enabled.
+        for btn in seeded_page.locator("button.rw-btn.accept").all():
+            btn.click()
+            seeded_page.wait_for_timeout(100)
 
         # "Submit All Decisions" sends decisions to /api/rewrites/approve.
         submit_btn = seeded_page.locator(
@@ -154,7 +156,7 @@ class TestRewritesTab:
         )
         if submit_btn.count() == 0:
             pytest.skip("No Submit All Decisions button found")
-        submit_btn.first.click()
+        submit_btn.first.click(force=True)
         seeded_page.wait_for_timeout(500)
 
         assert any("/api/rewrites/approve" in url for url in api_calls), \
@@ -177,25 +179,30 @@ class TestRewritesTab:
             )
 
         seeded_page.route(
-            "**/api/rewrites",
+            "**/api/rewrites**",
             lambda r: r.fulfill(
                 status=200,
                 content_type="application/json",
                 body=json.dumps(API_REWRITES_GET),
             ),
         )
-        seeded_page.route("**/api/rewrites/approve", capture_approve)
+        seeded_page.route("**/api/rewrites/approve**", capture_approve)
 
         # Generate button fetches rewrites and renders the card panel.
         seeded_page.locator("#generate-btn").click()
         seeded_page.wait_for_timeout(1_000)
+
+        # Accept all rewrite cards so Submit All Decisions becomes enabled.
+        for btn in seeded_page.locator("button.rw-btn.accept").all():
+            btn.click()
+            seeded_page.wait_for_timeout(100)
 
         submit_btn = seeded_page.locator(
             "button:has-text('Submit All Decisions')"
         )
         if submit_btn.count() == 0:
             pytest.skip("No Submit All Decisions button found")
-        submit_btn.first.click()
+        submit_btn.first.click(force=True)
         seeded_page.wait_for_timeout(500)
 
         assert any("/api/rewrites/approve" in url for url in api_calls), \

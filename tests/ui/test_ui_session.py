@@ -39,7 +39,7 @@ class TestReset:
                 body=json.dumps(API_RESET_OK),
             )
 
-        page.route("**/api/reset", capture)
+        page.route("**/api/reset**", capture)
         page.locator("#reset-btn").click()
         page.wait_for_timeout(500)
         assert any("/api/reset" in url for url in api_calls), \
@@ -51,7 +51,7 @@ class TestReset:
         After reset the conversation panel is empty (cleared by design).
         """
         page.route(
-            "**/api/reset",
+            "**/api/reset**",
             lambda r: r.fulfill(
                 status=200,
                 content_type="application/json",
@@ -84,7 +84,7 @@ class TestSave:
                 body=json.dumps({"ok": True}),
             )
 
-        page.route("**/api/save", capture)
+        page.route("**/api/save**", capture)
         page.evaluate("saveSession()")
         page.wait_for_timeout(500)
         assert any("/api/save" in url for url in api_calls), \
@@ -104,9 +104,9 @@ class TestSessionRestore:
                 body=json.dumps(API_STATUS_ANALYSIS_DONE),
             )
 
-        page.route("**/api/status", capture)
+        page.route("**/api/status**", capture)
         page.reload()
-        page.wait_for_selector("#analyze-btn", timeout=10_000)
+        page.wait_for_load_state("networkidle")
         assert any("/api/status" in url for url in status_calls), \
             "/api/status was not called on page reload"
 
@@ -122,9 +122,19 @@ class TestSessionRestore:
                 body=json.dumps({"history": [], "phase": "init"}),
             )
 
-        page.route("**/api/history", capture)
+        # Override /api/status to return init phase so the UI state is
+        # consistent with the history response (both say "init").
+        page.route(
+            "**/api/status**",
+            lambda r: r.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(API_STATUS_INIT),
+            ),
+        )
+        page.route("**/api/history**", capture)
         page.reload()
-        page.wait_for_selector("#analyze-btn", timeout=10_000)
+        page.wait_for_load_state("networkidle")
         assert any("/api/history" in url for url in history_calls), \
             "/api/history was not called on page reload"
 
@@ -137,7 +147,7 @@ class TestSessionConflict:
         (stage-aware action bar shows it only in the job stage).
         """
         job_stage_page.route(
-            "**/api/action",
+            "**/api/action**",
             lambda r: r.fulfill(
                 status=409,
                 content_type="application/json",
@@ -177,7 +187,7 @@ class TestSessionPicker:
         Then reload the page and wait for the picker rows to appear.
         """
         page.route(
-            "**/api/status",
+            "**/api/status**",
             lambda r: r.fulfill(
                 status=200,
                 content_type="application/json",
@@ -185,7 +195,7 @@ class TestSessionPicker:
             ),
         )
         page.route(
-            "**/api/load-items",
+            "**/api/load-items**",
             lambda r: r.fulfill(
                 status=200,
                 content_type="application/json",
@@ -200,7 +210,7 @@ class TestSessionPicker:
         calls = []
 
         page.route(
-            "**/api/status",
+            "**/api/status**",
             lambda r: r.fulfill(
                 status=200,
                 content_type="application/json",
@@ -215,7 +225,7 @@ class TestSessionPicker:
                 content_type="application/json",
                 body=json.dumps(API_LOAD_ITEMS),
             )
-        page.route("**/api/load-items", capture_load_items)
+        page.route("**/api/load-items**", capture_load_items)
 
         page.reload()
         page.wait_for_selector(".load-item-row", timeout=10_000)
@@ -239,7 +249,7 @@ class TestSessionPicker:
                 content_type="application/json",
                 body=json.dumps(API_LOAD_SESSION_OK),
             )
-        page.route("**/api/load-session", handle_load_session)
+        page.route("**/api/load-session**", handle_load_session)
 
         # Click the first row (kind=session)
         page.locator(".load-item-row").first.click()
@@ -255,7 +265,7 @@ class TestSessionPicker:
         self._open_picker(page)
 
         page.route(
-            "**/api/load-session",
+            "**/api/load-session**",
             lambda r: r.fulfill(
                 status=200,
                 content_type="application/json",
@@ -280,7 +290,7 @@ class TestSessionPicker:
         self._open_picker(page)
 
         page.route(
-            "**/api/load-session",
+            "**/api/load-session**",
             lambda r: (load_session_calls.append(r.request.url) or True) and
                 r.fulfill(
                     status=200, content_type="application/json",
@@ -296,7 +306,7 @@ class TestSessionPicker:
                 content_type="application/json",
                 body=json.dumps(API_LOAD_JOB_FILE_OK),
             )
-        page.route("**/api/load-job-file", handle_load_job_file)
+        page.route("**/api/load-job-file**", handle_load_job_file)
 
         # Click the second row (index 1), which has kind=file
         page.locator(".load-item-row").nth(1).click()

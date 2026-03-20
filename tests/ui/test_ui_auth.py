@@ -112,7 +112,7 @@ class TestAuthModal:
                 }),
             )
 
-        page.route("**/api/copilot-auth/start", capture)
+        page.route("**/api/copilot-auth/start**", capture)
         _open_modal(page)
         assert any("/api/copilot-auth/start" in url for url in start_calls), \
             "/api/copilot-auth/start was not called on badge click"

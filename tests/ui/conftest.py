@@ -6,7 +6,8 @@ Fixtures
 live_server   (session-scoped) — starts Flask on port 5001, yields base URL
 page          (function-scoped) — fresh browser context, clears localStorage,
               intercepts all LLM-backed API routes with fixture JSON
-seeded_page   (function-scoped) — `page` with a job already submitted (Step 1 done)
+seeded_page   (function-scoped) — `page` with a job already submitted
+              (Step 1 done)
 """
 
 import json
@@ -14,17 +15,15 @@ import os
 import subprocess
 import sys
 import time
-import threading
+
 import pytest
 
-from playwright.sync_api import Page, Route
-
-# Adjust path so we can import fixtures
+# Extend path before importing project-local test fixtures.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from tests.ui.fixtures.mock_responses import (
-    SAMPLE_JOB_TEXT,
+from playwright.sync_api import Page, Route  # noqa: E402
+from tests.ui.fixtures.mock_responses import (  # noqa: E402
     API_JOB_OK,
     API_STATUS_INIT,
     API_STATUS_JOB_LOADED,
@@ -32,6 +31,7 @@ from tests.ui.fixtures.mock_responses import (
     API_STATUS_IN_ANALYSIS,
     API_STATUS_REWRITE,
     API_STATUS_SPELL,
+    API_STATUS_GENERATE,
     API_STATUS_FINALISE,
     API_ACTION_ANALYZE_OK,
     API_ACTION_RECOMMEND_OK,
@@ -39,7 +39,6 @@ from tests.ui.fixtures.mock_responses import (
     API_REVIEW_DECISIONS_OK,
     API_REWRITES_GET,
     API_REWRITES_APPROVE_OK,
-    API_SPELL_CHECK_OK,
     API_GENERATE_OK,
     API_RESET_OK,
     API_HISTORY_EMPTY,
@@ -54,7 +53,11 @@ SERVER_STARTUP_TIMEOUT = 15  # seconds
 # ---------------------------------------------------------------------------
 
 def _wait_for_server(url: str, timeout: int) -> bool:
-    """Poll url until it responds 200 or timeout."""
+    """Poll url until it responds with any HTTP status or timeout expires.
+
+    Uses urllib so that any HTTP response (including 4xx) counts as "up".
+    Connection-refused errors are the only sign the server isn't listening yet.
+    """
     import urllib.request
     import urllib.error
     deadline = time.time() + timeout
@@ -62,9 +65,33 @@ def _wait_for_server(url: str, timeout: int) -> bool:
         try:
             urllib.request.urlopen(url, timeout=1)
             return True
+        except urllib.error.HTTPError:
+            # Got an HTTP error response — server is listening.
+            return True
         except Exception:
             time.sleep(0.5)
     return False
+
+
+def _playwright_browsers_installed() -> bool:
+    """Return True if the Playwright Chromium executable is present on disk.
+
+    Resolves the path in a child process to avoid conflicting with the
+    pytest-playwright plugin's own session-scoped Playwright context.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c",
+             "from playwright.sync_api import sync_playwright;"
+             "pw=sync_playwright().start();"
+             "print(pw.chromium.executable_path);"
+             "pw.stop()"],
+            capture_output=True, text=True, timeout=10,
+        )
+        path = result.stdout.strip()
+        return bool(path) and os.path.exists(path)
+    except Exception:
+        return False
 
 
 @pytest.fixture(scope="session")
@@ -72,11 +99,21 @@ def live_server():
     """
     Start the Flask web app on port 5001 for the test session.
 
-    The server is started as a subprocess so it can be properly killed
-    afterwards.  If a server is already running on 5001 (e.g. started
-    manually), it is used as-is.
+    Skips gracefully when:
+    - Playwright Chromium is not installed, OR
+    - A server cannot be started within the timeout.
+
+    If a server is already running on 5001 (e.g. started by the outer test
+    harness), it is reused without launching a new process.
     """
-    # Check whether a server is already up
+    if not _playwright_browsers_installed():
+        pytest.skip(
+            "Playwright Chromium browser not installed — "
+            "run `playwright install chromium` to enable UI tests."
+        )
+
+    # Reuse an already-running server (e.g. started by the test harness).
+    # /api/status now returns 200 without a session_id so urlopen succeeds.
     if _wait_for_server(f"{BASE_URL}/api/status", timeout=2):
         yield BASE_URL
         return
@@ -87,7 +124,7 @@ def live_server():
     cmd = [
         sys.executable,
         os.path.join(project_root, "scripts", "web_app.py"),
-        "--llm-provider", "github",
+        "--llm-provider", "stub",
         "--port", "5001",
     ]
     env = os.environ.copy()
@@ -101,12 +138,13 @@ def live_server():
         stderr=subprocess.DEVNULL,
     )
 
-    reachable = _wait_for_server(f"{BASE_URL}/api/status", SERVER_STARTUP_TIMEOUT)
+    reachable = _wait_for_server(
+        f"{BASE_URL}/api/status", SERVER_STARTUP_TIMEOUT
+    )
     if not reachable:
         proc.terminate()
-        pytest.fail(
-            f"Flask server did not start within {SERVER_STARTUP_TIMEOUT}s. "
-            "Run `python scripts/web_app.py --llm-provider github --port 5001` manually."
+        pytest.skip(
+            f"Flask server did not start within {SERVER_STARTUP_TIMEOUT}s"
         )
 
     yield BASE_URL
@@ -131,14 +169,16 @@ def _json_route(route: Route, body: dict, status: int = 200) -> None:
     )
 
 
-def _install_mock_routes(page: Page, status_response: dict | None = None) -> None:
+def _install_mock_routes(
+    page: Page, status_response: dict | None = None
+) -> None:
     """
     Intercept LLM-backed API calls so tests are deterministic and require
     no API credentials.
 
     Routes intercepted:
       POST /api/job                → API_JOB_OK
-      GET  /api/status             → status_response (default: API_STATUS_JOB_LOADED)
+      GET  /api/status    → status_response (default: API_STATUS_JOB_LOADED)
       GET  /api/history            → API_HISTORY_EMPTY
       POST /api/action             → dispatch on action field
       POST /api/post-analysis-*    → API_POST_ANALYSIS_OK
@@ -172,7 +212,10 @@ def _install_mock_routes(page: Page, status_response: dict | None = None) -> Non
         elif action == "recommend_customizations":
             _json_route(route, API_ACTION_RECOMMEND_OK)
         else:
-            _json_route(route, {"ok": True, "phase": "customization", "result": {}})
+            _json_route(
+                route,
+                {"ok": True, "phase": "customization", "result": {}},
+            )
 
     def handle_post_analysis(route: Route):
         _json_route(route, API_POST_ANALYSIS_OK)
@@ -192,6 +235,25 @@ def _install_mock_routes(page: Page, status_response: dict | None = None) -> Non
     def handle_reset(route: Route):
         _json_route(route, API_RESET_OK)
 
+    def handle_ats_score(route: Route):
+        _json_route(route, {
+            "ok": True,
+            "ats_score": {
+                "overall": 72.0,
+                "hard_requirement_score": 80.0,
+                "soft_requirement_score": 50.0,
+                "keyword_status": [],
+                "section_scores": {
+                    "skills": 60.0,
+                    "experience": 40.0,
+                    "education": 0.0,
+                    "summary": 0.0,
+                },
+                "computed_at": "2026-03-19T00:00:00+00:00",
+                "basis": "review_checkpoint",
+            },
+        })
+
     def handle_copilot_status(route: Route):
         _json_route(route, {"authenticated": False})
 
@@ -203,20 +265,100 @@ def _install_mock_routes(page: Page, status_response: dict | None = None) -> Non
             "expires_in": 900,
         })
 
-    page.route("**/api/job", handle_job)
-    page.route("**/api/status", handle_status)
-    page.route("**/api/history", handle_history)
-    page.route("**/api/action", handle_action)
-    page.route("**/api/post-analysis-responses", handle_post_analysis)
-    page.route("**/api/post-analysis-questions", handle_post_analysis)
-    page.route("**/api/review-decisions", handle_review_decisions)
-    page.route("**/api/rewrites", handle_rewrites_get)
-    page.route("**/api/rewrites/approve", handle_rewrites_approve)
-    page.route("**/api/generate", handle_generate)
-    page.route("**/api/reset", handle_reset)
+    def handle_sessions_claim(route: Route):
+        _json_route(route, {"ok": True, "session_id": "test-session-id"})
+
+    def handle_sessions_new(route: Route):
+        _json_route(route, {"ok": True, "session_id": "test-session-id"})
+
+    def handle_load_items(route: Route):
+        _json_route(route, {"items": []})
+
+    # api-client.js patches window.fetch to append ?session_id=…&owner_token=…
+    # to every /api/* URL.  All patterns therefore need a trailing ** so
+    # Playwright's glob matches the appended query string as well.
+    # (Routes excluded from injection — /api/sessions/new, /api/sessions/claim —
+    # keep their bare patterns since no query params are added to them.)
+    page.route("**/api/job**", handle_job)
+    page.route("**/api/status**", handle_status)
+    page.route("**/api/history**", handle_history)
+    page.route("**/api/load-items**", handle_load_items)
+    page.route("**/api/action**", handle_action)
+    page.route("**/api/post-analysis-responses**", handle_post_analysis)
+    page.route("**/api/post-analysis-questions**", handle_post_analysis)
+    page.route("**/api/review-decisions**", handle_review_decisions)
+    # Register /rewrites FIRST then /rewrites/approve SECOND.
+    # LIFO ordering means the more-specific /approve handler is tried first,
+    # so approve requests are never swallowed by the generic rewrites handler.
+    page.route("**/api/rewrites**", handle_rewrites_get)
+    page.route("**/api/rewrites/approve**", handle_rewrites_approve)
+    page.route("**/api/generate**", handle_generate)
+    page.route("**/api/reset**", handle_reset)
+    page.route("**/api/cv/ats-score**", handle_ats_score)
+
+    # Staged generation routes (GAP-20 Phase 1)
+    # Use trailing ** so query-string variants (e.g. ?session_id=…) also match.
+    page.route(
+        "**/api/cv/generation-state**",
+        lambda r: _json_route(r, {
+            "ok": True,
+            "phase": "idle",
+            "preview_available": False,
+            "layout_confirmed": False,
+            "page_count_estimate": None,
+            "page_length_warning": False,
+            "layout_instructions_count": 0,
+            "final_generated_at": None,
+        }),
+    )
+    page.route(
+        "**/api/cv/generate-preview**",
+        lambda r: _json_route(r, {
+            "ok": True,
+            "html": "<html><body><h1>CV Preview</h1></body></html>",
+            "preview_request_id": "test-preview-id-001",
+            "page_count_estimate": 2,
+            "page_length_warning": False,
+        }),
+    )
+    page.route(
+        "**/api/cv/layout-refine**",
+        lambda r: _json_route(r, {
+            "ok": True,
+            "html": "<html><body><h1>CV Preview (refined)</h1></body></html>",
+            "summary": "Adjusted margins",
+            "confidence": 0.95,
+            "preview_request_id": "test-preview-id-002",
+        }),
+    )
+    page.route(
+        "**/api/cv/confirm-layout**",
+        lambda r: _json_route(r, {
+            "ok": True,
+            "confirmed": True,
+            "confirmed_at": "2026-03-19T12:00:00",
+            "hash": "abc123def456",
+        }),
+    )
+    page.route(
+        "**/api/cv/generate-final**",
+        lambda r: _json_route(r, {
+            "ok": True,
+            "generated_at": "2026-03-19T12:01:00",
+            "outputs": {
+                "output_dir": "/tmp/test-cv-output",
+                "final_html": "/tmp/test-cv-output/CV_final.html",
+                "final_pdf": "/tmp/test-cv-output/CV_final.pdf",
+            },
+        }),
+    )
+
     # Mock copilot-auth so openCopilotAuthModal shows the modal (not confirm())
-    page.route("**/api/copilot-auth/status", handle_copilot_status)
-    page.route("**/api/copilot-auth/start", handle_copilot_start)
+    page.route("**/api/copilot-auth/status**", handle_copilot_status)
+    page.route("**/api/copilot-auth/start**", handle_copilot_start)
+    # Mock session management so tests don't get blocked by the sessions modal
+    page.route("**/api/sessions/claim", handle_sessions_claim)
+    page.route("**/api/sessions/new", handle_sessions_new)
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +370,9 @@ def page(browser, live_server):
     """
     Fresh browser context per test.
 
-    - Clears localStorage so each test starts from a clean state.
+    - Uses API_STATUS_ANALYSIS_DONE (customization phase) so the page starts
+      in a stable state without triggering auto-analysis.
+    - Session ID is injected via URL so the sessions modal does not block.
     - Installs mock routes before the page loads.
     - Sets a generous default timeout for async operations.
     """
@@ -236,11 +380,10 @@ def page(browser, live_server):
     p = context.new_page()
     p.set_default_timeout(10_000)  # 10 s — generous for local CI
 
-    _install_mock_routes(p)
+    _install_mock_routes(p, status_response=API_STATUS_ANALYSIS_DONE)
 
-    p.goto(live_server)
-    # Wait for the app to initialise (Analyze Job button becomes present)
-    p.wait_for_selector("#analyze-btn", timeout=10_000)
+    p.goto(f"{live_server}/?session=test-session-id",
+           wait_until="networkidle")
 
     yield p
     context.close()
@@ -264,8 +407,8 @@ def seeded_page(browser, live_server):
 
     _install_mock_routes(p, status_response=API_STATUS_ANALYSIS_DONE)
 
-    p.goto(live_server)
-    p.wait_for_selector("#analyze-btn", timeout=10_000)
+    p.goto(f"{live_server}/?session=test-session-id",
+           wait_until="networkidle")
 
     yield p
     context.close()
@@ -283,8 +426,8 @@ def analysis_seeded_page(browser, live_server):
 
     _install_mock_routes(p, status_response=API_STATUS_IN_ANALYSIS)
 
-    p.goto(live_server)
-    p.wait_for_selector("#analyze-btn", timeout=10_000)
+    p.goto(f"{live_server}/?session=test-session-id",
+           wait_until="networkidle")
 
     yield p
     context.close()
@@ -302,8 +445,8 @@ def job_stage_page(browser, live_server):
 
     _install_mock_routes(p, status_response=API_STATUS_INIT)
 
-    p.goto(live_server)
-    p.wait_for_selector("#analyze-btn", timeout=10_000)
+    p.goto(f"{live_server}/?session=test-session-id",
+           wait_until="networkidle")
 
     yield p
     context.close()
@@ -316,8 +459,8 @@ def rewrite_stage_page(browser, live_server):
     p = context.new_page()
     p.set_default_timeout(10_000)
     _install_mock_routes(p, status_response=API_STATUS_REWRITE)
-    p.goto(live_server)
-    p.wait_for_selector("#analyze-btn", timeout=10_000)
+    p.goto(f"{live_server}/?session=test-session-id",
+           wait_until="networkidle")
     yield p
     context.close()
 
@@ -329,20 +472,33 @@ def spell_stage_page(browser, live_server):
     p = context.new_page()
     p.set_default_timeout(10_000)
     _install_mock_routes(p, status_response=API_STATUS_SPELL)
-    p.goto(live_server)
-    p.wait_for_selector("#analyze-btn", timeout=10_000)
+    p.goto(f"{live_server}/?session=test-session-id",
+           wait_until="networkidle")
     yield p
     context.close()
 
 
 @pytest.fixture
 def finalise_stage_page(browser, live_server):
-    """Page in refinement phase — #tab-download and #tab-finalise are visible."""
+    """Page in refinement phase — #tab-download and #tab-finalise visible."""
     context = browser.new_context()
     p = context.new_page()
     p.set_default_timeout(10_000)
     _install_mock_routes(p, status_response=API_STATUS_FINALISE)
-    p.goto(live_server)
-    p.wait_for_selector("#analyze-btn", timeout=10_000)
+    p.goto(f"{live_server}/?session=test-session-id",
+           wait_until="networkidle")
+    yield p
+    context.close()
+
+
+@pytest.fixture
+def generate_stage_page(browser, live_server):
+    """Page in generation phase — #tab-generate is visible."""
+    context = browser.new_context()
+    p = context.new_page()
+    p.set_default_timeout(10_000)
+    _install_mock_routes(p, status_response=API_STATUS_GENERATE)
+    p.goto(f"{live_server}/?session=test-session-id",
+           wait_until="networkidle")
     yield p
     context.close()

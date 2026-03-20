@@ -105,12 +105,17 @@ API_ACTION_ANALYZE_OK = {
 }
 
 # POST /api/action (recommend_customizations) → 200
+# Includes both the canonical form (experience_recommendations / skill_recommendations)
+# AND the backwards-compat flat lists (recommended_experiences / recommended_skills) that
+# handleCustomizationResponse() checks to decide whether to set pendingRecommendations.
 API_ACTION_RECOMMEND_OK = {
     "ok": True,
     "phase": "customization",
     "result": {
         "experience_recommendations": API_STATUS_ANALYSIS_DONE["job_analysis"]["experience_recommendations"],
         "skill_recommendations": API_STATUS_ANALYSIS_DONE["job_analysis"]["skill_recommendations"],
+        "recommended_experiences": ["exp-001", "exp-002"],
+        "recommended_skills": ["Python", "R"],
     },
 }
 
@@ -139,6 +144,8 @@ API_REWRITES_GET = {
             "original": "Helped team with data analysis.",
             "proposed": "Led cross-functional data analysis initiatives across 3 product verticals.",
             "reasoning": "Strengthens ownership; adds scope.",
+            "type": "skill_add",
+            "evidence_strength": "weak",
             "weak_evidence": True,
             "weak_evidence_reason": "No supporting evidence in CV data.",
         },

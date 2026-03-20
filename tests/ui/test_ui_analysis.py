@@ -21,18 +21,18 @@ from tests.ui.fixtures.mock_responses import (
 
 
 class TestAnalysisTab:
-    def test_analysis_tab_present(self, page: Page):
-        """#tab-analysis exists in DOM."""
-        expect(page.locator("#tab-analysis")).to_be_visible()
+    def test_analysis_tab_present(self, analysis_seeded_page: Page):
+        """#tab-analysis is visible in the analysis stage."""
+        expect(analysis_seeded_page.locator("#tab-analysis")).to_be_visible()
 
-    def test_click_analysis_tab_switches_content(self, page: Page):
+    def test_click_analysis_tab_switches_content(self, analysis_seeded_page: Page):
         """Clicking analysis tab updates the document-content area."""
-        page.locator("#tab-analysis").click()
-        expect(page.locator("#document-content")).to_be_visible()
+        analysis_seeded_page.locator("#tab-analysis").click()
+        expect(analysis_seeded_page.locator("#document-content")).to_be_visible()
 
-    def test_questions_tab_present(self, page: Page):
-        """Dedicated Questions tab exists in DOM."""
-        expect(page.locator("#tab-questions")).to_be_visible()
+    def test_questions_tab_present(self, analysis_seeded_page: Page):
+        """Dedicated Questions tab is visible in the analysis stage."""
+        expect(analysis_seeded_page.locator("#tab-questions")).to_be_visible()
 
     def test_analysis_tab_shows_data_when_seeded(self, analysis_seeded_page: Page):
         """With analysis data loaded, clicking the tab shows analysis content.
@@ -63,7 +63,7 @@ class TestAnalysisTab:
                 body=json.dumps(API_ACTION_ANALYZE_OK),
             )
 
-        job_stage_page.route("**/api/action", capture)
+        job_stage_page.route("**/api/action**", capture)
         job_stage_page.locator("#analyze-btn").click()
         job_stage_page.wait_for_timeout(500)
 
@@ -84,10 +84,14 @@ class TestAnalysisTab:
         # Just verify no JS crash
         assert analysis_seeded_page.evaluate("() => typeof window !== 'undefined'")
 
-    def test_analyze_auto_opens_questions_tab(self, seeded_page: Page):
-        """Analyze flow should auto-focus the dedicated Questions tab."""
-        seeded_page.route(
-            "**/api/action",
+    def test_analyze_auto_opens_questions_tab(self, job_stage_page: Page):
+        """Analyze flow should auto-focus the dedicated Questions tab.
+
+        Uses job_stage_page (init/job stage) where #analyze-btn is the
+        primary action button (visible).
+        """
+        job_stage_page.route(
+            "**/api/action**",
             lambda r: r.fulfill(
                 status=200,
                 content_type="application/json",
@@ -95,11 +99,11 @@ class TestAnalysisTab:
             ),
         )
 
-        seeded_page.locator("#analyze-btn").click()
-        seeded_page.wait_for_timeout(900)
+        job_stage_page.locator("#analyze-btn").click()
+        job_stage_page.wait_for_timeout(1_200)
 
-        expect(seeded_page.locator("#tab-questions")).to_have_class(re.compile(r"\bactive\b"))
-        expect(seeded_page.locator("#questions-panel")).to_be_visible()
+        expect(job_stage_page.locator("#tab-questions")).to_have_class(re.compile(r"\bactive\b"))
+        expect(job_stage_page.locator("#questions-panel")).to_be_visible()
 
     def test_analysis_step_opens_questions_when_unanswered(self, analysis_seeded_page: Page):
         """Workflow Analysis step should route to Questions tab when answers are missing.
