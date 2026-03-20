@@ -24,3 +24,4 @@ node_modules/
 
 # Execution artifacts
 *.log
+.claude/worktrees

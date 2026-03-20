@@ -1,0 +1,69 @@
+# Cline Rules for cv-builder
+# Auto-loaded by Cline at the start of every task.
+
+## MANDATORY: Read project instructions first
+
+At the start of every task, read `.github/copilot-instructions.md` in full.
+It is the authoritative reference for this project and contains:
+- Critical data-safety rules (NEVER lose user data)
+- Architecture overview, runtime boundaries, and config schema
+- Critical workflows (commands, test runners, session lifecycle)
+- Project-specific patterns and gotchas
+- Available slash commands and /obo session management
+
+## Available Skills
+
+User-level shared skills live in `/Users/warnes/src/vscode-config/.github/skills/`.
+Repo-local skills live in `codex-skills/`.
+
+Key skills to apply proactively:
+
+| Skill directory | When to apply |
+|---|---|
+| `copilot-preflight/` | Before every multi-step or code-change response |
+| `copilot-instructions-bridge/` | When needing cross-project context |
+| `implementation-planning/` | When planning a new feature or refactor |
+| `sequential-code-review/` | During code review tasks |
+| `one-by-one/` | For sequential item processing with `/obo` |
+| `cv-builder-patterns/` | cv-builder-specific code patterns |
+| `cv-ui-review/` | Evaluating the web UI |
+| `unit-testing/` | When generating or fixing tests |
+| `git-workflow/` | For commit, branch, and PR operations |
+| `commit-message-generator/` | When generating commit messages |
+| `markdown-formatting/` | When writing/editing Markdown documents |
+| `python-patterns/` | Python code style and idioms |
+
+To read a skill: `read_file` on `SKILL.md` inside the relevant directory.
+
+## Available Slash Command Prompts
+
+Prompt files live in `/Users/warnes/src/vscode-config/prompts/` (also symlinked to
+`~/Library/Application Support/Code/User/prompts/`). Reference these by name when
+the user invokes them:
+
+- `/preflight` → `preflight.prompt.md`
+- `/plan` → `plan.prompt.md`
+- `/obo` → `OneByOne.prompt.md`
+- `/codeReview` → `codeReview.prompt.md`
+- `/cvUiReview` → `cvUiReview.prompt.md`
+- `/commitMessage` → `commitMessage.prompt.md`
+- `/unitTest` → `unitTest.prompt.md`
+
+When the user invokes a slash command, read the corresponding `.prompt.md` file and
+follow its instructions.
+
+## /obo session management
+
+Helper: `/Users/warnes/src/vscode-config/.github/skills/one-by-one/obo_helper.py`
+Session dir: `.github/obo_sessions/`
+
+Always check for existing sessions before starting a new one:
+```bash
+python /Users/warnes/src/vscode-config/.github/skills/one-by-one/obo_helper.py sessions --base-dir /Users/warnes/src/cv-builder
+```
+
+## MCP Tools available in Cline
+
+- **obo-mcp**: `obo_create`, `obo_list_items`, `obo_mark_complete`, `obo_update_field`
+  Use these for /obo sequential-processing sessions.
+- **markitdown**: Convert documents/URLs to Markdown for reading.
