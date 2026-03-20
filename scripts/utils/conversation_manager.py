@@ -72,6 +72,7 @@ class ConversationManager:
             'extra_skills':            [],   # List[str] — LLM-suggested skills not in master CV
             'achievement_rewrite_log': [],   # List[Dict] — AI rewrite interactions per achievement
             'generation_state':        {},   # Dict — GAP-20 staged generation phase/artifact state
+            'intake':                  {},   # Dict — GAP-23 intake confirmation: company/role/date
         }
         self.session_dir: Optional[Path] = None
         self.session_id: Optional[str] = None
@@ -954,6 +955,41 @@ Ask questions that are specific to this job posting, not generic career question
         'layout':         Phase.LAYOUT_REVIEW,
     }
 
+    def extract_intake_metadata(self) -> Dict[str, Optional[str]]:
+        """Extract company, role, and suggested date from the stored job description.
+
+        Uses fast heuristic parsing (no LLM call).  Returns a dict with keys:
+        ``role``, ``company``, ``date_applied`` (ISO YYYY-MM-DD today).
+        Any field not determinable is ``None``.
+        """
+        import re as _re
+        job_text = self.state.get('job_description') or ''
+        lines = [ln.strip() for ln in job_text.splitlines() if ln.strip()]
+
+        title   = lines[0] if lines else ''
+        company = lines[1] if len(lines) > 1 else ''
+
+        if ' at ' in title.lower() and not company:
+            parts = title.split(' at ', 1)
+            if len(parts) == 2:
+                title, company = parts[0].strip(), parts[1].strip()
+
+        if not company:
+            for pattern in [
+                r'(?:Company|Employer|Organisation|Organization)[:\s]+([^\n]+)',
+                r'(?:^|\s)(?:at|@)\s+([A-Z][A-Za-z0-9\s,\.&\-]+?)(?:\s*[–\-\|]|\s*\n|$)',
+            ]:
+                m = _re.search(pattern, job_text, _re.IGNORECASE | _re.MULTILINE)
+                if m:
+                    company = m.group(1).strip()[:80]
+                    break
+
+        return {
+            'role':         (title[:120]   if title   else None),
+            'company':      (company[:120] if company else None),
+            'date_applied': datetime.now().strftime('%Y-%m-%d'),
+        }
+
     def _build_downstream_context(self) -> str:
         """Build a plain-English context string summarising prior session decisions.
 
@@ -1108,6 +1144,18 @@ Ask questions that are specific to this job posting, not generic career question
                 'pending_rewrites':    rewrites,
                 'persuasion_warnings': persuasion_warnings,
             }
+
+        elif resolved in (Phase.SPELL_CHECK, Phase.GENERATION, Phase.LAYOUT_REVIEW):
+            # For spell-check, generation, and layout re-entry: navigate back and
+            # set iterating flag so the next run builds on prior context.
+            prior_output = {
+                'generated_files':  self.state.get('generated_files'),
+                'pending_rewrites': self.state.get('pending_rewrites'),
+            }
+            self.state['iterating']     = True
+            self.state['reentry_phase'] = resolved
+            self.state['phase']         = resolved
+            new_output = {'phase': str(resolved)}
 
         else:
             return {'ok': False, 'error': f'Re-run not supported for phase: {resolved!r}'}
@@ -1500,6 +1548,8 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['achievement_rewrite_log'] = []
         if 'generation_state' not in self.state:
             self.state['generation_state'] = {}
+        if 'intake' not in self.state:
+            self.state['intake'] = {}
         self.conversation_history = session_data['conversation_history']
         self.session_dir = Path(session_file).parent
 

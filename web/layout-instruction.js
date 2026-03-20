@@ -13,7 +13,7 @@
  * Called when layout tab is activated.
  */
 function initiateLayoutInstructions() {
-  const instructionTab = document.getElementById('tab-layout');
+  const instructionTab = document.getElementById('document-content');
   if (!instructionTab) return;
 
   // Create two-column layout if it doesn't exist
@@ -163,7 +163,11 @@ async function submitLayoutInstruction(instructionText) {
       if (response.error === 'clarify') {
         showClarificationDialog(response.question, instructionText);
       } else {
-        appendMessage('system', `⚠️ Error: ${response.error} — ${response.details || ''}`);
+        let errorHtml = `⚠️ Error: ${htmlEscape(response.error)} — ${htmlEscape(response.details || '')}`;
+        if (response.raw_response !== undefined) {
+          errorHtml += `<br><details style="margin-top:6px"><summary style="cursor:pointer;font-size:0.85em;color:#64748b">Raw LLM response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:4px">${htmlEscape(response.raw_response || '(empty)')}</pre></details>`;
+        }
+        appendMessageHtml('system', errorHtml);
       }
       return;
     }

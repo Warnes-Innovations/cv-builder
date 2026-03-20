@@ -465,7 +465,8 @@ class TestReRunPhase(unittest.TestCase):
         self.assertEqual(result['prior_output'].get('customizations'), old_customizations)
 
     def test_re_run_unsupported_phase_returns_error(self):
-        result = self.cm.re_run_phase('generation')
+        # 'generation' is now supported (Phase 3 GAP-18); use a truly unknown step.
+        result = self.cm.re_run_phase('completely_unknown_phase')
         self.assertFalse(result.get('ok'))
         self.assertIn('error', result)
 

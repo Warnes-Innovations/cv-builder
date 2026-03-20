@@ -103,6 +103,7 @@ class StatusResponse:
     session_file: str
     max_skills: int
     achievement_edits: Dict[str, Any]
+    intake: Dict[str, Any]
 
 
 @dataclass
@@ -767,6 +768,7 @@ Job Description (excerpt):
             session_file=str(getattr(conversation, "session_file", "") or ""),
             max_skills=int(conversation.state.get("max_skills") or get_config().get("generation.max_skills", 20)),
             achievement_edits=conversation.state.get("achievement_edits")       or {},
+            intake=conversation.state.get("intake")                             or {},
         )))
 
     @app.get("/api/master-fields")
@@ -2787,6 +2789,131 @@ Close professionally with a call to action.
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @app.get("/api/intake-metadata")
+    def intake_metadata():
+        """Return extracted or confirmed intake metadata for the current session.
+
+        If intake has already been confirmed (``state.intake.confirmed == True``),
+        the stored values are returned as-is.  Otherwise the fields are extracted
+        heuristically from the stored job description text.
+
+        Response: ``{role, company, date_applied, confirmed}``
+        """
+        entry = _get_session()
+        conversation = entry.manager
+        intake = conversation.state.get('intake') or {}
+        if intake.get('confirmed'):
+            return jsonify({
+                'role':         intake.get('role'),
+                'company':      intake.get('company'),
+                'date_applied': intake.get('date_applied'),
+                'confirmed':    True,
+            })
+        extracted = conversation.extract_intake_metadata()
+        return jsonify({
+            'role':         extracted.get('role'),
+            'company':      extracted.get('company'),
+            'date_applied': extracted.get('date_applied'),
+            'confirmed':    False,
+        })
+
+    @app.post("/api/confirm-intake")
+    def confirm_intake():
+        """Persist user-confirmed intake metadata and immediately save the session.
+
+        Body: ``{company, role, date_applied}``
+        All fields are optional; missing/blank fields are stored as ``None``.
+        Session is persisted synchronously so the intake record survives a page reload.
+
+        Response: ``{ok, intake: {role, company, date_applied, confirmed}}``
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+        intake = {
+            'role':         (data.get('role') or '').strip() or None,
+            'company':      (data.get('company') or '').strip() or None,
+            'date_applied': (data.get('date_applied') or '').strip() or None,
+            'confirmed':    True,
+        }
+        with entry.lock:
+            conversation.state['intake'] = intake
+            if intake.get('role') and intake.get('company'):
+                conversation.state['position_name'] = f"{intake['role']} at {intake['company']}"
+            elif intake.get('role'):
+                conversation.state['position_name'] = intake['role']
+            elif intake.get('company'):
+                conversation.state['position_name'] = intake['company']
+            conversation._save_session()
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'intake': intake})
+
+    @app.get("/api/prior-clarifications")
+    def prior_clarifications():
+        """Return prior post-analysis answers from the most recent session with a similar role.
+
+        Searches persisted sessions by keyword overlap between the current
+        session's ``intake.role`` and each candidate session's ``intake.role``.
+        Sessions lacking ``post_analysis_answers`` are skipped.
+
+        Query param: ``?limit=3`` (default 3, max 10)
+        Response: ``{found, matches: [{position_name, role, company, date, answers, overlap}]}``
+        """
+        entry = _get_session()
+        conversation = entry.manager
+        current_intake = conversation.state.get('intake') or {}
+        current_role   = (current_intake.get('role') or '').lower()
+
+        limit = min(int(request.args.get('limit', 3)), 10)
+
+        _STOP = {
+            'a', 'an', 'the', 'of', 'in', 'at', 'for', 'to', 'and', 'or',
+            'is', 'be', 'with', 'on', 'by', 'senior', 'junior', 'lead',
+        }
+
+        def _kw(role: str) -> set:
+            return {w for w in role.split() if w not in _STOP and len(w) > 2}
+
+        current_kw = _kw(current_role)
+
+        try:
+            from utils.config import get_config as _get_cfg
+            cfg      = _get_cfg()
+            out_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            trash    = out_base / '.trash'
+            matches  = []
+            for sf in sorted(out_base.rglob('session.json'), reverse=True):
+                if trash in sf.parents:
+                    continue
+                try:
+                    with open(sf, 'r', encoding='utf-8') as fh:
+                        sd = json.load(fh)
+                    st      = sd.get('state', {})
+                    answers = st.get('post_analysis_answers') or {}
+                    if not answers:
+                        continue
+                    prior_intake = st.get('intake') or {}
+                    prior_role   = (prior_intake.get('role') or st.get('position_name') or '').lower()
+                    overlap      = current_kw & _kw(prior_role)
+                    if not overlap:
+                        continue
+                    matches.append({
+                        'position_name': st.get('position_name'),
+                        'role':          prior_intake.get('role'),
+                        'company':       prior_intake.get('company'),
+                        'date':          prior_intake.get('date_applied') or sd.get('timestamp', '')[:10],
+                        'answers':       answers,
+                        'overlap':       sorted(overlap),
+                    })
+                    if len(matches) >= limit:
+                        break
+                except Exception:
+                    pass
+            return jsonify({'found': len(matches) > 0, 'matches': matches})
+        except Exception as e:
+            return jsonify({'found': False, 'matches': [], 'error': str(e)})
 
     @app.get("/api/synonym-lookup")
     def synonym_lookup():
@@ -3946,11 +4073,12 @@ Close professionally with a call to action.
 
             if result.get('error'):
                 return jsonify({
-                    'ok': False,
-                    'error': result['error'],
-                    'question': result.get('question'),
-                    'details': result.get('details'),
-                    'confidence': result.get('confidence')
+                    'ok':           False,
+                    'error':        result['error'],
+                    'question':     result.get('question'),
+                    'details':      result.get('details'),
+                    'confidence':   result.get('confidence'),
+                    'raw_response': result.get('raw_response'),
                 })
 
             return jsonify({
@@ -4242,10 +4370,11 @@ Close professionally with a call to action.
 
         if result.get("error"):
             return jsonify({
-                "ok":       False,
-                "error":    result["error"],
-                "question": result.get("question"),
-                "details":  result.get("details"),
+                "ok":           False,
+                "error":        result["error"],
+                "question":     result.get("question"),
+                "details":      result.get("details"),
+                "raw_response": result.get("raw_response"),
             })
 
         updated_html = result["html"]

@@ -20,6 +20,9 @@
 		},
 		{
 			"path": "/tmp"
+		},
+		{
+			"path": "../cv-builder-prod"
 		}
 	],
 	"settings": {

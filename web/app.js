@@ -2142,9 +2142,169 @@ async function sendMessage() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Phase 3 – Intake confirmation and prior-clarification preload (GAP-23)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch intake metadata from the backend and render an editable confirmation
+ * card in the conversation panel.  Calls back via _proceedAfterIntake() once
+ * the user confirms (or skips) the card.
+ */
+async function _showIntakeConfirmCard() {
+  let extracted = {role: '', company: '', date_applied: ''};
+  try {
+    const res  = await llmFetch('/api/intake-metadata');
+    const data = await res.json();
+    if (data.confirmed) {
+      // Already confirmed (e.g. page reload mid-session) — skip the card.
+      await _proceedAfterIntake();
+      return;
+    }
+    extracted = data;
+  } catch (_e) { /* fall through with empty defaults */ }
+
+  const today = extracted.date_applied || new Date().toISOString().slice(0, 10);
+  const cardHtml = `
+    <div class="intake-confirm-card" id="intake-confirm-card" role="form" aria-label="Confirm job details">
+      <h3>📋 Confirm job details</h3>
+      <p>Review the extracted details before analysis begins. Edit any field if needed.</p>
+      <div class="intake-field-row">
+        <label for="intake-role-input">Role / Job Title</label>
+        <input id="intake-role-input" type="text" value="${escapeHtml(extracted.role || '')}"
+               placeholder="e.g. Senior Software Engineer" autocomplete="off">
+      </div>
+      <div class="intake-field-row">
+        <label for="intake-company-input">Company</label>
+        <input id="intake-company-input" type="text" value="${escapeHtml(extracted.company || '')}"
+               placeholder="e.g. Acme Corp" autocomplete="off">
+      </div>
+      <div class="intake-field-row">
+        <label for="intake-date-input">Date Applied</label>
+        <input id="intake-date-input" type="date" value="${escapeHtml(today)}">
+      </div>
+      <div class="intake-actions">
+        <button class="btn-secondary" onclick="_skipIntakeCard()" type="button">Skip</button>
+        <button class="btn-primary"   onclick="_submitIntakeCard()" type="button" id="intake-confirm-btn">Confirm &amp; Analyze</button>
+      </div>
+    </div>`;
+  appendRawHtml(cardHtml);
+
+  // Auto-focus the role input unless it already has a value.
+  const roleInput = document.getElementById('intake-role-input');
+  if (roleInput && !roleInput.value.trim()) roleInput.focus();
+}
+
+/** Submit the intake card — POST to /api/confirm-intake then proceed. */
+async function _submitIntakeCard() {
+  const role         = (document.getElementById('intake-role-input')?.value    || '').trim();
+  const company      = (document.getElementById('intake-company-input')?.value || '').trim();
+  const date_applied = (document.getElementById('intake-date-input')?.value    || '').trim();
+
+  const btn = document.getElementById('intake-confirm-btn');
+  if (btn) btn.disabled = true;
+
+  try {
+    await llmFetch('/api/confirm-intake', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({role, company, date_applied}),
+    });
+  } catch (_e) { /* non-fatal */ }
+
+  document.getElementById('intake-confirm-card')?.remove();
+  await _proceedAfterIntake();
+}
+
+/** Skip confirmation silently and proceed directly to analysis. */
+async function _skipIntakeCard() {
+  document.getElementById('intake-confirm-card')?.remove();
+  await _proceedAfterIntake();
+}
+
+/**
+ * After intake is resolved, check whether prior clarification answers exist
+ * for a similar role.  If found, offer to preload them; then start analysis.
+ */
+async function _proceedAfterIntake() {
+  try {
+    const res     = await llmFetch('/api/prior-clarifications');
+    const data    = await res.json();
+    if (data.found && data.matches && data.matches.length > 0) {
+      const best = data.matches[0];
+      await _offerPriorClarifications(best);
+      return;
+    }
+  } catch (_e) { /* fall through */ }
+  await analyzeJob();
+}
+
+/**
+ * Render a banner offering to preload prior clarification answers from a
+ * similar past session.  User can accept or dismiss.
+ */
+async function _offerPriorClarifications(match) {
+  const roleName = escapeHtml(match.role || match.position_name || 'a similar role');
+  const bannerHtml = `
+    <div class="prior-clarifications-banner" id="prior-clar-banner" role="status">
+      <div class="pcb-text">
+        💡 Found prior answers from <span class="pcb-role">${roleName}</span>.
+        Load them as defaults for the clarification questions?
+      </div>
+      <button class="btn-secondary" onclick="_dismissPriorClarifications()" type="button">No thanks</button>
+      <button class="btn-primary"   onclick="_loadPriorClarifications()" type="button" id="pcb-load-btn">Load defaults</button>
+    </div>`;
+  appendRawHtml(bannerHtml);
+
+  // Store the answers on window so _loadPriorClarifications can access them.
+  window._pendingPriorAnswers = match.answers || {};
+}
+
+function _dismissPriorClarifications() {
+  document.getElementById('prior-clar-banner')?.remove();
+  delete window._pendingPriorAnswers;
+  analyzeJob();
+}
+
+function _loadPriorClarifications() {
+  document.getElementById('prior-clar-banner')?.remove();
+  const answers = window._pendingPriorAnswers || {};
+  delete window._pendingPriorAnswers;
+  // Merge defaults into questionAnswers; user can still override during review.
+  if (typeof questionAnswers === 'object' && questionAnswers !== null) {
+    Object.assign(questionAnswers, answers);
+  } else {
+    window.questionAnswers = Object.assign({}, answers);
+  }
+  analyzeJob();
+}
+
+/** Inject raw HTML into the conversation panel (used for intake/clarification cards). */
+function appendRawHtml(html) {
+  const panel = document.getElementById('chat-messages') || document.getElementById('conversation-panel');
+  if (!panel) return;
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = html;
+  panel.appendChild(wrapper.firstElementChild);
+  panel.scrollTop = panel.scrollHeight;
+}
+
 async function analyzeJob() {
   if (isLoading) return;
-  
+
+  // Gate on intake confirmation before first analysis.
+  // If intake not yet confirmed, show the card; it will call analyzeJob() again after confirming.
+  if (!tabData.analysis) {
+    try {
+      const res  = await llmFetch('/api/intake-metadata');
+      const data = await res.json();
+      if (!data.confirmed) {
+        await _showIntakeConfirmCard();
+        return;
+      }
+    } catch (_e) { /* network error — proceed without gate */ }
+  }
+
   const loadingMsg = appendLoadingMessage('Analyzing job description...');
   setLoading(true, 'Analysing job description…');
   
@@ -7449,14 +7609,87 @@ async function reRunPhase(step) {
       analysis:       'analysis',
       customizations: 'customizations',
       rewrite:        'rewrite',
+      spell:          'spell',
+      generate:       'generate',
     };
     if (tabMap[step]) switchTab(tabMap[step]);
+
+    // Compute changed-item IDs from prior vs new output and highlight them.
+    if (data.prior_output && data.new_output) {
+      setTimeout(() => _highlightChangedItems(step, data.prior_output, data.new_output), 300);
+    }
 
   } catch (err) {
     removeLoadingMessage(loadingMsg);
     setLoading(false);
     appendRetryMessage('⚠ Network error in reRunPhase: ' + err.message, () => reRunPhase(step));
   }
+}
+
+/**
+ * Compare prior and new re-run outputs; mark DOM elements for changed entities.
+ *
+ * Strategies by step:
+ *   rewrite        — compare rewrite IDs; mark rw-card-<id>
+ *   customizations — compare experience IDs; mark tr[data-exp-id] and tr[data-skill]
+ *   analysis       — no per-entity DOM targeting; skip
+ */
+function _highlightChangedItems(step, priorOutput, newOutput) {
+  if (step === 'rewrite') {
+    const priorIds = new Set((priorOutput.pending_rewrites || []).map(r => String(r.id)));
+    const newItems  = newOutput.pending_rewrites  || [];
+    for (const item of newItems) {
+      const id      = String(item.id || '');
+      const cardId  = id.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const el      = document.getElementById(`rw-card-${cardId}`);
+      if (!el) continue;
+      const isNew     = !priorIds.has(id);
+      const priorItem = (priorOutput.pending_rewrites || []).find(r => String(r.id) === id);
+      const changed   = isNew || (priorItem && priorItem.proposed !== item.proposed);
+      if (changed) _markChanged(el);
+    }
+    return;
+  }
+
+  if (step === 'customizations') {
+    const priorExpIds = new Set(
+      (priorOutput.customizations?.experience_recommendations || []).map(r => String(r.id))
+    );
+    const newExpRecs  = newOutput.customizations?.experience_recommendations || [];
+    for (const rec of newExpRecs) {
+      const id   = String(rec.id || '');
+      const el   = document.querySelector(`tr[data-exp-id="${CSS.escape(id)}"]`);
+      if (!el) continue;
+      const prior = (priorOutput.customizations?.experience_recommendations || []).find(r => String(r.id) === id);
+      if (!priorExpIds.has(id) || (prior && prior.recommendation !== rec.recommendation)) {
+        _markChanged(el);
+      }
+    }
+
+    const priorSkills = new Set(
+      (priorOutput.customizations?.skill_recommendations || []).map(r => (r.skill || '').toLowerCase())
+    );
+    const newSkillRecs = newOutput.customizations?.skill_recommendations || [];
+    for (const rec of newSkillRecs) {
+      const name = (rec.skill || '').toLowerCase();
+      const el   = document.querySelector(`tr[data-skill="${CSS.escape(name)}"]`);
+      if (!el) continue;
+      const prior = (priorOutput.customizations?.skill_recommendations || []).find(
+        r => (r.skill || '').toLowerCase() === name
+      );
+      if (!priorSkills.has(name) || (prior && prior.recommendation !== rec.recommendation)) {
+        _markChanged(el);
+      }
+    }
+    return;
+  }
+}
+
+/** Apply data-changed attribute and trigger highlight animation on an element. */
+function _markChanged(el) {
+  el.setAttribute('data-changed', 'true');
+  // Remove the attribute after the animation completes so it can be re-triggered on a second rerun.
+  setTimeout(() => el.removeAttribute('data-changed'), 2500);
 }
 
 // ==== End Phase Re-entry Functions ====
@@ -7665,7 +7898,7 @@ function updateWorkflowSteps(status) {
   const UPCOMING = new Set();
 
   // Steps that support LLM re-execution via /api/re-run-phase
-  const RE_RUN_STEPS = new Set(['analysis', 'customizations', 'rewrite']);
+  const RE_RUN_STEPS = new Set(['analysis', 'customizations', 'rewrite', 'spell', 'generate']);
 
   // Base label for each step (used when injecting ↻ button)
   const STEP_LABELS = {

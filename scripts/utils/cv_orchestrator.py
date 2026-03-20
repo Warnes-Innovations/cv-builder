@@ -1465,8 +1465,15 @@ If you need clarification, return:
                 temperature=0.3  # Low temperature for precise modifications
             )
 
-            # Parse response as JSON
+            # Guard against empty response before JSON parsing
             import json
+            if not response or not response.strip():
+                return {
+                    'error': 'parse_error',
+                    'details': 'LLM returned an empty response',
+                    'raw_response': response or ''
+                }
+
             result = json.loads(response)
 
             # Validate response structure
@@ -1505,7 +1512,8 @@ If you need clarification, return:
         except json.JSONDecodeError as e:
             return {
                 'error': 'parse_error',
-                'details': f'LLM response was not valid JSON: {str(e)}'
+                'details': f'LLM response was not valid JSON: {str(e)}',
+                'raw_response': response
             }
         except Exception as e:
             return {
