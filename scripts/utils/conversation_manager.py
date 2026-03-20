@@ -704,7 +704,18 @@ Ask questions that are specific to this job posting, not generic career question
             if achievement_orders:
                 customizations['achievement_orders'] = achievement_orders
 
-            # Apply publication accept/reject decisions from post_analysis_answers
+            # Apply publication accept/reject decisions.
+            # Primary source: publication_decisions dict stored via POST /api/decide
+            # (cite_key → True/False). Falls back to legacy post_analysis_answers strings.
+            pub_decisions: dict = self.state.get('publication_decisions') or {}
+            if pub_decisions:
+                customizations['accepted_publications'] = [
+                    k for k, v in pub_decisions.items() if v not in (False, 'reject', 0)
+                ]
+                customizations['rejected_publications'] = [
+                    k for k, v in pub_decisions.items() if v in (False, 'reject', 0)
+                ]
+            # Legacy path: post_analysis_answers overrides the dict if both are present
             post_answers = self.state.get('post_analysis_answers') or {}
             accepted_str = post_answers.get('publication_accepted', '')
             rejected_str = post_answers.get('publication_rejected', '')
@@ -801,15 +812,22 @@ Ask questions that are specific to this job posting, not generic career question
         Returns:
             ``{"flag_count": int, "accepted_count": int, "phase": "generation"}``
         """
-        self.state['spell_audit'] = spell_audit or []
+        spell_audit = spell_audit or []
+        # Resolve any items that somehow arrive still in 'pending' state to 'ignore'
+        # so the audit record is always clean before persisting.
+        for entry in spell_audit:
+            if entry.get('outcome') == 'pending':
+                entry['outcome'] = 'ignore'
+        self.state['spell_audit'] = spell_audit
         self.state['phase']       = Phase.GENERATION
         self._save_session()
-        spell_audit    = spell_audit or []
-        flag_count     = len(spell_audit)
-        accepted_count = sum(1 for a in spell_audit if a.get('outcome') == 'accept')
+        flag_count      = len(spell_audit)
+        accepted_count  = sum(1 for a in spell_audit if a.get('outcome') == 'accept')
+        ignored_count   = sum(1 for a in spell_audit if a.get('outcome') in ('ignore', 'add_dict'))
         return {
             'flag_count':     flag_count,
             'accepted_count': accepted_count,
+            'ignored_count':  ignored_count,
             'phase':          'generation',
         }
 

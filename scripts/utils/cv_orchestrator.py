@@ -328,23 +328,38 @@ class CVOrchestrator:
     
     def _format_publications(self, publications: List) -> List[Dict]:
         """Format publications for template consumption."""
+        owner_name = self.master_data.get('personal_info', {}).get('name', '') if self.master_data else ''
+        # Extract last name: handle "Last, First" (BibTeX/comma style) and "First Last" (natural)
+        if ',' in owner_name:
+            owner_last = owner_name.split(',')[0].strip().lower()
+        else:
+            owner_last = owner_name.strip().split()[-1].lower() if owner_name.strip() else ''
+
         formatted_pubs = []
         for pub in publications:
             if isinstance(pub, dict):
+                entry: Dict[str, Any] = {}
                 if 'formatted' in pub:
-                    formatted_pubs.append({
-                        'formatted_citation': pub['formatted']
-                    })
+                    entry['formatted_citation'] = pub['formatted']
                 elif 'title' in pub:
-                    # Create basic formatted citation
                     authors = pub.get('authors', 'Unknown')
                     title = pub.get('title', '')
                     journal = pub.get('journal', '')
                     year = pub.get('year', '')
                     citation = f"{authors}. {title}. {journal} ({year}).".strip()
-                    formatted_pubs.append({
-                        'formatted_citation': citation
-                    })
+                    entry['formatted_citation'] = citation
+                else:
+                    continue
+
+                # Detect first authorship: compare owner last name against leading author token
+                if owner_last:
+                    raw_authors = pub.get('authors', '')
+                    first_token = raw_authors.split(',')[0].strip().lower() if raw_authors else ''
+                    entry['is_first_author'] = bool(first_token and owner_last in first_token)
+                else:
+                    entry['is_first_author'] = False
+
+                formatted_pubs.append(entry)
         return formatted_pubs
     
     def render_html_preview(

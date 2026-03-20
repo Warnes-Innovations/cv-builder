@@ -460,6 +460,7 @@
         .pub-citation { color: var(--text-main); }
         .pub-count { font-size: 0.75em; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
         .pub-venue-warn { color: #dc7900; font-size: 0.85em; margin-left: 4px; cursor: help; }
+        .pub-first-author { color: #1d4ed8; font-size: 0.8em; margin-left: 4px; cursor: help; }
 
         /* Certifications in sidebar */
         .cert-item { margin-bottom: 0.5em; }
@@ -645,7 +646,7 @@
             <section class="section">
                 <h2 class="section-title"><i class="fas fa-file-alt"></i>
                     {% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}
-                    Selected Publications
+                    Selected Publications ({{ publications | length }})
                     {% else %}
                     Publications
                     {% endif %}
@@ -654,6 +655,9 @@
                     {% for pub in publications %}
                     <li class="pub-item">
                         <span class="pub-citation">{{ pub.formatted_citation }}</span>
+                        {% if pub.is_first_author %}
+                        <span class="pub-first-author" title="First author">★</span>
+                        {% endif %}
                         {% if pub.venue_warning %}
                         <span class="pub-venue-warn" title="{{ pub.venue_warning }}">⚠</span>
                         {% endif %}

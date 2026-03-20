@@ -1180,6 +1180,21 @@ function closeAlertModal() {
   restoreFocus();
 }
 
+let _confirmResolve = null;
+function showConfirmModal(title, message, okLabel = 'OK') {
+  document.getElementById('confirm-modal-title').textContent = title;
+  document.getElementById('confirm-modal-message').innerHTML = message.replace(/\n/g, '<br>');
+  const okBtn = document.getElementById('confirm-modal-ok');
+  if (okBtn) okBtn.textContent = okLabel;
+  document.getElementById('confirm-modal-overlay').style.display = 'block';
+  return new Promise(resolve => { _confirmResolve = resolve; });
+}
+
+function closeConfirmModal(result) {
+  document.getElementById('confirm-modal-overlay').style.display = 'none';
+  if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
+}
+
 function showToast(message, type = 'success', duration = 3000) {
   const container = document.getElementById('toast-container');
   if (!container) return;
@@ -6712,6 +6727,14 @@ function renderSpellSuggestions(flaggedSections, totalSections, stats = {}, cust
                 ${reps.map((r, ri) => `<button class="rewrite-keyword" onclick="applySpellReplacement('${escapeHtml(section.id)}', ${idx}, ${ri})"
                   style="cursor:pointer;border:1px solid #3b82f6;background:#dbeafe;">${escapeHtml(r)}</button>`).join('')}
               </div>` : ''}
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+                <input type="text" id="edit_${sugId}"
+                  placeholder="Type custom correction…"
+                  value="${escapeHtml(reps[0] || '')}"
+                  style="flex:1;font-size:0.88em;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;"
+                  onkeydown="if(event.key==='Enter'){event.preventDefault();applyCustomSpellCorrection('${escapeHtml(section.id)}',${idx});}">
+                <button class="icon-btn" onclick="applyCustomSpellCorrection('${escapeHtml(section.id)}',${idx})" title="Apply custom correction">Apply</button>
+              </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="icon-btn" onclick="dismissSpellSuggestion('${escapeHtml(sugId)}', '${escapeHtml(section.id)}', ${idx}, '${escapeHtml(sug.flagged)}')"
                     title="Ignore this suggestion">Ignore</button>
@@ -6746,6 +6769,24 @@ function renderSpellSuggestions(flaggedSections, totalSections, stats = {}, cust
     </div>
   `;
   results.innerHTML = html;
+}
+
+function applyCustomSpellCorrection(sectionId, idx) {
+  const key    = `${sectionId}_${idx}`;
+  const entry  = (window._spellSugMap || {})[key];
+  if (!entry) return;
+  const input  = document.getElementById(`edit_sug_${sectionId}_${idx}`);
+  const custom = input ? input.value.trim() : '';
+  if (!custom) return;
+  entry.outcome = 'accept';
+  entry.final   = custom;
+  const sugEl = document.querySelector(`.spell-suggestion[data-section-id="${CSS.escape(sectionId)}"][data-idx="${idx}"]`);
+  if (!sugEl) return;
+  const flaggedSpan = sugEl.querySelector('span[style*="background:#fee2e2"]');
+  if (flaggedSpan) {
+    flaggedSpan.outerHTML = `<del style="color:#dc2626;">${escapeHtml(entry.original)}</del> → <ins style="color:#166534;text-decoration:none;">${escapeHtml(custom)}</ins>`;
+  }
+  sugEl.style.opacity = '0.5';
 }
 
 function applySpellReplacement(sectionId, idx, repIdx) {
@@ -6806,9 +6847,21 @@ async function addSpellWord(word, sugId) {
 }
 
 async function submitSpellCheckDecisions() {
+  // Count items still marked 'pending' (not explicitly reviewed)
+  const pendingEntries = Object.values(window._spellSugMap || {}).filter(e => e.outcome === 'pending');
+  if (pendingEntries.length > 0) {
+    const n = pendingEntries.length;
+    const confirmed = await showConfirmModal(
+      '⚠ Unreviewed Issues',
+      `${n} issue${n !== 1 ? 's have' : ' has'} not been reviewed and will be ignored.\nProceed anyway?`,
+      'Proceed'
+    );
+    if (!confirmed) return;
+  }
+
   // Collect audit from _spellSugMap
   const audit = Object.values(window._spellSugMap || {}).filter(e => e.outcome !== 'pending');
-  // Remaining 'pending' items are implicitly accepted as-is
+  // Remaining 'pending' items are explicitly auto-ignored after confirmation above
   Object.values(window._spellSugMap || {}).forEach(e => {
     if (e.outcome === 'pending') { e.outcome = 'ignore'; audit.push(e); }
   });
