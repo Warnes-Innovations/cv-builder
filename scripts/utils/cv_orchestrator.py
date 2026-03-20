@@ -1636,6 +1636,17 @@ If you need clarification, return:
         scored_experiences.sort(key=lambda x: x[1], reverse=True)
         selected_experiences = [exp for exp, _ in scored_experiences]
 
+        # Override: if the user has explicitly reordered experience rows via the UI,
+        # apply their ordering stored in customizations['experience_row_order']
+        # as a list of experience IDs in the desired display order.
+        experience_row_order = customizations.get('experience_row_order', [])
+        if experience_row_order:
+            order_map = {eid: i for i, eid in enumerate(experience_row_order)}
+            selected_experiences = sorted(
+                selected_experiences,
+                key=lambda e: order_map.get(e.get('id', ''), len(order_map)),
+            )
+
         # ── Per-experience bullet ordering ────────────────────────────────────
         # Default: sort bullets by keyword-overlap relevance.
         # Override: if the user has explicitly reordered bullets via the UI,
@@ -1733,6 +1744,17 @@ If you need clarification, return:
                 if skill_name not in omitted_skill_names and skill_name not in existing_skill_names:
                     prepend.append({'name': skill_name})
             selected_skills = prepend + selected_skills
+
+        # Override: if the user has explicitly reordered skill rows via the UI,
+        # apply their ordering stored in customizations['skill_row_order']
+        # as a list of skill names in the desired display order.
+        skill_row_order = customizations.get('skill_row_order', [])
+        if skill_row_order:
+            order_map = {name: i for i, name in enumerate(skill_row_order)}
+            selected_skills = sorted(
+                selected_skills,
+                key=lambda s: order_map.get(s.get('name', ''), len(order_map)),
+            )
 
         # Select professional summary — session_summaries (e.g. LLM-generated
         # "ai_recommended") overlay master data so they take precedence.

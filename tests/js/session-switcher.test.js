@@ -2,6 +2,8 @@
  * Focused regression tests for session switcher helpers in web/app.js.
  */
 
+const { formatSessionPhaseLabel } = require('../../web/utils');
+
 describe('session switcher helpers', () => {
   let app
   let originalFetch
@@ -30,9 +32,9 @@ describe('session switcher helpers', () => {
   })
 
   it('formats workflow phases for display', () => {
-    expect(app.formatSessionPhaseLabel('rewrite_review')).toBe('rewrite')
-    expect(app.formatSessionPhaseLabel('layout_review')).toBe('layout review')
-    expect(app.formatSessionPhaseLabel('custom_phase')).toBe('custom phase')
+    expect(formatSessionPhaseLabel('rewrite_review')).toBe('rewrite')
+    expect(formatSessionPhaseLabel('layout_review')).toBe('layout review')
+    expect(formatSessionPhaseLabel('custom_phase')).toBe('custom phase')
   })
 
   it('builds a header label from position name and phase', () => {

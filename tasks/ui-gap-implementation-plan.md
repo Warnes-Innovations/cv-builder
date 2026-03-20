@@ -1,7 +1,7 @@
 # UI Gap Implementation Plan
 
 **Created:** 2026-03-19  
-**Status:** Phase 2 complete; Phase 3 (Intake/Rerun) next (2026-03-19)  
+**Status:** Phases 1–4 complete; Phase 5 (Master CV Editor) and Phase 6 (UX/Accessibility) active; Refactor backlog open (2026-03-20)  
 **Source basis:** `tasks/ui-review.md` and `tasks/gaps.md` refreshed on 2026-03-19
 
 ## Overview
@@ -296,17 +296,20 @@ Phase 2 deliverables status:
 - Goal: make ATS decisions visible before finalisation and align output semantics with stories.
 - Exit criteria: one shared ATS score is visible during review, refreshed at reasonable checkpoints, rendered in the `div.position-bar` row, and preserved in generated metadata and final summaries.
 
-### Phase 3: Iteration and Intake Slice
+### Phase 3: Iteration and Intake Slice — **COMPLETE (2026-03-19)**
 
-- Implement Workstream 3.
-- Goal: make repeat runs and job intake dependable.
-- Exit criteria: intake confirmation exists, clarification defaults can preload, rerun is exposed broadly, and changed-item highlighting reduces repeated review.
+Phase 3 deliverables status:
+- [x] Intake confirmation substep after job extraction — implemented in `scripts/web_app.py` (`intake_metadata`, `confirm_intake`)
+- [x] Prior clarification defaults with role-type matching and explicit override — implemented in `scripts/web_app.py` (`prior_clarifications`)
+- [x] Session persisted immediately after intake confirmation
+- [x] Spell-check and generate re-run affordances exposed
 
-### Phase 4: Quality-Gate Slice
+### Phase 4: Quality-Gate Slice — **COMPLETE (2026-03-19)**
 
-- Implement Workstream 4.
-- Goal: ensure spell-check and publication decisions reliably affect final output.
-- Exit criteria: spell-check is enforceable and write-back is verified; publication persistence/rendering is consistent across outputs.
+Phase 4 deliverables status:
+- [x] Spell-check blocking guard — requires explicit resolution before proceeding
+- [x] Publication decisions persistence — decisions stored in session and respected by final output
+- [x] Write-back of accepted spell/grammar corrections integrated
 
 ### Phase 5: Master Data Editing Slice
 
