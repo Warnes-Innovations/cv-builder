@@ -6,7 +6,7 @@
 data:
   master_cv: "~/CV/Master_CV_Data.json"
   publications: "~/CV/publications.bib"
-  output_dir: "~/CV/files"
+  output_dir: "~/CV/cv-builder"
 
 # LLM Provider Settings
 llm:
@@ -37,14 +37,8 @@ generation:
 # Session Management
 session:
   auto_save: true
-  session_dir: "~/CV/files/sessions"  # Sessions saved in CV directory
-  history_file: "~/CV/files/input_history"
-
-# Google Drive Integration (optional)
-google_drive:
-  enabled: false
-  credentials_path: "~/.credentials/google_drive_credentials.json"
-  token_path: "~/.credentials/google_drive_token.pickle"
+  session_dir: "~/CV/cv-builder/sessions"  # Sessions saved in CV directory
+  history_file: "~/CV/cv-builder/input_history"
 
 # Web UI Settings
 web:
@@ -56,4 +50,4 @@ web:
 logging:
   level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
   file: null     # null logs to console only
-  log_dir: "~/CV/logs"  # Directory for log files
+  log_dir: "~/CV/cv-builder/logs"  # Directory for log files

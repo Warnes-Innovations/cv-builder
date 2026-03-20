@@ -34,6 +34,10 @@ Actions requiring explicit confirmation:
   - `python run_tests.py`
   - `python run_tests.py --categories unit component integration`
   - `python run_tests.py --list`
+- When running pytest, write output to a file, then use `head` or `tail` (if necessary) to read the output file.  This allows you to investigate details without rerunning
+the tests.
+  - ✅ `python -m pytest tests/ui/ -q --tb=short > /tmp/pytest_out.txt 2>&1; head -100 /tmp/pytest_out.txt`
+  - ❌ `python -m pytest tests/ui/ -q --tb=short` (output inline — blocks the shell, floods context)
 - Run JavaScript tests (frontend utilities in `web/`):
   - `npm run test:js`              — run all 104 JS tests
   - `npm run test:js:watch`        — watch mode
