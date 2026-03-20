@@ -367,26 +367,23 @@ function setLoading(isLoading) {
   loadingElement.style.display = isLoading ? 'block' : 'none';
 }
 
-// CJS export shim — no-op in browsers (module is undefined)
-if (typeof module !== 'undefined') {
-  module.exports = {
-    StorageKeys,
-    OWNER_TOKEN_KEY,
-    apiCall,
-    getSessionIdFromURL,
-    setSessionIdInURL,
-    getOwnerToken,
-    getScopedTabDataStorageKey,
-    sessionAwareFetch,
-    loadSession, deleteSession, fetchStatus, fetchHistory,
-    createSession,
-    saveSession, resetSession,
-    uploadJobFile, submitJobText, fetchJobFromUrl, loadJobFile, loadExistingItems,
-    analyzeJob, askPostAnalysisQuestions, submitPostAnalysisAnswers,
-    sendMessage, sendAction,
-    fetchCVData, updateCVData, updateExperience, fetchExperienceDetails,
-    fetchPublicationRecommendations, submitReviewDecisions,
-    fetchRewrites, approveRewrites,
-    generateCV, downloadFile, setLoading,
-  };
-}
+export {
+  StorageKeys,
+  OWNER_TOKEN_KEY,
+  apiCall,
+  getSessionIdFromURL,
+  setSessionIdInURL,
+  getOwnerToken,
+  getScopedTabDataStorageKey,
+  sessionAwareFetch,
+  loadSession, deleteSession, fetchStatus, fetchHistory,
+  createSession,
+  saveSession, resetSession,
+  uploadJobFile, submitJobText, fetchJobFromUrl, loadJobFile, loadExistingItems,
+  analyzeJob, askPostAnalysisQuestions, submitPostAnalysisAnswers,
+  sendMessage, sendAction,
+  fetchCVData, updateCVData, updateExperience, fetchExperienceDetails,
+  fetchPublicationRecommendations, submitReviewDecisions,
+  fetchRewrites, approveRewrites,
+  generateCV, downloadFile, setLoading,
+};

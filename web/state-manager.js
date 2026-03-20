@@ -4,7 +4,7 @@
  * Centralizes all state management logic (currentTab, interactiveState, sessionId, etc.)
  */
 
-// StorageKeys is defined in api-client.js (loaded before this file)
+import { StorageKeys } from './api-client.js';
 
 /**
  * Mirror of the Python Phase enum in scripts/utils/conversation_manager.py.
@@ -288,13 +288,10 @@ function clearState() {
 // from this module to avoid conflicting behavior and ensure a single
 // restore path is used by the application.
 
-// CJS export shim — no-op in browsers (module is undefined)
-if (typeof module !== 'undefined') {
-  module.exports = {
-    PHASES,
-    GENERATION_PHASES,
-    stateManager,
-    initializeState, loadStateFromLocalStorage, saveStateToLocalStorage,
-    clearState,
-  };
-}
+export {
+  PHASES,
+  GENERATION_PHASES,
+  stateManager,
+  initializeState, loadStateFromLocalStorage, saveStateToLocalStorage,
+  clearState,
+};

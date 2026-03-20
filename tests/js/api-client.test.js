@@ -5,18 +5,17 @@
 let apiClient
 let fetchMock
 
-function loadApiClient() {
-  delete require.cache[require.resolve('../../web/api-client.js')]
-  apiClient = require('../../web/api-client.js')
+async function loadApiClient() {
+  vi.resetModules()
+  apiClient = await import('../../web/api-client.js')
   return apiClient
 }
 
 // ── StorageKeys ───────────────────────────────────────────────────────────────
 
 describe('StorageKeys', () => {
-  beforeEach(() => {
-    vi.resetModules()
-    loadApiClient()
+  beforeEach(async () => {
+    await loadApiClient()
   })
 
   it('defines SESSION_ID', () => {
@@ -47,14 +46,13 @@ describe('StorageKeys', () => {
 describe('apiCall', () => {
   let fetchMock
 
-  beforeEach(() => {
-    vi.resetModules()
+  beforeEach(async () => {
     window.history.replaceState({}, '', 'http://localhost/')
     sessionStorage.clear()
     fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     window.fetch = fetchMock
-    loadApiClient()
+    await loadApiClient()
   })
 
   afterEach(() => {

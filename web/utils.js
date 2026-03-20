@@ -225,13 +225,10 @@ function formatSessionTimestamp(timestamp, { includeTime = true } = {}) {
   }
 }
 
-// CJS export shim — no-op in browsers (module is undefined)
-if (typeof module !== 'undefined') {
-  module.exports = {
-    normalizeText, fmtDate, cleanJsonResponse, escapeHtml,
-    extractTitleAndCompanyFromJobText, normalizePositionLabel,
-    stripHtml, truncateText, capitalizeWords, pluralize,
-    formatDuration, ordinal,
-    formatSessionPhaseLabel, formatSessionTimestamp,
-  };
-}
+export {
+  normalizeText, fmtDate, cleanJsonResponse, escapeHtml,
+  extractTitleAndCompanyFromJobText, normalizePositionLabel,
+  stripHtml, truncateText, capitalizeWords, pluralize,
+  formatDuration, ordinal,
+  formatSessionPhaseLabel, formatSessionTimestamp,
+};
