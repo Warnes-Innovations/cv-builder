@@ -52,12 +52,13 @@ def test_accepted_publications_and_rejections(tmp_path):
 
     orch = CVOrchestrator(str(master_path), publications_path=str(tmp_path / "pubs.bib"), output_dir=str(tmp_path / "out"), llm_client=None)
 
-    # Create a fake publications list inside orchestrator for selection testing
-    orch.publications = [
-        {"key": "p1", "title": "A"},
-        {"key": "p2", "title": "B"},
-        {"key": "p3", "title": "C"},
-    ]
+    # Create a fake publications dict inside orchestrator for selection testing
+    # (matches the Dict[str, Dict] format returned by parse_bibtex_file)
+    orch.publications = {
+        "p1": {"key": "p1", "title": "A", "type": "article", "year": "2020", "authors": [], "journal": ""},
+        "p2": {"key": "p2", "title": "B", "type": "article", "year": "2021", "authors": [], "journal": ""},
+        "p3": {"key": "p3", "title": "C", "type": "article", "year": "2022", "authors": [], "journal": ""},
+    }
 
     customizations = {
         "accepted_publications": ["p2", "p1"],

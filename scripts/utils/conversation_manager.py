@@ -704,6 +704,14 @@ Ask questions that are specific to this job posting, not generic career question
             if achievement_orders:
                 customizations['achievement_orders'] = achievement_orders
 
+            # Inject user-defined experience and skill row ordering (Phase 6)
+            experience_row_order = self.state.get('experience_row_order', [])
+            if experience_row_order:
+                customizations['experience_row_order'] = experience_row_order
+            skill_row_order = self.state.get('skill_row_order', [])
+            if skill_row_order:
+                customizations['skill_row_order'] = skill_row_order
+
             # Apply publication accept/reject decisions.
             # Primary source: publication_decisions dict stored via POST /api/decide
             # (cite_key → True/False). Falls back to legacy post_analysis_answers strings.
