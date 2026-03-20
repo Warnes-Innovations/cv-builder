@@ -239,6 +239,28 @@ This plan does not treat lower-priority persuasion or broad master-data ingestio
 - Produced `tasks/contracts/phase0-contract.md` covering staged generation artifacts, ATS score schema, skill typing, and rerun diffing.
 - Identified files and tests to be touched by each workstream.
 
+### Final Phase: CI Integration & Full-Stack Test Runs
+
+**Goal:** Ensure full integration tests (backend + UI + persistence + provider‑dependent scenarios) run automatically on main and on a schedule, and that PRs run fast, deterministic suites only.
+
+**Tasks**
+
+1. Create a GitHub task/issue to update CI so the full integration suite runs on `push` to `main` and on a nightly schedule. The task should reference the existing PR-focused workflow file and include the desired triggers: `push` (branch: `main`) and `schedule` (daily at 02:00 UTC).
+2. Define which tests run where:
+   - PRs: `tests/unit`, lint/type checks, and the HTML harness (`npm run test:integration:headless`).
+   - Main/nightly: `tests/integration`, end‑to‑end Playwright tests against a live server, and any provider/credentialed scenarios.
+3. Add environment gating and secrets guidance to the task: document required secrets (e.g. `LLM_API_KEY`), and ensure integration jobs skip or `pytest.skip(...)` when creds are absent.
+4. Implement the workflow changes (or link to the workflow PR) and add a job that starts the web app (`conda` env + `python scripts/web_app.py --llm-provider github`) in the integration runner before running full tests.
+5. Add a lightweight monitoring step to report failed test artifacts (logs, pytest xml, playwright trace/video) into the Actions run for debugging.
+6. Assign an owner and estimate effort: owner `@team` (or repo maintainer), effort `1-2 days` to get a stable run, `3-5 days` to harden across providers.
+
+**Risks & Notes**
+
+- Running provider-dependent tests in CI increases cost and flakiness; prefer using recorded/replay fixtures or mocking where feasible.
+- Ensure database/file backups and safe write paths are used in CI to avoid destroying real user data.
+- Use the staged approach: land PR-focused workflow first (already present), then implement the `main`/`schedule` expansion tracked by this GitHub task.
+
+
 ### Phase 1: Staged Generation Slice — **COMPLETE (2026-03-19)**
 
 Phase 1 deliverables status:
