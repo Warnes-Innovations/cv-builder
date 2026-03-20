@@ -1802,68 +1802,28 @@ class CopilotSdkClient(LLMClient):
 
 
 class LocalLLMClient(LLMClient):
-    """Anthropic Claude client."""
-    
-    def __init__(self, model: str = "claude-3-opus-20240229", api_key: Optional[str] = None):
-        self.model = model
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        
-        if not self.api_key:
-            raise ValueError(
-                "Anthropic API key not found. Set ANTHROPIC_API_KEY environment variable."
-            )
-        
-        try:
-            import anthropic
-            self.client = anthropic.Anthropic(api_key=self.api_key)
-        except ImportError:
-            raise ImportError(
-                "Anthropic package not installed. Run: pip install anthropic"
-            )
-    
-    def chat(
-        self,
-        messages: List[Dict[str, str]],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None
-    ) -> str:
-        """Send messages to Claude."""
-        # Convert messages format
-        system_msg = next((m["content"] for m in messages if m["role"] == "system"), None)
-        user_messages = [m for m in messages if m["role"] != "system"]
-        try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=max_tokens or 4096,
-                temperature=temperature,
-                system=system_msg,
-                messages=user_messages
-            )
-            self.last_usage = response.usage
-            return response.content[0].text
-        except Exception as exc:
-            raise _classify_llm_error(exc, provider='Copilot/Anthropic') from exc
-    
-    def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
-        """Propose rewrites not supported by this stub client."""
-        return []
-
-
-class LocalLLMClient(LLMClient):
     """Local LLM using transformers."""
     
     def __init__(self, model: str = "mistralai/Mistral-7B-Instruct-v0.2"):
         self.model_name = model
-        
+        # Lazy-loaded on first chat() call so the server can start without a
+        # working GPU/torch environment and tests can hit non-LLM routes.
+        self.tokenizer = None
+        self.model = None
+
+    def _ensure_model_loaded(self) -> None:
+        """Load the model and tokenizer on first use."""
+        if self.model is not None:
+            return
         try:
             from transformers import AutoModelForCausalLM, AutoTokenizer
             import torch
-            
-            self.tokenizer = AutoTokenizer.from_pretrained(model)
+
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForCausalLM.from_pretrained(
-                model,
+                self.model_name,
                 torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                device_map="auto"
+                device_map="auto",
             )
         except ImportError:
             raise ImportError(
@@ -1877,6 +1837,7 @@ class LocalLLMClient(LLMClient):
         max_tokens: Optional[int] = None
     ) -> str:
         """Generate response using local model."""
+        self._ensure_model_loaded()
         try:
             # Format messages for instruction-following
             prompt = self._format_messages(messages)
@@ -2238,6 +2199,101 @@ MODEL_INFO: dict = {
 }
 
 
+class StubLLMClient(LLMClient):
+    """Deterministic stub LLM for integration tests.
+
+    Returns minimal but structurally valid JSON responses for every workflow
+    action without making any real network or model calls.  Selected via
+    ``--llm-provider stub``.
+
+    The stub inspects the last user message to decide which workflow step is
+    being called and returns a canned response that matches the expected schema
+    so the conversation manager can parse it and advance the workflow state.
+    """
+
+    model = "stub"
+    last_usage = None
+
+    # Minimal job-analysis JSON the conversation manager can parse.
+    _ANALYSIS = json.dumps({
+        "job_title": "Senior Data Scientist",
+        "company": "Acme Corp",
+        "role_level": "Senior",
+        "domain": "Data Science",
+        "required_skills": ["Python", "Machine Learning"],
+        "nice_to_have_skills": ["Spark"],
+        "key_responsibilities": ["Build ML models", "Mentor team"],
+        "experience_recommendations": [],
+        "skill_recommendations": [],
+        "summary_recommendation": "Emphasize quantitative work.",
+        "ats_keywords": ["Python", "Machine Learning", "Spark"],
+    })
+
+    # Minimal customization / recommendation JSON.
+    _CUSTOMIZATIONS = json.dumps({
+        "selected_experiences": [],
+        "selected_skills": [],
+        "skill_categories": {},
+        "selected_summary": "Experienced data scientist with strong Python skills.",
+        "selected_achievements": [],
+        "approved_rewrites": [],
+    })
+
+    def chat(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> str:
+        """Return a canned JSON response based on the last user message."""
+        last_user = next(
+            (m["content"] for m in reversed(messages) if m["role"] == "user"),
+            "",
+        )
+        lower = last_user.lower()
+
+        # Route by keyword in the prompt
+        if any(k in lower for k in (
+            "analyze", "extract", "job description", "requirements"
+        )):
+            return self._ANALYSIS
+        if any(k in lower for k in (
+            "recommend", "customiz", "select", "tailor"
+        )):
+            return self._CUSTOMIZATIONS
+        if any(k in lower for k in ("rewrite", "bullet", "achievement")):
+            return json.dumps({
+                "rewritten": "Delivered key project on time using Python.",
+                "rationale": "Stub rewrite.",
+            })
+        if any(k in lower for k in ("summary", "professional summary")):
+            return (
+                "Experienced data scientist with strong Python and ML skills."
+            )
+        if any(k in lower for k in ("spell", "grammar", "correction")):
+            return json.dumps(
+                {"corrections": [], "summary": "No issues found."}
+            )
+        if any(k in lower for k in ("layout", "format", "section", "move")):
+            return json.dumps({
+                "ok": True,
+                "summary": "Layout instruction applied (stub).",
+                "html": "<html><body><p>Stub CV preview</p></body></html>",
+            })
+        # Generic fallback
+        return json.dumps({"ok": True, "result": "Stub response."})
+
+    def propose_rewrites(
+        self,
+        content: Dict,
+        job_analysis: Dict,
+        conversation_history: List[Dict] = None,
+        user_preferences: Dict = None,
+    ) -> List[Dict]:
+        """Return an empty rewrite list (stub — no real rewrites needed)."""
+        return []
+
+
 def get_llm_provider(
     provider: str = "copilot",
     model: Optional[str] = None,
@@ -2290,5 +2346,7 @@ def get_llm_provider(
         return LocalLLMClient(
             model=model or "mistralai/Mistral-7B-Instruct-v0.2"
         )
+    elif provider == "stub":
+        return StubLLMClient()
     else:
-        raise ValueError(f"Unknown provider: {provider}. Choose from: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local, copilot-sdk")
+        raise ValueError(f"Unknown provider: {provider}. Choose from: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local, copilot-sdk, stub")

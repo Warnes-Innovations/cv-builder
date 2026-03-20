@@ -67,12 +67,14 @@ function initiateLayoutInstructions() {
     setupLayoutInstructionListeners();
   }
 
-  // Load and display current HTML preview
+  // Load and display current HTML preview via the staged generation contract.
+  // /api/cv/generate-preview generates fresh HTML and stores it in session state.
+  // Fall back to the legacy /api/layout-html endpoint if the session has no
+  // customization data yet (e.g. session restored after full generation).
   const cachedHtml = window.tabData?.cv?.['*.html'] || '';
   if (cachedHtml) {
     displayLayoutPreview(cachedHtml);
   } else {
-    // HTML is on disk — fetch it from the backend
     _fetchAndDisplayLayoutPreview();
   }
 
@@ -127,6 +129,11 @@ function setupLayoutInstructionListeners() {
 
 /**
  * Submit layout instruction to backend for processing.
+ *
+ * Uses POST /api/cv/layout-refine (staged generation contract) when a
+ * session-stored preview is available.  Falls back to the legacy
+ * POST /api/layout-instruction endpoint (which requires the HTML in the
+ * request body) when no session preview exists.
  */
 async function submitLayoutInstruction(instructionText) {
   const currentHtml = window.tabData?.cv?.['*.html'] || '';
@@ -135,11 +142,22 @@ async function submitLayoutInstruction(instructionText) {
   try {
     showProcessing(true);
 
-    const response = await apiCall('POST', '/api/layout-instruction', {
-      instruction: instructionText,
-      current_html: currentHtml,
-      prior_instructions: priorInstructions
-    });
+    // Prefer the session-backed endpoint; it manages HTML server-side.
+    let response;
+    const genState = stateManager?.getGenerationState?.() || {};
+    const useSessionEndpoint = genState.previewAvailable || genState.phase === 'layout_review';
+
+    if (useSessionEndpoint) {
+      response = await apiCall('POST', '/api/cv/layout-refine', {
+        instruction: instructionText,
+      });
+    } else {
+      response = await apiCall('POST', '/api/layout-instruction', {
+        instruction: instructionText,
+        current_html: currentHtml,
+        prior_instructions: priorInstructions,
+      });
+    }
 
     if (!response.ok) {
       if (response.error === 'clarify') {
@@ -181,25 +199,46 @@ async function submitLayoutInstruction(instructionText) {
 }
 
 /**
- * Fetch the generated CV HTML from the backend and display it.
- * Also caches the result in tabData.cv for subsequent re-renders.
+ * Fetch the CV HTML preview via the staged generation contract.
+ *
+ * First tries POST /api/cv/generate-preview (renders fresh HTML from current
+ * session state and stores it).  Falls back to GET /api/layout-html (legacy
+ * endpoint that reads the most recent HTML file from disk) when the session
+ * does not yet have customization data.
  */
-function _fetchAndDisplayLayoutPreview() {
-  fetch('/api/layout-html')
-    .then(r => r.json())
-    .then(data => {
-      if (data.ok && data.html) {
-        displayLayoutPreview(data.html);
-        if (!window.tabData) window.tabData = {};
-        if (!window.tabData.cv || typeof window.tabData.cv !== 'object') {
-          window.tabData.cv = {};
-        }
-        window.tabData.cv['*.html'] = data.html;
-      } else {
-        console.warn('Layout preview not available:', data.error || 'no HTML returned');
+async function _fetchAndDisplayLayoutPreview() {
+  // Try staged generation endpoint first
+  try {
+    const data = await apiCall('POST', '/api/cv/generate-preview', {});
+    if (data.ok && data.html) {
+      displayLayoutPreview(data.html);
+      if (!window.tabData) window.tabData = {};
+      if (!window.tabData.cv || typeof window.tabData.cv !== 'object') {
+        window.tabData.cv = {};
       }
-    })
-    .catch(err => console.warn('Could not load layout preview:', err));
+      window.tabData.cv['*.html'] = data.html;
+      return;
+    }
+  } catch (_e) {
+    // fall through to legacy endpoint
+  }
+
+  // Legacy fallback: load HTML from the output directory on disk
+  try {
+    const data = await apiCall('GET', '/api/layout-html');
+    if (data.ok && data.html) {
+      displayLayoutPreview(data.html);
+      if (!window.tabData) window.tabData = {};
+      if (!window.tabData.cv || typeof window.tabData.cv !== 'object') {
+        window.tabData.cv = {};
+      }
+      window.tabData.cv['*.html'] = data.html;
+    } else {
+      console.warn('Layout preview not available:', data.error || 'no HTML returned');
+    }
+  } catch (err) {
+    console.warn('Could not load layout preview:', err);
+  }
 }
 
 /**
@@ -375,11 +414,22 @@ window.addEventListener('resize', () => {
 });
 
 /**
- * Complete layout review and advance to finalise phase.
+ * Complete layout review: confirm layout via staged generation contract, then
+ * also call the legacy /api/layout-complete to advance the conversation phase.
  */
 async function completeLayoutReview() {
   try {
     showProcessing(true);
+
+    // Confirm layout in the staged generation state (GAP-20)
+    const genState = stateManager?.getGenerationState?.() || {};
+    if (genState.previewAvailable || genState.phase === 'layout_review') {
+      try {
+        await apiCall('POST', '/api/cv/confirm-layout', {});
+      } catch (_e) {
+        // non-fatal: continue with legacy completion
+      }
+    }
 
     const response = await apiCall('POST', '/api/layout-complete', {
       layout_instructions: window.layoutInstructions || []

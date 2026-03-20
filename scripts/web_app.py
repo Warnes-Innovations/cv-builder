@@ -705,7 +705,18 @@ Job Description (excerpt):
     @app.get("/api/status")
     def status():
         # Read-only: no lock, no touch.
-        entry = _get_session()
+        # When no session_id is present return a minimal liveness response so
+        # health-check probes (test harness, conftest) get HTTP 200 without
+        # needing an active session.
+        entry = _get_session(required=False)
+        if entry is None:
+            return jsonify({
+                "ok": True,
+                "alive": True,
+                "phase": None,
+                "llm_provider": _provider_name,
+                "llm_model": _current_model,
+            })
         conversation = entry.manager
         orchestrator = entry.orchestrator
         # Get all experience IDs from master data
@@ -2333,7 +2344,8 @@ Close professionally with a call to action.
                 "post_analysis_questions": [],
                 "post_analysis_answers": {},
                 "customizations": None,
-                "generated_files": None,
+                "generated_files":  None,
+                "generation_state": {},          # GAP-20: staged generation state
             }
             conversation._save_session()
         session_registry.touch(sid)
@@ -4097,6 +4109,237 @@ Close professionally with a call to action.
 
     # ── Phase 11: Finalise & Archive ────────────────────────────────────────
 
+    # ── Staged Generation Routes (GAP-20 Phase 1) ─────────────────────────────
+    # Contract: tasks/contracts/phase0-contract.md
+
+    @app.get("/api/cv/generation-state")
+    def get_generation_state():
+        """Return staged generation phase and metadata (no raw HTML)."""
+        entry = _get_session()
+        gen   = entry.manager.state.get("generation_state") or {}
+        return jsonify({
+            "ok":                        True,
+            "phase":                     gen.get("phase", "idle"),
+            "preview_available":         bool(gen.get("preview_html")),
+            "layout_confirmed":          gen.get("layout_confirmed", False),
+            "page_count_estimate":       gen.get("page_count_estimate"),
+            "page_length_warning":       gen.get("page_length_warning", False),
+            "layout_instructions_count": len(gen.get("layout_instructions", [])),
+            "final_generated_at":        gen.get("final_generated_at"),
+        })
+
+    @app.post("/api/cv/generate-preview")
+    def generate_cv_preview():
+        """Generate an HTML preview of the CV and store it in generation_state.
+
+        Renders the HTML template from current CV state (job_analysis +
+        customizations + approved rewrites + spell audit).  Falls back to the
+        most recent HTML file on disk when the customisation data is incomplete.
+
+        Returns the rendered HTML so the frontend can display it immediately
+        without a second round-trip to /api/layout-html.
+        """
+        import uuid as _u
+        entry = _get_session()
+        conv  = entry.manager
+        if not conv.state.get("job_analysis"):
+            return jsonify({"error": "Run job analysis first."}), 400
+
+        html_str = None
+
+        # ── Try to render fresh HTML from current CV state ──────────────────
+        customizations = conv.state.get("customizations")
+        if customizations:
+            try:
+                approved_rewrites = conv.state.get("approved_rewrites") or []
+                spell_audit       = conv.state.get("spell_check", {}).get("audit") or []
+                html_str = conv.orchestrator.render_html_preview(
+                    job_analysis=conv.state["job_analysis"],
+                    customizations=customizations,
+                    approved_rewrites=approved_rewrites,
+                    spell_audit=spell_audit,
+                )
+            except Exception as _exc:
+                app.logger.warning("render_html_preview failed: %s", _exc)
+
+        # ── Fallback: load most recent HTML file from output directory ───────
+        if not html_str:
+            generated  = conv.state.get("generated_files") or {}
+            output_dir = Path(generated.get("output_dir", ""))
+            if output_dir.is_dir():
+                for p in sorted(output_dir.glob("*.html")):
+                    html_str = p.read_text(encoding="utf-8")
+
+        if not html_str:
+            return jsonify({"error": "No CV content available — complete customisation first."}), 404
+
+        now     = datetime.now().isoformat()
+        prev_id = str(_u.uuid4())
+        gen = conv.state.setdefault("generation_state", {})
+        gen.update({
+            "phase":                "layout_review",
+            "preview_html":         html_str,
+            "preview_request_id":   prev_id,
+            "preview_generated_at": now,
+            "layout_confirmed":     False,
+        })
+        if "layout_instructions" not in gen:
+            gen["layout_instructions"] = []
+        conv._save_session()
+        return jsonify({
+            "ok":                  True,
+            "html":                html_str,
+            "preview_request_id":  prev_id,
+            "page_count_estimate": gen.get("page_count_estimate"),
+            "page_length_warning": gen.get("page_length_warning", False),
+        })
+
+    @app.post("/api/cv/layout-refine")
+    def refine_cv_layout():
+        """Apply a layout instruction to the stored preview and return updated HTML.
+
+        Bridges the existing ``apply_layout_instruction`` orchestrator method
+        into the staged generation contract.  The frontend does not need to
+        pass the current HTML — it is read from and written back to
+        ``generation_state.preview_html`` in the session.
+
+        Body: ``{"instruction": str, "session_id": str}``
+
+        Returns:
+            ``{"ok": true, "html": str, "summary": str, "confidence": float,
+               "preview_request_id": str}``
+        """
+        import uuid as _u
+        entry = _get_session()
+        conv  = entry.manager
+        gen   = conv.state.get("generation_state") or {}
+
+        phase = gen.get("phase", "idle")
+        if phase not in ("preview", "layout_review"):
+            return jsonify({
+                "error": "Call /api/cv/generate-preview first before refining layout."
+            }), 400
+
+        body = request.get_json(force=True) or {}
+        instruction_text = (body.get("instruction") or "").strip()
+        if not instruction_text:
+            return jsonify({"error": "Missing instruction text."}), 400
+
+        current_html = gen.get("preview_html", "")
+        if not current_html:
+            return jsonify({"error": "No preview HTML in session — call generate-preview first."}), 400
+
+        prior_instructions = gen.get("layout_instructions", [])
+
+        result = conv.orchestrator.apply_layout_instruction(
+            instruction_text=instruction_text,
+            current_html=current_html,
+            prior_instructions=prior_instructions,
+        )
+
+        if result.get("error"):
+            return jsonify({
+                "ok":       False,
+                "error":    result["error"],
+                "question": result.get("question"),
+                "details":  result.get("details"),
+            })
+
+        updated_html = result["html"]
+        now     = datetime.now().isoformat()
+        prev_id = str(_u.uuid4())
+
+        instruction_record = {
+            "id":           prev_id,
+            "text":         instruction_text,
+            "submitted_at": now,
+            "applied":      True,
+            "summary":      result.get("summary", ""),
+            "confidence":   result.get("confidence"),
+        }
+
+        gen = conv.state.setdefault("generation_state", {})
+        gen["preview_html"]        = updated_html
+        gen["preview_request_id"]  = prev_id
+        gen["preview_generated_at"] = now
+        gen["phase"]               = "layout_review"
+        gen["layout_confirmed"]    = False
+        gen.setdefault("layout_instructions", []).append(instruction_record)
+        conv._save_session()
+
+        return jsonify({
+            "ok":                 True,
+            "html":               updated_html,
+            "summary":            result.get("summary", ""),
+            "confidence":         result.get("confidence"),
+            "preview_request_id": prev_id,
+        })
+
+    @app.post("/api/cv/confirm-layout")
+    def confirm_cv_layout():
+        """Lock current preview; enables /api/cv/generate-final."""
+        entry = _get_session()
+        conv  = entry.manager
+        gen   = conv.state.get("generation_state") or {}
+        if not gen.get("preview_html"):
+            return jsonify({"error": "No preview — call /api/cv/generate-preview first."}), 400
+        if gen.get("layout_confirmed"):
+            return jsonify({"error": "Layout already confirmed."}), 400
+        import hashlib as _hl
+        now   = datetime.now().isoformat()
+        chash = _hl.sha256(gen["preview_html"].encode()).hexdigest()[:16]
+        gen   = conv.state.setdefault("generation_state", {})
+        gen.update({
+            "phase": "confirmed", "layout_confirmed": True,
+            "confirmed_at": now, "confirmed_preview_hash": chash,
+        })
+        conv._save_session()
+        return jsonify({"ok": True, "confirmed": True, "confirmed_at": now, "hash": chash})
+
+    @app.post("/api/cv/ats-score")
+    def compute_cv_ats_score():
+        """Return ATS match score for current session state (GAP-21).
+
+        Computes the score from job_analysis and customizations stored in
+        the session.  Optionally re-persists the score in generation_state.
+
+        Request body:
+            { "session_id": str, "basis": str | None }
+
+        Response:
+            { "ok": True, "ats_score": { ...Phase-0 contract schema... } }
+        """
+        from utils.scoring import compute_ats_score as _compute_ats_score
+        entry = _get_session()
+        conv  = entry.manager
+        job_analysis   = conv.state.get("job_analysis") or {}
+        customizations = conv.state.get("customizations") or {}
+        body  = request.get_json(silent=True) or {}
+        basis = body.get("basis", "review_checkpoint")
+        score = _compute_ats_score(job_analysis, customizations, basis=basis)
+        # Persist latest score into generation_state for client polling
+        gen = conv.state.setdefault("generation_state", {})
+        gen["ats_score"] = score
+        conv._save_session()
+        return jsonify({"ok": True, "ats_score": score})
+
+    @app.post("/api/cv/generate-final")
+    def generate_cv_final():
+        """Assert layout_confirmed; mark generation complete and return paths."""
+        entry = _get_session()
+        conv  = entry.manager
+        gen   = conv.state.get("generation_state") or {}
+        if not gen.get("layout_confirmed"):
+            return jsonify({"error": "Confirm layout first via /api/cv/confirm-layout."}), 400
+        generated = conv.state.get("generated_files") or {}
+        if not generated.get("output_dir"):
+            return jsonify({"error": "No generated files — complete workflow first."}), 404
+        now = datetime.now().isoformat()
+        gen = conv.state.setdefault("generation_state", {})
+        gen.update({"phase": "final_complete", "final_generated_at": now})
+        conv._save_session()
+        return jsonify({"ok": True, "generated_at": now, "outputs": generated})
+
     @app.post("/api/finalise")
     def finalise_application():
         """Finalise the application: update metadata, upsert response library, git commit.
@@ -4606,7 +4849,7 @@ def parse_args():
                        help=f"Path to publications.bib")
     parser.add_argument("--output-dir", default=config.output_dir,
                        help=f"Output directory")
-    parser.add_argument("--llm-provider", choices=["copilot-oauth", "copilot", "github", "openai", "anthropic", "gemini", "groq", "local", "copilot-sdk"],
+    parser.add_argument("--llm-provider", choices=["copilot-oauth", "copilot", "github", "openai", "anthropic", "gemini", "groq", "local", "copilot-sdk", "stub"],
                        default=config.llm_provider,
                        help=f"LLM provider (default: {config.llm_provider})")
     parser.add_argument("--model", default=config.llm_model, help="Specific model to use")

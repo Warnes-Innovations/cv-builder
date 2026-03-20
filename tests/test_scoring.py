@@ -20,6 +20,7 @@ from utils.scoring import (
     extract_job_keywords,
     select_best_summary,
     calculate_skill_score,
+    compute_ats_score,
 )
 
 
@@ -301,6 +302,96 @@ class TestCalculateSkillScore(unittest.TestCase):
                  'keywords': ['python', 'machine learning']}
         score = calculate_skill_score(skill, {'python'}, ['Python'])
         self.assertLessEqual(score, 100.0)
+
+
+class TestComputeAtsScore(unittest.TestCase):
+    """Unit tests for the Phase-2 ATS scoring function."""
+
+    _JOB = {
+        "required_skills": ["Python", "Machine Learning", "SQL"],
+        "nice_to_have_skills": ["Spark", "AWS"],
+        "ats_keywords": ["data pipeline", "model deployment"],
+    }
+
+    def test_schema_keys_present(self):
+        score = compute_ats_score(self._JOB, None)
+        for key in ("overall", "hard_requirement_score", "soft_requirement_score",
+                    "keyword_status", "section_scores", "computed_at", "basis"):
+            self.assertIn(key, score)
+
+    def test_overall_range(self):
+        score = compute_ats_score(self._JOB, None)
+        self.assertGreaterEqual(score["overall"], 0.0)
+        self.assertLessEqual(score["overall"], 100.0)
+
+    def test_no_customizations_zero_hard_score(self):
+        score = compute_ats_score(self._JOB, None)
+        # No skills matched → hard score = 0
+        self.assertEqual(score["hard_requirement_score"], 0.0)
+
+    def test_matched_skill_increases_score(self):
+        custom = {"approved_skills": [{"name": "Python"}, {"name": "SQL"}]}
+        score = compute_ats_score(self._JOB, custom)
+        # Python and SQL matched → hard_requirement_score > 0
+        self.assertGreater(score["hard_requirement_score"], 0.0)
+        self.assertGreater(score["overall"], 0.0)
+
+    def test_all_hard_skills_matched(self):
+        custom = {
+            "approved_skills": [
+                {"name": "Python"},
+                {"name": "Machine Learning"},
+                {"name": "SQL"},
+            ]
+        }
+        score = compute_ats_score(self._JOB, custom)
+        self.assertAlmostEqual(score["hard_requirement_score"], 100.0)
+
+    def test_keyword_status_types(self):
+        score = compute_ats_score(self._JOB, None)
+        types = {k["type"] for k in score["keyword_status"]}
+        self.assertIn("hard", types)
+        self.assertIn("soft", types)
+
+    def test_keyword_status_hard_count(self):
+        score = compute_ats_score(self._JOB, None)
+        hard_kws = [k for k in score["keyword_status"] if k["type"] == "hard"]
+        self.assertEqual(len(hard_kws), 3)
+
+    def test_section_scores_present(self):
+        score = compute_ats_score(self._JOB, None)
+        for sec in ("skills", "experience", "education", "summary"):
+            self.assertIn(sec, score["section_scores"])
+
+    def test_basis_field_passed_through(self):
+        score = compute_ats_score(self._JOB, None, basis="post_generation")
+        self.assertEqual(score["basis"], "post_generation")
+
+    def test_skill_match_via_approved_skills_list(self):
+        custom = {"approved_skills": ["Python", "ML"]}
+        score = compute_ats_score(self._JOB, custom)
+        self.assertGreater(score["hard_requirement_score"], 0.0)
+
+    def test_rewrite_text_contributes_to_experience_section(self):
+        custom = {
+            "approved_rewrites": [
+                {"rewritten": "Built Python pipeline for Machine Learning"}
+            ]
+        }
+        score = compute_ats_score(self._JOB, custom)
+        exp_score = score["section_scores"]["experience"]
+        self.assertGreater(exp_score, 0.0)
+
+    def test_empty_job_no_crash(self):
+        score = compute_ats_score({}, {})
+        self.assertEqual(score["overall"], 100.0)
+        self.assertEqual(score["keyword_status"], [])
+
+    def test_computed_at_is_iso_string(self):
+        score = compute_ats_score(self._JOB, None)
+        from datetime import datetime
+        # Should parse without error
+        datetime.fromisoformat(score["computed_at"].replace("Z", "+00:00"))
 
 
 if __name__ == '__main__':

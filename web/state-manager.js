@@ -22,6 +22,19 @@ const PHASES = {
   REFINEMENT:     'refinement',
 };
 
+/**
+ * Staged generation workflow phases (GAP-20 implementation).
+ * These track the preview → layout-review → confirmed → final pipeline
+ * independently of the main conversation PHASES above.
+ * Backend source of truth is session_data['generation_state']['phase'].
+ */
+const GENERATION_PHASES = {
+  IDLE:           'idle',           // No preview generated yet
+  PREVIEW:        'preview',        // HTML preview generated; in layout review
+  CONFIRMED:      'confirmed',      // Layout confirmed; awaiting final outputs
+  FINAL_COMPLETE: 'final_complete', // Final PDF/DOCX produced
+};
+
 // Global state variables (moved into module for clarity)
 let currentTab = 'job';
 let isLoading = false;
@@ -39,6 +52,21 @@ let interactiveState = {
 let sessionId = null;
 let lastKnownPhase = PHASES.INIT;
 let isReconnecting = false;
+
+// Staged generation state (GAP-20): tracks preview → confirm → final pipeline.
+// Synced from /api/cv/generation-state on page load and after key transitions.
+let generationState = {
+  phase: GENERATION_PHASES.IDLE,
+  previewAvailable: false,
+  layoutConfirmed: false,
+  pageCountEstimate: null,
+  pageWarning: false,
+  layoutInstructionsCount: 0,
+};
+
+// ATS score state (GAP-21): cached score from /api/cv/ats-score.
+// Null until first score is fetched.
+let atsScore = null;
 
 // Export state getters/setters
 const stateManager = {
@@ -76,7 +104,30 @@ const stateManager = {
 
   // Pending recommendations
   getPendingRecommendations: () => window.pendingRecommendations || null,
-  setPendingRecommendations: (rec) => { window.pendingRecommendations = rec; saveStateToLocalStorage(); }
+  setPendingRecommendations: (rec) => { window.pendingRecommendations = rec; saveStateToLocalStorage(); },
+
+  // ATS score state (GAP-21)
+  getAtsScore: () => atsScore,
+  setAtsScore: (score) => { atsScore = score; saveStateToLocalStorage(); },
+  clearAtsScore: () => { atsScore = null; saveStateToLocalStorage(); },
+
+  // Staged generation state (GAP-20)
+  getGenerationState: () => generationState,
+  setGenerationState: (update) => {
+    generationState = { ...generationState, ...update };
+    saveStateToLocalStorage();
+  },
+  resetGenerationState: () => {
+    generationState = {
+      phase: GENERATION_PHASES.IDLE,
+      previewAvailable: false,
+      layoutConfirmed: false,
+      pageCountEstimate: null,
+      pageWarning: false,
+      layoutInstructionsCount: 0,
+    };
+    saveStateToLocalStorage();
+  },
 };
 
 /**
@@ -99,6 +150,14 @@ function initializeState() {
   window.postAnalysisQuestions = [];
   window.questionAnswers = {};
   lastKnownPhase = PHASES.INIT;
+  generationState = {
+    phase: GENERATION_PHASES.IDLE,
+    previewAvailable: false,
+    layoutConfirmed: false,
+    pageCountEstimate: null,
+    pageWarning: false,
+    layoutInstructionsCount: 0,
+  };
 
   // Get or generate session ID
   let storedId = localStorage.getItem(StorageKeys.SESSION_ID);
@@ -156,6 +215,16 @@ function loadStateFromLocalStorage() {
       lastKnownPhase = data.lastKnownPhase;
     }
 
+    // Restore staged generation state
+    if (data.generationState) {
+      generationState = { ...generationState, ...data.generationState };
+    }
+
+    // Restore ATS score
+    if (data.atsScore) {
+      atsScore = data.atsScore;
+    }
+
     return true;
   } catch (error) {
     console.warn('Failed to load state from localStorage:', error);
@@ -176,7 +245,9 @@ function saveStateToLocalStorage() {
       postAnalysisQuestions: window.postAnalysisQuestions,
       questionAnswers: window.questionAnswers,
       lastKnownPhase,
-      currentTab
+      currentTab,
+      generationState,
+      atsScore,
     };
 
     localStorage.setItem(StorageKeys.TAB_DATA, JSON.stringify(dataToSave));
@@ -325,6 +396,7 @@ async function loadSessionFile(path) {
 if (typeof module !== 'undefined') {
   module.exports = {
     PHASES,
+    GENERATION_PHASES,
     stateManager,
     initializeState, loadStateFromLocalStorage, saveStateToLocalStorage,
     clearState, restoreSession, restoreBackendState, loadSessionFile,

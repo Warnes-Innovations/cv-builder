@@ -347,6 +347,46 @@ class CVOrchestrator:
                     })
         return formatted_pubs
     
+    def render_html_preview(
+        self,
+        job_analysis: Dict,
+        customizations: Dict,
+        approved_rewrites: Optional[List[Dict]] = None,
+        spell_audit: Optional[List[Dict]] = None,
+        max_skills: Optional[int] = None,
+        template_variant: str = 'standard',
+    ) -> str:
+        """Render CV as HTML for preview without generating PDF or DOCX.
+
+        Called by the staged generation workflow (GAP-20) to produce the
+        preview artifact that the layout-review loop works against.  Does not
+        write any files; returns the raw HTML string.
+
+        Parameters mirror ``generate_cv`` but only the HTML rendering path is
+        executed, so this is significantly faster than a full generation run.
+        """
+        selected_content = self.build_render_ready_content(
+            job_analysis,
+            customizations,
+            approved_rewrites=approved_rewrites,
+            spell_audit=spell_audit,
+            max_skills=max_skills,
+        )
+        cv_data = self._prepare_cv_data_for_template(
+            selected_content, job_analysis, template_variant
+        )
+        cv_data['achievements'] = selected_content.get('achievements', [])
+        cv_data['json_ld_str'] = self._build_json_ld(cv_data, job_analysis)
+
+        template_dir = Path(__file__).parent.parent.parent / 'templates'
+        template_file = template_dir / 'cv-template.html'
+        if not template_file.exists():
+            raise FileNotFoundError(f"HTML template not found: {template_file}")
+
+        from .template_renderer import load_template, render_template  # noqa: PLC0415
+        template = load_template(str(template_file))
+        return render_template(template, cv_data)
+
     def _render_cv_html_pdf(
         self,
         cv_data: Dict,

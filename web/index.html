@@ -61,13 +61,19 @@
     </div>
   </div>
 
-  <!-- Position Bar -->
-  <div class="position-bar">
-    <div style="display:flex;align-items:center;gap:8px;">
-      <div class="position-title" id="position-title"></div>
-      <button id="rename-session-btn" onclick="promptRenameCurrentSession()"
-        title="Rename this session"
-        style="display:none;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:1.1em;padding:2px 4px;line-height:1;">✏️</button>
+  <!-- Position Bar (GAP-21: ATS score badge lives on this row) -->
+  <div class="position-bar-row">
+    <div class="position-bar">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="position-title" id="position-title"></div>
+        <button id="rename-session-btn" onclick="promptRenameCurrentSession()"
+          title="Rename this session"
+          style="display:none;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:1.1em;padding:2px 4px;line-height:1;">✏️</button>
+      </div>
+    </div>
+    <div id="ats-score-badge" class="ats-score-badge" aria-label="ATS match score" style="display:none;">
+      <span class="ats-score-value" id="ats-score-value">--</span>
+      <span class="ats-score-label">ATS</span>
     </div>
   </div>
 

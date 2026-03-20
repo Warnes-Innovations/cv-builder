@@ -39,7 +39,6 @@ session:
   auto_save: true
   session_dir: "~/CV/files/sessions"  # Sessions saved in CV directory
   history_file: "~/CV/files/input_history"
-  idle_timeout_minutes: 120  # Evict sessions idle > N minutes (no mutations)
 
 # Google Drive Integration (optional)
 google_drive:

@@ -53,8 +53,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .auth-status-msg { font-size: 13px; color: #64748b; text-align: center; margin-top: 12px; min-height: 20px; }
 
 /* ===== POSITION BAR ===== */
-.position-bar { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+.position-bar-row { background: #fff; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; }
+.position-bar { padding: 16px 24px; display: flex; align-items: center; flex: 1 1 auto; }
 .position-title { font-size: 24px; font-weight: 700; color: #1e293b; }
+
+/* ATS score badge (GAP-21) — right side of position-bar-row */
+.ats-score-badge { display: flex; align-items: center; gap: 4px; padding: 6px 16px 6px 12px; background: #f8fafc; border-left: 1px solid #e2e8f0; white-space: nowrap; flex-shrink: 0; }
+.ats-score-value { font-size: 18px; font-weight: 700; color: #1e293b; min-width: 2.5ch; text-align: right; }
+.ats-score-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+/* Colour thresholds applied via JS */
+.ats-score-badge.score-high .ats-score-value { color: #16a34a; }
+.ats-score-badge.score-medium .ats-score-value { color: #d97706; }
+.ats-score-badge.score-low .ats-score-value { color: #dc2626; }
+@media (max-width: 600px) { .ats-score-badge { display: none; } }
 .step.clickable { cursor: pointer; }
 .step.clickable:hover { filter: brightness(0.93); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
 .load-item-row:hover td { background: #f0f9ff !important; }

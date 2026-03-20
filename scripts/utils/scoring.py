@@ -3,7 +3,8 @@ Relevance scoring utilities for content selection.
 """
 
 import re
-from typing import Dict, List, Set, Tuple, Any
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Set, Tuple, Any
 from collections import Counter
 
 
@@ -327,5 +328,190 @@ def calculate_skill_score(
         score += 10
     elif years >= 2:
         score += 5
-    
+
     return min(score, 100.0)
+
+
+# ---------------------------------------------------------------------------
+# ATS match scoring (Phase 2 / GAP-21)
+# ---------------------------------------------------------------------------
+
+def compute_ats_score(
+    job_analysis: Dict,
+    customizations: Optional[Dict],
+    basis: str = "review_checkpoint",
+) -> Dict:
+    """Compute an ATS match score for the current session state.
+
+    Returns a dict matching the Phase 0 contract ATS score schema::
+
+        {
+            "overall": float,               # 0-100
+            "hard_requirement_score": float,
+            "soft_requirement_score": float,
+            "keyword_status": [...],
+            "section_scores": {...},
+            "computed_at": str,             # ISO-8601
+            "basis": str
+        }
+
+    Args:
+        job_analysis:  The job_analysis dict from session state.
+        customizations: The customizations dict (approved skills, rewrites, etc.)
+                        May be None if not yet available.
+        basis: One of "analysis", "review_checkpoint", "post_generation".
+    """
+    required_skills: List[str] = job_analysis.get("required_skills", [])
+    nice_to_have: List[str] = job_analysis.get("nice_to_have_skills", [])
+    ats_keywords: List[str] = job_analysis.get("ats_keywords", [])
+
+    # Build candidate text corpus from customizations
+    candidate_terms: Set[str] = set()
+    section_matches: Dict[str, Set[str]] = {
+        "skills": set(),
+        "experience": set(),
+        "education": set(),
+        "summary": set(),
+    }
+
+    if customizations:
+        # Approved skills
+        approved_skills = customizations.get("approved_skills", [])
+        for skill in approved_skills:
+            if isinstance(skill, dict):
+                name = skill.get("name", "")
+            else:
+                name = str(skill)
+            term = name.lower().strip()
+            if term:
+                candidate_terms.add(term)
+                section_matches["skills"].add(term)
+
+        # Skill categories (flat dict of category → list)
+        skill_cats = customizations.get("skills", {})
+        if isinstance(skill_cats, dict):
+            for cat_skills in skill_cats.values():
+                if isinstance(cat_skills, list):
+                    for s in cat_skills:
+                        term = s.lower().strip() if isinstance(s, str) else ""
+                        if term:
+                            candidate_terms.add(term)
+                            section_matches["skills"].add(term)
+        elif isinstance(skill_cats, list):
+            for s in skill_cats:
+                term = s.lower().strip() if isinstance(s, str) else ""
+                if term:
+                    candidate_terms.add(term)
+                    section_matches["skills"].add(term)
+
+        # Approved rewrites (experience bullets)
+        approved_rewrites = customizations.get("approved_rewrites", [])
+        for rw in approved_rewrites:
+            text = ""
+            if isinstance(rw, dict):
+                text = rw.get("rewritten", rw.get("original", ""))
+            elif isinstance(rw, str):
+                text = rw
+            for kw in _extract_keywords(text.lower()):
+                candidate_terms.add(kw)
+                section_matches["experience"].add(kw)
+
+        # Summary
+        summary = customizations.get("selected_summary", "")
+        if summary:
+            for kw in _extract_keywords(summary.lower()):
+                candidate_terms.add(kw)
+                section_matches["summary"].add(kw)
+
+    def _is_matched(keyword: str) -> Tuple[bool, List[str]]:
+        """Return (matched, sections_list) for a keyword."""
+        kw_lower = keyword.lower().strip()
+        kw_words = set(kw_lower.split())
+        matched_in: List[str] = []
+        for sec, terms in section_matches.items():
+            # Exact whole-keyword match
+            if kw_lower in terms:
+                matched_in.append(sec)
+                continue
+            # Substring / token overlap
+            for term in terms:
+                if kw_lower in term or term in kw_lower:
+                    matched_in.append(sec)
+                    break
+                if kw_words & set(term.split()):
+                    matched_in.append(sec)
+                    break
+        return bool(matched_in), list(dict.fromkeys(matched_in))
+
+    # ── Build keyword_status list ──────────────────────────────────────────
+    keyword_status: List[Dict] = []
+    hard_matched = hard_total = 0
+    soft_matched = soft_total = 0
+
+    # Hard requirements
+    for kw in required_skills:
+        matched, sections = _is_matched(kw)
+        keyword_status.append({
+            "keyword": kw,
+            "type": "hard",
+            "status": "matched" if matched else "missing",
+            "matched_in_sections": sections,
+            "match_type": "exact" if matched else "none",
+        })
+        hard_total += 1
+        if matched:
+            hard_matched += 1
+
+    # Soft / nice-to-have
+    for kw in nice_to_have:
+        matched, sections = _is_matched(kw)
+        keyword_status.append({
+            "keyword": kw,
+            "type": "soft",
+            "status": "matched" if matched else "missing",
+            "matched_in_sections": sections,
+            "match_type": "exact" if matched else "none",
+        })
+        soft_total += 1
+        if matched:
+            soft_matched += 1
+
+    # Bonus ATS keywords (not already listed)
+    listed_kws = {k.lower() for k in required_skills + nice_to_have}
+    for kw in ats_keywords:
+        if kw.lower() not in listed_kws:
+            matched, sections = _is_matched(kw)
+            keyword_status.append({
+                "keyword": kw,
+                "type": "bonus",
+                "status": "matched" if matched else "missing",
+                "matched_in_sections": sections,
+                "match_type": "exact" if matched else "none",
+            })
+
+    # ── Compute sub-scores ────────────────────────────────────────────────
+    hard_score = (hard_matched / hard_total * 100.0) if hard_total else 100.0
+    soft_score = (soft_matched / soft_total * 100.0) if soft_total else 100.0
+
+    # Overall: 70% hard, 30% soft
+    overall = round(0.7 * hard_score + 0.3 * soft_score, 1)
+
+    # ── Section scores ────────────────────────────────────────────────────
+    all_keywords = {k.lower() for k in required_skills + nice_to_have + ats_keywords}
+    section_scores: Dict[str, float] = {}
+    for sec, terms in section_matches.items():
+        if not all_keywords:
+            section_scores[sec] = 0.0
+            continue
+        hits = len(all_keywords & terms)
+        section_scores[sec] = round(hits / len(all_keywords) * 100.0, 1)
+
+    return {
+        "overall": overall,
+        "hard_requirement_score": round(hard_score, 1),
+        "soft_requirement_score": round(soft_score, 1),
+        "keyword_status": keyword_status,
+        "section_scores": section_scores,
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "basis": basis,
+    }

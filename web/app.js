@@ -526,6 +526,10 @@ async function restoreBackendState() {
       serverHasData = true;
       console.log('Restored customizations data from backend memory');
     }
+    // Refresh ATS badge when restoring a session that has analysis data
+    if (statusData.job_analysis) {
+      refreshAtsScore('analysis');
+    }
     if (statusData.generated_files) {
       tabData.cv = statusData.generated_files;
       serverHasData = true;
@@ -1093,7 +1097,10 @@ async function init() {
   
   // Restore session state first
   await restoreSession();
-  
+
+  // Restore ATS badge from cached score (if any)
+  updateAtsBadge(stateManager.getAtsScore());
+
   // Initialize the rest
   await fetchStatus();
   if (currentTab === 'job') await populateJobTab();
@@ -2170,6 +2177,7 @@ async function analyzeJob() {
       if (analysisText) appendMessage('assistant', analysisText);
       appendFormattedAnalysis(analysisData);
       tabData.analysis = analysisData;
+      refreshAtsScore('analysis');
       switchTab('analysis');
 
       // Await post-analysis questions while still loading to prevent
@@ -4395,6 +4403,7 @@ async function submitAchievementDecisions() {
     });
     if (response.ok) {
       showToast(`Achievement selections saved (${count} items)`);
+      scheduleAtsRefresh();
       switchTab('summary-review');
     } else {
       const err = await response.json();
@@ -5296,6 +5305,7 @@ async function submitExperienceDecisions() {
     
     if (response.ok) {
       showToast(`Experience decisions saved (${count} items)`);
+      scheduleAtsRefresh();
       switchTab('ach-editor');
     } else {
       const error = await response.json();
@@ -5336,6 +5346,7 @@ async function submitSkillDecisions() {
     if (response.ok) {
       const extraNote = extraSkills.length > 0 ? ` (${extraSkills.length} AI-suggested skill(s) added for this CV only)` : '';
       showToast(`Skill decisions saved (${count} items)${extraNote}`);
+      scheduleAtsRefresh();
       switchTab('achievements-review');
     } else {
       const error = await response.json();
@@ -8848,6 +8859,80 @@ async function saveScreeningResponses() {
 
 // ==== End Screening Tab ====
 
+// ---------------------------------------------------------------------------
+// ATS Score Badge (GAP-21)
+// ---------------------------------------------------------------------------
+
+/**
+ * Update the ATS score badge in the position-bar row.
+ *
+ * @param {Object|null} score  Phase-0 contract ATS score object, or null to hide.
+ */
+function updateAtsBadge(score) {
+  const badge = document.getElementById('ats-score-badge');
+  const valueEl = document.getElementById('ats-score-value');
+  if (!badge || !valueEl) return;
+
+  if (!score || typeof score.overall !== 'number') {
+    badge.style.display = 'none';
+    return;
+  }
+
+  const overall = Math.round(score.overall);
+  valueEl.textContent = `${overall}%`;
+  badge.style.display = 'flex';
+
+  // Apply threshold colour class
+  badge.classList.remove('score-high', 'score-medium', 'score-low');
+  if (overall >= 75) {
+    badge.classList.add('score-high');
+  } else if (overall >= 50) {
+    badge.classList.add('score-medium');
+  } else {
+    badge.classList.add('score-low');
+  }
+
+  // Update aria-label for accessibility
+  badge.setAttribute(
+    'aria-label',
+    `ATS match score: ${overall}% (${score.basis || 'review'})`
+  );
+}
+
+/**
+ * Fetch ATS score from backend and update badge + state.
+ * Safe to call at any phase — does nothing when no session/analysis available.
+ *
+ * @param {string} [basis]  "analysis" | "review_checkpoint" | "post_generation"
+ */
+async function refreshAtsScore(basis = 'review_checkpoint') {
+  const sessionId = stateManager.getSessionId();
+  if (!sessionId) return;
+  try {
+    const res = await fetch('/api/cv/ats-score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, basis }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.ok && data.ats_score) {
+      stateManager.setAtsScore(data.ats_score);
+      updateAtsBadge(data.ats_score);
+    }
+  } catch (_e) {
+    // Non-fatal — badge stays hidden or shows stale value
+  }
+}
+
+// Debounced version: defers refresh 600ms after the last call.
+// Used during rapid review-decision sequences to avoid per-click requests.
+let _atsRefreshTimer = null;
+function scheduleAtsRefresh(basis = 'review_checkpoint') {
+  clearTimeout(_atsRefreshTimer);
+  _atsRefreshTimer = setTimeout(() => refreshAtsScore(basis), 600);
+}
+
 // CJS export shim — no-op in browsers (module is undefined)
 if (typeof module !== 'undefined') {
   module.exports = {
@@ -8856,5 +8941,8 @@ if (typeof module !== 'undefined') {
     buildSessionSwitcherLabel,
     getActiveSessionOwnershipMeta,
     extractStructuredQuestionsFromAssistantText,
+    updateAtsBadge,
+    refreshAtsScore,
+    scheduleAtsRefresh,
   };
 }

@@ -90,7 +90,8 @@ class TestCacheAgeAndStale(unittest.TestCase):
 
     def test_naive_timestamp_treated_as_utc(self):
         # Timestamps without tz info should still compute sensible age
-        naive_ts = (datetime.utcnow() - timedelta(hours=1)).isoformat()
+        naive_ts = (datetime.now(timezone.utc) - timedelta(hours=1)).replace(
+            tzinfo=None).isoformat()
         payload = {"updated_at": naive_ts}
         age = _cache_age(payload)
         self.assertIsNotNone(age)
