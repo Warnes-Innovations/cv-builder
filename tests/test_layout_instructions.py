@@ -4,12 +4,12 @@ Tests for layout instruction phase (Phase 12).
 Tests layout instruction handling, HTML serialization, and phase transitions.
 """
 
-import unittest
-from unittest.mock import MagicMock
-from pathlib import Path
 import json
 import sys
 import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock
 
 # Add scripts to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
@@ -59,7 +59,6 @@ class TestLayoutInstructions(unittest.TestCase):
         }
 
         # Write master data to temp file
-        import tempfile
         self.temp_dir = tempfile.mkdtemp()
         self.master_data_path = Path(self.temp_dir) / 'Master_CV_Data.json'
         with open(self.master_data_path, 'w') as f:
@@ -319,7 +318,6 @@ class TestLayoutInstructionIntegration(unittest.TestCase):
         }
 
         # Write master data to temp file
-        import tempfile
         self.temp_dir = tempfile.mkdtemp()
         master_data_path = Path(self.temp_dir) / 'Master_CV_Data.json'
         with open(master_data_path, 'w') as f:
@@ -374,11 +372,88 @@ class TestLayoutInstructionIntegration(unittest.TestCase):
             'confirmation': True
         }]
 
-        final_result = self.conversation.complete_layout_review(instructions)
+        self.conversation.complete_layout_review(instructions)
 
         # Verify final state
         self.assertEqual(self.conversation.state['phase'], 'refinement')
         self.assertEqual(len(self.conversation.state['layout_instructions']), 1)
+
+
+class TestApplyLayoutInstructionErrorHandling(unittest.TestCase):
+    """Tests for parse_error handling in apply_layout_instruction.
+
+    These tests document expected behaviour after the fixes for:
+      - Empty LLM response crashing with json.JSONDecodeError
+      - raw_response field missing from error responses (needed for debugging)
+    """
+
+    def setUp(self):
+        self.mock_llm = MagicMock(spec=LLMClient)
+        self.temp_dir = tempfile.mkdtemp()
+        master_data = {
+            'personal_info': {
+                'name': 'Test', 'title': 'Dev',
+                'contact': {
+                    'email': 't@t.com', 'phone': '555',
+                    'linkedin': '', 'github': '', 'address': {},
+                },
+            },
+            'experiences': [], 'education': [], 'skills': [], 'achievements': [],
+            'awards': [], 'publications': [], 'summaries': [],
+        }
+        master_path = Path(self.temp_dir) / 'Master_CV_Data.json'
+        master_path.write_text(json.dumps(master_data))
+        pubs_path = Path(self.temp_dir) / 'publications.bib'
+        pubs_path.write_text('')
+        self.orchestrator = CVOrchestrator(
+            master_data_path=str(master_path),
+            publications_path=str(pubs_path),
+            output_dir=self.temp_dir,
+            llm_client=self.mock_llm,
+        )
+
+    def test_empty_llm_response_returns_parse_error(self):
+        """Empty LLM response must return parse_error without raising an exception."""
+        self.mock_llm.call_llm.return_value = ''
+        result = self.orchestrator.apply_layout_instruction(
+            instruction_text='Move Skills section',
+            current_html='<html>Test</html>',
+        )
+        self.assertEqual(result.get('error'), 'parse_error')
+
+    def test_empty_llm_response_includes_raw_response(self):
+        """parse_error result must carry raw_response to aid debugging."""
+        self.mock_llm.call_llm.return_value = ''
+        result = self.orchestrator.apply_layout_instruction(
+            instruction_text='Move Skills section',
+            current_html='<html>Test</html>',
+        )
+        self.assertIn('raw_response', result)
+        self.assertEqual(result['raw_response'], '')
+
+    def test_whitespace_only_response_returns_parse_error(self):
+        """Whitespace-only LLM response must be treated the same as empty."""
+        raw = '   \n\t  '
+        self.mock_llm.call_llm.return_value = raw
+        result = self.orchestrator.apply_layout_instruction(
+            instruction_text='Move Skills section',
+            current_html='<html>Test</html>',
+        )
+        self.assertEqual(result.get('error'), 'parse_error')
+        self.assertIn('raw_response', result)
+        self.assertEqual(result['raw_response'], raw)
+
+    def test_invalid_json_response_includes_raw_response(self):
+        """Invalid JSON must include the raw LLM output in the error for debugging."""
+        raw = 'I cannot do that, it would change the content.'
+        self.mock_llm.call_llm.return_value = raw
+        result = self.orchestrator.apply_layout_instruction(
+            instruction_text='Move Skills section',
+            current_html='<html>Test</html>',
+        )
+        self.assertEqual(result.get('error'), 'parse_error')
+        self.assertIn('raw_response', result)
+        self.assertEqual(result['raw_response'], raw)
 
 
 if __name__ == '__main__':
