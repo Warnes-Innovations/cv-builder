@@ -855,6 +855,20 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .master-summary-key { font-family: 'Courier New', monospace; font-size: 0.85em; font-weight: 600; color: #1e40af; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 6px; }
 .master-summary-preview { font-size: 0.9em; color: #475569; line-height: 1.5; }
 
+/* Master CV editor — structured sections */
+.master-info-grid { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; padding: 4px 0; }
+.master-info-row { display: contents; }
+.master-info-row dt { font-weight: 600; color: #374151; }
+.master-info-row dd { margin: 0; color: #1e293b; }
+.master-skill-category { margin-bottom: 16px; }
+.master-skill-cat-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.master-skill-cat-name { font-weight: 600; color: #374151; font-size: 0.92em; }
+.skill-chips-container { display: flex; flex-wrap: wrap; gap: 8px; }
+.skill-chip-del { background: none; border: none; color: #1d4ed8; cursor: pointer; font-size: 14px; padding: 0; margin-left: 2px; line-height: 1; }
+.skill-chip-del:hover { color: #1e40af; }
+.action-btn-sm { font-size: 0.8em; padding: 3px 8px; background: #f0f9ff; border: 1px solid #bae6fd; color: #0369a1; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.action-btn-sm:hover { background: #e0f2fe; }
+
 /* ==== Cover Letter Tab ==== */
 .cl-prior-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 24px; }
 .cl-prior-section h3 { font-size: 1em; font-weight: 600; margin-bottom: 8px; }

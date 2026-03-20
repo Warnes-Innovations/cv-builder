@@ -244,7 +244,7 @@ def _catalog_discover_provider_models(provider: str) -> Optional[List[str]]:
 
 _dynamic_model_cache: Dict[str, List[str]] = {}
 _dynamic_model_cache_lock = threading.Lock()
-
+ 
 
 def _get_available_models(provider: str, current_model: Optional[str] = None) -> List[str]:
     """Return the best-available model list for a provider.
@@ -834,19 +834,29 @@ Job Description (excerpt):
 
     @app.post("/api/master-data/update-achievement")
     def master_data_update_achievement():
-        """Update an existing selected achievement or add a new one to the master CV."""
+        """Update or delete a selected achievement, or add a new one to the master CV.
+
+        Body:
+            id     — achievement id (required)
+            action — 'delete' removes the entry; omit or any other value upserts
+        """
         entry = _get_session()
         _validate_owner(entry)
         orchestrator = entry.orchestrator
-        req  = request.get_json() or {}
+        req    = request.get_json() or {}
         ach_id = (req.get('id') or '').strip()
         if not ach_id:
             return jsonify({"error": "id is required"}), 400
         try:
-            master_path = Path(orchestrator.master_data_path)
-            with open(master_path, 'r', encoding='utf-8') as f:
-                master = json.load(f)
+            master, master_path = _load_master(orchestrator.master_data_path)
             achievements = master.setdefault('selected_achievements', [])
+            if req.get('action') == 'delete':
+                original_len = len(achievements)
+                master['selected_achievements'] = [a for a in achievements if a.get('id') != ach_id]
+                if len(master['selected_achievements']) == original_len:
+                    return jsonify({"ok": False, "error": "Achievement not found"}), 404
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "deleted", "id": ach_id})
             existing = next((a for a in achievements if a.get('id') == ach_id), None)
             if existing:
                 for field in ('title', 'description', 'relevant_for', 'importance'):
@@ -860,46 +870,388 @@ Job Description (excerpt):
                         new_ach[field] = req[field]
                 achievements.append(new_ach)
                 action = 'added'
-            with open(master_path, 'w', encoding='utf-8') as f:
-                json.dump(master, f, indent=2)
-            # Stage the change silently so the auto-git-commit at Finalise picks it up
-            subprocess.run(
-                ['git', '-C', str(master_path.parent), 'add', master_path.name],
-                capture_output=True, check=False,
-            )
+            _save_master(master, master_path)
             return jsonify({"ok": True, "action": action, "id": ach_id})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
     @app.post("/api/master-data/update-summary")
     def master_data_update_summary():
-        """Update or add a named professional summary variant in the master CV."""
+        """Update, add, or delete a named professional summary variant in the master CV.
+
+        Body:
+            key    — variant name/slug (required)
+            text   — summary text (required unless action is 'delete')
+            action — 'delete' removes the variant; omit or any other value upserts
+        """
         entry = _get_session()
         _validate_owner(entry)
         orchestrator = entry.orchestrator
         req  = request.get_json() or {}
         key  = (req.get('key') or '').strip()
         text = (req.get('text') or '').strip()
-        if not key or not text:
-            return jsonify({"error": "key and text are required"}), 400
+        if not key:
+            return jsonify({"error": "key is required"}), 400
         try:
-            master_path = Path(orchestrator.master_data_path)
-            with open(master_path, 'r', encoding='utf-8') as f:
-                master = json.load(f)
+            master, master_path = _load_master(orchestrator.master_data_path)
             summaries = master.get('professional_summaries', {})
             if isinstance(summaries, list):
                 summaries = {str(i): v for i, v in enumerate(summaries)}
                 master['professional_summaries'] = summaries
+            if req.get('action') == 'delete':
+                if key not in summaries:
+                    return jsonify({"ok": False, "error": "Summary not found"}), 404
+                del summaries[key]
+                master['professional_summaries'] = summaries
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "deleted", "key": key})
+            if not text:
+                return jsonify({"error": "text is required for add/update"}), 400
             is_new = key not in summaries
             summaries[key] = text
             master['professional_summaries'] = summaries
-            with open(master_path, 'w', encoding='utf-8') as f:
-                json.dump(master, f, indent=2)
-            subprocess.run(
-                ['git', '-C', str(master_path.parent), 'add', master_path.name],
-                capture_output=True, check=False,
-            )
+            _save_master(master, master_path)
             return jsonify({"ok": True, "action": "added" if is_new else "updated", "key": key})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.get("/api/master-data/full")
+    def master_data_full():
+        """Return all editable sections of the master CV for the structured editor."""
+        entry = _get_session()
+        orchestrator = entry.orchestrator
+        try:
+            master, _ = _load_master(orchestrator.master_data_path)
+            return jsonify({
+                "ok":                     True,
+                "personal_info":          master.get('personal_info', {}),
+                "experience":             master.get('experience', master.get('experiences', [])),
+                "skills":                 master.get('skills', []),
+                "education":              master.get('education', []),
+                "awards":                 master.get('awards', []),
+                "selected_achievements":  master.get('selected_achievements', []),
+                "professional_summaries": master.get('professional_summaries', {}),
+            })
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.post("/api/master-data/personal-info")
+    def master_data_update_personal_info():
+        """Update personal_info fields in the master CV.
+
+        Body (all optional — only provided keys are updated):
+            name, title, email, phone, linkedin, website, city, state
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req = request.get_json() or {}
+        try:
+            master, master_path = _load_master(orchestrator.master_data_path)
+            pi = master.setdefault('personal_info', {})
+            for field in ('name', 'title'):
+                if field in req:
+                    pi[field] = req[field]
+            contact = pi.setdefault('contact', {})
+            for field in ('email', 'phone', 'linkedin', 'website'):
+                if field in req:
+                    contact[field] = req[field]
+            if 'city' in req or 'state' in req:
+                address = contact.setdefault('address', {})
+                if 'city' in req:
+                    address['city'] = req['city']
+                if 'state' in req:
+                    address['state'] = req['state']
+            _save_master(master, master_path)
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.post("/api/master-data/experience")
+    def master_data_update_experience():
+        """Add, update, or delete an experience entry in the master CV.
+
+        Body:
+            action     — 'add' | 'update' | 'delete'
+            id         — experience id (required for update/delete)
+            experience — dict with fields: title, company, city, state,
+                         start_date, end_date, employment_type, importance,
+                         tags, domain_relevance
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req    = request.get_json() or {}
+        action = (req.get('action') or '').strip()
+        if action not in ('add', 'update', 'delete'):
+            return jsonify({"error": "action must be add, update, or delete"}), 400
+        try:
+            master, master_path = _load_master(orchestrator.master_data_path)
+            experiences = master.get('experience', master.pop('experiences', []))
+            master['experience'] = experiences
+            if action == 'delete':
+                exp_id = (req.get('id') or '').strip()
+                if not exp_id:
+                    return jsonify({"error": "id is required for delete"}), 400
+                original_len = len(experiences)
+                master['experience'] = [e for e in experiences if e.get('id') != exp_id]
+                if len(master['experience']) == original_len:
+                    return jsonify({"ok": False, "error": "Experience not found"}), 404
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "deleted"})
+            exp_data = req.get('experience') or {}
+            if not exp_data.get('title') or not exp_data.get('company'):
+                return jsonify({"error": "title and company are required"}), 400
+            if action == 'add':
+                new_id  = 'exp_' + str(int(datetime.now().timestamp() * 1000))
+                loc: Dict[str, Any] = {}
+                if exp_data.get('city'):
+                    loc['city'] = exp_data['city']
+                if exp_data.get('state'):
+                    loc['state'] = exp_data['state']
+                new_exp: Dict[str, Any] = {
+                    'id':               new_id,
+                    'title':            exp_data['title'],
+                    'company':          exp_data['company'],
+                    'location':         loc,
+                    'start_date':       exp_data.get('start_date', ''),
+                    'end_date':         exp_data.get('end_date', ''),
+                    'employment_type':  exp_data.get('employment_type', 'full_time'),
+                    'importance':       int(exp_data.get('importance') or 5),
+                    'tags':             exp_data.get('tags') or [],
+                    'domain_relevance': exp_data.get('domain_relevance') or [],
+                    'achievements':     [],
+                }
+                experiences.append(new_exp)
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "added", "id": new_id})
+            exp_id = (req.get('id') or exp_data.get('id') or '').strip()
+            if not exp_id:
+                return jsonify({"error": "id is required for update"}), 400
+            existing_exp = next((e for e in experiences if e.get('id') == exp_id), None)
+            if not existing_exp:
+                return jsonify({"ok": False, "error": "Experience not found"}), 404
+            for field in ('title', 'company', 'start_date', 'end_date', 'employment_type'):
+                if field in exp_data:
+                    existing_exp[field] = exp_data[field]
+            if 'importance' in exp_data:
+                existing_exp['importance'] = int(exp_data['importance'])
+            if 'city' in exp_data or 'state' in exp_data:
+                exp_loc = existing_exp.setdefault('location', {})
+                if 'city' in exp_data:
+                    exp_loc['city'] = exp_data['city']
+                if 'state' in exp_data:
+                    exp_loc['state'] = exp_data['state']
+            for field in ('tags', 'domain_relevance'):
+                if field in exp_data:
+                    existing_exp[field] = exp_data[field]
+            _save_master(master, master_path)
+            return jsonify({"ok": True, "action": "updated", "id": exp_id})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.post("/api/master-data/skill")
+    def master_data_update_skill():
+        """Add or delete a skill, or manage skill categories in the master CV.
+
+        skill add/delete body:
+            action   — 'add' | 'delete'
+            skill    — skill name string
+            category — category key (required when skills is a dict)
+
+        category management body:
+            action        — 'add_category' | 'delete_category'
+            category_key  — slug key
+            category_name — display name (for add_category only)
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req    = request.get_json() or {}
+        action = (req.get('action') or '').strip()
+        if action not in ('add', 'delete', 'add_category', 'delete_category'):
+            return jsonify({"error": "action must be add, delete, add_category, or delete_category"}), 400
+        try:
+            master, master_path = _load_master(orchestrator.master_data_path)
+            skills = master.get('skills', [])
+            if action == 'add_category':
+                cat_key  = (req.get('category_key') or '').strip()
+                cat_name = (req.get('category_name') or cat_key).strip()
+                if not cat_key:
+                    return jsonify({"error": "category_key is required"}), 400
+                if not isinstance(skills, dict):
+                    return jsonify({"ok": False, "error": "Skills field is not a category dict"}), 400
+                if cat_key in skills:
+                    return jsonify({"ok": False, "error": "Category already exists"}), 409
+                skills[cat_key] = {"category": cat_name, "skills": []}
+                master['skills'] = skills
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "category_added"})
+            if action == 'delete_category':
+                cat_key = (req.get('category_key') or '').strip()
+                if not cat_key:
+                    return jsonify({"error": "category_key is required"}), 400
+                if not isinstance(skills, dict):
+                    return jsonify({"ok": False, "error": "Skills field is not a category dict"}), 400
+                if cat_key not in skills:
+                    return jsonify({"ok": False, "error": "Category not found"}), 404
+                del skills[cat_key]
+                master['skills'] = skills
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "category_deleted"})
+            skill_name = (req.get('skill') or '').strip()
+            if not skill_name:
+                return jsonify({"error": "skill is required"}), 400
+            if isinstance(skills, list):
+                if action == 'add':
+                    if skill_name in skills:
+                        return jsonify({"ok": False, "error": "Skill already exists"}), 409
+                    skills.append(skill_name)
+                    master['skills'] = skills
+                    _save_master(master, master_path)
+                    return jsonify({"ok": True, "action": "added"})
+                if skill_name not in skills:
+                    return jsonify({"ok": False, "error": "Skill not found"}), 404
+                skills.remove(skill_name)
+                master['skills'] = skills
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "deleted"})
+            if isinstance(skills, dict):
+                cat_key = (req.get('category') or '').strip()
+                if not cat_key:
+                    return jsonify({"error": "category is required for categorized skills"}), 400
+                if cat_key not in skills:
+                    return jsonify({"ok": False, "error": "Category not found"}), 404
+                cat_val  = skills[cat_key]
+                cat_list: List[str] = (
+                    cat_val if isinstance(cat_val, list)
+                    else cat_val.setdefault('skills', []) if isinstance(cat_val, dict)
+                    else []
+                )
+                if action == 'add':
+                    if skill_name in cat_list:
+                        return jsonify({"ok": False, "error": "Skill already exists in category"}), 409
+                    cat_list.append(skill_name)
+                    _save_master(master, master_path)
+                    return jsonify({"ok": True, "action": "added"})
+                if skill_name not in cat_list:
+                    return jsonify({"ok": False, "error": "Skill not found in category"}), 404
+                cat_list.remove(skill_name)
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "deleted"})
+            return jsonify({"ok": False, "error": "Unexpected skills format"}), 400
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.post("/api/master-data/education")
+    def master_data_update_education():
+        """Add, update, or delete an education entry in the master CV.
+
+        Body:
+            action      — 'add' | 'update' | 'delete'
+            idx         — list index (int, required for update/delete)
+            degree, field, institution, city, state, start_year, end_year
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req    = request.get_json() or {}
+        action = (req.get('action') or '').strip()
+        if action not in ('add', 'update', 'delete'):
+            return jsonify({"error": "action must be add, update, or delete"}), 400
+        try:
+            master, master_path = _load_master(orchestrator.master_data_path)
+            education = master.setdefault('education', [])
+            if action == 'delete':
+                idx = req.get('idx')
+                if not isinstance(idx, int):
+                    return jsonify({"error": "idx (int) is required for delete"}), 400
+                if idx < 0 or idx >= len(education):
+                    return jsonify({"ok": False, "error": "Index out of range"}), 404
+                education.pop(idx)
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "deleted"})
+            edu_data: Dict[str, Any] = {}
+            for field in ('degree', 'field', 'institution'):
+                if field in req:
+                    edu_data[field] = req[field]
+            if req.get('city') or req.get('state'):
+                loc: Dict[str, Any] = {}
+                if req.get('city'):
+                    loc['city'] = req['city']
+                if req.get('state'):
+                    loc['state'] = req['state']
+                edu_data['location'] = loc
+            for field in ('start_year', 'end_year'):
+                if req.get(field) is not None:
+                    edu_data[field] = int(req[field])
+            if action == 'add':
+                if not edu_data.get('degree') or not edu_data.get('institution'):
+                    return jsonify({"error": "degree and institution are required"}), 400
+                education.append(edu_data)
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "added", "idx": len(education) - 1})
+            idx = req.get('idx')
+            if not isinstance(idx, int):
+                return jsonify({"error": "idx (int) is required for update"}), 400
+            if idx < 0 or idx >= len(education):
+                return jsonify({"ok": False, "error": "Index out of range"}), 404
+            education[idx].update(edu_data)
+            _save_master(master, master_path)
+            return jsonify({"ok": True, "action": "updated", "idx": idx})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.post("/api/master-data/award")
+    def master_data_update_award():
+        """Add, update, or delete an award entry in the master CV.
+
+        Body:
+            action      — 'add' | 'update' | 'delete'
+            idx         — list index (int, required for update/delete)
+            title, year, description, relevant_for
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req    = request.get_json() or {}
+        action = (req.get('action') or '').strip()
+        if action not in ('add', 'update', 'delete'):
+            return jsonify({"error": "action must be add, update, or delete"}), 400
+        try:
+            master, master_path = _load_master(orchestrator.master_data_path)
+            awards = master.setdefault('awards', [])
+            if action == 'delete':
+                idx = req.get('idx')
+                if not isinstance(idx, int):
+                    return jsonify({"error": "idx (int) is required for delete"}), 400
+                if idx < 0 or idx >= len(awards):
+                    return jsonify({"ok": False, "error": "Index out of range"}), 404
+                awards.pop(idx)
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "deleted"})
+            award_data: Dict[str, Any] = {}
+            for field in ('title', 'description'):
+                if field in req:
+                    award_data[field] = req[field]
+            if req.get('year') is not None:
+                award_data['year'] = int(req['year'])
+            if 'relevant_for' in req:
+                award_data['relevant_for'] = req['relevant_for']
+            if action == 'add':
+                if not award_data.get('title'):
+                    return jsonify({"error": "title is required"}), 400
+                awards.append(award_data)
+                _save_master(master, master_path)
+                return jsonify({"ok": True, "action": "added", "idx": len(awards) - 1})
+            idx = req.get('idx')
+            if not isinstance(idx, int):
+                return jsonify({"error": "idx (int) is required for update"}), 400
+            if idx < 0 or idx >= len(awards):
+                return jsonify({"ok": False, "error": "Index out of range"}), 404
+            awards[idx].update(award_data)
+            _save_master(master, master_path)
+            return jsonify({"ok": True, "action": "updated", "idx": idx})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -1472,10 +1824,23 @@ Close professionally with a call to action.
 
     @app.get("/api/model")
     def get_model():
-        """Return current model, all provider models, and pricing metadata."""
-        current   = _current_model or (llm_client.model if hasattr(llm_client, "model") else None)
-        available = _get_available_models(_provider_name, current_model=current)
-        billing   = PROVIDER_BILLING.get(_provider_name, {"type": "per_token", "note": ""})
+        """Return current model, all provider models, and pricing metadata.
+
+        If a `session_id` is supplied (query or JSON body), prefer any
+        session-scoped provider/model persisted in that session's state.
+        """
+        entry = _get_session(required=False)
+        session_provider = None
+        session_model = None
+        if entry:
+            conversation = entry.manager
+            session_provider = conversation.state.get("provider")
+            session_model = conversation.state.get("model")
+
+        provider_for_view = session_provider or _provider_name
+        current = session_model or _current_model or (llm_client.model if hasattr(llm_client, "model") else None)
+        available = _get_available_models(provider_for_view, current_model=current)
+        billing = PROVIDER_BILLING.get(provider_for_view, {"type": "per_token", "note": ""})
         live      = get_cached_pricing()
         models_with_info = [
             {
@@ -1509,7 +1874,7 @@ Close professionally with a call to action.
                     "notes":              MODEL_INFO.get(m, {}).get("notes", ""),
                 })
         return jsonify({
-            "provider":           _provider_name,
+            "provider":           provider_for_view,
             "providers":          sorted(PROVIDER_MODELS.keys()),
             "list_models_capable": ["openai", "anthropic", "gemini", "groq"],
             "billing_type":       billing["type"],
@@ -1664,6 +2029,22 @@ Close professionally with a call to action.
             for _entry in session_registry.all_active():
                 _entry.orchestrator.llm = llm_client
                 _entry.manager.llm = llm_client
+
+            # If the caller supplied a session_id, persist the chosen
+            # provider/model into that session's state so it survives reloads.
+            entry = _get_session(required=False)
+            if entry:
+                try:
+                    _validate_owner(entry)
+                    conv = entry.manager
+                    conv.state["provider"] = provider
+                    conv.state["model"] = model
+                    conv._save_session()
+                    session_registry.touch(entry.session_id)
+                except Exception:
+                    # Preserve original behavior even if session write fails
+                    pass
+
             return jsonify({"ok": True, "provider": provider, "model": model})
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
@@ -4849,6 +5230,27 @@ Close professionally with a call to action.
         return jsonify({"ok": True})
 
     return app
+
+
+# ---------------------------------------------------------------------------
+# Master CV IO helpers (module-level for testability)
+# ---------------------------------------------------------------------------
+
+def _load_master(master_data_path: str) -> "tuple[dict, Path]":
+    """Read master CV JSON from disk and return (data, path)."""
+    p = Path(master_data_path)
+    with open(p, 'r', encoding='utf-8') as f:
+        return json.load(f), p
+
+
+def _save_master(master: Dict[str, Any], master_path: Path) -> None:
+    """Write master CV data to disk and stage the file in git."""
+    with open(master_path, 'w', encoding='utf-8') as f:
+        json.dump(master, f, indent=2)
+    subprocess.run(
+        ['git', '-C', str(master_path.parent), 'add', master_path.name],
+        capture_output=True, check=False,
+    )
 
 
 # ---------------------------------------------------------------------------

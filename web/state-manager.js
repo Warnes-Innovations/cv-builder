@@ -52,6 +52,9 @@ let interactiveState = {
 let sessionId = null;
 let lastKnownPhase = PHASES.INIT;
 let isReconnecting = false;
+// Current model/provider selection (persisted to localStorage)
+let currentModelProvider = null;
+let currentModelName = null;
 
 // Staged generation state (GAP-20): tracks preview → confirm → final pipeline.
 // Synced from /api/cv/generation-state on page load and after key transitions.
@@ -89,6 +92,11 @@ const stateManager = {
   // Session management
   getSessionId: () => sessionId,
   setSessionId: (id) => { sessionId = id; localStorage.setItem(StorageKeys.SESSION_ID, id); },
+
+  // Model/provider selection
+  getCurrentModelProvider: () => currentModelProvider,
+  getCurrentModelName: () => currentModelName,
+  setCurrentModel: (provider, model) => { currentModelProvider = provider || null; currentModelName = model || null; saveStateToLocalStorage(); },
 
   // Phase tracking
   getPhase: () => lastKnownPhase,
@@ -202,6 +210,14 @@ function loadStateFromLocalStorage() {
       window.pendingRecommendations = data.pendingRecommendations;
     }
 
+    // Restore saved model/provider selection
+    if (data.currentModelProvider) {
+      currentModelProvider = data.currentModelProvider;
+    }
+    if (data.currentModelName) {
+      currentModelName = data.currentModelName;
+    }
+
     // Restore post-analysis state
     if (data.postAnalysisQuestions) {
       window.postAnalysisQuestions = data.postAnalysisQuestions;
@@ -246,6 +262,9 @@ function saveStateToLocalStorage() {
       questionAnswers: window.questionAnswers,
       lastKnownPhase,
       currentTab,
+      // Persist last-selected model/provider so UI selections survive reloads
+      currentModelProvider,
+      currentModelName,
       generationState,
       atsScore,
     };
@@ -264,151 +283,10 @@ function clearState() {
   Object.values(StorageKeys).forEach(key => localStorage.removeItem(key));
 }
 
-/**
- * Restore session from backend and localStorage.
- * Called on page load to resume prior work.
- */
-async function restoreSession() {
-  try {
-    isReconnecting = true;
-
-    // Try to get session ID from localStorage
-    const storedSessionId = localStorage.getItem(StorageKeys.SESSION_ID);
-    if (storedSessionId) {
-      sessionId = storedSessionId;
-    } else {
-      // Generate new session ID
-      sessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem(StorageKeys.SESSION_ID, sessionId);
-    }
-
-    // Try to restore conversation history from backend using apiCall
-    const historyData = await apiCall('GET', '/api/history');
-
-    if (historyData) {
-      // Only restore from backend if localStorage doesn't have recent history
-      const hasLocalHistory = loadStateFromLocalStorage();
-
-      if (!hasLocalHistory && historyData.history && historyData.history.length > 0) {
-        const conversation = document.getElementById('conversation');
-        if (conversation) {
-          conversation.innerHTML = ''; // Clear loading messages
-
-          historyData.history.forEach(msg => {
-            if (msg.role === 'user') {
-              appendMessage('user', msg.content);
-            } else if (msg.role === 'assistant') {
-              appendMessage('assistant', msg.content);
-            } else if (msg.role === 'system') {
-              appendMessage('system', msg.content);
-            }
-          });
-
-          appendMessage('system', '🔄 Session restored. You can continue where you left off.');
-        }
-      }
-
-      // Update phase
-      if (historyData.phase) {
-        lastKnownPhase = historyData.phase;
-      }
-    }
-
-    // Try to restore backend state
-    await restoreBackendState();
-
-    isReconnecting = false;
-  } catch (error) {
-    console.warn('Session restoration failed:', error);
-    if (document.getElementById('conversation')) {
-      appendMessage('system', `⚠️ Could not restore previous session. Starting fresh. (${error.message})`);
-    }
-    isReconnecting = false;
-  }
-}
-
-/**
- * Restore backend state (analysis, customizations, CV files).
- * Called during session restoration.
- */
-async function restoreBackendState() {
-  try {
-    const statusData = await apiCall('GET', '/api/status');
-
-    if (statusData) {
-      // If we have job analysis data, try to restore it
-      if (statusData.phase === PHASES.CUSTOMIZATION || statusData.phase === PHASES.REWRITE_REVIEW || statusData.phase === PHASES.SPELL_CHECK || statusData.phase === PHASES.GENERATION || statusData.phase === PHASES.LAYOUT_REVIEW || statusData.phase === PHASES.REFINEMENT) {
-        const analysisData = statusData.job_analysis;
-        if (analysisData) {
-          tabData.analysis = analysisData;
-          if (currentTab === 'analysis') {
-            populateAnalysisTab(analysisData);
-          }
-        }
-      }
-
-      // If we have customization data, restore it
-      if (statusData.phase === PHASES.CUSTOMIZATION || statusData.phase === PHASES.REWRITE_REVIEW || statusData.phase === PHASES.SPELL_CHECK || statusData.phase === PHASES.GENERATION || statusData.phase === PHASES.LAYOUT_REVIEW || statusData.phase === PHASES.REFINEMENT) {
-        const customizationData = statusData.customizations;
-        if (customizationData) {
-          tabData.customizations = customizationData;
-          window.pendingRecommendations = customizationData;
-        }
-      }
-
-      // If we have generated CV, try to restore it
-      if ((statusData.phase === PHASES.LAYOUT_REVIEW || statusData.phase === PHASES.REFINEMENT) && statusData.generated_files) {
-        tabData.cv = statusData.generated_files;
-        if (currentTab === 'cv') {
-          populateCVTab(statusData.generated_files);
-        } else if (currentTab === 'download') {
-          await populateDownloadTab(statusData.generated_files);
-        }
-      }
-    }
-
-    // Sync staged generation state from backend (GAP-20) so the layout tab
-    // can decide which endpoints to use after a page reload.
-    try {
-      const genData = await apiCall('GET', '/api/cv/generation-state');
-      if (genData && genData.phase) {
-        stateManager.setGenerationState({
-          phase:                    genData.phase,
-          previewAvailable:         genData.preview_available         ?? false,
-          layoutConfirmed:          genData.layout_confirmed          ?? false,
-          pageCountEstimate:        genData.page_count_estimate       ?? null,
-          pageWarning:              genData.page_length_warning       ?? false,
-          layoutInstructionsCount:  genData.layout_instructions_count ?? 0,
-        });
-      }
-    } catch (_e) {
-      // Non-fatal: stale localStorage value will be used
-    }
-  } catch (error) {
-    console.warn('Failed to restore backend state:', error);
-  }
-}
-
-/**
- * Load session from a specific file path (used for loading prior sessions).
- */
-async function loadSessionFile(path) {
-  try {
-    const res = await fetch('/api/load-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path })
-    });
-
-    if (res.ok) {
-      const sessionData = await res.json();
-      return sessionData;
-    }
-  } catch (error) {
-    console.error('Failed to load session file:', error);
-  }
-  return null;
-}
+// The authoritative restoreSession/restoreBackendState/loadSessionFile
+// implementations live in `web/app.js`. Remove duplicate implementations
+// from this module to avoid conflicting behavior and ensure a single
+// restore path is used by the application.
 
 // CJS export shim — no-op in browsers (module is undefined)
 if (typeof module !== 'undefined') {
@@ -417,6 +295,6 @@ if (typeof module !== 'undefined') {
     GENERATION_PHASES,
     stateManager,
     initializeState, loadStateFromLocalStorage, saveStateToLocalStorage,
-    clearState, restoreSession, restoreBackendState, loadSessionFile,
+    clearState,
   };
 }
