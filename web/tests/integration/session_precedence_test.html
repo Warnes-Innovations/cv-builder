@@ -9,6 +9,8 @@
   <h2>Session precedence integration test</h2>
   <p>This test loads the app scripts locally, mocks <code>/api/status</code> and <code>/api/master-fields</code> and asserts that session edits/decisions take precedence.</p>
   <div id="out">Starting...</div>
+  <!-- Required by buildSummaryFocusSection; hidden during test -->
+  <div id="summary-focus-container" style="display:none"></div>
 
   <script>
     // Minimal logger
@@ -29,7 +31,7 @@
       publication_decisions: {},
       summary_focus_override: 'ai_recommended',
       extra_skills: ['Go'],
-      professional_summaries: { ai_recommended: 'Session AI' }
+      professional_summaries: { ai_recommended: 'Session AI', ai_generated: 'Session AI' }
     };
 
     const realFetch = window.fetch;

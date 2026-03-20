@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import time
+import urllib.parse
 
 import pytest
 
@@ -44,8 +45,15 @@ from tests.ui.fixtures.mock_responses import (  # noqa: E402
     API_HISTORY_EMPTY,
 )
 
-BASE_URL = "http://127.0.0.1:5001"
-SERVER_STARTUP_TIMEOUT = 15  # seconds
+BASE_URL = os.environ.get("CV_SERVER_URL", "http://127.0.0.1:5002")
+SERVER_STARTUP_TIMEOUT = int(os.environ.get("CV_SERVER_STARTUP_TIMEOUT", "15"))  # seconds
+
+
+def _base_url_port(url: str) -> int:
+    p = urllib.parse.urlparse(url)
+    if p.port:
+        return p.port
+    return 443 if p.scheme == "https" else 80
 
 
 # ---------------------------------------------------------------------------
@@ -121,11 +129,12 @@ def live_server():
     project_root = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..")
     )
+    server_port = _base_url_port(BASE_URL)
     cmd = [
         sys.executable,
         os.path.join(project_root, "scripts", "web_app.py"),
         "--llm-provider", "stub",
-        "--port", "5001",
+        "--port", str(server_port),
     ]
     env = os.environ.copy()
     env["FLASK_ENV"] = "testing"

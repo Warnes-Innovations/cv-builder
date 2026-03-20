@@ -892,21 +892,22 @@ Job Description (excerpt):
         text = (req.get('text') or '').strip()
         if not key:
             return jsonify({"error": "key is required"}), 400
+        action = req.get('action')
+        if action != 'delete' and not text:
+            return jsonify({"error": "text is required for add/update"}), 400
         try:
             master, master_path = _load_master(orchestrator.master_data_path)
             summaries = master.get('professional_summaries', {})
             if isinstance(summaries, list):
                 summaries = {str(i): v for i, v in enumerate(summaries)}
                 master['professional_summaries'] = summaries
-            if req.get('action') == 'delete':
+            if action == 'delete':
                 if key not in summaries:
                     return jsonify({"ok": False, "error": "Summary not found"}), 404
                 del summaries[key]
                 master['professional_summaries'] = summaries
                 _save_master(master, master_path)
                 return jsonify({"ok": True, "action": "deleted", "key": key})
-            if not text:
-                return jsonify({"error": "text is required for add/update"}), 400
             is_new = key not in summaries
             summaries[key] = text
             master['professional_summaries'] = summaries
@@ -3398,6 +3399,39 @@ Close professionally with a call to action.
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @app.post("/api/reorder-rows")
+    def reorder_rows():
+        """Persist a user-defined row ordering for experiences or skills.
+
+        Body: ``{"type": "experience"|"skill", "ordered_ids": ["exp_001", ...]}``
+        Pass an empty list to reset to relevance-scored order.
+        Returns ``{ok: true}``.
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+        row_type   = data.get("type")
+        ordered_ids = data.get("ordered_ids")
+        if row_type not in ("experience", "skill"):
+            return jsonify({"error": "type must be 'experience' or 'skill'"}), 400
+        if ordered_ids is None:
+            return jsonify({"error": "Missing ordered_ids"}), 400
+        if not isinstance(ordered_ids, list):
+            return jsonify({"error": "ordered_ids must be a list"}), 400
+        state_key = "experience_row_order" if row_type == "experience" else "skill_row_order"
+        try:
+            with entry.lock:
+                if ordered_ids:
+                    conversation.state[state_key] = [str(i) for i in ordered_ids]
+                else:
+                    conversation.state.pop(state_key, None)
+                conversation._save_session()
+            session_registry.touch(sid)
+            return jsonify({"ok": True, "type": row_type, "ordered_ids": ordered_ids})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
     @app.post("/api/post-analysis-draft-response")
     def post_analysis_draft_response():

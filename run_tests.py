@@ -42,7 +42,7 @@ class TestRunner:
             return False
         return True
     
-    def start_web_server(self, port=5001) -> bool:
+    def start_web_server(self, port=5002) -> bool:
         """Start the Flask web server for integration tests."""
         try:
             print(f"🚀 Starting web server on port {port}...")
@@ -55,7 +55,7 @@ class TestRunner:
                 return True
             
             # Start server in background
-            cmd = [sys.executable, 'scripts/web_app.py']
+            cmd = [sys.executable, 'scripts/web_app.py', '--port', str(port)]
             if self.llm_provider:
                 cmd += ['--llm-provider', self.llm_provider]
             if self.llm_model:

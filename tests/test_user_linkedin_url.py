@@ -4,11 +4,12 @@ Test the specific LinkedIn URL provided by the user
 """
 
 import requests
+import os
 import json
 
 def test_user_linkedin_url(require_server=None):
     """Test the specific LinkedIn URL the user provided"""
-    base_url = "http://127.0.0.1:5001"
+    base_url = os.environ.get("CV_SERVER_URL", "http://127.0.0.1:5002")
     
     # Create a session and use its session_id for the request
     resp = requests.post(f"{base_url}/api/sessions/new")

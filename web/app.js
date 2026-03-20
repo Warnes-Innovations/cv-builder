@@ -3621,17 +3621,17 @@ function renderExperienceCards() {
         </div>
         
         <div class="form-group">
-          <label class="form-label">Key Achievements</label>
+          <label class="form-label">Experience Bullets</label>
           <div class="achievements-list">
             ${(exp.achievements || []).map((achievement, achIndex) => {
               const achText = typeof achievement === 'string' ? achievement : (achievement && typeof achievement === 'object' ? (achievement.text || achievement.description || achievement.content || '') : '');
               return `<div class="achievement-item">
-                <textarea class="form-input form-textarea" oninput="updateAchievement(${index}, ${achIndex}, this.value)" placeholder="Describe a key achievement..." rows="2">${escapeHtml(achText)}</textarea>
+                <textarea class="form-input form-textarea" oninput="updateAchievement(${index}, ${achIndex}, this.value)" placeholder="Describe a key accomplishment..." rows="2">${escapeHtml(achText)}</textarea>
                 <button class="remove-achievement" onclick="removeAchievement(${index}, ${achIndex})">×</button>
               </div>`;
             }).join('')}
           </div>
-          <button class="add-achievement" onclick="addAchievement(${index})">+ Add Achievement</button>
+          <button class="add-achievement" onclick="addAchievement(${index})">+ Add Bullet</button>
         </div>
       </div>
     </div>
@@ -3851,12 +3851,12 @@ async function populateReviewTab(pane) {
   ` : (cfg.title ? `<h2 style="margin:0 0 12px;">${cfg.title}</h2>` : '');
 
   const navBack = {
-    skills:       `<button class="back-btn" onclick="switchTab('ach-editor')">← Back to Edit Achievements</button>`,
+    skills:       `<button class="back-btn" onclick="switchTab('ach-editor')">← Back to Edit Experience Bullets</button>`,
     achievements: `<button class="back-btn" onclick="switchTab('skills-review')">← Back to Skills</button>`,
     publications: `<button class="back-btn" onclick="switchTab('summary-review')">← Back to Summary</button>`,
   };
   const navContinue = {
-    experiences:  `<button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Edit Achievements →</button>`,
+    experiences:  `<button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Edit Experience Bullets →</button>`,
     skills:       `<button class="continue-btn" onclick="submitSkillDecisions()">Continue to Achievements →</button>`,
     achievements: `<button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Summary →</button>`,
     publications: `<button class="continue-btn" onclick="submitPublicationDecisions()">Continue to Rewrite →</button>`,
@@ -3947,7 +3947,7 @@ async function populateCustomizationsTabWithReview(data) {
       <p style="color:#6b7280;font-size:0.95em;margin-bottom:16px;">Sorted by date (most recent first). Click action buttons to override recommendations.</p>
       <div id="experience-table-container"></div>
       <div class="nav-buttons nav-end" style="margin:16px 0;">
-        <button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Edit Achievements →</button>
+        <button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Edit Experience Bullets →</button>
       </div>
     </div>
 
@@ -4055,15 +4055,16 @@ async function _loadReviewPane(pane) {
   }
 }
 
+// Cached ordered array for the experience review table (supports ↑↓ row reorder)
+window._experiencesOrdered = null;
+
 async function buildExperienceReviewTable() {
   const data = window.pendingRecommendations;
   const container = document.getElementById('experience-table-container');
   if (!container) return;
 
-  // Surface progress immediately while we fetch and sort full experience details.
   container.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading experience recommendations…</p></div>';
-  
-  // Get all experiences with details
+
   let allExperienceIds = [];
   try {
     const statusRes = await fetch('/api/status');
@@ -4072,24 +4073,61 @@ async function buildExperienceReviewTable() {
   } catch (error) {
     allExperienceIds = data.recommended_experiences || [];
   }
-  
+
   const recommendedSet = new Set(data.recommended_experiences || []);
-  
-  // Fetch all experience details and sort by start date (most recent first)
+
+  // Fetch all experience details
   const experiencesWithDetails = [];
   for (const expId of allExperienceIds) {
     const details = await getExperienceDetails(expId);
     experiencesWithDetails.push({ id: expId, details });
   }
-  
-  // Sort by start date (most recent first)
-  experiencesWithDetails.sort((a, b) => {
-    const aStart = a.details?.start_date || '0';
-    const bStart = b.details?.start_date || '0';
-    return bStart.localeCompare(aStart);
-  });
-  
-  // Build table HTML
+
+  // On first load: sort by start date (most recent first); on re-render preserve user order
+  if (!window._experiencesOrdered) {
+    experiencesWithDetails.sort((a, b) => {
+      const aStart = a.details?.start_date || '0';
+      const bStart = b.details?.start_date || '0';
+      return bStart.localeCompare(aStart);
+    });
+    window._experiencesOrdered = experiencesWithDetails;
+  } else {
+    // Merge any newly discovered experiences into the cached order
+    const knownIds = new Set(window._experiencesOrdered.map(e => e.id));
+    for (const exp of experiencesWithDetails) {
+      if (!knownIds.has(exp.id)) window._experiencesOrdered.push(exp);
+    }
+  }
+
+  // Initialise saved decisions
+  const savedExpDecs = window._savedDecisions?.experience_decisions || {};
+  for (const { id: expId } of window._experiencesOrdered) {
+    const recommendation = getExperienceRecommendation(expId, data);
+    const isRecommended  = recommendedSet.has(expId);
+    let defaultAction = 'exclude';
+    if      (recommendation === 'Emphasize')    defaultAction = 'emphasize';
+    else if (recommendation === 'Include')      defaultAction = 'include';
+    else if (recommendation === 'De-emphasize') defaultAction = 'de-emphasize';
+    else if (recommendation === 'Omit')         defaultAction = 'exclude';
+    else if (isRecommended)                     defaultAction = 'include';
+    userSelections.experiences[expId] = savedExpDecs[expId] || defaultAction;
+  }
+
+  _renderExperienceTable(container, recommendedSet, data);
+}
+
+function _renderExperienceTable(container, recommendedSet, data) {
+  if (!container) container = document.getElementById('experience-table-container');
+  if (!container) return;
+  if (!recommendedSet) recommendedSet = new Set((window.pendingRecommendations?.recommended_experiences) || []);
+  if (!data) data = window.pendingRecommendations;
+
+  // Destroy any existing DataTable before rebuilding
+  if ($.fn.DataTable.isDataTable('#experience-review-table')) {
+    $('#experience-review-table').DataTable().destroy();
+  }
+
+  const exps = window._experiencesOrdered || [];
   let tableHTML = `
     <table id="experience-review-table" class="review-table">
       <thead>
@@ -4104,71 +4142,51 @@ async function buildExperienceReviewTable() {
       </thead>
       <tbody>
   `;
-  
-  for (const { id: expId, details } of experiencesWithDetails) {
-    const isRecommended = recommendedSet.has(expId);
-    const recommendation = getExperienceRecommendation(expId, data);
-    const confidence = getConfidenceLevel(expId, data);
-    const reasoning = getExperienceReasoning(expId, data);
-    
-    const title = details ? details.title : expId;
-    const company = details ? details.company : '';
-    const startDate = details?.start_date || '';
-    const endDate = details?.end_date || 'present';
-    const duration = startDate && endDate ? `${startDate} - ${endDate}` : (details?.duration || '');
-    
-    // Determine default action based on LLM recommendation level
-    let defaultAction = 'exclude';
-    if (recommendation === 'Emphasize') {
-      defaultAction = 'emphasize';
-    } else if (recommendation === 'Include') {
-      defaultAction = 'include';
-    } else if (recommendation === 'De-emphasize') {
-      defaultAction = 'de-emphasize';
-    } else if (recommendation === 'Omit') {
-      defaultAction = 'exclude';
-    } else if (isRecommended) {
-      // Fallback for backwards compatibility with old format
-      defaultAction = 'include';
-    }
-    
-    // Store default selection
-    userSelections.experiences[expId] = (window._savedDecisions?.experience_decisions || {})[expId] || defaultAction;
-    
-    // Prepare display text - show the actual LLM recommendation
-    const recommendationText = recommendation || "Include";
-    const confidenceBadge = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
-    const reasoningText = reasoning || "This experience was selected based on its relevance to the position requirements.";
-    
+
+  exps.forEach(({ id: expId, details }, rowIdx) => {
+    const recommendation    = getExperienceRecommendation(expId, data);
+    const confidence        = getConfidenceLevel(expId, data);
+    const reasoning         = getExperienceReasoning(expId, data);
+    const title             = details ? details.title   : expId;
+    const company           = details ? details.company : '';
+    const startDate         = details?.start_date || '';
+    const endDate           = details?.end_date   || 'present';
+    const duration          = startDate ? `${startDate} - ${endDate}` : (details?.duration || '');
+    const defaultAction     = userSelections.experiences[expId] || 'include';
+    const recommendationText = recommendation || 'Include';
+    const confidenceBadge   = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
+    const reasoningText     = reasoning || 'This experience was selected based on its relevance to the position requirements.';
+    const isFirst           = rowIdx === 0;
+    const isLast            = rowIdx === exps.length - 1;
+    const titleEsc          = escapeHtml(title);
+
     tableHTML += `
       <tr data-exp-id="${expId}" data-start-date="${startDate}">
         <td>
-          <strong>${title}</strong><br>
-          <span style="color: #6b7280;">${company}</span>
+          <strong>${titleEsc}</strong><br>
+          <span style="color:#6b7280;">${escapeHtml(company)}</span>
         </td>
-        <td style="white-space: nowrap;">${duration}</td>
-        <td><strong>${recommendationText}</strong></td>
+        <td style="white-space:nowrap;">${escapeHtml(duration)}</td>
+        <td><strong>${escapeHtml(recommendationText)}</strong></td>
         <td>${confidenceBadge}</td>
-        <td style="max-width: 300px;"><small>${reasoningText}</small></td>
-        <td class="action-btns">
-          <button class="icon-btn ${defaultAction === 'emphasize' ? 'active' : ''}" data-action="emphasize" title="Emphasize - Feature prominently with full details" style="color: #10b981; font-size: 1.5em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Include - Standard treatment" style="font-size: 1.3em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize - Brief mention only" style="color: #f59e0b; font-size: 1.5em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Exclude - Omit from CV" style="color: #ef4444; font-size: 1.3em;">✗</button>
-          <button class="icon-btn" data-action="reorder" title="Reorder bullet points for this experience" style="color:#6366f1;font-size:1.1em;">↕</button>
+        <td style="max-width:300px;"><small>${escapeHtml(reasoningText)}</small></td>
+        <td class="action-btns" style="white-space:nowrap;">
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${titleEsc}"       title="Emphasize — feature prominently" style="color:#10b981;font-size:1.5em;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${titleEsc}"         title="Include — standard treatment"    style="font-size:1.3em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${titleEsc}"    title="De-emphasize — brief mention"    style="color:#f59e0b;font-size:1.5em;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${titleEsc}"         title="Exclude — omit from CV"          style="color:#ef4444;font-size:1.3em;">✗</button>
+          <button class="icon-btn" data-action="reorder" aria-label="Reorder bullets for ${titleEsc}" title="Reorder bullet points" style="color:#6366f1;font-size:1.1em;">↕</button>
+          <button class="icon-btn" data-action="row-up"   aria-label="Move ${titleEsc} earlier in CV" title="Move up in CV"   ${isFirst ? 'disabled' : ''} style="font-size:1.0em;padding:2px 5px;">↑</button>
+          <button class="icon-btn" data-action="row-down" aria-label="Move ${titleEsc} later in CV"   title="Move down in CV" ${isLast  ? 'disabled' : ''} style="font-size:1.0em;padding:2px 5px;">↓</button>
         </td>
       </tr>
     `;
-  }
-  
-  tableHTML += `
-      </tbody>
-    </table>
-  `;
-  
+  });
+
+  tableHTML += '</tbody></table>';
   container.innerHTML = tableHTML;
 
-  // Delegated click handler for experience action buttons (data-exp-id on <tr> avoids onclick injection)
+  // Delegated click handler
   container.querySelector('#experience-review-table tbody')?.addEventListener('click', e => {
     const btn = e.target.closest('.icon-btn');
     if (!btn) return;
@@ -4180,12 +4198,18 @@ async function buildExperienceReviewTable() {
       e.stopPropagation();
       const titleEl = tr.querySelector('strong');
       showBulletReorder(expId, titleEl ? titleEl.textContent : '');
+    } else if (action === 'row-up') {
+      e.stopPropagation();
+      moveExperienceRow(expId, -1);
+    } else if (action === 'row-down') {
+      e.stopPropagation();
+      moveExperienceRow(expId, +1);
     } else if (action) {
       handleActionClick(expId, action, 'experience');
     }
   });
 
-  // Bulk toolbar (injected before DataTable initialises so it sits above the search box)
+  // Bulk toolbar
   const expToolbar = document.createElement('div');
   expToolbar.className = 'bulk-toolbar';
   expToolbar.innerHTML = `
@@ -4197,15 +4221,31 @@ async function buildExperienceReviewTable() {
   `;
   container.insertBefore(expToolbar, container.firstChild);
 
-  // Initialize DataTable
+  // Initialize DataTable with no auto-sort (rows stay in user-specified order)
   $('#experience-review-table').DataTable({
     paging: false,
-    order: [[1, 'desc']], // Sort by dates column (most recent first)
-    language: {
-      search: "Filter experiences:"
-    }
+    order: [],
+    language: { search: 'Filter experiences:' }
   });
   _updatePageEstimate();
+}
+
+function moveExperienceRow(expId, direction) {
+  const arr = window._experiencesOrdered;
+  if (!arr) return;
+  const idx = arr.findIndex(e => e.id === expId);
+  if (idx < 0) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= arr.length) return;
+  [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+  window._experiencesOrdered = arr;
+  _renderExperienceTable(null, null, null);
+  // Persist the new order to the backend (fire-and-forget; no UI block)
+  fetch('/api/reorder-rows', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'experience', ordered_ids: arr.map(e => e.id) })
+  }).catch(() => {});
 }
 
 async function buildSkillsReviewTable() {
@@ -4232,31 +4272,73 @@ async function buildSkillsReviewTable() {
   // Detect skills recommended by LLM that aren't in master CV and prepend them
   const masterSkillNames = new Set(allSkills.map(s => (typeof s === 'string' ? s : s.name || s)));
   const newSkills = (data.recommended_skills || []).filter(s => !masterSkillNames.has(s));
-  window._newSkillsFromLLM = newSkills;  // track for submitSkillDecisions
+  window._newSkillsFromLLM = newSkills;
   if (newSkills.length > 0) {
     allSkills = [...newSkills.map(s => ({ name: s, _isNew: true })), ...allSkills];
   }
 
-  // If we got no skills, show a message
   if (allSkills.length === 0) {
-    container.innerHTML = '<p style="padding: 20px; text-align: center; color: #6b7280;">No skills found in master CV data.</p>';
+    container.innerHTML = '<p style="padding:20px;text-align:center;color:#6b7280;">No skills found in master CV data.</p>';
     return;
   }
 
-  // Sort skills: Emphasize > Include > De-emphasize > Omit (new skills stay at top)
-  const recommendationOrder = { 'Emphasize': 0, 'Include': 1, 'De-emphasize': 2, 'Omit': 3 };
-  const masterSkills = allSkills.filter(s => !s._isNew);
-  const sortedMaster = masterSkills.slice().sort((a, b) => {
-    const aName = typeof a === 'string' ? a : a.name || a;
-    const bName = typeof b === 'string' ? b : b.name || b;
-    const aOrder = recommendationOrder[getSkillRecommendation(aName, data)] ?? 3;
-    const bOrder = recommendationOrder[getSkillRecommendation(bName, data)] ?? 3;
-    return aOrder - bOrder;
-  });
-  allSkills = [...allSkills.filter(s => s._isNew), ...sortedMaster];
+  // On first load: sort by recommendation; preserve user order on re-render
+  if (!window._skillsOrdered) {
+    const recommendationOrder = { 'Emphasize': 0, 'Include': 1, 'De-emphasize': 2, 'Omit': 3 };
+    const masterSkills  = allSkills.filter(s => !s._isNew);
+    const sortedMaster  = masterSkills.slice().sort((a, b) => {
+      const aName  = typeof a === 'string' ? a : a.name || a;
+      const bName  = typeof b === 'string' ? b : b.name || b;
+      const aOrder = recommendationOrder[getSkillRecommendation(aName, data)] ?? 3;
+      const bOrder = recommendationOrder[getSkillRecommendation(bName, data)] ?? 3;
+      return aOrder - bOrder;
+    });
+    window._skillsOrdered = [...allSkills.filter(s => s._isNew), ...sortedMaster];
+  } else {
+    const knownNames = new Set(window._skillsOrdered.map(s => (typeof s === 'string' ? s : s.name || s)));
+    for (const sk of allSkills) {
+      const nm = typeof sk === 'string' ? sk : sk.name || sk;
+      if (!knownNames.has(nm)) window._skillsOrdered.push(sk);
+    }
+  }
 
   const recommendedSet = new Set(data.recommended_skills || []);
-  
+
+  // Initialise saved decisions
+  const savedSkillDecs = window._savedDecisions?.skill_decisions || {};
+  for (const skill of window._skillsOrdered) {
+    const skillName     = typeof skill === 'string' ? skill : skill.name || skill;
+    const isNew         = (skill._isNew === true);
+    const isRecommended = recommendedSet.has(skillName);
+    const recommendation = getSkillRecommendation(skillName, data);
+    let defaultAction = 'exclude';
+    if      (recommendation === 'Emphasize')    defaultAction = 'emphasize';
+    else if (recommendation === 'Include')      defaultAction = 'include';
+    else if (recommendation === 'De-emphasize') defaultAction = 'de-emphasize';
+    else if (recommendation === 'Omit')         defaultAction = 'exclude';
+    else if (isRecommended || isNew)            defaultAction = 'include';
+    userSelections.skills[skillName] = savedSkillDecs[skillName] || defaultAction;
+  }
+
+  _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet);
+}
+
+function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet) {
+  if (!container) container = document.getElementById('skills-table-container');
+  if (!container) return;
+  if (!recommendedSet) recommendedSet = new Set((window.pendingRecommendations?.recommended_skills) || []);
+  if (!data) data = window.pendingRecommendations;
+  if (!hardSkillSet) {
+    const ja = tabData.analysis || {};
+    hardSkillSet = new Set((ja.required_skills     || []).map(s => s.toLowerCase()));
+    softSkillSet = new Set((ja.nice_to_have_skills || []).map(s => s.toLowerCase()));
+  }
+
+  if ($.fn.DataTable.isDataTable('#skills-review-table')) {
+    $('#skills-review-table').DataTable().destroy();
+  }
+
+  const skills = window._skillsOrdered || [];
   let tableHTML = `
     <table id="skills-review-table" class="review-table">
       <thead>
@@ -4270,82 +4352,72 @@ async function buildSkillsReviewTable() {
       </thead>
       <tbody>
   `;
-  
-  for (const skill of allSkills) {
-    const skillName = typeof skill === 'string' ? skill : skill.name || skill;
-    const isNew = skill._isNew === true;
-    const isRecommended = recommendedSet.has(skillName);
+
+  skills.forEach((skill, rowIdx) => {
+    const skillName      = typeof skill === 'string' ? skill : skill.name || skill;
+    const isNew          = (skill._isNew === true);
+    const isRecommended  = recommendedSet.has(skillName);
     const recommendation = getSkillRecommendation(skillName, data);
-    const confidence = getSkillConfidence(skillName, data);
-    const reasoning = getSkillReasoning(skillName, data);
+    const confidence     = getSkillConfidence(skillName, data);
+    const reasoning      = getSkillReasoning(skillName, data);
+    const defaultAction  = userSelections.skills[skillName] || 'include';
+    const isFirst        = rowIdx === 0;
+    const isLast         = rowIdx === skills.length - 1;
+    const skillNameEsc   = escapeHtml(skillName);
 
-    // Determine default action based on LLM recommendation level
-    let defaultAction = 'exclude';
-    if (recommendation === 'Emphasize') {
-      defaultAction = 'emphasize';
-    } else if (recommendation === 'Include') {
-      defaultAction = 'include';
-    } else if (recommendation === 'De-emphasize') {
-      defaultAction = 'de-emphasize';
-    } else if (recommendation === 'Omit') {
-      defaultAction = 'exclude';
-    } else if (isRecommended || isNew) {
-      // LLM-suggested skill (including new ones not yet in CV) — default include
-      defaultAction = 'include';
-    }
-
-    // Store default selection
-    userSelections.skills[skillName] = (window._savedDecisions?.skill_decisions || {})[skillName] || defaultAction;
-
-    // Prepare display text
     const newBadge = isNew
-      ? '<span title="This skill was suggested by the AI but is not yet in your CV profile. If included, it will be added to your generated CV." style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>'
+      ? '<span title="AI suggested — not yet in CV profile" style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>'
       : '';
-    const skillNameLower = skillName.toLowerCase();
-    const skillTypeBadge = hardSkillSet.has(skillNameLower)
+    const skillNameLower  = skillName.toLowerCase();
+    const skillTypeBadge  = hardSkillSet.has(skillNameLower)
       ? '<span title="Required by job description" style="margin-left:5px;font-size:10px;font-weight:600;color:#1d4ed8;background:#dbeafe;border-radius:3px;padding:1px 5px;">Hard</span>'
-      : softSkillSet.has(skillNameLower)
+      : softSkillSet?.has(skillNameLower)
         ? '<span title="Nice-to-have per job description" style="margin-left:5px;font-size:10px;font-weight:600;color:#6b21a8;background:#f3e8ff;border-radius:3px;padding:1px 5px;">Soft</span>'
         : '';
     const recommendationText = recommendation || (isNew ? 'Include (AI suggested)' : 'Omit');
-    const confidenceBadge = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
-    const reasoningText = reasoning || (isNew ? 'Recommended by AI based on job requirements but not currently in your master CV.' : 'This skill was not specifically mentioned in the job requirements.');
-    const rowStyle = isNew ? 'background:#fffbeb;' : '';
+    const confidenceBadge    = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
+    const reasoningText      = reasoning || (isNew ? 'Recommended by AI based on job requirements but not currently in your master CV.' : 'This skill was not specifically mentioned in the job requirements.');
+    const rowStyle           = isNew ? 'background:#fffbeb;' : '';
 
     tableHTML += `
-      <tr data-skill="${escapeHtml(skillName)}" style="${rowStyle}">
-        <td><strong>${escapeHtml(skillName)}</strong>${skillTypeBadge}${newBadge}</td>
+      <tr data-skill="${skillNameEsc}" style="${rowStyle}">
+        <td><strong>${skillNameEsc}</strong>${skillTypeBadge}${newBadge}</td>
         <td><strong>${escapeHtml(recommendationText)}</strong></td>
         <td>${confidenceBadge}</td>
-        <td style="max-width: 300px;"><small>${escapeHtml(reasoningText)}</small></td>
-        <td class="action-btns">
-          <button class="icon-btn ${defaultAction === 'emphasize' ? 'active' : ''}" data-action="emphasize" title="Emphasize - Feature prominently" style="color: #10b981; font-size: 1.5em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Include - Standard listing" style="font-size: 1.3em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize - Brief mention" style="color: #f59e0b; font-size: 1.5em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Exclude - Omit from CV" style="color: #ef4444; font-size: 1.3em;">✗</button>
+        <td style="max-width:300px;"><small>${escapeHtml(reasoningText)}</small></td>
+        <td class="action-btns" style="white-space:nowrap;">
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${skillNameEsc}"    title="Emphasize — feature prominently" style="color:#10b981;font-size:1.5em;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${skillNameEsc}"      title="Include — standard listing"      style="font-size:1.3em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${skillNameEsc}" title="De-emphasize — brief mention"    style="color:#f59e0b;font-size:1.5em;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${skillNameEsc}"      title="Exclude — omit from CV"          style="color:#ef4444;font-size:1.3em;">✗</button>
+          <button class="icon-btn" data-action="row-up"   aria-label="Move ${skillNameEsc} earlier" title="Move up"   ${isFirst ? 'disabled' : ''} style="font-size:1.0em;padding:2px 5px;">↑</button>
+          <button class="icon-btn" data-action="row-down" aria-label="Move ${skillNameEsc} later"   title="Move down" ${isLast  ? 'disabled' : ''} style="font-size:1.0em;padding:2px 5px;">↓</button>
         </td>
       </tr>
     `;
-  }
-  
-  tableHTML += `
-      </tbody>
-    </table>
-  `;
-  
+  });
+
+  tableHTML += '</tbody></table>';
   container.innerHTML = tableHTML;
 
-  // Delegated click handler for skill action buttons (data-skill on <tr> avoids onclick injection)
   container.querySelector('#skills-review-table tbody')?.addEventListener('click', e => {
     const btn = e.target.closest('.icon-btn');
     if (!btn) return;
     const tr = btn.closest('tr[data-skill]');
     if (!tr) return;
-    const action = btn.dataset.action;
-    if (action) handleActionClick(tr.dataset.skill, action, 'skill');
+    const skillName = tr.dataset.skill;
+    const action    = btn.dataset.action;
+    if (action === 'row-up') {
+      e.stopPropagation();
+      moveSkillRow(skillName, -1);
+    } else if (action === 'row-down') {
+      e.stopPropagation();
+      moveSkillRow(skillName, +1);
+    } else if (action) {
+      handleActionClick(skillName, action, 'skill');
+    }
   });
 
-  // Bulk toolbar
   const skillToolbar = document.createElement('div');
   skillToolbar.className = 'bulk-toolbar';
   skillToolbar.innerHTML = `
@@ -4357,14 +4429,29 @@ async function buildSkillsReviewTable() {
   `;
   container.insertBefore(skillToolbar, container.firstChild);
 
-  // Initialize DataTable
   $('#skills-review-table').DataTable({
     paging: false,
-    language: {
-      search: "Filter skills:"
-    }
+    order: [],
+    language: { search: 'Filter skills:' }
   });
   _updatePageEstimate();
+}
+
+function moveSkillRow(skillName, direction) {
+  const arr = window._skillsOrdered;
+  if (!arr) return;
+  const idx = arr.findIndex(s => (typeof s === 'string' ? s : s.name || s) === skillName);
+  if (idx < 0) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= arr.length) return;
+  [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+  window._skillsOrdered = arr;
+  _renderSkillsTable(null, null, null, null, null);
+  fetch('/api/reorder-rows', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'skill', ordered_ids: arr.map(s => (typeof s === 'string' ? s : s.name || s)) })
+  }).catch(() => {});
 }
 
 // ==== Achievements Review ====
@@ -4437,10 +4524,10 @@ async function buildAchievementsReviewTable() {
     if (!(suggId in window.achievementDecisions)) window.achievementDecisions[suggId] = 'include';
   });
 
-  _renderAchievementsTable(container);
+  _renderAchievementsReviewTable(container);
 }
 
-function _renderAchievementsTable(container) {
+function _renderAchievementsReviewTable(container) {
   if (!container) container = document.getElementById('achievements-table-container');
   if (!container) return;
 
@@ -4484,21 +4571,31 @@ function _renderAchievementsTable(container) {
 
     html += `
       <tr data-ach-id="${escapeHtml(id)}">
-        <td>
-          <strong>${escapeHtml(title)}</strong>
-          ${desc ? `<br><small style="color:#6b7280;" id="ach-desc-${escapeHtml(id)}">${escapeHtml(desc.slice(0, 120))}${desc.length > 120 ? '…' : ''}</small>` : ''}
+        <td style="min-width:220px;">
+          <input id="ach-title-${escapeHtml(id)}"
+            type="text" value="${escapeHtml(title)}"
+            style="width:100%;font-weight:600;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.9em;box-sizing:border-box;"
+            onblur="saveTopLevelAchievementField('${escapeHtml(id)}', 'title', this.value)"
+            aria-label="Achievement title">
+          <textarea id="ach-desc-${escapeHtml(id)}"
+            rows="2"
+            style="width:100%;margin-top:4px;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.85em;resize:vertical;box-sizing:border-box;"
+            onblur="saveTopLevelAchievementField('${escapeHtml(id)}', 'description', this.value)"
+            aria-label="Achievement description"
+          >${escapeHtml(desc)}</textarea>
         </td>
         <td><strong>${escapeHtml(recommendation)}</strong></td>
         <td>${confidenceBadge}</td>
-        <td style="max-width:240px;"><small>${escapeHtml(reasoning)}</small></td>
+        <td style="max-width:200px;"><small>${escapeHtml(reasoning)}</small></td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    title="Emphasize — feature prominently"  style="color:#10b981;font-size:1.4em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      title="Include — standard treatment"      style="font-size:1.2em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" title="De-emphasize — brief mention only"  style="color:#f59e0b;font-size:1.4em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      title="Exclude — omit from CV"            style="color:#ef4444;font-size:1.2em;">✗</button>
-          <button class="icon-btn" title="AI rewrite suggestion" onclick="aiRewriteTopLevelAchievement('${escapeHtml(id)}')" style="font-size:1.2em;">✨</button>
-          <button class="icon-btn" title="Move up"   ${isFirst ? 'disabled' : ''} onclick="moveAchievementRow('${escapeHtml(id)}',-1)" style="font-size:1.0em;padding:2px 5px;">↑</button>
-          <button class="icon-btn" title="Move down" ${isLast  ? 'disabled' : ''} onclick="moveAchievementRow('${escapeHtml(id)}',+1)" style="font-size:1.0em;padding:2px 5px;">↓</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${escapeHtml(title)}"    title="Emphasize — feature prominently"  style="color:#10b981;font-size:1.4em;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${escapeHtml(title)}"      title="Include — standard treatment"      style="font-size:1.2em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${escapeHtml(title)}" title="De-emphasize — brief mention only"  style="color:#f59e0b;font-size:1.4em;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${escapeHtml(title)}"      title="Exclude — omit from CV"            style="color:#ef4444;font-size:1.2em;">✗</button>
+          <button class="icon-btn" aria-label="AI rewrite ${escapeHtml(title)}" title="AI rewrite description" onclick="aiRewriteTopLevelAchievement('${escapeHtml(id)}')" style="font-size:1.2em;">✨</button>
+          <button class="icon-btn" aria-label="Move ${escapeHtml(title)} earlier" title="Move up"   ${isFirst ? 'disabled' : ''} onclick="moveAchievementRow('${escapeHtml(id)}',-1)" style="font-size:1.0em;padding:2px 5px;">↑</button>
+          <button class="icon-btn" aria-label="Move ${escapeHtml(title)} later"   title="Move down" ${isLast  ? 'disabled' : ''} onclick="moveAchievementRow('${escapeHtml(id)}',+1)" style="font-size:1.0em;padding:2px 5px;">↓</button>
+          <button class="icon-btn" aria-label="Delete ${escapeHtml(title)}" title="Delete achievement" onclick="deleteTopLevelAchievement('${escapeHtml(id)}')" style="color:#ef4444;font-size:1.0em;padding:2px 5px;">🗑</button>
         </td>
       </tr>
     `;
@@ -4623,6 +4720,18 @@ async function submitAchievementDecisions() {
   }
 }
 
+function moveAchievementRow(achId, direction) {
+  const arr = window._achievementsOrdered;
+  if (!arr) return;
+  const idx = arr.findIndex(a => a.id === achId);
+  if (idx < 0) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= arr.length) return;
+  [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+  window._achievementsOrdered = arr;
+  _renderAchievementsReviewTable(document.getElementById('achievements-table-container'));
+}
+
 // ==== Achievements Editor Tab ====
 
 /**
@@ -4634,7 +4743,7 @@ async function buildAchievementsEditor() {
   const container = document.getElementById('document-content');
   if (!container) return;
 
-  container.innerHTML = '<p style="padding:20px;text-align:center;color:#6b7280;">Loading achievements editor…</p>';
+  container.innerHTML = '<p style="padding:20px;text-align:center;color:#6b7280;">Loading experience bullets editor…</p>';
 
   // Fetch experiences + their achievements from master fields
   let experiences = [];
@@ -4662,9 +4771,9 @@ async function buildAchievementsEditor() {
 
   let html = `
     <div style="padding:16px;">
-      <h2 style="margin:0 0 4px;">✏️ Edit Achievements</h2>
+      <h2 style="margin:0 0 4px;">✏️ Edit Experience Bullets</h2>
       <p style="color:#6b7280;margin:0 0 16px;font-size:0.9em;">
-        Edit, reorder, delete, or AI-rewrite individual achievement bullets per experience.
+        Edit, reorder, delete, or AI-rewrite individual experience bullets per role.
         Changes are saved automatically and used during CV generation.
       </p>
   `;
@@ -4678,12 +4787,12 @@ async function buildAchievementsEditor() {
       <details open style="margin-bottom:12px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
         <summary style="padding:12px 16px;background:#f9fafb;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;">
           <span style="flex:1;">${title}${company ? ` <span style="font-weight:400;color:#6b7280;">@ ${company}</span>` : ''}</span>
-          <span style="font-size:0.8em;color:#9ca3af;">${achCount} achievement${achCount !== 1 ? 's' : ''}</span>
+          <span style="font-size:0.8em;color:#9ca3af;">${achCount} bullet${achCount !== 1 ? 's' : ''}</span>
         </summary>
         <div style="padding:12px 16px;" id="ach-editor-exp-${expIdx}">
           <div id="ach-list-${expIdx}"></div>
           <button class="btn-secondary" style="margin-top:8px;font-size:0.85em;"
-            onclick="addAchievementRow(${expIdx})">+ Add Achievement</button>
+            onclick="addAchievementRow(${expIdx})">+ Add Bullet</button>
         </div>
       </details>
     `;
@@ -4712,7 +4821,7 @@ function renderAchievementEditorRows(expIdx) {
   const achs = window.achievementEdits[expIdx] || [];
 
   if (achs.length === 0) {
-    listEl.innerHTML = '<p style="color:#9ca3af;font-size:0.85em;padding:4px 0;">No achievements yet.</p>';
+    listEl.innerHTML = '<p style="color:#9ca3af;font-size:0.85em;padding:4px 0;">No experience bullets yet.</p>';
     return;
   }
 
@@ -4776,20 +4885,53 @@ function addAchievementRow(expIdx) {
 
 let _rewriteSuggestionHistory = [];
 let _lastRewriteLogId = null;
+// Callbacks for the active rewrite modal: { experienceIndex, onAccept }
+let _rewriteCallbacks = null;
 
 async function rewriteAchievementWithLLM(expIdx, achIdx) {
   const ta = document.getElementById(`ach-text-${expIdx}-${achIdx}`);
   if (!ta) return;
   const originalText = ta.value.trim();
-  if (!originalText) { showToast('Please enter achievement text first.', 'error'); return; }
+  if (!originalText) { showToast('Please enter a bullet first.', 'error'); return; }
 
   _rewriteSuggestionHistory = [];
   _lastRewriteLogId = null;
-  _openRewriteModal(expIdx, achIdx, originalText, '', null);
-  await _runAchievementRewrite(expIdx, achIdx, originalText);
+  _openRewriteModal(originalText, '', null, {
+    experienceIndex: expIdx,
+    onAccept: async (suggestion) => {
+      updateAchievementText(expIdx, achIdx, suggestion);
+      if (ta) ta.value = suggestion;
+      _recordRewriteOutcome('accepted', suggestion);
+      showToast('Bullet updated.');
+    },
+  });
+  await _runRewrite(originalText);
 }
 
-function _openRewriteModal(expIdx, achIdx, originalText, currentInstructions, currentSuggestion) {
+async function aiRewriteTopLevelAchievement(achId) {
+  const ach = (window._achievementsOrdered || []).find(a => a.id === achId);
+  if (!ach) return;
+  const originalText = ach.description || '';
+  if (!originalText) { showToast('Please enter a description first.', 'error'); return; }
+
+  _rewriteSuggestionHistory = [];
+  _lastRewriteLogId = null;
+  _openRewriteModal(originalText, '', null, {
+    experienceIndex: null,
+    onAccept: async (suggestion) => {
+      await saveTopLevelAchievementField(achId, 'description', suggestion);
+      const descEl = document.getElementById(`ach-desc-${CSS.escape(achId)}`);
+      if (descEl) descEl.value = suggestion;
+      _recordRewriteOutcome('accepted', suggestion);
+      showToast('Achievement updated.');
+    },
+  });
+  await _runRewrite(originalText);
+}
+
+function _openRewriteModal(originalText, currentInstructions, currentSuggestion, callbacks) {
+  _rewriteCallbacks = callbacks;
+
   const suggestedHtml = currentSuggestion != null
     ? `<p id="ach-rewrite-suggestion" style="margin:4px 0 0;min-height:2.4em;">${escapeHtml(currentSuggestion)}</p>`
     : `<p id="ach-rewrite-suggestion" style="margin:4px 0 0;min-height:2.4em;color:#9ca3af;font-style:italic;">⏳ Generating…</p>`;
@@ -4823,23 +4965,18 @@ function _openRewriteModal(expIdx, achIdx, originalText, currentInstructions, cu
   setInitialFocus('alert-modal-overlay');
   trapFocus('alert-modal-overlay');
 
-  document.getElementById('ach-rewrite-generate-btn').onclick = () =>
-    _runAchievementRewrite(expIdx, achIdx, originalText);
+  document.getElementById('ach-rewrite-generate-btn').onclick = () => _runRewrite(originalText);
 
-  _updateRewriteAcceptBtn(expIdx, achIdx, currentSuggestion);
+  _updateRewriteAcceptBtn(currentSuggestion);
 }
 
-function _updateRewriteAcceptBtn(expIdx, achIdx, suggestion) {
+function _updateRewriteAcceptBtn(suggestion) {
   const acceptBtn = document.getElementById('ach-rewrite-accept-btn');
   if (!acceptBtn) return;
   acceptBtn.disabled = suggestion == null;
-  acceptBtn.onclick = suggestion == null ? null : () => {
-    const ta = document.getElementById(`ach-text-${expIdx}-${achIdx}`);
-    updateAchievementText(expIdx, achIdx, suggestion);
-    if (ta) ta.value = suggestion;
-    _recordRewriteOutcome('accepted', suggestion);
+  acceptBtn.onclick = suggestion == null ? null : async () => {
+    await _rewriteCallbacks.onAccept(suggestion);
     closeAlertModal();
-    showToast('Achievement updated.');
   };
 }
 
@@ -4858,7 +4995,7 @@ async function _recordRewriteOutcome(outcome, acceptedText) {
   } catch (_) { /* fire-and-forget — don't disrupt the UI */ }
 }
 
-async function _runAchievementRewrite(expIdx, achIdx, originalText) {
+async function _runRewrite(originalText) {
   const instructionsEl = document.getElementById('ach-rewrite-instructions');
   const userInstructions = instructionsEl ? instructionsEl.value.trim() : '';
 
@@ -4867,7 +5004,7 @@ async function _runAchievementRewrite(expIdx, achIdx, originalText) {
   const rejectBtn    = document.getElementById('ach-rewrite-reject-btn');
   const suggestionEl = document.getElementById('ach-rewrite-suggestion');
 
-  // Capture the current suggestion as a rejected prior attempt before overwriting
+  // Capture the current suggestion as a prior attempt before overwriting
   if (suggestionEl) {
     const prev = suggestionEl.textContent.trim();
     if (prev && prev !== 'Generating…' && !prev.startsWith('Error:') && !_rewriteSuggestionHistory.includes(prev)) {
@@ -4885,7 +5022,7 @@ async function _runAchievementRewrite(expIdx, achIdx, originalText) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         achievement_text:     originalText,
-        experience_index:     expIdx,
+        experience_index:     _rewriteCallbacks?.experienceIndex ?? null,
         user_instructions:    userInstructions,
         previous_suggestions: _rewriteSuggestionHistory,
       })
@@ -4900,13 +5037,61 @@ async function _runAchievementRewrite(expIdx, achIdx, originalText) {
       suggestionEl.style.fontStyle = '';
       suggestionEl.textContent = rewritten;
     }
-    _updateRewriteAcceptBtn(expIdx, achIdx, rewritten);
+    _updateRewriteAcceptBtn(rewritten);
   } catch (err) {
     if (suggestionEl) { suggestionEl.style.color = '#ef4444'; suggestionEl.style.fontStyle = ''; suggestionEl.textContent = `Error: ${err.message}`; }
     showToast(`AI rewrite failed: ${err.message}`, 'error');
   } finally {
     if (generateBtn) { generateBtn.disabled = false; generateBtn.textContent = 'Generate'; }
     if (rejectBtn)   { rejectBtn.disabled = false; }
+  }
+}
+
+/**
+ * Save a single field of a top-level achievement to the master CV and update the local cache.
+ */
+async function saveTopLevelAchievementField(achId, field, value) {
+  const ach = (window._achievementsOrdered || []).find(a => a.id === achId);
+  const previous = ach ? ach[field] : undefined;
+  if (ach) ach[field] = value;
+  try {
+    const res = await fetch('/api/master-data/update-achievement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: achId, [field]: value }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'Save failed');
+  } catch (err) {
+    // Roll back the optimistic update
+    if (ach && previous !== undefined) ach[field] = previous;
+    const el = document.getElementById(field === 'title' ? `ach-title-${CSS.escape(achId)}` : `ach-desc-${CSS.escape(achId)}`);
+    if (el) el.value = previous ?? '';
+    showToast(`Failed to save achievement: ${err.message}`, 'error');
+  }
+}
+
+/**
+ * Delete a top-level achievement from the master CV after confirmation.
+ */
+async function deleteTopLevelAchievement(achId) {
+  if (!confirm('Delete this achievement? This cannot be undone.')) return;
+  try {
+    const res = await fetch('/api/master-data/update-achievement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: achId, action: 'delete' }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      window._achievementsOrdered = (window._achievementsOrdered || []).filter(a => a.id !== achId);
+      delete window.achievementDecisions[achId];
+      _renderAchievementsReviewTable();
+      showToast('Achievement deleted.');
+    } else {
+      showToast(data.error || 'Delete failed.', 'error');
+    }
+  } catch (_) {
+    showToast('Failed to delete achievement.', 'error');
   }
 }
 
@@ -5271,9 +5456,9 @@ async function buildPublicationsReviewTable() {
         <td style="text-align:center;">${confBadge}</td>
         <td>${reasoning}</td>
         <td class="action-btns">
-          <button class="icon-btn${isAccepted ? ' active' : ''}" data-action="accept" title="Include in CV"
+          <button class="icon-btn${isAccepted ? ' active' : ''}" data-action="accept" aria-label="Include publication ${escapeHtml(citeKey)}" title="Include in CV"
               style="color:#10b981;font-size:1.3em;" id="pub-accept-${rank}">✓</button>
-          <button class="icon-btn${!isAccepted ? ' active' : ''}" data-action="reject" title="Exclude from CV"
+          <button class="icon-btn${!isAccepted ? ' active' : ''}" data-action="reject" aria-label="Exclude publication ${escapeHtml(citeKey)}" title="Exclude from CV"
               style="color:#ef4444;font-size:1.3em;" id="pub-reject-${rank}">✗</button>
         </td>
       </tr>
@@ -8305,7 +8490,7 @@ async function populateMasterTab() {
         The Harvest feature (Finalise tab) can add new ones from your current session.
       </p>
       <div id="master-achievements-container">
-        ${_renderAchievementsTable(achievements)}
+        ${_renderMasterAchievementsTable(achievements)}
       </div>
     </div>
 
@@ -8845,7 +9030,7 @@ function _renderAwardsList(awards) {
 }
 
 
-function _renderAchievementsTable(achievements) {
+function _renderMasterAchievementsTable(achievements) {
   if (!achievements.length) {
     return '<p style="color:#6b7280;padding:12px 0;">No selected achievements yet. Use the Harvest feature to add achievements from a completed session, or click "+ Add Achievement" above.</p>';
   }

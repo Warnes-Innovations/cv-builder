@@ -183,6 +183,48 @@ function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+// Utility functions for session management and formatting
+
+/**
+ * Format session phase labels.
+ * @param {string} phase - The phase string to format.
+ * @returns {string} - The formatted phase label.
+ */
+function formatSessionPhaseLabel(phase) {
+  const SESSION_PHASE_LABELS = {
+    init: 'init',
+    job_analysis: 'analysis',
+    customization: 'customization',
+    rewrite_review: 'rewrite',
+    spell_check: 'spell check',
+    generation: 'generation',
+    layout_review: 'layout review',
+    refinement: 'finalise',
+  };
+
+  if (!phase) return 'init';
+  return SESSION_PHASE_LABELS[phase] || String(phase).replace(/_/g, ' ');
+}
+
+/**
+ * Format session timestamps.
+ * @param {string} timestamp - The timestamp to format.
+ * @param {object} options - Formatting options.
+ * @param {boolean} [options.includeTime=true] - Whether to include time in the output.
+ * @returns {string} - The formatted timestamp.
+ */
+function formatSessionTimestamp(timestamp, { includeTime = true } = {}) {
+  if (!timestamp) return '—';
+  try {
+    return new Date(timestamp).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      ...(includeTime ? { hour: 'numeric', minute: '2-digit' } : {}),
+    });
+  } catch (_) {
+    return String(timestamp).replace('T', ' ').slice(0, includeTime ? 16 : 10);
+  }
+}
+
 // CJS export shim — no-op in browsers (module is undefined)
 if (typeof module !== 'undefined') {
   module.exports = {
@@ -190,5 +232,6 @@ if (typeof module !== 'undefined') {
     extractTitleAndCompanyFromJobText, normalizePositionLabel,
     stripHtml, truncateText, capitalizeWords, pluralize,
     formatDuration, ordinal,
+    formatSessionPhaseLabel, formatSessionTimestamp,
   };
 }

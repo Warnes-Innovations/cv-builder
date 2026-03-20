@@ -7,12 +7,13 @@ LinkedIn and other protected job boards with better error messages.
 """
 
 import sys
+import os
 import requests
 import json
 
 def test_enhanced_url_fetching(require_server=None):
     """Test enhanced URL fetching with various scenarios"""
-    base_url = "http://127.0.0.1:5001"
+    base_url = os.environ.get("CV_SERVER_URL", "http://127.0.0.1:5002")
     
     print("🧪 Testing Enhanced URL Fetching")
     print("=" * 50)
@@ -120,7 +121,7 @@ if __name__ == "__main__":
     
     try:
         # Check if server is running
-        response = requests.get("http://127.0.0.1:5001/api/status", timeout=2)
+        response = requests.get(f"{base_url}/api/status", timeout=2)
         if response.status_code != 200:
             print("❌ Server not responding properly")
             sys.exit(1)
@@ -138,7 +139,7 @@ if __name__ == "__main__":
     except requests.ConnectionError:
         print("❌ Cannot connect to server at http://127.0.0.1:5001")
         print("💡 Please start the web server first:")
-        print("   conda activate cvgen && python scripts/web_app.py --port 5001")
+        print(f"   conda activate cvgen && python scripts/web_app.py --port {os.environ.get('CV_SERVER_PORT','5002')}")
         sys.exit(1)
     except Exception as e:
         print(f"💥 Test error: {e}")

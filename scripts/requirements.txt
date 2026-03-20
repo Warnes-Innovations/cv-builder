@@ -34,3 +34,6 @@ requests>=2.31.0
 
 # Web UI
 flask>=2.3.0
+
+# Environment
+python-dotenv>=1.0.0
