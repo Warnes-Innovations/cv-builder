@@ -126,23 +126,24 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ### Tier 2
 
-- [ ] **M06 — `web/auth-provider.js`** (~150 lines)
+- [x] **M06 — `web/auth-provider.js`** (~150 lines)
   - Functions: `openCopilotAuthModal`, `closeCopilotAuthModal`, `openAuthGitHub`,
     `updateAuthBadge`, `formatProviderLabel`
   - Constants: `_authPollTimer`
   - Tests: `tests/js/auth-provider.test.js`
 
-- [ ] **M07 — `web/ats-refinement.js`** (~100 lines)
+- [x] **M07 — `web/ats-refinement.js`** (~100 lines)
   - Functions: `updateAtsBadge`, `refreshAtsScore`, `scheduleAtsRefresh`
   - Constants: `_atsRefreshTimer`
   - Tests: `tests/js/ats-refinement.test.js`
 
-- [ ] **M08 — `web/session-actions.js`** (~200 lines)
-  - Functions: `sendAction`, `saveSession`, `resetSession`, `updatePositionTitle`
+- [x] **M08 — `web/session-actions.js`** (~200 lines)
+  - Functions: `sendAction`, `saveSession`, `resetSession`, `updatePositionTitle`, `_ACTION_LABELS`
   - Tests: `tests/js/session-actions.test.js`
 
-- [ ] **M09 — `web/job-analysis.js`** (~150 lines)
-  - Functions: `analyzeJob`
+- [x] **M09 — `web/job-analysis.js`** (~150 lines)
+  - Functions: `analyzeJob`, `normalizePostAnalysisQuestions`,
+    `extractStructuredQuestionsFromAssistantText`, `mergePostAnalysisQuestions`
   - Tests: `tests/js/job-analysis.test.js`
   - Notes: calls `extractTitleAndCompanyFromJobText` from utils.js
 
@@ -314,6 +315,9 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
 | 2026-03-20 | — | Plan created, Phase 2 bundle complete |
 | 2026-03-20 | M01 M02 M03 | Tier 0 complete: validators, recommendation-helpers, ui-helpers (76 tests) |
 | 2026-03-20 | M04 M05 | Tier 1 complete: fetch-utils, message-queue (51 tests). Note: fetch interceptor IIFE captures window.fetch at import time — tests must hold reference to mock before vi.resetModules()+import. |
+| 2026-03-20 | M06–M09 | Tier 2 complete: auth-provider, ats-refinement, session-actions, job-analysis (59 tests). |
+| 2026-03-20 | layout-instruction.js | **Not an app.js split module** (already bundled in Phase 2). Rewrote test as ES module after main-merge dropped eval-based version. Added helper exports: showProcessing, showConfirmationMessage, renderInstructionHistory, addToInstructionHistory, undoInstruction (18 tests). |
+| 2026-03-20 | — | main-merge note: tests/js/suggested-achievements.test.js uses require('../../web/app.js') — must be rewritten when saveSuggestedAchievementField / moveSuggestedAchievementRow / deleteSuggestedAchievement move to achievements-review.js (M17). |
 
 ---
 

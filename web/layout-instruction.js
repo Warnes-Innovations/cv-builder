@@ -475,4 +475,13 @@ async function completeLayoutReview() {
 }
 
 // ── ES module exports ──────────────────────────────────────────────────────
-export { initiateLayoutInstructions, completeLayoutReview };
+export {
+  initiateLayoutInstructions,
+  completeLayoutReview,
+  // helpers exported for unit tests
+  showProcessing,
+  showConfirmationMessage,
+  renderInstructionHistory,
+  addToInstructionHistory,
+  undoInstruction,
+};
