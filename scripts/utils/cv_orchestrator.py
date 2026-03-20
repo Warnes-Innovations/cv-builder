@@ -10,6 +10,7 @@ This module coordinates between:
 import copy
 import json
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -610,32 +611,47 @@ class CVOrchestrator:
         return '\n'.join(html_parts)
     
     def _convert_html_to_pdf(self, html_file: Path, pdf_output: Path) -> None:
-        """Convert HTML file to PDF using WeasyPrint."""
-        try:
-            # Use WeasyPrint for PDF conversion
-            weasyprint.HTML(filename=str(html_file)).write_pdf(str(pdf_output))
+        """Convert HTML file to PDF.
+
+        WeasyPrint is run in a child process so that a native-library segfault
+        (exit 139) cannot kill the Flask server.  Falls back to Chrome headless,
+        then to a plain-text instruction file.
+        """
+        # --- WeasyPrint in subprocess (crash-safe) ---
+        wp_script = (
+            "import sys, weasyprint; "
+            "weasyprint.HTML(filename=sys.argv[1]).write_pdf(sys.argv[2])"
+        )
+        result = subprocess.run(
+            [sys.executable, '-c', wp_script, str(html_file), str(pdf_output)],
+            capture_output=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
             print(f"✓ Generated PDF using WeasyPrint: {pdf_output.name}")
-            
-        except Exception as e:
-            print(f"⚠ WeasyPrint failed ({e}), trying alternative approach...")
-            
-            # Alternative: try Chrome headless if available
-            try:
-                subprocess.run([
-                    'google-chrome', '--headless', '--disable-gpu', '--virtual-time-budget=5000',
-                    '--print-to-pdf=' + str(pdf_output),
-                    '--print-to-pdf-no-header',
-                    str(html_file)
-                ], check=True)
-                print(f"✓ Generated PDF using Chrome headless: {pdf_output.name}")
-                
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                # Final fallback: create a text file with instructions
-                fallback_content = f"""
-PDF Generation Failed
+            return
+
+        wp_error = result.stderr.decode(errors='replace').strip() or f"exit {result.returncode}"
+        print(f"⚠ WeasyPrint failed ({wp_error}), trying Chrome headless...")
+
+        # --- Chrome headless fallback ---
+        try:
+            subprocess.run([
+                'google-chrome', '--headless', '--disable-gpu', '--virtual-time-budget=5000',
+                '--print-to-pdf=' + str(pdf_output),
+                '--print-to-pdf-no-header',
+                str(html_file)
+            ], check=True, timeout=60)
+            print(f"✓ Generated PDF using Chrome headless: {pdf_output.name}")
+            return
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        # --- Plain-text fallback ---
+        fallback_content = f"""PDF Generation Failed
 
 The system attempted to generate a PDF but encountered issues:
-1. WeasyPrint error: {e}
+1. WeasyPrint error: {wp_error}
 2. Chrome headless not available
 
 To manually create PDF:
@@ -645,8 +661,8 @@ To manually create PDF:
 
 The HTML file contains your formatted CV ready for conversion.
 """
-                pdf_output.write_text(fallback_content.strip(), encoding='utf-8')
-                print(f"⚠ Created fallback instructions: {pdf_output.name}")
+        pdf_output.write_text(fallback_content.strip(), encoding='utf-8')
+        print(f"⚠ Created fallback instructions: {pdf_output.name}")
 
     def _generate_human_pdf(
         self,
@@ -1771,13 +1787,13 @@ If you need clarification, return:
         if accepted_pubs is not None:
             # User has explicitly selected publications — use their ordered list
             accepted_set = set(accepted_pubs)
-            selected_publications = []
+            pub_by_key = {}
             for pub in self._select_publications(job_analysis, max_count=len(self.publications) if self.publications else 50):
                 key = pub.get('key', '') or ''
                 if key in accepted_set and key not in rejected_pubs:
-                    selected_publications.append(pub)
-                    if len(selected_publications) >= 15:
-                        break
+                    pub_by_key[key] = pub
+            # Preserve the user's explicit ordering from accepted_pubs
+            selected_publications = [pub_by_key[k] for k in accepted_pubs if k in pub_by_key][:15]
         else:
             selected_publications = self._select_publications(job_analysis, max_count=10)
         
