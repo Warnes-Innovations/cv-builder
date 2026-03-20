@@ -1,7 +1,7 @@
 # UI Gap Implementation Plan
 
 **Created:** 2026-03-19  
-**Status:** Phase 1 complete; Phase 2 (ATS) next (2026-03-19)  
+**Status:** Phase 2 complete; Phase 3 (Intake/Rerun) next (2026-03-19)  
 **Source basis:** `tasks/ui-review.md` and `tasks/gaps.md` refreshed on 2026-03-19
 
 ## Overview
@@ -257,6 +257,16 @@ Phase 1 deliverables status:
 - Implement Workstream 1 first.
 - Goal: unblock the broken `preview -> layout -> final` applicant path.
 - Exit criteria: source-verified UI flow exists and is covered by backend and frontend regression tests.
+
+### Phase 2: ATS Slice — **COMPLETE (2026-03-19)**
+
+Phase 2 deliverables status:
+- [x] `scoring.py`: `_match_status()` tri-state (matched/partial/missing); `match_type` absent for missing keywords, `"exact"` or `"partial"` otherwise; education items extracted from `customizations.education` and fed into `section_matches["education"]`
+- [x] `cv_orchestrator.py`: ATS DOCX name paragraph uses `Heading 1` style; `_setup_ats_styles()` configures Heading 1 (16pt, bold, black) fixing the `docx_heading1_present` validation warning
+- [x] `app.js`: 3 missing ATS refresh triggers added — after `submitRewriteDecisions`, after `submitSpellCheckDecisions`, and after `generate_cv` completes
+- [x] `app.js`: Hard/Soft skill-type badges added to skills review table using `tabData.analysis.required_skills` and `tabData.analysis.nice_to_have_skills`
+- [x] Regression tests: 8 new tests in `tests/test_scoring.py` covering tri-state matching, missing keyword `match_type` contract, education section feed, and edge cases; new Heading 1 test in `tests/test_ats_generation.py`
+- [x] JS tests: 118/118 pass; Python tests: 73/73 pass for scoring and ATS generation suites
 
 ### Phase 2: ATS Slice
 

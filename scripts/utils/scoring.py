@@ -423,25 +423,50 @@ def compute_ats_score(
                 candidate_terms.add(kw)
                 section_matches["summary"].add(kw)
 
-    def _is_matched(keyword: str) -> Tuple[bool, List[str]]:
-        """Return (matched, sections_list) for a keyword."""
+        # Education (institution names, degrees, fields of study)
+        education = customizations.get("education", [])
+        for edu in education:
+            edu_text = " ".join(filter(None, [
+                edu.get("institution", ""), edu.get("degree", ""),
+                edu.get("field", ""), edu.get("field_of_study", ""),
+            ])) if isinstance(edu, dict) else str(edu)
+            for kw in _extract_keywords(edu_text.lower()):
+                candidate_terms.add(kw)
+                section_matches["education"].add(kw)
+
+    def _match_status(keyword: str) -> Tuple[str, List[str]]:
+        """Return (status, sections_list) where status is 'matched', 'partial', or 'missing'.
+
+        - 'matched'  — whole keyword string is present as a term or substring
+        - 'partial'  — at least one token of a multi-word keyword is present
+        - 'missing'  — no match at all
+        """
         kw_lower = keyword.lower().strip()
-        kw_words = set(kw_lower.split())
+        kw_words = [w for w in kw_lower.split() if len(w) > 2]
         matched_in: List[str] = []
+        partial_in: List[str] = []
+
         for sec, terms in section_matches.items():
-            # Exact whole-keyword match
             if kw_lower in terms:
                 matched_in.append(sec)
                 continue
-            # Substring / token overlap
-            for term in terms:
-                if kw_lower in term or term in kw_lower:
-                    matched_in.append(sec)
-                    break
-                if kw_words & set(term.split()):
-                    matched_in.append(sec)
-                    break
-        return bool(matched_in), list(dict.fromkeys(matched_in))
+            # Substring containment (handles compound terms like "machine learning")
+            whole_match = any(kw_lower in term or term in kw_lower for term in terms)
+            if whole_match:
+                matched_in.append(sec)
+                continue
+            # Partial: any keyword token found in section terms
+            if kw_words and any(
+                any(tok in term or term == tok for term in terms)
+                for tok in kw_words
+            ):
+                partial_in.append(sec)
+
+        if matched_in:
+            return "matched", list(dict.fromkeys(matched_in))
+        if partial_in:
+            return "partial", list(dict.fromkeys(partial_in))
+        return "missing", []
 
     # ── Build keyword_status list ──────────────────────────────────────────
     keyword_status: List[Dict] = []
@@ -450,44 +475,50 @@ def compute_ats_score(
 
     # Hard requirements
     for kw in required_skills:
-        matched, sections = _is_matched(kw)
-        keyword_status.append({
+        status, sections = _match_status(kw)
+        entry: Dict[str, Any] = {
             "keyword": kw,
             "type": "hard",
-            "status": "matched" if matched else "missing",
+            "status": status,
             "matched_in_sections": sections,
-            "match_type": "exact" if matched else "none",
-        })
+        }
+        if status != "missing":
+            entry["match_type"] = "exact" if status == "matched" else "partial"
+        keyword_status.append(entry)
         hard_total += 1
-        if matched:
+        if status in ("matched", "partial"):
             hard_matched += 1
 
     # Soft / nice-to-have
     for kw in nice_to_have:
-        matched, sections = _is_matched(kw)
-        keyword_status.append({
+        status, sections = _match_status(kw)
+        entry = {
             "keyword": kw,
             "type": "soft",
-            "status": "matched" if matched else "missing",
+            "status": status,
             "matched_in_sections": sections,
-            "match_type": "exact" if matched else "none",
-        })
+        }
+        if status != "missing":
+            entry["match_type"] = "exact" if status == "matched" else "partial"
+        keyword_status.append(entry)
         soft_total += 1
-        if matched:
+        if status in ("matched", "partial"):
             soft_matched += 1
 
     # Bonus ATS keywords (not already listed)
     listed_kws = {k.lower() for k in required_skills + nice_to_have}
     for kw in ats_keywords:
         if kw.lower() not in listed_kws:
-            matched, sections = _is_matched(kw)
-            keyword_status.append({
+            status, sections = _match_status(kw)
+            entry = {
                 "keyword": kw,
                 "type": "bonus",
-                "status": "matched" if matched else "missing",
+                "status": status,
                 "matched_in_sections": sections,
-                "match_type": "exact" if matched else "none",
-            })
+            }
+            if status != "missing":
+                entry["match_type"] = "exact" if status == "matched" else "partial"
+            keyword_status.append(entry)
 
     # ── Compute sub-scores ────────────────────────────────────────────────
     hard_score = (hard_matched / hard_total * 100.0) if hard_total else 100.0

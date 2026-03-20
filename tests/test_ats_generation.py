@@ -138,6 +138,25 @@ def test_ats_docx_is_generated(orchestrator, selected_content, job_analysis, tmp
     assert ats_file.stat().st_size > 0, "ATS DOCX is empty"
 
 
+def test_ats_docx_name_uses_heading1(orchestrator, selected_content, job_analysis, tmp_path):
+    """ATS DOCX must have the candidate name as a Heading 1 paragraph (fixes docx_heading1_present)."""
+    from docx import Document  # type: ignore
+
+    out_dir = tmp_path / "ats_out_h1"
+    out_dir.mkdir()
+
+    ats_file = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
+    doc = Document(str(ats_file))
+
+    heading1_paragraphs = [p for p in doc.paragraphs if p.style.name == "Heading 1"]
+    assert heading1_paragraphs, "No Heading 1 paragraph found in ATS DOCX"
+
+    name = selected_content["personal_info"]["name"]
+    assert any(name in p.text for p in heading1_paragraphs), (
+        f"Expected name '{name}' in a Heading 1 paragraph; found: {[p.text for p in heading1_paragraphs]}"
+    )
+
+
 def test_ats_compatibility_score_acceptable(orchestrator, selected_content, job_analysis):
     """_validate_ats_compatibility returns a numeric score ≥ 50 for well-matched content."""
     score = orchestrator._validate_ats_compatibility(selected_content, job_analysis)

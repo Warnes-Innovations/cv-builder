@@ -393,6 +393,95 @@ class TestComputeAtsScore(unittest.TestCase):
         # Should parse without error
         datetime.fromisoformat(score["computed_at"].replace("Z", "+00:00"))
 
+    # ── Phase 2: tri-state match_status ────────────────────────────────────
+
+    def test_missing_keyword_has_no_match_type(self):
+        """match_type must be absent (not 'none') for missing keywords."""
+        score = compute_ats_score(self._JOB, None)
+        for entry in score["keyword_status"]:
+            if entry["status"] == "missing":
+                self.assertNotIn("match_type", entry,
+                    f"missing keyword '{entry['keyword']}' should have no match_type")
+
+    def test_matched_keyword_has_exact_match_type(self):
+        """Whole-string match → match_type == 'exact'."""
+        custom = {"approved_skills": [{"name": "Python"}]}
+        score = compute_ats_score(self._JOB, custom)
+        python_entries = [e for e in score["keyword_status"]
+                          if e["keyword"] == "Python" and e["status"] == "matched"]
+        self.assertTrue(python_entries, "Python should be matched")
+        self.assertEqual(python_entries[0]["match_type"], "exact")
+
+    def test_partial_match_keyword_has_partial_match_type(self):
+        """Token-only overlap (no whole-phrase match) → status 'partial', match_type 'partial'.
+
+        The skill 'learning analytics' shares the 'learning' token with the keyword
+        'machine learning algorithms' but neither string is a substring of the other,
+        so it is classified as partial rather than matched.
+        """
+        job = {
+            "required_skills": ["machine learning algorithms"],
+            "nice_to_have_skills": [],
+            "ats_keywords": [],
+        }
+        custom = {"approved_skills": [{"name": "learning analytics"}]}
+        score = compute_ats_score(job, custom)
+        entry = next((e for e in score["keyword_status"]
+                      if e["keyword"] == "machine learning algorithms"), None)
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["status"], "partial")
+        self.assertEqual(entry["match_type"], "partial")
+
+    def test_partial_match_counts_toward_score(self):
+        """Partial matches should contribute to hard_requirement_score."""
+        job = {
+            "required_skills": ["machine learning"],
+            "nice_to_have_skills": [],
+            "ats_keywords": [],
+        }
+        custom = {"approved_skills": [{"name": "machine"}]}
+        score = compute_ats_score(job, custom)
+        self.assertGreater(score["hard_requirement_score"], 0.0)
+
+    # ── Phase 2: education section ─────────────────────────────────────────
+
+    def test_education_text_feeds_section_scores(self):
+        """Education items in customizations must populate the education section score.
+
+        Section scores are computed via exact token-set intersection, so we use a
+        single-word keyword ('biostatistics') that will be extracted from the degree
+        field text and land in section_matches['education'].
+        """
+        job = {
+            "required_skills": ["biostatistics"],
+            "nice_to_have_skills": [],
+            "ats_keywords": [],
+        }
+        custom = {
+            "education": [
+                {"institution": "Johns Hopkins", "degree": "PhD", "field": "Biostatistics"}
+            ]
+        }
+        score = compute_ats_score(job, custom)
+        self.assertGreater(score["section_scores"]["education"], 0.0)
+
+    def test_education_plain_string_entries(self):
+        """Education list containing plain strings (not dicts) should not crash."""
+        job = {
+            "required_skills": ["biology"],
+            "nice_to_have_skills": [],
+            "ats_keywords": [],
+        }
+        custom = {"education": ["BSc Biology, Oxford University"]}
+        score = compute_ats_score(job, custom)
+        # Should not raise; education section may or may not match
+        self.assertIn("education", score["section_scores"])
+
+    def test_no_education_in_customizations_education_score_zero(self):
+        """Absent education means education section score stays 0."""
+        score = compute_ats_score(self._JOB, {"approved_skills": []})
+        self.assertEqual(score["section_scores"]["education"], 0.0)
+
 
 if __name__ == '__main__':
     unittest.main()

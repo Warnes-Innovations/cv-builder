@@ -387,6 +387,37 @@ class CVOrchestrator:
         template = load_template(str(template_file))
         return render_template(template, cv_data)
 
+    def generate_final_from_confirmed_html(
+        self,
+        confirmed_html: str,
+        output_dir: Path,
+        filename_base: str = "CV_final",
+    ) -> Dict:
+        """Write confirmed HTML to disk and regenerate the human-readable PDF.
+
+        Called by ``POST /api/cv/generate-final`` after layout confirmation.
+        The confirmed HTML (which may have had layout instructions applied) is
+        written to ``output_dir/{filename_base}.html`` and converted to a PDF
+        via WeasyPrint.  ATS DOCX is not regenerated here because it is derived
+        from structured data, not from HTML layout.
+
+        Returns:
+            dict with keys ``html`` and ``pdf`` (absolute path strings).
+        """
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        html_path = output_dir / f"{filename_base}.html"
+        html_path.write_text(confirmed_html, encoding="utf-8")
+
+        pdf_path = output_dir / f"{filename_base}.pdf"
+        self._convert_html_to_pdf(html_path, pdf_path)
+
+        return {
+            "html": str(html_path),
+            "pdf":  str(pdf_path),
+        }
+
     def _render_cv_html_pdf(
         self,
         cv_data: Dict,
@@ -1795,11 +1826,8 @@ If you need clarification, return:
         personal = content['personal_info']
         name = personal.get('name', '')
         
-        # Name header - clear and prominent
-        name_para = doc.add_paragraph()
-        name_run = name_para.add_run(name)
-        name_run.font.size = Pt(16)
-        name_run.font.bold = True
+        # Name header — use Heading 1 so ATS parsers see the correct heading hierarchy.
+        name_para = doc.add_paragraph(name, style='Heading 1')
         name_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
         
         # Contact information - single line, pipe-separated (ATS standard)
@@ -1933,7 +1961,16 @@ If you need clarification, return:
         
         # Create custom styles that are ATS-friendly
         styles = doc.styles
-        
+
+        # Heading 1 — used for the candidate name at the top of the ATS DOCX
+        try:
+            heading1 = styles['Heading 1']
+            heading1.font.size = Pt(16)
+            heading1.font.bold = True
+            heading1.font.color.rgb = RGBColor(0, 0, 0)
+        except KeyError:
+            pass
+
         # Clean heading style
         try:
             heading2 = styles['Heading 2']

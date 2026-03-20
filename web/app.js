@@ -4014,6 +4014,11 @@ async function buildSkillsReviewTable() {
   const data = window.pendingRecommendations;
   const container = document.getElementById('skills-table-container');
 
+  // Build skill-type lookup from job analysis (available in tabData.analysis)
+  const jobAnalysis = tabData.analysis || {};
+  const hardSkillSet = new Set((jobAnalysis.required_skills    || []).map(s => s.toLowerCase()));
+  const softSkillSet = new Set((jobAnalysis.nice_to_have_skills || []).map(s => s.toLowerCase()));
+
   // Get all skills from the API status
   let allSkills = [];
   try {
@@ -4098,6 +4103,12 @@ async function buildSkillsReviewTable() {
     const newBadge = isNew
       ? '<span title="This skill was suggested by the AI but is not yet in your CV profile. If included, it will be added to your generated CV." style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>'
       : '';
+    const skillNameLower = skillName.toLowerCase();
+    const skillTypeBadge = hardSkillSet.has(skillNameLower)
+      ? '<span title="Required by job description" style="margin-left:5px;font-size:10px;font-weight:600;color:#1d4ed8;background:#dbeafe;border-radius:3px;padding:1px 5px;">Hard</span>'
+      : softSkillSet.has(skillNameLower)
+        ? '<span title="Nice-to-have per job description" style="margin-left:5px;font-size:10px;font-weight:600;color:#6b21a8;background:#f3e8ff;border-radius:3px;padding:1px 5px;">Soft</span>'
+        : '';
     const recommendationText = recommendation || (isNew ? 'Include (AI suggested)' : 'Omit');
     const confidenceBadge = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
     const reasoningText = reasoning || (isNew ? 'Recommended by AI based on job requirements but not currently in your master CV.' : 'This skill was not specifically mentioned in the job requirements.');
@@ -4105,7 +4116,7 @@ async function buildSkillsReviewTable() {
 
     tableHTML += `
       <tr data-skill="${escapeHtml(skillName)}" style="${rowStyle}">
-        <td><strong>${escapeHtml(skillName)}</strong>${newBadge}</td>
+        <td><strong>${escapeHtml(skillName)}</strong>${skillTypeBadge}${newBadge}</td>
         <td><strong>${escapeHtml(recommendationText)}</strong></td>
         <td>${confidenceBadge}</td>
         <td style="max-width: 300px;"><small>${escapeHtml(reasoningText)}</small></td>
@@ -6037,6 +6048,7 @@ async function submitRewriteDecisions() {
     const accepted = data.approved_count || 0;
     const rejected = data.rejected_count || 0;
     appendMessage('assistant', `✅ Rewrite decisions recorded: ${accepted} accepted, ${rejected} rejected. Starting spell check…`);
+    scheduleAtsRefresh('review_checkpoint');
     switchTab('spell');
   } catch (err) {
     removeLoadingMessage(loadingMsg);
@@ -6658,6 +6670,7 @@ async function submitSpellCheckDecisions() {
       return;
     }
     appendMessage('assistant', `✅ Spell check complete — ${spellAudit.length} item${spellAudit.length !== 1 ? 's' : ''} reviewed. Generating your CV…`);
+    scheduleAtsRefresh('review_checkpoint');
     await fetchStatus();
     await sendAction('generate_cv');
   } catch (err) {
@@ -6755,6 +6768,7 @@ async function sendAction(action) {
 
         appendMessage('assistant', 'CV generated successfully! Review your layout below.');
         tabData.cv = data.result;
+        refreshAtsScore('post_generation');
         switchTab('layout');
       } else {
         appendMessage('assistant', data.result);
@@ -7738,11 +7752,12 @@ function updateWorkflowSteps(status) {
     document.head.appendChild(s);
   }
 
-  // Sync second-bar tab visibility to the active workflow step
+  // Sync second-bar tab visibility and action buttons to the active workflow step
   if (typeof updateTabBarForStage === 'function') {
     currentStage = activeStep;
     updateTabBarForStage(activeStep);
   }
+  updateActionButtons(activeStep);
 }
 
 // Back-navigation: clicking a completed workflow step navigates to its viewer tab.
