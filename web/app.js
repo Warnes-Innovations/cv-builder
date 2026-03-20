@@ -559,6 +559,9 @@ async function restoreBackendState() {
       console.log('Restored CV data from backend memory');
     }
 
+    // Reflect restored saved decisions in UI counts
+    if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
+
     // If backend has no active session (cold start after server restart),
     // try to auto-load the most recent session from disk.
     if (!statusData.position_name && !statusData.job_analysis) {
@@ -598,6 +601,10 @@ async function loadSessionFile(path) {
 
     // Persist the loaded path so auto-reload can find it after the next server restart
     localStorage.setItem(StorageKeys.SESSION_PATH, data.session_file || path);
+
+    // Reset session-scoped suggestion state so a new session's suggestions
+    // don't inherit IDs or decisions from the previous session.
+    window._suggestedAchsOrdered = null;
 
     // Reload conversation history and status from the freshly-loaded backend
     const historyRes = await fetch('/api/history');
@@ -676,6 +683,27 @@ async function loadSessionFile(path) {
     appendMessage('system', `❌ Error restoring session: ${err.message}`);
     return false;
   }
+}
+
+// Update tab labels to include counts of items marked for inclusion
+function updateInclusionCounts() {
+  try {
+    const expDecs = (window._savedDecisions && window._savedDecisions.experience_decisions) || userSelections.experiences || {};
+    const skillDecs = (window._savedDecisions && window._savedDecisions.skill_decisions) || userSelections.skills || {};
+    const achDecs = (window._savedDecisions && window._savedDecisions.achievement_decisions) || window.achievementDecisions || {};
+
+    const expIncluded = Object.values(expDecs).filter(v => v !== 'exclude').length;
+    const skillIncluded = Object.values(skillDecs).filter(v => v !== 'exclude').length;
+    const achIncluded = Object.values(achDecs).filter(v => v !== 'exclude').length;
+
+    const expTab = document.getElementById('tab-exp-review');
+    const skillTab = document.getElementById('tab-skills-review');
+    const achTab = document.getElementById('tab-achievements-review');
+
+    if (expTab) expTab.textContent = `📊 Experiences${expIncluded ? ' (' + expIncluded + ')' : ''}`;
+    if (skillTab) skillTab.textContent = `🛠️ Skills${skillIncluded ? ' (' + skillIncluded + ')' : ''}`;
+    if (achTab) achTab.textContent = `🏆 Achievements${achIncluded ? ' (' + achIncluded + ')' : ''}`;
+  } catch (e) { console.warn('Failed to update inclusion counts:', e); }
 }
 
 // ── LLM abort helper ──────────────────────────────────────────────────────
@@ -2760,7 +2788,9 @@ async function askPostAnalysisQuestions(analysisResult, preferredQuestions = nul
       renderQuestionsPanel();
       switchTab('questions');
     } else {
-      appendMessage('assistant', 'Analysis complete! Click "Recommend Customizations" when ready.');
+      // No clarifying questions — auto-advance directly to customizations.
+      appendMessage('assistant', 'Analysis complete! No clarifying questions needed. Generating customization recommendations…');
+      await sendAction('recommend_customizations');
     }
   } catch (e) {
     console.error('Error parsing analysis for questions:', e);
@@ -2779,7 +2809,7 @@ function populateQuestionsTab() {
 
   const hasQuestions = Array.isArray(window.postAnalysisQuestions) && window.postAnalysisQuestions.length > 0;
   if (!hasQuestions) {
-    content.innerHTML = '<div class="empty-state"><div class="icon">✅</div><h3>Questions Complete</h3><p>No pending clarifying questions. Click "Recommend Customizations" when ready.</p></div>';
+    content.innerHTML = '<div class="empty-state"><div class="icon">✅</div><h3>Questions Complete</h3><p>No pending clarifying questions — customization recommendations will be generated automatically.</p></div>';
     return;
   }
 
@@ -2952,11 +2982,12 @@ async function submitAllAnswers() {
   }
 
   try {
-    appendMessage('assistant', `✓ Thank you! ${qs.length} answer${qs.length > 1 ? 's' : ''} saved. Click "Recommend Customizations" when ready.`);
-    // Always re-render so all questions + answers remain visible.
-    switchTab('questions');
+    appendMessage('assistant', `✓ Thank you! ${qs.length} answer${qs.length > 1 ? 's' : ''} saved. Generating customization recommendations…`);
+    // Auto-advance: kick off recommend_customizations immediately so the user
+    // doesn't have to click the button manually.
+    await sendAction('recommend_customizations');
   } finally {
-    // btn may be detached after switchTab re-renders — that is harmless.
+    // btn may be detached after sendAction navigates away — that is harmless.
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = 'Submit Answers';
@@ -4459,6 +4490,21 @@ function moveSkillRow(skillName, direction) {
 window.achievementDecisions = {};
 window._achievementsOrdered = null;   // cached ordered array for the review table
 
+// Small fetch helper with timeout to avoid leaving loaders visible on hanging requests
+async function fetchJsonWithTimeout(url, opts = {}, timeout = 7000) {
+  const controller = new AbortController();
+  const signal = controller.signal;
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const res = await fetch(url, Object.assign({}, opts, { signal }));
+    clearTimeout(id);
+    return res;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
 async function buildAchievementsReviewTable() {
   const container = document.getElementById('achievements-table-container');
   if (!container) return;
@@ -4468,13 +4514,15 @@ async function buildAchievementsReviewTable() {
   // Fetch achievements directly from the master fields endpoint (robust fallback)
   let allAchievements = [];
   try {
-    const res = await fetch('/api/master-fields');
+    const res = await fetchJsonWithTimeout('/api/master-fields', {}, 7000);
+    if (!res.ok) throw new Error('master-fields not ok');
     const masterData = await res.json();
     allAchievements = masterData.selected_achievements || [];
   } catch (err) {
-    // Secondary fallback: /api/status
+    // Secondary fallback: /api/status (also with timeout)
     try {
-      const res2 = await fetch('/api/status');
+      const res2 = await fetchJsonWithTimeout('/api/status', {}, 7000);
+      if (!res2.ok) throw new Error('status not ok');
       const statusData = await res2.json();
       allAchievements = statusData.all_achievements || [];
     } catch (err2) {
@@ -4517,11 +4565,18 @@ async function buildAchievementsReviewTable() {
   const savedAchDecs = window._savedDecisions?.achievement_decisions || {};
   if (Object.keys(savedAchDecs).length > 0) Object.assign(window.achievementDecisions, savedAchDecs);
 
-  // Also handle AI-suggested achievements
-  const suggestedAchs = data.suggested_achievements || [];
-  suggestedAchs.forEach((_, i) => {
-    const suggId = `sugg::${i}`;
-    if (!(suggId in window.achievementDecisions)) window.achievementDecisions[suggId] = 'include';
+  // Also handle AI-suggested achievements — assign stable IDs once on first load
+  // so that reorder / delete operations never need to remap decision keys.
+  if (!window._suggestedAchsOrdered) {
+    let counter = 0;
+    window._suggestedAchsOrdered = (data.suggested_achievements || []).map(s => {
+      const item = Object.assign({}, s);
+      item._suggId = `sugg::${counter++}`;
+      return item;
+    });
+  }
+  window._suggestedAchsOrdered.forEach(s => {
+    if (!(s._suggId in window.achievementDecisions)) window.achievementDecisions[s._suggId] = 'include';
   });
 
   _renderAchievementsReviewTable(container);
@@ -4533,7 +4588,7 @@ function _renderAchievementsReviewTable(container) {
 
   const data = window.pendingRecommendations || {};
   const orderedAchs  = window._achievementsOrdered || [];
-  const suggestedAchs = (data.suggested_achievements || []);
+  const suggestedAchs = window._suggestedAchsOrdered || [];
 
   // Build filter + table HTML
   let html = `
@@ -4601,28 +4656,45 @@ function _renderAchievementsReviewTable(container) {
     `;
   });
 
-  // AI-suggested achievements
-  suggestedAchs.forEach((sugg, i) => {
-    const suggId    = `sugg::${i}`;
-    const confRaw   = (sugg.confidence || 'Medium').toLowerCase();
-    const confLevel = confRaw.includes('high') ? 'high' : confRaw.includes('low') ? 'low' : 'medium';
-    const confText  = sugg.confidence || 'Medium';
+  // AI-suggested achievements — full editing/control parity with user achievements
+  suggestedAchs.forEach((sugg, rowIdx) => {
+    const suggId      = sugg._suggId;
+    const confRaw     = (sugg.confidence || 'Medium').toLowerCase();
+    const confLevel   = confRaw.includes('high') ? 'high' : confRaw.includes('low') ? 'low' : 'medium';
+    const confText    = sugg.confidence || 'Medium';
     const defaultAction = window.achievementDecisions[suggId] || 'include';
+    const isFirst     = rowIdx === 0;
+    const isLast      = rowIdx === suggestedAchs.length - 1;
 
     html += `
       <tr data-ach-id="${escapeHtml(suggId)}" style="background:#fefce8;">
-        <td>
-          <span style="display:inline-block;background:#f59e0b;color:#fff;font-size:0.7em;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:6px;vertical-align:middle;">⭐ AI Suggested</span>
-          <strong>${escapeHtml(sugg.title || '')}</strong>
-          ${sugg.description ? `<br><small style="color:#6b7280;">${escapeHtml(sugg.description.slice(0, 120))}${sugg.description.length > 120 ? '…' : ''}</small>` : ''}
-          ${sugg.experience_id ? `<br><small style="color:#9ca3af;">Experience: ${escapeHtml(sugg.experience_id)}</small>` : ''}
+        <td style="min-width:220px;">
+          <span style="display:inline-block;background:#f59e0b;color:#fff;font-size:0.7em;font-weight:700;padding:1px 6px;border-radius:10px;margin-bottom:4px;vertical-align:middle;">⭐ AI Suggested</span>
+          <input id="ach-title-${escapeHtml(suggId)}"
+            type="text" value="${escapeHtml(sugg.title || '')}"
+            style="width:100%;font-weight:600;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.9em;box-sizing:border-box;"
+            onblur="saveSuggestedAchievementField('${escapeHtml(suggId)}', 'title', this.value)"
+            aria-label="Achievement title">
+          <textarea id="ach-desc-${escapeHtml(suggId)}"
+            rows="2"
+            style="width:100%;margin-top:4px;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.85em;resize:vertical;box-sizing:border-box;"
+            onblur="saveSuggestedAchievementField('${escapeHtml(suggId)}', 'description', this.value)"
+            aria-label="Achievement description"
+          >${escapeHtml(sugg.description || '')}</textarea>
+          ${sugg.experience_id ? `<small style="color:#9ca3af;">Experience: ${escapeHtml(sugg.experience_id)}</small>` : ''}
         </td>
         <td><strong>Add New</strong></td>
         <td><span class="confidence-badge confidence-${confLevel}">${escapeHtml(confText)}</span></td>
-        <td style="max-width:240px;"><small>${escapeHtml(sugg.rationale || '')}</small></td>
+        <td style="max-width:200px;"><small>${escapeHtml(sugg.rationale || '')}</small></td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Add to CV" style="font-size:1.2em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Skip — do not add" style="color:#ef4444;font-size:1.2em;">✗</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize"    title="Emphasize — feature prominently"  style="color:#10b981;font-size:1.4em;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include"      title="Include — add to CV"               style="font-size:1.2em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize" title="De-emphasize — brief mention only"  style="color:#f59e0b;font-size:1.4em;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude"      title="Skip — do not add"                 style="color:#ef4444;font-size:1.2em;">✗</button>
+          <button class="icon-btn" aria-label="AI rewrite" title="AI rewrite description" onclick="aiRewriteSuggestedAchievement('${escapeHtml(suggId)}')" style="font-size:1.2em;">✨</button>
+          <button class="icon-btn" aria-label="Move earlier" title="Move up"   ${isFirst ? 'disabled' : ''} onclick="moveSuggestedAchievementRow('${escapeHtml(suggId)}',-1)" style="font-size:1.0em;padding:2px 5px;">↑</button>
+          <button class="icon-btn" aria-label="Move later"   title="Move down" ${isLast  ? 'disabled' : ''} onclick="moveSuggestedAchievementRow('${escapeHtml(suggId)}',+1)" style="font-size:1.0em;padding:2px 5px;">↓</button>
+          <button class="icon-btn" aria-label="Remove suggestion" title="Remove suggestion" onclick="deleteSuggestedAchievement('${escapeHtml(suggId)}')" style="color:#ef4444;font-size:1.0em;padding:2px 5px;">🗑</button>
         </td>
       </tr>
     `;
@@ -4697,9 +4769,12 @@ async function submitAchievementDecisions() {
   const count = Object.keys(allDecisions).length;
   if (count === 0) return;
   // Resolve suggested achievement objects that were accepted
-  const suggestedAchs = (window.pendingRecommendations || {}).suggested_achievements || [];
+  const suggestedAchs = window._suggestedAchsOrdered || [];
   const acceptedSuggestions = suggestedAchs
-    .filter((_, i) => suggestedDecisions[`sugg::${i}`] === 'include')
+    .filter(s => {
+      const action = suggestedDecisions[s._suggId];
+      return action === 'include' || action === 'emphasize';
+    })
     .map(s => ({ title: s.title, description: s.description, experience_id: s.experience_id, rationale: s.rationale }));
   try {
     const response = await fetch('/api/review-decisions', {
@@ -4710,6 +4785,13 @@ async function submitAchievementDecisions() {
     if (response.ok) {
       showToast(`Achievement selections saved (${count} items)`);
       scheduleAtsRefresh();
+      // Persist locally so the review UI immediately reflects saved choices
+      window._savedDecisions = window._savedDecisions || {};
+      window._savedDecisions.achievement_decisions = decisions;
+      if (acceptedSuggestions && acceptedSuggestions.length > 0) {
+        window._savedDecisions.accepted_suggested_achievements = acceptedSuggestions;
+      }
+      if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
       switchTab('summary-review');
     } else {
       const err = await response.json();
@@ -4778,7 +4860,12 @@ async function buildAchievementsEditor() {
       </p>
   `;
 
+  // Filter out experiences that user marked as excluded (persisted decisions)
+  const expDecisions = (window._savedDecisions && window._savedDecisions.experience_decisions) || userSelections.experiences || {};
   experiences.forEach((exp, expIdx) => {
+    const expId = exp.id || exp.experience_id || `exp::${expIdx}`;
+    const decision = expDecisions[expId];
+    if (decision === 'exclude') return; // omit excluded experiences from editor
     const title    = escapeHtml(exp.title || exp.position || `Experience ${expIdx + 1}`);
     const company  = escapeHtml(exp.company || exp.organization || '');
     const achCount = window.achievementEdits[expIdx].length;
@@ -5093,6 +5180,66 @@ async function deleteTopLevelAchievement(achId) {
   } catch (_) {
     showToast('Failed to delete achievement.', 'error');
   }
+}
+
+/**
+ * Save an edited field on an AI-suggested achievement (in-memory only;
+ * suggestions are not persisted to the server until accepted).
+ */
+function saveSuggestedAchievementField(suggId, field, value) {
+  const sugg = (window._suggestedAchsOrdered || []).find(s => s._suggId === suggId);
+  if (sugg) sugg[field] = value;
+}
+
+/**
+ * Open the AI rewrite modal for a suggested achievement description.
+ */
+async function aiRewriteSuggestedAchievement(suggId) {
+  const sugg = (window._suggestedAchsOrdered || []).find(s => s._suggId === suggId);
+  if (!sugg) return;
+  const originalText = sugg.description || '';
+  if (!originalText) { showToast('Please enter a description first.', 'error'); return; }
+
+  _rewriteSuggestionHistory = [];
+  _lastRewriteLogId = null;
+  _openRewriteModal(originalText, '', null, {
+    experienceIndex: null,
+    onAccept: async (suggestion) => {
+      saveSuggestedAchievementField(suggId, 'description', suggestion);
+      const descEl = document.getElementById(`ach-desc-${suggId}`);
+      if (descEl) descEl.value = suggestion;
+      _recordRewriteOutcome('accepted', suggestion);
+      showToast('Achievement updated.');
+    },
+  });
+  await _runRewrite(originalText);
+}
+
+/**
+ * Move a suggested achievement up or down within the display order.
+ * Stable IDs mean no decision remapping is needed.
+ */
+function moveSuggestedAchievementRow(suggId, direction) {
+  const arr = window._suggestedAchsOrdered;
+  if (!arr) return;
+  const idx = arr.findIndex(s => s._suggId === suggId);
+  if (idx < 0) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= arr.length) return;
+  [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+  _renderAchievementsReviewTable(document.getElementById('achievements-table-container'));
+}
+
+/**
+ * Remove a suggested achievement from the list after confirmation.
+ * Stable IDs mean no other decision keys need remapping.
+ */
+async function deleteSuggestedAchievement(suggId) {
+  const confirmed = await confirmDialog('Remove this AI suggestion?', { confirmLabel: 'Remove', danger: true });
+  if (!confirmed) return;
+  window._suggestedAchsOrdered = (window._suggestedAchsOrdered || []).filter(s => s._suggId !== suggId);
+  delete window.achievementDecisions[suggId];
+  _renderAchievementsReviewTable(document.getElementById('achievements-table-container'));
 }
 
 async function saveAchievementEditsAndContinue() {
@@ -5701,6 +5848,11 @@ async function submitExperienceDecisions() {
     if (response.ok) {
       showToast(`Experience decisions saved (${count} items)`);
       scheduleAtsRefresh();
+      // Persist saved decisions locally so the UI reflects them immediately
+      window._savedDecisions = window._savedDecisions || {};
+      window._savedDecisions.experience_decisions = decisions;
+      userSelections.experiences = { ...decisions };
+      if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
       switchTab('ach-editor');
     } else {
       const error = await response.json();
@@ -5742,6 +5894,13 @@ async function submitSkillDecisions() {
       const extraNote = extraSkills.length > 0 ? ` (${extraSkills.length} AI-suggested skill(s) added for this CV only)` : '';
       showToast(`Skill decisions saved (${count} items)${extraNote}`);
       scheduleAtsRefresh();
+      // Persist saved decisions locally so the UI reflects them immediately
+      window._savedDecisions = window._savedDecisions || {};
+      window._savedDecisions.skill_decisions = decisions;
+      if (!window._savedDecisions.extra_skills) window._savedDecisions.extra_skills = [];
+      if (extraSkills.length > 0) window._savedDecisions.extra_skills = extraSkills;
+      userSelections.skills = { ...decisions };
+      if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
       switchTab('achievements-review');
     } else {
       const error = await response.json();
@@ -10447,5 +10606,8 @@ if (typeof module !== 'undefined') {
     updateAtsBadge,
     refreshAtsScore,
     scheduleAtsRefresh,
+    saveSuggestedAchievementField,
+    moveSuggestedAchievementRow,
+    deleteSuggestedAchievement,
   };
 }
