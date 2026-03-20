@@ -4860,9 +4860,57 @@ Close professionally with a call to action.
         entry = _get_session()
         conv  = entry.manager
         job_analysis   = conv.state.get("job_analysis") or {}
-        customizations = conv.state.get("customizations") or {}
+        customizations = dict(conv.state.get("customizations") or {})
         body  = request.get_json(silent=True) or {}
         basis = body.get("basis", "review_checkpoint")
+
+        # Enrich customizations with session-level decision fields so the ATS
+        # scorer sees the actual content the user has approved/edited.
+        #
+        # skill_decisions: {skill_name: 'keep'|'exclude'} → approved_skills list
+        skill_decisions = conv.state.get("skill_decisions") or {}
+        extra_skills    = conv.state.get("extra_skills") or []
+        kept_skills = [k for k, v in skill_decisions.items() if v != "exclude"]
+        kept_skills += [s for s in extra_skills if s not in kept_skills]
+        if kept_skills:
+            existing = [
+                (s.get("name") if isinstance(s, dict) else s)
+                for s in customizations.get("approved_skills", [])
+            ]
+            customizations["approved_skills"] = list(
+                customizations.get("approved_skills", [])
+            ) + [s for s in kept_skills if s not in existing]
+
+        # approved_rewrites stored at top-level state (not nested in customizations)
+        if not customizations.get("approved_rewrites"):
+            state_rewrites = conv.state.get("approved_rewrites") or []
+            if state_rewrites:
+                customizations["approved_rewrites"] = state_rewrites
+
+        # achievement_edits: {expIdx: [bullet, ...]} — fold into experience text
+        achievement_edits = conv.state.get("achievement_edits") or {}
+        if achievement_edits and not customizations.get("approved_rewrites"):
+            bullet_rewrites = []
+            for bullets in achievement_edits.values():
+                if isinstance(bullets, list):
+                    bullet_rewrites.extend(
+                        {"rewritten": b, "section": "experience"}
+                        for b in bullets if isinstance(b, str) and b.strip()
+                    )
+            if bullet_rewrites:
+                customizations.setdefault("approved_rewrites", [])
+                customizations["approved_rewrites"] = (
+                    customizations["approved_rewrites"] + bullet_rewrites
+                )
+
+        # session_summaries override master professional_summaries
+        session_summaries = conv.state.get("session_summaries") or {}
+        if session_summaries and not customizations.get("selected_summary"):
+            focus = conv.state.get("summary_focus_override", "ai_recommended")
+            chosen = session_summaries.get(focus) or next(iter(session_summaries.values()), "")
+            if chosen:
+                customizations["selected_summary"] = chosen
+
         score = _compute_ats_score(job_analysis, customizations, basis=basis)
         # Persist latest score into generation_state for client polling
         gen = conv.state.setdefault("generation_state", {})
