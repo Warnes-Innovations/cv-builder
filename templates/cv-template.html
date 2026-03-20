@@ -365,13 +365,22 @@
                 overflow: hidden; /* Important: Prevents content from spilling over */
             }
 
-            /* 2. Page 2 and subsequent flow */
-            #page-two, #page-three {
-                height: 279.4mm; /* Set exact height for print page break */
+            /* 2. Page 2: auto-height so experience flows across physical print pages */
+            #page-two {
+                height: auto;
                 min-height: 279.4mm;
                 page-break-before: always;
-                page-break-after: auto; 
             }
+
+            /* 3. Page 3 (skills overflow): starts on a fresh print page */
+            #page-three {
+                height: auto;
+                min-height: 279.4mm;
+                page-break-before: always;
+            }
+
+            /* Hide screen-only page-break markers in print */
+            .page-break-marker { display: none; }
 
             /* Columns for Page 1 */
             #page-one .left-col {
@@ -423,12 +432,35 @@
             }
         }
 
+        /* Screen-only page-break guide lines (injected by JS) */
+        .page-break-marker {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 0;
+            border-top: 2px dashed #b0b8c4;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .page-break-marker::after {
+            content: '— page break —';
+            position: absolute;
+            right: 8px;
+            top: -10px;
+            font-size: 9px;
+            color: #94a3b8;
+            background: white;
+            padding: 0 4px;
+            font-family: sans-serif;
+        }
+
         /* Publications section */
         .pub-list { list-style: decimal; padding-left: 1.4em; margin: 0; }
         .pub-item { margin-bottom: 0.7em; font-size: 0.88em; line-height: 1.5; }
         .pub-citation { color: var(--text-main); }
         .pub-count { font-size: 0.75em; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
         .pub-venue-warn { color: #dc7900; font-size: 0.85em; margin-left: 4px; cursor: help; }
+        .pub-first-author { color: #1d4ed8; font-size: 0.8em; margin-left: 4px; cursor: help; }
 
         /* Certifications in sidebar */
         .cert-item { margin-bottom: 0.5em; }
@@ -521,6 +553,7 @@
                     </p>
                 </section>
 
+                {% if achievements %}
                 <section class="section">
                     <h2 class="section-title"><i class="fas fa-trophy"></i> Selected Achievements</h2>
                     <ul class="achievement-list">
@@ -529,6 +562,7 @@
                         {% endfor %}
                     </ul>
                 </section>
+                {% endif %}
             </main>
         </div>
 
@@ -553,7 +587,7 @@
                 </section>
             </aside>
 
-            <!-- Right Column (Experience - Retained 4 most recent entries) -->
+            <!-- Right Column (Experience - all entries; CSS pagination flows remainder to next print page) -->
             <main class="right-col">
                 <section class="section">
                     <h2 class="section-title"><i class="fas fa-briefcase"></i> Experience</h2>
@@ -599,28 +633,8 @@
                 </section>
              </aside>
 
-             <!-- Right Column (Experience Continuation - additional entries) -->
-             <main class="right-col">
-                <section class="section">
-                    {% for exp in experiences[4:] %}
-                    <div class="job-entry">
-                        <div class="job-header">
-                            <div class="job-role">{{ exp.title }}</div>
-                            <div class="job-company">{{ exp.company }}</div>
-                        </div>
-                        <div class="job-dates">{{ exp.start_date }} – {{ exp.end_date }}</div>
-                        {% set ach_list = exp.ordered_achievements if exp.ordered_achievements is defined else exp.achievements %}
-                        {% if ach_list %}
-                        <ul class="job-details">
-                            {% for ac in ach_list %}
-                            <li>{{ ac.text if ac is mapping else ac }}</li>
-                            {% endfor %}
-                        </ul>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                </section>
-             </main>
+             <!-- Right Column (reserved for layout instructions; experience flows from page 2 via CSS pagination) -->
+             <main class="right-col"></main>
         </div>
         <!-- END PAGE THREE -->
     </div>
@@ -632,7 +646,7 @@
             <section class="section">
                 <h2 class="section-title"><i class="fas fa-file-alt"></i>
                     {% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}
-                    Selected Publications
+                    Selected Publications ({{ publications | length }})
                     {% else %}
                     Publications
                     {% endif %}
@@ -641,6 +655,9 @@
                     {% for pub in publications %}
                     <li class="pub-item">
                         <span class="pub-citation">{{ pub.formatted_citation }}</span>
+                        {% if pub.is_first_author %}
+                        <span class="pub-first-author" title="First author">★</span>
+                        {% endif %}
                         {% if pub.venue_warning %}
                         <span class="pub-venue-warn" title="{{ pub.venue_warning }}">⚠</span>
                         {% endif %}
@@ -716,5 +733,37 @@ SELECTED PUBLICATIONS
 ================================================================================
     </pre></section>
 
+<script>
+/* Inject visual page-break dividers every 279.4 mm within pages that overflow.
+   These are screen-only guides — hidden from print via CSS. */
+(function () {
+    var PAGE_HEIGHT_PX = 279.4 * 3.7795275591; // mm → px at 96 dpi
+
+    function addMarkers(el) {
+        var h = el.offsetHeight;
+        if (h <= PAGE_HEIGHT_PX) return;
+        el.style.position = 'relative';
+        var n = Math.floor(h / PAGE_HEIGHT_PX);
+        for (var i = 1; i <= n; i++) {
+            var m = document.createElement('div');
+            m.className = 'page-break-marker';
+            m.style.top = (i * PAGE_HEIGHT_PX) + 'px';
+            el.appendChild(m);
+        }
+    }
+
+    function run() {
+        document.querySelectorAll('.page').forEach(function (p) {
+            if (p.id !== 'page-one') addMarkers(p);
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', run);
+    } else {
+        run();
+    }
+})();
+</script>
 </body>
 </html>

@@ -17,12 +17,16 @@ def test_enhanced_url_fetching(require_server=None):
     print("🧪 Testing Enhanced URL Fetching")
     print("=" * 50)
     
+    # Create a session and use its session_id for requests
+    resp = requests.post(f"{base_url}/api/sessions/new")
+    sid = resp.json().get('session_id')
+
     # Test 1: LinkedIn URL (should be detected and handled gracefully)
     print("\n🔗 Test 1: LinkedIn URL Detection")
     linkedin_url = "https://www.linkedin.com/jobs/view/4264067121"
     
     response = requests.post(f"{base_url}/api/fetch-job-url",
-                           json={"url": linkedin_url})
+                           json={"url": linkedin_url, "session_id": sid})
     
     print(f"Status Code: {response.status_code}")
     if response.status_code == 400:  # Expected for LinkedIn
@@ -42,7 +46,7 @@ def test_enhanced_url_fetching(require_server=None):
     indeed_url = "https://www.indeed.com/viewjob?jk=test123"
     
     response = requests.post(f"{base_url}/api/fetch-job-url",
-                           json={"url": indeed_url})
+                           json={"url": indeed_url, "session_id": sid})
     
     if response.status_code == 400:  # Expected for Indeed
         result = response.json()
@@ -54,7 +58,7 @@ def test_enhanced_url_fetching(require_server=None):
     public_url = "https://httpbin.org/html"
     
     response = requests.post(f"{base_url}/api/fetch-job-url",
-                           json={"url": public_url})
+                           json={"url": public_url, "session_id": sid})
     
     if response.status_code == 200:
         result = response.json()
@@ -70,7 +74,7 @@ def test_enhanced_url_fetching(require_server=None):
     invalid_url = "not-a-valid-url"
     
     response = requests.post(f"{base_url}/api/fetch-job-url",
-                           json={"url": invalid_url})
+                           json={"url": invalid_url, "session_id": sid})
     
     if response.status_code == 400:
         result = response.json()
@@ -81,7 +85,7 @@ def test_enhanced_url_fetching(require_server=None):
     nonexistent_url = "https://this-domain-definitely-does-not-exist-12345.com"
     
     response = requests.post(f"{base_url}/api/fetch-job-url",
-                           json={"url": nonexistent_url})
+                           json={"url": nonexistent_url, "session_id": sid})
     
     if response.status_code == 500:
         result = response.json()
@@ -96,7 +100,7 @@ def test_enhanced_url_fetching(require_server=None):
     print("✅ Enhanced browser headers for better compatibility")
     print("✅ Specific content extraction for job descriptions")
     
-    return True
+    assert True
 
 def test_ui_guidance():
     """Test that the UI provides proper guidance"""
@@ -106,7 +110,7 @@ def test_ui_guidance():
     print("✅ Visual cues (colors) to distinguish working vs manual-required sites")
     print("✅ Clear fallback instructions to encourage 'Paste Text' method")
     
-    return True
+    assert True
 
 if __name__ == "__main__":
     print("🧪 Enhanced URL Fetching Test Suite")

@@ -682,6 +682,23 @@ async function loadModelSelector() {
   _modelSelectorLoading = true;
   try {
     _modelData = await apiCall('GET', '/api/model');
+    // If backend didn't return a persistent selection, prefer a locally-saved choice
+    try {
+      const saved = localStorage.getItem(StorageKeys.TAB_DATA);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && !(_modelData && _modelData.provider) && parsed.currentModelProvider) {
+          _modelData = _modelData || {};
+          _modelData.provider = parsed.currentModelProvider;
+        }
+        if (parsed && !(_modelData && _modelData.model) && parsed.currentModelName) {
+          _modelData = _modelData || {};
+          _modelData.model = parsed.currentModelName;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not read saved model from localStorage:', e);
+    }
     const label = document.getElementById('model-current-label');
     if (label) {
       const prov  = _modelData.provider;
@@ -1016,6 +1033,17 @@ async function setModel(model, provider) {
     // Keep the modal open so the user can click "Test connection"
     // Fire-and-forget connection test so the result appears immediately
     testCurrentModel();
+    // Persist selection locally so it survives frontend reloads even if backend
+    // does not persist the choice.
+    try {
+      const saved = localStorage.getItem(StorageKeys.TAB_DATA);
+      const parsed = saved ? JSON.parse(saved) : {};
+      parsed.currentModelProvider = provider || (_modelData && _modelData.provider) || null;
+      parsed.currentModelName = model || (_modelData && _modelData.model) || null;
+      localStorage.setItem(StorageKeys.TAB_DATA, JSON.stringify(parsed));
+    } catch (e) {
+      console.warn('Failed to persist model selection locally:', e);
+    }
   } catch (e) {
     console.error('Failed to switch model:', e);
     const msg = e.message || String(e);

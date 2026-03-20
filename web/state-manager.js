@@ -52,6 +52,9 @@ let interactiveState = {
 let sessionId = null;
 let lastKnownPhase = PHASES.INIT;
 let isReconnecting = false;
+// Current model/provider selection (persisted to localStorage)
+let currentModelProvider = null;
+let currentModelName = null;
 
 // Staged generation state (GAP-20): tracks preview → confirm → final pipeline.
 // Synced from /api/cv/generation-state on page load and after key transitions.
@@ -89,6 +92,11 @@ const stateManager = {
   // Session management
   getSessionId: () => sessionId,
   setSessionId: (id) => { sessionId = id; localStorage.setItem(StorageKeys.SESSION_ID, id); },
+
+  // Model/provider selection
+  getCurrentModelProvider: () => currentModelProvider,
+  getCurrentModelName: () => currentModelName,
+  setCurrentModel: (provider, model) => { currentModelProvider = provider || null; currentModelName = model || null; saveStateToLocalStorage(); },
 
   // Phase tracking
   getPhase: () => lastKnownPhase,
@@ -202,6 +210,14 @@ function loadStateFromLocalStorage() {
       window.pendingRecommendations = data.pendingRecommendations;
     }
 
+    // Restore saved model/provider selection
+    if (data.currentModelProvider) {
+      currentModelProvider = data.currentModelProvider;
+    }
+    if (data.currentModelName) {
+      currentModelName = data.currentModelName;
+    }
+
     // Restore post-analysis state
     if (data.postAnalysisQuestions) {
       window.postAnalysisQuestions = data.postAnalysisQuestions;
@@ -246,6 +262,9 @@ function saveStateToLocalStorage() {
       questionAnswers: window.questionAnswers,
       lastKnownPhase,
       currentTab,
+      // Persist last-selected model/provider so UI selections survive reloads
+      currentModelProvider,
+      currentModelName,
       generationState,
       atsScore,
     };
@@ -263,6 +282,11 @@ function clearState() {
   initializeState();
   Object.values(StorageKeys).forEach(key => localStorage.removeItem(key));
 }
+
+// The authoritative restoreSession/restoreBackendState/loadSessionFile
+// implementations live in `web/app.js`. Remove duplicate implementations
+// from this module to avoid conflicting behavior and ensure a single
+// restore path is used by the application.
 
 // CJS export shim — no-op in browsers (module is undefined)
 if (typeof module !== 'undefined') {

@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Session precedence integration test</title>
+  <style>body{font-family:system-ui,Arial;background:#fff;padding:20px}#out{white-space:pre-wrap;font-family:monospace;background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #e6edf3}</style>
+</head>
+<body>
+  <h2>Session precedence integration test</h2>
+  <p>This test loads the app scripts locally, mocks <code>/api/status</code> and <code>/api/master-fields</code> and asserts that session edits/decisions take precedence.</p>
+  <div id="out">Starting...</div>
+
+  <script>
+    // Minimal logger
+    function log(msg){ const o = document.getElementById('out'); o.textContent += '\n' + msg; console.log(msg); }
+
+    // Simple fetch mock for the test scope
+    const MASTER_FIELDS = {
+      ok: true,
+      professional_summaries: { default: 'Master default', ai_recommended: 'Master AI' }
+    };
+
+    const STATUS = {
+      phase: 'customization',
+      achievement_edits: { '0': ['Edited bullet A','Edited bullet B'] },
+      experience_decisions: { 'exp1': 'include' },
+      skill_decisions: { 'Python': 'keep' },
+      achievement_decisions: {},
+      publication_decisions: {},
+      summary_focus_override: 'ai_recommended',
+      extra_skills: ['Go'],
+      professional_summaries: { ai_recommended: 'Session AI' }
+    };
+
+    const realFetch = window.fetch;
+    window.fetch = async function(url, opts){
+      if (typeof url === 'string' && url.endsWith('/api/status')){
+        return new Response(JSON.stringify(STATUS), { status:200, headers:{'Content-Type':'application/json'} });
+      }
+      if (typeof url === 'string' && url.endsWith('/api/master-fields')){
+        return new Response(JSON.stringify(MASTER_FIELDS), { status:200, headers:{'Content-Type':'application/json'} });
+      }
+      return realFetch.apply(this, arguments);
+    };
+
+    // Load the app script; adjust path if served from another root
+    const script = document.createElement('script');
+    script.src = '/web/app.js';
+    script.onload = async () => {
+      log('app.js loaded');
+      try {
+        // Call restoreBackendState which should populate window.achievementEdits and window._savedDecisions
+        if (typeof restoreBackendState === 'function'){
+          const hadServer = await restoreBackendState();
+          log('restoreBackendState returned: ' + hadServer);
+        } else {
+          log('restoreBackendState not found');
+        }
+
+        // Validate achievement edits restored
+        if (window.achievementEdits && Array.isArray(window.achievementEdits[0]) && window.achievementEdits[0][0].startsWith('Edited')){
+          log('PASS: achievementEdits restored');
+        } else {
+          log('FAIL: achievementEdits not restored');
+        }
+
+        // Validate saved decisions
+        if (window._savedDecisions && window._savedDecisions.extra_skills && window._savedDecisions.extra_skills.includes('Go')){
+          log('PASS: saved decisions (extra_skills) restored');
+        } else {
+          log('FAIL: saved decisions not restored');
+        }
+
+        // Build summary focus section which fetches master+status in parallel
+        if (typeof buildSummaryFocusSection === 'function'){
+          await buildSummaryFocusSection();
+          // The summary panel should have session summary applied; we inspect the DOM element
+          const aiTextEl = document.getElementById('ai-summary-text');
+          const aiText = aiTextEl ? aiTextEl.textContent : '';
+          if (aiText && aiText.includes('Session AI')){
+            log('PASS: buildSummaryFocusSection used session summary');
+          } else {
+            log('FAIL: buildSummaryFocusSection did not use session summary');
+          }
+        } else {
+          log('buildSummaryFocusSection not found');
+        }
+
+      } catch (e){
+        log('ERROR: ' + e.message);
+      }
+    };
+    script.onerror = () => log('Failed to load app.js — ensure this file is served from the web root as /web/app.js');
+    document.head.appendChild(script);
+  </script>
+</body>
+</html>
