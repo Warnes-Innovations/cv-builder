@@ -373,6 +373,7 @@ def create_app(args) -> Flask:
         idle_timeout_minutes=_app_config.idle_timeout_minutes,
         build_objects=_build_objects_for_registry,
     )
+    app.session_registry = session_registry  # exposed for test access
 
     @app.before_request
     def _evict_idle_sessions():
@@ -4164,11 +4165,13 @@ Close professionally with a call to action.
 
         # ── Fallback: load most recent HTML file from output directory ───────
         if not html_str:
-            generated  = conv.state.get("generated_files") or {}
-            output_dir = Path(generated.get("output_dir", ""))
-            if output_dir.is_dir():
-                for p in sorted(output_dir.glob("*.html")):
-                    html_str = p.read_text(encoding="utf-8")
+            generated      = conv.state.get("generated_files") or {}
+            output_dir_str = generated.get("output_dir", "")
+            if output_dir_str:
+                output_dir = Path(output_dir_str)
+                if output_dir.is_dir():
+                    for p in sorted(output_dir.glob("*.html")):
+                        html_str = p.read_text(encoding="utf-8")
 
         if not html_str:
             return jsonify({"error": "No CV content available — complete customisation first."}), 404
@@ -4325,20 +4328,51 @@ Close professionally with a call to action.
 
     @app.post("/api/cv/generate-final")
     def generate_cv_final():
-        """Assert layout_confirmed; mark generation complete and return paths."""
+        """Regenerate human-readable HTML+PDF from the confirmed preview; mark final_complete.
+
+        Requires layout_confirmed == true and an existing output_dir (from the
+        earlier generate_cv run).  Takes the confirmed HTML out of generation_state,
+        writes it to the output directory, and reconverts to PDF so that any layout
+        instructions applied during the preview loop are reflected in the final files.
+
+        ATS DOCX is derived from structured data (not HTML) and is left unchanged.
+        """
         entry = _get_session()
         conv  = entry.manager
         gen   = conv.state.get("generation_state") or {}
         if not gen.get("layout_confirmed"):
             return jsonify({"error": "Confirm layout first via /api/cv/confirm-layout."}), 400
+
+        confirmed_html = gen.get("preview_html")
+        if not confirmed_html:
+            return jsonify({"error": "No confirmed preview HTML in session."}), 400
+
         generated = conv.state.get("generated_files") or {}
         if not generated.get("output_dir"):
             return jsonify({"error": "No generated files — complete workflow first."}), 404
+
+        output_dir = Path(generated["output_dir"])
+        try:
+            final_paths = conv.orchestrator.generate_final_from_confirmed_html(
+                confirmed_html=confirmed_html,
+                output_dir=output_dir,
+                filename_base="CV_final",
+            )
+        except Exception as exc:
+            app.logger.error("generate_final_from_confirmed_html failed: %s", exc)
+            return jsonify({"error": f"Final generation failed: {exc}"}), 500
+
         now = datetime.now().isoformat()
         gen = conv.state.setdefault("generation_state", {})
-        gen.update({"phase": "final_complete", "final_generated_at": now})
+        gen.update({
+            "phase": "final_complete",
+            "final_generated_at": now,
+            "final_output_paths": final_paths,
+        })
         conv._save_session()
-        return jsonify({"ok": True, "generated_at": now, "outputs": generated})
+
+        outputs = {**generated, "final_html": final_paths["html"], "final_pdf": final_paths["pdf"]}
+        return jsonify({"ok": True, "generated_at": now, "outputs": outputs})
 
     @app.post("/api/finalise")
     def finalise_application():

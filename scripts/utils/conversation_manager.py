@@ -71,6 +71,7 @@ class ConversationManager:
             'summary_focus_override':  None, # str — selected professional summary key
             'extra_skills':            [],   # List[str] — LLM-suggested skills not in master CV
             'achievement_rewrite_log': [],   # List[Dict] — AI rewrite interactions per achievement
+            'generation_state':        {},   # Dict — GAP-20 staged generation phase/artifact state
         }
         self.session_dir: Optional[Path] = None
         self.session_id: Optional[str] = None
@@ -1497,6 +1498,8 @@ Ask questions that are specific to this job posting, not generic career question
             self.state['rewrite_audit'] = []
         if 'achievement_rewrite_log' not in self.state:
             self.state['achievement_rewrite_log'] = []
+        if 'generation_state' not in self.state:
+            self.state['generation_state'] = {}
         self.conversation_history = session_data['conversation_history']
         self.session_dir = Path(session_file).parent
 

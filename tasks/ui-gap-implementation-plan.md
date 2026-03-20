@@ -1,7 +1,7 @@
 # UI Gap Implementation Plan
 
 **Created:** 2026-03-19  
-**Status:** Proposed  
+**Status:** Phase 0 complete; Phase 1 in progress (2026-03-19)  
 **Source basis:** `tasks/ui-review.md` and `tasks/gaps.md` refreshed on 2026-03-19
 
 ## Overview
@@ -233,14 +233,23 @@ This plan does not treat lower-priority persuasion or broad master-data ingestio
 
 ## Recommended Delivery Sequence
 
-### Phase 0: Architecture Audit and Contract Definition
+### Phase 0: Architecture Audit and Contract Definition — **DONE (2026-03-19)**
 
-- Confirm current backend and frontend state for generation, ATS scoring, rerun, spell-check, and master-data flows.
-- Produce a short contract note for staged generation artifacts, ATS score schema, skill typing, and rerun diffing.
-- Identify files and tests that will be touched by each workstream.
-- Perform only enabling refactors in this phase:
-  - extract or isolate the smallest backend/frontend seams needed to implement staged generation, ATS score refresh/display, and rerun state safely
-  - avoid broad module splits that would delay the first end-to-end workflow fix
+- Confirmed current backend and frontend state for generation, ATS scoring, rerun, spell-check, and master-data flows.
+- Produced `tasks/contracts/phase0-contract.md` covering staged generation artifacts, ATS score schema, skill typing, and rerun diffing.
+- Identified files and tests to be touched by each workstream.
+
+### Phase 1: Staged Generation Slice — **IN PROGRESS (2026-03-19)**
+
+Phase 1 deliverables status:
+- [x] Backend endpoints: `/api/cv/generate-preview`, `/api/cv/layout-refine`, `/api/cv/confirm-layout`, `/api/cv/generate-final`, `/api/cv/generation-state` — implemented in `scripts/web_app.py`
+- [x] `CVOrchestrator.render_html_preview()` and `generate_final_from_confirmed_html()` — implemented in `scripts/utils/cv_orchestrator.py`
+- [x] `generation_state` added to `ConversationManager` state dict and `load_session` backward-compat guards
+- [x] `app.session_registry` exposed on Flask app object for test isolation
+- [x] Bug fix: `Path("").is_dir()` fallback resolves to cwd — fixed with non-empty string guard
+- [x] Regression tests: 26 tests in `tests/test_staged_generation.py` covering all endpoints, guards, happy paths, and session persistence
+- [ ] Frontend staged generation UI (preview pane + confirm button wired to new endpoints) — pending
+- [ ] ATS score badge integration — pending (foundation exists in HTML/CSS)
 
 ### Phase 1: Staged Generation Slice
 
