@@ -602,6 +602,10 @@ async function loadSessionFile(path) {
     // Persist the loaded path so auto-reload can find it after the next server restart
     localStorage.setItem(StorageKeys.SESSION_PATH, data.session_file || path);
 
+    // Reset session-scoped suggestion state so a new session's suggestions
+    // don't inherit IDs or decisions from the previous session.
+    window._suggestedAchsOrdered = null;
+
     // Reload conversation history and status from the freshly-loaded backend
     const historyRes = await fetch('/api/history');
     if (historyRes.ok) {
@@ -4561,11 +4565,18 @@ async function buildAchievementsReviewTable() {
   const savedAchDecs = window._savedDecisions?.achievement_decisions || {};
   if (Object.keys(savedAchDecs).length > 0) Object.assign(window.achievementDecisions, savedAchDecs);
 
-  // Also handle AI-suggested achievements
-  const suggestedAchs = data.suggested_achievements || [];
-  suggestedAchs.forEach((_, i) => {
-    const suggId = `sugg::${i}`;
-    if (!(suggId in window.achievementDecisions)) window.achievementDecisions[suggId] = 'include';
+  // Also handle AI-suggested achievements — assign stable IDs once on first load
+  // so that reorder / delete operations never need to remap decision keys.
+  if (!window._suggestedAchsOrdered) {
+    let counter = 0;
+    window._suggestedAchsOrdered = (data.suggested_achievements || []).map(s => {
+      const item = Object.assign({}, s);
+      item._suggId = `sugg::${counter++}`;
+      return item;
+    });
+  }
+  window._suggestedAchsOrdered.forEach(s => {
+    if (!(s._suggId in window.achievementDecisions)) window.achievementDecisions[s._suggId] = 'include';
   });
 
   _renderAchievementsReviewTable(container);
@@ -4577,7 +4588,7 @@ function _renderAchievementsReviewTable(container) {
 
   const data = window.pendingRecommendations || {};
   const orderedAchs  = window._achievementsOrdered || [];
-  const suggestedAchs = (data.suggested_achievements || []);
+  const suggestedAchs = window._suggestedAchsOrdered || [];
 
   // Build filter + table HTML
   let html = `
@@ -4645,28 +4656,45 @@ function _renderAchievementsReviewTable(container) {
     `;
   });
 
-  // AI-suggested achievements
-  suggestedAchs.forEach((sugg, i) => {
-    const suggId    = `sugg::${i}`;
-    const confRaw   = (sugg.confidence || 'Medium').toLowerCase();
-    const confLevel = confRaw.includes('high') ? 'high' : confRaw.includes('low') ? 'low' : 'medium';
-    const confText  = sugg.confidence || 'Medium';
+  // AI-suggested achievements — full editing/control parity with user achievements
+  suggestedAchs.forEach((sugg, rowIdx) => {
+    const suggId      = sugg._suggId;
+    const confRaw     = (sugg.confidence || 'Medium').toLowerCase();
+    const confLevel   = confRaw.includes('high') ? 'high' : confRaw.includes('low') ? 'low' : 'medium';
+    const confText    = sugg.confidence || 'Medium';
     const defaultAction = window.achievementDecisions[suggId] || 'include';
+    const isFirst     = rowIdx === 0;
+    const isLast      = rowIdx === suggestedAchs.length - 1;
 
     html += `
       <tr data-ach-id="${escapeHtml(suggId)}" style="background:#fefce8;">
-        <td>
-          <span style="display:inline-block;background:#f59e0b;color:#fff;font-size:0.7em;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:6px;vertical-align:middle;">⭐ AI Suggested</span>
-          <strong>${escapeHtml(sugg.title || '')}</strong>
-          ${sugg.description ? `<br><small style="color:#6b7280;">${escapeHtml(sugg.description.slice(0, 120))}${sugg.description.length > 120 ? '…' : ''}</small>` : ''}
-          ${sugg.experience_id ? `<br><small style="color:#9ca3af;">Experience: ${escapeHtml(sugg.experience_id)}</small>` : ''}
+        <td style="min-width:220px;">
+          <span style="display:inline-block;background:#f59e0b;color:#fff;font-size:0.7em;font-weight:700;padding:1px 6px;border-radius:10px;margin-bottom:4px;vertical-align:middle;">⭐ AI Suggested</span>
+          <input id="ach-title-${escapeHtml(suggId)}"
+            type="text" value="${escapeHtml(sugg.title || '')}"
+            style="width:100%;font-weight:600;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.9em;box-sizing:border-box;"
+            onblur="saveSuggestedAchievementField('${escapeHtml(suggId)}', 'title', this.value)"
+            aria-label="Achievement title">
+          <textarea id="ach-desc-${escapeHtml(suggId)}"
+            rows="2"
+            style="width:100%;margin-top:4px;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.85em;resize:vertical;box-sizing:border-box;"
+            onblur="saveSuggestedAchievementField('${escapeHtml(suggId)}', 'description', this.value)"
+            aria-label="Achievement description"
+          >${escapeHtml(sugg.description || '')}</textarea>
+          ${sugg.experience_id ? `<small style="color:#9ca3af;">Experience: ${escapeHtml(sugg.experience_id)}</small>` : ''}
         </td>
         <td><strong>Add New</strong></td>
         <td><span class="confidence-badge confidence-${confLevel}">${escapeHtml(confText)}</span></td>
-        <td style="max-width:240px;"><small>${escapeHtml(sugg.rationale || '')}</small></td>
+        <td style="max-width:200px;"><small>${escapeHtml(sugg.rationale || '')}</small></td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'include' ? 'active' : ''}" data-action="include" title="Add to CV" style="font-size:1.2em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'exclude' ? 'active' : ''}" data-action="exclude" title="Skip — do not add" style="color:#ef4444;font-size:1.2em;">✗</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize"    title="Emphasize — feature prominently"  style="color:#10b981;font-size:1.4em;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include"      title="Include — add to CV"               style="font-size:1.2em;">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize" title="De-emphasize — brief mention only"  style="color:#f59e0b;font-size:1.4em;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude"      title="Skip — do not add"                 style="color:#ef4444;font-size:1.2em;">✗</button>
+          <button class="icon-btn" aria-label="AI rewrite" title="AI rewrite description" onclick="aiRewriteSuggestedAchievement('${escapeHtml(suggId)}')" style="font-size:1.2em;">✨</button>
+          <button class="icon-btn" aria-label="Move earlier" title="Move up"   ${isFirst ? 'disabled' : ''} onclick="moveSuggestedAchievementRow('${escapeHtml(suggId)}',-1)" style="font-size:1.0em;padding:2px 5px;">↑</button>
+          <button class="icon-btn" aria-label="Move later"   title="Move down" ${isLast  ? 'disabled' : ''} onclick="moveSuggestedAchievementRow('${escapeHtml(suggId)}',+1)" style="font-size:1.0em;padding:2px 5px;">↓</button>
+          <button class="icon-btn" aria-label="Remove suggestion" title="Remove suggestion" onclick="deleteSuggestedAchievement('${escapeHtml(suggId)}')" style="color:#ef4444;font-size:1.0em;padding:2px 5px;">🗑</button>
         </td>
       </tr>
     `;
@@ -4741,9 +4769,12 @@ async function submitAchievementDecisions() {
   const count = Object.keys(allDecisions).length;
   if (count === 0) return;
   // Resolve suggested achievement objects that were accepted
-  const suggestedAchs = (window.pendingRecommendations || {}).suggested_achievements || [];
+  const suggestedAchs = window._suggestedAchsOrdered || [];
   const acceptedSuggestions = suggestedAchs
-    .filter((_, i) => suggestedDecisions[`sugg::${i}`] === 'include')
+    .filter(s => {
+      const action = suggestedDecisions[s._suggId];
+      return action === 'include' || action === 'emphasize';
+    })
     .map(s => ({ title: s.title, description: s.description, experience_id: s.experience_id, rationale: s.rationale }));
   try {
     const response = await fetch('/api/review-decisions', {
@@ -5149,6 +5180,66 @@ async function deleteTopLevelAchievement(achId) {
   } catch (_) {
     showToast('Failed to delete achievement.', 'error');
   }
+}
+
+/**
+ * Save an edited field on an AI-suggested achievement (in-memory only;
+ * suggestions are not persisted to the server until accepted).
+ */
+function saveSuggestedAchievementField(suggId, field, value) {
+  const sugg = (window._suggestedAchsOrdered || []).find(s => s._suggId === suggId);
+  if (sugg) sugg[field] = value;
+}
+
+/**
+ * Open the AI rewrite modal for a suggested achievement description.
+ */
+async function aiRewriteSuggestedAchievement(suggId) {
+  const sugg = (window._suggestedAchsOrdered || []).find(s => s._suggId === suggId);
+  if (!sugg) return;
+  const originalText = sugg.description || '';
+  if (!originalText) { showToast('Please enter a description first.', 'error'); return; }
+
+  _rewriteSuggestionHistory = [];
+  _lastRewriteLogId = null;
+  _openRewriteModal(originalText, '', null, {
+    experienceIndex: null,
+    onAccept: async (suggestion) => {
+      saveSuggestedAchievementField(suggId, 'description', suggestion);
+      const descEl = document.getElementById(`ach-desc-${suggId}`);
+      if (descEl) descEl.value = suggestion;
+      _recordRewriteOutcome('accepted', suggestion);
+      showToast('Achievement updated.');
+    },
+  });
+  await _runRewrite(originalText);
+}
+
+/**
+ * Move a suggested achievement up or down within the display order.
+ * Stable IDs mean no decision remapping is needed.
+ */
+function moveSuggestedAchievementRow(suggId, direction) {
+  const arr = window._suggestedAchsOrdered;
+  if (!arr) return;
+  const idx = arr.findIndex(s => s._suggId === suggId);
+  if (idx < 0) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= arr.length) return;
+  [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+  _renderAchievementsReviewTable(document.getElementById('achievements-table-container'));
+}
+
+/**
+ * Remove a suggested achievement from the list after confirmation.
+ * Stable IDs mean no other decision keys need remapping.
+ */
+async function deleteSuggestedAchievement(suggId) {
+  const confirmed = await confirmDialog('Remove this AI suggestion?', { confirmLabel: 'Remove', danger: true });
+  if (!confirmed) return;
+  window._suggestedAchsOrdered = (window._suggestedAchsOrdered || []).filter(s => s._suggId !== suggId);
+  delete window.achievementDecisions[suggId];
+  _renderAchievementsReviewTable(document.getElementById('achievements-table-container'));
 }
 
 async function saveAchievementEditsAndContinue() {
@@ -10515,5 +10606,8 @@ if (typeof module !== 'undefined') {
     updateAtsBadge,
     refreshAtsScore,
     scheduleAtsRefresh,
+    saveSuggestedAchievementField,
+    moveSuggestedAchievementRow,
+    deleteSuggestedAchievement,
   };
 }
