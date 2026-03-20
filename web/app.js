@@ -559,6 +559,9 @@ async function restoreBackendState() {
       console.log('Restored CV data from backend memory');
     }
 
+    // Reflect restored saved decisions in UI counts
+    if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
+
     // If backend has no active session (cold start after server restart),
     // try to auto-load the most recent session from disk.
     if (!statusData.position_name && !statusData.job_analysis) {
@@ -676,6 +679,27 @@ async function loadSessionFile(path) {
     appendMessage('system', `❌ Error restoring session: ${err.message}`);
     return false;
   }
+}
+
+// Update tab labels to include counts of items marked for inclusion
+function updateInclusionCounts() {
+  try {
+    const expDecs = (window._savedDecisions && window._savedDecisions.experience_decisions) || userSelections.experiences || {};
+    const skillDecs = (window._savedDecisions && window._savedDecisions.skill_decisions) || userSelections.skills || {};
+    const achDecs = (window._savedDecisions && window._savedDecisions.achievement_decisions) || window.achievementDecisions || {};
+
+    const expIncluded = Object.values(expDecs).filter(v => v !== 'exclude').length;
+    const skillIncluded = Object.values(skillDecs).filter(v => v !== 'exclude').length;
+    const achIncluded = Object.values(achDecs).filter(v => v !== 'exclude').length;
+
+    const expTab = document.getElementById('tab-exp-review');
+    const skillTab = document.getElementById('tab-skills-review');
+    const achTab = document.getElementById('tab-achievements-review');
+
+    if (expTab) expTab.textContent = `📊 Experiences${expIncluded ? ' (' + expIncluded + ')' : ''}`;
+    if (skillTab) skillTab.textContent = `🛠️ Skills${skillIncluded ? ' (' + skillIncluded + ')' : ''}`;
+    if (achTab) achTab.textContent = `🏆 Achievements${achIncluded ? ' (' + achIncluded + ')' : ''}`;
+  } catch (e) { console.warn('Failed to update inclusion counts:', e); }
 }
 
 // ── LLM abort helper ──────────────────────────────────────────────────────
@@ -4459,6 +4483,21 @@ function moveSkillRow(skillName, direction) {
 window.achievementDecisions = {};
 window._achievementsOrdered = null;   // cached ordered array for the review table
 
+// Small fetch helper with timeout to avoid leaving loaders visible on hanging requests
+async function fetchJsonWithTimeout(url, opts = {}, timeout = 7000) {
+  const controller = new AbortController();
+  const signal = controller.signal;
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const res = await fetch(url, Object.assign({}, opts, { signal }));
+    clearTimeout(id);
+    return res;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
 async function buildAchievementsReviewTable() {
   const container = document.getElementById('achievements-table-container');
   if (!container) return;
@@ -4468,13 +4507,15 @@ async function buildAchievementsReviewTable() {
   // Fetch achievements directly from the master fields endpoint (robust fallback)
   let allAchievements = [];
   try {
-    const res = await fetch('/api/master-fields');
+    const res = await fetchJsonWithTimeout('/api/master-fields', {}, 7000);
+    if (!res.ok) throw new Error('master-fields not ok');
     const masterData = await res.json();
     allAchievements = masterData.selected_achievements || [];
   } catch (err) {
-    // Secondary fallback: /api/status
+    // Secondary fallback: /api/status (also with timeout)
     try {
-      const res2 = await fetch('/api/status');
+      const res2 = await fetchJsonWithTimeout('/api/status', {}, 7000);
+      if (!res2.ok) throw new Error('status not ok');
       const statusData = await res2.json();
       allAchievements = statusData.all_achievements || [];
     } catch (err2) {
@@ -4710,6 +4751,13 @@ async function submitAchievementDecisions() {
     if (response.ok) {
       showToast(`Achievement selections saved (${count} items)`);
       scheduleAtsRefresh();
+      // Persist locally so the review UI immediately reflects saved choices
+      window._savedDecisions = window._savedDecisions || {};
+      window._savedDecisions.achievement_decisions = decisions;
+      if (acceptedSuggestions && acceptedSuggestions.length > 0) {
+        window._savedDecisions.accepted_suggested_achievements = acceptedSuggestions;
+      }
+      if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
       switchTab('summary-review');
     } else {
       const err = await response.json();
@@ -4778,7 +4826,12 @@ async function buildAchievementsEditor() {
       </p>
   `;
 
+  // Filter out experiences that user marked as excluded (persisted decisions)
+  const expDecisions = (window._savedDecisions && window._savedDecisions.experience_decisions) || userSelections.experiences || {};
   experiences.forEach((exp, expIdx) => {
+    const expId = exp.id || exp.experience_id || `exp::${expIdx}`;
+    const decision = expDecisions[expId];
+    if (decision === 'exclude') return; // omit excluded experiences from editor
     const title    = escapeHtml(exp.title || exp.position || `Experience ${expIdx + 1}`);
     const company  = escapeHtml(exp.company || exp.organization || '');
     const achCount = window.achievementEdits[expIdx].length;
@@ -5701,6 +5754,11 @@ async function submitExperienceDecisions() {
     if (response.ok) {
       showToast(`Experience decisions saved (${count} items)`);
       scheduleAtsRefresh();
+      // Persist saved decisions locally so the UI reflects them immediately
+      window._savedDecisions = window._savedDecisions || {};
+      window._savedDecisions.experience_decisions = decisions;
+      userSelections.experiences = { ...decisions };
+      if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
       switchTab('ach-editor');
     } else {
       const error = await response.json();
@@ -5742,6 +5800,13 @@ async function submitSkillDecisions() {
       const extraNote = extraSkills.length > 0 ? ` (${extraSkills.length} AI-suggested skill(s) added for this CV only)` : '';
       showToast(`Skill decisions saved (${count} items)${extraNote}`);
       scheduleAtsRefresh();
+      // Persist saved decisions locally so the UI reflects them immediately
+      window._savedDecisions = window._savedDecisions || {};
+      window._savedDecisions.skill_decisions = decisions;
+      if (!window._savedDecisions.extra_skills) window._savedDecisions.extra_skills = [];
+      if (extraSkills.length > 0) window._savedDecisions.extra_skills = extraSkills;
+      userSelections.skills = { ...decisions };
+      if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
       switchTab('achievements-review');
     } else {
       const error = await response.json();
