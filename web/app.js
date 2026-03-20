@@ -536,6 +536,32 @@ async function restoreBackendState() {
       console.log('Restored CV data from backend memory');
     }
 
+    // Restore achievement edits — always prefer session-saved edits over master CV data.
+    // Done here (not only in loadSessionFile) so live-session reloads also get edited bullets.
+    if (statusData.achievement_edits && Object.keys(statusData.achievement_edits).length > 0) {
+      window.achievementEdits = {};
+      for (const [k, v] of Object.entries(statusData.achievement_edits)) {
+        window.achievementEdits[parseInt(k, 10)] = Array.isArray(v) ? v : [v];
+      }
+    }
+
+    // Restore saved review decisions immediately so review tabs render correctly
+    // before fetchStatus() fires. Mirrors the logic in fetchStatus().
+    window._savedDecisions = {
+      experience_decisions:   statusData.experience_decisions   || {},
+      skill_decisions:        statusData.skill_decisions        || {},
+      achievement_decisions:  statusData.achievement_decisions  || {},
+      publication_decisions:  statusData.publication_decisions  || {},
+      summary_focus_override: statusData.summary_focus_override || null,
+      extra_skills:           statusData.extra_skills           || [],
+    };
+    if (statusData.summary_focus_override) {
+      window.selectedSummaryKey = statusData.summary_focus_override;
+    }
+    if (Array.isArray(statusData.extra_skills) && statusData.extra_skills.length > 0) {
+      window._newSkillsFromLLM = statusData.extra_skills;
+    }
+
     // If backend has no active session (cold start after server restart),
     // try to auto-load the most recent session from disk.
     if (!statusData.position_name && !statusData.job_analysis) {
@@ -4751,19 +4777,20 @@ async function buildSummaryFocusSection() {
 
   const data = window.pendingRecommendations;
 
-  // ── Load all known summaries (master + session) ──────────────────────────
+  // ── Load all known summaries (master base + session overrides) ───────────
+  // Fetch both in parallel; session data always wins over master data.
   let professionalSummaries = {};
-  try {
-    const res = await fetch('/api/master-fields');
-    const masterData = await res.json();
-    if (masterData.ok) Object.assign(professionalSummaries, masterData.professional_summaries || {});
-  } catch (_) { /* ignore */ }
-  // Pull session summaries (e.g. ai_generated) from /api/status
-  try {
-    const res2 = await fetch('/api/status');
-    const statusData = await res2.json();
-    Object.assign(professionalSummaries, statusData.professional_summaries || {});
-  } catch (_) { /* ignore */ }
+  const [mfResult, statusResult] = await Promise.allSettled([
+    fetch('/api/master-fields').then(r => r.json()),
+    fetch('/api/status').then(r => r.json()),
+  ]);
+  if (mfResult.status === 'fulfilled' && mfResult.value.ok) {
+    Object.assign(professionalSummaries, mfResult.value.professional_summaries || {});
+  }
+  if (statusResult.status === 'fulfilled') {
+    // Session summaries (e.g. ai_generated) overwrite master variants
+    Object.assign(professionalSummaries, statusResult.value.professional_summaries || {});
+  }
 
   // ── Suggested content reordering ─────────────────────────────────────────
   const reorderingText = (data && data.suggested_content_reordering) || '';
