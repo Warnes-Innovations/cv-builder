@@ -546,6 +546,57 @@ class TestMasterDataUpdateSkill(unittest.TestCase):
         dumped = mock_dump.call_args[0][0]
         self.assertEqual(dumped['skills'][0], {'name': 'Python', 'experiences': ['exp_1']})
 
+    def test_update_skill_persists_group_field(self):
+        """Setting a group key on update stores it in the skill dict."""
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({'skills': ['Python']})
+
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+
+            res = client.post(
+                '/api/master-data/skill',
+                json={
+                    'action': 'update',
+                    'skill': 'Python',
+                    'group': 'scripting',
+                    'session_id': sid,
+                },
+            )
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(dumped['skills'][0], {'name': 'Python', 'group': 'scripting'})
+
+    def test_update_skill_clears_group_when_empty(self):
+        """Passing group='' removes the group field from the skill."""
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({'skills': [{'name': 'Python', 'group': 'scripting'}]})
+
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+
+            res = client.post(
+                '/api/master-data/skill',
+                json={
+                    'action': 'update',
+                    'skill': 'Python',
+                    'group': '',
+                    'session_id': sid,
+                },
+            )
+
+        self.assertEqual(res.status_code, 200)
+        dumped = mock_dump.call_args[0][0]
+        # group is empty → skill collapses to plain string (no experience_ids either)
+        self.assertEqual(dumped['skills'][0], 'Python')
+
 
 # ---------------------------------------------------------------------------
 # _save_master helper

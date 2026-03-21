@@ -145,6 +145,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
       <thead>
         <tr>
           <th>Skill</th>
+          <th>Group</th>
           <th>Recommendation</th>
           <th>Confidence</th>
           <th>Reasoning</th>
@@ -189,6 +190,8 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     const isLast         = rowIdx === skills.length - 1;
     const skillNameEsc   = escapeHtml(skillName);
 
+    const groupKey = typeof skill === 'object' ? (skill.group || '') : '';
+
     const newBadge = isNew
       ? '<span title="AI suggested — not yet in CV profile" style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>'
       : '';
@@ -215,6 +218,13 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     tableHTML += `
       <tr data-skill="${skillNameEsc}" style="${rowStyle}">
         <td><strong>${skillNameEsc}</strong>${skillTypeBadge}${newBadge}</td>
+        <td style="min-width:100px;">
+          <input type="text" class="skill-group-input" data-skill="${skillNameEsc}"
+            value="${escapeHtml(groupKey)}"
+            placeholder="e.g. c_family"
+            title="Skills with the same group key render as one comma-separated bullet"
+            style="width:100%;font-size:0.8em;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;"/>
+        </td>
         <td><strong>${escapeHtml(recommendationText)}</strong></td>
         <td>${confidenceBadge}</td>
         <td style="max-width:300px;"><small>${escapeHtml(reasoningText)}</small></td>
@@ -243,6 +253,22 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
 
   tableHTML += '</tbody></table>';
   container.innerHTML = tableHTML;
+
+  // Save group key to master data when user finishes editing
+  container.querySelector('#skills-review-table tbody')?.addEventListener('change', e => {
+    const input = e.target.closest('.skill-group-input');
+    if (!input) return;
+    const skillName = input.dataset.skill;
+    const newGroup = input.value.trim();
+    // Update in-memory skill object so re-renders preserve the value
+    const sk = (window._skillsOrdered || []).find(s => (typeof s === 'string' ? s : s.name || s) === skillName);
+    if (sk && typeof sk === 'object') sk.group = newGroup;
+    fetch('/api/master-data/skill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update', skill: skillName, group: newGroup || null }),
+    }).catch(() => {});
+  });
 
   // Update derived-years hint live as user edits the experience match input
   container.querySelector('#skills-review-table tbody')?.addEventListener('input', e => {

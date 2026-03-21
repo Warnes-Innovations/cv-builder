@@ -1324,15 +1324,26 @@ Job Description (excerpt):
                     return str(item.get('name') or '')
                 return ''
 
-            def _skill_payload(name: str, experience_ids: List[str]) -> Any:
-                if experience_ids:
-                    return {'name': name, 'experiences': experience_ids}
+            def _skill_payload(name: str, experience_ids: List[str], group: Optional[str] = None) -> Any:
+                if experience_ids or group:
+                    d: Dict[str, Any] = {'name': name}
+                    if experience_ids:
+                        d['experiences'] = experience_ids
+                    if group:
+                        d['group'] = group
+                    return d
                 return name
 
             def _skill_experiences(item: Any) -> List[str]:
                 if isinstance(item, dict) and isinstance(item.get('experiences'), list):
                     return _sanitize_experience_ids(item.get('experiences'))
                 return []
+
+            def _skill_group(item: Any) -> Optional[str]:
+                if isinstance(item, dict):
+                    g = (item.get('group') or '').strip()
+                    return g if g else None
+                return None
 
             if action == 'add_category':
                 cat_key  = (req.get('category_key') or '').strip()
@@ -1372,13 +1383,15 @@ Job Description (excerpt):
             skill_lower = skill_name.lower()
             new_skill_name = (req.get('skill_new') or skill_name).strip()
             has_experience_field = 'experiences' in req
+            has_group_field = 'group' in req
             requested_experience_ids = _sanitize_experience_ids(req.get('experiences'))
+            requested_group = (req.get('group') or '').strip() or None
             if isinstance(skills, list):
                 if action == 'add':
                     existing_lower = {_skill_name(s).lower() for s in skills}
                     if skill_lower in existing_lower:
                         return jsonify({"ok": False, "error": "Skill already exists"}), 409
-                    skills.append(_skill_payload(skill_name, requested_experience_ids))
+                    skills.append(_skill_payload(skill_name, requested_experience_ids, requested_group))
                     master['skills'] = skills
                     _save_master(master, master_path)
                     return jsonify({"ok": True, "action": "added"})
@@ -1391,7 +1404,8 @@ Job Description (excerpt):
                     effective_experience_ids = (
                         requested_experience_ids if has_experience_field else _skill_experiences(skills[idx])
                     )
-                    skills[idx] = _skill_payload(new_skill_name, effective_experience_ids)
+                    effective_group = requested_group if has_group_field else _skill_group(skills[idx])
+                    skills[idx] = _skill_payload(new_skill_name, effective_experience_ids, effective_group)
                     master['skills'] = skills
                     _save_master(master, master_path)
                     return jsonify({"ok": True, "action": "updated"})
@@ -1425,7 +1439,7 @@ Job Description (excerpt):
                 if action == 'add':
                     if any(_skill_name(s).lower() == skill_lower for s in cat_list):
                         return jsonify({"ok": False, "error": "Skill already exists in category"}), 409
-                    cat_list.append(_skill_payload(skill_name, requested_experience_ids))
+                    cat_list.append(_skill_payload(skill_name, requested_experience_ids, requested_group))
                     _save_master(master, master_path)
                     return jsonify({"ok": True, "action": "added"})
                 if action == 'update':
@@ -1437,7 +1451,8 @@ Job Description (excerpt):
                     effective_experience_ids = (
                         requested_experience_ids if has_experience_field else _skill_experiences(cat_list[idx])
                     )
-                    cat_list[idx] = _skill_payload(new_skill_name, effective_experience_ids)
+                    effective_group = requested_group if has_group_field else _skill_group(cat_list[idx])
+                    cat_list[idx] = _skill_payload(new_skill_name, effective_experience_ids, effective_group)
                     _save_master(master, master_path)
                     return jsonify({"ok": True, "action": "updated"})
                 idx = next((i for i, s in enumerate(cat_list) if _skill_name(s) == skill_name), -1)
