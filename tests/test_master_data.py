@@ -365,6 +365,64 @@ class TestMasterDataFieldValidation(unittest.TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertIn('year', res.get_json()['error'])
 
+    def test_skill_duplicate_case_insensitive_returns_409(self):
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({'skills': ['Python']})
+
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump'), \
+             patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/skill',
+                json={'action': 'add', 'skill': 'python', 'session_id': sid},
+            )
+
+        self.assertEqual(res.status_code, 409)
+        self.assertIn('already exists', res.get_json()['error'])
+
+    def test_skill_add_category_invalid_key_returns_400(self):
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({'skills': {}})
+
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump'), \
+             patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/skill',
+                json={
+                    'action': 'add_category',
+                    'category_key': 'bad key!',
+                    'category_name': 'Bad Key',
+                    'session_id': sid,
+                },
+            )
+
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('category_key', res.get_json()['error'])
+
+    def test_skill_category_non_list_structure_returns_400(self):
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({'skills': {'ml': {'category': 'ML', 'skills': 'python'}}})
+
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump'), \
+             patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/skill',
+                json={
+                    'action': 'add',
+                    'category': 'ml',
+                    'skill': 'TensorFlow',
+                    'session_id': sid,
+                },
+            )
+
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('must be a list', res.get_json()['error'])
+
 
 # ---------------------------------------------------------------------------
 # _save_master helper
