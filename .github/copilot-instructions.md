@@ -47,7 +47,11 @@ master_data['achievements'].append(new_achievement)  # Never during job customiz
   - Provider abstraction: `scripts/utils/llm_client.py`
 
 ## Critical workflows
-- Environment: use conda env `cvgen`.
+- **Environment**: Always use conda env `cvgen` when running Python commands.
+  - ✅ CORRECT: `conda activate cvgen && python scripts/web_app.py`
+  - ✅ CORRECT: `conda run -n cvgen python -m pytest tests/`
+  - ❌ INCORRECT: `python scripts/web_app.py`  # Uses wrong environment
+  - Why: The cvgen environment contains all required dependencies (Flask, WeasyPrint, pytest, etc.) with pinned versions.
 - Start web app: `python scripts/web_app.py --llm-provider github`.
 - If `--llm-provider` is omitted, `llm.default_provider` must be configured via env/config.
 - zsh tip: if shell autocorrect changes `github` to `.github`, escape or quote the provider value, e.g. `python scripts/web_app.py --llm-provider \github` (or `--llm-provider 'github'`).

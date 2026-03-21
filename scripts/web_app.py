@@ -24,6 +24,7 @@ import argparse
 import copy
 import dataclasses
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -35,6 +36,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 from flask import Flask, jsonify, redirect, request, send_file, send_from_directory, url_for
 import requests
@@ -50,7 +53,7 @@ if env_path.exists():
 # Ensure scripts are importable
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils.config import get_config, validate_config, ConfigurationError
+from utils.config import get_config, validate_config, ConfigurationError, setup_logging
 from utils.llm_client import get_llm_provider, PROVIDER_MODELS, PROVIDER_BILLING, MODEL_INFO
 from utils.cv_orchestrator import CVOrchestrator, validate_ats_report
 from utils.conversation_manager import ConversationManager, Phase
@@ -2899,28 +2902,25 @@ Close professionally with a call to action.
                 phase=conversation.state.get("phase"),
             )))
         except LLMAuthError as e:
-            print(f"LLM auth error in /api/message: {e}")
+            logger.warning("LLM auth error in /api/message: %s", e)
             return jsonify({"error": str(e), "error_type": "auth"}), 401
         except LLMRateLimitError as e:
-            print(f"LLM rate limit in /api/message: {e}")
+            logger.warning("LLM rate limit in /api/message: %s", e)
             return jsonify({"error": str(e), "error_type": "rate_limit"}), 429
         except LLMContextLengthError as e:
-            print(f"LLM context length in /api/message: {e}")
+            logger.warning("LLM context length in /api/message: %s", e)
             return jsonify({"error": str(e), "error_type": "context_length"}), 400
         except LLMError as e:
-            print(f"LLM provider error in /api/message: {e}")
+            logger.error("LLM provider error in /api/message: %s", e)
             return jsonify({"error": str(e), "error_type": "provider"}), 502
         except Exception as e:
             # Comprehensive error logging
-            import traceback
-            print("\n" + "="*60)
-            print("ERROR in /api/message endpoint:")
-            print(f"Message: {msg[:100]}..." if len(msg) > 100 else msg)
-            print(f"Error type: {type(e).__name__}")
-            print(f"Error message: {str(e)}")
-            print("Traceback:")
-            traceback.print_exc()
-            print("="*60 + "\n")
+            logger.error(
+                "ERROR in /api/message endpoint: %s (msg: %s)",
+                type(e).__name__,
+                msg[:100] if len(msg) > 100 else msg,
+                exc_info=True
+            )
             return jsonify({"error": str(e)}), 500
 
     @app.post("/api/rename-current-session")
@@ -3460,19 +3460,19 @@ Close professionally with a call to action.
                 phase=conversation.state.get("phase"),
             )))
         except LLMAuthError as e:
-            print(f"LLM auth error in /api/action: {e}")
+            logger.warning("LLM auth error in /api/action: %s", e)
             return jsonify({"error": str(e), "error_type": "auth"}), 401
         except LLMRateLimitError as e:
-            print(f"LLM rate limit in /api/action: {e}")
+            logger.warning("LLM rate limit in /api/action: %s", e)
             return jsonify({"error": str(e), "error_type": "rate_limit"}), 429
         except LLMContextLengthError as e:
-            print(f"LLM context length in /api/action: {e}")
+            logger.warning("LLM context length in /api/action: %s", e)
             return jsonify({"error": str(e), "error_type": "context_length"}), 400
         except LLMError as e:
-            print(f"LLM provider error in /api/action: {e}")
+            logger.error("LLM provider error in /api/action: %s", e)
             return jsonify({"error": str(e), "error_type": "provider"}), 502
         except Exception as e:
-            print(f"Action execution error: {e}")
+            logger.error("Action execution error: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.post("/api/back-to-phase")
@@ -6006,6 +6006,9 @@ def parse_args():
 def main():
     args = parse_args()
     config = get_config()
+    
+    # Set up logging before anything else
+    setup_logging(config)
 
     # ── Startup banner ────────────────────────────────────────────────────────
     model_source = (
