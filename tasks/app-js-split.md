@@ -246,23 +246,21 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ### Tier 6
 
-- [ ] **M20 — `web/rewrite-review.js`** (~1200 lines)
-  - Functions: `fetchAndReviewRewrites`, `_renderRewriteReviewPanel`,
-    `_renderRewriteCard`, `_renderCardHeader`, `_renderCardContent`,
-    `acceptRewrite`, `rejectRewrite`, `editRewrite`, `openEditModal`,
-    `submitRewriteEdit`, `showRewriteEditModal`, `closeRewriteEditModal`,
-    `_validateRewriteText`, `showPersuasionWarnings`,
-    `acknowledgePersuasionWarnings`, `harvestDecisions`,
-    `_formatHarvestedDecisions`
-  - State: `rewriteDecisions`, `_rewritePanelCache`, `_rewriteCallbacks`
-  - Tests: `tests/js/rewrite-review.test.js`
+- [x] **M20 — `web/rewrite-review.js`** (~330 lines)
+  - Functions: `fetchAndReviewRewrites`, `renderRewritePanel`,
+    `computeWordDiff`, `renderDiffHtml`, `renderRewriteCard`,
+    `applyRewriteAction`, `saveRewriteEdit`, `updateRewriteTally`,
+    `submitRewriteDecisions`
+  - State: `rewriteDecisions`, `_rewritePanelCache`, `persuasionWarningsAcknowledged`
+  - Tests: `tests/js/rewrite-review.test.js` (29 tests)
 
-- [ ] **M21 — `web/spell-check.js`** (~330 lines)
-  - Functions: `populateSpellCheckTab`, `_renderSpellCheckPanel`,
-    `submitSpellCheckDecisions`, `handleSpellingSuggestion`,
-    `acceptSpellingSuggestion`, `rejectSpellingSuggestion`
-  - State: `spellAudit`
-  - Tests: `tests/js/spell-check.test.js`
+- [x] **M21 — `web/spell-check.js`** (~270 lines)
+  - Functions: `populateSpellCheckTab`, `completeSpellCheckFastPath`,
+    `buildSpellStatsSummary`, `renderSpellSuggestions`,
+    `applyCustomSpellCorrection`, `applySpellReplacement`,
+    `dismissSpellSuggestion`, `addSpellWord`, `submitSpellCheckDecisions`
+  - State: `spellAudit`, `window._spellSugMap`
+  - Tests: `tests/js/spell-check.test.js` (23 tests)
 
 - [ ] **M22 — `web/workflow-steps.js`** (~400 lines)
   - Functions: `updateWorkflowSteps`, `handleStepClick`, `backToPhaseWithFeedback`,
