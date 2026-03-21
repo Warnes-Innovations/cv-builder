@@ -1,4 +1,10 @@
 #!/bin/bash
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
 # Helper script to set up GitHub token for CV generator
 
 echo "🔧 GitHub Models Token Setup for CV Generator"

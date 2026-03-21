@@ -1,3 +1,9 @@
+// Copyright (C) 2026 Gregory R. Warnes
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of CV-Builder.
+// For commercial licensing, contact greg@warnes-innovations.com
+
 /**
  * Regression tests for populating structured post-analysis questions from
  * assistant analysis text when the backend response lacks them.

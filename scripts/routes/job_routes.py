@@ -1,63 +1,40 @@
-"""Job submission, URL fetching, file upload/load, message, and action routes."""
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
+"""
+Job/chat routes — job submission, URL fetch, file upload, load job file,
+send message, do action, back-to-phase, re-run-phase.
+"""
 import dataclasses
-import re
+import traceback
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import requests as _requests
 from bs4 import BeautifulSoup
 from flask import Blueprint, jsonify, request
-from urllib.parse import urlparse
 
 from utils.llm_client import LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
 
 
-# ---------------------------------------------------------------------------
-# Module-level helpers
-# ---------------------------------------------------------------------------
-
-def _infer_position_name(job_text: str) -> Optional[str]:
-    """Infer a concise position label from job text."""
-    if not job_text:
-        return None
-
-    lines = [line.strip() for line in job_text.splitlines() if line.strip()]
-    if not lines:
-        return None
-
-    title = lines[0]
-    company = lines[1] if len(lines) > 1 else ""
-
-    if " at " in title.lower() and not company:
-        parts = title.split(" at ", 1)
-        if len(parts) == 2:
-            title, company = parts[0].strip(), parts[1].strip()
-
-    if title and company:
-        label = f"{title} at {company}"
-    else:
-        label = title or company
-
-    return label[:120] if label else None
-
-
 def create_blueprint(deps):
-    bp = Blueprint('job_routes', __name__)
+    bp = Blueprint('job', __name__)
 
-    get_session = deps['get_session']
-    validate_owner = deps['validate_owner']
+    _get_session = deps['get_session']
+    _validate_owner = deps['validate_owner']
     session_registry = deps['session_registry']
+    _infer_position_name = deps['infer_position_name']
     MessageResponse = deps['MessageResponse']
     ActionResponse = deps['ActionResponse']
 
-    # ------------------------------------------------------------------
-    # Job submission
-    # ------------------------------------------------------------------
-
     @bp.post("/api/job")
     def submit_job():
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -77,8 +54,8 @@ def create_blueprint(deps):
     @bp.post("/api/fetch-job-url")
     def fetch_job_url():
         """Fetch job description from URL with enhanced error handling."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -290,7 +267,6 @@ def create_blueprint(deps):
                 "technical_details": str(e)
             }), 500
         except Exception as e:
-            import traceback
             print(f"Error processing URL {url}: {e}")
             traceback.print_exc()
             return jsonify({
@@ -363,7 +339,7 @@ def create_blueprint(deps):
                     text = raw.decode('utf-8', errors='replace')
                 except Exception:
                     return jsonify({
-                        "error": f"Unsupported file type: {filename_lower.rsplit('.',1)[-1]}",
+                        "error": f"Unsupported file type: {filename_lower.rsplit('.', 1)[-1]}",
                         "message": "Supported formats: txt, md, html, pdf, docx, rtf"
                     }), 400
 
@@ -386,15 +362,14 @@ def create_blueprint(deps):
             })
 
         except Exception as e:
-            import traceback
             traceback.print_exc()
             return jsonify({"error": f"Error reading file: {str(e)}"}), 500
 
     @bp.post("/api/load-job-file")
     def load_job_file():
         """Load a job description from a file."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -424,20 +399,15 @@ def create_blueprint(deps):
             return jsonify({
                 "ok": True,
                 "job_text": job_text,
-                "filename": filename,
-                "content_length": len(job_text),
+                "message": f"Loaded job description from {filename}"
             })
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
-    # ------------------------------------------------------------------
-    # Message / action
-    # ------------------------------------------------------------------
+            return jsonify({"error": f"Failed to load file: {str(e)}"}), 500
 
     @bp.post("/api/message")
     def send_message():
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -466,7 +436,6 @@ def create_blueprint(deps):
             print(f"LLM provider error in /api/message: {e}")
             return jsonify({"error": str(e), "error_type": "provider"}), 502
         except Exception as e:
-            import traceback
             print("\n" + "="*60)
             print("ERROR in /api/message endpoint:")
             print(f"Message: {msg[:100]}..." if len(msg) > 100 else msg)
@@ -479,8 +448,8 @@ def create_blueprint(deps):
 
     @bp.post("/api/action")
     def do_action():
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -524,8 +493,8 @@ def create_blueprint(deps):
     @bp.post("/api/back-to-phase")
     def back_to_phase():
         """Navigate back to a prior phase without clearing downstream state."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -549,8 +518,8 @@ def create_blueprint(deps):
     @bp.post("/api/re-run-phase")
     def re_run_phase():
         """Re-execute the LLM call for a phase with downstream context preserved."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}

@@ -1,3 +1,9 @@
+// Copyright (C) 2026 Gregory R. Warnes
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of CV-Builder.
+// For commercial licensing, contact greg@warnes-innovations.com
+
 /**
  * utils.js
  * Utility functions for text processing, formatting, and data manipulation.
@@ -185,23 +191,38 @@ function ordinal(n) {
 
 // Utility functions for session management and formatting
 
+// Full-length phase labels — used by workflow step display, status text, etc.
+const SESSION_PHASE_LABELS = {
+  init:           'init',
+  job_analysis:   'analysis',
+  customization:  'customization',
+  rewrite_review: 'rewrite',
+  spell_check:    'spell check',
+  generation:     'generation',
+  layout_review:  'layout review',
+  refinement:     'finalise',
+};
+
+// Abbreviated phase labels — used by the compact session-switcher UI.
+// Intentionally separate from SESSION_PHASE_LABELS: the two sets serve different
+// UI contexts (space-constrained header chip vs. full workflow step label).
+const SESSION_PHASE_LABELS_SHORT = {
+  init:           'Init',
+  job_analysis:   'Analysis',
+  customization:  'Custom',
+  rewrite_review: 'Rewrite',
+  spell_check:    'Spell',
+  generation:     'Generate',
+  layout_review:  'Layout',
+  refinement:     'Done',
+};
+
 /**
- * Format session phase labels.
+ * Format session phase labels (full form).
  * @param {string} phase - The phase string to format.
  * @returns {string} - The formatted phase label.
  */
 function formatSessionPhaseLabel(phase) {
-  const SESSION_PHASE_LABELS = {
-    init: 'init',
-    job_analysis: 'analysis',
-    customization: 'customization',
-    rewrite_review: 'rewrite',
-    spell_check: 'spell check',
-    generation: 'generation',
-    layout_review: 'layout review',
-    refinement: 'finalise',
-  };
-
   if (!phase) return 'init';
   return SESSION_PHASE_LABELS[phase] || String(phase).replace(/_/g, ' ');
 }
@@ -230,5 +251,6 @@ export {
   extractTitleAndCompanyFromJobText, normalizePositionLabel,
   stripHtml, truncateText, capitalizeWords, pluralize,
   formatDuration, ordinal,
+  SESSION_PHASE_LABELS, SESSION_PHASE_LABELS_SHORT,
   formatSessionPhaseLabel, formatSessionTimestamp,
 };

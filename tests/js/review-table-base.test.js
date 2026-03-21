@@ -1,3 +1,9 @@
+// Copyright (C) 2026 Gregory R. Warnes
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of CV-Builder.
+// For commercial licensing, contact greg@warnes-innovations.com
+
 /**
  * tests/js/review-table-base.test.js
  * Unit tests for web/review-table-base.js — tab switching, analysis tab,
