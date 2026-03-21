@@ -207,19 +207,29 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
     `_resolvedSkillAction` added to M14 (shared by exp + skills)
   - Tests: `tests/js/experience-review.test.js` — 20 tests
 
-- [ ] **M16 — `web/skills-review.js`** (~500 lines)
-  - Functions: `buildSkillsReviewTable`, `_renderSkillsReviewTable`,
-    `submitSkillDecisions`, `updateSkillDecision`, `handleSkillsResponse`,
-    `moveSkillRow`
-  - Tests: `tests/js/skills-review.test.js`
+- [x] **M16 — `web/skills-review.js`** (~500 lines)
+  - Functions: `buildSkillsReviewTable`, `_renderSkillsTable`,
+    `submitSkillDecisions`, `handleSkillsResponse`, `moveSkillRow`
+  - Tests: `tests/js/skills-review.test.js` — 20 tests
 
-- [ ] **M17 — `web/achievements-review.js`** (~700 lines)
-  - Functions: `buildAchievementsReviewTable`, `_renderMasterAchievementsTable`,
-    `fetchAchievementDetailsWithTimeout`, `submitAchievementDecisions`,
-    `handleAchievementResponse`, `buildAchievementsEditor`,
-    `renderAchievementsEditor`
-  - State: `cvEditorData`, `_cvEditorLoading`
-  - Tests: `tests/js/achievements-review.test.js`
+- [x] **M17 — `web/achievements-review.js`** (~800 lines)
+  - Functions: `fetchJsonWithTimeout`, `buildAchievementsReviewTable`,
+    `_renderAchievementsReviewTable`, `bulkAchievementAction`,
+    `handleAchievementAction`, `submitAchievementDecisions`,
+    `moveAchievementRow`, `buildAchievementsEditor`,
+    `renderAchievementEditorRows`, `updateAchievementText`,
+    `moveAchievement`, `deleteAchievement`, `addAchievementRow`,
+    `rewriteAchievementWithLLM`, `aiRewriteTopLevelAchievement`,
+    `_openRewriteModal`, `_updateRewriteAcceptBtn`, `_recordRewriteOutcome`,
+    `_runRewrite`, `saveTopLevelAchievementField`, `deleteTopLevelAchievement`,
+    `saveSuggestedAchievementField`, `aiRewriteSuggestedAchievement`,
+    `moveSuggestedAchievementRow`, `deleteSuggestedAchievement`,
+    `saveAchievementEditsAndContinue`
+  - State: `_rewriteSuggestionHistory`, `_lastRewriteLogId`, `_rewriteCallbacks` (module-level)
+  - Tests: `tests/js/achievements-review.test.js` — 37 tests
+  - Note: `suggested-achievements.test.js` (uses eval/require) can now be rewritten
+    since `saveSuggestedAchievementField`, `moveSuggestedAchievementRow`,
+    `deleteSuggestedAchievement` are in this module
 
 - [ ] **M18 — `web/summary-review.js`** (~300 lines)
   - Functions: `buildSummaryFocusSection`, `renderSummaryFocusSection`,
