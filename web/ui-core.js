@@ -10,6 +10,9 @@
  * Entry point for the application - loads on DOMContentLoaded.
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('ui-core');
+
 import { escapeHtml } from './utils.js';
 import { StorageKeys, apiCall, fetchStatus, askPostAnalysisQuestions, sendMessage } from './api-client.js';
 import { initializeState, loadStateFromLocalStorage } from './state-manager.js';
@@ -239,9 +242,9 @@ async function initialize() {
     const savedTab = localStorage.getItem(StorageKeys.CURRENT_TAB) || 'job';
     switchTab(savedTab);
 
-    console.log('✅ Application initialized');
+    log.info('✅ Application initialized');
   } catch (error) {
-    console.error('Initialization error:', error);
+    log.error('Initialization error:', error);
     appendMessage('system', `⚠️ Failed to initialize: ${error.message}`);
   }
 }
@@ -446,7 +449,7 @@ async function loadTabContent(tab) {
         content.innerHTML = '<p style="padding: 20px; color: #999;">Unknown tab.</p>';
     }
   } catch (error) {
-    console.error(`Error loading tab ${tab}:`, error);
+    log.error(`Error loading tab ${tab}:`, error);
     content.innerHTML = `<p style="padding: 20px; color: #c41e3a;">Error loading content: ${error.message}</p>`;
   }
 }
@@ -466,7 +469,7 @@ function toggleChat() {
     try {
       localStorage.setItem(StorageKeys.CHAT_COLLAPSED, isCollapsed);
     } catch (e) {
-      console.warn('Could not save chat state');
+      log.warn('Could not save chat state');
     }
   }
 }
@@ -634,7 +637,7 @@ async function displayMessage(phase, response) {
         }
     }
   } catch (error) {
-    console.error('Error displaying message:', error);
+    log.error('Error displaying message:', error);
     appendMessage('system', `Error processing response: ${error.message}`);
   }
 }
@@ -705,7 +708,7 @@ async function loadModelSelector() {
         }
       }
     } catch (e) {
-      console.warn('Could not read saved model from localStorage:', e);
+      log.warn('Could not read saved model from localStorage:', e);
     }
     const label = document.getElementById('model-current-label');
     if (label) {
@@ -717,7 +720,7 @@ async function loadModelSelector() {
       _selectedModelProviders = new Set([_modelData.provider]);
     }
   } catch (e) {
-    console.warn('Could not load model list:', e);
+    log.warn('Could not load model list:', e);
   } finally {
     _modelSelectorLoading = false;
   }
@@ -793,7 +796,7 @@ async function _refreshModelCatalogForSelection() {
       _modelData.list_models_capable = catalog.list_models_capable;
     }
   } catch (error) {
-    console.warn('Could not refresh model catalog for selected providers:', error);
+    log.warn('Could not refresh model catalog for selected providers:', error);
   } finally {
     _catalogRefreshing = false;
   }
@@ -881,7 +884,7 @@ function _buildModelTable() {
       _modelDataTable = $('#model-table').DataTable();
       _modelDataTable.destroy();
     } catch (e) {
-      console.warn('DataTable.destroy() failed (table may already be torn down):', e);
+      log.warn('DataTable.destroy() failed (table may already be torn down):', e);
     } finally {
       _modelDataTable = null;
     }
@@ -1050,10 +1053,10 @@ async function setModel(model, provider) {
       parsed.currentModelName = model || (_modelData && _modelData.model) || null;
       localStorage.setItem(StorageKeys.TAB_DATA, JSON.stringify(parsed));
     } catch (e) {
-      console.warn('Failed to persist model selection locally:', e);
+      log.warn('Failed to persist model selection locally:', e);
     }
   } catch (e) {
-    console.error('Failed to switch model:', e);
+    log.error('Failed to switch model:', e);
     const msg = e.message || String(e);
     _syncModelTableSelection();
     const status = document.getElementById('model-test-status');
@@ -1151,7 +1154,7 @@ async function refreshModelPricing() {
     _buildModelTable();
   } catch (e) {
     if (lbl) lbl.textContent = 'Refresh failed';
-    console.error('Pricing refresh failed:', e);
+    log.error('Pricing refresh failed:', e);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh prices'; }
   }
