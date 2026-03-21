@@ -2,7 +2,7 @@
  * Focused regression tests for session switcher helpers in web/app.js.
  */
 
-const { formatSessionPhaseLabel } = require('../../web/utils');
+import { formatSessionPhaseLabel } from '../../web/utils.js';
 
 describe('session switcher helpers', () => {
   let app

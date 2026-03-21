@@ -289,18 +289,17 @@
     </div>
   </div>
 
-  <!-- Infrastructure modules (load first) -->
-  <script src="utils.js"></script>
-  <script src="api-client.js"></script>
-  <script src="state-manager.js"></script>
-  <script src="ui-core.js"></script>
+  <!-- Phase 2 bundle: utils + api-client + state-manager + ui-core + layout-instruction
+       (esbuild IIFE). Run `npm run build` (or `npm run build:watch` during development)
+       to regenerate web/bundle.js after editing any source file.
+       Phase 3 will add app.js to the bundle, collapsing all script tags into one. -->
+  <script src="web/bundle.js"></script>
 
   <!-- jQuery and DataTables (needed by app.js) -->
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 
-  <!-- Application logic (loads last so it overrides module stubs) -->
-  <script src="app.js"></script>
-  <script src="layout-instruction.js"></script>
+  <!-- Application logic (Phase 3: will be folded into the bundle) -->
+  <script src="web/app.js"></script>
 </body>
 </html>

@@ -4547,6 +4547,38 @@ Close professionally with a call to action.
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
+    @app.post("/api/layout-settings")
+    def update_layout_settings():
+        """Persist layout display settings to session state.
+
+        Supported keys:
+          ``base_font_size`` — CSS font size string, e.g. ``"10px"`` or ``"11px"``.
+
+        Returns:
+            ``{"ok": true}``
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid          = entry.session_id
+        try:
+            body = request.get_json(force=True) or {}
+            with entry.lock:
+                if 'base_font_size' in body:
+                    raw = str(body['base_font_size']).strip()
+                    # Accept bare numbers ("10") or values with unit ("10px")
+                    if not raw.endswith('px'):
+                        raw = raw + 'px'
+                    conversation.state['base_font_size'] = raw
+                    # Keep customizations dict in sync if it already exists
+                    if 'customizations' in conversation.state:
+                        conversation.state['customizations']['base_font_size'] = raw
+                conversation._save_session()
+            session_registry.touch(sid)
+            return jsonify({'ok': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     # ------------------------------------------------------------------ #
     # ATS Validation + Page Count  (Phase 7)                              #
     # ------------------------------------------------------------------ #
@@ -4830,8 +4862,6 @@ Close professionally with a call to action.
         gen   = conv.state.get("generation_state") or {}
         if not gen.get("preview_html"):
             return jsonify({"error": "No preview — call /api/cv/generate-preview first."}), 400
-        if gen.get("layout_confirmed"):
-            return jsonify({"error": "Layout already confirmed."}), 400
         import hashlib as _hl
         now   = datetime.now().isoformat()
         chash = _hl.sha256(gen["preview_html"].encode()).hexdigest()[:16]

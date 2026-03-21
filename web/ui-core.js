@@ -4,7 +4,9 @@
  * Entry point for the application - loads on DOMContentLoaded.
  */
 
-// StorageKeys is defined in api-client.js (loaded before this file)
+import { escapeHtml } from './utils.js';
+import { StorageKeys, apiCall, fetchStatus, askPostAnalysisQuestions, sendMessage } from './api-client.js';
+import { initializeState, loadStateFromLocalStorage } from './state-manager.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Accessibility: Focus Management for Modals
@@ -1169,3 +1171,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (typeof init === 'function') init();
 });
+
+// ── ES module exports ──────────────────────────────────────────────────────
+export {
+  // Focus / accessibility
+  setInitialFocus, trapFocus, restoreFocus,
+  // Dialogs & modals
+  confirmDialog, openModal, closeModal, closeAllModals,
+  showSessionConflictBanner, showAlertModal, closeAlertModal,
+  // Tab & stage management
+  setupEventListeners, getStageForTab, updateTabBarForStage, switchStage, loadTabContent,
+  // Chat
+  toggleChat,
+  // Phase / status
+  initialize, displayMessage, updatePhaseIndicator, setControlsEnabled,
+  // Model selector
+  loadModelSelector, openModelModal, closeModelModal, setModel, testCurrentModel, refreshModelPricing,
+};
