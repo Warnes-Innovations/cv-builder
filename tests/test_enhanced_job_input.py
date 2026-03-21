@@ -18,6 +18,8 @@ from pathlib import Path
 def test_enhanced_job_input(require_server=None):
     """Test all three job input methods"""
     base_url = os.environ.get("CV_SERVER_URL", "http://127.0.0.1:5002")
+    session_resp = requests.post(f"{base_url}/api/sessions/new")
+    sid = session_resp.json().get("session_id")
     
     print("🧪 Testing Enhanced Job Input Functionality")
     print("=" * 60)
@@ -49,8 +51,10 @@ Benefits:
 - Health and wellness programs
 """
 
-    response = requests.post(f"{base_url}/api/job", 
-                           json={"job_text": job_text})
+    response = requests.post(
+        f"{base_url}/api/job",
+        json={"job_text": job_text, "session_id": sid},
+    )
     
     if response.status_code == 200:
         print("  ✅ Text submission successful")
@@ -99,8 +103,10 @@ Benefits:
     url_success = False
     for test_url in test_urls:
         print(f"  🌐 Testing URL: {test_url}")
-        response = requests.post(f"{base_url}/api/fetch-job-url", 
-                               json={"url": test_url})
+        response = requests.post(
+            f"{base_url}/api/fetch-job-url",
+            json={"url": test_url, "session_id": sid},
+        )
         
         if response.status_code == 200:
             result = response.json()
@@ -117,7 +123,7 @@ Benefits:
     
     # Test 3: Status Check
     print("\n📊 Test 3: Status Verification")
-    response = requests.get(f"{base_url}/api/status")
+    response = requests.get(f"{base_url}/api/status?session_id={sid}")
     
     if response.status_code == 200:
         status = response.json()
@@ -134,8 +140,10 @@ Benefits:
     print("\n🚫 Test 4: Error Handling")
     
     # Test invalid URL
-    response = requests.post(f"{base_url}/api/fetch-job-url", 
-                           json={"url": "not-a-valid-url"})
+    response = requests.post(
+        f"{base_url}/api/fetch-job-url",
+        json={"url": "not-a-valid-url", "session_id": sid},
+    )
     
     if response.status_code == 400:
         print("  ✅ Invalid URL properly rejected")
@@ -143,8 +151,10 @@ Benefits:
         print(f"  ⚠️ Invalid URL handling unexpected: {response.status_code}")
     
     # Test missing job text
-    response = requests.post(f"{base_url}/api/job", 
-                           json={"job_text": ""})
+    response = requests.post(
+        f"{base_url}/api/job",
+        json={"job_text": "", "session_id": sid},
+    )
     
     if response.status_code == 400:
         print("  ✅ Empty job text properly rejected")
