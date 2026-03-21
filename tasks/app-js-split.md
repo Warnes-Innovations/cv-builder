@@ -149,7 +149,7 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ### Tier 3
 
-- [ ] **M10 — `web/session-manager.js`** (~1200 lines)
+- [x] **M10 — `web/session-manager.js`** (~1200 lines)
   - Functions: `createNewSessionAndNavigate`, `createNewSessionInNewTab`,
     `ensureSessionContext`, `restoreSession`, `restoreBackendState`,
     `loadSessionFile`, `_claimCurrentSession`, `openSavedSessionFromLanding`,
@@ -159,7 +159,7 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
     `buildSessionSwitcherLabel`, `getActiveSessionOwnershipMeta`
   - Tests: `tests/js/session-manager.test.js`
 
-- [ ] **M11 — `web/job-input.js`** (~900 lines)
+- [x] **M11 — `web/job-input.js`** (~900 lines)
   - Functions: `populateJobTab`, `showLoadJobPanel`, `switchInputMethod`,
     `showJobInput`, `handleFileDrop`, `handleFileSelected`, `uploadJobFile`,
     `clearSelectedFile`, `_loadServerJobFile`, `loadItemFromRow`, `submitJobText`,
@@ -169,7 +169,7 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
   - Constants: `PASTE_MIN_CHARS`, `_pendingUploadFile`
   - Tests: `tests/js/job-input.test.js`
 
-- [ ] **M12 — `web/message-dispatch.js`** (~400 lines)
+- [x] **M12 — `web/message-dispatch.js`** (~400 lines)
   - Functions: `sendMessage`, `_handleLLMMessage`, `_showIntakeConfirmCard`,
     `_submitIntakeCard`, `_skipIntakeCard`, `_proceedAfterIntake`,
     `_offerPriorClarifications`, `_dismissPriorClarifications`,
@@ -177,7 +177,7 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
   - Constants: `_messageHandlers`
   - Tests: `tests/js/message-dispatch.test.js`
 
-- [ ] **M13 — `web/questions-panel.js`** (~500 lines)
+- [x] **M13 — `web/questions-panel.js`** (~500 lines)
   - Functions: `populateQuestionsTab`, `buildClarifyingQuestionsPanel`,
     `renderClarifyingQuestionsPanel`, `toggleQuestionAnswer`,
     `updateQuestionProgress`, `handleQuestionResponse`, `draftQuestionAnswer`,
@@ -187,21 +187,25 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ### Tier 4
 
-- [ ] **M14 — `web/review-table-base.js`** (~800 lines)
+- [x] **M14 — `web/review-table-base.js`** (~800 lines)
   - Functions: `switchTab`, `loadTabContent`, `populateAnalysisTab`,
-    `showTableBasedReview`, `switchReviewSubtab`, `_loadReviewPane`,
-    `updateInclusionCounts`
-  - State: `userSelections`, `_activeReviewPane`, `_reviewPaneLoaded`,
-    `_experiencesOrdered`, `_savedDecisions`, `pendingRecommendations`
-  - Tests: `tests/js/review-table-base.test.js`
+    `handleCustomizationResponse`, `showTableBasedReview`, `populateReviewTab`,
+    `populateCustomizationsTabWithReview`, `switchReviewSubtab`, `_loadReviewPane`,
+    `updateInclusionCounts`, `_updatePageEstimate`
+  - State: `userSelections` (module-level); `_activeReviewPane`,
+    `_reviewPaneLoaded`, `_experiencesOrdered`, `_savedDecisions`,
+    `pendingRecommendations` all remain on `window`
+  - Tests: `tests/js/review-table-base.test.js` — 44 tests
 
 ### Tier 5
 
-- [ ] **M15 — `web/experience-review.js`** (~600 lines)
-  - Functions: `buildExperienceReviewTable`, `_renderExperienceTable`,
-    `submitExperienceDecisions`, `updateExperienceDecision`,
-    `handleExperienceResponse`, `moveExperienceRow`
-  - Tests: `tests/js/experience-review.test.js`
+- [x] **M15 — `web/experience-review.js`** (~600 lines)
+  - Functions: `getExperienceDetails`, `buildExperienceReviewTable`,
+    `_renderExperienceTable`, `moveExperienceRow`,
+    `handleExperienceResponse`, `submitExperienceDecisions`
+  - Note: `handleActionClick`, `bulkAction`, `_resolvedExpAction`,
+    `_resolvedSkillAction` added to M14 (shared by exp + skills)
+  - Tests: `tests/js/experience-review.test.js` — 20 tests
 
 - [ ] **M16 — `web/skills-review.js`** (~500 lines)
   - Functions: `buildSkillsReviewTable`, `_renderSkillsReviewTable`,
