@@ -231,15 +231,18 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
     since `saveSuggestedAchievementField`, `moveSuggestedAchievementRow`,
     `deleteSuggestedAchievement` are in this module
 
-- [ ] **M18 — `web/summary-review.js`** (~300 lines)
-  - Functions: `buildSummaryFocusSection`, `renderSummaryFocusSection`,
-    `updateSummarySelection`
-  - Tests: `tests/js/summary-review.test.js`
+- [x] **M18 — `web/summary-review.js`** (~200 lines)
+  - Functions: `buildSummaryFocusSection`, `_renderStoredSummaryRadios`,
+    `_showAISummary`, `_callGenerateSummary`, `regenerateAISummary`,
+    `useAISummary`, `selectSummaryKey`, `saveSummaryFocusToBackend`,
+    `submitSummaryFocusDecision`
+  - Tests: `tests/js/summary-review.test.js` (23 tests)
 
-- [ ] **M19 — `web/publications-review.js`** (~250 lines)
-  - Functions: `buildPublicationsReviewTable`, `renderPublicationsTable`,
-    `updatePublicationDecision`, `submitPublicationDecisions`
-  - Tests: `tests/js/publications-review.test.js`
+- [x] **M19 — `web/publications-review.js`** (~200 lines)
+  - Functions: `buildPublicationsReviewTable`, `filterPublicationsTable`,
+    `handlePubAction`, `submitPublicationDecisions`
+  - State: `window.publicationDecisions`
+  - Tests: `tests/js/publications-review.test.js` (15 tests)
 
 ### Tier 6
 
