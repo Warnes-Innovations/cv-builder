@@ -316,6 +316,11 @@ Phase 4 deliverables status:
 - Implement Workstream 5.
 - Goal: provide structured master-data maintenance once the main applicant workflow is stable.
 
+Phase 5 deliverables status (in progress):
+- [x] Backup-before-write safeguard for `Master_CV_Data.json`
+- [x] Pre-save structural validation for master-data writes
+- [x] Clear changed-state display in the Master CV editor after save/delete actions
+
 ### Phase 6: UX and Accessibility Hardening — **COMPLETE (2026-03-20)**
 
 Phase 6 deliverables status:

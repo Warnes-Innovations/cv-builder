@@ -871,6 +871,25 @@ Job Description (excerpt):
         ach_id = (req.get('id') or '').strip()
         if not ach_id:
             return jsonify({"error": "id is required"}), 400
+
+        if 'importance' in req:
+            try:
+                importance = int(req.get('importance'))
+            except (TypeError, ValueError):
+                return jsonify({"error": "importance must be an integer"}), 400
+            if importance < 1 or importance > 10:
+                return jsonify({"error": "importance must be between 1 and 10"}), 400
+
+        if 'relevant_for' in req:
+            relevant_for = req.get('relevant_for')
+            if isinstance(relevant_for, str):
+                req['relevant_for'] = [x.strip() for x in relevant_for.split(',') if x.strip()]
+            elif isinstance(relevant_for, list):
+                if not all(isinstance(x, str) for x in relevant_for):
+                    return jsonify({"error": "relevant_for must contain only strings"}), 400
+            else:
+                return jsonify({"error": "relevant_for must be a list or comma-separated string"}), 400
+
         try:
             master, master_path = _load_master(orchestrator.master_data_path)
             achievements = master.setdefault('selected_achievements', [])
@@ -971,6 +990,16 @@ Job Description (excerpt):
         _validate_owner(entry)
         orchestrator = entry.orchestrator
         req = request.get_json() or {}
+
+        email = str(req.get('email') or '').strip()
+        if email and '@' not in email:
+            return jsonify({"error": "email must be a valid email address"}), 400
+
+        for url_field in ('linkedin', 'website'):
+            url_val = str(req.get(url_field) or '').strip()
+            if url_val and not re.match(r'^https?://', url_val):
+                return jsonify({"error": f"{url_field} must start with http:// or https://"}), 400
+
         try:
             master, master_path = _load_master(orchestrator.master_data_path)
             pi = master.setdefault('personal_info', {})
@@ -1010,6 +1039,32 @@ Job Description (excerpt):
         action = (req.get('action') or '').strip()
         if action not in ('add', 'update', 'delete'):
             return jsonify({"error": "action must be add, update, or delete"}), 400
+
+        if action in ('add', 'update'):
+            exp_data = req.get('experience') or {}
+            if not exp_data.get('title') or not exp_data.get('company'):
+                return jsonify({"error": "title and company are required"}), 400
+
+            try:
+                importance_val = int(exp_data.get('importance') or 5)
+            except (TypeError, ValueError):
+                return jsonify({"error": "importance must be an integer"}), 400
+            if importance_val < 1 or importance_val > 10:
+                return jsonify({"error": "importance must be between 1 and 10"}), 400
+
+            employment_type = str(exp_data.get('employment_type') or 'full_time').strip()
+            allowed_types = {
+                'full_time', 'part_time', 'contract', 'consulting',
+                'internship', 'self_employed',
+            }
+            if employment_type not in allowed_types:
+                return jsonify({"error": "employment_type is invalid"}), 400
+
+            start_year = _extract_year(exp_data.get('start_date'))
+            end_year = _extract_year(exp_data.get('end_date'))
+            if start_year is not None and end_year is not None and start_year > end_year:
+                return jsonify({"error": "start_date cannot be after end_date"}), 400
+
         try:
             master, master_path = _load_master(orchestrator.master_data_path)
             experiences = master.get('experience', master.pop('experiences', []))
@@ -1025,8 +1080,6 @@ Job Description (excerpt):
                 _save_master(master, master_path)
                 return jsonify({"ok": True, "action": "deleted"})
             exp_data = req.get('experience') or {}
-            if not exp_data.get('title') or not exp_data.get('company'):
-                return jsonify({"error": "title and company are required"}), 400
             if action == 'add':
                 new_id  = 'exp_' + str(int(datetime.now().timestamp() * 1000))
                 loc: Dict[str, Any] = {}
@@ -1184,6 +1237,29 @@ Job Description (excerpt):
         action = (req.get('action') or '').strip()
         if action not in ('add', 'update', 'delete'):
             return jsonify({"error": "action must be add, update, or delete"}), 400
+
+        start_year = None
+        end_year = None
+        if action in ('add', 'update'):
+            if req.get('start_year') not in (None, ''):
+                try:
+                    start_year = int(req.get('start_year'))
+                except (TypeError, ValueError):
+                    return jsonify({"error": "start_year must be an integer"}), 400
+                if start_year < 1900 or start_year > 2100:
+                    return jsonify({"error": "start_year must be between 1900 and 2100"}), 400
+
+            if req.get('end_year') not in (None, ''):
+                try:
+                    end_year = int(req.get('end_year'))
+                except (TypeError, ValueError):
+                    return jsonify({"error": "end_year must be an integer"}), 400
+                if end_year < 1900 or end_year > 2100:
+                    return jsonify({"error": "end_year must be between 1900 and 2100"}), 400
+
+            if start_year is not None and end_year is not None and start_year > end_year:
+                return jsonify({"error": "start_year cannot be greater than end_year"}), 400
+
         try:
             master, master_path = _load_master(orchestrator.master_data_path)
             education = master.setdefault('education', [])
@@ -1207,9 +1283,10 @@ Job Description (excerpt):
                 if req.get('state'):
                     loc['state'] = req['state']
                 edu_data['location'] = loc
-            for field in ('start_year', 'end_year'):
-                if req.get(field) is not None:
-                    edu_data[field] = int(req[field])
+            if start_year is not None:
+                edu_data['start_year'] = start_year
+            if end_year is not None:
+                edu_data['end_year'] = end_year
             if action == 'add':
                 if not edu_data.get('degree') or not edu_data.get('institution'):
                     return jsonify({"error": "degree and institution are required"}), 400
@@ -1243,6 +1320,16 @@ Job Description (excerpt):
         action = (req.get('action') or '').strip()
         if action not in ('add', 'update', 'delete'):
             return jsonify({"error": "action must be add, update, or delete"}), 400
+
+        parsed_year = None
+        if action in ('add', 'update') and req.get('year') not in (None, ''):
+            try:
+                parsed_year = int(req.get('year'))
+            except (TypeError, ValueError):
+                return jsonify({"error": "year must be an integer"}), 400
+            if parsed_year < 1900 or parsed_year > 2100:
+                return jsonify({"error": "year must be between 1900 and 2100"}), 400
+
         try:
             master, master_path = _load_master(orchestrator.master_data_path)
             awards = master.setdefault('awards', [])
@@ -1259,8 +1346,8 @@ Job Description (excerpt):
             for field in ('title', 'description'):
                 if field in req:
                     award_data[field] = req[field]
-            if req.get('year') is not None:
-                award_data['year'] = int(req['year'])
+            if parsed_year is not None:
+                award_data['year'] = parsed_year
             if 'relevant_for' in req:
                 award_data['relevant_for'] = req['relevant_for']
             if action == 'add':
@@ -5415,11 +5502,48 @@ def _load_master(master_data_path: str) -> "tuple[dict, Path]":
         return json.load(f), p
 
 
+def _extract_year(value: Any) -> Optional[int]:
+    """Extract a 4-digit year from a free-form date string."""
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+    m = re.search(r'\b(19|20)\d{2}\b', raw)
+    if not m:
+        return None
+    return int(m.group(0))
+
+
+def _validate_master_for_persistence(master: Dict[str, Any]) -> None:
+    """Validate top-level master CV structure before writing to disk."""
+    if not isinstance(master, dict):
+        raise ValueError("master data must be a JSON object")
+
+    errors: List[str] = []
+
+    if 'personal_info' in master and not isinstance(master.get('personal_info'), dict):
+        errors.append("personal_info must be an object")
+
+    for key in ('experience', 'education', 'awards', 'selected_achievements'):
+        if key in master and not isinstance(master.get(key), list):
+            errors.append(f"{key} must be a list")
+
+    if 'skills' in master and not isinstance(master.get('skills'), (list, dict)):
+        errors.append("skills must be a list or object")
+
+    if 'professional_summaries' in master and not isinstance(master.get('professional_summaries'), (dict, list)):
+        errors.append("professional_summaries must be an object or list")
+
+    if errors:
+        raise ValueError("Invalid master data: " + "; ".join(errors))
+
+
 def _save_master(master: Dict[str, Any], master_path: Path) -> None:
     """Write master CV data to disk and stage the file in git.
 
     Creates a timestamped backup before overwrite when the target file exists.
     """
+    _validate_master_for_persistence(master)
+
     if master_path.exists():
         backup_dir = master_path.parent / "backups"
         backup_dir.mkdir(parents=True, exist_ok=True)

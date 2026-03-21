@@ -300,6 +300,73 @@ class TestMasterDataUpdateSummary(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Field-level validation on master-data endpoints
+# ---------------------------------------------------------------------------
+
+class TestMasterDataFieldValidation(unittest.TestCase):
+
+    def test_personal_info_invalid_email_returns_400(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = client.post(
+                '/api/master-data/personal-info',
+                json={'email': 'not-an-email', 'session_id': sid},
+            )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('email', res.get_json()['error'])
+
+    def test_experience_invalid_employment_type_returns_400(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = client.post(
+                '/api/master-data/experience',
+                json={
+                    'action': 'add',
+                    'experience': {
+                        'title': 'Engineer',
+                        'company': 'Acme',
+                        'employment_type': 'gig_worker',
+                    },
+                    'session_id': sid,
+                },
+            )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('employment_type', res.get_json()['error'])
+
+    def test_education_start_year_after_end_year_returns_400(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = client.post(
+                '/api/master-data/education',
+                json={
+                    'action': 'add',
+                    'degree': 'MS',
+                    'institution': 'Test University',
+                    'start_year': 2024,
+                    'end_year': 2020,
+                    'session_id': sid,
+                },
+            )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('start_year', res.get_json()['error'])
+
+    def test_award_year_out_of_range_returns_400(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = client.post(
+                '/api/master-data/award',
+                json={
+                    'action': 'add',
+                    'title': 'Some Award',
+                    'year': 1800,
+                    'session_id': sid,
+                },
+            )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('year', res.get_json()['error'])
+
+
+# ---------------------------------------------------------------------------
 # _save_master helper
 # ---------------------------------------------------------------------------
 
@@ -337,6 +404,27 @@ class TestSaveMasterHelper(unittest.TestCase):
                 _save_master(new_data, master_path)
 
             self.assertTrue(master_path.exists())
+            backup_dir = Path(td) / 'backups'
+            self.assertFalse(backup_dir.exists())
+
+    def test_save_master_rejects_invalid_master_shape(self):
+        """Invalid top-level structure is rejected before any write."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            old_data = {'personal_info': {'name': 'Old Name'}, 'skills': []}
+            master_path.write_text(json.dumps(old_data), encoding='utf-8')
+
+            invalid = {'personal_info': {'name': 'Broken'}, 'skills': 'not-a-list-or-dict'}
+
+            with patch('scripts.web_app.subprocess.run'):
+                with self.assertRaises(ValueError):
+                    _save_master(invalid, master_path)
+
+            # Original content remains unchanged.
+            saved = json.loads(master_path.read_text(encoding='utf-8'))
+            self.assertEqual(saved['personal_info']['name'], 'Old Name')
+
+            # No backup should be created for invalid payloads.
             backup_dir = Path(td) / 'backups'
             self.assertFalse(backup_dir.exists())
 
