@@ -270,11 +270,13 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
   - Constants: `_STEP_ORDER`, `_STEP_DISPLAY`, `_ACTION_LABELS`
   - Tests: `tests/js/workflow-steps.test.js` (31 tests)
 
-- [ ] **M23 — `web/master-cv.js`** (~1400 lines)
-  - Functions: `populateMasterTab`, and all `_render*`, `show*Modal`, `close*Modal`,
-    `save*`, `delete*`, `edit*` functions for personal-info, experience, skills,
-    education, awards, achievements, summaries
-  - Tests: `tests/js/master-cv.test.js`
+- [x] **M23 — `web/master-cv.js`** (~1330 lines)
+  - Functions: `populateMasterTab`, `_renderPersonalInfoCard`, `_renderExperiencesList`,
+    `_renderSkillsSection`, `_renderEducationList`, `_renderAwardsList`,
+    `_renderMasterAchievementsTable`, `_renderSummariesList`,
+    and all `show*Modal`, `close*Modal`, `save*`, `delete*`, `edit*` functions
+    for personal-info, experience, skills, education, awards, achievements, summaries
+  - Tests: `tests/js/master-cv.test.js` (57 tests)
 
 - [ ] **M24 — `web/cover-letter.js`** (~250 lines)
   - Functions: `populateCoverLetterTab`, `generateCoverLetter`, `saveCoverLetter`,
