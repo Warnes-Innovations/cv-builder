@@ -8,7 +8,7 @@ so `onclick="..."` HTML inline handlers continue working unchanged.
 
 **Branch**: `devel`
 **Started**: 2026-03-20
-**Completed**: —
+**Completed**: 2026-03-21 ✅
 
 ---
 
