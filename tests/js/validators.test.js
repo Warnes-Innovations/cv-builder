@@ -15,11 +15,11 @@ describe('parseStatusResponse', () => {
   const minimal = () => ({
     phase: 'init', llm_provider: 'copilot', job_description: '',
     post_analysis_questions: [], post_analysis_answers: {},
-    all_experience_ids: [], all_skills: [], all_achievements: [],
+    all_experience_ids: [], all_experiences: [], all_skills: [], all_achievements: [],
     professional_summaries: [], copilot_auth: false, iterating: false,
     experience_decisions: {}, skill_decisions: {},
     achievement_decisions: {}, publication_decisions: {},
-    extra_skills: [], session_file: 'session.json',
+    extra_skills: [], extra_skill_matches: [], session_file: 'session.json',
   })
 
   it('returns the data object unchanged', () => {
