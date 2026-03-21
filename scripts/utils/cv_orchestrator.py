@@ -391,8 +391,9 @@ class CVOrchestrator:
         cv_data = self._prepare_cv_data_for_template(
             selected_content, job_analysis, template_variant
         )
-        cv_data['achievements'] = selected_content.get('achievements', [])
-        cv_data['json_ld_str'] = self._build_json_ld(cv_data, job_analysis)
+        cv_data['achievements']   = selected_content.get('achievements', [])
+        cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
+        cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
 
         template_dir = Path(__file__).parent.parent.parent / 'templates'
         template_file = template_dir / 'cv-template.html'
@@ -1299,8 +1300,9 @@ For manual generation:
         # JSON-LD is built here and embedded directly in cv-template.html,
         # so the single HTML output is both ATS-compatible and print-ready.
         cv_data = self._prepare_cv_data_for_template(selected_content, job_analysis)
-        cv_data['achievements'] = selected_content.get('achievements', [])
-        cv_data['json_ld_str']  = self._build_json_ld(cv_data, job_analysis)
+        cv_data['achievements']   = selected_content.get('achievements', [])
+        cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
+        cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
 
         # Generate documents (Phase 10: Track progress)
         files_created = []

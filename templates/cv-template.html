@@ -24,6 +24,12 @@
             --border-color: #d1d8dd;
         }
 
+        /* Base font size — controls all rem-relative sizing throughout the CV.
+           Override via the Layout panel (base_font_size setting). */
+        html {
+            font-size: {{ base_font_size | default('10px') }};
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
