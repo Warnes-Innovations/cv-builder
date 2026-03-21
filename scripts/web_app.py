@@ -55,6 +55,7 @@ from utils.pricing_cache import (
     refresh_pricing_cache, maybe_refresh_in_background, lookup_runtime_pricing_bulk, STATIC_PRICING,
 )
 from utils.spell_checker import SpellChecker
+from utils.master_data_validator import validate_master_data_file
 from utils.session_registry import (
     SessionRegistry, SessionNotFoundError, SessionOwnedError
 )
@@ -805,8 +806,7 @@ Job Description (excerpt):
         entry = _get_session()
         orchestrator = entry.orchestrator
         try:
-            with open(orchestrator.master_data_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            data, _ = _load_master(orchestrator.master_data_path)
             return jsonify({
                 "ok": True,
                 "selected_achievements":   data.get('selected_achievements', []),
@@ -830,8 +830,7 @@ Job Description (excerpt):
         entry = _get_session()
         orchestrator = entry.orchestrator
         try:
-            with open(orchestrator.master_data_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            data, _ = _load_master(orchestrator.master_data_path)
             personal  = data.get('personal_info', {})
             skills    = data.get('skills', [])
             skill_count = (
@@ -978,6 +977,28 @@ Job Description (excerpt):
             })
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.get("/api/master-data/validate")
+    def master_data_validate():
+        """Validate the master data file structure and optional JSON schema."""
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+
+        use_schema_param = (request.args.get('use_schema') or 'true').strip().lower()
+        use_schema = use_schema_param in ('1', 'true', 'yes', 'on')
+        schema_path = request.args.get('schema_path')
+
+        result = validate_master_data_file(
+            str(orchestrator.master_data_path),
+            use_schema=use_schema,
+            schema_path=schema_path,
+        )
+
+        return jsonify({
+            'ok': result.valid,
+            **result.to_dict(),
+        })
 
     @app.post("/api/master-data/preview-diff")
     def master_data_preview_diff():
@@ -3976,8 +3997,7 @@ Close professionally with a call to action.
         if experience_index is not None:
             try:
                 exp_idx = int(experience_index)
-                with open(orchestrator.master_data_path, 'r', encoding='utf-8') as _f:
-                    _master = json.load(_f)
+                _master, _ = _load_master(orchestrator.master_data_path)
                 experiences = _master.get('experience', [])
                 if 0 <= exp_idx < len(experiences):
                     exp = experiences[exp_idx]
@@ -5480,9 +5500,8 @@ Close professionally with a call to action.
                             'label':   cand['label'],
                         })
 
-                # Write updated master data
-                with open(master_path, 'w', encoding='utf-8') as f:
-                    json.dump(master, f, indent=2)
+                # Write updated master data via shared helper (backup + validation)
+                _save_master(master, master_path)
 
                 # Reload in orchestrator
                 conversation.orchestrator.master_data = master
@@ -5631,7 +5650,13 @@ Close professionally with a call to action.
 
 def _load_master(master_data_path: str) -> "tuple[dict, Path]":
     """Read master CV JSON from disk and return (data, path)."""
-    p = Path(master_data_path)
+    p = Path(master_data_path).expanduser()
+
+    validation = validate_master_data_file(str(p), use_schema=True)
+    if not validation.valid:
+        msg = "; ".join(validation.errors) or "master data validation failed"
+        raise ValueError(f"Master data validation failed before load: {msg}")
+
     with open(p, 'r', encoding='utf-8') as f:
         return json.load(f), p
 
@@ -5678,6 +5703,7 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
     """
     _validate_master_for_persistence(master)
 
+    backup_path: Optional[Path] = None
     if master_path.exists():
         backup_dir = master_path.parent / "backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
@@ -5687,6 +5713,14 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
 
     with open(master_path, 'w', encoding='utf-8') as f:
         json.dump(master, f, indent=2)
+
+    validation = validate_master_data_file(str(master_path), use_schema=True)
+    if not validation.valid:
+        if backup_path is not None and backup_path.exists():
+            shutil.copy2(backup_path, master_path)
+        msg = "; ".join(validation.errors) or "master data validation failed"
+        raise ValueError(f"Master data validation failed after write: {msg}")
+
     subprocess.run(
         ['git', '-C', str(master_path.parent), 'add', master_path.name],
         capture_output=True, check=False,

@@ -27,6 +27,7 @@ from .scoring import (
 from .bibtex_parser import parse_bibtex_file, format_publication
 from .config import get_config
 from .llm_client import LLMClient
+from .master_data_validator import validate_master_data_file
 
 
 class CVOrchestrator:
@@ -69,6 +70,11 @@ class CVOrchestrator:
                 f"Master data file not found: {self.master_data_path}\n"
                 "Please create Master_CV_Data.json first."
             )
+
+        validation = validate_master_data_file(str(self.master_data_path), use_schema=True)
+        if not validation.valid:
+            msg = "; ".join(validation.errors) or "master data validation failed"
+            raise ValueError(f"Master data validation failed before load: {msg}")
         
         with open(self.master_data_path, 'r', encoding='utf-8') as f:
             return json.load(f)
