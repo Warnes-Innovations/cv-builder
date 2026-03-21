@@ -18,6 +18,9 @@
  *         npm run build:watch    → rebuild on every source change
  */
 
+// ── Logger (must be first so named loggers are available to all modules) ───────
+import * as Logger from '../logger.js';
+
 // ── Phase 2 (original bundle) ─────────────────────────────────────────────────
 import * as Utils             from '../utils.js';
 import * as ApiClient         from '../api-client.js';
@@ -73,7 +76,7 @@ import * as SessionSwitcherUi from '../session-switcher-ui.js';
 // implementations override any placeholder stubs (e.g. showSessionConflictBanner
 // in session-switcher-ui overrides the simple stub in ui-core).
 Object.assign(globalThis,
-  Utils, ApiClient, State, UiCore, LayoutInstruction,
+  Logger, Utils, ApiClient, State, UiCore, LayoutInstruction,
   Validators, RecommendationHelpers, UiHelpers,
   FetchUtils, MessageQueue,
   AuthProvider, AtsRefinement, SessionActions, JobAnalysis,

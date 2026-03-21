@@ -18,6 +18,9 @@
  *   $, $.fn.DataTable (jQuery + DataTables)
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('skills-review');
+
 // ── Years-from-experience helpers ─────────────────────────────────────────
 
 function _parseYearFromStr(str) {
@@ -68,7 +71,7 @@ async function buildSkillsReviewTable() {
     allSkills = statusData.all_skills || [];
     window._allExperiences = statusData.all_experiences || [];
   } catch (error) {
-    console.error('Error fetching all skills:', error);
+    log.error('Error fetching all skills:', error);
     // Fallback to just recommended skills
     allSkills = data.recommended_skills || [];
     window._allExperiences = [];
@@ -421,7 +424,7 @@ async function submitSkillDecisions() {
       showToast(`Error: ${error.error || 'Failed to save decisions'}`, 'error');
     }
   } catch (error) {
-    console.error('Error submitting skill decisions:', error);
+    log.error('Error submitting skill decisions:', error);
     showToast('Failed to save decisions. Please try again.', 'error');
   }
 }

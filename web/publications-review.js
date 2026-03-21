@@ -13,6 +13,9 @@
  *   escapeHtml, showToast, fetchAndReviewRewrites, CSS
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('publications-review');
+
 // Track publication accept/reject decisions: cite_key → true (accept) | false (reject)
 window.publicationDecisions = {};
 
@@ -37,7 +40,7 @@ async function buildPublicationsReviewTable() {
     recommendations = data.recommendations || [];
     totalCount = data.total_count || recommendations.length;
   } catch (err) {
-    console.error('Error fetching publication recommendations:', err);
+    log.error('Error fetching publication recommendations:', err);
     container.innerHTML = '<p style="color: #ef4444; padding: 20px;">Failed to load publication recommendations.</p>';
     return;
   }
@@ -217,7 +220,7 @@ async function submitPublicationDecisions() {
       showToast(`Error: ${err.error || 'Failed to save publication selections'}`, 'error');
     }
   } catch (err) {
-    console.error('Error saving publication decisions:', err);
+    log.error('Error saving publication decisions:', err);
     showToast('Failed to save publication selections. Please try again.', 'error');
   }
 }

@@ -22,6 +22,9 @@
  *   - _showIntakeConfirmCard (message-dispatch.js, Tier 3)
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('job-analysis');
+
 // ---------------------------------------------------------------------------
 // Post-analysis question helpers
 // ---------------------------------------------------------------------------
@@ -137,7 +140,7 @@ async function analyzeJob() {
       await askPostAnalysisQuestions(analysisData, structuredQuestions);
     }
   } catch (error) {
-    console.error('=== ANALYZE JOB ERROR ===', error);
+    log.error('=== ANALYZE JOB ERROR ===', error);
     removeLoadingMessage(loadingMsg);
     if (error.name !== 'AbortError') {
       appendRetryMessage('❌ Error: ' + error.message, analyzeJob);

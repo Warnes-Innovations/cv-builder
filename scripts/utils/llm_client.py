@@ -16,10 +16,13 @@ Supports:
 - GitHub Copilot (if available)
 """
 
+import logging
 import os
 import json
 from typing import Dict, List, Optional, Any
 from abc import ABC, abstractmethod
+
+logger = logging.getLogger(__name__)
 
 
 # ── Typed LLM error hierarchy ─────────────────────────────────────────────────
@@ -376,8 +379,8 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         try:
             result = self._parse_json_response(response)
         except Exception as e:
-            print(f"Warning: recommend_customizations failed to parse response: {e}")
-            print(f"Response preview: {response[:500]}...")
+            logger.warning("recommend_customizations failed to parse response: %s", e)
+            logger.debug("Response preview: %s", response[:500])
             result = {}
 
         # Populate recommended_experiences from experience_recommendations for
