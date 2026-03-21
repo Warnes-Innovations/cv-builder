@@ -2825,8 +2825,13 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
     # ── locate files ─────────────────────────────────────────────────────────
     ats_docx_files = sorted(output_dir.glob('*_ATS.docx'))
     html_files     = sorted(output_dir.glob('*.html'))
-    pdf_files      = sorted(f for f in output_dir.glob('*.pdf')
-                            if '_ATS' not in f.name)
+    # Sort PDFs by modification time (newest first) so the most recently finalised
+    # PDF is used for the page-count check, not an earlier dated draft.
+    pdf_files      = sorted(
+        (f for f in output_dir.glob('*.pdf') if '_ATS' not in f.name),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
 
     ats_docx  = ats_docx_files[0] if ats_docx_files else None
     html_path = html_files[0]     if html_files     else None
@@ -2873,9 +2878,12 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                      f'{n_tables} table(s) — ATS parsers may skip table content')
 
             # 3 — zero shapes
-            from docx.oxml.ns import qn as _qn
-            shapes = (doc.element.body.findall('.//' + _qn('v:textbox')) +
-                      doc.element.body.findall('.//' + _qn('mc:Fallback')))
+            # Use Clark notation directly to avoid KeyError on missing nsmap entries
+            # (e.g. 'v' namespace absent in some python-docx versions).
+            _VML = 'urn:schemas-microsoft-com:vml'
+            _MC  = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
+            shapes = (doc.element.body.findall('.//{%s}textbox' % _VML) +
+                      doc.element.body.findall('.//{%s}Fallback' % _MC))
             if not shapes:
                 _chk('docx_zero_shapes', 'No text boxes / shapes', 'docx', 'pass', 'No shapes found')
             else:

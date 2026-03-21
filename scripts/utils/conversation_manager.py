@@ -1376,6 +1376,12 @@ Ask questions that are specific to this job posting, not generic career question
     def _save_session(self):
         """Save conversation session."""
         try:
+            # Don't create a pending_ folder if the session has no meaningful content yet.
+            # A session with no job_description and no existing directory is an empty
+            # in-memory shell — there's nothing worth persisting to disk.
+            if not self.session_dir and not self.state.get('job_description'):
+                return
+
             if not self.session_dir:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 # Sessions live alongside generated files under the output dir.
