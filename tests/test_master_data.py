@@ -300,6 +300,103 @@ class TestMasterDataUpdateSummary(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# POST /api/master-data/skill
+# ---------------------------------------------------------------------------
+
+class TestMasterDataUpdateSkill(unittest.TestCase):
+
+    def test_update_skill_adds_associated_experience_ids(self):
+        """Updating an existing skill can persist optional associated experiences."""
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({
+            'experience': [{'id': 'exp_1'}, {'id': 'exp_2'}],
+            'skills': ['Python'],
+        })
+
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+
+            res = client.post(
+                '/api/master-data/skill',
+                json={
+                    'action': 'update',
+                    'skill': 'Python',
+                    'skill_new': 'Python',
+                    'experiences': ['exp_1', 'exp_2'],
+                    'session_id': sid,
+                },
+            )
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['action'], 'updated')
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(dumped['skills'][0], {'name': 'Python', 'experiences': ['exp_1', 'exp_2']})
+
+    def test_update_skill_filters_unknown_experience_ids(self):
+        """Unknown experience IDs are ignored when saving skill associations."""
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({
+            'experience': [{'id': 'exp_1'}],
+            'skills': ['R'],
+        })
+
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+
+            res = client.post(
+                '/api/master-data/skill',
+                json={
+                    'action': 'update',
+                    'skill': 'R',
+                    'skill_new': 'R',
+                    'experiences': ['exp_1', 'exp_missing'],
+                    'session_id': sid,
+                },
+            )
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(dumped['skills'][0], {'name': 'R', 'experiences': ['exp_1']})
+
+    def test_update_skill_preserves_existing_experiences_when_omitted(self):
+        """Omitting experiences on update should keep existing associations."""
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({
+            'experience': [{'id': 'exp_1'}],
+            'skills': [{'name': 'Python', 'experiences': ['exp_1']}],
+        })
+
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+
+            res = client.post(
+                '/api/master-data/skill',
+                json={
+                    'action': 'update',
+                    'skill': 'Python',
+                    'skill_new': 'Python',
+                    'session_id': sid,
+                },
+            )
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(dumped['skills'][0], {'name': 'Python', 'experiences': ['exp_1']})
+
+
+# ---------------------------------------------------------------------------
 # _save_master helper
 # ---------------------------------------------------------------------------
 

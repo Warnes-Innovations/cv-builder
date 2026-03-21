@@ -54,6 +54,10 @@ function initiateLayoutInstructions() {
             Apply Instruction
           </button>
 
+          <button id="finalize-layout-btn" class="btn btn-success layout-action-btn" onclick="completeLayoutReview()">
+            Finalize Layout
+          </button>
+
           <div id="processing-indicator" class="processing-indicator" style="display: none;">
             <div class="spinner"></div>
             <p>Applying instruction...</p>
