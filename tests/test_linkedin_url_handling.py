@@ -118,6 +118,7 @@ if __name__ == "__main__":
     print("="*60)
     print("This test verifies the improved handling of LinkedIn and other protected job board URLs.")
     print()
+    base_url = os.environ.get("CV_SERVER_URL", "http://127.0.0.1:5002")
     
     try:
         # Check if server is running
