@@ -56,6 +56,7 @@
         /* --- Page Structure (Browser View) --- */
         .page {
             display: flex;
+            align-items: stretch;
             flex-direction: row;
             width: 215.9mm; /* US Letter Width */
             min-height: 279.4mm; /* Set min-height to visually suggest a page size */
@@ -113,7 +114,8 @@
             padding: 40px 20px; /* Matched padding with page-two skills sidebar */
             border-right: 1px solid var(--border-color);
             flex-shrink: 0;
-            min-height: 279.4mm;
+            min-height: 100%;
+            align-self: stretch;
         }
         
         #page-three .right-col {
@@ -256,7 +258,7 @@
             color: var(--primary-color);
             text-transform: uppercase;
             border-bottom: 1px solid #ddd;
-            padding-bottom: 8px;
+            padding-bottom: 3px;
             margin-bottom: 15px;
             display: flex;
             align-items: center;
@@ -359,6 +361,7 @@
             
             .page {
                 display: flex; /* Maintain flex for columns on the page */
+                align-items: stretch;
                 width: 100%;
                 height: auto;
                 page-break-after: always; /* Force a break after each defined page block */
@@ -474,6 +477,7 @@
         .pub-list { list-style: decimal; padding-left: 1.4em; margin: 0; }
         .pub-item { margin-bottom: 0.7em; font-size: 0.88em; line-height: 1.5; }
         .pub-citation { color: var(--text-main); }
+        .pub-section { page-break-inside: avoid; break-inside: avoid; }
         .pub-count { font-size: 0.75em; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
         .pub-venue-warn { color: #dc7900; font-size: 0.85em; margin-left: 4px; cursor: help; }
         .pub-first-author { color: #1d4ed8; font-size: 0.8em; margin-left: 4px; cursor: help; }
@@ -625,6 +629,31 @@
                     </div>
                     {% endfor %}
                 </section>
+
+                {% if publications %}
+                <section class="section pub-section">
+                    <h2 class="section-title"><i class="fas fa-file-alt"></i>
+                        {% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}
+                        Selected Publications ({{ publications | length }})
+                        {% else %}
+                        Publications
+                        {% endif %}
+                    </h2>
+                    <ol class="pub-list">
+                        {% for pub in publications %}
+                        <li class="pub-item">
+                            <span class="pub-citation">{{ pub.formatted_citation }}</span>
+                            {% if pub.is_first_author %}
+                            <span class="pub-first-author" title="First author">★</span>
+                            {% endif %}
+                            {% if pub.venue_warning %}
+                            <span class="pub-venue-warn" title="{{ pub.venue_warning }}">⚠</span>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ol>
+                </section>
+                {% endif %}
             </main>
         </div>
 
@@ -654,36 +683,6 @@
         </div>
         <!-- END PAGE THREE -->
     </div>
-
-    {% if publications %}
-    <!-- SELECTED PUBLICATIONS PAGE -->
-    <div id="page-publications" class="page">
-        <main class="right-col" style="grid-column: 1 / -1; max-width: 100%;">
-            <section class="section">
-                <h2 class="section-title"><i class="fas fa-file-alt"></i>
-                    {% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}
-                    Selected Publications ({{ publications | length }})
-                    {% else %}
-                    Publications
-                    {% endif %}
-                </h2>
-                <ol class="pub-list">
-                    {% for pub in publications %}
-                    <li class="pub-item">
-                        <span class="pub-citation">{{ pub.formatted_citation }}</span>
-                        {% if pub.is_first_author %}
-                        <span class="pub-first-author" title="First author">★</span>
-                        {% endif %}
-                        {% if pub.venue_warning %}
-                        <span class="pub-venue-warn" title="{{ pub.venue_warning }}">⚠</span>
-                        {% endif %}
-                    </li>
-                    {% endfor %}
-                </ol>
-            </section>
-        </main>
-    </div>
-    {% endif %}
 
     <!-- ================================================================
          HIDDEN PLAIN-TEXT SECTION

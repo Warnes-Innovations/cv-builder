@@ -29,10 +29,12 @@ async function buildSkillsReviewTable() {
     const statusRes = await fetch('/api/status');
     const statusData = parseStatusResponse(await statusRes.json());
     allSkills = statusData.all_skills || [];
+    window._allExperiences = statusData.all_experiences || [];
   } catch (error) {
     console.error('Error fetching all skills:', error);
     // Fallback to just recommended skills
     allSkills = data.recommended_skills || [];
+    window._allExperiences = [];
   }
 
   // Detect skills recommended by LLM that aren't in master CV and prepend them
@@ -115,11 +117,34 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
           <th>Recommendation</th>
           <th>Confidence</th>
           <th>Reasoning</th>
+          <th>Matched Experiences</th>
           <th>Your Selection</th>
         </tr>
       </thead>
       <tbody>
   `;
+
+  const allExperiences = Array.isArray(window._allExperiences) ? window._allExperiences : [];
+  const savedMatches = (window._savedDecisions && window._savedDecisions.extra_skill_matches) || {};
+
+  const parseMatchInput = (raw) => {
+    return String(raw || '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+  };
+
+  const deriveMatches = (skillName) => {
+    const needle = skillName.toLowerCase();
+    const ids = [];
+    allExperiences.forEach((exp) => {
+      if (!exp || typeof exp !== 'object') return;
+      const ach = Array.isArray(exp.achievements) ? exp.achievements.join(' ') : '';
+      const haystack = [exp.title || '', exp.company || '', ach].join(' ').toLowerCase();
+      if (haystack.includes(needle) && exp.id) ids.push(exp.id);
+    });
+    return ids;
+  };
 
   skills.forEach((skill, rowIdx) => {
     const skillName      = typeof skill === 'string' ? skill : skill.name || skill;
@@ -146,6 +171,11 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     const confidenceBadge    = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
     const reasoningText      = reasoning || (isNew ? 'Recommended by AI based on job requirements but not currently in your master CV.' : 'This skill was not specifically mentioned in the job requirements.');
     const rowStyle           = isNew ? 'background:#fffbeb;' : '';
+    const defaultMatches = isNew ? (savedMatches[skillName] || deriveMatches(skillName)) : [];
+    const matchValue = defaultMatches.join(', ');
+    const matchHelp = isNew
+      ? 'Comma-separated experience IDs. Auto-derived; you can edit before submit.'
+      : 'Only used for AI-suggested skills.';
 
     tableHTML += `
       <tr data-skill="${skillNameEsc}" style="${rowStyle}">
@@ -153,6 +183,17 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
         <td><strong>${escapeHtml(recommendationText)}</strong></td>
         <td>${confidenceBadge}</td>
         <td style="max-width:300px;"><small>${escapeHtml(reasoningText)}</small></td>
+        <td style="min-width:260px;">
+          ${isNew ? `<input
+            type="text"
+            class="skill-match-input"
+            data-skill="${skillNameEsc}"
+            value="${escapeHtml(matchValue)}"
+            placeholder="exp_1, exp_2"
+            title="${escapeHtml(matchHelp)}"
+            style="width:100%;font-size:0.85em;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;"
+          />` : '<span style="color:#9ca3af;">—</span>'}
+        </td>
         <td class="action-btns" style="white-space:nowrap;">
           <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${skillNameEsc}"    title="Emphasize — feature prominently" style="color:#10b981;font-size:1.5em;">➕</button>
           <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${skillNameEsc}"      title="Include — standard listing"      style="font-size:1.3em;">✓</button>
@@ -259,13 +300,27 @@ async function submitSkillDecisions() {
       return d === 'include' || d === 'emphasize';
     });
 
+    const matchInputs = Array.from(document.querySelectorAll('.skill-match-input'));
+    const allowed = new Set((window._allExperiences || []).map(e => e.id).filter(Boolean));
+    const extraSkillMatches = {};
+    for (const input of matchInputs) {
+      const skillName = input.dataset.skill;
+      if (!skillName || !extraSkills.includes(skillName)) continue;
+      const ids = String(input.value || '')
+        .split(',')
+        .map((x) => x.trim())
+        .filter((x) => x && allowed.has(x));
+      if (ids.length > 0) extraSkillMatches[skillName] = ids;
+    }
+
     const response = await fetch('/api/review-decisions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'skills',
         decisions: decisions,
-        extra_skills: extraSkills
+        extra_skills: extraSkills,
+        extra_skill_matches: extraSkillMatches,
       })
     });
 
@@ -278,6 +333,7 @@ async function submitSkillDecisions() {
       window._savedDecisions.skill_decisions = decisions;
       if (!window._savedDecisions.extra_skills) window._savedDecisions.extra_skills = [];
       if (extraSkills.length > 0) window._savedDecisions.extra_skills = extraSkills;
+      window._savedDecisions.extra_skill_matches = extraSkillMatches;
       userSelections.skills = { ...decisions };
       if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
       switchTab('achievements-review');

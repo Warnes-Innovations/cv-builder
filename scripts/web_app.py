@@ -89,6 +89,7 @@ class StatusResponse:
     generation_progress: List[Any]
     persuasion_warnings: List[Any]
     all_experience_ids: List[str]
+    all_experiences: List[Dict[str, Any]]
     all_skills: List[Any]
     all_achievements: List[Any]
     professional_summaries: Dict[str, Any]
@@ -101,6 +102,7 @@ class StatusResponse:
     publication_decisions: Dict[str, Any]
     summary_focus_override: Optional[str]
     extra_skills: List[Any]
+    extra_skill_matches: Dict[str, List[str]]
     session_file: str
     max_skills: int
     achievement_edits: Dict[str, Any]
@@ -724,12 +726,31 @@ Job Description (excerpt):
         orchestrator = entry.orchestrator
         # Get all experience IDs from master data
         all_experience_ids = []
+        all_experiences = []
         all_skills = []
         all_achievements = []
         professional_summaries = {}
         if orchestrator and orchestrator.master_data:
             experiences = orchestrator.master_data.get('experience', [])
             all_experience_ids = [exp.get('id') for exp in experiences if exp.get('id')]
+            for exp in experiences:
+                if not isinstance(exp, dict):
+                    continue
+                ach = exp.get('achievements') or []
+                ach_text = []
+                for item in ach:
+                    if isinstance(item, dict):
+                        txt = (item.get('text') or item.get('description') or '').strip()
+                    else:
+                        txt = str(item).strip()
+                    if txt:
+                        ach_text.append(txt)
+                all_experiences.append({
+                    'id': exp.get('id', ''),
+                    'title': exp.get('title', ''),
+                    'company': exp.get('company', ''),
+                    'achievements': ach_text,
+                })
             all_achievements = orchestrator.master_data.get('selected_achievements', [])
             professional_summaries = dict(orchestrator.master_data.get('professional_summaries', {}))
             # Merge in any LLM-generated summaries saved this session (e.g. 'ai_recommended')
@@ -754,6 +775,7 @@ Job Description (excerpt):
             generation_progress=conversation.state.get("generation_progress") or [],
             persuasion_warnings=conversation.state.get("persuasion_warnings") or [],
             all_experience_ids=all_experience_ids,
+            all_experiences=all_experiences,
             all_skills=all_skills,
             all_achievements=all_achievements,
             professional_summaries=professional_summaries,
@@ -766,6 +788,7 @@ Job Description (excerpt):
             publication_decisions=conversation.state.get("publication_decisions")   or {},
             summary_focus_override=conversation.state.get("summary_focus_override"),
             extra_skills=conversation.state.get("extra_skills")            or [],
+            extra_skill_matches=conversation.state.get("extra_skill_matches") or {},
             session_file=str(getattr(conversation, "session_file", "") or ""),
             max_skills=int(conversation.state.get("max_skills") or get_config().get("generation.max_skills", 20)),
             achievement_edits=conversation.state.get("achievement_edits")       or {},
@@ -3621,6 +3644,42 @@ Close professionally with a call to action.
                 extra_skills = data.get('extra_skills', [])
                 if extra_skills:
                     conversation.state['extra_skills'] = extra_skills
+
+                raw_matches = data.get('extra_skill_matches') or {}
+                sanitized_matches: Dict[str, List[str]] = {}
+                valid_ids = {
+                    (exp.get('id') or '').strip()
+                    for exp in (conversation.orchestrator.master_data.get('experience') or [])
+                    if isinstance(exp, dict) and (exp.get('id') or '').strip()
+                }
+                if isinstance(raw_matches, dict):
+                    for skill_name, exp_ids in raw_matches.items():
+                        if not isinstance(skill_name, str) or not skill_name.strip():
+                            continue
+                        if isinstance(exp_ids, str):
+                            exp_ids = [x.strip() for x in exp_ids.split(',') if x.strip()]
+                        if not isinstance(exp_ids, list):
+                            continue
+                        cleaned = []
+                        seen = set()
+                        for exp_id in exp_ids:
+                            if not isinstance(exp_id, str):
+                                continue
+                            exp_id = exp_id.strip()
+                            if not exp_id or exp_id not in valid_ids or exp_id in seen:
+                                continue
+                            cleaned.append(exp_id)
+                            seen.add(exp_id)
+                        if cleaned:
+                            sanitized_matches[skill_name.strip()] = cleaned
+                conversation.state['extra_skill_matches'] = sanitized_matches
+
+                # Mirror extra-skill decisions into customizations so render/generation
+                # paths can use them without relying on separate top-level state.
+                customizations = dict(conversation.state.get('customizations') or {})
+                customizations['extra_skills'] = conversation.state.get('extra_skills') or []
+                customizations['extra_skill_matches'] = sanitized_matches
+                conversation.state['customizations'] = customizations
                 message = f"Saved decisions for {len(decisions)} skills"
             elif decision_type == 'achievements':
                 conversation.state['achievement_decisions'] = decisions

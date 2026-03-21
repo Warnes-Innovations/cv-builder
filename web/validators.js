@@ -17,11 +17,11 @@ function parseStatusResponse(data) {
   const required = [
     'phase', 'llm_provider', 'job_description',
     'post_analysis_questions', 'post_analysis_answers',
-    'all_experience_ids', 'all_skills', 'all_achievements',
+    'all_experience_ids', 'all_experiences', 'all_skills', 'all_achievements',
     'professional_summaries', 'copilot_auth', 'iterating',
     'experience_decisions', 'skill_decisions',
     'achievement_decisions', 'publication_decisions',
-    'extra_skills', 'session_file',
+    'extra_skills', 'extra_skill_matches', 'session_file',
   ];
   const missing = required.filter(k => !(k in data));
   if (missing.length) {
