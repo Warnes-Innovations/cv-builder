@@ -6,6 +6,8 @@
  *  and are covered by integration tests.)
  */
 import {
+  _parseYearFromStr,
+  _computeYearsFromIds,
   moveSkillRow,
   handleSkillsResponse,
   submitSkillDecisions,
@@ -206,5 +208,92 @@ describe('submitSkillDecisions', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
     await submitSkillDecisions()
     expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('Failed'), 'error')
+  })
+})
+
+// ── _parseYearFromStr ─────────────────────────────────────────────────────────
+
+describe('_parseYearFromStr', () => {
+  it('returns current year for "current"', () => {
+    expect(_parseYearFromStr('current')).toBe(new Date().getFullYear())
+  })
+
+  it('returns current year for "present"', () => {
+    expect(_parseYearFromStr('Present')).toBe(new Date().getFullYear())
+  })
+
+  it('returns current year for "now"', () => {
+    expect(_parseYearFromStr('now')).toBe(new Date().getFullYear())
+  })
+
+  it('parses a 4-digit year', () => {
+    expect(_parseYearFromStr('2019')).toBe(2019)
+  })
+
+  it('parses year embedded in a date string', () => {
+    expect(_parseYearFromStr('Jan 2021')).toBe(2021)
+  })
+
+  it('returns null for empty string', () => {
+    expect(_parseYearFromStr('')).toBeNull()
+  })
+
+  it('returns null for null input', () => {
+    expect(_parseYearFromStr(null)).toBeNull()
+  })
+
+  it('returns null for a non-year string', () => {
+    expect(_parseYearFromStr('sometime')).toBeNull()
+  })
+})
+
+// ── _computeYearsFromIds ──────────────────────────────────────────────────────
+
+describe('_computeYearsFromIds', () => {
+  it('returns null for empty ids array', () => {
+    expect(_computeYearsFromIds([], [])).toBeNull()
+  })
+
+  it('returns null for null ids', () => {
+    expect(_computeYearsFromIds(null, [])).toBeNull()
+  })
+
+  it('returns null when no ids match', () => {
+    const exps = [{ id: 'exp_1', start_date: '2018', end_date: '2020' }]
+    expect(_computeYearsFromIds(['exp_99'], exps)).toBeNull()
+  })
+
+  it('sums duration of a single matched experience', () => {
+    const exps = [{ id: 'exp_1', start_date: '2018', end_date: '2020' }]
+    // 2020 - 2018 + 1 = 3
+    expect(_computeYearsFromIds(['exp_1'], exps)).toBe(3)
+  })
+
+  it('sums duration of multiple matched experiences', () => {
+    const exps = [
+      { id: 'exp_1', start_date: '2016', end_date: '2018' },  // 3 years
+      { id: 'exp_2', start_date: '2019', end_date: '2021' },  // 3 years
+    ]
+    expect(_computeYearsFromIds(['exp_1', 'exp_2'], exps)).toBe(6)
+  })
+
+  it('treats open-ended (present/current) end as current year', () => {
+    const currentYear = new Date().getFullYear()
+    const exps = [{ id: 'exp_1', start_date: '2020', end_date: 'present' }]
+    const expected = currentYear - 2020 + 1
+    expect(_computeYearsFromIds(['exp_1'], exps)).toBe(expected)
+  })
+
+  it('uses at least 1 year when start is unparseable', () => {
+    const exps = [{ id: 'exp_1', start_date: 'unknown', end_date: '2022' }]
+    expect(_computeYearsFromIds(['exp_1'], exps)).toBe(1)
+  })
+
+  it('only counts experiences whose id is in the provided list', () => {
+    const exps = [
+      { id: 'exp_1', start_date: '2015', end_date: '2017' },
+      { id: 'exp_2', start_date: '2018', end_date: '2020' },
+    ]
+    expect(_computeYearsFromIds(['exp_1'], exps)).toBe(3)
   })
 })

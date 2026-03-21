@@ -24,7 +24,8 @@ from unittest.mock import MagicMock, call, mock_open, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
-from scripts.web_app import create_app, _save_master
+from scripts.web_app import create_app, _load_master, _save_master
+from scripts.utils.master_data_validator import ValidationResult
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +58,11 @@ def _make_app():
     stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
     stack.enter_context(patch('scripts.web_app.CVOrchestrator', return_value=mock_orchestrator))
     stack.enter_context(patch('scripts.web_app.ConversationManager', return_value=mock_conversation))
+    # Skip file-existence check in _load_master so tests can use mock_open freely
+    stack.enter_context(patch(
+        'scripts.web_app.validate_master_data_file',
+        return_value=ValidationResult(valid=True),
+    ))
 
     app = create_app(_make_args())
     app.config['TESTING'] = True
@@ -142,6 +148,26 @@ class TestMasterDataOverview(unittest.TestCase):
 
         self.assertEqual(res.status_code, 500)
         self.assertFalse(data['ok'])
+
+    def test_overview_returns_500_when_preload_validation_fails(self):
+        """Endpoint surfaces pre-load validation failures from _load_master."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({}))) as mock_file, \
+             patch(
+                 'scripts.web_app.validate_master_data_file',
+                 return_value=ValidationResult(
+                     valid=False,
+                     errors=['experience must be a list'],
+                 ),
+             ):
+            res = client.get('/api/master-data/overview', query_string={'session_id': sid})
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 500)
+        self.assertFalse(data['ok'])
+        self.assertIn('validation failed', data['error'])
+        mock_file.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -486,6 +512,64 @@ class TestSaveMasterHelper(unittest.TestCase):
             backup_dir = Path(td) / 'backups'
             self.assertFalse(backup_dir.exists())
 
+    def test_save_master_validation_failure_restores_backup(self):
+        """If post-write validation fails, original file content is restored."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            old_data = {'personal_info': {'name': 'Old Name'}, 'skills': []}
+            new_data = {'personal_info': {'name': 'New Name'}, 'skills': []}
+            master_path.write_text(json.dumps(old_data), encoding='utf-8')
+
+            with patch('scripts.web_app.subprocess.run'), \
+                 patch(
+                     'scripts.web_app.validate_master_data_file',
+                     return_value=ValidationResult(
+                         valid=False,
+                         errors=['schema error at skills: wrong type'],
+                     ),
+                 ):
+                with self.assertRaises(ValueError):
+                    _save_master(new_data, master_path)
+
+            saved = json.loads(master_path.read_text(encoding='utf-8'))
+            self.assertEqual(saved['personal_info']['name'], 'Old Name')
+
+
+class TestLoadMasterHelper(unittest.TestCase):
+
+    def test_load_master_validates_before_read(self):
+        """Loading master data validates file path before reading JSON."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            data = {'personal_info': {'name': 'Valid'}}
+            master_path.write_text(json.dumps(data), encoding='utf-8')
+
+            with patch(
+                'scripts.web_app.validate_master_data_file',
+                return_value=ValidationResult(valid=True),
+            ) as mock_validate:
+                loaded, loaded_path = _load_master(str(master_path))
+
+            self.assertEqual(loaded['personal_info']['name'], 'Valid')
+            self.assertEqual(loaded_path, master_path)
+            mock_validate.assert_called_once_with(str(master_path), use_schema=True)
+
+    def test_load_master_fails_when_validation_fails(self):
+        """Loading master data raises when pre-load validation fails."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            master_path.write_text(json.dumps({'skills': []}), encoding='utf-8')
+
+            with patch(
+                'scripts.web_app.validate_master_data_file',
+                return_value=ValidationResult(
+                    valid=False,
+                    errors=['experience must be a list'],
+                ),
+            ):
+                with self.assertRaises(ValueError):
+                    _load_master(str(master_path))
+
 
 # ---------------------------------------------------------------------------
 # POST /api/master-data/preview-diff
@@ -703,6 +787,57 @@ class TestMasterDataPreviewDiff(unittest.TestCase):
              patch('builtins.open', mock_open(read_data=json.dumps(master))):
             res = self._post(client, sid, {'section': 'skill', 'action': 'add_category'})
         self.assertEqual(res.status_code, 400)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/master-data/validate
+# ---------------------------------------------------------------------------
+
+class TestMasterDataValidateEndpoint(unittest.TestCase):
+    """Tests for the GET /api/master-data/validate endpoint."""
+
+    _MASTER = {
+        'personal_info': {'name': 'Dr. Test'},
+        'experience': [],
+        'skills': ['Python'],
+    }
+
+    def test_valid_data_returns_ok_true(self):
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps(self._MASTER)
+        with stack, app.test_client() as client, \
+             patch('scripts.web_app.validate_master_data_file') as mock_v:
+            from scripts.utils.master_data_validator import ValidationResult
+            mock_v.return_value = ValidationResult(valid=True, errors=[], warnings=[])
+            res  = client.get('/api/master-data/validate', query_string={'session_id': sid})
+            data = res.get_json()
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['errors'], [])
+
+    def test_invalid_data_returns_ok_false(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('scripts.web_app.validate_master_data_file') as mock_v:
+            from scripts.utils.master_data_validator import ValidationResult
+            mock_v.return_value = ValidationResult(valid=False, errors=['experience must be a list'])
+            res  = client.get('/api/master-data/validate', query_string={'session_id': sid})
+            data = res.get_json()
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(data['ok'])
+        self.assertIn('experience must be a list', data['errors'])
+
+    def test_use_schema_false_passes_through(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('scripts.web_app.validate_master_data_file') as mock_v:
+            from scripts.utils.master_data_validator import ValidationResult
+            mock_v.return_value = ValidationResult(valid=True, errors=[], warnings=[])
+            client.get('/api/master-data/validate',
+                       query_string={'session_id': sid, 'use_schema': 'false'})
+        mock_v.assert_called_once()
+        _, kwargs = mock_v.call_args
+        self.assertFalse(kwargs.get('use_schema', True))
 
 
 # ---------------------------------------------------------------------------

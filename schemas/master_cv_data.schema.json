@@ -192,15 +192,20 @@
         "title": { "type": "string" },
         "company": { "type": "string" },
         "location": {
-          "type": "object",
-          "additionalProperties": true,
-          "properties": {
-            "city": { "type": "string" },
-            "state": { "type": "string" }
-          }
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "city": { "type": "string" },
+                "state": { "type": "string" }
+              }
+            }
+          ]
         },
-        "start_date": { "type": "string" },
-        "end_date": { "type": "string" },
+        "start_date": { "type": ["string", "null"] },
+        "end_date": { "type": ["string", "null"] },
         "employment_type": { "type": "string" },
         "tags": {
           "type": "array",
@@ -259,12 +264,17 @@
         "field": { "type": "string" },
         "institution": { "type": "string" },
         "location": {
-          "type": "object",
-          "additionalProperties": true,
-          "properties": {
-            "city": { "type": "string" },
-            "state": { "type": "string" }
-          }
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "city": { "type": "string" },
+                "state": { "type": "string" }
+              }
+            }
+          ]
         },
         "start_year": { "type": ["integer", "number"] },
         "end_year": { "type": ["integer", "number"] },

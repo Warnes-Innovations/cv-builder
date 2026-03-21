@@ -301,7 +301,7 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ### Tier 7
 
-- [ ] **M27 — `web/session-switcher-ui.js`** (~500 lines)
+- [x] **M27 — `web/session-switcher-ui.js`** (~310 lines)
   - Functions: `openSessionsModal`, `closeSessionsModal`, `_renderSessionsModalBody`,
     `loadSessionAndCloseModal`, `newSessionFromModal`, `startSessionModalRename`,
     `cancelSessionModalRename`, `submitSessionModalRename`,
@@ -311,15 +311,17 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
     `_renderSessionSwitcherSections`, `_updateSessionSwitcherHeader`,
     `showOwnershipConflictDialog`, `closeOwnershipConflictDialog`,
     `showSessionConflictBanner`, `conflictRetryNow`, `conflictDismiss`
-  - Tests: `tests/js/session-switcher-ui.test.js`
+  - State: `_conflictRetryQueue`, `_conflictTimerId`, `_conflictCountdown`
+  - Tests: `tests/js/session-switcher-ui.test.js` (38 tests)
 
 ### Tier 8
 
-- [ ] **M28 — `web/app.js`** (new orchestrator, ~300 lines)
-  - Contains: `init()`, global state declarations, `setupEventListeners` wiring
-  - Imports: all 27 modules above
-  - Tests: `tests/js/app-init.test.js`
-  - Notes: replaces the current 10,451-line monolith
+- [x] **M28 — main.js updated + bundle rebuilt**
+  - All 27 modules imported in `web/src/main.js` and assigned to `globalThis`
+  - Bundle rebuilt: `web/bundle.js` (1565 KB, no errors)
+  - Tests: `tests/js/app-init.test.js` (46 tests) — verifies export surface of all 27 modules
+  - Note: `web/app.js` monolith slimming (removing extracted functions) is the
+    final follow-on step; modules are ready and bundle is live
 
 ---
 
@@ -333,6 +335,7 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
 | 2026-03-20 | M06–M09 | Tier 2 complete: auth-provider, ats-refinement, session-actions, job-analysis (59 tests). |
 | 2026-03-20 | layout-instruction.js | **Not an app.js split module** (already bundled in Phase 2). Rewrote test as ES module after main-merge dropped eval-based version. Added helper exports: showProcessing, showConfirmationMessage, renderInstructionHistory, addToInstructionHistory, undoInstruction (18 tests). |
 | 2026-03-20 | — | main-merge note: tests/js/suggested-achievements.test.js uses require('../../web/app.js') — must be rewritten when saveSuggestedAchievementField / moveSuggestedAchievementRow / deleteSuggestedAchievement move to achievements-review.js (M17). |
+| 2026-03-21 | M27 M28 | Tier 7–8 complete: session-switcher-ui (38 tests), app-init surface tests (46 tests). main.js updated with all 27 modules; bundle rebuilt at 1565 KB. |
 
 ---
 
