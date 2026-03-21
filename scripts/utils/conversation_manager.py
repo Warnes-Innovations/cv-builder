@@ -692,6 +692,11 @@ Ask questions that are specific to this job posting, not generic career question
                 if extra_skills:
                     customizations['extra_skills'] = extra_skills
 
+                # Base font size for CV template (set via Layout panel)
+                base_font_size = self.state.get('base_font_size')
+                if base_font_size:
+                    customizations['base_font_size'] = base_font_size
+
                 # Summary focus override (user-selected summary key)
                 summary_override = self.state.get('summary_focus_override')
                 if summary_override:
