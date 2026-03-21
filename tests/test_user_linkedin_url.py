@@ -6,7 +6,10 @@ Test the specific LinkedIn URL provided by the user
 import requests
 import os
 import json
+import pytest
 
+
+@pytest.mark.usefixtures("require_server")
 def test_user_linkedin_url(require_server=None):
     """Test the specific LinkedIn URL the user provided"""
     base_url = os.environ.get("CV_SERVER_URL", "http://127.0.0.1:5002")
