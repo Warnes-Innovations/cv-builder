@@ -20,6 +20,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.parse
 
@@ -119,6 +120,10 @@ def live_server():
 
     If a server is already running on 5001 (e.g. started by the outer test
     harness), it is reused without launching a new process.
+
+    NOTE: when reusing an already-running server the output directory is not
+    controlled by this fixture; session directories may accumulate in that
+    server's configured output path.
     """
     if not _playwright_browsers_installed():
         pytest.skip(
@@ -136,39 +141,45 @@ def live_server():
         os.path.join(os.path.dirname(__file__), "..", "..")
     )
     server_port = _base_url_port(BASE_URL)
-    cmd = [
-        sys.executable,
-        os.path.join(project_root, "scripts", "web_app.py"),
-        "--llm-provider", "stub",
-        "--port", str(server_port),
-    ]
-    env = os.environ.copy()
-    env["FLASK_ENV"] = "testing"
 
-    proc = subprocess.Popen(
-        cmd,
-        cwd=project_root,
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    tmp_dir = tempfile.TemporaryDirectory(prefix="cv_builder_ui_test_")
+    try:
+        cmd = [
+            sys.executable,
+            os.path.join(project_root, "scripts", "web_app.py"),
+            "--llm-provider", "stub",
+            "--output-dir", tmp_dir.name,
+            "--port", str(server_port),
+        ]
+        env = os.environ.copy()
+        env["FLASK_ENV"] = "testing"
 
-    reachable = _wait_for_server(
-        f"{BASE_URL}/api/status", SERVER_STARTUP_TIMEOUT
-    )
-    if not reachable:
-        proc.terminate()
-        pytest.skip(
-            f"Flask server did not start within {SERVER_STARTUP_TIMEOUT}s"
+        proc = subprocess.Popen(
+            cmd,
+            cwd=project_root,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
 
-    yield BASE_URL
+        reachable = _wait_for_server(
+            f"{BASE_URL}/api/status", SERVER_STARTUP_TIMEOUT
+        )
+        if not reachable:
+            proc.terminate()
+            pytest.skip(
+                f"Flask server did not start within {SERVER_STARTUP_TIMEOUT}s"
+            )
 
-    proc.terminate()
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
+        yield BASE_URL
+
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    finally:
+        tmp_dir.cleanup()
 
 
 # ---------------------------------------------------------------------------

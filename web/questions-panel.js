@@ -19,6 +19,9 @@
  *   - tabData, postAnalysisQuestions, questionAnswers (window globals)
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('questions-panel');
+
 // ---------------------------------------------------------------------------
 // State persistence helpers
 // ---------------------------------------------------------------------------
@@ -41,7 +44,7 @@ async function persistPostAnalysisState() {
       })
     });
   } catch (error) {
-    console.warn('Failed to persist post-analysis state:', error);
+    log.warn('Failed to persist post-analysis state:', error);
   }
 }
 
@@ -73,7 +76,7 @@ async function fetchPostAnalysisQuestionsFromApi(analysisData) {
     const payload = await res.json();
     return normalizePostAnalysisQuestions(payload.questions);
   } catch (apiError) {
-    console.warn('Failed to fetch post-analysis questions:', apiError);
+    log.warn('Failed to fetch post-analysis questions:', apiError);
     return [];
   }
 }
@@ -88,7 +91,7 @@ async function appendFollowUpPostAnalysisQuestions() {
       ? JSON.parse(cleanAnalysis)
       : cleanAnalysis;
   } catch (parseError) {
-    console.warn('Skipping follow-up questions due to invalid analysis payload:', parseError);
+    log.warn('Skipping follow-up questions due to invalid analysis payload:', parseError);
     return 0;
   }
 
@@ -143,7 +146,7 @@ async function askPostAnalysisQuestions(analysisResult, preferredQuestions = nul
       await sendAction('recommend_customizations');
     }
   } catch (e) {
-    console.error('Error parsing analysis for questions:', e);
+    log.error('Error parsing analysis for questions:', e);
     appendMessage('assistant', 'Analysis complete! Click "Recommend Customizations" when ready.');
   }
 }
@@ -273,11 +276,11 @@ async function draftQuestionResponse(idx) {
       showDraftError(idx, null);
       appendMessage('assistant', `✨ Draft answer for Q${idx + 1}:\n\n${data.text}\n\nReview and edit in the field below before submitting.`);
     } else {
-      console.warn('Draft generation failed:', data.error);
+      log.warn('Draft generation failed:', data.error);
       showDraftError(idx, data.error || 'Draft failed — please try again.');
     }
   } catch (err) {
-    console.error('Draft fetch error:', err);
+    log.error('Draft fetch error:', err);
     showDraftError(idx, 'Network error — please try again.');
   } finally {
     btn.disabled = false;

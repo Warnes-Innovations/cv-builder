@@ -14,6 +14,9 @@ import {
   getAchievementRecommendation, getAchievementConfidence, getAchievementReasoning,
   buildFallbackPostAnalysisQuestions,
 } from '../../web/recommendation-helpers.js'
+import loglevel from '../../web/logger.js'
+
+const log = loglevel.getLogger('recommendation-helpers')
 
 // ── Experience recommendations ────────────────────────────────────────────
 
@@ -39,7 +42,7 @@ describe('getExperienceRecommendation', () => {
   })
 
   it('warns when experience_recommendations is absent', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     getExperienceRecommendation('e1', {})
     expect(spy).toHaveBeenCalled()
     spy.mockRestore()

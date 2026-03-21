@@ -44,20 +44,30 @@
 
     const realFetch = window.fetch;
     window.fetch = async function(url, opts){
-      if (typeof url === 'string' && url.endsWith('/api/status')){
+      // Strip query params before path matching so ?owner_token=... doesn't prevent mock hits
+      const urlPath = typeof url === 'string' ? url.split('?')[0] : '';
+      if (urlPath.endsWith('/api/status')){
         return new Response(JSON.stringify(STATUS), { status:200, headers:{'Content-Type':'application/json'} });
       }
-      if (typeof url === 'string' && url.endsWith('/api/master-fields')){
+      if (urlPath.endsWith('/api/master-fields')){
         return new Response(JSON.stringify(MASTER_FIELDS), { status:200, headers:{'Content-Type':'application/json'} });
+      }
+      // Swallow other API calls silently so no network errors escape to the test harness
+      if (urlPath.includes('/api/')){
+        return new Response('{}', { status:200, headers:{'Content-Type':'application/json'} });
       }
       return realFetch.apply(this, arguments);
     };
 
-    // Load the app script; adjust path if served from another root
-    const script = document.createElement('script');
-    script.src = '/web/app.js';
-    script.onload = async () => {
-      log('app.js loaded');
+    // Load bundle.js first so module functions are on globalThis, then app.js.
+    // Both are loaded dynamically so the DOMContentLoaded listener inside
+    // bundle.js never fires (the event already occurred by the time these
+    // scripts are injected), preventing the real init() from running.
+    function loadAppScript() {
+      const script = document.createElement('script');
+      script.src = '/web/app.js';
+      script.onload = async () => {
+        log('app.js loaded');
       try {
         // Call restoreBackendState which should populate window.achievementEdits and window._savedDecisions
         if (typeof restoreBackendState === 'function'){
@@ -99,9 +109,19 @@
       } catch (e){
         log('ERROR: ' + e.message);
       }
+      };
+      script.onerror = () => log('Failed to load app.js — ensure this file is served from the web root as /web/app.js');
+      document.head.appendChild(script);
+    }
+
+    const bundleScript = document.createElement('script');
+    bundleScript.src = '/web/bundle.js';
+    bundleScript.onload = () => {
+      log('bundle.js loaded');
+      loadAppScript();
     };
-    script.onerror = () => log('Failed to load app.js — ensure this file is served from the web root as /web/app.js');
-    document.head.appendChild(script);
+    bundleScript.onerror = () => log('Failed to load bundle.js — ensure this file is served from the web root as /web/bundle.js');
+    document.head.appendChild(bundleScript);
   </script>
 </body>
 </html>
