@@ -71,6 +71,7 @@ the tests.
 - Config precedence is intentional and must be preserved: env vars > `.env` > `config.yaml` > defaults (`scripts/utils/config.py`).
 - Session persistence is file-based (`~/CV/files/sessions` by default); avoid introducing hidden in-memory-only state for core workflow.
 - `skills` in master data can be either a list or category dict; existing code handles both—keep that compatibility.
+- If app changes alter the `Master_CV_Data.json` structure, update all three together in the same change: `MASTER_CV_DATA_SPECIFICATION.md`, `scripts/utils/master_data_validator.py`, and `schemas/master_cv_data.schema.json`.
 - Recommendation semantics are strict: each recommendation includes `recommendation`, `confidence`, and `reasoning` with project-specific enums (see prompt logic in `scripts/utils/llm_client.py` and `scripts/utils/conversation_manager.py`).
 - `scripts/llm_cv_generator.py` CLI currently restricts `--llm-provider` choices to `github|openai|anthropic|local`, while backend factory supports more providers (`copilot-oauth`, `copilot`, `gemini`, `groq`). Keep changes consistent when touching provider UX.
 - **Multi-session architecture**: the Flask app uses a `SessionRegistry` singleton (`scripts/utils/session_registry.py`) that manages independent `SessionEntry` objects, each holding its own `ConversationManager` and `CVOrchestrator`. Sessions are keyed by `session_id` (UUID). There is no global manager and no threading lock on session access.

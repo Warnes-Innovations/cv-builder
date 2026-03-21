@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.config import get_config
 from utils.bibtex_parser import parse_bibtex_file, format_publication, filter_publications
+from utils.master_data_validator import validate_master_data_file
 from utils.scoring import (
     calculate_relevance_score,
     rank_content,
@@ -30,6 +31,11 @@ from parse_job_description import parse_job_description
 
 def load_master_data(filepath: str) -> Dict:
     """Load Master_CV_Data.json"""
+    validation = validate_master_data_file(filepath, use_schema=True)
+    if not validation.valid:
+        msg = "; ".join(validation.errors) or "master data validation failed"
+        raise ValueError(f"Master data validation failed before load: {msg}")
+
     with open(filepath, 'r', encoding='utf-8') as f:
         return json.load(f)
 

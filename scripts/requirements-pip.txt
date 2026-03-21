@@ -25,6 +25,7 @@ pybtex>=0.24.0
 
 # Data Validation
 pydantic>=2.0.0
+jsonschema>=4.0.0
 
 # Environment Variables
 python-dotenv>=1.0.0
