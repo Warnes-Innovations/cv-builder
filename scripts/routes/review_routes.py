@@ -1,122 +1,126 @@
-"""Review, rewrite, spell-check, layout, ATS validation, and persuasion-check routes."""
-import dataclasses
-import json
-import re
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
 
-from flask import Blueprint, jsonify, request, send_file
+"""
+Review routes — review decisions, achievement edits, rewrites, publications,
+reorder, synonyms, spell check, layout review, ATS, persuasion.
+"""
+import dataclasses
+import re
+import traceback
+from pathlib import Path
+from typing import Any, Dict, List
+
+from flask import Blueprint, jsonify, request
 
 from utils.spell_checker import SpellChecker
 
 
-# ---------------------------------------------------------------------------
-# Module-level SpellChecker singleton
-# ---------------------------------------------------------------------------
-
-_spell_checker: SpellChecker = SpellChecker()
-
-
-def _prepopulate_spell_dict(orchestrator_inst) -> None:
-    """Load domain terms and proper nouns from master data into the custom dictionary."""
-    try:
-        master = orchestrator_inst.master_data or {}
-        skills = master.get('skills', {})
-        all_names: list = []
-
-        def _collect_names(values) -> None:
-            for value in values or []:
-                if isinstance(value, dict):
-                    name = (
-                        value.get('name', '')
-                        or value.get('title', '')
-                        or value.get('degree', '')
-                        or value.get('institution', '')
-                        or value.get('company', '')
-                        or value.get('issuer', '')
-                        or value.get('language', '')
-                        or value.get('proficiency', '')
-                    )
-                    if name:
-                        all_names.append(str(name))
-                elif value:
-                    all_names.append(str(value))
-
-        if isinstance(skills, dict):
-            for cat_skills in skills.values():
-                if isinstance(cat_skills, list):
-                    _collect_names(cat_skills)
-        elif isinstance(skills, list):
-            _collect_names(skills)
-
-        pinfo = master.get('personal_info', {})
-        all_names.extend(filter(None, [
-            pinfo.get('name', ''),
-            pinfo.get('title', ''),
-        ]))
-
-        for exp in master.get('experience', []) or []:
-            if isinstance(exp, dict):
-                all_names.extend(filter(None, [
-                    exp.get('company', ''),
-                    exp.get('title', ''),
-                ]))
-
-        for edu in master.get('education', []) or []:
-            if isinstance(edu, dict):
-                all_names.extend(filter(None, [
-                    edu.get('institution', ''),
-                    edu.get('degree', ''),
-                    edu.get('field', ''),
-                ]))
-
-        for award in master.get('awards', []) or []:
-            if isinstance(award, dict):
-                all_names.extend(filter(None, [
-                    award.get('degree', ''),
-                    award.get('title', ''),
-                ]))
-
-        for cert in master.get('certifications', []) or []:
-            if isinstance(cert, dict):
-                all_names.extend(filter(None, [
-                    cert.get('name', ''),
-                    cert.get('issuer', ''),
-                ]))
-
-        for lang in pinfo.get('languages', []) or []:
-            if isinstance(lang, dict):
-                all_names.extend(filter(None, [
-                    lang.get('language', ''),
-                    lang.get('proficiency', ''),
-                ]))
-            else:
-                all_names.append(str(lang))
-
-        _spell_checker.prepopulate_from_skills(all_names)
-    except Exception:
-        pass
-
-
 def create_blueprint(deps):
-    bp = Blueprint('review_routes', __name__)
+    bp = Blueprint('review', __name__)
 
-    get_session = deps['get_session']
-    validate_owner = deps['validate_owner']
+    _get_session = deps['get_session']
+    _validate_owner = deps['validate_owner']
     session_registry = deps['session_registry']
-    llm_client_ref = deps['llm_client_ref']
-    coerce_to_dict = deps['coerce_to_dict']
+    _load_master = deps['load_master']
+    _coerce_to_dict = deps['coerce_to_dict']
+    validate_ats_report = deps['validate_ats_report']
     RewritesResponse = deps['RewritesResponse']
+    Phase = deps['Phase']
 
-    # ------------------------------------------------------------------
-    # Review decisions
-    # ------------------------------------------------------------------
+    # Lazy singleton — the LanguageTool JVM starts on first call.
+    _spell_checker: SpellChecker = SpellChecker()
+
+    def _prepopulate_spell_dict(orchestrator_inst) -> None:
+        """Load domain terms and proper nouns from master data into the custom dictionary."""
+        try:
+            master = orchestrator_inst.master_data or {}
+            skills = master.get('skills', {})
+            all_names: list = []
+
+            def _collect_names(values) -> None:
+                for value in values or []:
+                    if isinstance(value, dict):
+                        name = (
+                            value.get('name', '')
+                            or value.get('title', '')
+                            or value.get('degree', '')
+                            or value.get('institution', '')
+                            or value.get('company', '')
+                            or value.get('issuer', '')
+                            or value.get('language', '')
+                            or value.get('proficiency', '')
+                        )
+                        if name:
+                            all_names.append(str(name))
+                    elif value:
+                        all_names.append(str(value))
+
+            if isinstance(skills, dict):
+                for cat_skills in skills.values():
+                    if isinstance(cat_skills, list):
+                        _collect_names(cat_skills)
+            elif isinstance(skills, list):
+                _collect_names(skills)
+
+            pinfo = master.get('personal_info', {})
+            all_names.extend(filter(None, [
+                pinfo.get('name', ''),
+                pinfo.get('title', ''),
+            ]))
+
+            for exp in master.get('experience', []) or []:
+                if isinstance(exp, dict):
+                    all_names.extend(filter(None, [
+                        exp.get('company', ''),
+                        exp.get('title', ''),
+                    ]))
+
+            for edu in master.get('education', []) or []:
+                if isinstance(edu, dict):
+                    all_names.extend(filter(None, [
+                        edu.get('institution', ''),
+                        edu.get('degree', ''),
+                        edu.get('field', ''),
+                    ]))
+
+            for award in master.get('awards', []) or []:
+                if isinstance(award, dict):
+                    all_names.extend(filter(None, [
+                        award.get('degree', ''),
+                        award.get('title', ''),
+                    ]))
+
+            for cert in master.get('certifications', []) or []:
+                if isinstance(cert, dict):
+                    all_names.extend(filter(None, [
+                        cert.get('name', ''),
+                        cert.get('issuer', ''),
+                    ]))
+
+            for lang in pinfo.get('languages', []) or []:
+                if isinstance(lang, dict):
+                    all_names.extend(filter(None, [
+                        lang.get('language', ''),
+                        lang.get('proficiency', ''),
+                    ]))
+                else:
+                    all_names.append(str(lang))
+
+            _spell_checker.prepopulate_from_skills(all_names)
+        except Exception:
+            pass
+
+    # ── Review decisions ─────────────────────────────────────────────────────
 
     @bp.route('/api/review-decisions', methods=['POST'])
     def save_review_decisions():
         """Save user's review decisions for experiences/skills."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.json
@@ -139,6 +143,40 @@ def create_blueprint(deps):
                 extra_skills = data.get('extra_skills', [])
                 if extra_skills:
                     conversation.state['extra_skills'] = extra_skills
+
+                raw_matches = data.get('extra_skill_matches') or {}
+                sanitized_matches: Dict[str, List[str]] = {}
+                valid_ids = {
+                    (exp.get('id') or '').strip()
+                    for exp in (conversation.orchestrator.master_data.get('experience') or [])
+                    if isinstance(exp, dict) and (exp.get('id') or '').strip()
+                }
+                if isinstance(raw_matches, dict):
+                    for skill_name, exp_ids in raw_matches.items():
+                        if not isinstance(skill_name, str) or not skill_name.strip():
+                            continue
+                        if isinstance(exp_ids, str):
+                            exp_ids = [x.strip() for x in exp_ids.split(',') if x.strip()]
+                        if not isinstance(exp_ids, list):
+                            continue
+                        cleaned = []
+                        seen = set()
+                        for exp_id in exp_ids:
+                            if not isinstance(exp_id, str):
+                                continue
+                            exp_id = exp_id.strip()
+                            if not exp_id or exp_id not in valid_ids or exp_id in seen:
+                                continue
+                            cleaned.append(exp_id)
+                            seen.add(exp_id)
+                        if cleaned:
+                            sanitized_matches[skill_name.strip()] = cleaned
+                conversation.state['extra_skill_matches'] = sanitized_matches
+
+                customizations = dict(conversation.state.get('customizations') or {})
+                customizations['extra_skills'] = conversation.state.get('extra_skills') or []
+                customizations['extra_skill_matches'] = sanitized_matches
+                conversation.state['customizations'] = customizations
                 message = f"Saved decisions for {len(decisions)} skills"
             elif decision_type == 'achievements':
                 conversation.state['achievement_decisions'] = decisions
@@ -163,15 +201,15 @@ def create_blueprint(deps):
             return jsonify({"success": True, "message": message})
 
         except Exception as e:
-            import traceback
+            print(f"ERROR in save_review_decisions: {e}")
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
     @bp.route('/api/save-achievement-edits', methods=['POST'])
     def save_achievement_edits():
         """Save per-experience achievement edits from the achievements editor tab."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.json or {}
@@ -186,17 +224,14 @@ def create_blueprint(deps):
         total = sum(len(v) for v in normalized.values())
         return jsonify({"success": True, "message": f"Saved edits for {len(normalized)} experiences ({total} achievements)"})
 
-    # ------------------------------------------------------------------
-    # Achievement rewrites
-    # ------------------------------------------------------------------
-
     @bp.route('/api/rewrite-achievement', methods=['POST'])
     def rewrite_achievement():
         """Ask the LLM to rewrite a single achievement bullet."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         orchestrator = entry.orchestrator
+        llm_client = deps['llm_client_ref']['value']
         data = request.json or {}
         achievement_text = data.get('achievement_text', '').strip()
         experience_index = data.get('experience_index')
@@ -212,8 +247,7 @@ def create_blueprint(deps):
         if experience_index is not None:
             try:
                 exp_idx = int(experience_index)
-                with open(orchestrator.master_data_path, 'r', encoding='utf-8') as _f:
-                    _master = json.load(_f)
+                _master, _ = _load_master(orchestrator.master_data_path)
                 experiences = _master.get('experience', [])
                 if 0 <= exp_idx < len(experiences):
                     exp = experiences[exp_idx]
@@ -226,7 +260,7 @@ def create_blueprint(deps):
         job_description = conversation.state.get('job_description') or ''
 
         try:
-            rewritten = llm_client_ref().rewrite_achievement(
+            rewritten = llm_client.rewrite_achievement(
                 achievement_text=achievement_text,
                 experience_context=experience_context,
                 job_description=job_description,
@@ -248,8 +282,8 @@ def create_blueprint(deps):
     @bp.route('/api/rewrite-achievement-outcome', methods=['POST'])
     def rewrite_achievement_outcome():
         """Record the user's accept/reject decision for an AI rewrite suggestion."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         data = request.json or {}
         log_id = data.get('log_id', '').strip()
@@ -270,14 +304,10 @@ def create_blueprint(deps):
             return jsonify({"error": "log_id not found"}), 404
         return jsonify({"ok": True})
 
-    # ------------------------------------------------------------------
-    # CV data (get/save)
-    # ------------------------------------------------------------------
-
     @bp.route('/api/cv-data', methods=['GET'])
     def get_cv_data():
         """Get current CV data for editing."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         orchestrator = entry.orchestrator
         try:
@@ -322,15 +352,15 @@ def create_blueprint(deps):
             return jsonify(cv_data)
 
         except Exception as e:
-            import traceback
+            print(f"ERROR in get_cv_data: {e}")
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
     @bp.route('/api/cv-data', methods=['POST'])
     def save_cv_data():
         """Save edited CV data."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         try:
@@ -356,20 +386,15 @@ def create_blueprint(deps):
             return jsonify({"success": True, "message": "CV data saved successfully"})
 
         except Exception as e:
-            import traceback
+            print(f"ERROR in save_cv_data: {e}")
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
-
-    # ------------------------------------------------------------------
-    # Rewrites
-    # ------------------------------------------------------------------
 
     @bp.get("/api/rewrites")
     def get_rewrites():
         """Propose LLM text rewrites aligned with the target job description."""
-        from utils.conversation_manager import Phase
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         orchestrator = entry.orchestrator
         sid = entry.session_id
@@ -425,15 +450,14 @@ def create_blueprint(deps):
             )))
 
         except Exception as e:
-            import traceback
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
     @bp.post("/api/rewrites/approve")
     def approve_rewrites():
         """Submit accept / edit / reject decisions for pending rewrite proposals."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -455,21 +479,17 @@ def create_blueprint(deps):
             })
 
         except Exception as e:
-            import traceback
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
-
-    # ------------------------------------------------------------------
-    # Publication recommendations
-    # ------------------------------------------------------------------
 
     @bp.get("/api/publication-recommendations")
     def publication_recommendations():
         """Return LLM-ranked publication recommendations for the current job."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         orchestrator = entry.orchestrator
         sid = entry.session_id
+        llm_client = deps['llm_client_ref']['value']
         try:
             cached = conversation.state.get('publication_recommendations')
             if cached is not None:
@@ -490,7 +510,7 @@ def create_blueprint(deps):
             pubs_list = list(orchestrator.publications.values())
 
             try:
-                recommendations = llm_client_ref().rank_publications_for_job(
+                recommendations = llm_client.rank_publications_for_job(
                     publications=pubs_list,
                     job_analysis=job_analysis,
                     candidate_name=candidate_name,
@@ -566,19 +586,14 @@ def create_blueprint(deps):
             return jsonify({"ok": True, "recommendations": recommendations, "source": source, "total_count": total_count})
 
         except Exception as e:
-            import traceback
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
-
-    # ------------------------------------------------------------------
-    # Bullet / row ordering
-    # ------------------------------------------------------------------
 
     @bp.post("/api/reorder-bullets")
     def reorder_bullets():
         """Persist a user-defined bullet ordering for one experience."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -606,7 +621,7 @@ def create_blueprint(deps):
     @bp.get("/api/proposed-bullet-order")
     def proposed_bullet_order():
         """Return relevance-ranked bullet order for one experience based on job keywords."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         exp_id = request.args.get("experience_id")
         if not exp_id:
@@ -644,8 +659,8 @@ def create_blueprint(deps):
     @bp.post("/api/reorder-rows")
     def reorder_rows():
         """Persist a user-defined row ordering for experiences or skills."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -670,14 +685,10 @@ def create_blueprint(deps):
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-    # ------------------------------------------------------------------
-    # Synonym lookup
-    # ------------------------------------------------------------------
-
     @bp.get("/api/synonym-lookup")
     def synonym_lookup():
         """Look up the canonical form of a skill or keyword via the synonym map."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         term = request.args.get("term", "").strip()
         if not term:
@@ -688,17 +699,13 @@ def create_blueprint(deps):
     @bp.get("/api/synonym-map")
     def synonym_map():
         """Return the full synonym map as ``{alias: canonical}``."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         return jsonify(conversation.orchestrator._synonym_map)
 
-    # ------------------------------------------------------------------
-    # Experience details
-    # ------------------------------------------------------------------
-
     @bp.post("/api/experience-details")
     def get_experience_details():
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         data = request.get_json(silent=True) or {}
         experience_id = data.get("experience_id")
@@ -725,18 +732,16 @@ def create_blueprint(deps):
                 return jsonify({"experience": None, "message": f"Experience {experience_id} not found"})
 
         except Exception as e:
-            import traceback
+            print(f"ERROR in get_experience_details: {e}")
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
-    # ------------------------------------------------------------------
-    # Spell check
-    # ------------------------------------------------------------------
+    # ── Spell check ──────────────────────────────────────────────────────────
 
     @bp.get("/api/spell-check-sections")
     def spell_check_sections():
         """Return the text sections that need spell checking for the current session."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         orchestrator = entry.orchestrator
         sections = []
@@ -850,7 +855,7 @@ def create_blueprint(deps):
     @bp.post("/api/spell-check")
     def spell_check_text():
         """Check a single text fragment."""
-        entry = get_session()
+        entry = _get_session()
         orchestrator = entry.orchestrator
         try:
             body    = request.get_json(force=True) or {}
@@ -896,8 +901,8 @@ def create_blueprint(deps):
     @bp.post("/api/spell-check-complete")
     def spell_check_complete():
         """Record spell-check audit and advance phase to generation."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         try:
@@ -910,14 +915,12 @@ def create_blueprint(deps):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-    # ------------------------------------------------------------------
-    # Layout instructions
-    # ------------------------------------------------------------------
+    # ── Layout review ────────────────────────────────────────────────────────
 
     @bp.get("/api/layout-html")
     def get_layout_html():
         """Return the HTML content of the most recently generated CV."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         try:
             generated = conversation.state.get('generated_files')
@@ -926,6 +929,7 @@ def create_blueprint(deps):
             output_dir = Path(generated.get('output_dir', ''))
             if not output_dir.is_dir():
                 return jsonify({'error': f'Output directory not found: {output_dir}'}), 404
+
             html_files = sorted(output_dir.glob('*.html'))
             if not html_files:
                 return jsonify({'error': 'No HTML file found in output directory.'}), 404
@@ -937,7 +941,7 @@ def create_blueprint(deps):
     @bp.post("/api/layout-instruction")
     def apply_layout_instruction():
         """Apply a natural-language layout instruction to the current HTML."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         try:
             body = request.get_json(force=True) or {}
@@ -978,7 +982,7 @@ def create_blueprint(deps):
     @bp.get("/api/layout-history")
     def get_layout_history():
         """Return the current session's applied layout instruction history."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         try:
             instructions = conversation.state.get('layout_instructions', [])
@@ -991,9 +995,9 @@ def create_blueprint(deps):
 
     @bp.post("/api/layout-complete")
     def complete_layout_review():
-        """Record layout instruction outcomes and advance phase to refinement (finalise)."""
-        entry = get_session()
-        validate_owner(entry)
+        """Record layout instruction outcomes and advance phase to refinement."""
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         try:
@@ -1009,8 +1013,8 @@ def create_blueprint(deps):
     @bp.post("/api/layout-settings")
     def update_layout_settings():
         """Persist layout display settings to session state."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid          = entry.session_id
         try:
@@ -1029,15 +1033,13 @@ def create_blueprint(deps):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-    # ------------------------------------------------------------------
-    # ATS validation / persuasion check
-    # ------------------------------------------------------------------
+    # ── ATS validation + persuasion ──────────────────────────────────────────
 
     @bp.get("/api/ats-validate")
     def ats_validate():
         """Run 16-check ATS validation on the latest generated CV files."""
-        from utils.cv_orchestrator import validate_ats_report
-        entry = get_session()
+        from datetime import datetime as _dt
+        entry = _get_session()
         conversation = entry.manager
         sid = entry.session_id
         try:
@@ -1049,14 +1051,13 @@ def create_blueprint(deps):
             if not output_dir.is_dir():
                 return jsonify({'ok': False, 'error': f'Output directory not found: {output_dir}'}), 404
 
-            job_analysis = coerce_to_dict(conversation.state.get('job_analysis'))
+            job_analysis = _coerce_to_dict(conversation.state.get('job_analysis'))
 
             checks, page_count = validate_ats_report(output_dir, job_analysis)
 
             if page_count is not None:
                 conversation.state['page_count'] = page_count
 
-            from datetime import datetime
             summary = {
                 'pass': sum(1 for c in checks if c['status'] == 'pass'),
                 'warn': sum(1 for c in checks if c['status'] == 'warn'),
@@ -1067,7 +1068,7 @@ def create_blueprint(deps):
                 'page_count': page_count,
                 'checks': checks,
                 'summary': summary,
-                'validation_date': datetime.now().isoformat(),
+                'validation_date': _dt.now().isoformat(),
             }
             session_registry.touch(sid)
 
@@ -1078,21 +1079,20 @@ def create_blueprint(deps):
                 'summary':    summary,
             })
         except Exception as e:
-            import traceback
             traceback.print_exc()
             return jsonify({'error': str(e)}), 500
 
     @bp.get("/api/persuasion-check")
     def persuasion_check():
         """Run rule-based persuasion checks on selected experience bullets."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         try:
             experiences = None
 
             generated = conversation.state.get('generated_files')
             if generated:
-                job_analysis   = coerce_to_dict(conversation.state.get('job_analysis'))
+                job_analysis   = _coerce_to_dict(conversation.state.get('job_analysis'))
                 customizations = conversation.state.get('customizations') or {}
                 try:
                     selected = conversation.orchestrator._select_content_hybrid(
@@ -1112,7 +1112,6 @@ def create_blueprint(deps):
             result = conversation.orchestrator.check_persuasion(experiences)
             return jsonify({'ok': True, **result})
         except Exception as e:
-            import traceback
             traceback.print_exc()
             return jsonify({'error': str(e)}), 500
 

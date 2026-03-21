@@ -1,5 +1,13 @@
+// Copyright (C) 2026 Gregory R. Warnes
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of CV-Builder.
+// For commercial licensing, contact greg@warnes-innovations.com
+
 /**
- * Focused regression tests for session switcher helpers in web/app.js.
+ * Focused regression tests for session switcher helpers in web/session-manager.js.
+ * buildSessionSwitcherLabel uses the abbreviated labels from session-manager.js
+ * (e.g. 'Generate' not 'generation'); formatSessionPhaseLabel from utils.js keeps long form.
  */
 
 import { formatSessionPhaseLabel } from '../../web/utils.js';
@@ -41,7 +49,7 @@ describe('session switcher helpers', () => {
     expect(app.buildSessionSwitcherLabel({
       position_name: 'Senior Data Scientist',
       phase: 'generation',
-    })).toBe('Senior Data Scientist · generation')
+    })).toBe('Senior Data Scientist · Generate')
   })
 
   it('falls back to the default sessions label when no session is active', () => {

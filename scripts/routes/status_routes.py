@@ -1,166 +1,61 @@
-"""Status, context stats, generation settings, post-analysis Q&A, intake, and prior-clarifications routes."""
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
+"""
+Status routes — /api/status, context-stats, generation-settings, post-analysis endpoints,
+intake metadata, prior clarifications.
+"""
 import dataclasses
 import json
-import re
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
 
 from utils.config import get_config
-
-
-# ---------------------------------------------------------------------------
-# Module-level helpers (moved from create_app closure)
-# ---------------------------------------------------------------------------
-
-def _fallback_post_analysis_questions(analysis: Dict[str, Any]) -> List[Dict[str, str]]:
-    """Deterministic fallback if LLM question generation fails."""
-    questions: List[Dict] = []
-
-    role_level = analysis.get("role_level")
-    if role_level:
-        questions.append({
-            "type": "experience_level",
-            "question": f"This role appears to be at {role_level} level. Should I emphasize your most senior experiences or include a broader range to show career progression?",
-            "choices": ["Emphasize most senior", "Broader career progression", "Let you decide based on analysis"],
-        })
-
-    required_skills = analysis.get("required_skills") or []
-    if isinstance(required_skills, list):
-        skill_text = " ".join(str(s).lower() for s in required_skills)
-        if any(token in skill_text for token in ("leadership", "management", "team")):
-            questions.append({
-                "type": "leadership_focus",
-                "question": "This role has leadership components. Would you prefer me to emphasize your management experience or focus more on your technical contributions?",
-                "choices": ["Emphasize management", "Focus on technical", "Balance both equally"],
-            })
-
-    domain = analysis.get("domain")
-    if domain:
-        questions.append({
-            "type": "domain_expertise",
-            "question": f"The role is in {domain}. Do you have particular projects or achievements in this domain that you'd like me to highlight?",
-            "choices": ["Highlight domain-specific achievements", "Use all available experience", "Prioritize most recent work"],
-        })
-
-    company = analysis.get("company")
-    if company:
-        questions.append({
-            "type": "company_culture",
-            "question": f"For {company}, would you like me to tailor emphasis toward their culture and values? If so, what should I prioritize?",
-            "choices": ["Research-driven / academic", "Industry / commercial impact", "Innovation / startup", "Use cultural indicators from job description"],
-        })
-
-    return questions[:4]
-
-
-def _generate_post_analysis_questions(
-    llm_client,
-    extract_json_payload,
-    analysis: Dict[str, Any],
-    job_text: Optional[str],
-    prior_qa: Optional[Dict[str, Any]] = None,
-) -> List[Dict]:
-    """Generate clarifying questions from the LLM in JSON format."""
-    prior_section = ""
-    if prior_qa:
-        lines = "\n".join(f"- {k}: {v}" for k, v in prior_qa.items())
-        prior_section = f"""
-Previously answered questions (do NOT repeat these topics):
-{lines}
-
-"""
-    prompt = f"""You are helping tailor a CV to a specific job.
-
-Create 2-4 concise, high-value clarifying questions for the candidate before generating customization recommendations.
-
-Requirements:
-- Questions must be specific to this role, company, and analysis.
-- Focus on tradeoffs that affect selection/emphasis of experiences and skills.
-- Avoid generic or repetitive questions.
-- Keep each question under 220 characters.
-- For each question, provide 2-4 button-answer choices covering the most likely responses.
-- Return ONLY valid JSON as an array of objects.
-{prior_section}
-Schema:
-[
-  {{"type": "short_snake_case", "question": "...", "choices": ["Option A", "Option B", "Option C"]}}
-]
-
-Job Analysis:
-{json.dumps(analysis, indent=2)}
-
-Job Description (excerpt):
-{(job_text or '')[:2500]}
-"""
-
-    response = llm_client.chat(
-        messages=[
-            {"role": "system", "content": "You generate targeted CV-optimization clarification questions and respond with strict JSON."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.4,
-    )
-
-    payload = extract_json_payload(response)
-    if isinstance(payload, dict) and isinstance(payload.get("questions"), list):
-        payload = payload.get("questions")
-
-    if not isinstance(payload, list):
-        return []
-
-    cleaned: List[Dict] = []
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        question = str(item.get("question", "")).strip()
-        qtype = str(item.get("type", "clarification")).strip().lower().replace(" ", "_")
-        choices = item.get("choices")
-        if not isinstance(choices, list):
-            choices = []
-        choices = [str(c).strip() for c in choices if str(c).strip()][:4]
-        if not question:
-            continue
-        entry_d: Dict = {
-            "type": qtype[:40] or "clarification",
-            "question": question[:220],
-        }
-        if choices:
-            entry_d["choices"] = choices
-        cleaned.append(entry_d)
-
-    return cleaned[:4]
+from utils.conversation_manager import Phase
 
 
 def create_blueprint(deps):
-    bp = Blueprint('status_routes', __name__)
+    bp = Blueprint('status', __name__)
 
-    get_session = deps['get_session']
-    validate_owner = deps['validate_owner']
+    _get_session = deps['get_session']
+    _validate_owner = deps['validate_owner']
     session_registry = deps['session_registry']
-    provider_name = deps['provider_name']
-    current_model = deps['current_model']
+    _provider_name_ref = deps['provider_name_ref']
+    _current_model_ref = deps['current_model_ref']
     auth_manager = deps['auth_manager']
-    llm_client_ref = deps['llm_client_ref']
-    extract_json_payload = deps['extract_json_payload']
-    coerce_to_dict = deps['coerce_to_dict']
+    _coerce_to_dict = deps['coerce_to_dict']
+    _extract_json_payload = deps['extract_json_payload']
+    _fallback_post_analysis_questions = deps['fallback_post_analysis_questions']
+    _generate_post_analysis_questions = deps['generate_post_analysis_questions']
     StatusResponse = deps['StatusResponse']
 
-    # ------------------------------------------------------------------
-    # Status
-    # ------------------------------------------------------------------
+    def _usage_prompt_tokens(usage):
+        if usage is None:
+            return None
+        if isinstance(usage, dict):
+            return usage.get("prompt_tokens") or usage.get("input_tokens")
+        return (
+            getattr(usage, "prompt_tokens", None)
+            or getattr(usage, "input_tokens", None)
+        )
 
     @bp.get("/api/status")
     def status():
-        entry = get_session(required=False)
+        from pathlib import Path
+        entry = _get_session(required=False)
+        _provider_name = _provider_name_ref['value']
+        _current_model = _current_model_ref['value']
         if entry is None:
             return jsonify({
                 "ok": True,
                 "alive": True,
                 "phase": None,
-                "llm_provider": provider_name(),
-                "llm_model": current_model(),
+                "llm_provider": _provider_name,
+                "llm_model": _current_model,
             })
         conversation = entry.manager
         orchestrator = entry.orchestrator
@@ -199,8 +94,8 @@ def create_blueprint(deps):
         return jsonify(dataclasses.asdict(StatusResponse(
             position_name=conversation.state.get("position_name"),
             phase=conversation.state.get("phase"),
-            llm_provider=provider_name(),
-            llm_model=current_model(),
+            llm_provider=_provider_name,
+            llm_model=_current_model,
             job_description=bool(conversation.state.get("job_description")),
             job_description_text=conversation.state.get("job_description"),
             job_analysis=conversation.state.get("job_analysis"),
@@ -231,24 +126,10 @@ def create_blueprint(deps):
             intake=conversation.state.get("intake")                             or {},
         )))
 
-    # ------------------------------------------------------------------
-    # Context stats / generation settings
-    # ------------------------------------------------------------------
-
-    def _usage_prompt_tokens(usage) -> Optional[int]:
-        if usage is None:
-            return None
-        if isinstance(usage, dict):
-            return usage.get("prompt_tokens") or usage.get("input_tokens")
-        return (
-            getattr(usage, "prompt_tokens", None)
-            or getattr(usage, "input_tokens", None)
-        )
-
     @bp.get("/api/context-stats")
     def context_stats():
         """Return a rough token-usage estimate for the current session."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         orchestrator = entry.orchestrator
         MODEL_CONTEXT_WINDOWS = {
@@ -300,8 +181,8 @@ def create_blueprint(deps):
     @bp.post("/api/generation-settings")
     def update_generation_settings():
         """Update per-session generation settings (max_skills, etc.)."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -322,15 +203,11 @@ def create_blueprint(deps):
             "max_skills": int(conversation.state.get("max_skills") or cfg_default),
         })
 
-    # ------------------------------------------------------------------
-    # Post-analysis Q&A
-    # ------------------------------------------------------------------
-
     @bp.post("/api/post-analysis-responses")
     def post_analysis_responses():
         """Persist generated post-analysis questions and user answers into session state."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -378,13 +255,13 @@ def create_blueprint(deps):
     @bp.post("/api/post-analysis-questions")
     def post_analysis_questions():
         """Generate post-analysis clarifying questions, preferably via LLM."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
 
-        analysis = coerce_to_dict(
+        analysis = _coerce_to_dict(
             data.get("analysis") or conversation.state.get("job_analysis")
         )
 
@@ -397,8 +274,6 @@ def create_blueprint(deps):
         source = "fallback"
         try:
             questions = _generate_post_analysis_questions(
-                llm_client_ref(),
-                extract_json_payload,
                 analysis=analysis,
                 job_text=conversation.state.get("job_description"),
                 prior_qa=prior_qa,
@@ -421,8 +296,9 @@ def create_blueprint(deps):
     @bp.post("/api/post-analysis-draft-response")
     def post_analysis_draft_response():
         """Use the LLM to draft an answer for a single clarification question."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
+        llm_client = deps['llm_client_ref']['value']
         try:
             body          = request.get_json(force=True) or {}
             question      = (body.get('question') or '').strip()
@@ -459,7 +335,7 @@ def create_blueprint(deps):
             )
 
             try:
-                draft = llm_client_ref().chat(
+                draft = llm_client.chat(
                     messages=[
                         {'role': 'system', 'content': 'You write concise draft answers for job application clarifying questions.'},
                         {'role': 'user',   'content': prompt},
@@ -476,14 +352,10 @@ def create_blueprint(deps):
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
 
-    # ------------------------------------------------------------------
-    # Intake metadata
-    # ------------------------------------------------------------------
-
     @bp.get("/api/intake-metadata")
     def intake_metadata():
         """Return extracted or confirmed intake metadata for the current session."""
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         intake = conversation.state.get('intake') or {}
         if intake.get('confirmed'):
@@ -504,8 +376,8 @@ def create_blueprint(deps):
     @bp.post("/api/confirm-intake")
     def confirm_intake():
         """Persist user-confirmed intake metadata and immediately save the session."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -530,7 +402,8 @@ def create_blueprint(deps):
     @bp.get("/api/prior-clarifications")
     def prior_clarifications():
         """Return prior post-analysis answers from the most recent session with a similar role."""
-        entry = get_session()
+        from pathlib import Path
+        entry = _get_session()
         conversation = entry.manager
         current_intake = conversation.state.get('intake') or {}
         current_role   = (current_intake.get('role') or '').lower()
@@ -548,7 +421,8 @@ def create_blueprint(deps):
         current_kw = _kw(current_role)
 
         try:
-            cfg      = get_config()
+            from utils.config import get_config as _get_cfg
+            cfg      = _get_cfg()
             out_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
             trash    = out_base / '.trash'
             matches  = []

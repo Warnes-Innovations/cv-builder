@@ -1,34 +1,36 @@
-"""Session management routes: save, load, list, delete, trash, rename, positions, reset,
-history, multi-tab session registry, and related helpers."""
-import dataclasses
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
+"""
+Session management routes — list, load, save, delete, rename, trash, new/claim/takeover/evict.
+"""
 import json
-import shutil
 from datetime import datetime
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
 from utils.config import get_config
+from utils.conversation_manager import Phase
 from utils.session_registry import SessionNotFoundError, SessionOwnedError
 
 
 def create_blueprint(deps):
-    bp = Blueprint('session_routes', __name__)
+    bp = Blueprint('session', __name__)
 
-    get_session = deps['get_session']
-    validate_owner = deps['validate_owner']
+    _get_session = deps['get_session']
+    _validate_owner = deps['validate_owner']
     session_registry = deps['session_registry']
-    app_config = deps['app_config']
+    _app_config = deps['app_config']
     SessionItem = deps['SessionItem']
     SessionListResponse = deps['SessionListResponse']
 
-    # ------------------------------------------------------------------
-    # Save / load / list
-    # ------------------------------------------------------------------
-
     @bp.post("/api/save")
     def save():
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         try:
             with entry.lock:
@@ -133,7 +135,7 @@ def create_blueprint(deps):
         if not session_file.exists():
             return jsonify({"error": f"Session file not found: {path}"}), 404
         try:
-            sid, entry = session_registry.load_from_file(str(session_file), app_config)
+            sid, entry = session_registry.load_from_file(str(session_file), _app_config)
             conversation = entry.manager
             return jsonify({
                 "ok":            True,
@@ -167,7 +169,8 @@ def create_blueprint(deps):
                 dest = trash_dir / job_dir.name
                 if dest.exists():
                     dest = trash_dir / f"{job_dir.name}_{int(datetime.now().timestamp())}"
-                shutil.move(str(job_dir), str(dest))
+                import shutil as _shutil
+                _shutil.move(str(job_dir), str(dest))
                 print(f"Trashed: {job_dir} → {dest}")
 
             candidate = Path(path_param)
@@ -194,13 +197,10 @@ def create_blueprint(deps):
             return jsonify({"error": f"Session not found: {path_param}"}), 404
 
         except Exception as e:
+            print(f"ERROR in delete_session: {e}")
             import traceback
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
-
-    # ------------------------------------------------------------------
-    # Trash management
-    # ------------------------------------------------------------------
 
     @bp.get("/api/trash")
     def list_trash():
@@ -248,7 +248,8 @@ def create_blueprint(deps):
             dest = output_base / job_dir.name
             if dest.exists():
                 dest = output_base / f"{job_dir.name}_restored_{int(datetime.now().timestamp())}"
-            shutil.move(str(job_dir), str(dest))
+            import shutil as _shutil
+            _shutil.move(str(job_dir), str(dest))
             print(f"Restored: {job_dir} → {dest}")
             return jsonify({"success": True, "message": "Session restored"})
         except Exception as e:
@@ -271,7 +272,8 @@ def create_blueprint(deps):
             job_dir = candidate.parent
             if not job_dir.resolve().is_relative_to(trash_dir.resolve()):
                 return jsonify({"error": "Path is not inside trash"}), 400
-            shutil.rmtree(job_dir)
+            import shutil as _shutil
+            _shutil.rmtree(job_dir)
             print(f"Permanently deleted: {job_dir}")
             return jsonify({"success": True})
         except Exception as e:
@@ -285,21 +287,18 @@ def create_blueprint(deps):
             output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
             trash_dir   = output_base / '.trash'
             if trash_dir.exists():
-                shutil.rmtree(trash_dir)
+                import shutil as _shutil
+                _shutil.rmtree(trash_dir)
                 trash_dir.mkdir()
             return jsonify({"success": True})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-    # ------------------------------------------------------------------
-    # Rename
-    # ------------------------------------------------------------------
-
     @bp.post("/api/rename-current-session")
     def rename_current_session():
         """Rename the currently active session (no path needed)."""
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -347,13 +346,9 @@ def create_blueprint(deps):
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-    # ------------------------------------------------------------------
-    # Positions
-    # ------------------------------------------------------------------
-
     @bp.get("/api/positions")
     def positions():
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         try:
             names = conversation._list_positions()
@@ -363,8 +358,8 @@ def create_blueprint(deps):
 
     @bp.post("/api/position")
     def set_position():
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
@@ -380,15 +375,10 @@ def create_blueprint(deps):
         session_registry.touch(sid)
         return jsonify({"ok": True, "loaded": loaded, "position_name": name})
 
-    # ------------------------------------------------------------------
-    # Reset / history
-    # ------------------------------------------------------------------
-
     @bp.post("/api/reset")
     def reset():
-        from utils.conversation_manager import Phase
-        entry = get_session()
-        validate_owner(entry)
+        entry = _get_session()
+        _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         with entry.lock:
@@ -410,21 +400,19 @@ def create_blueprint(deps):
 
     @bp.get("/api/history")
     def history():
-        entry = get_session()
+        entry = _get_session()
         conversation = entry.manager
         return jsonify({
             "history": conversation.conversation_history,
             "phase": conversation.state.get("phase"),
         })
 
-    # ------------------------------------------------------------------
-    # Multi-tab session registry
-    # ------------------------------------------------------------------
+    # ── Multi-tab session management ─────────────────────────────────────────
 
     @bp.post("/api/sessions/new")
     def sessions_new():
         """Create a new session and return its ID."""
-        sid, _entry = session_registry.create(app_config)
+        sid, _entry = session_registry.create(_app_config)
         return jsonify({"ok": True, "session_id": sid, "redirect_url": f"/?session={sid}"})
 
     @bp.post("/api/sessions/claim")
@@ -487,7 +475,7 @@ def create_blueprint(deps):
         entry = session_registry.get(session_id)
         if entry is None:
             return jsonify({"error": f"Session not found: {session_id}"}), 404
-        validate_owner(entry)
+        _validate_owner(entry)
         try:
             entry.manager._save_session()
         except Exception:
