@@ -21,29 +21,21 @@
  *   - showOwnershipConflictDialog, openSessionsModal (session-switcher-ui.js, Tier 7)
  *   - updateActionButtons (ui-helpers.js)
  *   - updatePositionTitle (session-actions.js)
- *   - escapeHtml (utils.js)
+ *   - escapeHtml, SESSION_PHASE_LABELS_SHORT (utils.js)
  *   - sessionId, tabData, isReconnecting, lastKnownPhase, interactiveState,
  *     rewriteDecisions, PHASES (window globals)
  */
 
-// ---------------------------------------------------------------------------
-// Session phase labels
-// ---------------------------------------------------------------------------
+import { SESSION_PHASE_LABELS_SHORT } from './utils.js';
 
-const SESSION_PHASE_LABELS = {
-  init:           'Init',
-  job_analysis:   'Analysis',
-  customization:  'Custom.',
-  rewrite_review: 'Rewrite',
-  spell_check:    'Spell',
-  generation:     'Generate',
-  layout_review:  'Layout',
-  refinement:     'Done',
-};
+// ---------------------------------------------------------------------------
+// Session phase labels (abbreviated form — for compact session-switcher UI)
+// Full-length labels live in utils.js SESSION_PHASE_LABELS.
+// ---------------------------------------------------------------------------
 
 function formatSessionPhaseLabel(phase) {
   if (!phase) return 'init';
-  return SESSION_PHASE_LABELS[phase] || String(phase).replace(/_/g, ' ');
+  return SESSION_PHASE_LABELS_SHORT[phase] || String(phase).replace(/_/g, ' ');
 }
 
 // ---------------------------------------------------------------------------
@@ -545,7 +537,6 @@ function restoreTabData({ uiPrefsOnly = false } = {}) {
 
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
-  SESSION_PHASE_LABELS,
   formatSessionPhaseLabel,
   _getCurrentSessionIdValue,
   _getCurrentOwnerTokenValue,

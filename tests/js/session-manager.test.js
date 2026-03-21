@@ -11,7 +11,6 @@
  *  and covered by integration tests.)
  */
 import {
-  SESSION_PHASE_LABELS,
   formatSessionPhaseLabel,
   _getCurrentSessionIdValue,
   _getCurrentOwnerTokenValue,
@@ -19,6 +18,7 @@ import {
   getActiveSessionOwnershipMeta,
   formatSessionTimestamp,
 } from '../../web/session-manager.js'
+import { SESSION_PHASE_LABELS } from '../../web/utils.js'
 
 // ── formatSessionPhaseLabel ───────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ describe('formatSessionPhaseLabel', () => {
 
   it('maps known phases', () => {
     expect(formatSessionPhaseLabel('job_analysis')).toBe('Analysis')
-    expect(formatSessionPhaseLabel('customization')).toBe('Custom.')
+    expect(formatSessionPhaseLabel('customization')).toBe('Custom')
     expect(formatSessionPhaseLabel('rewrite_review')).toBe('Rewrite')
     expect(formatSessionPhaseLabel('refinement')).toBe('Done')
   })
@@ -130,7 +130,7 @@ describe('buildSessionSwitcherLabel', () => {
 
   it('returns "positionName · <phase>" when position_name is set', () => {
     expect(buildSessionSwitcherLabel({ position_name: 'Engineer', phase: 'customization' }))
-      .toBe('Engineer · Custom.')
+      .toBe('Engineer · Custom')
   })
 })
 

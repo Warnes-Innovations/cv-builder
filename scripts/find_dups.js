@@ -17,7 +17,7 @@ function walk(dir) {
   for (const e of fs.readdirSync(dir, {withFileTypes: true})) {
     if (e.isDirectory()) {
       walk(path.join(dir, e.name));
-    } else if (/\.jsx?$|\.tsx?$/.test(e.name)) {
+    } else if (/\.jsx?$|\.tsx?$/.test(e.name) && !/\.bak$/.test(e.name) && !/bundle[\w.-]*\.js$/.test(e.name)) {
       const p = path.join(dir, e.name);
       const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/);
       lines.forEach((line, idx) => {
