@@ -1077,12 +1077,14 @@ Job Description (excerpt):
 
     @app.post("/api/master-data/skill")
     def master_data_update_skill():
-        """Add or delete a skill, or manage skill categories in the master CV.
+        """Add, update, or delete a skill, or manage skill categories.
 
-        skill add/delete body:
-            action   — 'add' | 'delete'
+        skill add/update/delete body:
+            action   — 'add' | 'update' | 'delete'
             skill    — skill name string
+            skill_new — updated skill name (for update)
             category — category key (required when skills is a dict)
+            experiences — optional list of experience IDs associated with skill
 
         category management body:
             action        — 'add_category' | 'delete_category'
@@ -1094,11 +1096,54 @@ Job Description (excerpt):
         orchestrator = entry.orchestrator
         req    = request.get_json() or {}
         action = (req.get('action') or '').strip()
-        if action not in ('add', 'delete', 'add_category', 'delete_category'):
-            return jsonify({"error": "action must be add, delete, add_category, or delete_category"}), 400
+        if action not in ('add', 'update', 'delete', 'add_category', 'delete_category'):
+            return jsonify({"error": "action must be add, update, delete, add_category, or delete_category"}), 400
         try:
             master, master_path = _load_master(orchestrator.master_data_path)
             skills = master.get('skills', [])
+
+            valid_exp_ids = {
+                (exp.get('id') or '').strip()
+                for exp in (master.get('experience') or master.get('experiences') or [])
+                if isinstance(exp, dict) and (exp.get('id') or '').strip()
+            }
+
+            def _sanitize_experience_ids(raw_ids: Any) -> List[str]:
+                if raw_ids is None:
+                    return []
+                if isinstance(raw_ids, str):
+                    raw_ids = [x.strip() for x in raw_ids.split(',') if x.strip()]
+                if not isinstance(raw_ids, list):
+                    return []
+                cleaned: List[str] = []
+                seen = set()
+                for item in raw_ids:
+                    if not isinstance(item, str):
+                        continue
+                    exp_id = item.strip()
+                    if not exp_id or exp_id not in valid_exp_ids or exp_id in seen:
+                        continue
+                    cleaned.append(exp_id)
+                    seen.add(exp_id)
+                return cleaned
+
+            def _skill_name(item: Any) -> str:
+                if isinstance(item, str):
+                    return item
+                if isinstance(item, dict):
+                    return str(item.get('name') or '')
+                return ''
+
+            def _skill_payload(name: str, experience_ids: List[str]) -> Any:
+                if experience_ids:
+                    return {'name': name, 'experiences': experience_ids}
+                return name
+
+            def _skill_experiences(item: Any) -> List[str]:
+                if isinstance(item, dict) and isinstance(item.get('experiences'), list):
+                    return _sanitize_experience_ids(item.get('experiences'))
+                return []
+
             if action == 'add_category':
                 cat_key  = (req.get('category_key') or '').strip()
                 cat_name = (req.get('category_name') or cat_key).strip()
@@ -1127,17 +1172,34 @@ Job Description (excerpt):
             skill_name = (req.get('skill') or '').strip()
             if not skill_name:
                 return jsonify({"error": "skill is required"}), 400
+            new_skill_name = (req.get('skill_new') or skill_name).strip()
+            has_experience_field = 'experiences' in req
+            requested_experience_ids = _sanitize_experience_ids(req.get('experiences'))
             if isinstance(skills, list):
                 if action == 'add':
-                    if skill_name in skills:
+                    if any(_skill_name(s) == skill_name for s in skills):
                         return jsonify({"ok": False, "error": "Skill already exists"}), 409
-                    skills.append(skill_name)
+                    skills.append(_skill_payload(skill_name, requested_experience_ids))
                     master['skills'] = skills
                     _save_master(master, master_path)
                     return jsonify({"ok": True, "action": "added"})
-                if skill_name not in skills:
+                if action == 'update':
+                    idx = next((i for i, s in enumerate(skills) if _skill_name(s) == skill_name), -1)
+                    if idx < 0:
+                        return jsonify({"ok": False, "error": "Skill not found"}), 404
+                    if new_skill_name != skill_name and any(_skill_name(s) == new_skill_name for s in skills):
+                        return jsonify({"ok": False, "error": "Updated skill name already exists"}), 409
+                    effective_experience_ids = (
+                        requested_experience_ids if has_experience_field else _skill_experiences(skills[idx])
+                    )
+                    skills[idx] = _skill_payload(new_skill_name, effective_experience_ids)
+                    master['skills'] = skills
+                    _save_master(master, master_path)
+                    return jsonify({"ok": True, "action": "updated"})
+                idx = next((i for i, s in enumerate(skills) if _skill_name(s) == skill_name), -1)
+                if idx < 0:
                     return jsonify({"ok": False, "error": "Skill not found"}), 404
-                skills.remove(skill_name)
+                del skills[idx]
                 master['skills'] = skills
                 _save_master(master, master_path)
                 return jsonify({"ok": True, "action": "deleted"})
@@ -1154,14 +1216,27 @@ Job Description (excerpt):
                     else []
                 )
                 if action == 'add':
-                    if skill_name in cat_list:
+                    if any(_skill_name(s) == skill_name for s in cat_list):
                         return jsonify({"ok": False, "error": "Skill already exists in category"}), 409
-                    cat_list.append(skill_name)
+                    cat_list.append(_skill_payload(skill_name, requested_experience_ids))
                     _save_master(master, master_path)
                     return jsonify({"ok": True, "action": "added"})
-                if skill_name not in cat_list:
+                if action == 'update':
+                    idx = next((i for i, s in enumerate(cat_list) if _skill_name(s) == skill_name), -1)
+                    if idx < 0:
+                        return jsonify({"ok": False, "error": "Skill not found in category"}), 404
+                    if new_skill_name != skill_name and any(_skill_name(s) == new_skill_name for s in cat_list):
+                        return jsonify({"ok": False, "error": "Updated skill name already exists in category"}), 409
+                    effective_experience_ids = (
+                        requested_experience_ids if has_experience_field else _skill_experiences(cat_list[idx])
+                    )
+                    cat_list[idx] = _skill_payload(new_skill_name, effective_experience_ids)
+                    _save_master(master, master_path)
+                    return jsonify({"ok": True, "action": "updated"})
+                idx = next((i for i, s in enumerate(cat_list) if _skill_name(s) == skill_name), -1)
+                if idx < 0:
                     return jsonify({"ok": False, "error": "Skill not found in category"}), 404
-                cat_list.remove(skill_name)
+                del cat_list[idx]
                 _save_master(master, master_path)
                 return jsonify({"ok": True, "action": "deleted"})
             return jsonify({"ok": False, "error": "Unexpected skills format"}), 400
@@ -5034,11 +5109,21 @@ Close professionally with a call to action.
             return jsonify({"error": "No generated files — complete workflow first."}), 404
 
         output_dir = Path(generated["output_dir"])
+
+        # Build descriptive filename: CV_{company}_{position}_{date}
+        _analysis = _coerce_to_dict(conv.state.get("job_analysis"))
+        _company  = re.sub(r'[^\w]', '_', (_analysis.get('company') or '').strip())[:30]
+        _position = re.sub(r'[^\w]', '_', (conv.state.get('position_name') or
+                                            _analysis.get('job_title') or '').strip())[:40]
+        _date     = datetime.now().strftime('%Y-%m-%d')
+        _parts    = [p for p in ['CV', _company, _position, _date] if p and p != '_']
+        filename_base = '_'.join(_parts) if len(_parts) > 2 else 'CV_final'
+
         try:
             final_paths = conv.orchestrator.generate_final_from_confirmed_html(
                 confirmed_html=confirmed_html,
                 output_dir=output_dir,
-                filename_base="CV_final",
+                filename_base=filename_base,
             )
         except Exception as exc:
             app.logger.error("generate_final_from_confirmed_html failed: %s", exc)

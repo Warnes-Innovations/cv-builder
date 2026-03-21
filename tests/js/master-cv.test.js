@@ -580,6 +580,8 @@ describe('saveMasterSkill', () => {
       <input id="skill-name-input" value="${skill}" />
       <input id="skill-modal-category" value="${category}" />
       <input id="skill-modal-is-flat" value="${isFlat}" />
+      <input id="skill-modal-original-name" value="" />
+      <input id="skill-experiences-input" value="" />
       <div id="master-skill-modal-overlay" style="display:flex;"></div>
     `
   }
