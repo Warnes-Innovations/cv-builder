@@ -19,6 +19,7 @@ import copy
 import dataclasses
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -5356,7 +5357,17 @@ def _load_master(master_data_path: str) -> "tuple[dict, Path]":
 
 
 def _save_master(master: Dict[str, Any], master_path: Path) -> None:
-    """Write master CV data to disk and stage the file in git."""
+    """Write master CV data to disk and stage the file in git.
+
+    Creates a timestamped backup before overwrite when the target file exists.
+    """
+    if master_path.exists():
+        backup_dir = master_path.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        backup_path = backup_dir / f"{master_path.stem}.{ts}.bak{master_path.suffix}"
+        shutil.copy2(master_path, backup_path)
+
     with open(master_path, 'w', encoding='utf-8') as f:
         json.dump(master, f, indent=2)
     subprocess.run(
