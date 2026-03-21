@@ -262,13 +262,13 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
   - State: `spellAudit`, `window._spellSugMap`
   - Tests: `tests/js/spell-check.test.js` (23 tests)
 
-- [ ] **M22 — `web/workflow-steps.js`** (~400 lines)
+- [x] **M22 — `web/workflow-steps.js`** (~370 lines)
   - Functions: `updateWorkflowSteps`, `handleStepClick`, `backToPhaseWithFeedback`,
     `backToPhase`, `confirmReRunPhase`, `reRunPhase`, `_showReRunConfirmModal`,
     `_highlightChangedItems`, `_markChanged`, `showBulletReorder`, `moveBullet`,
     `_updateBulletArrows`, `_applyBulletOrder`, `saveBulletOrder`, `resetBulletOrder`
   - Constants: `_STEP_ORDER`, `_STEP_DISPLAY`, `_ACTION_LABELS`
-  - Tests: `tests/js/workflow-steps.test.js`
+  - Tests: `tests/js/workflow-steps.test.js` (31 tests)
 
 - [ ] **M23 — `web/master-cv.js`** (~1400 lines)
   - Functions: `populateMasterTab`, and all `_render*`, `show*Modal`, `close*Modal`,
