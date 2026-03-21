@@ -15,6 +15,7 @@ This module coordinates between:
 
 import copy
 import json
+import logging
 import re
 import sys
 import time
@@ -24,6 +25,8 @@ from datetime import datetime, date as _date
 import subprocess
 import weasyprint
 from collections import defaultdict
+
+logger = logging.getLogger(__name__)
 
 # Import existing utilities
 from .scoring import (
@@ -541,11 +544,11 @@ class CVOrchestrator:
             if not html_output.exists():
                 raise FileNotFoundError(f"Quarto render succeeded but HTML output not found: {html_output}")
             
-            print(f"✓ Quarto render successful: {html_output.name}")
+            logger.info("Quarto render successful: %s", html_output.name)
             return html_output
             
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
-            print(f"⚠ Quarto render failed: {e}")
+            logger.warning("Quarto render failed: %s", e)
             return self._create_fallback_html_file(work_dir, template_file.stem)
     
     def _create_fallback_html_file(self, work_dir: Path, base_name: str) -> Path:
@@ -562,7 +565,7 @@ class CVOrchestrator:
         
         html_content = self._create_fallback_html(cv_data)
         html_output.write_text(html_content, encoding='utf-8')
-        print(f"✓ Created fallback HTML: {html_output.name}")
+        logger.info("Created fallback HTML: %s", html_output.name)
         
         return html_output
 
@@ -687,7 +690,7 @@ class CVOrchestrator:
                     capture_output=True,
                     timeout=60,
                 )
-                print(f"✓ Generated PDF via Chrome ({Path(_chrome_bin).name}): {pdf_output.name}")
+                logger.info("Generated PDF via Chrome (%s): %s", Path(_chrome_bin).name, pdf_output.name)
                 return
             except FileNotFoundError:
                 continue
@@ -696,9 +699,9 @@ class CVOrchestrator:
                 break
 
         if chrome_err:
-            print(f"⚠ Chrome headless failed ({chrome_err}), trying WeasyPrint...")
+            logger.warning("Chrome headless failed (%s), trying WeasyPrint...", chrome_err)
         else:
-            print("⚠ Chrome/Chromium not found, trying WeasyPrint...")
+            logger.warning("Chrome/Chromium not found, trying WeasyPrint...")
 
         # --- WeasyPrint in subprocess (crash-safe fallback) ---
         # Runs in a child process so a native segfault cannot kill the Flask server.
@@ -712,11 +715,11 @@ class CVOrchestrator:
             timeout=120,
         )
         if wp_result.returncode == 0:
-            print(f"✓ Generated PDF using WeasyPrint: {pdf_output.name}")
+            logger.info("Generated PDF using WeasyPrint: %s", pdf_output.name)
             return
 
         wp_error = wp_result.stderr.decode(errors='replace').strip() or f"exit {wp_result.returncode}"
-        print(f"⚠ WeasyPrint also failed ({wp_error})")
+        logger.warning("WeasyPrint also failed (%s)", wp_error)
 
         # --- Plain-text fallback ---
         fallback_content = f"""PDF Generation Failed
@@ -733,7 +736,7 @@ To manually create PDF:
 The HTML file contains your formatted CV ready for conversion.
 """
         pdf_output.write_text(fallback_content.strip(), encoding='utf-8')
-        print(f"⚠ Created fallback instructions: {pdf_output.name}")
+        logger.warning("Created fallback instructions: %s", pdf_output.name)
 
     def _generate_human_pdf(
         self,
@@ -761,11 +764,15 @@ The HTML file contains your formatted CV ready for conversion.
                 cv_data, output_dir, filename_base, template_variant
             )
 
-            print(f"✅ Generated human-readable HTML + PDF ({template_variant}): {pdf_path.name}")
+            logger.info("Generated human-readable HTML + PDF (%s): %s", template_variant, pdf_path.name)
+            logger.debug(
+                "_generate_pdf: completed (template=%s, pdf_size=%d bytes)",
+                template_variant, pdf_path.stat().st_size if pdf_path.exists() else 0
+            )
             return html_path, pdf_path
             
         except Exception as e:
-            print(f"⚠ PDF generation failed: {e}")
+            logger.warning("PDF generation failed: %s", e)
             # Create enhanced fallback with diagnostic info
             fallback_file = output_dir / f"{filename_base}.txt"
             fallback_content = f"""PDF Generation Error: {e}
@@ -789,7 +796,7 @@ For manual generation:
 3. Use browser Print to PDF as fallback
             """
             fallback_file.write_text(fallback_content.strip(), encoding='utf-8')
-            print(f"⚠ Created error log: {fallback_file.name}")
+            logger.warning("Created error log: %s", fallback_file.name)
             return None, fallback_file
 
     def _build_json_ld(self, cv_data: Dict, job_analysis: Dict) -> str:
@@ -908,9 +915,9 @@ For manual generation:
             for the full schema).  Always ``[]`` on failure or missing LLM.
         """
         if not self.llm:
-            print(
-                "Warning: propose_rewrites called but no LLM client is "
-                "configured. Returning empty proposals."
+            logger.warning(
+                "propose_rewrites called but no LLM client is configured. "
+                "Returning empty proposals."
             )
             return []
         return self.llm.propose_rewrites(content, job_analysis, conversation_history, user_preferences)
@@ -949,6 +956,10 @@ For manual generation:
         """
         result = copy.deepcopy(content)
 
+        logger.debug(
+            "apply_approved_rewrites: processing %d rewrite(s)", len(approved)
+        )
+
         for item in approved:
             loc      = item.get('location', '')
             original = item.get('original', '')
@@ -958,23 +969,27 @@ For manual generation:
 
             # Guard: validate constraint — skip if numbers/dates/names lost.
             if not LLMClient.apply_rewrite_constraints(original, proposed):
-                print(
-                    f"Warning: apply_approved_rewrites: skipping constraint "
-                    f"violation (id={item_id!r}) — protected tokens would be "
-                    f"removed."
+                logger.warning(
+                    "apply_approved_rewrites: skipping constraint violation "
+                    "(id=%r) — protected tokens would be removed.",
+                    item_id
                 )
                 continue
 
             if kind == 'summary' or loc == 'summary':
+                logger.debug(
+                    "apply_approved_rewrites: summary rewrite (id=%s, len_before=%d, len_after=%d)",
+                    item_id, len(original), len(proposed)
+                )
                 result['summary'] = proposed
 
             elif kind == 'bullet':
                 # Parse "exp_001.achievements[2]"
                 m = re.match(r'^([^.]+)\.achievements\[(\d+)\]$', loc)
                 if not m:
-                    print(
-                        f"Warning: apply_approved_rewrites: cannot parse bullet "
-                        f"location {loc!r} (id={item_id!r})"
+                    logger.warning(
+                        "apply_approved_rewrites: cannot parse bullet location %r (id=%r)",
+                        loc, item_id
                     )
                     continue
                 exp_id  = m.group(1)
@@ -987,20 +1002,29 @@ For manual generation:
                         if 0 <= ach_idx < len(achs):
                             ach = achs[ach_idx]
                             if isinstance(ach, dict):
+                                old_text = ach.get('text', '')
                                 ach['text'] = proposed
+                                logger.debug(
+                                    "apply_approved_rewrites: bullet rewrite "
+                                    "(id=%s, exp=%s, idx=%d, len_before=%d, len_after=%d)",
+                                    item_id, exp_id, ach_idx, len(old_text), len(proposed)
+                                )
                             else:
                                 achs[ach_idx] = proposed
+                                logger.debug(
+                                    "apply_approved_rewrites: bullet rewrite (id=%s, exp=%s, idx=%d)",
+                                    item_id, exp_id, ach_idx
+                                )
                         else:
-                            print(
-                                f"Warning: apply_approved_rewrites: achievement "
-                                f"index {ach_idx} out of range for exp "
-                                f"{exp_id!r} (id={item_id!r})"
+                            logger.warning(
+                                "apply_approved_rewrites: achievement index %d out of range "
+                                "for exp %r (id=%r)", ach_idx, exp_id, item_id
                             )
                         break
                 if not found:
-                    print(
-                        f"Warning: apply_approved_rewrites: experience "
-                        f"{exp_id!r} not found (id={item_id!r})"
+                    logger.warning(
+                        "apply_approved_rewrites: experience %r not found (id=%r)",
+                        exp_id, item_id
                     )
 
             elif kind == 'skill_rename':
@@ -1037,9 +1061,9 @@ For manual generation:
                         if renamed:
                             break
                 if not renamed:
-                    print(
-                        f"Warning: apply_approved_rewrites: skill_rename: "
-                        f"original name {original!r} not found (id={item_id!r})"
+                    logger.warning(
+                        "apply_approved_rewrites: skill_rename: original name %r not found (id=%r)",
+                        original, item_id
                     )
 
             elif kind == 'skill_add':
@@ -1059,9 +1083,9 @@ For manual generation:
                         first_cat.append(new_skill)
 
             else:
-                print(
-                    f"Warning: apply_approved_rewrites: unknown rewrite type "
-                    f"{kind!r} (id={item_id!r}), skipping."
+                logger.warning(
+                    "apply_approved_rewrites: unknown rewrite type %r (id=%r), skipping.",
+                    kind, item_id
                 )
 
         return result
@@ -1154,9 +1178,9 @@ For manual generation:
                     self._apply_spell_fixes_to_named_field(publications, pub_idx, field_name, fixes)
                     continue
 
-                print(
-                    f"Warning: apply_accepted_spell_fixes: cannot parse "
-                    f"section id {section_id!r}"
+                logger.warning(
+                    "apply_accepted_spell_fixes: cannot parse section id %r",
+                    section_id
                 )
                 continue
 
@@ -1167,9 +1191,9 @@ For manual generation:
                 None,
             )
             if exp is None:
-                print(
-                    f"Warning: apply_accepted_spell_fixes: experience "
-                    f"{exp_id!r} not found for section {section_id!r}"
+                logger.warning(
+                    "apply_accepted_spell_fixes: experience %r not found for section %r",
+                    exp_id, section_id
                 )
                 continue
 
@@ -1324,7 +1348,13 @@ For manual generation:
             job_output_dir = self.output_dir / output_name
         job_output_dir.mkdir(parents=True, exist_ok=True)
         
-        print(f"Output directory: {job_output_dir}")
+        logger.info("Output directory: %s", job_output_dir)
+        logger.debug(
+            "generate_cv: entry (company=%s, role=%s, max_skills=%s, "
+            "rewrites=%d, spell_audit=%d)",
+            company, role, max_skills,
+            len(approved_rewrites or []), len(spell_audit or [])
+        )
         
         selected_content = self.build_render_ready_content(
             job_analysis,
@@ -2193,7 +2223,7 @@ If you need clarification, return:
         
         # Validate ATS compatibility
         ats_score = self._validate_ats_compatibility(content, job_analysis)
-        print(f"✓ Generated ATS DOCX: {filename} (ATS Score: {ats_score}/100)")
+        logger.info("Generated ATS DOCX: %s (ATS Score: %d/100)", filename, ats_score)
         
         return filepath
     
@@ -2253,14 +2283,14 @@ If you need clarification, return:
                 s for s in key_skills[:5] if s.lower() not in summary_lower
             ]
             if missing_keywords:
-                print(
-                    f"Warning: _enhance_summary_for_ats: no LLM configured; "
-                    f"summary may be missing keywords: "
-                    f"{', '.join(missing_keywords)}"
+                logger.warning(
+                    "_enhance_summary_for_ats: no LLM configured; "
+                    "summary may be missing keywords: %s",
+                    ', '.join(missing_keywords)
                 )
         else:
-            print(
-                "Info: _enhance_summary_for_ats: summary rewrites are handled "
+            logger.info(
+                "_enhance_summary_for_ats: summary rewrites are handled "
                 "upstream via apply_approved_rewrites — returning unchanged."
             )
 
@@ -2327,9 +2357,9 @@ If you need clarification, return:
 
         text = achievement.strip()
         if text.split()[0].lower() not in self._STRONG_VERBS_LOWER if text.split() else True:
-            print(
-                f"Warning: _enhance_achievement_for_ats: bullet does not start "
-                f"with a strong action verb: {text[:60]!r}"
+            logger.warning(
+                "_enhance_achievement_for_ats: bullet does not start with a strong action verb: %r",
+                text[:60]
             )
 
         return text
@@ -2826,7 +2856,7 @@ If you need clarification, return:
                         warn_run.font.color.rgb = RGBColor(0xDC, 0x79, 0x00)
 
         doc.save(str(filepath))
-        print(f"✓ Human DOCX: {filename}")
+        logger.info("Human DOCX: %s", filename)
         return filepath
 
 
