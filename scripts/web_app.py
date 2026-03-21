@@ -1149,6 +1149,8 @@ Job Description (excerpt):
         action = (req.get('action') or '').strip()
         if action not in ('add', 'delete', 'add_category', 'delete_category'):
             return jsonify({"error": "action must be add, delete, add_category, or delete_category"}), 400
+
+        category_key_pattern = re.compile(r'^[A-Za-z0-9_-]+$')
         try:
             master, master_path = _load_master(orchestrator.master_data_path)
             skills = master.get('skills', [])
@@ -1157,6 +1159,10 @@ Job Description (excerpt):
                 cat_name = (req.get('category_name') or cat_key).strip()
                 if not cat_key:
                     return jsonify({"error": "category_key is required"}), 400
+                if not category_key_pattern.match(cat_key):
+                    return jsonify({"error": "category_key must contain only letters, numbers, underscores, or hyphens"}), 400
+                if not cat_name:
+                    return jsonify({"error": "category_name is required"}), 400
                 if not isinstance(skills, dict):
                     return jsonify({"ok": False, "error": "Skills field is not a category dict"}), 400
                 if cat_key in skills:
@@ -1180,17 +1186,23 @@ Job Description (excerpt):
             skill_name = (req.get('skill') or '').strip()
             if not skill_name:
                 return jsonify({"error": "skill is required"}), 400
+            if len(skill_name) > 100:
+                return jsonify({"error": "skill must be 100 characters or fewer"}), 400
+
+            skill_lower = skill_name.lower()
             if isinstance(skills, list):
                 if action == 'add':
-                    if skill_name in skills:
+                    existing_lower = {str(s).strip().lower() for s in skills if isinstance(s, str)}
+                    if skill_lower in existing_lower:
                         return jsonify({"ok": False, "error": "Skill already exists"}), 409
                     skills.append(skill_name)
                     master['skills'] = skills
                     _save_master(master, master_path)
                     return jsonify({"ok": True, "action": "added"})
-                if skill_name not in skills:
+                existing_map = {str(s).strip().lower(): s for s in skills if isinstance(s, str)}
+                if skill_lower not in existing_map:
                     return jsonify({"ok": False, "error": "Skill not found"}), 404
-                skills.remove(skill_name)
+                skills.remove(existing_map[skill_lower])
                 master['skills'] = skills
                 _save_master(master, master_path)
                 return jsonify({"ok": True, "action": "deleted"})
@@ -1201,20 +1213,28 @@ Job Description (excerpt):
                 if cat_key not in skills:
                     return jsonify({"ok": False, "error": "Category not found"}), 404
                 cat_val  = skills[cat_key]
-                cat_list: List[str] = (
-                    cat_val if isinstance(cat_val, list)
-                    else cat_val.setdefault('skills', []) if isinstance(cat_val, dict)
-                    else []
-                )
+                if isinstance(cat_val, list):
+                    cat_list = cat_val
+                elif isinstance(cat_val, dict):
+                    raw_list = cat_val.setdefault('skills', [])
+                    if not isinstance(raw_list, list):
+                        return jsonify({"ok": False, "error": "Category skills must be a list"}), 400
+                    cat_list = raw_list
+                else:
+                    return jsonify({"ok": False, "error": "Category value must be a list or object"}), 400
+
+                cat_existing_lower = {
+                    str(s).strip().lower(): s for s in cat_list if isinstance(s, str)
+                }
                 if action == 'add':
-                    if skill_name in cat_list:
+                    if skill_lower in cat_existing_lower:
                         return jsonify({"ok": False, "error": "Skill already exists in category"}), 409
                     cat_list.append(skill_name)
                     _save_master(master, master_path)
                     return jsonify({"ok": True, "action": "added"})
-                if skill_name not in cat_list:
+                if skill_lower not in cat_existing_lower:
                     return jsonify({"ok": False, "error": "Skill not found in category"}), 404
-                cat_list.remove(skill_name)
+                cat_list.remove(cat_existing_lower[skill_lower])
                 _save_master(master, master_path)
                 return jsonify({"ok": True, "action": "deleted"})
             return jsonify({"ok": False, "error": "Unexpected skills format"}), 400
