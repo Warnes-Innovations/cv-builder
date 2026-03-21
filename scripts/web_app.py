@@ -409,6 +409,13 @@ def create_app(args) -> Flask:
         sid = request.args.get('session_id')
         if not sid and request.is_json:
             sid = (request.get_json(silent=True) or {}).get('session_id')
+        
+        source = "query" if request.args.get('session_id') else ("json_body" if sid else "none")
+        logger.debug(
+            "_get_session: session_id=%s (source=%s, method=%s, path=%s)",
+            sid or "<missing>", source, request.method, request.path
+        )
+        
         if not sid:
             if required:
                 _abort(400, description='session_id is required')
@@ -427,11 +434,20 @@ def create_app(args) -> Flask:
         """
         from flask import abort as _abort
         if entry.owner_token is None:
+            logger.debug(
+                "_validate_owner: session %s is unclaimed (skipping validation)",
+                entry.session_id
+            )
             return  # unclaimed — allow any caller
         token = (request.get_json(silent=True) or {}).get('owner_token')
         if token is None:
             token = request.args.get('owner_token')
-        if token != entry.owner_token:
+        token_match = (token == entry.owner_token)
+        logger.debug(
+            "_validate_owner: session %s (claimed=%s, token_match=%s)",
+            entry.session_id, entry.owner_token is not None, token_match
+        )
+        if not token_match:
             _abort(403, description='Not the session owner')
 
     def _infer_position_name(job_text: str) -> Optional[str]:

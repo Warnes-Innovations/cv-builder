@@ -246,6 +246,63 @@ function formatSessionTimestamp(timestamp, { includeTime = true } = {}) {
   }
 }
 
+// Structured logging helper (global and test-friendly).
+const LOG_LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
+const DEFAULT_LOG_LEVEL = 'info';
+
+function createLogEntry(level, message, metadata = {}) {
+  const entry = {
+    timestamp: new Date().toISOString(),
+    level,
+    message: String(message),
+    ...metadata,
+  };
+  return entry;
+}
+
+const logger = {
+  level: DEFAULT_LOG_LEVEL,
+
+  setLevel(newLevel) {
+    if (LOG_LEVELS[newLevel] != null) {
+      this.level = newLevel;
+    }
+  },
+
+  shouldLog(level) {
+    if (LOG_LEVELS[level] == null) return false;
+    return LOG_LEVELS[level] >= LOG_LEVELS[this.level];
+  },
+
+  log(level, message, metadata = {}) {
+    if (!this.shouldLog(level)) return null;
+
+    const entry = createLogEntry(level, message, metadata);
+    const formatted = JSON.stringify(entry);
+
+    if (typeof console !== 'undefined') {
+      if (level === 'error') console.error(formatted);
+      else if (level === 'warn') console.warn(formatted);
+      else console.log(formatted);
+    }
+
+    return entry;
+  },
+
+  debug(message, metadata = {}) { return this.log('debug', message, metadata); },
+  info(message, metadata = {}) { return this.log('info', message, metadata); },
+  warn(message, metadata = {}) { return this.log('warn', message, metadata); },
+  error(message, metadata = {}) { return this.log('error', message, metadata); },
+
+  event(action, metadata = {}) {
+    return this.info(`event:${action}`, { action, ...metadata });
+  },
+};
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.logger = logger;
+}
+
 export {
   normalizeText, fmtDate, cleanJsonResponse, escapeHtml,
   extractTitleAndCompanyFromJobText, normalizePositionLabel,
@@ -253,4 +310,5 @@ export {
   formatDuration, ordinal,
   SESSION_PHASE_LABELS, SESSION_PHASE_LABELS_SHORT,
   formatSessionPhaseLabel, formatSessionTimestamp,
+  logger,
 };
