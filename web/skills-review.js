@@ -12,6 +12,37 @@
  *   $, $.fn.DataTable (jQuery + DataTables)
  */
 
+// ── Years-from-experience helpers ─────────────────────────────────────────
+
+function _parseYearFromStr(str) {
+  if (!str) return null;
+  const s = String(str).toLowerCase().trim();
+  if (['current', 'present', 'now', 'ongoing'].includes(s)) return new Date().getFullYear();
+  const m = s.match(/\b(19|20)\d{2}\b/);
+  return m ? parseInt(m[0], 10) : null;
+}
+
+/**
+ * Given a list of experience IDs and the full experiences array, return
+ * the total years of experience (sum of duration of matched entries).
+ * Returns null if no matching entries found.
+ */
+function _computeYearsFromIds(ids, allExperiences) {
+  const idSet = new Set((ids || []).map(x => String(x).trim()).filter(Boolean));
+  if (idSet.size === 0) return null;
+  let total = 0;
+  const currentYear = new Date().getFullYear();
+  for (const exp of (allExperiences || [])) {
+    if (!exp || typeof exp !== 'object') continue;
+    const expId = String(exp.id || '').trim();
+    if (!idSet.has(expId)) continue;
+    const startYear = _parseYearFromStr(exp.start_date || exp.start);
+    const endYear   = _parseYearFromStr(exp.end_date   || exp.end) ?? currentYear;
+    total += startYear == null ? 1 : Math.max(1, endYear - startYear + 1);
+  }
+  return total > 0 ? total : null;
+}
+
 // ── Build review table (fetch + initialise) ────────────────────────────────
 
 async function buildSkillsReviewTable() {
@@ -176,6 +207,10 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     const matchHelp = isNew
       ? 'Comma-separated experience IDs. Auto-derived; you can edit before submit.'
       : 'Only used for AI-suggested skills.';
+    const derivedYears = isNew ? _computeYearsFromIds(defaultMatches, allExperiences) : null;
+    const yearsHint = derivedYears != null
+      ? `~${derivedYears} yr${derivedYears === 1 ? '' : 's'}`
+      : (isNew ? 'no match' : '');
 
     tableHTML += `
       <tr data-skill="${skillNameEsc}" style="${rowStyle}">
@@ -192,7 +227,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
             placeholder="exp_1, exp_2"
             title="${escapeHtml(matchHelp)}"
             style="width:100%;font-size:0.85em;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;"
-          />` : '<span style="color:#9ca3af;">—</span>'}
+          /><span class="derived-years-hint" data-skill="${skillNameEsc}" title="Estimated years derived from matched experience entries" style="display:inline-block;margin-top:4px;font-size:0.8em;color:#6b7280;">${escapeHtml(yearsHint)}</span>` : '<span style="color:#9ca3af;">—</span>'}
         </td>
         <td class="action-btns" style="white-space:nowrap;">
           <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${skillNameEsc}"    title="Emphasize — feature prominently" style="color:#10b981;font-size:1.5em;">➕</button>
@@ -208,6 +243,18 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
 
   tableHTML += '</tbody></table>';
   container.innerHTML = tableHTML;
+
+  // Update derived-years hint live as user edits the experience match input
+  container.querySelector('#skills-review-table tbody')?.addEventListener('input', e => {
+    const input = e.target.closest('.skill-match-input');
+    if (!input) return;
+    const skillName = input.dataset.skill;
+    const ids = input.value.split(',').map(x => x.trim()).filter(Boolean);
+    const years = _computeYearsFromIds(ids, allExperiences);
+    const hint = years != null ? `~${years} yr${years === 1 ? '' : 's'}` : 'no match';
+    const span = container.querySelector(`.derived-years-hint[data-skill="${CSS.escape(skillName)}"]`);
+    if (span) span.textContent = hint;
+  });
 
   container.querySelector('#skills-review-table tbody')?.addEventListener('click', e => {
     const btn = e.target.closest('.icon-btn');
@@ -350,6 +397,8 @@ async function submitSkillDecisions() {
 // ── Exports ───────────────────────────────────────────────────────────────
 
 export {
+  _parseYearFromStr,
+  _computeYearsFromIds,
   buildSkillsReviewTable,
   _renderSkillsTable,
   moveSkillRow,

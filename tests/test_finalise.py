@@ -40,6 +40,7 @@ from scripts.web_app import (
     _harvest_add_skill,
     _harvest_add_summary_variant,
 )
+from scripts.utils.master_data_validator import ValidationResult
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +93,10 @@ def _make_app(state_overrides=None):
     stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
     stack.enter_context(patch('scripts.web_app.CVOrchestrator', return_value=mock_orchestrator))
     stack.enter_context(patch('scripts.web_app.ConversationManager', return_value=mock_conversation))
+    stack.enter_context(patch(
+        'scripts.web_app.validate_master_data_file',
+        return_value=ValidationResult(valid=True),
+    ))
 
     app = create_app(_make_args())
     app.config['TESTING'] = True
