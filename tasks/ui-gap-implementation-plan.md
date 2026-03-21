@@ -1,7 +1,7 @@
 # UI Gap Implementation Plan
 
 **Created:** 2026-03-19  
-**Status:** Phases 1–4 complete; Phase 6 (UX/Accessibility) complete (2026-03-20); Phase 5 (Master CV Editor) active; Refactor backlog open (2026-03-20)  
+**Status:** Phases 1–5 complete (2026-03-21); Phase 6 (UX/Accessibility) complete (2026-03-20); Refactor backlog M01–M27 complete (2026-03-21)  
 **Source basis:** `tasks/ui-review.md` and `tasks/gaps.md` refreshed on 2026-03-19
 
 ## Overview
@@ -311,15 +311,23 @@ Phase 4 deliverables status:
 - [x] Publication decisions persistence — decisions stored in session and respected by final output
 - [x] Write-back of accepted spell/grammar corrections integrated
 
-### Phase 5: Master Data Editing Slice
+### Phase 5: Master Data Editing Slice — **COMPLETE (2026-03-21)**
 
 - Implement Workstream 5.
 - Goal: provide structured master-data maintenance once the main applicant workflow is stable.
 
-Phase 5 deliverables status (in progress):
+Phase 5 deliverables status:
 - [x] Backup-before-write safeguard for `Master_CV_Data.json`
 - [x] Pre-save structural validation for master-data writes
 - [x] Clear changed-state display in the Master CV editor after save/delete actions
+- [x] `scripts/utils/master_data_validator.py` — `ValidationResult` dataclass + `validate_master_data()` / `validate_master_data_file()` helpers
+- [x] `schemas/master_cv_data.schema.json` — JSON Schema 2020-12 for master data (experience, skills, education, awards, personal_info)
+- [x] `MASTER_CV_DATA_SPECIFICATION.md` — human-readable field reference
+- [x] `scripts/validate_master_data.py` — CLI wrapper, exit 0/1
+- [x] Pre-load validation in `CVOrchestrator._load_master_data()` and `generate_cv.load_master_data()`
+- [x] `GET /api/master-data/validate` endpoint
+- [x] `POST /api/master-data/preview-diff` endpoint (read-only before/after diff for personal_info and skill sections)
+- [x] 53 Python tests (TestMasterDataPreviewDiff 17, TestValidateMasterData 12, TestMasterDataValidateEndpoint 3, TestMasterDataOverview 5, + existing)
 
 ### Phase 6: UX and Accessibility Hardening — **COMPLETE (2026-03-20)**
 
