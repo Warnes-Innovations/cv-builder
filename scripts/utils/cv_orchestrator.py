@@ -318,7 +318,7 @@ class CVOrchestrator:
                                      key=lambda x: (-x.get('years', 0), x.get('name', '')))
                 sorted_categories.append({
                     'category': category,
-                    'skills': skills_list
+                    'skills': self._group_inline_skills(skills_list)
                 })
 
         # Add remaining categories alphabetically
@@ -328,11 +328,37 @@ class CVOrchestrator:
                                  key=lambda x: (-x.get('years', 0), x.get('name', '')))
             sorted_categories.append({
                 'category': category,
-                'skills': skills_list
+                'skills': self._group_inline_skills(skills_list)
             })
 
         return sorted_categories
-    
+
+    def _group_inline_skills(self, skills_list: List[Dict]) -> List[Dict]:
+        """Combine skills that share the same non-empty `group` key into a
+        single inline entry.  The first member becomes the representative entry
+        with an added `group_names` list.  Ungrouped skills pass through unchanged."""
+        groups: Dict[str, List[Dict]] = {}
+        group_insertion_idx: Dict[str, int] = {}
+        result: List[Any] = []
+
+        for skill in skills_list:
+            g = (skill.get('group') or '').strip()
+            if g:
+                if g not in groups:
+                    groups[g] = []
+                    group_insertion_idx[g] = len(result)
+                    result.append(None)  # placeholder
+                groups[g].append(skill)
+            else:
+                result.append(skill)
+
+        for g, members in groups.items():
+            primary = dict(members[0])
+            primary['group_names'] = [m['name'] for m in members]
+            result[group_insertion_idx[g]] = primary
+
+        return [s for s in result if s is not None]
+
     def _format_publications(self, publications: List) -> List[Dict]:
         """Format publications for template consumption."""
         owner_name = self.master_data.get('personal_info', {}).get('name', '') if self.master_data else ''

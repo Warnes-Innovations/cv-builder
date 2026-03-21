@@ -1047,6 +1047,79 @@ class TestOrganizeSkillsAlias(unittest.TestCase):
         self.assertIn('python3', aliases)
 
 
+class TestGroupInlineSkills(unittest.TestCase):
+    """_group_inline_skills should combine skills sharing the same group key."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_grouped_skills_merge_into_one_entry(self):
+        skills = [
+            {'name': 'C++',  'group': 'c_family', 'category': 'Programming'},
+            {'name': 'Rcpp', 'group': 'c_family', 'category': 'Programming'},
+        ]
+        result = self.orc._group_inline_skills(skills)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['group_names'], ['C++', 'Rcpp'])
+
+    def test_ungrouped_skills_pass_through_unchanged(self):
+        skills = [
+            {'name': 'Python', 'category': 'Programming'},
+            {'name': 'R',      'category': 'Programming'},
+        ]
+        result = self.orc._group_inline_skills(skills)
+        self.assertEqual(len(result), 2)
+        self.assertNotIn('group_names', result[0])
+
+    def test_mixed_grouped_and_ungrouped(self):
+        skills = [
+            {'name': 'Python', 'category': 'Programming'},
+            {'name': 'C++',    'group': 'c_family', 'category': 'Programming'},
+            {'name': 'Rcpp',   'group': 'c_family', 'category': 'Programming'},
+            {'name': 'R',      'category': 'Programming'},
+        ]
+        result = self.orc._group_inline_skills(skills)
+        self.assertEqual(len(result), 3)
+        grouped = next(s for s in result if s.get('group_names'))
+        self.assertEqual(grouped['group_names'], ['C++', 'Rcpp'])
+
+    def test_empty_group_key_not_grouped(self):
+        skills = [
+            {'name': 'Python', 'group': '', 'category': 'Programming'},
+            {'name': 'R',      'group': '', 'category': 'Programming'},
+        ]
+        result = self.orc._group_inline_skills(skills)
+        self.assertEqual(len(result), 2)
+        self.assertNotIn('group_names', result[0])
+
+    def test_group_entry_position_is_first_member(self):
+        skills = [
+            {'name': 'Go',   'category': 'Programming'},
+            {'name': 'C++',  'group': 'c_fam', 'category': 'Programming'},
+            {'name': 'Rcpp', 'group': 'c_fam', 'category': 'Programming'},
+        ]
+        result = self.orc._group_inline_skills(skills)
+        self.assertEqual(result[0]['name'], 'Go')
+        self.assertEqual(result[1]['group_names'], ['C++', 'Rcpp'])
+
+    def test_organize_by_category_applies_grouping(self):
+        skills = [
+            {'name': 'C++',  'group': 'c_family', 'category': 'General'},
+            {'name': 'Rcpp', 'group': 'c_family', 'category': 'General'},
+            {'name': 'R',    'category': 'General'},
+        ]
+        result = self.orc._organize_skills_by_category(skills, 'standard')
+        cat_skills = result[0]['skills']
+        group_names_lists = [s.get('group_names') for s in cat_skills if s.get('group_names')]
+        self.assertEqual(len(group_names_lists), 1)
+        self.assertIn('C++', group_names_lists[0])
+        self.assertIn('Rcpp', group_names_lists[0])
+
+
 class TestBulletOrderInSelectContent(unittest.TestCase):
     """_select_content_hybrid should add ordered_achievements sorted by relevance."""
 
