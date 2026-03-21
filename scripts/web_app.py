@@ -4830,8 +4830,6 @@ Close professionally with a call to action.
         gen   = conv.state.get("generation_state") or {}
         if not gen.get("preview_html"):
             return jsonify({"error": "No preview — call /api/cv/generate-preview first."}), 400
-        if gen.get("layout_confirmed"):
-            return jsonify({"error": "Layout already confirmed."}), 400
         import hashlib as _hl
         now   = datetime.now().isoformat()
         chash = _hl.sha256(gen["preview_html"].encode()).hexdigest()[:16]

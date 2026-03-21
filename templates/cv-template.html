@@ -427,8 +427,18 @@
             
             /* Set print size to US Letter */
             @page {
-                size: letter; /* Standard CSS property for US Letter */
-                margin: 0;
+                size: letter;
+                margin: 0 0 14pt 0;    /* Bottom margin hosts the page-number counter */
+                @bottom-right {
+                    content: counter(page) " / " counter(pages);
+                    font-family: var(--font-body, Arial, sans-serif);
+                    font-size: 7.5pt;
+                    color: #aaa;
+                    padding-right: 12pt;
+                }
+            }
+            @page :first {
+                @bottom-right { content: none; }   /* No counter on page 1 (header CV already identifies the document) */
             }
         }
 

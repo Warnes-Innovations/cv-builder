@@ -682,6 +682,11 @@ Ask questions that are specific to this job posting, not generic career question
                     customizations['recommended_achievements'] = included_achs
                     customizations['omitted_achievements'] = omitted_achs
 
+                # Extra achievements (LLM-suggested achievements that user approved)
+                extra_achievements = self.state.get('accepted_suggested_achievements', [])
+                if extra_achievements:
+                    customizations['extra_achievements'] = extra_achievements
+
                 # Extra skills (LLM-suggested skills not in master CV that user approved)
                 extra_skills = self.state.get('extra_skills', [])
                 if extra_skills:
