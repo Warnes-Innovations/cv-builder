@@ -18,6 +18,7 @@ beforeEach(() => {
   window._skillsOrdered = null
   window._savedDecisions = null
   window._newSkillsFromLLM = []
+  window._allExperiences = []
   window.userSelections = { experiences: {}, skills: {} }
   window.waitingForSkillsResponse = false
   window.tabData = { analysis: null }
@@ -42,6 +43,7 @@ afterEach(() => {
   delete window._skillsOrdered
   delete window._savedDecisions
   delete window._newSkillsFromLLM
+  delete window._allExperiences
   delete window.userSelections
   delete window.waitingForSkillsResponse
   delete window.tabData
@@ -170,6 +172,23 @@ describe('submitSkillDecisions', () => {
     expect(globalThis.showToast).toHaveBeenCalledWith(
       expect.stringContaining('AI-suggested'),
     )
+  })
+
+  it('includes editable extra_skill_matches in request payload for accepted new skills', async () => {
+    document.body.innerHTML = `
+      <input class="skill-match-input" data-skill="NewSkill" value="exp_1, exp_2" />
+    `
+    window._newSkillsFromLLM = ['NewSkill']
+    window._allExperiences = [{ id: 'exp_1' }, { id: 'exp_2' }, { id: 'exp_3' }]
+    window.userSelections.skills = { NewSkill: 'include' }
+
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await submitSkillDecisions()
+
+    const call = globalThis.fetch.mock.calls[0]
+    const payload = JSON.parse(call[1].body)
+    expect(payload.extra_skill_matches).toEqual({ NewSkill: ['exp_1', 'exp_2'] })
+    expect(window._savedDecisions.extra_skill_matches).toEqual({ NewSkill: ['exp_1', 'exp_2'] })
   })
 
   it('shows error toast when API returns non-ok', async () => {

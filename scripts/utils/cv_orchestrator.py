@@ -1825,13 +1825,84 @@ If you need clarification, return:
                 break
 
         # Prepend extra_skills: LLM-suggested skills not in master CV that the user approved
+        # and derive years from matched experience entries (user-edited if provided).
         extra_skills = customizations.get('extra_skills', [])
+        raw_match_overrides = customizations.get('extra_skill_matches') or {}
+        match_overrides: Dict[str, List[str]] = {}
+        if isinstance(raw_match_overrides, dict):
+            for key, value in raw_match_overrides.items():
+                if not isinstance(key, str):
+                    continue
+                if isinstance(value, str):
+                    value = [v.strip() for v in value.split(',') if v.strip()]
+                if not isinstance(value, list):
+                    continue
+                cleaned = [v.strip() for v in value if isinstance(v, str) and v.strip()]
+                if cleaned:
+                    match_overrides[key] = cleaned
+
+        def _parse_year(value: Any, default_current: bool = False) -> Optional[int]:
+            raw = str(value or '').strip()
+            if not raw:
+                return datetime.now().year if default_current else None
+            if raw.lower() in ('current', 'present', 'now', 'ongoing'):
+                return datetime.now().year
+            m = re.search(r'\b(19|20)\d{2}\b', raw)
+            if not m:
+                return None
+            return int(m.group(0))
+
+        def _experience_years(exp: Dict) -> int:
+            start_year = _parse_year(exp.get('start_date') or exp.get('start'))
+            end_year = _parse_year(exp.get('end_date') or exp.get('end'), default_current=True)
+            if start_year is None and end_year is None:
+                return 1
+            if start_year is None:
+                return 1
+            if end_year is None:
+                end_year = start_year
+            return max(1, end_year - start_year + 1)
+
+        def _derive_years_from_matches(skill_name: str, preferred_ids: Optional[List[str]] = None) -> Optional[int]:
+            skill_lower = skill_name.lower().strip()
+            matched_ids = set(preferred_ids or [])
+            years_total = 0
+
+            for exp in all_experiences:
+                if not isinstance(exp, dict):
+                    continue
+                exp_id = str(exp.get('id') or '').strip()
+                if matched_ids:
+                    if exp_id not in matched_ids:
+                        continue
+                else:
+                    ach_list = exp.get('achievements') or []
+                    ach_text = ' '.join(
+                        (a.get('text') if isinstance(a, dict) else str(a))
+                        for a in ach_list
+                    )
+                    haystack = ' '.join([
+                        str(exp.get('title') or ''),
+                        str(exp.get('company') or ''),
+                        ach_text,
+                    ]).lower()
+                    if skill_lower not in haystack:
+                        continue
+                years_total += _experience_years(exp)
+
+            return years_total if years_total > 0 else None
+
         if extra_skills:
             existing_skill_names = {s.get('name', '') for s in all_skills}
             prepend = []
             for skill_name in extra_skills:
                 if skill_name not in omitted_skill_names and skill_name not in existing_skill_names:
-                    prepend.append({'name': skill_name})
+                    preferred_ids = match_overrides.get(skill_name, [])
+                    years = _derive_years_from_matches(skill_name, preferred_ids)
+                    skill_entry: Dict[str, Any] = {'name': skill_name}
+                    if years is not None:
+                        skill_entry['years'] = years
+                    prepend.append(skill_entry)
             selected_skills = prepend + selected_skills
 
         # Override: if the user has explicitly reordered skill rows via the UI,

@@ -323,7 +323,9 @@ async function restoreBackendState() {
       publication_decisions:statusData.publication_decisions || {},
       summary_focus_override: statusData.summary_focus_override || null,
       extra_skills:           statusData.extra_skills || [],
+      extra_skill_matches:    statusData.extra_skill_matches || {},
     };
+    window._allExperiences = statusData.all_experiences || [];
     window.selectedSummaryKey = statusData.selected_summary_key || null;
     window._newSkillsFromLLM = statusData.new_skills_from_llm || [];
 

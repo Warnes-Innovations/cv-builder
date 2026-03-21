@@ -381,6 +381,73 @@ class TestConfigLoading(unittest.TestCase):
         self.assertTrue(hasattr(config, 'master_cv_path') or hasattr(config, 'llm_provider'))
 
 
+class TestExtraSkillMatchDerivation(unittest.TestCase):
+    """Test derivation of years from user-edited extra skill matches."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.master_data_path = Path(self.temp_dir) / "master.json"
+        self.publications_path = Path(self.temp_dir) / "pubs.bib"
+
+        master_data = {
+            "personal_info": {"name": "Test User"},
+            "experience": [
+                {
+                    "id": "exp_1",
+                    "title": "Software Engineer",
+                    "company": "A",
+                    "start_date": "2018",
+                    "end_date": "2020",
+                    "achievements": ["Built Python services"],
+                },
+                {
+                    "id": "exp_2",
+                    "title": "Senior Engineer",
+                    "company": "B",
+                    "start_date": "2021",
+                    "end_date": "2022",
+                    "achievements": ["Scaled API platform"],
+                },
+            ],
+            "skills": [],
+            "selected_achievements": [],
+            "professional_summaries": {"default": "Summary"},
+            "education": [],
+            "certifications": [],
+            "awards": [],
+        }
+
+        with open(self.master_data_path, 'w') as f:
+            json.dump(master_data, f)
+        self.publications_path.touch()
+
+        self.orchestrator = CVOrchestrator(
+            str(self.master_data_path),
+            str(self.publications_path),
+            self.temp_dir,
+            MagicMock(spec=LLMClient),
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_extra_skill_match_overrides_support_multiple_experiences(self):
+        customizations = {
+            "extra_skills": ["Python Asyncio"],
+            "extra_skill_matches": {"Python Asyncio": ["exp_1", "exp_2"]},
+        }
+
+        selected = self.orchestrator._select_content_hybrid(
+            job_analysis={},
+            customizations=customizations,
+            use_semantic_match=False,
+        )
+
+        match = next((s for s in selected.get("skills", []) if s.get("name") == "Python Asyncio"), None)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.get("years"), 5)
+
+
 class TestErrorPaths(unittest.TestCase):
     """Test error handling and recovery."""
 

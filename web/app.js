@@ -18,11 +18,11 @@ function parseStatusResponse(data) {
   const required = [
     'phase', 'llm_provider', 'job_description',
     'post_analysis_questions', 'post_analysis_answers',
-    'all_experience_ids', 'all_skills', 'all_achievements',
+    'all_experience_ids', 'all_experiences', 'all_skills', 'all_achievements',
     'professional_summaries', 'copilot_auth', 'iterating',
     'experience_decisions', 'skill_decisions',
     'achievement_decisions', 'publication_decisions',
-    'extra_skills', 'session_file',
+    'extra_skills', 'extra_skill_matches', 'session_file',
   ];
   const missing = required.filter(k => !(k in data));
   if (missing.length) {
@@ -531,7 +531,9 @@ async function restoreBackendState() {
       publication_decisions:statusData.publication_decisions || {},
       summary_focus_override: statusData.summary_focus_override || null,
       extra_skills:           statusData.extra_skills || [],
+      extra_skill_matches:    statusData.extra_skill_matches || {},
     };
+    window._allExperiences = statusData.all_experiences || [];
     window.selectedSummaryKey = statusData.selected_summary_key || null;
     window._newSkillsFromLLM = statusData.new_skills_from_llm || [];
 
@@ -6010,10 +6012,39 @@ function populateCVTab(cvData) {
   if (typeof cvData === 'string') {
     html += `<div style="white-space: pre-wrap; font-family: monospace; background: #f8f9fa; padding: 20px; border-radius: 8px;">${cvData}</div>`;
   } else {
-    html += '<p>CV generated successfully. Download options available in the Download tab.</p>';
+    const files = Array.isArray(cvData?.files) ? cvData.files : [];
+    const fileListHtml = files.length
+      ? `<ul style="margin: 8px 0 0 18px;">${files.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`
+      : '<p style="margin: 8px 0 0; color: #6b7280;">No generated files were reported yet.</p>';
+
+    html += `
+      <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:14px;">
+        <h3 style="margin:0 0 8px;">Generation Complete</h3>
+        <p style="margin:0 0 8px;">Your CV artifacts are ready. Use this tab to move to the next workflow steps.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
+          <button class="action-btn primary" id="generated-open-layout-btn">🎨 Open Layout Review</button>
+          <button class="action-btn" id="generated-open-download-btn">⬇️ Open Downloads</button>
+          <button class="action-btn" id="generated-open-finalise-btn">✅ Open Finalise</button>
+        </div>
+      </div>
+
+      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;">
+        <h3 style="margin:0 0 8px;">Generated Files</h3>
+        ${fileListHtml}
+        ${cvData?.output_dir ? `<p style="margin:10px 0 0;color:#374151;"><strong>Output directory:</strong> ${escapeHtml(cvData.output_dir)}</p>` : ''}
+      </div>
+    `;
   }
   
   content.innerHTML = html;
+
+  const layoutBtn = document.getElementById('generated-open-layout-btn');
+  const downloadBtn = document.getElementById('generated-open-download-btn');
+  const finaliseBtn = document.getElementById('generated-open-finalise-btn');
+
+  if (layoutBtn) layoutBtn.addEventListener('click', () => switchTab('layout'));
+  if (downloadBtn) downloadBtn.addEventListener('click', () => switchTab('download'));
+  if (finaliseBtn) finaliseBtn.addEventListener('click', () => switchTab('finalise'));
 }
 
 async function populateDownloadTab(cvData) {
