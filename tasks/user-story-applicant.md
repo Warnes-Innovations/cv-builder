@@ -96,6 +96,53 @@
 
 ---
 
+## US-A3b: Organise Skills into Categories and Inline Bullet Groups
+
+*GitHub issues: [#9](https://github.com/Warnes-Innovations/cv-builder/issues/9) · [#36](https://github.com/Warnes-Innovations/cv-builder/issues/36)*
+
+**As a** job applicant,
+**I want to** organise my skills into named topical categories and group closely related skills onto single readable bullets,
+**So that** my technical breadth is easy to scan and the layout can be tailored to each job application.
+
+**Steps:**
+
+1. The skills review UI displays skills grouped under their master CV category headings (e.g., **Core Expertise**, **Scientific & Bioinformatics**).
+2. The LLM may suggest renaming, reordering, or moving skills between categories based on the job description. I review and approve/reject suggestions.
+3. I can manually:
+
+   - **Rename** a category heading
+   - **Reorder** categories via drag-and-drop
+   - **Move** a skill from one category to another
+   - **Create** a new category heading
+
+4. Within each category, related skills can be merged onto one bullet — rendered as:
+
+   ```text
+   skill1 (optional qualifier), skill2 (optional qualifier), ...
+   ```
+
+5. For any skill I can set or edit:
+
+   - **Proficiency/expertise level** (Expert, Advanced, Familiar)
+   - **Sub-skills** shown in the parenthetical (e.g., `ggplot2`, `Pandas`)
+   - **Free-form parenthetical text** as a full override
+
+6. I can **add new skills** not in my master CV, specifying name, category, proficiency, sub-skills, and/or parenthetical.
+7. I click **Confirm Customisations** to persist all grouping decisions for this application.
+
+**Acceptance Criteria:**
+
+- Generated CV renders each category as a named heading followed by its skill bullets.
+- Each bullet may contain one or more skills, comma-separated, each with an optional parenthetical qualifier.
+- Category titles, order, and skill membership are customizable per application; changes do not modify the master CV.
+- LLM suggestions for category changes are shown for review — not applied silently.
+- Automatic grouping suggestions keep skills within the same category; user may manually override.
+- Newly added skills (not in master CV) are accepted with name, category, proficiency, sub-skills, and/or free-form parenthetical.
+- All grouping decisions persist in session customizations.
+- Inline bullets that would render unusually long display a readability warning in the UI.
+
+---
+
 ## US-A4: Review and Approve Text Rewrites
 
 **As a** job applicant,  
