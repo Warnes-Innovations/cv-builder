@@ -487,5 +487,310 @@ class TestSaveMasterHelper(unittest.TestCase):
             self.assertFalse(backup_dir.exists())
 
 
+# ---------------------------------------------------------------------------
+# POST /api/master-data/preview-diff
+# ---------------------------------------------------------------------------
+
+class TestMasterDataPreviewDiff(unittest.TestCase):
+    """Tests for the read-only before/after diff preview endpoint."""
+
+    _MASTER_PERSONAL = {
+        'personal_info': {
+            'name':  'Dr. Test User',
+            'title': 'Senior Engineer',
+            'contact': {
+                'email':    'test@example.com',
+                'phone':    '555-1234',
+                'linkedin': 'linkedin.com/in/test',
+                'website':  '',
+                'address':  {'city': 'Boston', 'state': 'MA'},
+            },
+        },
+        'skills': ['Python', 'R', 'SQL'],
+    }
+
+    def _post(self, client, sid, body):
+        return client.post(
+            '/api/master-data/preview-diff',
+            json=body,
+            query_string={'session_id': sid},
+        )
+
+    # ── section validation ──────────────────────────────────────────────────
+
+    def test_missing_section_returns_400(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER_PERSONAL))):
+            res = self._post(client, sid, {'section': 'bad'})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('section', res.get_json()['error'])
+
+    # ── personal_info diffs ────────────────────────────────────────────────
+
+    def test_personal_info_changed_name_detected(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER_PERSONAL))):
+            res  = self._post(client, sid, {'section': 'personal_info', 'name': 'New Name'})
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertTrue(data['changed'])
+        self.assertEqual(len(data['changes']), 1)
+        self.assertEqual(data['changes'][0]['field'], 'name')
+        self.assertEqual(data['changes'][0]['old'], 'Dr. Test User')
+        self.assertEqual(data['changes'][0]['new'], 'New Name')
+
+    def test_personal_info_unchanged_value_omitted(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER_PERSONAL))):
+            # Send same name — should produce no changes
+            res  = self._post(client, sid, {'section': 'personal_info', 'name': 'Dr. Test User'})
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertFalse(data['changed'])
+        self.assertEqual(data['changes'], [])
+
+    def test_personal_info_multiple_fields_changed(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER_PERSONAL))):
+            res  = self._post(client, sid, {
+                'section': 'personal_info',
+                'name': 'New Name',
+                'city': 'New York',
+            })
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(len(data['changes']), 2)
+        fields_changed = {c['field'] for c in data['changes']}
+        self.assertIn('name', fields_changed)
+        self.assertIn('city', fields_changed)
+
+    def test_personal_info_no_fields_in_request_produces_no_diff(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER_PERSONAL))):
+            res  = self._post(client, sid, {'section': 'personal_info'})
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertFalse(data['changed'])
+
+    # ── skill diffs — list ──────────────────────────────────────────────────
+
+    def test_skill_add_new_skill_listed(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER_PERSONAL))):
+            res  = self._post(client, sid, {'section': 'skill', 'action': 'add', 'skill': 'Go'})
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertTrue(data['changed'])
+        self.assertEqual(data['changes'][0]['new'], 'Go')
+
+    def test_skill_add_duplicate_produces_no_change(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER_PERSONAL))):
+            res  = self._post(client, sid, {'section': 'skill', 'action': 'add', 'skill': 'python'})
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertFalse(data['changed'])   # already in list (case-insensitive)
+
+    def test_skill_delete_existing_skill(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER_PERSONAL))):
+            res  = self._post(client, sid, {'section': 'skill', 'action': 'delete', 'skill': 'SQL'})
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertTrue(data['changed'])
+
+    def test_skill_delete_nonexistent_produces_no_change(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER_PERSONAL))):
+            res  = self._post(client, sid, {'section': 'skill', 'action': 'delete', 'skill': 'Rust'})
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertFalse(data['changed'])
+
+    def test_skill_invalid_action_returns_400(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER_PERSONAL))):
+            res = self._post(client, sid, {'section': 'skill', 'action': 'rename', 'skill': 'X'})
+        self.assertEqual(res.status_code, 400)
+
+    def test_skill_missing_skill_name_returns_400(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER_PERSONAL))):
+            res = self._post(client, sid, {'section': 'skill', 'action': 'add'})
+        self.assertEqual(res.status_code, 400)
+
+    # ── skill diffs — categorized dict ─────────────────────────────────────
+
+    def test_skill_add_to_category_dict(self):
+        master = dict(self._MASTER_PERSONAL)
+        master['skills'] = {'Languages': ['Python', 'R'], 'Tools': ['Git']}
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))):
+            res  = self._post(client, sid, {
+                'section': 'skill', 'action': 'add', 'skill': 'Go', 'category': 'Languages',
+            })
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertTrue(data['changed'])
+        self.assertEqual(data['changes'][0]['field'], 'skills.Languages')
+
+    def test_skill_add_category_dict_missing_category_returns_400(self):
+        master = dict(self._MASTER_PERSONAL)
+        master['skills'] = {'Languages': ['Python']}
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))):
+            res = self._post(client, sid, {'section': 'skill', 'action': 'add', 'skill': 'Go'})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('category', res.get_json()['error'])
+
+    def test_skill_add_new_category(self):
+        master = dict(self._MASTER_PERSONAL)
+        master['skills'] = {'Languages': ['Python']}
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))):
+            res  = self._post(client, sid, {
+                'section': 'skill', 'action': 'add_category', 'category_key': 'Tools',
+            })
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertTrue(data['changed'])
+
+    def test_skill_add_existing_category_produces_no_change(self):
+        master = dict(self._MASTER_PERSONAL)
+        master['skills'] = {'Languages': ['Python']}
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))):
+            res  = self._post(client, sid, {
+                'section': 'skill', 'action': 'add_category', 'category_key': 'Languages',
+            })
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertFalse(data['changed'])
+
+    def test_skill_delete_category(self):
+        master = dict(self._MASTER_PERSONAL)
+        master['skills'] = {'Languages': ['Python'], 'Tools': ['Git']}
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))):
+            res  = self._post(client, sid, {
+                'section': 'skill', 'action': 'delete_category', 'category_key': 'Tools',
+            })
+            data = res.get_json()
+        self.assertTrue(data['ok'])
+        self.assertTrue(data['changed'])
+
+    def test_skill_category_missing_category_key_returns_400(self):
+        master = dict(self._MASTER_PERSONAL)
+        master['skills'] = {'Languages': ['Python']}
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))):
+            res = self._post(client, sid, {'section': 'skill', 'action': 'add_category'})
+        self.assertEqual(res.status_code, 400)
+
+
+# ---------------------------------------------------------------------------
+# scripts/utils/master_data_validator — validate_master_data
+# ---------------------------------------------------------------------------
+
+class TestValidateMasterData(unittest.TestCase):
+    """Unit tests for the standalone master-data validator module."""
+
+    def setUp(self):
+        from scripts.utils.master_data_validator import validate_master_data, validate_master_data_file
+        self.validate = validate_master_data
+        self.validate_file = validate_master_data_file
+
+    def test_minimal_valid_object_passes(self):
+        result = self.validate({}, use_schema=False)
+        self.assertTrue(result.valid)
+        self.assertEqual(result.errors, [])
+
+    def test_personal_info_must_be_dict(self):
+        result = self.validate({'personal_info': 'bad'}, use_schema=False)
+        self.assertFalse(result.valid)
+        self.assertTrue(any('personal_info' in e for e in result.errors))
+
+    def test_experience_must_be_list(self):
+        result = self.validate({'experience': 'bad'}, use_schema=False)
+        self.assertFalse(result.valid)
+        self.assertTrue(any('experience' in e for e in result.errors))
+
+    def test_skills_list_is_valid(self):
+        result = self.validate({'skills': ['Python', 'R']}, use_schema=False)
+        self.assertTrue(result.valid)
+
+    def test_skills_dict_is_valid(self):
+        result = self.validate({'skills': {'ML': ['scikit-learn']}}, use_schema=False)
+        self.assertTrue(result.valid)
+
+    def test_skills_string_fails(self):
+        result = self.validate({'skills': 'Python'}, use_schema=False)
+        self.assertFalse(result.valid)
+
+    def test_non_dict_top_level_fails(self):
+        result = self.validate([], use_schema=False)
+        self.assertFalse(result.valid)
+        self.assertTrue(any('JSON object' in e for e in result.errors))
+
+    def test_to_dict_contains_expected_keys(self):
+        result = self.validate({}, use_schema=False)
+        d = result.to_dict()
+        for key in ('valid', 'errors', 'warnings', 'checked_path', 'schema_path'):
+            self.assertIn(key, d)
+
+    def test_validate_file_missing_path_fails(self):
+        result = self.validate_file('/nonexistent/path/master.json', use_schema=False)
+        self.assertFalse(result.valid)
+        self.assertTrue(any('not found' in e for e in result.errors))
+
+    def test_validate_file_invalid_json_fails(self):
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            f.write('{ not valid json ]')
+            fname = f.name
+        try:
+            result = self.validate_file(fname, use_schema=False)
+            self.assertFalse(result.valid)
+            self.assertTrue(any('invalid JSON' in e for e in result.errors))
+        finally:
+            os.unlink(fname)
+
+    def test_validate_file_valid_json_passes(self):
+        import tempfile, os
+        data = json.dumps({'personal_info': {'name': 'Test'}})
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            f.write(data)
+            fname = f.name
+        try:
+            result = self.validate_file(fname, use_schema=False)
+            self.assertTrue(result.valid)
+            self.assertEqual(result.checked_path, fname)
+        finally:
+            os.unlink(fname)
+
+    def test_schema_warning_when_schema_file_absent(self):
+        result = self.validate({}, use_schema=True, schema_path='/nonexistent/schema.json')
+        # Missing schema should add a warning, not an error
+        self.assertTrue(result.valid)
+        self.assertTrue(any('not found' in w for w in result.warnings))
+
+
 if __name__ == '__main__':
     unittest.main()
