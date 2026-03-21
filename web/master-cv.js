@@ -9,6 +9,23 @@
  *   setLoading, switchTab, appendMessage
  */
 
+let _masterChangeNotice = '';
+
+function _setMasterChangeNotice(section, action) {
+  const cleanSection = String(section || 'Master CV').trim();
+  const cleanAction = String(action || 'updated').trim();
+  _masterChangeNotice = `${cleanSection} ${cleanAction}.`;
+}
+
+function _renderMasterChangeNotice() {
+  if (!_masterChangeNotice) return '';
+  return `
+    <div style="margin:12px 0 18px;padding:10px 12px;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;color:#14532d;">
+      <strong>Last saved change:</strong> ${escapeHtml(_masterChangeNotice)}
+    </div>
+  `;
+}
+
 async function populateMasterTab() {
   const content = document.getElementById('document-content');
   content.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading master CV data…</p></div>';
@@ -42,6 +59,8 @@ async function populateMasterTab() {
       This is your persistent master CV profile. Changes here update
       <code>Master_CV_Data.json</code> directly and persist across all sessions.
     </p>
+
+    ${_renderMasterChangeNotice()}
 
     <!-- Profile overview card -->
     <div class="master-profile-card">
@@ -791,6 +810,7 @@ async function saveMasterAchievement() {
     const data = await res.json();
     if (data.ok) {
       closeMasterAchModal();
+      _setMasterChangeNotice('Selected Achievements', data.action || 'updated');
       showAlertModal('✅ Saved', `Achievement "${title}" ${data.action}.`);
       await populateMasterTab();  // refresh
     } else {
@@ -842,6 +862,7 @@ async function saveMasterSummary() {
     const data = await res.json();
     if (data.ok) {
       closeMasterSumModal();
+      _setMasterChangeNotice('Professional Summaries', data.action || 'updated');
       showAlertModal('✅ Saved', `Summary "${key}" ${data.action}.`);
       await populateMasterTab();  // refresh
     } else {
@@ -900,6 +921,7 @@ async function savePersonalInfo() {
     const data = await res.json();
     if (data.ok) {
       closePersonalInfoModal();
+      _setMasterChangeNotice('Personal Information', 'updated');
       showAlertModal('✅ Saved', 'Personal information updated.');
       await populateMasterTab();
     } else {
@@ -982,6 +1004,7 @@ async function saveMasterExperience() {
     const data = await res.json();
     if (data.ok) {
       closeExperienceModal();
+      _setMasterChangeNotice('Work Experience', data.action || 'updated');
       showAlertModal('✅ Saved', `Experience "${title}" ${data.action}.`);
       await populateMasterTab();
     } else {
@@ -1004,6 +1027,7 @@ async function deleteMasterExperience(id, title) {
         });
         const data = await res.json();
         if (data.ok) {
+          _setMasterChangeNotice('Work Experience', data.action || 'deleted');
           showAlertModal('✅ Deleted', `Experience "${title}" removed.`);
           await populateMasterTab();
         } else {
@@ -1057,6 +1081,7 @@ async function saveMasterSkill() {
     const data = await res.json();
     if (data.ok) {
       closeSkillModal();
+      _setMasterChangeNotice('Skills', data.action || 'updated');
       await populateMasterTab();
     } else {
       showAlertModal('❌ Error', data.error || 'Could not add skill');
@@ -1074,6 +1099,7 @@ async function deleteMasterSkill(skill, category, isFlat) {
     });
     const data = await res.json();
     if (data.ok) {
+      _setMasterChangeNotice('Skills', data.action || 'updated');
       await populateMasterTab();
     } else {
       showAlertModal('❌ Error', data.error || 'Could not remove skill');
@@ -1149,6 +1175,7 @@ async function saveMasterEducation() {
     const data = await res.json();
     if (data.ok) {
       closeEducationModal();
+      _setMasterChangeNotice('Education', data.action || 'updated');
       showAlertModal('✅ Saved', `Education "${degree} – ${institution}" ${data.action}.`);
       await populateMasterTab();
     } else {
@@ -1171,6 +1198,7 @@ async function deleteMasterEducation(idx, institution) {
         });
         const data = await res.json();
         if (data.ok) {
+          _setMasterChangeNotice('Education', data.action || 'deleted');
           showAlertModal('✅ Deleted', `Education entry removed.`);
           await populateMasterTab();
         } else {
@@ -1240,6 +1268,7 @@ async function saveMasterAward() {
     const data = await res.json();
     if (data.ok) {
       closeAwardModal();
+      _setMasterChangeNotice('Awards & Honours', data.action || 'updated');
       showAlertModal('✅ Saved', `Award "${title}" ${data.action}.`);
       await populateMasterTab();
     } else {
@@ -1262,6 +1291,7 @@ async function deleteMasterAward(idx, title) {
         });
         const data = await res.json();
         if (data.ok) {
+          _setMasterChangeNotice('Awards & Honours', data.action || 'deleted');
           showAlertModal('✅ Deleted', `Award removed.`);
           await populateMasterTab();
         } else {
@@ -1288,6 +1318,7 @@ async function deleteMasterAchievement(id, title) {
         });
         const data = await res.json();
         if (data.ok) {
+          _setMasterChangeNotice('Selected Achievements', data.action || 'deleted');
           showAlertModal('✅ Deleted', `Achievement removed.`);
           await populateMasterTab();
         } else {
@@ -1312,6 +1343,7 @@ async function deleteMasterSummary(key) {
         });
         const data = await res.json();
         if (data.ok) {
+          _setMasterChangeNotice('Professional Summaries', data.action || 'deleted');
           showAlertModal('✅ Deleted', `Summary "${key}" removed.`);
           await populateMasterTab();
         } else {
