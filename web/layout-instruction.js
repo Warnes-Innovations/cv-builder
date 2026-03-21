@@ -30,6 +30,20 @@ function initiateLayoutInstructions() {
           <h3>Layout Instructions</h3>
           <p class="layout-scope-label">💡 Layout changes only — approved text is never modified</p>
 
+          <div class="layout-settings-row" style="display:flex; align-items:center; gap:10px; margin-bottom:14px; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;">
+            <label for="base-font-size-input" style="font-size:0.85em; font-weight:600; color:#475569; white-space:nowrap;">Base font size (px):</label>
+            <input
+              id="base-font-size-input"
+              type="number"
+              min="6" max="16" step="0.5"
+              value="10"
+              style="width:60px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
+              title="Controls the root font size for the CV. All rem-based sizes scale with this value."
+            />
+            <button id="apply-font-size-btn" class="btn btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
+            <span id="font-size-status" style="font-size:0.8em; color:#64748b;"></span>
+          </div>
+
           <textarea
             id="instruction-input"
             class="layout-instruction-textarea"
@@ -66,6 +80,13 @@ function initiateLayoutInstructions() {
     setupLayoutInstructionListeners();
   }
 
+  // Restore saved font size from session state if available
+  const savedFontSize = stateManager?.getSessionState?.()?.base_font_size;
+  if (savedFontSize) {
+    const input = document.getElementById('base-font-size-input');
+    if (input) input.value = parseFloat(savedFontSize) || 10;
+  }
+
   // Load and display current HTML preview via the staged generation contract.
   // /api/cv/generate-preview generates fresh HTML and stores it in session state.
   // Fall back to the legacy /api/layout-html endpoint if the session has no
@@ -85,10 +106,19 @@ function initiateLayoutInstructions() {
  * Set up event listeners for layout instruction UI.
  */
 function setupLayoutInstructionListeners() {
-  const applyBtn = document.getElementById('apply-instruction-btn');
-  const proceedBtn = document.getElementById('proceed-to-finalise-btn');
-  const instructionInput = document.getElementById('instruction-input');
-  const historyToggle = document.querySelector('.history-toggle');
+  const applyBtn          = document.getElementById('apply-instruction-btn');
+  const proceedBtn        = document.getElementById('proceed-to-finalise-btn');
+  const instructionInput  = document.getElementById('instruction-input');
+  const historyToggle     = document.querySelector('.history-toggle');
+  const applyFontSizeBtn  = document.getElementById('apply-font-size-btn');
+  const fontSizeInput     = document.getElementById('base-font-size-input');
+
+  if (applyFontSizeBtn && fontSizeInput) {
+    applyFontSizeBtn.addEventListener('click', () => applyBaseFontSize(fontSizeInput.value));
+    fontSizeInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') applyBaseFontSize(fontSizeInput.value);
+    });
+  }
 
   if (applyBtn) {
     applyBtn.addEventListener('click', () => {
@@ -123,6 +153,36 @@ function setupLayoutInstructionListeners() {
         applyBtn?.click();
       }
     });
+  }
+}
+
+/**
+ * Save a new base font size to session state, then re-render the preview.
+ */
+async function applyBaseFontSize(value) {
+  const statusEl = document.getElementById('font-size-status');
+  const parsed = parseFloat(value);
+  if (isNaN(parsed) || parsed < 6 || parsed > 16) {
+    if (statusEl) statusEl.textContent = '⚠️ Must be 6–16';
+    return;
+  }
+  try {
+    if (statusEl) statusEl.textContent = 'Saving…';
+    const saveRes = await apiCall('POST', '/api/layout-settings', { base_font_size: `${parsed}px` });
+    if (!saveRes.ok) throw new Error(saveRes.error || 'save failed');
+
+    if (statusEl) statusEl.textContent = 'Re-rendering…';
+    const previewRes = await apiCall('POST', '/api/cv/generate-preview', {});
+    if (previewRes.ok && previewRes.html) {
+      displayLayoutPreview(previewRes.html);
+      if (!window.tabData) window.tabData = {};
+      if (!window.tabData.cv || typeof window.tabData.cv !== 'object') window.tabData.cv = {};
+      window.tabData.cv['*.html'] = previewRes.html;
+      stateManager?.setGenerationState?.({ phase: 'layout_review', previewAvailable: true });
+    }
+    if (statusEl) { statusEl.textContent = '✅ Applied'; setTimeout(() => { statusEl.textContent = ''; }, 2000); }
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `❌ ${err.message}`;
   }
 }
 
