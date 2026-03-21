@@ -1,3 +1,9 @@
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
 """
 Unit and integration tests for Phase 3 features:
   GAP-23  Intake confirmation (extract_intake_metadata, confirm-intake, intake-metadata)
