@@ -136,7 +136,7 @@
             align-items: center;
             margin-bottom: 10px;
             color: var(--secondary-color);
-            font-size: 0.9rem; /* Standardized size */
+            font-size: 1rem; /* Standardized size — 10px at html font-size: 10px */
         }
 
         .contact-item i {
@@ -148,6 +148,8 @@
         .contact-item a {
             color: inherit;
             text-decoration: none;
+            overflow-wrap: break-word;
+            word-break: break-all;
         }
 
         .sidebar-section {
@@ -169,7 +171,7 @@
         /* Education & Awards Styling (Standardized font-size) */
         .education-item, .award-item {
             margin-bottom: 15px;
-            font-size: 0.9rem; /* Consistent size */
+            font-size: 1rem; /* Consistent size — 10px */
         }
 
         .degree {
@@ -194,9 +196,9 @@
             display: flex; 
             flex-direction: column;
             gap: 15px;
-            font-size: 0.9rem; /* Consistent size */
+            font-size: 1rem; /* Consistent size — 10px */
         }
-        
+
         .skill-group {
             margin-bottom: 5px;
         }
@@ -214,7 +216,7 @@
             color: var(--text-main);
             margin-left: 15px; 
             margin-top: 5px;
-            font-size: 0.9rem; /* Ensures the languages section on Page 1 matches */
+            font-size: 1rem; /* Ensures the languages section on Page 1 matches — 10px */
         }
 
         .skill-list li {
@@ -305,6 +307,8 @@
         .job-company {
             font-weight: 600;
             color: var(--accent-color);
+            margin-left: auto;
+            text-align: right;
         }
 
         .job-dates {
@@ -316,7 +320,7 @@
         .job-details {
             list-style-type: disc;
             margin-left: 18px;
-            font-size: 0.9rem;
+            font-size: 1rem; /* 10px */
             color: var(--text-main);
         }
 
@@ -333,7 +337,7 @@
             position: relative;
             padding-left: 20px;
             margin-bottom: 8px;
-            font-size: 0.9rem;
+            font-size: 1rem; /* 10px */
         }
 
         .achievement-list li::before {
@@ -364,8 +368,14 @@
                 align-items: stretch;
                 width: 100%;
                 height: auto;
-                page-break-after: always; /* Force a break after each defined page block */
                 margin: 0;
+            }
+            /* Force page break between pages, but NOT after the last one */
+            .page:not(:last-child) {
+                page-break-after: always;
+            }
+            .page:last-child {
+                page-break-after: avoid;
             }
 
             /* 1. Force Page 1 to fill exactly one US Letter page */

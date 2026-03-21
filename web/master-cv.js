@@ -47,6 +47,12 @@ async function populateMasterTab() {
 
   const personalInfo = fullData.personal_info || {};
   const experiences  = fullData.experience || [];
+  window._masterExperienceOptions = experiences
+    .map((exp) => ({
+      id: exp.id || '',
+      label: `${exp.title || 'Role'} @ ${exp.company || 'Company'}`,
+    }))
+    .filter((x) => x.id);
   const skills       = fullData.skills || [];
   const education    = fullData.education || [];
   const awards       = fullData.awards || [];
@@ -310,6 +316,7 @@ async function populateMasterTab() {
         <div class="modal-body" style="padding:20px;">
           <input type="hidden" id="skill-modal-category" />
           <input type="hidden" id="skill-modal-is-flat" />
+          <input type="hidden" id="skill-modal-original-name" />
           <div style="margin-bottom:14px;" id="skill-category-row">
             <label for="skill-category-display" style="display:block;font-weight:600;margin-bottom:4px;">Category</label>
             <span id="skill-category-display" style="font-weight:500;color:#334155;"></span>
@@ -319,10 +326,17 @@ async function populateMasterTab() {
             <input type="text" id="skill-name-input" class="edit-input" style="width:100%;" aria-required="true"
                 placeholder="e.g. Python" />
           </div>
+          <div style="margin-bottom:14px;">
+            <label for="skill-experiences-input" style="display:block;font-weight:600;margin-bottom:4px;">Associated Experience IDs (optional)</label>
+            <input type="text" id="skill-experiences-input" class="edit-input" style="width:100%;"
+                placeholder="e.g. exp_123, exp_456" />
+            <small style="display:block;margin-top:4px;color:#64748b;">Comma-separated IDs. A skill can be linked to multiple experiences.</small>
+            <div id="skill-experience-hints" style="margin-top:6px;font-size:0.8em;color:#94a3b8;"></div>
+          </div>
         </div>
         <div class="modal-footer">
           <button class="action-btn" onclick="closeSkillModal()">Cancel</button>
-          <button class="action-btn primary" onclick="saveMasterSkill()">Add Skill</button>
+          <button class="action-btn primary" id="master-skill-save-btn" onclick="saveMasterSkill()">Add Skill</button>
         </div>
       </div>
     </div>
@@ -565,14 +579,32 @@ function _renderExperiencesList(experiences) {
 }
 
 function _renderSkillsSection(skills) {
+  const normalizeSkill = (s) => {
+    if (typeof s === 'string') {
+      return { name: s, experiences: [] };
+    }
+    if (s && typeof s === 'object') {
+      return {
+        name: s.name || '',
+        experiences: Array.isArray(s.experiences) ? s.experiences : [],
+      };
+    }
+    return { name: String(s || ''), experiences: [] };
+  };
+
   if (Array.isArray(skills)) {
     if (!skills.length) {
       return '<p style="color:#6b7280;padding:12px 0;">No skills on file. Click "+ Add Skill" above.</p>';
     }
     const chips = skills.map(s => {
-      const name = escapeHtml(typeof s === 'string' ? s : (s.name || JSON.stringify(s)));
-      const raw  = escapeHtml(typeof s === 'string' ? s : (s.name || ''));
-      return `<span class="skill-chip">${name}<button class="skill-chip-del" onclick="deleteMasterSkill('${raw}', '', true)" aria-label="Remove skill ${name}" title="Remove">×</button></span>`;
+      const normalized = normalizeSkill(s);
+      const name = escapeHtml(normalized.name);
+      const raw = escapeHtml(normalized.name);
+      const badge = normalized.experiences.length
+        ? `<small style="color:#64748b;margin-left:6px;">(${normalized.experiences.length} exp)</small>`
+        : '';
+      const skillJson = escapeHtml(JSON.stringify({ name: normalized.name, experiences: normalized.experiences }));
+      return `<span class="skill-chip">${name}${badge}<button class="skill-chip-del" onclick="editMasterSkill(${skillJson}, '', true)" aria-label="Edit skill ${name}" title="Edit">✏️</button><button class="skill-chip-del" onclick="deleteMasterSkill('${raw}', '', true)" aria-label="Remove skill ${name}" title="Remove">×</button></span>`;
     }).join('');
     return `<div class="skill-chips-container">${chips}</div>`;
   }
@@ -587,8 +619,13 @@ function _renderSkillsSection(skills) {
       const catList  = Array.isArray(catVal) ? catVal
                      : Array.isArray(catVal?.skills) ? catVal.skills : [];
       const chips   = catList.map(s => {
-        const name = escapeHtml(s);
-        return `<span class="skill-chip">${name}<button class="skill-chip-del" onclick="deleteMasterSkill('${name}', '${escapeHtml(catKey)}', false)" aria-label="Remove ${name}" title="Remove">×</button></span>`;
+        const normalized = normalizeSkill(s);
+        const name = escapeHtml(normalized.name);
+        const badge = normalized.experiences.length
+          ? `<small style="color:#64748b;margin-left:6px;">(${normalized.experiences.length} exp)</small>`
+          : '';
+        const skillJson = escapeHtml(JSON.stringify({ name: normalized.name, experiences: normalized.experiences }));
+        return `<span class="skill-chip">${name}${badge}<button class="skill-chip-del" onclick="editMasterSkill(${skillJson}, '${escapeHtml(catKey)}', false)" aria-label="Edit ${name}" title="Edit">✏️</button><button class="skill-chip-del" onclick="deleteMasterSkill('${name}', '${escapeHtml(catKey)}', false)" aria-label="Remove ${name}" title="Remove">×</button></span>`;
       }).join('');
       const catKeyEsc  = escapeHtml(catKey);
       const catNameEsc = escapeHtml(catName);
@@ -1045,7 +1082,16 @@ async function deleteMasterExperience(id, title) {
 function showAddSkillModal(categoryKey, isFlat) {
   document.getElementById('skill-modal-category').value = categoryKey || '';
   document.getElementById('skill-modal-is-flat').value  = isFlat ? '1' : '0';
+  document.getElementById('skill-modal-original-name').value = '';
   document.getElementById('skill-name-input').value     = '';
+  document.getElementById('skill-experiences-input').value = '';
+  document.getElementById('master-skill-modal-title').textContent = 'Add Skill';
+  document.getElementById('master-skill-save-btn').textContent = 'Add Skill';
+  const hints = (window._masterExperienceOptions || [])
+    .slice(0, 8)
+    .map((x) => `${x.id} (${x.label})`)
+    .join(' · ');
+  document.getElementById('skill-experience-hints').textContent = hints ? `Available: ${hints}` : '';
   const catRow = document.getElementById('skill-category-row');
   if (categoryKey) {
     document.getElementById('skill-category-display').textContent = categoryKey;
@@ -1053,6 +1099,39 @@ function showAddSkillModal(categoryKey, isFlat) {
   } else {
     catRow.style.display = 'none';
   }
+  document.getElementById('master-skill-modal-overlay').style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('master-skill-modal-overlay');
+  trapFocus('master-skill-modal-overlay');
+  document.getElementById('skill-name-input').focus();
+}
+
+function editMasterSkill(skillObj, categoryKey, isFlat) {
+  const name = typeof skillObj === 'string' ? skillObj : (skillObj?.name || '');
+  const experiences = Array.isArray(skillObj?.experiences) ? skillObj.experiences : [];
+
+  document.getElementById('skill-modal-category').value = categoryKey || '';
+  document.getElementById('skill-modal-is-flat').value  = isFlat ? '1' : '0';
+  document.getElementById('skill-modal-original-name').value = name;
+  document.getElementById('skill-name-input').value = name;
+  document.getElementById('skill-experiences-input').value = experiences.join(', ');
+  document.getElementById('master-skill-modal-title').textContent = 'Edit Skill';
+  document.getElementById('master-skill-save-btn').textContent = 'Save Skill';
+
+  const hints = (window._masterExperienceOptions || [])
+    .slice(0, 8)
+    .map((x) => `${x.id} (${x.label})`)
+    .join(' · ');
+  document.getElementById('skill-experience-hints').textContent = hints ? `Available: ${hints}` : '';
+
+  const catRow = document.getElementById('skill-category-row');
+  if (categoryKey) {
+    document.getElementById('skill-category-display').textContent = categoryKey;
+    catRow.style.display = '';
+  } else {
+    catRow.style.display = 'none';
+  }
+
   document.getElementById('master-skill-modal-overlay').style.display = 'flex';
   _focusedElementBeforeModal = document.activeElement;
   setInitialFocus('master-skill-modal-overlay');
@@ -1069,11 +1148,23 @@ async function saveMasterSkill() {
   const skill    = document.getElementById('skill-name-input').value.trim();
   const category = document.getElementById('skill-modal-category').value.trim();
   const isFlat   = document.getElementById('skill-modal-is-flat').value === '1';
+  const original = document.getElementById('skill-modal-original-name').value.trim();
+  const experiences = document.getElementById('skill-experiences-input').value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (!skill) {
     showAlertModal('⚠️ Validation', 'Skill name is required.');
     return;
   }
-  const body = isFlat ? { action: 'add', skill } : { action: 'add', skill, category };
+  const isUpdate = Boolean(original);
+  const baseBody = {
+    action: isUpdate ? 'update' : 'add',
+    skill: isUpdate ? original : skill,
+    ...(isUpdate ? { skill_new: skill } : {}),
+    experiences,
+  };
+  const body = isFlat ? baseBody : { ...baseBody, category };
   try {
     const res  = await fetch('/api/master-data/skill', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -1382,6 +1473,7 @@ export {
   saveMasterExperience,
   deleteMasterExperience,
   showAddSkillModal,
+  editMasterSkill,
   closeSkillModal,
   saveMasterSkill,
   deleteMasterSkill,

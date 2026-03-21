@@ -71,9 +71,15 @@
           style="display:none;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:1.1em;padding:2px 4px;line-height:1;">✏️</button>
       </div>
     </div>
-    <div id="ats-score-badge" class="ats-score-badge" aria-label="ATS match score" style="display:none;">
-      <span class="ats-score-value" id="ats-score-value">--</span>
-      <span class="ats-score-label">ATS</span>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div id="ats-score-badge" class="ats-score-badge" aria-label="ATS match score" style="display:none;">
+        <span class="ats-score-value" id="ats-score-value">--</span>
+        <span class="ats-score-label">ATS</span>
+      </div>
+      <button id="ats-report-btn" onclick="openAtsReportModal()" title="View ATS report"
+        style="display:none;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;color:#475569;font-size:0.8em;padding:2px 7px;line-height:1.6;">ATS Report</button>
+      <button id="job-analysis-btn" onclick="openJobAnalysisModal()" title="View job analysis"
+        style="display:none;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;color:#475569;font-size:0.8em;padding:2px 7px;line-height:1.6;">Job Analysis</button>
     </div>
   </div>
 
@@ -164,13 +170,14 @@
           <div class="tab"        id="tab-achievements-review" data-tab="achievements-review" role="tab" aria-selected="false" aria-controls="document-content">🏆 Achievements</div>
           <div class="tab"        id="tab-summary-review" data-tab="summary-review" role="tab" aria-selected="false" aria-controls="document-content">📝 Summary</div>
           <div class="tab"        id="tab-publications-review" data-tab="publications-review" role="tab" aria-selected="false" aria-controls="document-content">📄 Publications</div>
+          <div class="tab"        id="tab-ats-score"           data-tab="ats-score"           role="tab" aria-selected="false" aria-controls="document-content">📊 ATS Score</div>
           <div class="tab"        id="tab-rewrite"        data-tab="rewrite"        role="tab" aria-selected="false" aria-controls="document-content">✏️ Rewrites</div>
           <div class="tab"        id="tab-spell"          data-tab="spell"          role="tab" aria-selected="false" aria-controls="document-content">🔤 Spell Check</div>
           <!-- CV Editor tab disabled: session-copy editing superseded by Master CV app mode (GAP-19) -->
           <div class="tab"        id="tab-editor"         data-tab="editor"         role="tab" aria-selected="false" aria-controls="document-content" style="display:none">📝 CV Editor</div>
           <div class="tab"        id="tab-generate"       data-tab="generate"       role="tab" aria-selected="false" aria-controls="document-content">📄 Generated CV</div>
           <div class="tab"        id="tab-layout"         data-tab="layout"         role="tab" aria-selected="false" aria-controls="document-content">🎨 Layout</div>
-          <div class="tab"        id="tab-download"       data-tab="download"       role="tab" aria-selected="false" aria-controls="document-content">⬇️ Download</div>
+          <div class="tab"        id="tab-download"       data-tab="download"       role="tab" aria-selected="false" aria-controls="document-content">⬇️ File Review</div>
           <div class="tab"        id="tab-finalise"       data-tab="finalise"       role="tab" aria-selected="false" aria-controls="document-content">✅ Finalise</div>
           <div class="tab"        id="tab-master"         data-tab="master"         role="tab" aria-selected="false" aria-controls="document-content">📚 Master CV</div>
           <div class="tab"        id="tab-cover-letter"   data-tab="cover-letter"   role="tab" aria-selected="false" aria-controls="document-content">📩 Cover Letter</div>
@@ -298,6 +305,38 @@
     </div>
   </div>
 
+  <!-- ATS Report Modal -->
+  <div class="modal-overlay" id="ats-report-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="ats-report-modal-title" onclick="if(event.target===this)closeAtsReportModal()">
+    <div class="modal" style="max-width: 720px; width: 92%;">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 id="ats-report-modal-title" style="margin:0;">📊 ATS Report</h2>
+        <button onclick="closeAtsReportModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="ats-report-modal-body" style="max-height: 560px; overflow-y: auto;">
+        <p style="padding:24px;text-align:center;color:#6b7280;">Loading ATS report…</p>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="action-btn" onclick="closeAtsReportModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Job Analysis Modal -->
+  <div class="modal-overlay" id="job-analysis-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="job-analysis-modal-title" onclick="if(event.target===this)closeJobAnalysisModal()">
+    <div class="modal" style="max-width: 720px; width: 92%;">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 id="job-analysis-modal-title" style="margin:0;">🔍 Job Analysis</h2>
+        <button onclick="closeJobAnalysisModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="job-analysis-modal-body" style="max-height: 560px; overflow-y: auto;">
+        <p style="padding:24px;text-align:center;color:#6b7280;">Loading job analysis…</p>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="action-btn" onclick="closeJobAnalysisModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Infrastructure modules (load first) -->
   <script src="utils.js"></script>
   <script src="api-client.js"></script>
@@ -311,5 +350,6 @@
   <!-- Application logic (loads last so it overrides module stubs) -->
   <script src="app.js"></script>
   <script src="layout-instruction.js"></script>
+  <script src="ats-modals.js"></script>
 </body>
 </html>

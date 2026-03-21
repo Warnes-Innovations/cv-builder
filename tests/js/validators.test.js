@@ -19,7 +19,7 @@ describe('parseStatusResponse', () => {
     professional_summaries: [], copilot_auth: false, iterating: false,
     experience_decisions: {}, skill_decisions: {},
     achievement_decisions: {}, publication_decisions: {},
-    extra_skills: [], extra_skill_matches: [], session_file: 'session.json',
+    extra_skills: [], extra_skill_matches: {}, session_file: 'session.json',
   })
 
   it('returns the data object unchanged', () => {
