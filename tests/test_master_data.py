@@ -16,6 +16,7 @@ Covers:
 import argparse
 import json
 import sys
+import tempfile
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
@@ -23,7 +24,7 @@ from unittest.mock import MagicMock, call, mock_open, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
-from scripts.web_app import create_app
+from scripts.web_app import create_app, _save_master
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +297,48 @@ class TestMasterDataUpdateSummary(unittest.TestCase):
         dumped = mock_dump.call_args[0][0]
         self.assertIsInstance(dumped['professional_summaries'], dict)
         self.assertIn('new_key', dumped['professional_summaries'])
+
+
+# ---------------------------------------------------------------------------
+# _save_master helper
+# ---------------------------------------------------------------------------
+
+class TestSaveMasterHelper(unittest.TestCase):
+
+    def test_save_master_creates_backup_before_overwrite(self):
+        """Existing master file is backed up before writing new content."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            old_data = {'personal_info': {'name': 'Old Name'}}
+            new_data = {'personal_info': {'name': 'New Name'}}
+            master_path.write_text(json.dumps(old_data), encoding='utf-8')
+
+            with patch('scripts.web_app.subprocess.run'):
+                _save_master(new_data, master_path)
+
+            # New content is written
+            saved = json.loads(master_path.read_text(encoding='utf-8'))
+            self.assertEqual(saved['personal_info']['name'], 'New Name')
+
+            # One timestamped backup exists with old content
+            backup_dir = Path(td) / 'backups'
+            backups = list(backup_dir.glob('Master_CV_Data.*.bak.json'))
+            self.assertEqual(len(backups), 1)
+            backup_data = json.loads(backups[0].read_text(encoding='utf-8'))
+            self.assertEqual(backup_data['personal_info']['name'], 'Old Name')
+
+    def test_save_master_without_existing_file_skips_backup(self):
+        """No backup is created when the file does not yet exist."""
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            new_data = {'personal_info': {'name': 'First Write'}}
+
+            with patch('scripts.web_app.subprocess.run'):
+                _save_master(new_data, master_path)
+
+            self.assertTrue(master_path.exists())
+            backup_dir = Path(td) / 'backups'
+            self.assertFalse(backup_dir.exists())
 
 
 if __name__ == '__main__':
