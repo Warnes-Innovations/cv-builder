@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 
 class Config:
     """Configuration manager for CV Builder."""
@@ -36,12 +38,15 @@ class Config:
         self._config: Dict[str, Any] = {}
         
         # Load .env file if requested
+        env_loaded = False
         if load_env:
             env_file = Path.cwd() / ".env"
             if env_file.exists():
                 load_dotenv(env_file)
+                env_loaded = True
         
         # Load config.yaml
+        config_loaded = False
         if config_file is None:
             config_file = Path.cwd() / "config.yaml"
         else:
@@ -50,18 +55,28 @@ class Config:
         if config_file.exists():
             with open(config_file, 'r') as f:
                 self._config = yaml.safe_load(f) or {}
+                config_loaded = True
+        
+        logger.debug(
+            "Config loaded: .env=%s, config.yaml=%s (path=%s)",
+            env_loaded, config_loaded, config_file
+        )
         
         # Expand home directory paths
         self._expand_paths()
     
     def _expand_paths(self):
         """Expand ~ in paths to absolute paths."""
+        expansions = []
+        
         if 'data' in self._config:
             for key in ['master_cv', 'publications', 'output_dir']:
                 if key in self._config['data']:
                     path = self._config['data'][key]
                     if isinstance(path, str) and path.startswith('~'):
-                        self._config['data'][key] = str(Path(path).expanduser())
+                        expanded = str(Path(path).expanduser())
+                        self._config['data'][key] = expanded
+                        expansions.append(f"data.{key}: {path} -> {expanded}")
         
         if 'session' in self._config:
             for key in ['session_dir', 'history_file']:
@@ -82,7 +97,12 @@ class Config:
                 if key in self._config['logging']:
                     path = self._config['logging'][key]
                     if isinstance(path, str) and path.startswith('~'):
-                        self._config['logging'][key] = str(Path(path).expanduser())
+                        expanded = str(Path(path).expanduser())
+                        self._config['logging'][key] = expanded
+                        expansions.append(f"logging.{key}: {path} -> {expanded}")
+        
+        if expansions:
+            logger.debug("Path expansions: %s", "; ".join(expansions))
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value with dot notation support."""

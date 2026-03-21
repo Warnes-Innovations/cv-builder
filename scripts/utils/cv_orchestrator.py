@@ -765,6 +765,10 @@ The HTML file contains your formatted CV ready for conversion.
             )
 
             logger.info("Generated human-readable HTML + PDF (%s): %s", template_variant, pdf_path.name)
+            logger.debug(
+                "_generate_pdf: completed (template=%s, pdf_size=%d bytes)",
+                template_variant, pdf_path.stat().st_size if pdf_path.exists() else 0
+            )
             return html_path, pdf_path
             
         except Exception as e:
@@ -952,6 +956,10 @@ For manual generation:
         """
         result = copy.deepcopy(content)
 
+        logger.debug(
+            "apply_approved_rewrites: processing %d rewrite(s)", len(approved)
+        )
+
         for item in approved:
             loc      = item.get('location', '')
             original = item.get('original', '')
@@ -969,6 +977,10 @@ For manual generation:
                 continue
 
             if kind == 'summary' or loc == 'summary':
+                logger.debug(
+                    "apply_approved_rewrites: summary rewrite (id=%s, len_before=%d, len_after=%d)",
+                    item_id, len(original), len(proposed)
+                )
                 result['summary'] = proposed
 
             elif kind == 'bullet':
@@ -990,9 +1002,19 @@ For manual generation:
                         if 0 <= ach_idx < len(achs):
                             ach = achs[ach_idx]
                             if isinstance(ach, dict):
+                                old_text = ach.get('text', '')
                                 ach['text'] = proposed
+                                logger.debug(
+                                    "apply_approved_rewrites: bullet rewrite "
+                                    "(id=%s, exp=%s, idx=%d, len_before=%d, len_after=%d)",
+                                    item_id, exp_id, ach_idx, len(old_text), len(proposed)
+                                )
                             else:
                                 achs[ach_idx] = proposed
+                                logger.debug(
+                                    "apply_approved_rewrites: bullet rewrite (id=%s, exp=%s, idx=%d)",
+                                    item_id, exp_id, ach_idx
+                                )
                         else:
                             logger.warning(
                                 "apply_approved_rewrites: achievement index %d out of range "
@@ -1327,6 +1349,12 @@ For manual generation:
         job_output_dir.mkdir(parents=True, exist_ok=True)
         
         logger.info("Output directory: %s", job_output_dir)
+        logger.debug(
+            "generate_cv: entry (company=%s, role=%s, max_skills=%s, "
+            "rewrites=%d, spell_audit=%d)",
+            company, role, max_skills,
+            len(approved_rewrites or []), len(spell_audit or [])
+        )
         
         selected_content = self.build_render_ready_content(
             job_analysis,
