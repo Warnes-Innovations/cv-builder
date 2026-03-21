@@ -24,6 +24,12 @@
             --border-color: #d1d8dd;
         }
 
+        /* Base font size — controls all rem-relative sizing throughout the CV.
+           Override via the Layout panel (base_font_size setting). */
+        html {
+            font-size: {{ base_font_size | default('10px') }};
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -427,8 +433,18 @@
             
             /* Set print size to US Letter */
             @page {
-                size: letter; /* Standard CSS property for US Letter */
-                margin: 0;
+                size: letter;
+                margin: 0 0 14pt 0;    /* Bottom margin hosts the page-number counter */
+                @bottom-right {
+                    content: counter(page) " / " counter(pages);
+                    font-family: var(--font-body, Arial, sans-serif);
+                    font-size: 7.5pt;
+                    color: #aaa;
+                    padding-right: 12pt;
+                }
+            }
+            @page :first {
+                @bottom-right { content: none; }   /* No counter on page 1 (header CV already identifies the document) */
             }
         }
 

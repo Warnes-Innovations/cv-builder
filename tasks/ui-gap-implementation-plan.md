@@ -1,7 +1,7 @@
 # UI Gap Implementation Plan
 
 **Created:** 2026-03-19  
-**Status:** Phases 1–4 complete; Phase 5 (Master CV Editor) and Phase 6 (UX/Accessibility) active; Refactor backlog open (2026-03-20)  
+**Status:** Phases 1–4 complete; Phase 6 (UX/Accessibility) complete (2026-03-20); Phase 5 (Master CV Editor) active; Refactor backlog open (2026-03-20)  
 **Source basis:** `tasks/ui-review.md` and `tasks/gaps.md` refreshed on 2026-03-19
 
 ## Overview
@@ -316,7 +316,13 @@ Phase 4 deliverables status:
 - Implement Workstream 5.
 - Goal: provide structured master-data maintenance once the main applicant workflow is stable.
 
-### Phase 6: UX and Accessibility Hardening
+### Phase 6: UX and Accessibility Hardening — **COMPLETE (2026-03-20)**
+
+Phase 6 deliverables status:
+- [x] Row-level reorder controls for review tables implemented in the split frontend modules (experience, achievements, skills, publications)
+- [x] Icon-only review actions now include `aria-label` coverage in active review surfaces
+- [x] Review-table rendering hardened around explicit re-render helpers and ordering state persistence
+- [x] Layout review usability improved with persisted base-font-size control and immediate preview re-render loop
 
 - Implement Workstream 6.
 - Goal: reduce friction and finish keyboard/responsive coverage after the core flows stop moving.

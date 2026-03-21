@@ -2,12 +2,12 @@
  * tests/js/utils.test.js
  * Unit tests for web/utils.js — pure utility functions.
  */
-const {
+import {
   normalizeText, fmtDate, cleanJsonResponse, escapeHtml,
   extractTitleAndCompanyFromJobText, normalizePositionLabel,
   stripHtml, truncateText, capitalizeWords, pluralize,
   formatDuration, ordinal,
-} = require('../../web/utils.js')
+} from '../../web/utils.js'
 
 // ── normalizeText ─────────────────────────────────────────────────────────────
 

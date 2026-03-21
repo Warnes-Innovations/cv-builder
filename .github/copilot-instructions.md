@@ -12,6 +12,28 @@ Actions requiring explicit confirmation:
 - Any `rm -rf` or destructive file operations under `~/CV/`
 - Any `--force` flag on git operations
 
+## 🛑 CRITICAL: Master CV is read-only during job customization
+
+**Never write to `Master_CV_Data.json` (or `publications.bib`) during CV customization or generation.**
+
+All user edits during the customization workflow — accepted AI suggestions, skill decisions, achievement edits, rewrites, summary overrides — must be stored in the **session file only**.
+
+The Master CV is modified **only** during two permitted stages:
+1. **Master CV management tab** (Phase 8) — direct edits via `/api/master-data/*` endpoints
+2. **Finalise → Harvest Apply** — the `POST /api/harvest/apply` endpoint writes harvested improvements (improved bullets, new skills, summary variants) back to the master as an explicit user-initiated action at the end of the finalization workflow. This is treated as an extension of the master modification workflow, not part of customization.
+
+Any code that writes to the master file outside of these two stages is a bug.
+
+✅ CORRECT — store in session state:
+```python
+conversation.state['accepted_suggested_achievements'] = accepted_suggestions
+```
+
+❌ INCORRECT — write back to master during customization:
+```python
+master_data['achievements'].append(new_achievement)  # Never during job customization
+```
+
 ---
 
 ## Big picture (read first)

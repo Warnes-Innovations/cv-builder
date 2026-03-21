@@ -14,7 +14,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, date as _date
 import subprocess
 import weasyprint
 from collections import defaultdict
@@ -391,8 +391,9 @@ class CVOrchestrator:
         cv_data = self._prepare_cv_data_for_template(
             selected_content, job_analysis, template_variant
         )
-        cv_data['achievements'] = selected_content.get('achievements', [])
-        cv_data['json_ld_str'] = self._build_json_ld(cv_data, job_analysis)
+        cv_data['achievements']   = selected_content.get('achievements', [])
+        cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
+        cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
 
         template_dir = Path(__file__).parent.parent.parent / 'templates'
         template_file = template_dir / 'cv-template.html'
@@ -613,46 +614,78 @@ class CVOrchestrator:
     def _convert_html_to_pdf(self, html_file: Path, pdf_output: Path) -> None:
         """Convert HTML file to PDF.
 
-        WeasyPrint is run in a child process so that a native-library segfault
-        (exit 139) cannot kill the Flask server.  Falls back to Chrome headless,
-        then to a plain-text instruction file.
+        Chrome/Chromium headless is the primary renderer (--headless=new mode,
+        Chrome 112+).  Supports CSS paged media including @page margin boxes,
+        page numbers, and proper print layout.
+
+        Falls back to WeasyPrint in a child subprocess (crash-safe) for
+        environments where Chrome is unavailable (e.g. headless Linux servers),
+        then to a plain-text instruction file as last resort.
         """
-        # --- WeasyPrint in subprocess (crash-safe) ---
+        # --- Chrome/Chromium headless (primary) ---
+        # Try known binary locations: Linux paths first, then macOS app bundles.
+        _chrome_candidates = [
+            'google-chrome',
+            'chromium',
+            'chromium-browser',
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        ]
+        html_url = html_file.as_uri()   # file:///absolute/path/to/file.html
+        chrome_err = None
+        for _chrome_bin in _chrome_candidates:
+            try:
+                subprocess.run(
+                    [
+                        _chrome_bin,
+                        '--headless=new',       # Modern headless; full CSS paged media support
+                        '--disable-gpu',
+                        '--no-sandbox',
+                        f'--print-to-pdf={pdf_output}',
+                        '--print-to-pdf-no-header',
+                        html_url,
+                    ],
+                    check=True,
+                    capture_output=True,
+                    timeout=60,
+                )
+                print(f"✓ Generated PDF via Chrome ({Path(_chrome_bin).name}): {pdf_output.name}")
+                return
+            except FileNotFoundError:
+                continue
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                chrome_err = str(exc)
+                break
+
+        if chrome_err:
+            print(f"⚠ Chrome headless failed ({chrome_err}), trying WeasyPrint...")
+        else:
+            print("⚠ Chrome/Chromium not found, trying WeasyPrint...")
+
+        # --- WeasyPrint in subprocess (crash-safe fallback) ---
+        # Runs in a child process so a native segfault cannot kill the Flask server.
         wp_script = (
             "import sys, weasyprint; "
             "weasyprint.HTML(filename=sys.argv[1]).write_pdf(sys.argv[2])"
         )
-        result = subprocess.run(
+        wp_result = subprocess.run(
             [sys.executable, '-c', wp_script, str(html_file), str(pdf_output)],
             capture_output=True,
             timeout=120,
         )
-        if result.returncode == 0:
+        if wp_result.returncode == 0:
             print(f"✓ Generated PDF using WeasyPrint: {pdf_output.name}")
             return
 
-        wp_error = result.stderr.decode(errors='replace').strip() or f"exit {result.returncode}"
-        print(f"⚠ WeasyPrint failed ({wp_error}), trying Chrome headless...")
-
-        # --- Chrome headless fallback ---
-        try:
-            subprocess.run([
-                'google-chrome', '--headless', '--disable-gpu', '--virtual-time-budget=5000',
-                '--print-to-pdf=' + str(pdf_output),
-                '--print-to-pdf-no-header',
-                str(html_file)
-            ], check=True, timeout=60)
-            print(f"✓ Generated PDF using Chrome headless: {pdf_output.name}")
-            return
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+        wp_error = wp_result.stderr.decode(errors='replace').strip() or f"exit {wp_result.returncode}"
+        print(f"⚠ WeasyPrint also failed ({wp_error})")
 
         # --- Plain-text fallback ---
         fallback_content = f"""PDF Generation Failed
 
 The system attempted to generate a PDF but encountered issues:
-1. WeasyPrint error: {wp_error}
-2. Chrome headless not available
+1. Chrome headless: {chrome_err or 'not found'}
+2. WeasyPrint error: {wp_error}
 
 To manually create PDF:
 1. Open the HTML file: {html_file}
@@ -1267,8 +1300,9 @@ For manual generation:
         # JSON-LD is built here and embedded directly in cv-template.html,
         # so the single HTML output is both ATS-compatible and print-ready.
         cv_data = self._prepare_cv_data_for_template(selected_content, job_analysis)
-        cv_data['achievements'] = selected_content.get('achievements', [])
-        cv_data['json_ld_str']  = self._build_json_ld(cv_data, job_analysis)
+        cv_data['achievements']   = selected_content.get('achievements', [])
+        cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
+        cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
 
         # Generate documents (Phase 10: Track progress)
         files_created = []
@@ -1488,6 +1522,7 @@ If you need clarification, return:
 }}
 """
 
+        response = ''
         try:
             # Call LLM to interpret and modify HTML
             response = self.llm.call_llm(
@@ -1497,7 +1532,6 @@ If you need clarification, return:
             )
 
             # Guard against empty response before JSON parsing
-            import json
             if not response or not response.strip():
                 return {
                     'error': 'parse_error',
@@ -1652,6 +1686,29 @@ If you need clarification, return:
         scored_experiences.sort(key=lambda x: x[1], reverse=True)
         selected_experiences = [exp for exp, _ in scored_experiences]
 
+        # Sort experiences in reverse chronological order by end date.
+        # "Current", "Present", "", or None are treated as today (sorts first).
+        _today = _date.today()
+
+        def _parse_end_date(exp: Dict) -> _date:
+            raw = str(exp.get('end_date') or exp.get('end') or '').strip()
+            if not raw or raw.lower() in ('current', 'present', 'now', 'ongoing'):
+                return _today
+            for fmt in ('%Y-%m-%d', '%B %Y', '%b %Y', '%Y'):
+                try:
+                    return datetime.strptime(raw, fmt).date()
+                except ValueError:
+                    pass
+            # Partial match — try extracting a 4-digit year
+            m = re.search(r'\b(\d{4})\b', raw)
+            if m:
+                return _date(int(m.group(1)), 12, 31)
+            return _date.min
+
+        # Only apply default chronological sort when the user hasn't manually reordered.
+        # The user-override block below will replace this ordering if present.
+        selected_experiences = sorted(selected_experiences, key=_parse_end_date, reverse=True)
+
         # Override: if the user has explicitly reordered experience rows via the UI,
         # apply their ordering stored in customizations['experience_row_order']
         # as a list of experience IDs in the desired display order.
@@ -1725,6 +1782,22 @@ If you need clarification, return:
 
         scored_achievements.sort(key=lambda x: x[1], reverse=True)
         selected_achievements = [ach for ach, _ in scored_achievements[:max_ach]]
+
+        # Prepend extra_achievements: LLM-suggested achievements not in master CV that the user approved
+        extra_achievements = customizations.get('extra_achievements', [])
+        if extra_achievements:
+            existing_ach_texts = {(a.get('text', '') if isinstance(a, dict) else str(a)).lower()
+                                  for a in selected_achievements}
+            prepend_achs = []
+            for ach in extra_achievements:
+                if isinstance(ach, dict):
+                    text = ach.get('description') or ach.get('title', '')
+                else:
+                    text = str(ach)
+                if text and text.lower() not in existing_ach_texts:
+                    prepend_achs.append({'text': text, 'id': f'suggested_{len(prepend_achs)}'})
+                    existing_ach_texts.add(text.lower())
+            selected_achievements = (prepend_achs + selected_achievements)[:max_ach]
 
         # ── Skills ────────────────────────────────────────────────────────────
         # Include all non-omitted skills; recommended ones appear first.
@@ -2665,7 +2738,6 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
     """
     import re as _re
     import json as _json
-    import logging as _logging
 
     checks: List[Dict] = []
 
@@ -2904,45 +2976,36 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
             for name, label in HTML_CHECKS:
                 _chk(name, label, 'html', 'fail', f'HTML check error: {exc}')
 
-    # ── WeasyPrint render checks 13, 15 ──────────────────────────────────────
+    # ── PDF render checks 13, 15 — read from already-generated PDF ────────────
+    # No re-rendering needed: Chrome already wrote the PDF; pypdf reads it here
+    # for page count (reused below) and selectable-text verification.
     page_count: Optional[int] = None
-    if html_path is None:
-        _chk('html_renders_ok',   'HTML renders without error',      'pdf', 'fail', 'HTML file not found')
-        _chk('pdf_no_clipping',   'No WeasyPrint clipping warnings', 'pdf', 'fail', 'HTML file not found')
+    if pdf_path is None:
+        _chk('html_renders_ok', 'PDF generated successfully', 'pdf', 'fail', 'PDF file not found')
+        _chk('pdf_has_text',    'PDF has selectable text',    'pdf', 'fail', 'PDF file not found')
     else:
-        wp_warnings: List[str] = []
-
-        class _WPCapture(_logging.Handler):
-            def emit(self, record: _logging.LogRecord) -> None:
-                wp_warnings.append(record.getMessage())
-
-        wp_logger = _logging.getLogger('weasyprint')
-        _handler  = _WPCapture()
-        _handler.setLevel(_logging.WARNING)
-        wp_logger.addHandler(_handler)
         try:
-            import weasyprint as _wp
-            html_str  = html_path.read_text(encoding='utf-8', errors='replace')
-            rendered  = _wp.HTML(string=html_str,
-                                 base_url=str(html_path.parent)).render()
-            page_count = len(rendered.pages)
-            _chk('html_renders_ok', 'HTML renders without error', 'pdf', 'pass',
-                 f'Rendered {page_count} page(s) successfully')
-            clip_warns = [w for w in wp_warnings
-                          if 'clip' in w.lower() or 'overflow' in w.lower()]
-            if not clip_warns:
-                _chk('pdf_no_clipping', 'No WeasyPrint clipping warnings', 'pdf', 'pass',
-                     'No clipping or overflow warnings')
+            import pypdf as _pypdf2
+            _reader    = _pypdf2.PdfReader(str(pdf_path))
+            page_count = len(_reader.pages)
+            _chk('html_renders_ok', 'PDF generated successfully', 'pdf', 'pass',
+                 f'PDF has {page_count} page(s)')
+            # Check that at least some text is selectable (not a blank/image-only render)
+            _pdf_text = ''.join(
+                _reader.pages[i].extract_text() or ''
+                for i in range(min(page_count, 3))
+            ).strip()
+            if len(_pdf_text) > 50:
+                _chk('pdf_has_text', 'PDF has selectable text', 'pdf', 'pass',
+                     f'{len(_pdf_text):,} characters extractable from PDF')
             else:
-                _chk('pdf_no_clipping', 'No WeasyPrint clipping warnings', 'pdf', 'warn',
-                     f'{len(clip_warns)} clipping warning(s): {clip_warns[0][:100]}')
+                _chk('pdf_has_text', 'PDF has selectable text', 'pdf', 'warn',
+                     'Little text extractable — PDF may be image-based')
         except Exception as exc:
-            _chk('html_renders_ok', 'HTML renders without error', 'pdf', 'fail',
-                 f'WeasyPrint error: {str(exc)[:200]}')
-            _chk('pdf_no_clipping', 'No WeasyPrint clipping warnings', 'pdf', 'fail',
-                 'HTML render failed')
-        finally:
-            wp_logger.removeHandler(_handler)
+            _chk('html_renders_ok', 'PDF generated successfully', 'pdf', 'fail',
+                 f'PDF read error: {str(exc)[:200]}')
+            _chk('pdf_has_text', 'PDF has selectable text', 'pdf', 'fail',
+                 'PDF could not be read')
 
     # ── PDF size check 14 ────────────────────────────────────────────────────
     if pdf_path is None:
