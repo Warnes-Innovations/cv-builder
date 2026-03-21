@@ -278,28 +278,26 @@ Status key: `[ ]` pending · `[~]` in progress · `[x]` done
     for personal-info, experience, skills, education, awards, achievements, summaries
   - Tests: `tests/js/master-cv.test.js` (57 tests)
 
-- [ ] **M24 — `web/cover-letter.js`** (~250 lines)
+- [x] **M24 — `web/cover-letter.js`** (~250 lines)
   - Functions: `populateCoverLetterTab`, `generateCoverLetter`, `saveCoverLetter`,
     `_renderConsistencyReport`, `_validateCoverLetter`, `_debouncedValidateCL`,
     `_getCompanyNameForCL`
   - State: `_coverLetterPriorSessions`, `_clValidateTimer`
   - Constants: `COVER_LETTER_TONES`
-  - Tests: `tests/js/cover-letter.test.js`
+  - Tests: `tests/js/cover-letter.test.js` (27 tests)
 
-- [ ] **M25 — `web/screening-questions.js`** (~300 lines)
+- [x] **M25 — `web/screening-questions.js`** (~300 lines)
   - Functions: `populateScreeningTab`, `parseScreeningQuestions`,
     `renderQuestionBlock`, `selectFormat`, `_getSelectedFormat`, `togglePriorUse`,
     `updateExpSelection`, `searchForQuestion`, `_fmtLabel`,
     `generateScreeningResponse`, `saveScreeningResponses`
   - State: `_screeningState`
-  - Tests: `tests/js/screening-questions.test.js`
+  - Tests: `tests/js/screening-questions.test.js` (20 tests)
 
-- [ ] **M26 — `web/finalise.js`** (~150 lines)
-  - Functions: `populateGenerateTab`, `downloadCV` (and any remaining
-    generation-tab helpers)
-  - Tests: `tests/js/finalise.test.js`
-  - Notes: generation tab + download; `completeLayoutReview` is in
-    layout-instruction.js (already bundled)
+- [x] **M26 — `web/finalise.js`** (~230 lines)
+  - Functions: `populateFinaliseTab`, `finaliseApplication`, `showHarvestSection`,
+    `applyHarvestSelections`
+  - Tests: `tests/js/finalise.test.js` (14 tests)
 
 ### Tier 7
 
