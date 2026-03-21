@@ -16,10 +16,13 @@ Supports:
 - GitHub Copilot (if available)
 """
 
+import logging
 import os
 import json
 from typing import Dict, List, Optional, Any
 from abc import ABC, abstractmethod
+
+logger = logging.getLogger(__name__)
 
 
 # ── Typed LLM error hierarchy ─────────────────────────────────────────────────
@@ -58,6 +61,10 @@ def _classify_llm_error(exc: Exception, provider: str = '') -> LLMError:
         'authentication', 'api_key', 'api key', 'unauthorized',
         'forbidden', 'invalid key', 'invalid api',
     )):
+        logger.debug(
+            "_classify_llm_error: %s (status=%s) -> LLMAuthError (provider=%s)",
+            type(exc).__name__, status, provider
+        )
         return LLMAuthError(
             f"Authentication failed with {provider or 'LLM provider'}. "
             "Check that your API key is valid and has not expired.",
@@ -68,6 +75,10 @@ def _classify_llm_error(exc: Exception, provider: str = '') -> LLMError:
     if status == 429 or any(k in msg for k in (
         'rate limit', 'rate_limit', 'ratelimit', 'quota', 'too many requests',
     )):
+        logger.debug(
+            "_classify_llm_error: %s (status=%s) -> LLMRateLimitError (provider=%s)",
+            type(exc).__name__, status, provider
+        )
         return LLMRateLimitError(
             f"Rate limited by {provider or 'LLM provider'}. "
             "Wait a moment and retry, or switch to a different model.",
@@ -80,12 +91,20 @@ def _classify_llm_error(exc: Exception, provider: str = '') -> LLMError:
         'max_tokens', 'input is too long', 'too long', 'exceeds the limit',
         'prompt is too long',
     )):
+        logger.debug(
+            "_classify_llm_error: %s (status=%s) -> LLMContextLengthError (provider=%s)",
+            type(exc).__name__, status, provider
+        )
         return LLMContextLengthError(
             f"Input exceeds {provider or 'LLM provider'} context limit. "
             "Try a shorter job description or reduce the number of experience items.",
             provider=provider, original=exc,
         )
 
+    logger.debug(
+        "_classify_llm_error: %s (status=%s) -> LLMProviderError (provider=%s, msg=%s)",
+        type(exc).__name__, status, provider, msg[:100]
+    )
     return LLMProviderError(
         f"LLM provider error ({provider or 'unknown'}): {exc}",
         provider=provider, original=exc,
@@ -376,8 +395,8 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         try:
             result = self._parse_json_response(response)
         except Exception as e:
-            print(f"Warning: recommend_customizations failed to parse response: {e}")
-            print(f"Response preview: {response[:500]}...")
+            logger.warning("recommend_customizations failed to parse response: %s", e)
+            logger.debug("Response preview: %s", response[:500])
             result = {}
 
         # Populate recommended_experiences from experience_recommendations for
@@ -2307,10 +2326,14 @@ def get_llm_provider(
     auth_manager=None,
 ) -> LLMClient:
     """Factory function to get LLM client."""
+    resolved_model = model
+    if provider == "copilot-oauth" and not resolved_model:
+        resolved_model = "gpt-4o"
+    logger.debug("get_llm_provider: provider=%s, model=%s", provider, resolved_model)
 
     if provider == "copilot-oauth":
         return CopilotOAuthClient(
-            model=model or "gpt-4o",
+            model=resolved_model,
             auth_manager=auth_manager,
         )
     elif provider == "copilot":
@@ -2355,4 +2378,7 @@ def get_llm_provider(
     elif provider == "stub":
         return StubLLMClient()
     else:
+        logger.debug(
+            "get_llm_provider: unknown provider=%s (will raise ValueError)", provider
+        )
         raise ValueError(f"Unknown provider: {provider}. Choose from: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local, copilot-sdk, stub")
