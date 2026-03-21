@@ -220,6 +220,8 @@ async function _fetchAndDisplayLayoutPreview() {
         window.tabData.cv = {};
       }
       window.tabData.cv['*.html'] = data.html;
+      // Mark client state so completeLayoutReview() enters the staged generation path.
+      stateManager?.setGenerationState?.({ phase: 'layout_review', previewAvailable: true });
       return;
     }
   } catch (_e) {
