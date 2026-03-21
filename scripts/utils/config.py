@@ -14,6 +14,7 @@ Loads configuration from multiple sources in priority order:
 4. Hardcoded defaults (fallback)
 """
 
+import logging
 import os
 import yaml
 from pathlib import Path
@@ -300,3 +301,56 @@ def validate_config(provider: Optional[str] = None) -> None:
             "on the command line. "
             "Valid values: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local, copilot-sdk."
         )
+
+
+def setup_logging(config: Optional[Config] = None) -> None:
+    """Configure Python logging from config settings.
+
+    Sets up the root logger with a consistent format, optional file handler,
+    and level from config (or ``CV_LOG_LEVEL`` env var).  Safe to call more
+    than once — subsequent calls are no-ops unless *config* differs.
+
+    Args:
+        config: Config instance to read logging settings from.  Defaults to
+                the global config returned by ``get_config()``.
+    """
+    cfg = config or get_config()
+    level_name = cfg.log_level.upper()
+    level = getattr(logging, level_name, logging.INFO)
+
+    fmt = logging.Formatter(
+        fmt="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+    )
+
+    root = logging.getLogger()
+    # Avoid duplicate handlers on repeated calls (e.g. in tests).
+    if root.handlers:
+        return
+
+    root.setLevel(level)
+
+    # Always add a console handler.
+    ch = logging.StreamHandler()
+    ch.setLevel(level)
+    ch.setFormatter(fmt)
+    root.addHandler(ch)
+
+    # Optionally add a rotating file handler.
+    log_file = cfg.log_file
+    if not log_file:
+        log_dir = cfg.log_dir
+        if log_dir:
+            Path(log_dir).mkdir(parents=True, exist_ok=True)
+            log_file = str(Path(log_dir) / "cv_builder.log")
+
+    if log_file:
+        try:
+            from logging.handlers import RotatingFileHandler
+            Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+            fh = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=3)
+            fh.setLevel(level)
+            fh.setFormatter(fmt)
+            root.addHandler(fh)
+        except OSError as exc:
+            root.warning("Could not open log file %s: %s", log_file, exc)
