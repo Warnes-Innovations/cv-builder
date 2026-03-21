@@ -979,6 +979,120 @@ Job Description (excerpt):
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+    @app.post("/api/master-data/preview-diff")
+    def master_data_preview_diff():
+        """Return a read-only before/after diff preview for master-data edits.
+
+        Supported sections:
+            - personal_info
+            - skill
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req = request.get_json() or {}
+        section = (req.get('section') or '').strip()
+        if section not in ('personal_info', 'skill'):
+            return jsonify({"error": "section must be one of: personal_info, skill"}), 400
+
+        try:
+            master, _ = _load_master(orchestrator.master_data_path)
+
+            if section == 'personal_info':
+                pi = master.get('personal_info', {})
+                contact = pi.get('contact', {}) if isinstance(pi, dict) else {}
+                address = contact.get('address', {}) if isinstance(contact, dict) else {}
+
+                existing = {
+                    'name': pi.get('name', ''),
+                    'title': pi.get('title', ''),
+                    'email': contact.get('email', pi.get('email', '')),
+                    'phone': contact.get('phone', ''),
+                    'linkedin': contact.get('linkedin', ''),
+                    'website': contact.get('website', ''),
+                    'city': address.get('city', ''),
+                    'state': address.get('state', ''),
+                }
+
+                changes = []
+                for key in ('name', 'title', 'email', 'phone', 'linkedin', 'website', 'city', 'state'):
+                    if key not in req:
+                        continue
+                    new_val = req.get(key)
+                    old_val = existing.get(key, '')
+                    old_norm = str(old_val or '').strip()
+                    new_norm = str(new_val or '').strip()
+                    if old_norm == new_norm:
+                        continue
+                    changes.append({
+                        'field': key,
+                        'old': old_val,
+                        'new': new_val,
+                    })
+
+                return jsonify({
+                    'ok': True,
+                    'section': section,
+                    'changed': bool(changes),
+                    'changes': changes,
+                })
+
+            # section == 'skill'
+            action = (req.get('action') or '').strip()
+            if action not in ('add', 'delete', 'add_category', 'delete_category'):
+                return jsonify({"error": "action must be add, delete, add_category, or delete_category"}), 400
+
+            skills = master.get('skills', [])
+            changes = []
+
+            if action in ('add_category', 'delete_category'):
+                cat_key = (req.get('category_key') or '').strip()
+                if not cat_key:
+                    return jsonify({"error": "category_key is required"}), 400
+                exists = isinstance(skills, dict) and cat_key in skills
+                if action == 'add_category' and not exists:
+                    changes.append({'field': f'skills.category.{cat_key}', 'old': None, 'new': 'created'})
+                if action == 'delete_category' and exists:
+                    changes.append({'field': f'skills.category.{cat_key}', 'old': 'exists', 'new': None})
+            else:
+                skill_name = (req.get('skill') or '').strip()
+                if not skill_name:
+                    return jsonify({"error": "skill is required"}), 400
+
+                if isinstance(skills, list):
+                    existing_lower = {str(s).strip().lower() for s in skills if isinstance(s, str)}
+                    exists = skill_name.lower() in existing_lower
+                    if action == 'add' and not exists:
+                        changes.append({'field': 'skills', 'old': None, 'new': skill_name})
+                    if action == 'delete' and exists:
+                        changes.append({'field': 'skills', 'old': skill_name, 'new': None})
+                elif isinstance(skills, dict):
+                    cat_key = (req.get('category') or '').strip()
+                    if not cat_key:
+                        return jsonify({"error": "category is required for categorized skills"}), 400
+                    cat_val = skills.get(cat_key)
+                    if isinstance(cat_val, list):
+                        cat_list = cat_val
+                    elif isinstance(cat_val, dict):
+                        cat_list = cat_val.get('skills', []) if isinstance(cat_val.get('skills', []), list) else []
+                    else:
+                        cat_list = []
+                    existing_lower = {str(s).strip().lower() for s in cat_list if isinstance(s, str)}
+                    exists = skill_name.lower() in existing_lower
+                    if action == 'add' and not exists:
+                        changes.append({'field': f'skills.{cat_key}', 'old': None, 'new': skill_name})
+                    if action == 'delete' and exists:
+                        changes.append({'field': f'skills.{cat_key}', 'old': skill_name, 'new': None})
+
+            return jsonify({
+                'ok': True,
+                'section': section,
+                'changed': bool(changes),
+                'changes': changes,
+            })
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
     @app.post("/api/master-data/personal-info")
     def master_data_update_personal_info():
         """Update personal_info fields in the master CV.

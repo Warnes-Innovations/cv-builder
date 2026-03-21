@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warnes-innovations.github.io/cv-builder/schemas/master_cv_data.schema.json",
+  "title": "Master_CV_Data",
+  "description": "Compatibility-oriented schema for Master_CV_Data.json used by cv-builder.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "personal_info": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "title": { "type": "string" },
+        "contact": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "email": { "type": "string" },
+            "phone": { "type": "string" },
+            "linkedin": { "type": "string" },
+            "website": { "type": "string" },
+            "address": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "street": { "type": "string" },
+                "city": { "type": "string" },
+                "state": { "type": "string" },
+                "zip": { "type": "string" },
+                "display": { "type": "string" }
+              }
+            }
+          }
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "language": { "type": "string" },
+                  "name": { "type": "string" },
+                  "proficiency": { "type": "string" }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "professional_summaries": {
+      "description": "Primary form is object; legacy list form is also accepted.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      ]
+    },
+    "experience": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/experienceEntry" }
+    },
+    "experiences": {
+      "description": "Legacy alias accepted by some routes.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/experienceEntry" }
+    },
+    "selected_achievements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/selectedAchievement" }
+    },
+    "skills": {
+      "description": "Supports legacy flat lists and categorized dictionary forms.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/skillItem" }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": { "$ref": "#/$defs/skillItem" }
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "category": { "type": "string" },
+                  "skills": {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/skillItem" }
+                  }
+                },
+                "required": ["skills"]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "education": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/educationEntry" }
+    },
+    "awards": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/awardEntry" }
+    },
+    "publications_file": { "type": "string" },
+    "patents_file": { "type": "string" }
+  },
+  "$defs": {
+    "stringOrStringArray": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      ]
+    },
+    "skillItem": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "name": { "type": "string" },
+            "category": { "type": "string" },
+            "years": { "type": ["integer", "number"] },
+            "aliases": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "relevant_for": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      ]
+    },
+    "achievementInExperience": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "id": { "type": "string" },
+            "text": { "type": "string" },
+            "keywords": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "metrics": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "tags": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "importance": { "type": ["integer", "number"] },
+            "relevant_for": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      ]
+    },
+    "experienceEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "comment": { "type": "string" },
+        "title": { "type": "string" },
+        "company": { "type": "string" },
+        "location": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "city": { "type": "string" },
+            "state": { "type": "string" }
+          }
+        },
+        "start_date": { "type": "string" },
+        "end_date": { "type": "string" },
+        "employment_type": { "type": "string" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "audience": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "domain_relevance": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "importance": { "type": ["integer", "number"] },
+        "achievements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/achievementInExperience" }
+        },
+        "bullets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/achievementInExperience" }
+        }
+      }
+    },
+    "selectedAchievement": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "metrics": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "importance": { "type": ["integer", "number"] },
+        "relevant_for": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "show_for_roles": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "educationEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "degree": { "type": "string" },
+        "field": { "type": "string" },
+        "institution": { "type": "string" },
+        "location": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "city": { "type": "string" },
+            "state": { "type": "string" }
+          }
+        },
+        "start_year": { "type": ["integer", "number"] },
+        "end_year": { "type": ["integer", "number"] },
+        "relevant_for": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "awardEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "title": { "type": "string" },
+        "year": { "type": ["integer", "number"] },
+        "description": { "type": "string" },
+        "relevant_for": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}
