@@ -15,25 +15,20 @@ Then open http://localhost:5001
 """
 
 import argparse
-import copy
 import dataclasses
 import json
 import os
 import subprocess
 import sys
 import threading
-import traceback
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
-from flask import Flask, jsonify, redirect, request, send_file, send_from_directory, url_for
-import requests
-from urllib.parse import urlparse
+from flask import Flask, request
 import re
-from bs4 import BeautifulSoup
 
 # Load environment variables from .env file
 env_path = Path(__file__).parent.parent / '.env'
@@ -43,20 +38,17 @@ if env_path.exists():
 # Ensure scripts are importable
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils.config import get_config, validate_config, ConfigurationError
-from utils.llm_client import get_llm_provider, PROVIDER_MODELS, PROVIDER_BILLING, MODEL_INFO
-from utils.cv_orchestrator import CVOrchestrator, validate_ats_report
-from utils.conversation_manager import ConversationManager, Phase
-from utils.llm_client import LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
+from utils.config import get_config, validate_config
+from utils.llm_client import get_llm_provider, PROVIDER_MODELS
+from utils.cv_orchestrator import CVOrchestrator
+from utils.conversation_manager import ConversationManager
 from utils.copilot_auth import CopilotAuthManager
 from utils.pricing_cache import (
-    get_cached_pricing, get_pricing_updated_at, get_pricing_source,
-    refresh_pricing_cache, maybe_refresh_in_background, lookup_runtime_pricing_bulk, STATIC_PRICING,
+    maybe_refresh_in_background,
 )
-from utils.spell_checker import SpellChecker
 from utils.master_data_validator import validate_master_data_file
 from utils.session_registry import (
-    SessionRegistry, SessionNotFoundError, SessionOwnedError
+    SessionRegistry, SessionNotFoundError
 )
 
 
@@ -629,7 +621,7 @@ def create_app(args) -> Flask:
         'coerce_to_dict':       _coerce_to_dict,
         'load_master':          _load_master,
         'save_master':          _save_master,
-        'validate_master_data_file': lambda *a, **k: validate_master_data_file(*a, **k),
+        'validate_master_data_file': validate_master_data_file,
         # Response dataclasses
         'StatusResponse':    StatusResponse,
         'SessionItem':       SessionItem,
@@ -817,11 +809,11 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Minimal Web UI for CV Generator")
     parser.add_argument("--job-file", help="Path to job description text file")
     parser.add_argument("--master-data", default=config.master_cv_path,
-                       help=f"Path to Master_CV_Data.json")
+                       help="Path to Master_CV_Data.json")
     parser.add_argument("--publications", default=config.publications_path,
-                       help=f"Path to publications.bib")
+                       help="Path to publications.bib")
     parser.add_argument("--output-dir", default=config.output_dir,
-                       help=f"Output directory")
+                       help="Output directory")
     parser.add_argument("--llm-provider", choices=["copilot-oauth", "copilot", "github", "openai", "anthropic", "gemini", "groq", "local", "copilot-sdk", "stub"],
                        default=config.llm_provider,
                        help=f"LLM provider (default: {config.llm_provider})")
@@ -870,9 +862,9 @@ def main():
 
 def _env_file_has_value(key: str) -> bool:
     """Return True if *key* is set (uncommented) in the project .env file."""
-    env_path = Path(__file__).parent.parent / ".env"
+    dot_env_path = Path(__file__).parent.parent / ".env"
     try:
-        for line in env_path.read_text().splitlines():
+        for line in dot_env_path.read_text().splitlines():
             line = line.strip()
             if line.startswith("#") or "=" not in line:
                 continue
