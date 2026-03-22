@@ -139,6 +139,61 @@ async function populateMasterTab() {
       </div>
     </div>
 
+    <!-- Publications section -->
+    <div class="master-section" id="master-publications-section">
+      <div class="master-section-header">
+        <h2>📖 Publications</h2>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="action-btn secondary" id="master-pub-toggle-btn"
+              onclick="togglePublicationsView()"
+              aria-label="Toggle between structured CRUD view and raw BibTeX editor">
+            ✏️ Raw BibTeX
+          </button>
+          <button class="action-btn" id="master-pub-add-btn"
+              onclick="showAddPublicationModal()"
+              aria-label="Add publication">
+            + Add Publication
+          </button>
+        </div>
+      </div>
+      <!-- CRUD structured view (default) -->
+      <div id="master-pub-crud-view">
+        <div id="master-pub-crud-container">
+          <p style="color:#6b7280;padding:12px 0;">Loading publications…</p>
+        </div>
+      </div>
+      <!-- Raw BibTeX editor (hidden by default) -->
+      <div id="master-pub-raw-view" style="display:none;">
+        <p style="color:#6b7280;font-size:0.9em;margin-bottom:10px;">
+          Edit your BibTeX bibliography file directly. Changes are saved to
+          <code>publications.bib</code> and a timestamped backup is created
+          automatically. Content is validated before writing.
+        </p>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span id="master-pub-count" style="color:#6b7280;font-size:0.9em;"></span>
+          <span style="flex:1;"></span>
+          <button class="action-btn secondary" onclick="validatePublicationsBib()"
+              aria-label="Validate BibTeX without saving">🔍 Validate</button>
+          <button class="action-btn secondary" onclick="loadPublicationsBib()"
+              aria-label="Reload publications.bib from disk">🔄 Reload</button>
+          <button class="action-btn primary" id="master-pub-save-btn"
+              onclick="savePublicationsBib()"
+              aria-label="Save BibTeX to disk">💾 Save</button>
+        </div>
+        <textarea id="master-pub-textarea"
+          class="edit-input"
+          rows="20"
+          style="width:100%;font-family:monospace;font-size:0.85em;resize:vertical;"
+          placeholder="Loading…"
+          aria-label="BibTeX bibliography content"
+          spellcheck="false"
+        ></textarea>
+        <div id="master-pub-status"
+            style="margin-top:6px;font-size:0.85em;color:#6b7280;"
+            aria-live="polite"></div>
+      </div>
+    </div>
+
     <!-- Awards section -->
     <div class="master-section">
       <div class="master-section-header">
@@ -184,6 +239,73 @@ async function populateMasterTab() {
       </p>
       <div id="master-summaries-container">
         ${_renderSummariesList(summaries)}
+      </div>
+    </div>
+
+    <!-- Publication add/edit modal -->
+    <div id="master-pub-modal-overlay" style="display:none;" role="dialog" aria-modal="true"
+        aria-labelledby="master-pub-modal-title" class="modal-overlay"
+        onclick="if(event.target===this)closePublicationModal()">
+      <div class="modal" style="max-width:580px;">
+        <div class="modal-header">
+          <h2 id="master-pub-modal-title-heading" id="pub-modal-title-heading">Add Publication</h2>
+          <button onclick="closePublicationModal()" aria-label="Close publication editor"
+              style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:20px;">
+          <div style="margin-bottom:12px;">
+            <label for="pub-modal-key" style="display:block;font-weight:600;margin-bottom:4px;">Cite Key <span aria-hidden="true">*</span></label>
+            <input type="text" id="pub-modal-key" class="edit-input" style="width:100%;" aria-required="true"
+                placeholder="e.g. smith2024ml" />
+          </div>
+          <div style="margin-bottom:12px;">
+            <label for="pub-modal-type" style="display:block;font-weight:600;margin-bottom:4px;">Entry Type <span aria-hidden="true">*</span></label>
+            <select id="pub-modal-type" class="edit-input" style="width:100%;">
+              <option value="article">article</option>
+              <option value="inproceedings">inproceedings</option>
+              <option value="book">book</option>
+              <option value="incollection">incollection</option>
+              <option value="techreport">techreport</option>
+              <option value="phdthesis">phdthesis</option>
+              <option value="mastersthesis">mastersthesis</option>
+              <option value="misc">misc</option>
+            </select>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label for="pub-modal-author" style="display:block;font-weight:600;margin-bottom:4px;">Author / Editor <span aria-hidden="true">*</span></label>
+            <input type="text" id="pub-modal-author" class="edit-input" style="width:100%;"
+                placeholder="Last, First and Last2, First2" />
+          </div>
+          <div style="margin-bottom:12px;">
+            <label for="pub-modal-title" style="display:block;font-weight:600;margin-bottom:4px;">Title <span aria-hidden="true">*</span></label>
+            <input type="text" id="pub-modal-title" class="edit-input" style="width:100%;" aria-required="true" />
+          </div>
+          <div style="display:flex;gap:12px;margin-bottom:12px;">
+            <div style="flex:0 0 100px;">
+              <label for="pub-modal-year" style="display:block;font-weight:600;margin-bottom:4px;">Year <span aria-hidden="true">*</span></label>
+              <input type="number" id="pub-modal-year" class="edit-input" style="width:100px;"
+                  min="1900" max="2100" aria-required="true" />
+            </div>
+            <div style="flex:1;">
+              <label for="pub-modal-journal" style="display:block;font-weight:600;margin-bottom:4px;">Journal / Booktitle</label>
+              <input type="text" id="pub-modal-journal" class="edit-input" style="width:100%;" />
+            </div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label for="pub-modal-doi" style="display:block;font-weight:600;margin-bottom:4px;">DOI / URL</label>
+            <input type="text" id="pub-modal-doi" class="edit-input" style="width:100%;"
+                placeholder="10.xxxx/xxxxx" />
+          </div>
+          <div style="margin-bottom:4px;">
+            <label for="pub-modal-extra" style="display:block;font-weight:600;margin-bottom:4px;">Extra fields <span style="font-weight:400;color:#6b7280;">(key=value, one per line)</span></label>
+            <textarea id="pub-modal-extra" class="edit-input" rows="3" style="width:100%;resize:vertical;font-family:monospace;font-size:0.85em;"
+                placeholder="volume=12&#10;pages=1--20"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;">
+          <button class="action-btn" onclick="closePublicationModal()">Cancel</button>
+          <button class="action-btn primary" onclick="saveMasterPublication()">Save</button>
+        </div>
       </div>
     </div>
 
@@ -512,6 +634,8 @@ async function populateMasterTab() {
       </div>
     </div>
   `;
+  // Load publications asynchronously after the DOM is ready.
+  loadPublications();
 }
 
 function _renderPersonalInfoCard(pi) {
@@ -692,6 +816,311 @@ function _renderEducationList(education) {
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+// ---------------------------------------------------------------------------
+// Publications — CRUD + raw BibTeX toggle
+// ---------------------------------------------------------------------------
+
+/** Current view mode: 'crud' | 'raw' */
+let _pubViewMode = 'crud';
+
+function togglePublicationsView() {
+  _pubViewMode = _pubViewMode === 'crud' ? 'raw' : 'crud';
+  document.getElementById('master-pub-crud-view').style.display = _pubViewMode === 'crud' ? '' : 'none';
+  document.getElementById('master-pub-raw-view').style.display  = _pubViewMode === 'raw'  ? '' : 'none';
+  document.getElementById('master-pub-add-btn').style.display   = _pubViewMode === 'crud' ? '' : 'none';
+  const btn = document.getElementById('master-pub-toggle-btn');
+  if (btn) btn.textContent = _pubViewMode === 'crud' ? '✏️ Raw BibTeX' : '📋 Structured View';
+  if (_pubViewMode === 'raw') loadPublicationsBib();
+}
+
+/** Load both structured list and raw content from a single API call. */
+async function loadPublications() {
+  try {
+    const res  = await fetch('/api/master-data/publications');
+    const data = await res.json();
+    if (data.ok) {
+      _renderPublicationsCrudList(data.publications || []);
+      const ta = document.getElementById('master-pub-textarea');
+      if (ta) ta.value = data.content || '';
+      _updatePubCount(data.count ?? 0);
+    } else {
+      document.getElementById('master-pub-crud-container').innerHTML =
+        `<p style="color:#ef4444;padding:12px 0;">⚠️ ${escapeHtml(data.error || 'Failed to load')}</p>`;
+    }
+  } catch (err) {
+    document.getElementById('master-pub-crud-container').innerHTML =
+      `<p style="color:#ef4444;padding:12px 0;">⚠️ Failed to load: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+/** Reload only the raw textarea content (called when switching to raw view). */
+async function loadPublicationsBib() {
+  const ta     = document.getElementById('master-pub-textarea');
+  const status = document.getElementById('master-pub-status');
+  if (!ta) return;
+  ta.disabled    = true;
+  ta.placeholder = 'Loading…';
+  if (status) status.textContent = '';
+  try {
+    const res  = await fetch('/api/master-data/publications');
+    const data = await res.json();
+    if (data.ok) {
+      ta.value = data.content || '';
+      _updatePubCount(data.count ?? 0);
+    } else {
+      if (status) status.textContent = '⚠️ ' + (data.error || 'Failed to load');
+    }
+  } catch (err) {
+    if (status) status.textContent = '⚠️ Failed to load: ' + err.message;
+  } finally {
+    ta.disabled    = false;
+    ta.placeholder = '';
+  }
+}
+
+function _updatePubCount(n) {
+  const el = document.getElementById('master-pub-count');
+  if (el) el.textContent = `${n} publication${n !== 1 ? 's' : ''} on file`;
+}
+
+function _renderPublicationsCrudList(pubs) {
+  const container = document.getElementById('master-pub-crud-container');
+  if (!container) return;
+  if (!pubs.length) {
+    container.innerHTML = '<p style="color:#6b7280;padding:12px 0;">No publications on file. Click "+ Add Publication" above, or switch to Raw BibTeX to paste/import entries.</p>';
+    return;
+  }
+  const rows = pubs.map(pub => {
+    const key      = escapeHtml(pub.key || '');
+    const type     = escapeHtml(pub.type || '');
+    const citation = escapeHtml((pub.formatted_citation || '').slice(0, 160));
+    const full     = pub.formatted_citation || '';
+    const pubJson  = escapeHtml(JSON.stringify(pub));
+    return `
+      <tr>
+        <td>
+          <code style="font-size:0.8em;color:#475569;">${key}</code>
+          ${citation ? `<br><small style="color:#6b7280;">${citation}${full.length > 160 ? '…' : ''}</small>` : ''}
+        </td>
+        <td style="text-align:center;color:#475569;font-size:0.85em;">${type}</td>
+        <td class="action-btns">
+          <button class="icon-btn" onclick="editMasterPublication(${pubJson})"
+              aria-label="Edit publication: ${key}" title="Edit">✏️</button>
+          <button class="icon-btn" onclick="deleteMasterPublication('${key}')"
+              aria-label="Delete publication: ${key}" title="Delete">🗑️</button>
+        </td>
+      </tr>`;
+  }).join('');
+  container.innerHTML = `
+    <table class="review-table" style="width:100%;">
+      <thead>
+        <tr>
+          <th>Publication</th>
+          <th style="width:110px;text-align:center;">Type</th>
+          <th style="width:80px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+/** Validate BibTeX in the textarea without saving. */
+async function validatePublicationsBib() {
+  const ta     = document.getElementById('master-pub-textarea');
+  const status = document.getElementById('master-pub-status');
+  if (!ta || !status) return;
+  const text = ta.value;
+  if (!text.trim()) {
+    status.textContent = 'ℹ️ Empty — nothing to validate.';
+    status.style.color = '#6b7280';
+    return;
+  }
+  status.textContent = '🔍 Validating…';
+  status.style.color = '#6b7280';
+  try {
+    const res  = await fetch('/api/master-data/publications/validate', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ bibtex_text: text }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const n = data.count ?? 0;
+      status.textContent = `✅ Valid — ${n} entr${n !== 1 ? 'ies' : 'y'} found.`;
+      status.style.color = '#15803d';
+    } else {
+      status.textContent = '❌ ' + (data.error || 'Validation failed');
+      status.style.color = '#dc2626';
+    }
+  } catch (err) {
+    status.textContent = '❌ ' + err.message;
+    status.style.color = '#dc2626';
+  }
+}
+
+/** Save raw BibTeX (validates server-side before writing). */
+async function savePublicationsBib() {
+  const ta     = document.getElementById('master-pub-textarea');
+  const status = document.getElementById('master-pub-status');
+  const btn    = document.getElementById('master-pub-save-btn');
+  if (!ta) return;
+  const content = ta.value;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
+  if (status) { status.textContent = ''; status.style.color = '#6b7280'; }
+  try {
+    const res  = await fetch('/api/master-data/publications', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ content }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const n = data.count ?? 0;
+      if (status) {
+        status.textContent = `✅ Saved — ${n} entr${n !== 1 ? 'ies' : 'y'} parsed.`;
+        status.style.color = '#15803d';
+      }
+      _updatePubCount(n);
+      _setMasterChangeNotice('Publications', 'updated');
+      // Refresh CRUD list to stay in sync
+      await loadPublications();
+    } else {
+      if (status) {
+        status.textContent = '❌ ' + (data.error || 'Save failed');
+        status.style.color = '#dc2626';
+      }
+    }
+  } catch (err) {
+    if (status) {
+      status.textContent = '❌ ' + err.message;
+      status.style.color = '#dc2626';
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
+  }
+}
+
+// ---- Publication add/edit modal ----
+
+function showAddPublicationModal() {
+  document.getElementById('pub-modal-key').value    = '';
+  document.getElementById('pub-modal-type').value   = 'article';
+  document.getElementById('pub-modal-author').value = '';
+  document.getElementById('pub-modal-title').value  = '';
+  document.getElementById('pub-modal-year').value   = '';
+  document.getElementById('pub-modal-journal').value = '';
+  document.getElementById('pub-modal-doi').value    = '';
+  document.getElementById('pub-modal-extra').value  = '';
+  document.getElementById('pub-modal-key').disabled = false;
+  document.getElementById('pub-modal-title-heading').textContent = 'Add Publication';
+  document.getElementById('master-pub-modal-overlay').style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('master-pub-modal-overlay');
+  trapFocus('master-pub-modal-overlay');
+}
+
+function editMasterPublication(pub) {
+  const fields = pub.fields || {};
+  document.getElementById('pub-modal-key').value     = pub.key || '';
+  document.getElementById('pub-modal-type').value    = pub.type || 'article';
+  document.getElementById('pub-modal-author').value  = fields.author || fields.editor || '';
+  document.getElementById('pub-modal-title').value   = fields.title || '';
+  document.getElementById('pub-modal-year').value    = fields.year || '';
+  document.getElementById('pub-modal-journal').value = fields.journal || fields.booktitle || '';
+  document.getElementById('pub-modal-doi').value     = fields.doi || '';
+  // Extra: remaining non-standard fields as key=value lines
+  const known = new Set(['author','editor','title','year','journal','booktitle','doi']);
+  const extra = Object.entries(fields)
+    .filter(([k]) => !known.has(k))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('\n');
+  document.getElementById('pub-modal-extra').value   = extra;
+  document.getElementById('pub-modal-key').disabled  = true;  // key is immutable on edit
+  document.getElementById('pub-modal-title-heading').textContent = 'Edit Publication';
+  document.getElementById('master-pub-modal-overlay').style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('master-pub-modal-overlay');
+  trapFocus('master-pub-modal-overlay');
+}
+
+function closePublicationModal() {
+  document.getElementById('master-pub-modal-overlay').style.display = 'none';
+  restoreFocus();
+}
+
+async function saveMasterPublication() {
+  const keyEl  = document.getElementById('pub-modal-key');
+  const key    = keyEl.value.trim();
+  const action = keyEl.disabled ? 'update' : 'add';
+  if (!key) { showAlertModal('⚠️ Validation', 'Cite key is required.'); return; }
+  const type   = document.getElementById('pub-modal-type').value.trim() || 'article';
+  const author = document.getElementById('pub-modal-author').value.trim();
+  const title  = document.getElementById('pub-modal-title').value.trim();
+  const year   = document.getElementById('pub-modal-year').value.trim();
+  if (!title)  { showAlertModal('⚠️ Validation', 'Title is required.'); return; }
+  if (!year)   { showAlertModal('⚠️ Validation', 'Year is required.'); return; }
+  if (!author) { showAlertModal('⚠️ Validation', 'Author or editor is required.'); return; }
+  const fields = { author, title, year };
+  const journal = document.getElementById('pub-modal-journal').value.trim();
+  if (journal) {
+    fields[type === 'inproceedings' ? 'booktitle' : 'journal'] = journal;
+  }
+  const doi = document.getElementById('pub-modal-doi').value.trim();
+  if (doi) fields.doi = doi;
+  // Parse extra fields (key=value per line)
+  const extra = document.getElementById('pub-modal-extra').value;
+  for (const line of extra.split('\n')) {
+    const eq = line.indexOf('=');
+    if (eq > 0) {
+      const k = line.slice(0, eq).trim();
+      const v = line.slice(eq + 1).trim();
+      if (k && v) fields[k] = v;
+    }
+  }
+  const body = { action, key, type, fields };
+  try {
+    const res  = await fetch('/api/master-data/publication', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closePublicationModal();
+      _setMasterChangeNotice('Publications', data.action || 'updated');
+      showAlertModal('✅ Saved', `Publication "${key}" ${data.action}.`);
+      await loadPublications();
+    } else {
+      showAlertModal('❌ Error', data.error || 'Save failed');
+    }
+  } catch (e) {
+    showAlertModal('❌ Error', 'Failed to save publication');
+  }
+}
+
+async function deleteMasterPublication(key) {
+  showConfirmModal(
+    '🗑️ Delete Publication',
+    `Delete "${key}"? This cannot be undone.`,
+    async () => {
+      try {
+        const res  = await fetch('/api/master-data/publication', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', key }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          _setMasterChangeNotice('Publications', 'deleted');
+          showAlertModal('✅ Deleted', `Publication "${key}" removed.`);
+          await loadPublications();
+        } else {
+          showAlertModal('❌ Error', data.error || 'Delete failed');
+        }
+      } catch (e) {
+        showAlertModal('❌ Error', 'Failed to delete publication');
+      }
+    }
+  );
 }
 
 function _renderAwardsList(awards) {
@@ -1495,4 +1924,14 @@ export {
   deleteMasterAward,
   deleteMasterAchievement,
   deleteMasterSummary,
+  loadPublications,
+  loadPublicationsBib,
+  togglePublicationsView,
+  validatePublicationsBib,
+  savePublicationsBib,
+  showAddPublicationModal,
+  editMasterPublication,
+  closePublicationModal,
+  saveMasterPublication,
+  deleteMasterPublication,
 };
