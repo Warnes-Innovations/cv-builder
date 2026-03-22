@@ -1,4 +1,13 @@
-# Requirements for CV Generation System
+# requirements.txt — CV Builder dependencies for CI and pure-pip environments
+#
+# PURPOSE: Full dependency list including ALL packages. Used by GitHub Actions
+#          workflows (pip-only, no conda). Includes spacy and blis which are
+#          installed via conda-forge in the local dev environment.
+#
+# EXECUTION ORDER (CI / pure-pip):
+#   pip install -r scripts/requirements.txt
+#
+# For local conda development, use scripts/requirements-conda.txt instead.
 
 # Google Drive API
 google-api-python-client>=2.100.0
@@ -20,7 +29,7 @@ nltk>=3.8
 language-tool-python>=3.3.0
 
 # BibTeX Processing
-pybtex>=0.24.0
+bibtexparser>=1.4.0
 
 # Data Validation
 pydantic>=2.0.0
