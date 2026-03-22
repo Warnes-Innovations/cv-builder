@@ -1,19 +1,26 @@
-"""Static file serving routes: index, favicon, web assets, logo."""
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
+"""
+Static file routes — index, favicon, web assets, logo.
+"""
 from pathlib import Path
 
 from flask import Blueprint, redirect, send_file, send_from_directory, url_for
 
 
 def create_blueprint(deps):
-    bp = Blueprint('static_routes', __name__)
+    bp = Blueprint('static', __name__)
 
-    preload_session_id = deps['preload_session_id']
+    _preload_session_id = deps.get('preload_session_id')
 
     @bp.get("/")
     def index():
-        _pid = preload_session_id()
-        if _pid and not __import__('flask').request.args.get("session"):
-            return redirect(url_for("static_routes.index", session=_pid))
+        if _preload_session_id and not __import__('flask').request.args.get("session"):
+            return redirect(url_for("static.index", session=_preload_session_id))
         page_path = Path(__file__).parent.parent.parent / "web" / "index.html"
         return send_file(page_path)
 
@@ -31,7 +38,6 @@ def create_blueprint(deps):
         logo_path = Path(__file__).parent.parent.parent / "web" / "media" / "logo_white_transparent.png"
         if logo_path.exists():
             return send_file(logo_path)
-        else:
-            return "", 404
+        return "", 404
 
     return bp

@@ -1,3 +1,11 @@
+<!--
+  Copyright (C) 2026 Gregory R. Warnes
+  SPDX-License-Identifier: AGPL-3.0-or-later
+
+  This file is part of CV-Builder.
+  For commercial licensing, contact greg@warnes-innovations.com
+-->
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -337,19 +345,15 @@
     </div>
   </div>
 
-  <!-- Infrastructure modules (load first) -->
-  <script src="utils.js"></script>
-  <script src="api-client.js"></script>
-  <script src="state-manager.js"></script>
-  <script src="ui-core.js"></script>
+  <!-- Module bundle — exposes all module functions as globals via Object.assign(globalThis, ...) -->
+  <script src="bundle.js"></script>
 
-  <!-- jQuery and DataTables (needed by app.js) -->
+  <!-- jQuery and DataTables (needed by ats-modals.js and DataTables usage) -->
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 
-  <!-- Application logic (loads last so it overrides module stubs) -->
+  <!-- Orchestrator: init() + event-wiring; loads after bundle so globals are available -->
   <script src="app.js"></script>
-  <script src="layout-instruction.js"></script>
   <script src="ats-modals.js"></script>
 </body>
 </html>

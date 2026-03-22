@@ -1,3 +1,9 @@
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
 """
 Playwright conftest for cv-builder UI tests.
 
@@ -14,6 +20,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.parse
 
@@ -113,6 +120,10 @@ def live_server():
 
     If a server is already running on 5001 (e.g. started by the outer test
     harness), it is reused without launching a new process.
+
+    NOTE: when reusing an already-running server the output directory is not
+    controlled by this fixture; session directories may accumulate in that
+    server's configured output path.
     """
     if not _playwright_browsers_installed():
         pytest.skip(
@@ -130,39 +141,45 @@ def live_server():
         os.path.join(os.path.dirname(__file__), "..", "..")
     )
     server_port = _base_url_port(BASE_URL)
-    cmd = [
-        sys.executable,
-        os.path.join(project_root, "scripts", "web_app.py"),
-        "--llm-provider", "stub",
-        "--port", str(server_port),
-    ]
-    env = os.environ.copy()
-    env["FLASK_ENV"] = "testing"
 
-    proc = subprocess.Popen(
-        cmd,
-        cwd=project_root,
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    tmp_dir = tempfile.TemporaryDirectory(prefix="cv_builder_ui_test_")
+    try:
+        cmd = [
+            sys.executable,
+            os.path.join(project_root, "scripts", "web_app.py"),
+            "--llm-provider", "stub",
+            "--output-dir", tmp_dir.name,
+            "--port", str(server_port),
+        ]
+        env = os.environ.copy()
+        env["FLASK_ENV"] = "testing"
 
-    reachable = _wait_for_server(
-        f"{BASE_URL}/api/status", SERVER_STARTUP_TIMEOUT
-    )
-    if not reachable:
-        proc.terminate()
-        pytest.skip(
-            f"Flask server did not start within {SERVER_STARTUP_TIMEOUT}s"
+        proc = subprocess.Popen(
+            cmd,
+            cwd=project_root,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
 
-    yield BASE_URL
+        reachable = _wait_for_server(
+            f"{BASE_URL}/api/status", SERVER_STARTUP_TIMEOUT
+        )
+        if not reachable:
+            proc.terminate()
+            pytest.skip(
+                f"Flask server did not start within {SERVER_STARTUP_TIMEOUT}s"
+            )
 
-    proc.terminate()
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
+        yield BASE_URL
+
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    finally:
+        tmp_dir.cleanup()
 
 
 # ---------------------------------------------------------------------------
@@ -280,8 +297,34 @@ def _install_mock_routes(
     def handle_sessions_new(route: Route):
         _json_route(route, {"ok": True, "session_id": "test-session-id"})
 
+    def handle_sessions_active(route: Route):
+        _json_route(route, {
+            "sessions": [
+                {
+                    "session_id": "test-session-id",
+                    "position_name": "Test Session",
+                    "phase": status_response.get("phase", "init") if isinstance(status_response, dict) else "init",
+                    "claimed": True,
+                    "owned_by_requester": True,
+                    "has_job": True,
+                    "has_analysis": True,
+                }
+            ]
+        })
+
     def handle_load_items(route: Route):
         _json_route(route, {"items": []})
+
+    def handle_intake_metadata(route: Route):
+        _json_route(route, {"confirmed": True})
+
+    def handle_master_fields(route: Route):
+        _json_route(route, {
+            "selected_achievements": [],
+            "selected_experiences": [],
+            "selected_skills": [],
+            "keywords": [],
+        })
 
     # api-client.js patches window.fetch to append ?session_id=…&owner_token=…
     # to every /api/* URL.  All patterns therefore need a trailing ** so
@@ -304,6 +347,8 @@ def _install_mock_routes(
     page.route("**/api/generate**", handle_generate)
     page.route("**/api/reset**", handle_reset)
     page.route("**/api/cv/ats-score**", handle_ats_score)
+    page.route("**/api/intake-metadata**", handle_intake_metadata)
+    page.route("**/api/master-fields**", handle_master_fields)
 
     # Staged generation routes (GAP-20 Phase 1)
     # Use trailing ** so query-string variants (e.g. ?session_id=…) also match.
@@ -368,6 +413,86 @@ def _install_mock_routes(
     # Mock session management so tests don't get blocked by the sessions modal
     page.route("**/api/sessions/claim", handle_sessions_claim)
     page.route("**/api/sessions/new", handle_sessions_new)
+    page.route("**/api/sessions/active**", handle_sessions_active)
+
+
+def _wait_for_ui_ready(page: Page) -> None:
+    """Wait until app init exposes stage/tab helpers used by tests."""
+    page.wait_for_function(
+        """
+        () => typeof updateActionButtons === 'function'
+            && typeof updateTabBarForStage === 'function'
+            && document.readyState === 'complete'
+        """
+    )
+
+
+def _setup_global_state(page: Page, phase: str = 'customization') -> None:
+    """Set up required global state for UI tests.
+    
+    Most UI workflows require pendingRecommendations and tabData to be present.
+    This helper initializes them with sensible defaults.
+    """
+    page.evaluate(
+        """
+        (phase) => {
+            window.pendingRecommendations = window.pendingRecommendations || {
+                recommended_achievements: [],
+                recommended_skills: [],
+                recommended_experiences: [],
+                suggested_achievements: []
+            };
+            window.tabData = window.tabData || {};
+            window.tabData.customizations = true;
+            window.tabData.analysis = { required_skills: [], responsibilities: [] };
+            window.achievementDecisions = window.achievementDecisions || {};
+            window.userSelections = window.userSelections || {};
+        }
+        """,
+        phase,
+    )
+
+
+def _force_stage(page: Page, stage: str) -> None:
+    """Force second-bar tabs and stage action button into a deterministic state."""
+    page.evaluate(
+        """
+        (s) => {
+            if (typeof updateTabBarForStage === 'function') updateTabBarForStage(s);
+            if (typeof updateActionButtons === 'function') updateActionButtons(s);
+            const map = {
+                job: 'job',
+                analysis: 'analysis',
+                customizations: 'exp-review',
+                rewrite: 'rewrite',
+                spell: 'spell',
+                generate: 'generate',
+                layout: 'layout',
+                finalise: 'download',
+            };
+            const tab = map[s];
+            if (tab && typeof switchTab === 'function') switchTab(tab);
+        }
+        """,
+        stage,
+    )
+
+
+def _sync_workflow_steps(page: Page, status_response: dict | None) -> None:
+    """Apply workflow-step classes to match the mocked backend status."""
+    if not isinstance(status_response, dict):
+        return
+
+    page.evaluate(
+        """
+        (status) => {
+            if (typeof updateWorkflowSteps === 'function') {
+                updateWorkflowSteps(status);
+            }
+        }
+        """,
+        status_response,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +518,10 @@ def page(browser, live_server):
 
     p.goto(f"{live_server}/?session=test-session-id",
            wait_until="networkidle")
+    _wait_for_ui_ready(p)
+    _setup_global_state(p, "customization")
+    _force_stage(p, "customizations")
+    _sync_workflow_steps(p, API_STATUS_ANALYSIS_DONE)
 
     yield p
     context.close()
@@ -418,6 +547,10 @@ def seeded_page(browser, live_server):
 
     p.goto(f"{live_server}/?session=test-session-id",
            wait_until="networkidle")
+    _wait_for_ui_ready(p)
+    _setup_global_state(p, "customization")
+    _force_stage(p, "customizations")
+    _sync_workflow_steps(p, API_STATUS_ANALYSIS_DONE)
 
     yield p
     context.close()
@@ -437,6 +570,10 @@ def analysis_seeded_page(browser, live_server):
 
     p.goto(f"{live_server}/?session=test-session-id",
            wait_until="networkidle")
+    _wait_for_ui_ready(p)
+    _setup_global_state(p, "job_analysis")
+    _force_stage(p, "analysis")
+    _sync_workflow_steps(p, API_STATUS_IN_ANALYSIS)
 
     yield p
     context.close()
@@ -456,6 +593,10 @@ def job_stage_page(browser, live_server):
 
     p.goto(f"{live_server}/?session=test-session-id",
            wait_until="networkidle")
+    _wait_for_ui_ready(p)
+    _setup_global_state(p, "init")
+    _force_stage(p, "job")
+    _sync_workflow_steps(p, API_STATUS_INIT)
 
     yield p
     context.close()
@@ -470,6 +611,10 @@ def rewrite_stage_page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_REWRITE)
     p.goto(f"{live_server}/?session=test-session-id",
            wait_until="networkidle")
+    _wait_for_ui_ready(p)
+    _setup_global_state(p, "rewrite_review")
+    _force_stage(p, "rewrite")
+    _sync_workflow_steps(p, API_STATUS_REWRITE)
     yield p
     context.close()
 
@@ -483,6 +628,10 @@ def spell_stage_page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_SPELL)
     p.goto(f"{live_server}/?session=test-session-id",
            wait_until="networkidle")
+    _wait_for_ui_ready(p)
+    _setup_global_state(p, "spell_check")
+    _force_stage(p, "spell")
+    _sync_workflow_steps(p, API_STATUS_SPELL)
     yield p
     context.close()
 
@@ -496,6 +645,10 @@ def finalise_stage_page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_FINALISE)
     p.goto(f"{live_server}/?session=test-session-id",
            wait_until="networkidle")
+    _wait_for_ui_ready(p)
+    _setup_global_state(p, "refinement")
+    _force_stage(p, "finalise")
+    _sync_workflow_steps(p, API_STATUS_FINALISE)
     yield p
     context.close()
 
@@ -509,5 +662,9 @@ def generate_stage_page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_GENERATE)
     p.goto(f"{live_server}/?session=test-session-id",
            wait_until="networkidle")
+    _wait_for_ui_ready(p)
+    _setup_global_state(p, "generation")
+    _force_stage(p, "generate")
+    _sync_workflow_steps(p, API_STATUS_GENERATE)
     yield p
     context.close()

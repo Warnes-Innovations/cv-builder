@@ -1,3 +1,9 @@
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
 """
 Conversation Manager for LLM-driven CV generation.
 
@@ -1380,6 +1386,9 @@ Ask questions that are specific to this job posting, not generic career question
             # A session with no job_description and no existing directory is an empty
             # in-memory shell — there's nothing worth persisting to disk.
             if not self.session_dir and not self.state.get('job_description'):
+                logger.debug(
+                    "_save_session: skipping (no session_dir and no job_description)"
+                )
                 return
 
             if not self.session_dir:
@@ -1390,6 +1399,7 @@ Ask questions that are specific to this job posting, not generic career question
                 output_base = Path(self.config.get('data.output_dir', '~/CV/files')).expanduser()
                 self.session_dir = output_base / f"pending_{timestamp}"
                 print(f"Creating session directory: {self.session_dir}")
+                logger.debug("_save_session: creating new session_dir=%s", self.session_dir)
                 self.session_dir.mkdir(parents=True, exist_ok=True)
             
             if self.session_id is None:
@@ -1420,12 +1430,18 @@ Ask questions that are specific to this job posting, not generic career question
         self.state['job_analysis'] = analysis
         title   = (analysis.get('title')   or '').strip()
         company = (analysis.get('company') or '').strip()
+        
         if title and company:
             self.state['position_name'] = f"{title} at {company}"
         elif title:
             self.state['position_name'] = title
         elif company:
             self.state['position_name'] = company
+        
+        logger.debug(
+            "_store_job_analysis: position_name=%s (title=%s, company=%s)",
+            self.state.get('position_name', '<none>'), title or '<none>', company or '<none>'
+        )
 
     def _rename_session_dir(self, company: str, role: str) -> None:
         """Rename the session directory from ``pending_<ts>`` to
@@ -1458,6 +1474,10 @@ Ask questions that are specific to this job posting, not generic career question
         self.session_dir.rename(new_dir)
         self.session_dir = new_dir
         print(f"\u2713 Session directory renamed \u2192 {new_dir.name}")
+        logger.debug(
+            "_rename_session_dir: renamed to %s (company=%s, role=%s)",
+            new_dir.name, company, role
+        )
         # Persist the new path into session.json
         self._save_session()
 
@@ -1598,8 +1618,13 @@ Ask questions that are specific to this job posting, not generic career question
         # Load session_id; generate and save back if absent (backward compat)
         if 'session_id' in session_data:
             self.session_id = session_data['session_id']
+            logger.debug("load_session: loaded session_id=%s from file", self.session_id)
         else:
             self.session_id = uuid.uuid4().hex[:8]
+            logger.debug(
+                "load_session: generated new session_id=%s (backward compat)",
+                self.session_id
+            )
             self._save_session()
     
     def run_automated(self) -> Dict:

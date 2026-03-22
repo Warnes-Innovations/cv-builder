@@ -184,6 +184,7 @@ Slash commands are defined in `~/src/vscode-config/.github/prompts/`. The most r
 ## When modifying code
 - Prefer minimal, surgical changes and preserve existing API routes/state keys.
 - Keep generated artifacts under configured output dirs; avoid hardcoding alternate storage paths.
+- Never add copyright/SPDX headers to generated or vendor artifacts (for example: `web/bundle.js`, `htmlcov/`, `test_output/`, caches). Headers apply to maintained source/docs files only.
 - Validate changes by running targeted tests first (category or file-level), then broader test runs as needed.
 
 

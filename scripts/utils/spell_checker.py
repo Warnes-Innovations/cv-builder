@@ -1,3 +1,9 @@
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
 """Context-aware spell/grammar checker wrapping language_tool_python.
 
 The checker suppresses specific rules that generate false positives in CV content:
