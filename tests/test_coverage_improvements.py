@@ -27,7 +27,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 from utils.cv_orchestrator import CVOrchestrator
-from utils.llm_client import LLMClient, get_llm_provider
+from utils.llm_client import LLMClient, LLMError, get_llm_provider
 from utils.config import get_config
 
 
@@ -509,6 +509,89 @@ class TestErrorPaths(unittest.TestCase):
         
         # Publications should be empty dict (gracefully loaded)
         self.assertEqual(orchestrator.publications, {})
+
+
+# ---------------------------------------------------------------------------
+# LLMClient.convert_text_to_bibtex
+# ---------------------------------------------------------------------------
+
+class _ConcreteLLMClient(LLMClient):
+    """Minimal concrete subclass so we can call inherited methods directly."""
+
+    def chat(
+        self,
+        messages,
+        temperature: float = 0.7,
+        max_tokens=None,
+    ) -> str:  # pragma: no cover — overridden per test via patch.object
+        return ''
+
+    def propose_rewrites(self, content, job_analysis,
+                         conversation_history=None, user_preferences=None):
+        return []
+
+
+class TestConvertTextToBibtex(unittest.TestCase):
+    """Tests for LLMClient.convert_text_to_bibtex."""
+
+    def setUp(self):
+        self.client = _ConcreteLLMClient()
+
+    def test_valid_response_returned_as_is(self):
+        """A non-empty BibTeX string from chat() must be returned directly."""
+        bibtex = '@article{foo2024,\n  author = {Foo, Bar},\n  title = {Test},\n  year = {2024},\n}'
+        with patch.object(self.client, 'chat', return_value=bibtex):
+            result = self.client.convert_text_to_bibtex('Smith, J. (2024). Test.')
+        self.assertEqual(result, bibtex)
+
+    def test_empty_string_raises_llm_error(self):
+        """An empty string response must raise LLMError."""
+        with patch.object(self.client, 'chat', return_value=''):
+            with self.assertRaises(LLMError):
+                self.client.convert_text_to_bibtex('Smith, J. (2024). Test.')
+
+    def test_whitespace_only_raises_llm_error(self):
+        """A whitespace-only response must raise LLMError."""
+        with patch.object(self.client, 'chat', return_value='   \n  '):
+            with self.assertRaises(LLMError):
+                self.client.convert_text_to_bibtex('Smith, J. (2024). Test.')
+
+    def test_none_response_raises_llm_error(self):
+        """A None response must raise LLMError, not AttributeError."""
+        with patch.object(self.client, 'chat', return_value=None):
+            with self.assertRaises(LLMError):
+                self.client.convert_text_to_bibtex('Smith, J. (2024). Test.')
+
+    def test_prompt_includes_input_text(self):
+        """The user prompt sent to chat() must contain the input text verbatim."""
+        captured = {}
+
+        def _capture_chat(messages, temperature=0.7, max_tokens=None):
+            captured['messages'] = messages
+            return '@article{test,}'
+
+        with patch.object(self.client, 'chat', side_effect=_capture_chat):
+            self.client.convert_text_to_bibtex('My special input string')
+
+        user_msgs = [m['content'] for m in captured['messages'] if m['role'] == 'user']
+        self.assertTrue(
+            any('My special input string' in c for c in user_msgs),
+            'Input text not found in any user message sent to chat()',
+        )
+
+    def test_uses_low_temperature(self):
+        """BibTeX conversion must be called with low temperature for determinism."""
+        captured = {}
+
+        def _capture_chat(messages, temperature=0.7, max_tokens=None):
+            captured['temperature'] = temperature
+            return '@article{test,}'
+
+        with patch.object(self.client, 'chat', side_effect=_capture_chat):
+            self.client.convert_text_to_bibtex('Any text')
+
+        self.assertLessEqual(captured['temperature'], 0.2,
+                             f"Expected low temperature; got {captured['temperature']}")
 
 
 if __name__ == '__main__':
