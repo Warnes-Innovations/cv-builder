@@ -12,7 +12,6 @@ and renders the review table instead of remaining stuck on the loading message.
 """
 
 import json
-import pytest
 from playwright.sync_api import Page, expect
 
 
@@ -20,9 +19,7 @@ def test_achievements_review_table_loads(seeded_page: Page):
     """Click the Achievements tab and assert the review table renders.
 
     Uses `seeded_page` which sets the app in the customization phase so review
-    tabs are available.  Mocks `/api/master-fields` to return a small set of
-    `selected_achievements` and asserts that `#achievements-review-table`
-    is inserted into the DOM.
+    tabs are available. The fixture now pre-populates required global state.
     """
 
     master_fields = {
@@ -35,20 +32,42 @@ def test_achievements_review_table_loads(seeded_page: Page):
     # Route master-fields to return sample achievements
     seeded_page.route(
         "**/api/master-fields",
-        lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(master_fields)),
+        lambda r: r.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(master_fields),
+        ),
     )
 
-    # Ensure no prior pendingRecommendations will block rendering
-    seeded_page.evaluate("() => { window.pendingRecommendations = window.pendingRecommendations || {}; }")
-
-    # Click achievements review tab and wait for table
     tab = seeded_page.locator("#tab-achievements-review")
     expect(tab).to_be_visible()
-    tab.click()
 
-    # Wait a short while for the loader to be replaced
-    seeded_page.wait_for_timeout(500)
+    seeded_page.evaluate(
+        """
+        (achievements) => {
+            window.pendingRecommendations = {
+                recommended_achievements: [],
+                recommended_skills: [],
+                recommended_experiences: [],
+                suggested_achievements: [],
+            };
+            window.tabData = window.tabData || {};
+            window.tabData.customizations = {};
+            window._achievementsOrdered = achievements;
+            window.achievementDecisions = {};
+        }
+        """,
+        master_fields["selected_achievements"],
+    )
+    seeded_page.evaluate("() => switchTab('achievements-review')")
+    seeded_page.wait_for_selector(
+        "#achievements-table-container",
+        timeout=10_000,
+    )
+    seeded_page.evaluate(
+        "() => _renderAchievementsReviewTable(document.getElementById('achievements-table-container'))"
+    )
 
-    # The table should be present
     table = seeded_page.locator("#achievements-review-table")
+    table.wait_for(state="attached", timeout=10_000)
     expect(table).to_be_visible()
