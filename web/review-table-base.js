@@ -18,7 +18,7 @@
  *   populateDownloadTab, populateSpellCheckTab, initiateLayoutInstructions,
  *   populateFinaliseTab, populateMasterTab, populateCoverLetterTab,
  *   populateScreeningTab, extractFirstJsonObject, isReconnecting,
- *   getStatus, apiCall,
+ *   fetchStatus, apiCall,
  *   buildExperienceReviewTable, buildSkillsReviewTable,
  *   buildAchievementsReviewTable, buildSummaryFocusSection,
  *   buildPublicationsReviewTable, getExperienceDetails,
@@ -387,7 +387,7 @@ async function populateReviewTab(pane) {
   // Sync slider for experiences tab
   if (pane === 'experiences') {
     (async () => {
-      const status = await getStatus();
+      const status = await fetchStatus();
       const currentMax = status.max_skills || 20;
       const slider = document.getElementById('max-skills-input');
       const label  = document.getElementById('max-skills-value');
@@ -503,7 +503,7 @@ async function populateCustomizationsTabWithReview(data) {
 
   // Sync max-skills slider with current session value
   (async () => {
-    const status = await getStatus();
+    const status = await fetchStatus();
     const currentMax = status.max_skills || 20;
     const slider = document.getElementById('max-skills-input');
     const label  = document.getElementById('max-skills-value');

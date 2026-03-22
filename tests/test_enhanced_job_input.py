@@ -20,7 +20,10 @@ import requests
 import json
 import time
 from pathlib import Path
+import pytest
 
+
+@pytest.mark.usefixtures("require_server")
 def test_enhanced_job_input(require_server=None):
     """Test all three job input methods"""
     base_url = os.environ.get("CV_SERVER_URL", "http://127.0.0.1:5002")
@@ -67,7 +70,7 @@ Benefits:
         print(f"  📄 Response: {response.json().get('message')}")
     else:
         print(f"  ❌ Text submission failed: {response.status_code}")
-        return False
+        pytest.fail(f"Text submission failed: {response.status_code}")
     
     # Test 2: URL Fetching (with a test HTML page)
     print("\n🔗 Test 2: URL Fetching")
@@ -140,7 +143,7 @@ Benefits:
             print("  ⚠️ Job description not found in status")
     else:
         print(f"  ❌ Status check failed: {response.status_code}")
-        return False
+        pytest.fail(f"Status check failed: {response.status_code}")
     
     # Test 4: Invalid URL handling
     print("\n🚫 Test 4: Error Handling")
@@ -172,17 +175,12 @@ Benefits:
     print("  📝 Paste job descriptions directly")
     print("  🔗 Fetch from URLs")
     print("  📁 Load from existing files")
-    return True
 
 if __name__ == "__main__":
     try:
-        success = test_enhanced_job_input()
-        if success:
-            print("\n🏆 ALL TESTS PASSED - Enhanced job input is working!")
-            sys.exit(0)
-        else:
-            print("\n❌ TESTS FAILED - Issues detected")
-            sys.exit(1)
+        test_enhanced_job_input()
+        print("\n🏆 ALL TESTS PASSED - Enhanced job input is working!")
+        sys.exit(0)
     except Exception as e:
         print(f"\n💥 TEST ERROR: {e}")
         import traceback
