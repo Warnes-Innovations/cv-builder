@@ -17,6 +17,9 @@
  *   postAnalysisQuestions, questionAnswers, CSS
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('workflow-steps');
+
 // ── Step-order constants ─────────────────────────────────────────────────────
 
 const _STEP_ORDER = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise'];
@@ -280,10 +283,10 @@ async function showBulletReorder(expId, expTitle) {
         proposedOrder = proposedData.proposed_order || null;
         hasJobAnalysis = proposedData.has_job_analysis || false;
       } else {
-        console.warn('Could not load suggested bullet order:', proposedRes.status);
+        log.warn('Could not load suggested bullet order:', proposedRes.status);
       }
     } catch (e) {
-      console.warn('Could not load suggested bullet order:', e);
+      log.warn('Could not load suggested bullet order:', e);
     }
   } catch (e) {
     const errorText = e.message === 'Failed to fetch'

@@ -13,6 +13,9 @@
  *   escapeHtml, _renderConsistencyReport
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('finalise');
+
 // ── Populate finalise tab ─────────────────────────────────────────────────────
 
 async function populateFinaliseTab() {
@@ -25,7 +28,7 @@ async function populateFinaliseTab() {
     const res  = await fetch('/api/status');
     statusData = await res.json();
     generated  = statusData.generated_files || null;
-  } catch (err) { console.warn('Failed to fetch status for finalise tab:', err); }
+  } catch (err) { log.warn('Failed to fetch status for finalise tab:', err); }
 
   if (!generated || !generated.output_dir) {
     content.innerHTML = `

@@ -15,6 +15,9 @@
  *   scheduleAtsRefresh, CSS
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('spell-check');
+
 // Module-level state
 let spellAudit = [];
 
@@ -103,7 +106,7 @@ async function populateSpellCheckTab() {
     }, customDictSize);
 
   } catch (err) {
-    console.error('Spell check error:', err);
+    log.error('Spell check error:', err);
     document.getElementById('spell-loading').innerHTML = `<p style="color:#ef4444;padding:20px;">Spell check failed: ${err.message}</p>`;
   }
 }
@@ -306,7 +309,7 @@ async function addSpellWord(word, sugId) {
       if (entry) { entry.outcome = 'add_dict'; entry.final = word; }
     }
   } catch (err) {
-    console.error('Error adding to dictionary:', err);
+    log.error('Error adding to dictionary:', err);
   }
 }
 

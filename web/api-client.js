@@ -10,6 +10,9 @@
  * Provides error handling, logging, and retry logic.
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('api-client');
+
 /**
  * Centralized localStorage key management to avoid duplication
  */
@@ -169,12 +172,12 @@ async function apiCall(method, endpoint, data = null) {
 
     // Handle 409 Conflict (session already active)
     if (response.status === 409) {
-      console.warn(`Session conflict on ${endpoint}`);
+      log.warn(`Session conflict on ${endpoint}`);
       throw new Error('Session already active in another tab');
     }
 
     if (!response.ok) {
-      console.error(`API error on ${method} ${endpoint}:`, response.status, response.statusText);
+      log.error(`API error on ${method} ${endpoint}:`, response.status, response.statusText);
       let errorMessage = response.statusText;
       try {
         const errorJson = await response.json();
@@ -190,7 +193,7 @@ async function apiCall(method, endpoint, data = null) {
     const json = await response.json();
     return json;
   } catch (error) {
-    console.error(`API call failed: ${method} ${endpoint}`, error);
+    log.error(`API call failed: ${method} ${endpoint}`, error);
     throw error;
   }
 }
@@ -240,14 +243,14 @@ async function uploadJobFile(formData) {
     });
 
     if (!response.ok) {
-      console.error(`API error on POST /api/upload-file:`, response.status, response.statusText);
+      log.error(`API error on POST /api/upload-file:`, response.status, response.statusText);
       throw new Error(`${response.status}: ${response.statusText}`);
     }
 
     const json = await response.json();
     return json;
   } catch (error) {
-    console.error(`API call failed: POST /api/upload-file`, error);
+    log.error(`API call failed: POST /api/upload-file`, error);
     throw error;
   }
 }
