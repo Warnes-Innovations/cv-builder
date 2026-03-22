@@ -1367,6 +1367,53 @@ Return ONLY a JSON array — no prose, no markdown fences.
         results.sort(key=lambda x: (-x['relevance_score'], -int(str(x['year']).strip() or '0')))
         return results[:max_results]
 
+    def convert_text_to_bibtex(self, text: str) -> str:
+        """Convert free-form publication reference(s) to BibTeX entries.
+
+        Accepts any input format: plain-text citations, DOI URLs, PubMed
+        abstracts, copy-paste from a CV PDF, numbered reference lists, etc.
+
+        Returns a raw BibTeX string containing one or more valid ``@type{key,
+        ...}`` entries.  The caller is responsible for showing the result to
+        the user for review before saving.
+
+        Raises ``LLMError`` (or subclass) on failure.
+        """
+        prompt = (
+            "Convert the following publication reference(s) to valid BibTeX entries.\n"
+            "Rules:\n"
+            "1. Return ONLY the raw BibTeX text — no prose, no markdown code fences.\n"
+            "2. Use the most appropriate entry type: @article, @inproceedings, "
+            "@book, @phdthesis, @techreport, @misc, etc.\n"
+            "3. Generate a unique cite key for each entry using the pattern "
+            "LastnameYYYYkeyword (e.g. Warnes2023cvgen).\n"
+            "4. Include all fields you can infer: author, title, year, "
+            "journal/booktitle, volume, pages, doi, url, note.\n"
+            "5. Use BibTeX-standard author format: 'Last, First and Last2, First2'.\n"
+            "6. Wrap multi-word titles and journal names in curly braces to "
+            "preserve casing: title = {{Machine Learning for CV Generation}}.\n\n"
+            "Input:\n"
+            f"{text.strip()}"
+        )
+        response = self.chat(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a BibTeX expert. Convert any publication reference "
+                        "format to clean, valid BibTeX. Return only raw BibTeX entries "
+                        "with no surrounding text or markdown."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+        )
+        result = (response or '').strip()
+        if not result:
+            raise LLMError('LLM returned an empty BibTeX response')
+        return result
+
     def _propose_rewrites_via_chat(
         self,
         content: Dict,
