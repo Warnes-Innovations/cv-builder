@@ -47,13 +47,28 @@ async function run() {
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
+
+
+
   const url = `http://localhost:${PORT}/web/tests/integration/session_precedence_test.html`;
   console.log('Navigating to', url);
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
-    // Wait for the harness to populate results
-    await page.waitForSelector('#out', { timeout: 20_000 });
+    // Wait for the harness to finish — look for any PASS/FAIL/ERROR line in #out
+    await page.waitForFunction(
+      () => {
+        const el = document.getElementById('out');
+        if (!el) return false;
+        const t = el.textContent || '';
+        return /PASS:|FAIL:|ERROR:/.test(t);
+      },
+      { timeout: 20_000 }
+    );
+
+    // Give a moment for remaining async assertions to write their output
+    await page.waitForTimeout(500);
+
     const out = await page.$eval('#out', el => el.textContent || '');
     console.log('Harness output:\n', out);
 

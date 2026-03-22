@@ -14,6 +14,9 @@
  *   - sendMessage from message-dispatch.js (on globalThis, for inline buttons)
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('message-queue');
+
 // Buffer for messages emitted before the #conversation div exists.
 // Flushed at the start of init() once the DOM is fully ready.
 const _messageQueue = [];
@@ -182,7 +185,7 @@ function appendFormattedAnalysis(result) {
       appendMessage('assistant', result);
     }
   } catch (e) {
-    console.error('Analysis display error:', e);
+    log.error('Analysis display error:', e);
     appendMessage('assistant', result);
   }
 }

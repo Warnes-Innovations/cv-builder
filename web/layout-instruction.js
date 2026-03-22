@@ -10,6 +10,9 @@
  * Handles instruction submission, preview updates, and instruction history.
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('layout-instruction');
+
 import { apiCall } from './api-client.js';
 import { stateManager } from './state-manager.js';
 
@@ -309,10 +312,10 @@ async function _fetchAndDisplayLayoutPreview() {
       }
       window.tabData.cv['*.html'] = data.html;
     } else {
-      console.warn('Layout preview not available:', data.error || 'no HTML returned');
+      log.warn('Layout preview not available:', data.error || 'no HTML returned');
     }
   } catch (err) {
-    console.warn('Could not load layout preview:', err);
+    log.warn('Could not load layout preview:', err);
   }
 }
 
