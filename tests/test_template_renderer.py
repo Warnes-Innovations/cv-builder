@@ -365,8 +365,25 @@ class TestLoadAndRenderTemplate(unittest.TestCase):
         template = load_template(str(self._TEMPLATE_PATH))
         html = render_template(template, self._minimal_context()).lstrip()
         self.assertTrue(
-            html.lower().startswith('<!doctype') or html.lower().startswith('<html'),
+            html.lower().startswith('<!doctype')
+            or html.lower().startswith('<html'),
             "Expected HTML output to start with <!DOCTYPE or <html"
+        )
+
+    def test_rendered_html_contains_no_copyright_header(self):
+        """Copyright comment is stripped before rendered output."""
+        template = load_template(str(self._TEMPLATE_PATH))
+        html = render_template(template, self._minimal_context())
+        self.assertNotIn(
+            'Copyright',
+            html,
+            "Rendered CV HTML must not contain copyright text "
+            "from the template source",
+        )
+        self.assertNotIn(
+            'SPDX-License-Identifier',
+            html,
+            "Rendered CV HTML must not contain SPDX license identifier",
         )
 
     # ── ATS metadata checks ──────────────────────────────────────────────
