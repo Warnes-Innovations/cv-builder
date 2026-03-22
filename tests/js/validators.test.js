@@ -14,6 +14,9 @@ import {
   parseRewritesResponse,
   parseMessageResponse,
 } from '../../web/validators.js'
+import loglevel from '../../web/logger.js'
+
+const log = loglevel.getLogger('validators')
 
 // ── parseStatusResponse ───────────────────────────────────────────────────
 
@@ -34,28 +37,28 @@ describe('parseStatusResponse', () => {
   })
 
   it('warns on missing required fields', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseStatusResponse({})
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('[parseStatusResponse] Missing fields:'), expect.any(Array), expect.any(Object))
     spy.mockRestore()
   })
 
   it('does not warn when all required fields are present', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseStatusResponse(minimal())
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()
   })
 
   it('warns when post_analysis_questions is not an array', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseStatusResponse({ ...minimal(), post_analysis_questions: 'bad' })
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('post_analysis_questions should be an array'), 'bad')
     spy.mockRestore()
   })
 
   it('warns when all_experience_ids is not an array', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseStatusResponse({ ...minimal(), all_experience_ids: {} })
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('all_experience_ids should be an array'), {})
     spy.mockRestore()
@@ -71,21 +74,21 @@ describe('parseSessionListResponse', () => {
   })
 
   it('warns when sessions is not an array', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseSessionListResponse({ sessions: null })
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('sessions should be an array'), expect.any(Object))
     spy.mockRestore()
   })
 
   it('warns on session items missing required fields', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseSessionListResponse({ sessions: [{ path: 'x.json' }] })
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('missing fields:'), expect.any(Array), expect.any(Object))
     spy.mockRestore()
   })
 
   it('does not warn for fully-populated session items', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     const session = {
       path: 'x.json', position_name: 'Dev', timestamp: 0,
       phase: 'init', has_job: true, has_analysis: false, has_customizations: false,
@@ -105,21 +108,21 @@ describe('parseRewritesResponse', () => {
   })
 
   it('warns on missing required fields', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseRewritesResponse({})
     expect(spy).toHaveBeenCalled()
     spy.mockRestore()
   })
 
   it('warns when rewrites is not an array', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseRewritesResponse({ ok: true, rewrites: 'bad', persuasion_warnings: [], phase: 'rewrite_review' })
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('rewrites should be an array'), 'bad')
     spy.mockRestore()
   })
 
   it('does not warn for a valid response', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseRewritesResponse({ ok: true, rewrites: [], persuasion_warnings: [], phase: 'rewrite_review' })
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()
@@ -135,21 +138,21 @@ describe('parseMessageResponse', () => {
   })
 
   it('warns when neither ok nor error is present', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseMessageResponse({})
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('neither ok nor error'), {})
     spy.mockRestore()
   })
 
   it('does not warn when ok is present', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseMessageResponse({ ok: true })
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()
   })
 
   it('does not warn when error is present', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const spy = vi.spyOn(log, 'warn').mockImplementation(() => {})
     parseMessageResponse({ error: 'something went wrong' })
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()

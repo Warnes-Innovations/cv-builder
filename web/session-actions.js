@@ -23,6 +23,9 @@
  *   - _updateSessionSwitcherHeader (session-switcher-ui.js, Tier 7)
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('session-actions');
+
 /** Maps action identifiers to human-readable LLM status bar labels. */
 const _ACTION_LABELS = {
   analyze_job:              'Analysing job description…',
@@ -81,7 +84,7 @@ async function sendAction(action) {
       appendMessage('assistant', data.result);
     }
   } catch (error) {
-    console.error('=== SEND ACTION ERROR ===', action, error);
+    log.error('=== SEND ACTION ERROR ===', action, error);
     removeLoadingMessage(loadingMsg);
     if (error.name !== 'AbortError') {
       appendRetryMessage('❌ Error: ' + error.message, () => sendAction(action));
@@ -103,7 +106,7 @@ async function saveSession() {
       appendRetryMessage('❌ Error saving session: ' + data.error, saveSession);
     }
   } catch (error) {
-    console.error('=== SAVE SESSION ERROR ===', error);
+    log.error('=== SAVE SESSION ERROR ===', error);
     appendRetryMessage('❌ Error: ' + error.message, saveSession);
   }
 }
@@ -133,7 +136,7 @@ async function resetSession() {
     _clearFieldError('job-url-input', 'url-error');
     _updatePasteCharCount();
   } catch (error) {
-    console.error('=== RESET SESSION ERROR ===', error);
+    log.error('=== RESET SESSION ERROR ===', error);
     appendMessage('system', 'Error: ' + error.message);
   }
 }
@@ -152,7 +155,7 @@ function updatePositionTitle(status = {}) {
         : status.job_analysis;
       label = normalizePositionLabel(analysis?.title, analysis?.company);
     } catch (error) {
-      console.warn('Failed to parse job_analysis for title:', error);
+      log.warn('Failed to parse job_analysis for title:', error);
     }
   }
 

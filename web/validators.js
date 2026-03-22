@@ -18,6 +18,9 @@
  * DEPENDENCIES: none
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('validators');
+
 /** Validate GET /api/status response. */
 function parseStatusResponse(data) {
   const required = [
@@ -31,13 +34,13 @@ function parseStatusResponse(data) {
   ];
   const missing = required.filter(k => !(k in data));
   if (missing.length) {
-    console.warn('[parseStatusResponse] Missing fields:', missing, data);
+    log.warn('[parseStatusResponse] Missing fields:', missing, data);
   }
   if ('post_analysis_questions' in data && !Array.isArray(data.post_analysis_questions)) {
-    console.warn('[parseStatusResponse] post_analysis_questions should be an array:', data.post_analysis_questions);
+    log.warn('[parseStatusResponse] post_analysis_questions should be an array:', data.post_analysis_questions);
   }
   if ('all_experience_ids' in data && !Array.isArray(data.all_experience_ids)) {
-    console.warn('[parseStatusResponse] all_experience_ids should be an array:', data.all_experience_ids);
+    log.warn('[parseStatusResponse] all_experience_ids should be an array:', data.all_experience_ids);
   }
   return data;
 }
@@ -45,12 +48,12 @@ function parseStatusResponse(data) {
 /** Validate GET /api/sessions response. */
 function parseSessionListResponse(data) {
   if (!Array.isArray(data.sessions)) {
-    console.warn('[parseSessionListResponse] sessions should be an array:', data);
+    log.warn('[parseSessionListResponse] sessions should be an array:', data);
   } else {
     const itemRequired = ['path', 'position_name', 'timestamp', 'phase', 'has_job', 'has_analysis', 'has_customizations'];
     data.sessions.forEach((s, i) => {
       const missing = itemRequired.filter(k => !(k in s));
-      if (missing.length) console.warn(`[parseSessionListResponse] sessions[${i}] missing fields:`, missing, s);
+      if (missing.length) log.warn(`[parseSessionListResponse] sessions[${i}] missing fields:`, missing, s);
     });
   }
   return data;
@@ -60,9 +63,9 @@ function parseSessionListResponse(data) {
 function parseRewritesResponse(data) {
   const required = ['ok', 'rewrites', 'persuasion_warnings', 'phase'];
   const missing = required.filter(k => !(k in data));
-  if (missing.length) console.warn('[parseRewritesResponse] Missing fields:', missing, data);
+  if (missing.length) log.warn('[parseRewritesResponse] Missing fields:', missing, data);
   if ('rewrites' in data && !Array.isArray(data.rewrites)) {
-    console.warn('[parseRewritesResponse] rewrites should be an array:', data.rewrites);
+    log.warn('[parseRewritesResponse] rewrites should be an array:', data.rewrites);
   }
   return data;
 }
@@ -70,7 +73,7 @@ function parseRewritesResponse(data) {
 /** Validate POST /api/message and POST /api/action responses. */
 function parseMessageResponse(data) {
   if (!data.ok && !data.error) {
-    console.warn('[parseMessageResponse] Response has neither ok nor error:', data);
+    log.warn('[parseMessageResponse] Response has neither ok nor error:', data);
   }
   return data;
 }
