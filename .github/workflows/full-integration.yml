@@ -60,7 +60,7 @@ jobs:
         run: npm install
 
       - name: Run JS unit tests
-        run: npm test
+        run: npm run test:js
 
   integration-harness:
     name: Run HTML integration harness
@@ -93,3 +93,112 @@ jobs:
         env:
           CI: true
         run: npm run test:integration:headless
+
+  python-full:
+    name: Python full test suite
+    runs-on: ubuntu-latest
+    needs: [python-tests, js-tests]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('scripts/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/requirements.txt
+          pip install pytest
+
+      - name: Start stub web server
+        run: |
+          python scripts/web_app.py --llm-provider stub --port 5001 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:5001/api/status > /dev/null 2>&1 && echo "Server up" && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:5001/api/status > /dev/null
+        env:
+          FLASK_ENV: testing
+
+      - name: Run Python test suite
+        run: |
+          mkdir -p test-results
+          python -m pytest tests/ \
+            --ignore=tests/ui \
+            -q --tb=short \
+            --junit-xml=test-results/python-full.xml
+        env:
+          CV_SERVER_URL: http://127.0.0.1:5001
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-full-results
+          path: test-results/
+
+  playwright-e2e:
+    name: Playwright E2E tests
+    runs-on: ubuntu-latest
+    needs: python-full
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('scripts/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/requirements.txt
+          pip install pytest pytest-playwright
+
+      - name: Install Playwright Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Run Playwright E2E tests
+        run: |
+          mkdir -p test-results
+          python -m pytest tests/ui/ \
+            -v --tb=short \
+            --junit-xml=test-results/playwright-e2e.xml
+        env:
+          CV_SERVER_URL: http://127.0.0.1:5002
+          FLASK_ENV: testing
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-results
+          path: test-results/
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-output/

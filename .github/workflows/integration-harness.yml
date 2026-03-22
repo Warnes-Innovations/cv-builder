@@ -1,4 +1,4 @@
-name: Integration HTML Harness
+name: PR - Unit Tests and HTML Harness
 
 on:
   pull_request:
@@ -24,12 +24,38 @@ jobs:
           pip install pytest
 
       - name: Run Python unit tests
-        run: python -m pytest -q tests/unit
+        run: python -m pytest -q tests/unit tests/test_scoring.py tests/test_template_renderer.py tests/test_cv_orchestrator.py tests/test_copilot_auth.py tests/test_bibtex_parser.py
+
+  js-tests:
+    name: JavaScript unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run JS unit tests
+        run: npm run test:js
 
   integration-harness:
     name: Run HTML integration harness
     runs-on: ubuntu-latest
-    needs: python-tests
+    needs: [python-tests, js-tests]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
