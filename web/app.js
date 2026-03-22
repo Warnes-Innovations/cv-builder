@@ -33,7 +33,7 @@ async function init() {
 
   // Initialize the rest
   await fetchStatus();
-  if (currentTab === 'job') await populateJobTab();
+  if (stateManager.getCurrentTab() === 'job') await populateJobTab();
   setupEventListeners();
 
   // Set up periodic state saving
@@ -49,7 +49,7 @@ async function init() {
 
   // Auto-analyze job if loaded but not analyzed (only if not reconnecting)
   if (!isReconnecting) {
-    const status = await getStatus();
+    const status = await fetchStatus();
     if (!status._error && status.job_description && !status.job_analysis) {
       appendMessage('system', 'Auto-analyzing loaded job description...');
       await analyzeJob();

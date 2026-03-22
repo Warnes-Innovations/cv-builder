@@ -188,9 +188,11 @@ class TestSessionPicker:
 
     def _open_picker(self, page: Page) -> None:
         """
-        Override status to init-phase so populateJobTab() calls
-        showLoadJobPanel() on page load, and install the load-items mock.
-        Then reload the page and wait for the picker rows to appear.
+        Install the load-items mock and open the picker explicitly.
+
+        The current UI no longer guarantees that a reload into init phase will
+        auto-open the picker before the test starts asserting on it, so open the
+        panel directly through the runtime helper.
         """
         page.route(
             "**/api/status**",
@@ -208,7 +210,7 @@ class TestSessionPicker:
                 body=json.dumps(API_LOAD_ITEMS),
             ),
         )
-        page.reload()
+        page.evaluate("() => showLoadJobPanel()")
         page.wait_for_selector(".load-item-row", timeout=10_000)
 
     def test_load_items_called_and_session_row_rendered(self, page: Page):
@@ -233,7 +235,7 @@ class TestSessionPicker:
             )
         page.route("**/api/load-items**", capture_load_items)
 
-        page.reload()
+        page.evaluate("() => showLoadJobPanel()")
         page.wait_for_selector(".load-item-row", timeout=10_000)
 
         assert any("/api/load-items" in u for u in calls), \

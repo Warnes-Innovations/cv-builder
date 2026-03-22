@@ -44,6 +44,7 @@ const GENERATION_PHASES = {
 // Global state variables (moved into module for clarity)
 let currentTab = 'job';
 let isLoading = false;
+globalThis.isLoading = isLoading;
 let tabData = {
   analysis: null,
   customizations: null,
@@ -85,7 +86,10 @@ const stateManager = {
 
   // Loading state
   isLoading: () => isLoading,
-  setLoading: (loading) => { isLoading = loading; },
+  setLoading: (loading) => {
+    isLoading = loading;
+    globalThis.isLoading = loading;
+  },
 
   // Tab data (analysis, customizations, CV)
   getTabData: (tab) => tabData[tab],
@@ -150,6 +154,7 @@ const stateManager = {
 function initializeState() {
   currentTab = 'job';
   isLoading = false;
+  globalThis.isLoading = false;
   tabData = {
     analysis: null,
     customizations: null,
