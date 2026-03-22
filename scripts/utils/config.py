@@ -1,3 +1,9 @@
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
 """
 Configuration loader for CV Builder.
 
@@ -8,11 +14,14 @@ Loads configuration from multiple sources in priority order:
 4. Hardcoded defaults (fallback)
 """
 
+import logging
 import os
 import yaml
 from pathlib import Path
 from typing import Any, Dict, Optional
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 
 class Config:
@@ -29,12 +38,15 @@ class Config:
         self._config: Dict[str, Any] = {}
         
         # Load .env file if requested
+        env_loaded = False
         if load_env:
             env_file = Path.cwd() / ".env"
             if env_file.exists():
                 load_dotenv(env_file)
+                env_loaded = True
         
         # Load config.yaml
+        config_loaded = False
         if config_file is None:
             config_file = Path.cwd() / "config.yaml"
         else:
@@ -43,18 +55,28 @@ class Config:
         if config_file.exists():
             with open(config_file, 'r') as f:
                 self._config = yaml.safe_load(f) or {}
+                config_loaded = True
+        
+        logger.debug(
+            "Config loaded: .env=%s, config.yaml=%s (path=%s)",
+            env_loaded, config_loaded, config_file
+        )
         
         # Expand home directory paths
         self._expand_paths()
     
     def _expand_paths(self):
         """Expand ~ in paths to absolute paths."""
+        expansions = []
+        
         if 'data' in self._config:
             for key in ['master_cv', 'publications', 'output_dir']:
                 if key in self._config['data']:
                     path = self._config['data'][key]
                     if isinstance(path, str) and path.startswith('~'):
-                        self._config['data'][key] = str(Path(path).expanduser())
+                        expanded = str(Path(path).expanduser())
+                        self._config['data'][key] = expanded
+                        expansions.append(f"data.{key}: {path} -> {expanded}")
         
         if 'session' in self._config:
             for key in ['session_dir', 'history_file']:
@@ -75,7 +97,12 @@ class Config:
                 if key in self._config['logging']:
                     path = self._config['logging'][key]
                     if isinstance(path, str) and path.startswith('~'):
-                        self._config['logging'][key] = str(Path(path).expanduser())
+                        expanded = str(Path(path).expanduser())
+                        self._config['logging'][key] = expanded
+                        expansions.append(f"logging.{key}: {path} -> {expanded}")
+        
+        if expansions:
+            logger.debug("Path expansions: %s", "; ".join(expansions))
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value with dot notation support."""
@@ -294,3 +321,56 @@ def validate_config(provider: Optional[str] = None) -> None:
             "on the command line. "
             "Valid values: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local, copilot-sdk."
         )
+
+
+def setup_logging(config: Optional[Config] = None) -> None:
+    """Configure Python logging from config settings.
+
+    Sets up the root logger with a consistent format, optional file handler,
+    and level from config (or ``CV_LOG_LEVEL`` env var).  Safe to call more
+    than once — subsequent calls are no-ops unless *config* differs.
+
+    Args:
+        config: Config instance to read logging settings from.  Defaults to
+                the global config returned by ``get_config()``.
+    """
+    cfg = config or get_config()
+    level_name = cfg.log_level.upper()
+    level = getattr(logging, level_name, logging.INFO)
+
+    fmt = logging.Formatter(
+        fmt="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+    )
+
+    root = logging.getLogger()
+    # Avoid duplicate handlers on repeated calls (e.g. in tests).
+    if root.handlers:
+        return
+
+    root.setLevel(level)
+
+    # Always add a console handler.
+    ch = logging.StreamHandler()
+    ch.setLevel(level)
+    ch.setFormatter(fmt)
+    root.addHandler(ch)
+
+    # Optionally add a rotating file handler.
+    log_file = cfg.log_file
+    if not log_file:
+        log_dir = cfg.log_dir
+        if log_dir:
+            Path(log_dir).mkdir(parents=True, exist_ok=True)
+            log_file = str(Path(log_dir) / "cv_builder.log")
+
+    if log_file:
+        try:
+            from logging.handlers import RotatingFileHandler
+            Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+            fh = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=3)
+            fh.setLevel(level)
+            fh.setFormatter(fmt)
+            root.addHandler(fh)
+        except OSError as exc:
+            root.warning("Could not open log file %s: %s", log_file, exc)

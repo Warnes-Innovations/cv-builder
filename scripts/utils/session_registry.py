@@ -1,3 +1,9 @@
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
 """
 SessionRegistry — manages multiple independent CV-builder sessions in memory.
 
@@ -9,11 +15,14 @@ claiming, and idle eviction.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +151,10 @@ class SessionRegistry:
         with self._registry_lock:
             self._sessions[session_id] = entry
 
+        logger.debug(
+            "Session created: %s (created=%s, factory=%s)",
+            session_id, now.isoformat(), self._build_objects.__name__
+        )
         return session_id, entry
 
     # ------------------------------------------------------------------
@@ -168,9 +181,11 @@ class SessionRegistry:
         """
         entry = self.get(session_id)
         if entry is None:
+            logger.debug("Session lookup failed: %s (not in registry)", session_id)
             raise SessionNotFoundError(
                 f"Session not found: {session_id}"
             )
+        logger.debug("Session lookup succeeded: %s", session_id)
         return entry
 
     # ------------------------------------------------------------------
@@ -187,7 +202,12 @@ class SessionRegistry:
         with self._registry_lock:
             entry = self._sessions.get(session_id)
             if entry is not None:
+                old_ts = entry.last_modified
                 entry.last_modified = datetime.now()
+                logger.debug(
+                    "Session touched: %s (was=%s, now=%s)",
+                    session_id, old_ts.isoformat(), entry.last_modified.isoformat()
+                )
 
     def claim(self, session_id: str, token: str) -> None:
         """
@@ -213,8 +233,17 @@ class SessionRegistry:
                 entry.owner_token is None
                 or entry.owner_token == token
             ):
+                was_unclaimed = entry.owner_token is None
                 entry.owner_token = token
+                logger.debug(
+                    "Session claim: %s (was_unclaimed=%s, token=%s...)",
+                    session_id, was_unclaimed, token[:8] if token else "None"
+                )
             else:
+                logger.debug(
+                    "Session claim failed: %s (already owned by different token)",
+                    session_id
+                )
                 raise SessionOwnedError(
                     f"Session {session_id} is already owned "
                     "by a different token"
@@ -235,7 +264,14 @@ class SessionRegistry:
                 raise SessionNotFoundError(
                     f"Session not found: {session_id}"
                 )
+            old_token = entry.owner_token
             entry.owner_token = token
+            logger.debug(
+                "Session takeover: %s (old_token=%s..., new_token=%s...)",
+                session_id,
+                old_token[:8] if old_token else "None",
+                token[:8] if token else "None"
+            )
 
     # ------------------------------------------------------------------
     # File I/O
@@ -315,6 +351,12 @@ class SessionRegistry:
                 for sid, e in self._sessions.items()
                 if now - e.last_modified > self._idle_timeout
             ]
+
+        if idle_ids:
+            logger.debug(
+                "Evicting %d idle session(s): %s",
+                len(idle_ids), ", ".join(idle_ids)
+            )
 
         for sid in idle_ids:
             with self._registry_lock:

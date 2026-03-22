@@ -1,4 +1,10 @@
 #!/usr/local/Caskroom/miniconda/base/envs/cvgen/bin/python
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
 """
 LLM-Driven CV Generation System
 
@@ -37,10 +43,9 @@ if env_path.exists():
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils.config import get_config
+from utils.config import get_config, setup_logging
 from utils.llm_client import LLMClient, get_llm_provider
 from utils.cv_orchestrator import CVOrchestrator
-from utils.conversation_manager import ConversationManager
 from utils.conversation_manager import ConversationManager
 
 
@@ -113,6 +118,9 @@ Examples:
     )
     
     args = parser.parse_args()
+    
+    # Set up logging
+    setup_logging(config)
     
     # Args already have config defaults, just use them directly
     master_data  = args.master_data

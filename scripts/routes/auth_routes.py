@@ -1,5 +1,12 @@
-"""Auth, model catalog, and model management routes."""
-import os
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
+"""
+Authentication routes — Copilot OAuth, model catalog, model get/set/test, pricing.
+"""
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -12,151 +19,34 @@ from utils.pricing_cache import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Catalog helpers (module-level for testability)
-# ---------------------------------------------------------------------------
-
-_CATALOG_LIST_MODELS_CAPABLE: set = {"openai", "anthropic", "gemini", "groq"}
-_CATALOG_STATIC_ONLY: set = {"copilot-oauth", "copilot", "github", "local"}
-
-
-def _catalog_provider_api_key(provider: str) -> Optional[str]:
-    if provider == "openai":
-        return os.getenv("OPENAI_API_KEY")
-    if provider == "anthropic":
-        return os.getenv("ANTHROPIC_API_KEY")
-    if provider == "gemini":
-        return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if provider == "groq":
-        return os.getenv("GROQ_API_KEY")
-    return None
-
-
-def _catalog_provider_api_base(provider: str) -> Optional[str]:
-    if provider == "openai":
-        return os.getenv("OPENAI_BASE_URL")
-    if provider == "anthropic":
-        return os.getenv("ANTHROPIC_BASE_URL")
-    if provider == "gemini":
-        return os.getenv("GOOGLE_GEMINI_BASE_URL")
-    if provider == "groq":
-        return os.getenv("GROQ_BASE_URL")
-    return None
-
-
-def _catalog_normalize_model_id(model_id: str) -> str:
-    """Normalize Gemini-style 'models/gemini-2.5-flash' IDs to bare model names."""
-    if model_id.startswith("models/"):
-        return model_id.split("/", 1)[1]
-    return model_id
-
-
-def _catalog_discover_provider_models(provider: str) -> Optional[List[str]]:
-    """Return runtime model list for providers that support list_models, or None."""
-    if provider not in _CATALOG_LIST_MODELS_CAPABLE or provider in _CATALOG_STATIC_ONLY:
-        return None
-
-    api_key = _catalog_provider_api_key(provider)
-    if not api_key:
-        return None
-
-    try:
-        from any_llm import list_models as anyllm_list_models
-    except Exception:
-        return None
-
-    try:
-        kwargs: Dict[str, Any] = {
-            "provider": provider,
-            "api_key":  api_key,
-        }
-        api_base = _catalog_provider_api_base(provider)
-        if api_base:
-            kwargs["api_base"] = api_base
-
-        models = anyllm_list_models(**kwargs)
-        names: List[str] = []
-        for item in models:
-            model_id = getattr(item, "id", None)
-            if model_id is None:
-                model_id = str(item)
-            model_id = _catalog_normalize_model_id(str(model_id))
-            if model_id:
-                names.append(model_id)
-
-        unique: List[str] = []
-        seen: set = set()
-        for name in names:
-            if name in seen:
-                continue
-            unique.append(name)
-            seen.add(name)
-        return unique
-    except Exception:
-        return None
-
-
-_dynamic_model_cache: Dict[str, List[str]] = {}
-_dynamic_model_cache_lock = threading.Lock()
-
-
-def _get_available_models(provider: str, current_model: Optional[str] = None) -> List[str]:
-    """Return the best-available model list for a provider."""
-    cached = _dynamic_model_cache.get(provider)
-    models: List[str] = list(cached) if cached is not None else list(PROVIDER_MODELS.get(provider, []))
-    if current_model and current_model not in models:
-        models = [current_model] + models
-    return models
-
-
-def _refresh_dynamic_model_cache(provider: str) -> None:
-    """Fetch the live model list for *provider* and store it in the cache (blocking)."""
-    discovered = _catalog_discover_provider_models(provider)
-    if discovered:
-        with _dynamic_model_cache_lock:
-            _dynamic_model_cache[provider] = discovered
-
-
-def _maybe_refresh_dynamic_cache_in_background(provider: str) -> None:
-    """Kick off a background refresh for *provider* if not already cached."""
-    if provider not in _CATALOG_LIST_MODELS_CAPABLE:
-        return
-    if provider in _dynamic_model_cache:
-        return
-    t = threading.Thread(
-        target=_refresh_dynamic_model_cache,
-        args=(provider,),
-        daemon=True,
-        name=f"model-catalog-{provider}",
-    )
-    t.start()
-
-
 def create_blueprint(deps):
-    bp = Blueprint('auth_routes', __name__)
+    bp = Blueprint('auth', __name__)
 
-    get_session = deps['get_session']
-    validate_owner = deps['validate_owner']
-    session_registry = deps['session_registry']
     auth_manager = deps['auth_manager']
-    auth_poll = deps['auth_poll']
-    provider_name = deps['provider_name']
-    current_model = deps['current_model']
-    set_provider_model = deps['set_provider_model']
-    llm_client_ref = deps['llm_client_ref']
+    _provider_name_ref = deps['provider_name_ref']   # mutable dict: {'value': str}
+    _current_model_ref = deps['current_model_ref']   # mutable dict: {'value': Optional[str]}
+    _llm_client_ref = deps['llm_client_ref']         # mutable dict: {'value': client}
+    session_registry = deps['session_registry']
+    _get_session = deps['get_session']
+    _validate_owner = deps['validate_owner']
+    _dynamic_model_cache = deps['dynamic_model_cache']
+    _dynamic_model_cache_lock = deps['dynamic_model_cache_lock']
+    _CATALOG_LIST_MODELS_CAPABLE = deps['catalog_list_models_capable']
+    _catalog_discover_provider_models = deps['catalog_discover_provider_models']
+    _get_available_models = deps['get_available_models']
 
-    # ------------------------------------------------------------------
-    # Copilot auth
-    # ------------------------------------------------------------------
+    _auth_poll: dict = {"polling": False, "error": None, "device_code": None, "interval": 5}
+
+    # ── Copilot OAuth ────────────────────────────────────────────────────────
 
     @bp.post("/api/copilot-auth/start")
     def copilot_auth_start():
         """Begin Device Flow: returns user_code + verification_uri for the user to open."""
         try:
             flow = auth_manager.start_device_flow()
-            auth_poll["device_code"] = flow["device_code"]
-            auth_poll["interval"]    = flow.get("interval", 5)
-            auth_poll["error"]       = None
+            _auth_poll["device_code"] = flow["device_code"]
+            _auth_poll["interval"]    = flow.get("interval", 5)
+            _auth_poll["error"]       = None
             return jsonify({
                 "user_code":        flow["user_code"],
                 "verification_uri": flow["verification_uri"],
@@ -169,22 +59,22 @@ def create_blueprint(deps):
     @bp.post("/api/copilot-auth/poll")
     def copilot_auth_poll():
         """Start a background thread that polls GitHub until the user approves the device flow."""
-        if auth_poll["polling"]:
+        if _auth_poll["polling"]:
             return jsonify({"ok": True, "message": "Already polling"})
-        device_code = auth_poll.get("device_code")
-        interval    = auth_poll.get("interval", 5)
+        device_code = _auth_poll.get("device_code")
+        interval    = _auth_poll.get("interval", 5)
         if not device_code:
             return jsonify({"error": "No device flow in progress — call /start first"}), 400
 
         def _do_poll():
-            auth_poll["polling"] = True
-            auth_poll["error"]   = None
+            _auth_poll["polling"] = True
+            _auth_poll["error"]   = None
             try:
                 auth_manager.complete_device_flow(device_code, interval)
             except Exception as exc:
-                auth_poll["error"] = str(exc)
+                _auth_poll["error"] = str(exc)
             finally:
-                auth_poll["polling"] = False
+                _auth_poll["polling"] = False
 
         threading.Thread(target=_do_poll, daemon=True).start()
         return jsonify({"ok": True})
@@ -194,8 +84,8 @@ def create_blueprint(deps):
         """Return current auth state (authenticated, polling, error)."""
         return jsonify({
             **auth_manager.status,
-            "polling": auth_poll["polling"],
-            "error":   auth_poll["error"],
+            "polling": _auth_poll["polling"],
+            "error":   _auth_poll["error"],
         })
 
     @bp.post("/api/copilot-auth/logout")
@@ -204,23 +94,25 @@ def create_blueprint(deps):
         auth_manager.logout()
         return jsonify({"ok": True})
 
-    # ------------------------------------------------------------------
-    # Model selection
-    # ------------------------------------------------------------------
+    # ── Model selection ──────────────────────────────────────────────────────
 
     @bp.get("/api/model")
     def get_model():
         """Return current model, all provider models, and pricing metadata."""
-        entry = get_session(required=False)
+        entry = _get_session(required=False)
         session_provider = None
-        session_model_val = None
+        session_model = None
         if entry:
             conversation = entry.manager
             session_provider = conversation.state.get("provider")
-            session_model_val = conversation.state.get("model")
+            session_model = conversation.state.get("model")
 
-        provider_for_view = session_provider or provider_name()
-        current = session_model_val or current_model() or (llm_client_ref().model if hasattr(llm_client_ref(), "model") else None)
+        _provider_name = _provider_name_ref['value']
+        _current_model = _current_model_ref['value']
+        llm_client = _llm_client_ref['value']
+
+        provider_for_view = session_provider or _provider_name
+        current = session_model or _current_model or (llm_client.model if hasattr(llm_client, "model") else None)
         available = _get_available_models(provider_for_view, current_model=current)
         billing = PROVIDER_BILLING.get(provider_for_view, {"type": "per_token", "note": ""})
         live      = get_cached_pricing()
@@ -271,22 +163,23 @@ def create_blueprint(deps):
     def get_model_catalog():
         """Return model rows for selected providers."""
         list_models_capable = _CATALOG_LIST_MODELS_CAPABLE
+        _provider_name = _provider_name_ref['value']
 
         selected_param = (request.args.get("providers") or "").strip()
         if selected_param:
             selected = [p.strip() for p in selected_param.split(",") if p.strip()]
         else:
-            selected = [provider_name()]
+            selected = [_provider_name]
 
         selected = [p for p in selected if p in PROVIDER_MODELS]
         if not selected:
-            selected = [provider_name()]
+            selected = [_provider_name]
 
         live = get_cached_pricing()
         rows: List[Dict[str, Any]] = []
         provider_sources: Dict[str, str] = {}
         provider_models: Dict[str, List[str]] = {}
-        runtime_candidates: List[tuple] = []
+        runtime_candidates: List = []
 
         for provider in selected:
             if provider in _dynamic_model_cache:
@@ -360,7 +253,7 @@ def create_blueprint(deps):
     @bp.post("/api/model")
     def set_model():
         """Switch the active model and optionally the provider."""
-        def _probe_client(candidate_client) -> tuple:
+        def _probe_client(candidate_client):
             try:
                 candidate_client.chat(
                     messages=[{"role": "user", "content": "Reply with one word: ready"}],
@@ -373,7 +266,7 @@ def create_blueprint(deps):
 
         data     = request.get_json(silent=True) or {}
         model    = data.get("model", "").strip()
-        provider = (data.get("provider") or provider_name()).strip()
+        provider = (data.get("provider") or _provider_name_ref['value']).strip()
         if not model:
             return jsonify({"error": "Missing model"}), 400
         available = PROVIDER_MODELS.get(provider, [])
@@ -390,12 +283,17 @@ def create_blueprint(deps):
                     "model": model,
                 }), 400
 
-            set_provider_model(provider, model, candidate_client)
+            _llm_client_ref['value']     = candidate_client
+            _provider_name_ref['value']  = provider
+            _current_model_ref['value']  = model
+            for _entry in session_registry.all_active():
+                _entry.orchestrator.llm = candidate_client
+                _entry.manager.llm = candidate_client
 
-            entry = get_session(required=False)
+            entry = _get_session(required=False)
             if entry:
                 try:
-                    validate_owner(entry)
+                    _validate_owner(entry)
                     conv = entry.manager
                     conv.state["provider"] = provider
                     conv.state["model"] = model
@@ -410,26 +308,29 @@ def create_blueprint(deps):
 
     @bp.post("/api/model/test")
     def test_model():
-        """Smoke-test the active LLM: send a minimal 1-token prompt."""
+        """Smoke-test the active LLM."""
         import time
         t0 = time.monotonic()
+        llm_client = _llm_client_ref['value']
+        _provider_name = _provider_name_ref['value']
+        _current_model = _current_model_ref['value']
         try:
-            llm_client_ref().chat(
+            llm_client.chat(
                 messages=[{"role": "user", "content": "Reply with one word: ready"}],
             )
             latency_ms = round((time.monotonic() - t0) * 1000)
             return jsonify({
-                "ok":          True,
-                "provider":    provider_name(),
-                "model":       current_model(),
-                "latency_ms":  latency_ms,
+                "ok":         True,
+                "provider":   _provider_name,
+                "model":      _current_model,
+                "latency_ms": latency_ms,
             })
-        except Exception as e:
+        except Exception as exc:
             return jsonify({
                 "ok":       False,
-                "error":    str(e),
-                "provider": provider_name(),
-                "model":    current_model(),
-            }), 500
+                "error":    str(exc),
+                "provider": _provider_name,
+                "model":    _current_model,
+            }), 200
 
     return bp
