@@ -65,6 +65,12 @@ from utils.pricing_cache import (
 )
 from utils.spell_checker import SpellChecker
 from utils.master_data_validator import validate_master_data_file
+from utils.bibtex_parser import (
+    parse_bibtex_file,
+    format_publication,
+    serialize_publications_to_bibtex,
+    bibtex_text_to_publications,
+)
 from utils.session_registry import (
     SessionRegistry, SessionNotFoundError, SessionOwnedError
 )
@@ -1635,6 +1641,323 @@ Job Description (excerpt):
             return jsonify({"ok": True, "action": "updated", "idx": idx})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
+
+    # ------------------------------------------------------------------
+    # Publication CRUD  (master-data / publications.bib)
+    # ------------------------------------------------------------------
+
+    @app.get("/api/master-data/publications")
+    def master_data_get_publications():
+        """Return all publications stored in publications.bib.
+
+        Returns both the parsed structured list and the raw BibTeX file content
+        so the UI can render either the CRUD table or the raw text editor from
+        a single request.
+
+        Response fields:
+            ok                 — True
+            publications       — list of {key, type, fields, formatted_citation}
+            content            — raw .bib file text (empty string if file missing)
+            path               — absolute path to the .bib file
+            count              — number of parsed entries in memory
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+        pubs = orchestrator.publications or {}
+        result = []
+        for key, pub in pubs.items():
+            item: Dict[str, Any] = {
+                "key":   key,
+                "type":  pub.get("type", ""),
+                "fields": pub.get("fields", {}),
+            }
+            try:
+                item["formatted_citation"] = format_publication(pub, style="apa")
+            except Exception:
+                item["formatted_citation"] = ""
+            result.append(item)
+        try:
+            bib_path = orchestrator.publications_path
+            content  = bib_path.read_text(encoding="utf-8") if bib_path.exists() else ""
+        except Exception:
+            content  = ""
+            bib_path = orchestrator.publications_path
+        return jsonify({
+            "ok":           True,
+            "publications": result,
+            "content":      content,
+            "path":         str(bib_path),
+            "count":        len(pubs),
+        })
+
+    @app.put("/api/master-data/publications")
+    def master_data_save_raw_publications():
+        """Overwrite publications.bib with raw BibTeX text.
+
+        Safety contract:
+          1. The incoming content is parsed FIRST.  If parsing fails or the
+             content is non-empty but yields zero entries, the request is
+             rejected (400) and the file is never touched.
+          2. A timestamped backup is created before writing.
+          3. If the file write itself fails, the backup is automatically
+             restored so the live .bib is never left in a broken state.
+
+        Body:
+            content  — raw BibTeX text to write (empty string clears the file,
+                       which is accepted because an empty file is valid)
+
+        Response:
+            ok      — True
+            count   — number of entries parsed from the saved content
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req     = request.get_json() or {}
+        content = req.get("content", "")
+
+        # --- Step 1: parse before touching the file ---
+        try:
+            parsed = bibtex_text_to_publications(content)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"BibTeX parse error: {e}"}), 400
+
+        if content.strip() and not parsed:
+            return jsonify({
+                "ok":    False,
+                "error": "No valid BibTeX entries found — file not saved.",
+            }), 400
+
+        # --- Step 2: backup ---
+        bib_path    = orchestrator.publications_path
+        backup_path = None
+        try:
+            if bib_path.exists():
+                backup_dir  = bib_path.parent / "backups"
+                backup_dir.mkdir(parents=True, exist_ok=True)
+                ts          = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                backup_path = backup_dir / f"{bib_path.stem}.{ts}{bib_path.suffix}"
+                shutil.copy2(bib_path, backup_path)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"Backup failed: {e}"}), 500
+
+        # --- Step 3: write — restore backup on failure ---
+        try:
+            bib_path.write_text(content, encoding="utf-8")
+            orchestrator.publications = parsed
+            return jsonify({"ok": True, "count": len(parsed)})
+        except Exception as e:
+            if backup_path and backup_path.exists():
+                try:
+                    shutil.copy2(backup_path, bib_path)
+                except Exception:
+                    pass  # best-effort restore; backup is still on disk
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.post("/api/master-data/publications/validate")
+    def master_data_validate_publications():
+        """Parse BibTeX text and report errors without saving anything.
+
+        Use this to give the user instant feedback before they commit a save.
+
+        Body:
+            bibtex_text  — raw BibTeX string to validate
+
+        Response on success:
+            ok      — True
+            count   — number of entries parsed
+            entries — list of {key, type} for each valid entry
+        Response on parse failure:
+            ok      — False
+            error   — description of the problem
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        req         = request.get_json() or {}
+        bibtex_text = req.get("bibtex_text", "")
+
+        if not bibtex_text or not bibtex_text.strip():
+            return jsonify({"ok": True, "count": 0, "entries": []})
+
+        try:
+            parsed = bibtex_text_to_publications(bibtex_text)
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+        if not parsed:
+            return jsonify({
+                "ok":    False,
+                "error": "No valid BibTeX entries found in the supplied text.",
+            }), 400
+
+        entries = [
+            {"key": k, "type": v.get("type", "")}
+            for k, v in parsed.items()
+        ]
+        return jsonify({"ok": True, "count": len(entries), "entries": entries})
+
+    @app.post("/api/master-data/publication")
+    def master_data_update_publication():
+        """Add, update, or delete a single publication in publications.bib.
+
+        Body:
+            action  — 'add' | 'update' | 'delete'
+            key     — BibTeX cite key (required for all actions)
+            type    — entry type, e.g. 'article' (required for add/update)
+            fields  — dict of BibTeX fields (required for add/update;
+                      must include at least title and year, and one of
+                      author or editor)
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req    = request.get_json() or {}
+        action = (req.get("action") or "").strip()
+        if action not in ("add", "update", "delete"):
+            return jsonify({"error": "action must be add, update, or delete"}), 400
+
+        key = (req.get("key") or "").strip()
+        if not key:
+            return jsonify({"error": "key is required"}), 400
+
+        pubs = dict(orchestrator.publications or {})
+
+        try:
+            if action == "delete":
+                if key not in pubs:
+                    return jsonify({"ok": False, "error": f"Key '{key}' not found"}), 404
+                del pubs[key]
+                orchestrator.publications_path.write_text(
+                    serialize_publications_to_bibtex(pubs), encoding="utf-8"
+                )
+                orchestrator.publications = parse_bibtex_file(
+                    str(orchestrator.publications_path)
+                )
+                return jsonify({"ok": True, "action": "deleted"})
+
+            # add / update
+            fields = req.get("fields")
+            if not isinstance(fields, dict):
+                return jsonify({"error": "fields (dict) is required for add/update"}), 400
+            entry_type = (req.get("type") or "").strip()
+            if not entry_type:
+                return jsonify({"error": "type is required for add/update"}), 400
+
+            if not fields.get("title"):
+                return jsonify({"error": "fields.title is required"}), 400
+            if not fields.get("year"):
+                return jsonify({"error": "fields.year is required"}), 400
+            if not fields.get("author") and not fields.get("editor"):
+                return jsonify({"error": "fields.author or fields.editor is required"}), 400
+
+            if action == "add" and key in pubs:
+                return jsonify({"error": f"Key '{key}' already exists; use action=update"}), 409
+
+            pubs[key] = {"key": key, "type": entry_type, "fields": fields}
+            orchestrator.publications_path.write_text(
+                serialize_publications_to_bibtex(pubs), encoding="utf-8"
+            )
+            orchestrator.publications = parse_bibtex_file(
+                str(orchestrator.publications_path)
+            )
+            return jsonify({"ok": True, "action": action, "key": key})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.post("/api/master-data/publications/import")
+    def master_data_import_publications():
+        """Parse a BibTeX string and merge entries into publications.bib.
+
+        Body:
+            bibtex_text  — raw BibTeX string to import
+            overwrite    — bool (default false); if true, existing keys are
+                           replaced by the imported entries
+        Returns:
+            added, updated, skipped counts and the full updated publication list.
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req         = request.get_json() or {}
+        bibtex_text = req.get("bibtex_text", "")
+        overwrite   = bool(req.get("overwrite", False))
+
+        if not bibtex_text or not bibtex_text.strip():
+            return jsonify({"error": "bibtex_text is required"}), 400
+
+        try:
+            imported = bibtex_text_to_publications(bibtex_text)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"BibTeX parse error: {e}"}), 400
+
+        if not imported:
+            return jsonify({"ok": False, "error": "No valid BibTeX entries found"}), 400
+
+        pubs   = dict(orchestrator.publications or {})
+        added  = 0
+        updated = 0
+        skipped = 0
+        for key, pub in imported.items():
+            if key in pubs:
+                if overwrite:
+                    pubs[key] = pub
+                    updated += 1
+                else:
+                    skipped += 1
+            else:
+                pubs[key] = pub
+                added += 1
+
+        try:
+            orchestrator.publications_path.write_text(
+                serialize_publications_to_bibtex(pubs), encoding="utf-8"
+            )
+            orchestrator.publications = parse_bibtex_file(
+                str(orchestrator.publications_path)
+            )
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+        return jsonify({
+            "ok": True,
+            "added": added,
+            "updated": updated,
+            "skipped": skipped,
+            "total": len(pubs),
+        })
+
+    @app.post("/api/master-data/publications/convert")
+    def master_data_convert_publications():
+        """Use the LLM to convert free-form citation text to BibTeX.
+
+        This endpoint returns a BibTeX preview string and does NOT save anything.
+
+        Body:
+            text  — free-form citation text (plain text, DOI, APA string, etc.)
+        Returns:
+            bibtex  — generated BibTeX string
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        orchestrator = entry.orchestrator
+
+        if not getattr(orchestrator, "llm", None):
+            return jsonify({"ok": False, "error": "No LLM provider configured for this session"}), 503
+
+        req  = request.get_json() or {}
+        text = (req.get("text") or "").strip()
+        if not text:
+            return jsonify({"error": "text is required"}), 400
+
+        try:
+            bibtex = orchestrator.llm.convert_text_to_bibtex(text)
+        except LLMError as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+        return jsonify({"ok": True, "bibtex": bibtex})
 
     @app.post("/api/generate-summary")
     def generate_professional_summary():
