@@ -65,7 +65,7 @@ beforeEach(() => {
   vi.stubGlobal('buildAchievementsReviewTable', vi.fn())
   vi.stubGlobal('buildSummaryFocusSection', vi.fn())
   vi.stubGlobal('buildPublicationsReviewTable', vi.fn())
-  vi.stubGlobal('getStatus', vi.fn(async () => ({ max_skills: 20 })))
+  vi.stubGlobal('fetchStatus', vi.fn(async () => ({ max_skills: 20 })))
   vi.stubGlobal('apiCall', vi.fn())
 })
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request
 
 from utils.config import get_config
+from utils.conversation_manager import Phase
 from utils.session_registry import SessionNotFoundError, SessionOwnedError
 
 

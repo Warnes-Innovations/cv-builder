@@ -167,8 +167,11 @@ async function _refreshContextStats() {
 // ---------------------------------------------------------------------------
 
 function setLoading(loading, label) {
-  // isLoading is a global from state-manager.js
-  if (typeof isLoading !== 'undefined') window.isLoading = loading;
+  if (typeof stateManager !== 'undefined' && stateManager?.setLoading) {
+    stateManager.setLoading(loading);
+  } else {
+    globalThis.isLoading = loading;
+  }
 
   if (loading) {
     window._currentAbortController = new AbortController();
