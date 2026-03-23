@@ -24,4 +24,12 @@ node_modules/
 
 # Execution artifacts
 *.log
+
+# Coverage artifacts
+coverage/
+htmlcov/
+.coverage*
+
+# Git worktree checkouts
+/worktrees/
 .claude/worktrees
