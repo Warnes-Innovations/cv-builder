@@ -32,7 +32,7 @@ import sys
 import threading
 import traceback
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
@@ -177,6 +177,88 @@ class ActionResponse:
 
 _CATALOG_LIST_MODELS_CAPABLE: set[str] = {"openai", "anthropic", "gemini", "groq"}
 _CATALOG_STATIC_ONLY: set[str] = {"copilot-oauth", "copilot", "github", "local"}
+
+
+def _frontend_project_root() -> Path:
+    """Return the repository root for frontend bundle checks."""
+    return Path(__file__).resolve().parent.parent
+
+
+def _frontend_bundle_inputs(project_root: Path) -> List[Path]:
+    """Return source files whose mtimes determine whether the bundle is stale."""
+    web_dir = project_root / 'web'
+    inputs = [project_root / 'scripts' / 'build.mjs']
+
+    if web_dir.exists():
+        for path in web_dir.rglob('*.js'):
+            if path.name == 'bundle.js':
+                continue
+            if 'tests' in path.parts:
+                continue
+            inputs.append(path)
+
+    return [path for path in inputs if path.exists()]
+
+
+def _frontend_bundle_is_outdated(project_root: Optional[Path] = None) -> bool:
+    """Return True when web/bundle.js is missing or older than its inputs."""
+    root = project_root or _frontend_project_root()
+    bundle_path = root / 'web' / 'bundle.js'
+    if not bundle_path.exists():
+        return True
+
+    inputs = _frontend_bundle_inputs(root)
+    if not inputs:
+        return False
+
+    latest_input_mtime = max(path.stat().st_mtime for path in inputs)
+    return latest_input_mtime > bundle_path.stat().st_mtime
+
+
+def _ensure_frontend_bundle_current(project_root: Optional[Path] = None) -> bool:
+    """Rebuild web/bundle.js when frontend sources are newer than the bundle."""
+    root = project_root or _frontend_project_root()
+    if not _frontend_bundle_is_outdated(root):
+        return False
+
+    node_bin = shutil.which('node')
+    if not node_bin:
+        raise RuntimeError(
+            'Frontend bundle is outdated, but Node.js is not available to rebuild web/bundle.js.'
+        )
+
+    logger.info('Frontend bundle is stale; rebuilding web/bundle.js')
+    result = subprocess.run(
+        [node_bin, 'scripts/build.mjs'],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        details = (result.stderr or result.stdout or '').strip()
+        raise RuntimeError(
+            'Failed to rebuild frontend bundle: '
+            f'{details or "node scripts/build.mjs exited non-zero"}'
+        )
+
+    return True
+
+
+def _frontend_bundle_built_at(
+    project_root: Optional[Path] = None,
+) -> Optional[str]:
+    """Return the bundle build timestamp derived from web/bundle.js mtime."""
+    root = project_root or _frontend_project_root()
+    bundle_path = root / 'web' / 'bundle.js'
+    if not bundle_path.exists():
+        return None
+
+    built_at = datetime.fromtimestamp(
+        bundle_path.stat().st_mtime,
+        tz=timezone.utc,
+    ).astimezone()
+    return built_at.isoformat(timespec='seconds')
 
 
 def _catalog_provider_api_key(provider: str) -> Optional[str]:
@@ -359,6 +441,21 @@ def create_app(args) -> Flask:
     # Validate configuration before initializing dependencies.
     # Raises ConfigurationError with a clear message if no LLM provider is set.
     validate_config(provider=args.llm_provider)
+
+    # Ensure the served frontend bundle matches the current web sources.
+    bundle_rebuilt = _ensure_frontend_bundle_current()
+    bundle_status = 'rebuilt' if bundle_rebuilt else 'already current'
+    bundle_built_at = _frontend_bundle_built_at() or 'unknown'
+    app.config['FRONTEND_BUNDLE_STATUS'] = bundle_status
+    app.config['FRONTEND_BUNDLE_BUILT_AT'] = bundle_built_at
+    logger.info(
+        'Frontend bundle status: %s',
+        bundle_status,
+    )
+    logger.info(
+        'Frontend bundle built at: %s',
+        bundle_built_at,
+    )
 
     # Kick off a background pricing-cache refresh if the cache is stale
     maybe_refresh_in_background()
@@ -5444,6 +5541,7 @@ Close professionally with a call to action.
             "page_count_estimate":       gen.get("page_count_estimate"),
             "page_length_warning":       gen.get("page_length_warning", False),
             "layout_instructions_count": len(gen.get("layout_instructions", [])),
+            "ats_score":                 gen.get("ats_score"),
             "final_generated_at":        gen.get("final_generated_at"),
         })
 
@@ -5471,7 +5569,10 @@ Close professionally with a call to action.
         if customizations:
             try:
                 approved_rewrites = conv.state.get("approved_rewrites") or []
-                spell_audit       = conv.state.get("spell_check", {}).get("audit") or []
+                spell_audit       = conv.state.get("spell_audit")
+                if spell_audit is None:
+                    legacy_spell = conv.state.get("spell_check") or {}
+                    spell_audit = legacy_spell.get("audit") or [] if isinstance(legacy_spell, dict) else []
                 html_str = conv.orchestrator.render_html_preview(
                     job_analysis=conv.state["job_analysis"],
                     customizations=customizations,
@@ -6363,6 +6464,10 @@ def main():
     # Set up logging before anything else
     setup_logging(config)
 
+    app = create_app(args)
+    bundle_status = app.config.get('FRONTEND_BUNDLE_STATUS', 'unknown')
+    bundle_built_at = app.config.get('FRONTEND_BUNDLE_BUILT_AT', 'unknown')
+
     # ── Startup banner ────────────────────────────────────────────────────────
     model_source = (
         "env var"      if os.getenv("CV_LLM_MODEL")
@@ -6387,11 +6492,12 @@ def main():
         f"  │ port     │ {args.port}\n"
         f"  │ data     │ {args.master_data}\n"
         f"  │ output   │ {args.output_dir}\n"
+        f"  │ bundle   │ {bundle_status}\n"
+        f"  │ built at │ {bundle_built_at}\n"
         f"  └──────────┴──────────────────────────────────────────┘\n",
         flush=True,
     )
 
-    app = create_app(args)
     app.run(host=config.web_host, port=args.port, debug=args.debug)
 
 
