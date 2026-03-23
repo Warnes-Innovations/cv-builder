@@ -120,11 +120,8 @@ def require_server():
         (os.environ.get("CV_TEST_PROFILE") or "medium").strip().lower()
     )
 
-    if explicit_base_url:
-        port = _server_port(base_url)
-    else:
-        port = _free_port()
-        base_url = f"http://127.0.0.1:{port}"
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
 
     env = os.environ.copy()
     env.setdefault("FLASK_ENV", "testing")
