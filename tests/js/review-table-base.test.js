@@ -16,6 +16,7 @@ import {
   userSelections,
   updateInclusionCounts,
   switchTab,
+  loadTabContent,
   populateAnalysisTab,
   handleCustomizationResponse,
   showTableBasedReview,
@@ -23,21 +24,27 @@ import {
   _loadReviewPane,
   _updatePageEstimate,
 } from '../../web/review-table-base.js'
+import { initializeState, stateManager } from '../../web/state-manager.js'
 
 // ── DOM + global stubs ────────────────────────────────────────────────────
 
 beforeEach(() => {
   document.body.innerHTML = ''
-  // State globals
-  window.tabData = { analysis: null, customizations: null, cv: null }
+  global.localStorage = {
+    getItem: vi.fn(() => null),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+    clear: vi.fn(),
+  }
+  initializeState()
   window.pendingRecommendations = null
   window._savedDecisions = null
   window._reviewPaneLoaded = null
   window._activeReviewPane = 'experiences'
   window._masterSkills = []
-  window.isReconnecting = false
-  window.currentTab = 'job'
-  window.currentStage = 'job'
+  stateManager.setIsReconnecting(false)
+  stateManager.setCurrentTab('job')
+  stateManager.setCurrentStage('job')
   // Function stubs
   vi.stubGlobal('appendMessage', vi.fn())
   vi.stubGlobal('saveTabData', vi.fn())
@@ -71,16 +78,12 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  delete window.tabData
   delete window.pendingRecommendations
   delete window._savedDecisions
   delete window._reviewPaneLoaded
   delete window._activeReviewPane
   delete window._masterSkills
   delete window._rewritePanelCache
-  delete window.isReconnecting
-  delete window.currentTab
-  delete window.currentStage
 })
 
 // ── userSelections ────────────────────────────────────────────────────────
@@ -144,7 +147,7 @@ describe('switchTab', () => {
       <button class="tab" id="tab-job" aria-selected="true">Job</button>
       <button class="tab" id="tab-analysis" aria-selected="false">Analysis</button>
       <div id="document-content" class="full-width"></div>`
-    window.tabData = { analysis: null }
+    stateManager.setTabData('analysis', null)
   })
 
   it('sets active class on the selected tab', () => {
@@ -163,9 +166,9 @@ describe('switchTab', () => {
     expect(document.getElementById('tab-analysis').getAttribute('aria-selected')).toBe('true')
   })
 
-  it('updates window.currentTab', () => {
+  it('updates canonical currentTab state', () => {
     switchTab('analysis')
-    expect(window.currentTab).toBe('analysis')
+    expect(stateManager.getCurrentTab()).toBe('analysis')
   })
 
   it('adds full-width class for non-generate tabs', () => {
@@ -175,7 +178,7 @@ describe('switchTab', () => {
 
   it('removes full-width class for generate tab', () => {
     document.getElementById('document-content').classList.add('full-width')
-    window.tabData = { cv: { some: 'data' } }
+    stateManager.setTabData('cv', { some: 'data' })
     switchTab('generate')
     expect(document.getElementById('document-content').classList.contains('full-width')).toBe(false)
   })
@@ -197,6 +200,11 @@ describe('switchTab', () => {
       window._rewritePanelCache.warnings,
     )
   })
+
+  it('does not fail when tabData has not been initialized yet', async () => {
+    await expect(loadTabContent('download')).resolves.toBeUndefined()
+    expect(document.getElementById('document-content').innerHTML).toContain('Download')
+  })
 })
 
 // ── populateAnalysisTab ───────────────────────────────────────────────────
@@ -204,7 +212,7 @@ describe('switchTab', () => {
 describe('populateAnalysisTab', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="document-content"></div>'
-    window.tabData = { analysis: null }
+    stateManager.setTabData('analysis', null)
   })
 
   it('renders role title from analysis data', () => {
@@ -239,7 +247,20 @@ describe('populateAnalysisTab', () => {
   it('stores result in tabData.analysis', () => {
     const result = { title: 'Dev', required_skills: [] }
     populateAnalysisTab(result)
-    expect(window.tabData.analysis).toBe(result)
+    expect(stateManager.getTabData('analysis')).toBe(result)
+  })
+
+  it('does not persist invalid analysis state', () => {
+    const previous = { title: 'Existing', required_skills: [] }
+    stateManager.setTabData('analysis', previous)
+    globalThis.saveTabData.mockClear()
+
+    vi.stubGlobal('cleanJsonResponse', () => { throw new Error('bad JSON') })
+
+    populateAnalysisTab('unparseable')
+
+    expect(stateManager.getTabData('analysis')).toBe(previous)
+    expect(globalThis.saveTabData).not.toHaveBeenCalled()
   })
 
   it('renders error state when data is unparseable', () => {
@@ -264,9 +285,9 @@ describe('handleCustomizationResponse', () => {
     document.body.innerHTML = `
       <button class="tab" id="tab-exp-review"></button>
       <div id="document-content" class="full-width"></div>`
-    window.tabData = { customizations: null }
+    stateManager.setTabData('customizations', null)
     window.pendingRecommendations = null
-    window.isReconnecting = false
+    stateManager.setIsReconnecting(false)
     // populateReviewTab needs pendingRecommendations set; just let it no-op via DOM
   })
 
@@ -296,7 +317,7 @@ describe('handleCustomizationResponse', () => {
   })
 
   it('does not call appendMessage when isReconnecting', async () => {
-    window.isReconnecting = true
+    stateManager.setIsReconnecting(true)
     const data = { something_else: true }
     await handleCustomizationResponse(data)
     expect(globalThis.appendMessage).not.toHaveBeenCalled()
@@ -310,7 +331,7 @@ describe('showTableBasedReview', () => {
     document.body.innerHTML = `
       <button class="tab" id="tab-exp-review"></button>
       <div id="document-content" class="full-width"></div>`
-    window.tabData = { customizations: null }
+    stateManager.setTabData('customizations', null)
   })
 
   it('calls appendMessage with "No recommendations" when pendingRecommendations is null', async () => {
@@ -367,6 +388,20 @@ describe('switchReviewSubtab', () => {
     expect(globalThis.buildSkillsReviewTable).toHaveBeenCalled()
   })
 
+  it('retries pane load after a first failure', async () => {
+    window._reviewPaneLoaded = {}
+    globalThis.buildSkillsReviewTable
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(undefined)
+
+    await expect(switchReviewSubtab('skills')).rejects.toThrow('temporary failure')
+    expect(window._reviewPaneLoaded.skills).toBeUndefined()
+
+    await switchReviewSubtab('skills')
+    expect(globalThis.buildSkillsReviewTable).toHaveBeenCalledTimes(2)
+    expect(window._reviewPaneLoaded.skills).toBe(true)
+  })
+
   it('does not re-call build function on repeat visit', async () => {
     window._reviewPaneLoaded = { skills: true }
     await switchReviewSubtab('skills')
@@ -409,6 +444,13 @@ describe('_loadReviewPane', () => {
   it('marks the pane as loaded', async () => {
     await _loadReviewPane('skills')
     expect(window._reviewPaneLoaded.skills).toBe(true)
+  })
+
+  it('does not mark pane as loaded when the builder fails', async () => {
+    globalThis.buildSkillsReviewTable.mockRejectedValueOnce(new Error('boom'))
+
+    await expect(_loadReviewPane('skills')).rejects.toThrow('boom')
+    expect(window._reviewPaneLoaded.skills).toBeUndefined()
   })
 })
 

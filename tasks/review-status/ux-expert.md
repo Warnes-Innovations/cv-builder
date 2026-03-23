@@ -10,7 +10,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # UX Expert Review Status
 
-**Last Updated:** 2026-03-22 23:09 EDT
+**Last Updated:** 2026-03-22 23:59 EDT
 
 **Executive Summary:** This file captures the source-verified UX expert review snapshot separately from the story specification so sub-agents can work in parallel safely. This legacy snapshot has been normalized to the current section structure without re-running the UX review.
 
@@ -34,7 +34,7 @@ The preserved UX findings below are primarily application and workflow findings 
 
 **Key evidence references:**
 - US-U1: workflow steps + active/completed state → web/index.html:88, web/app.js:7589
-- US-U1: session restore targets last phase/tab and restores cached data → web/app.js:554, web/app.js:593
+- US-U1: session restore, tab-state hydration, and stale-session fallback now route through shared state/session modules, preserving last-known tab data when available and falling back to session selection when a supplied session is stale → web/state-manager.js:69-119, web/state-manager.js:140-151, web/review-table-base.js:38-45, web/review-table-base.js:78-106, web/session-manager.js:144-176, scripts/web_app.py:405-439, scripts/routes/session_routes.py:423-434, scripts/routes/auth_routes.py:99-107
 - US-U2: protected-site guidance and URL fallback messaging → web/app.js:1919, scripts/web_app.py:1706
 - US-U2: editable extracted confirmation fields after URL fetch → not found in relevant source files
 - US-U3: chunked analysis layout + keyword rank badges → web/app.js:2865, web/styles.css:188

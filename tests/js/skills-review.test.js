@@ -18,10 +18,22 @@ import {
   handleSkillsResponse,
   submitSkillDecisions,
 } from '../../web/skills-review.js'
+import { initializeState, stateManager } from '../../web/state-manager.js'
+
+function createLocalStorageMock() {
+  let store = {}
+  return {
+    getItem: key => Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null,
+    setItem: (key, value) => { store[key] = String(value) },
+    removeItem: key => { delete store[key] },
+    clear: () => { store = {} },
+  }
+}
 
 // ── Global stubs ──────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  vi.stubGlobal('localStorage', createLocalStorageMock())
   window.pendingRecommendations = null
   window._skillsOrdered = null
   window._savedDecisions = null
@@ -29,7 +41,8 @@ beforeEach(() => {
   window._allExperiences = []
   window.userSelections = { experiences: {}, skills: {} }
   window.waitingForSkillsResponse = false
-  window.tabData = { analysis: null }
+  initializeState()
+  stateManager.setTabData('analysis', null)
 
   vi.stubGlobal('appendMessage', vi.fn())
   vi.stubGlobal('showAlertModal', vi.fn())
@@ -54,7 +67,6 @@ afterEach(() => {
   delete window._allExperiences
   delete window.userSelections
   delete window.waitingForSkillsResponse
-  delete window.tabData
 })
 
 // ── moveSkillRow ──────────────────────────────────────────────────────────

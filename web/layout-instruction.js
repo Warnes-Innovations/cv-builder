@@ -16,6 +16,18 @@ const log = getLogger('layout-instruction');
 import { apiCall } from './api-client.js';
 import { stateManager } from './state-manager.js';
 
+function getCvArtifacts() {
+  return stateManager.getTabData('cv') || {};
+}
+
+function updateCvArtifacts(nextCvArtifacts) {
+  stateManager.setTabData('cv', nextCvArtifacts);
+}
+
+function setPreviewHtml(html) {
+  updateCvArtifacts({ ...getCvArtifacts(), '*.html': html });
+}
+
 /**
  * Initialize layout instruction UI and event handlers.
  * Called when layout tab is activated.
@@ -104,7 +116,7 @@ function initiateLayoutInstructions() {
   // /api/cv/generate-preview generates fresh HTML and stores it in session state.
   // Fall back to the legacy /api/layout-html endpoint if the session has no
   // customization data yet (e.g. session restored after full generation).
-  const cachedHtml = window.tabData?.cv?.['*.html'] || '';
+  const cachedHtml = getCvArtifacts()['*.html'] || '';
   if (cachedHtml) {
     displayLayoutPreview(cachedHtml);
   } else {
@@ -188,9 +200,7 @@ async function applyBaseFontSize(value) {
     const previewRes = await apiCall('POST', '/api/cv/generate-preview', {});
     if (previewRes.ok && previewRes.html) {
       displayLayoutPreview(previewRes.html);
-      if (!window.tabData) window.tabData = {};
-      if (!window.tabData.cv || typeof window.tabData.cv !== 'object') window.tabData.cv = {};
-      window.tabData.cv['*.html'] = previewRes.html;
+      setPreviewHtml(previewRes.html);
       stateManager?.setGenerationState?.({ phase: 'layout_review', previewAvailable: true });
     }
     if (statusEl) { statusEl.textContent = '✅ Applied'; setTimeout(() => { statusEl.textContent = ''; }, 2000); }
@@ -208,7 +218,7 @@ async function applyBaseFontSize(value) {
  * request body) when no session preview exists.
  */
 async function submitLayoutInstruction(instructionText) {
-  const currentHtml = window.tabData?.cv?.['*.html'] || '';
+  const currentHtml = getCvArtifacts()['*.html'] || '';
   const priorInstructions = window.layoutInstructions || [];
 
   try {
@@ -249,7 +259,7 @@ async function submitLayoutInstruction(instructionText) {
     displayLayoutPreview(newHtml);
 
     // Update state
-    window.tabData.cv['*.html'] = newHtml;
+    setPreviewHtml(newHtml);
 
     // Add to instruction history
     const instruction = {
@@ -288,11 +298,7 @@ async function _fetchAndDisplayLayoutPreview() {
     const data = await apiCall('POST', '/api/cv/generate-preview', {});
     if (data.ok && data.html) {
       displayLayoutPreview(data.html);
-      if (!window.tabData) window.tabData = {};
-      if (!window.tabData.cv || typeof window.tabData.cv !== 'object') {
-        window.tabData.cv = {};
-      }
-      window.tabData.cv['*.html'] = data.html;
+      setPreviewHtml(data.html);
       // Mark client state so completeLayoutReview() enters the staged generation path.
       stateManager?.setGenerationState?.({ phase: 'layout_review', previewAvailable: true });
       return;
@@ -306,11 +312,7 @@ async function _fetchAndDisplayLayoutPreview() {
     const data = await apiCall('GET', '/api/layout-html');
     if (data.ok && data.html) {
       displayLayoutPreview(data.html);
-      if (!window.tabData) window.tabData = {};
-      if (!window.tabData.cv || typeof window.tabData.cv !== 'object') {
-        window.tabData.cv = {};
-      }
-      window.tabData.cv['*.html'] = data.html;
+      setPreviewHtml(data.html);
     } else {
       log.warn('Layout preview not available:', data.error || 'no HTML returned');
     }
@@ -513,8 +515,7 @@ async function completeLayoutReview() {
       try {
         const finalRes = await apiCall('POST', '/api/cv/generate-final', {});
         if (finalRes && finalRes.ok && finalRes.outputs) {
-          if (!window.tabData) window.tabData = {};
-          window.tabData.cv = finalRes.outputs;
+          updateCvArtifacts(finalRes.outputs);
           stateManager?.setGenerationState?.({ phase: 'final_complete' });
         }
       } catch (_e) {

@@ -19,6 +19,7 @@ import {
   _dismissPriorClarifications,
   _loadPriorClarifications,
 } from '../../web/message-dispatch.js'
+import { initializeState, stateManager } from '../../web/state-manager.js'
 
 // ── DOM + global stubs ─────────────────────────────────────────────────────
 
@@ -30,6 +31,12 @@ function buildChatDom() {
 
 beforeEach(() => {
   document.body.innerHTML = ''
+  global.localStorage = {
+    getItem: vi.fn(() => null),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+  }
+  initializeState()
   vi.stubGlobal('isLoading', false)
   vi.stubGlobal('normalizeText', s => (s || '').trim())
   vi.stubGlobal('escapeHtml', s => String(s ?? ''))
@@ -116,7 +123,7 @@ describe('sendMessage', () => {
   })
 
   it('does nothing when isLoading is true', async () => {
-    vi.stubGlobal('isLoading', true)
+    stateManager.setLoading(true)
     document.getElementById('message-input').value = 'hello'
     await sendMessage()
     expect(globalThis.appendMessage).not.toHaveBeenCalled()
