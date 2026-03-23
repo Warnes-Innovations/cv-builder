@@ -17,6 +17,7 @@ import {
   saveRewriteEdit,
   updateRewriteTally,
   submitRewriteDecisions,
+  renderRewritePanel,
 } from '../../web/rewrite-review.js'
 
 // ── Global stubs ──────────────────────────────────────────────────────────
@@ -308,6 +309,22 @@ describe('updateRewriteTally', () => {
     updateRewriteTally()
     expect(document.getElementById('tally-accepted').textContent).toBe('1')
     expect(document.getElementById('tally-pending').textContent).toBe('0')
+  })
+})
+
+describe('renderRewritePanel', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+  })
+
+  it('syncs the live rewrite cache onto window', () => {
+    const rewrites = [
+      { id: 'rw-1', original: 'old', proposed: 'new' },
+    ]
+
+    renderRewritePanel(rewrites, [])
+
+    expect(window._rewritePanelCache).toEqual({ rewrites, warnings: [] })
   })
 })
 
