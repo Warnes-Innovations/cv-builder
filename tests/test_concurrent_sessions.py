@@ -256,7 +256,7 @@ class FakeConversationManager:
                 session_data = json.loads(
                     session_file.read_text(encoding="utf-8")
                 )
-            except Exception:
+            except (OSError, json.JSONDecodeError):
                 continue
             position_name = session_data.get("state", {}).get("position_name")
             if position_name and position_name not in names:
@@ -270,7 +270,7 @@ class FakeConversationManager:
                 session_data = json.loads(
                     session_file.read_text(encoding="utf-8")
                 )
-            except Exception:
+            except (OSError, json.JSONDecodeError):
                 continue
             if session_data.get("state", {}).get("position_name") == name:
                 candidates.append(session_file)
@@ -391,6 +391,13 @@ class FakeConversationManager:
         previous_suggestions: list,
         suggested_text: str,
     ) -> str:
+        del (
+            original_text,
+            experience_context,
+            user_instructions,
+            previous_suggestions,
+            suggested_text,
+        )
         return uuid.uuid4().hex[:12]
 
     def update_achievement_rewrite_outcome(
@@ -399,6 +406,7 @@ class FakeConversationManager:
         outcome: str,
         accepted_text: str | None = None,
     ) -> bool:
+        del log_id, outcome, accepted_text
         return True
 
 
@@ -726,7 +734,7 @@ def test_load_session_route_restores_saved_session_metadata(build_app):
         manager.conversation_history = [
             {"role": "assistant", "content": "Loaded from disk"}
         ]
-        manager._save_session()
+        manager.save_session()
         session_path = str(manager.session_file)
 
         evict = client.delete(f"/api/sessions/{session_id}/evict")
@@ -1450,12 +1458,17 @@ def test_screening_search_and_generate_routes_use_library_and_context(
             "industry": "life sciences",
         }
         manager.state["cover_letter_text"] = (
-            "Dear Hiring Manager,\nI lead platform modernization and data science delivery across regulated environments."
+            "Dear Hiring Manager,\n"
+            "I lead platform modernization and data science delivery "
+            "across regulated environments."
         )
         master_path = Path(orchestrator.master_data_path)
         master_payload = json.loads(master_path.read_text(encoding="utf-8"))
         master_payload["experience"][0]["achievements"] = [
-            "Led a cross-functional platform modernization across research and engineering.",
+            (
+                "Led a cross-functional platform modernization across "
+                "research and engineering."
+            ),
             "Improved model deployment quality and stakeholder adoption.",
         ]
         master_path.write_text(json.dumps(master_payload), encoding="utf-8")
@@ -1468,8 +1481,14 @@ def test_screening_search_and_generate_routes_use_library_and_context(
             json.dumps(
                 [
                     {
-                        "question": "Describe a time you led a cross-functional platform effort.",
-                        "response_text": "I aligned science, engineering, and product to deliver measurable adoption gains.",
+                        "question": (
+                            "Describe a time you led a cross-functional "
+                            "platform effort."
+                        ),
+                        "response_text": (
+                            "I aligned science, engineering, and product "
+                            "to deliver measurable adoption gains."
+                        ),
                         "topic_tag": "leadership",
                         "format": "star",
                     }
@@ -1487,7 +1506,10 @@ def test_screening_search_and_generate_routes_use_library_and_context(
                 json={
                     "session_id": session_id,
                     "owner_token": "owner-a",
-                    "question": "Tell us about leading a cross-functional platform modernization effort.",
+                    "question": (
+                        "Tell us about leading a cross-functional platform "
+                        "modernization effort."
+                    ),
                 },
             )
 
@@ -1496,7 +1518,10 @@ def test_screening_search_and_generate_routes_use_library_and_context(
                 json={
                     "session_id": session_id,
                     "owner_token": "owner-a",
-                    "question": "Tell us about leading a cross-functional platform modernization effort.",
+                    "question": (
+                        "Tell us about leading a cross-functional platform "
+                        "modernization effort."
+                    ),
                     "format": "star",
                     "experience_indices": [0],
                     "prior_response": "Prior screening draft",
@@ -1532,7 +1557,10 @@ def test_screening_save_route_writes_outputs_and_library(build_app):
         responses = [
             {
                 "question": "Describe a time you improved model quality.",
-                "response_text": "I redesigned validation workflows and improved model precision by 18% while reducing false positives.",
+                "response_text": (
+                    "I redesigned validation workflows and improved model "
+                    "precision by 18% while reducing false positives."
+                ),
                 "topic_tag": "modeling",
                 "format": "star",
             }
@@ -1832,7 +1860,7 @@ def test_post_analysis_questions_route_handles_missing_analysis_and_fallback(
     )
 
 
-def test_session_listing_and_load_items_routes_include_saved_sessions_and_files(
+def test_session_listing_and_load_items_include_saved_files(
     build_app,
 ):
     app, tracker = build_app()
@@ -1850,7 +1878,7 @@ def test_session_listing_and_load_items_routes_include_saved_sessions_and_files(
                 "generated_files": {"human_pdf": "cv.pdf"},
             }
         )
-        manager._save_session()
+        manager.save_session()
 
         with patch(
             "utils.config.get_config",
@@ -1892,7 +1920,7 @@ def test_position_routes_list_positions_and_open_latest_session(build_app):
                 "job_analysis": {"title": "Director of Platform AI"},
             }
         )
-        prior_manager._save_session()
+        prior_manager.save_session()
 
         session_id = _new_session(client)
         _claim_session(client, session_id, "owner-a")
@@ -1938,7 +1966,7 @@ def test_rename_session_route_updates_disk_and_active_manager(build_app):
         session_id = _new_session(client)
         manager = _manager_for_session(tracker, session_id)
         manager.state["position_name"] = "Original Position"
-        manager._save_session()
+        manager.save_session()
         session_path = str(manager.session_file)
 
         with patch(
@@ -1977,12 +2005,12 @@ def test_delete_session_and_trash_routes_manage_session_lifecycle(build_app):
         session_id = _new_session(client)
         manager = _manager_for_session(tracker, session_id)
         manager.state["position_name"] = "Trash Candidate"
-        manager._save_session()
+        manager.save_session()
 
         second_session_id = _new_session(client)
         second_manager = _manager_for_session(tracker, second_session_id)
         second_manager.state["position_name"] = "Trash Candidate Two"
-        second_manager._save_session()
+        second_manager.save_session()
 
         with patch(
             "scripts.web_app.get_config",
@@ -2064,7 +2092,7 @@ def test_intake_metadata_and_prior_clarifications_routes_use_session_files(
                 },
             }
         )
-        prior_manager._save_session()
+        prior_manager.save_session()
 
         session_id = _new_session(client)
         _claim_session(client, session_id, "owner-a")
@@ -2722,8 +2750,13 @@ def test_persuasion_check_route_uses_selected_generated_experiences(build_app):
         selected_experiences = [
             {"id": "exp-selected", "achievements": ["Built platform"]}
         ]
-        manager.orchestrator._select_content_hybrid = MagicMock(
+        select_content_hybrid = MagicMock(
             return_value={"experiences": selected_experiences}
+        )
+        setattr(
+            manager.orchestrator,
+            "_select_content_hybrid",
+            select_content_hybrid,
         )
         manager.orchestrator.check_persuasion = MagicMock(
             return_value={
@@ -2751,7 +2784,7 @@ def test_persuasion_check_route_uses_selected_generated_experiences(build_app):
                 "strong_count": 0,
             },
         }
-        manager.orchestrator._select_content_hybrid.assert_called_once_with(
+        select_content_hybrid.assert_called_once_with(
             manager.state["job_analysis"],
             manager.state["customizations"],
         )
@@ -2774,8 +2807,13 @@ def test_persuasion_check_route_falls_back_to_master_data_on_selection_error(
         manager.orchestrator.master_data["experience"] = [
             {"id": "exp-master", "achievements": ["Helped various teams"]}
         ]
-        manager.orchestrator._select_content_hybrid = MagicMock(
+        select_content_hybrid = MagicMock(
             side_effect=RuntimeError("selection failed")
+        )
+        setattr(
+            manager.orchestrator,
+            "_select_content_hybrid",
+            select_content_hybrid,
         )
         manager.orchestrator.check_persuasion = MagicMock(
             return_value={
@@ -2794,6 +2832,7 @@ def test_persuasion_check_route_falls_back_to_master_data_on_selection_error(
         )
 
         assert response.status_code == 200
+        select_content_hybrid.assert_called_once()
         manager.orchestrator.check_persuasion.assert_called_once_with(
             manager.orchestrator.master_data["experience"]
         )
@@ -2892,8 +2931,10 @@ def test_fetch_job_url_route_extracts_html_and_updates_session_state(
             <article class="job-description">
               <h1>Senior Data Scientist</h1>
               <p>Acme Corp</p>
-              <p>Lead machine learning initiatives across analytics, forecasting, experimentation, and platform delivery.</p>
-              <p>Partner with engineering and product to deliver measurable impact across teams and customers.</p>
+              <p>Lead machine learning initiatives across analytics,
+              forecasting, experimentation, and platform delivery.</p>
+              <p>Partner with engineering and product to deliver
+              measurable impact across teams and customers.</p>
             </article>
             <script>window.bad = true;</script>
           </body>
@@ -2936,13 +2977,16 @@ def test_fetch_job_url_route_prefers_json_ld_when_body_is_too_short(build_app):
     app, tracker = build_app()
     json_ld_description = (
         "Principal Machine Learning Engineer at Example Labs. "
-        "Lead platform modernization, mentor applied scientists, own production ML systems, "
-        "and drive measurable improvements across forecasting and decision support capabilities."
+        "Lead platform modernization, mentor applied scientists, own "
+        "production ML systems, and drive measurable improvements across "
+        "forecasting and decision support capabilities."
     )
     html = f"""
         <html>
           <head>
-            <script type="application/ld+json">{json.dumps({"description": json_ld_description})}</script>
+                        <script type="application/ld+json">
+                            {json.dumps({"description": json_ld_description})}
+                        </script>
           </head>
           <body><main>Too short</main></body>
         </html>
@@ -3004,7 +3048,10 @@ def test_upload_file_route_extracts_text_from_supported_formats(build_app):
             data={
                 "file": (
                     io.BytesIO(
-                        b"Senior Data Scientist\nAcme Corp\nLead forecasting, experimentation, and model deployment across a global platform."
+                        b"Senior Data Scientist\n"
+                        b"Acme Corp\n"
+                        b"Lead forecasting, experimentation, and model "
+                        b"deployment across a global platform."
                     ),
                     "job.txt",
                 )
@@ -3017,7 +3064,11 @@ def test_upload_file_route_extracts_text_from_supported_formats(build_app):
             data={
                 "file": (
                     io.BytesIO(
-                        b"<html><head><title>ignore</title></head><body><nav>ignore</nav><main><h1>Principal Engineer</h1><p>Drive architecture, reliability, and developer productivity across critical systems.</p></main></body></html>"
+                        b"<html><head><title>ignore</title></head><body>"
+                        b"<nav>ignore</nav><main><h1>Principal Engineer</h1>"
+                        b"<p>Drive architecture, reliability, and developer "
+                        b"productivity across critical systems.</p></main>"
+                        b"</body></html>"
                     ),
                     "job.html",
                 )
@@ -3101,7 +3152,7 @@ def test_load_job_file_route_reads_repo_sample_and_updates_session_state(
     assert manager.state["position_name"] is not None
 
 
-def test_load_job_file_route_falls_back_to_home_cv_files_and_handles_missing_file(
+def test_load_job_file_route_falls_back_to_home_cv_files(
     build_app,
 ):
     app, tracker = build_app()
@@ -3113,7 +3164,8 @@ def test_load_job_file_route_falls_back_to_home_cv_files_and_handles_missing_fil
         fallback_file = cv_dir / "custom_job.txt"
         fallback_text = (
             "Director of Data Science\nNorthwind Labs\n"
-            "Own strategy, hiring, and platform delivery across a high-growth analytics organization."
+            "Own strategy, hiring, and platform delivery across a high-"
+            "growth analytics organization."
         )
         fallback_file.write_text(fallback_text, encoding="utf-8")
 

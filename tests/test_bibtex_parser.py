@@ -16,14 +16,12 @@ Covers:
   - Missing-field resilience
 """
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
-
-from utils.bibtex_parser import (
+from scripts.utils.bibtex_parser import (
     parse_bibtex_file,
     format_publication,
     filter_publications,
@@ -88,8 +86,14 @@ _BIB_WITH_OTHERS = r"""
 }
 
 @article{kooner2008genome,
-    author  = {Kooner, J.S. and Chambers, J.C. and Aguilar-Salina, C.A. and others},
-    title   = {Genome-wide scan identifies variation in MLXIPL associated with plasma triglycerides in man},
+    author  = {
+        Kooner, J.S. and Chambers, J.C.
+        and Aguilar-Salina, C.A. and others
+    },
+    title   = {
+        Genome-wide scan identifies variation in MLXIPL associated with
+        plasma triglycerides in man
+    },
     journal = {Nature Genetics},
     year    = {2008},
 }
@@ -107,7 +111,10 @@ _BIB_WITH_SINGLE_TOKEN_AUTHOR = r"""
 def _write_bib(content: str) -> str:
     """Write bib content to a temp file and return its path."""
     f = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".bib", delete=False, encoding="utf-8"
+        mode="w",
+        suffix=".bib",
+        delete=False,
+        encoding="utf-8",
     )
     f.write(content)
     f.close()
@@ -286,7 +293,10 @@ class TestFilterPublications(unittest.TestCase):
         )
         for pub in result.values():
             self.assertGreaterEqual(int(pub["year"]), 2023)
-        self.assertNotIn("warnes2020stats", result)
+        self.assertNotIn(
+            "warnes2020stats",
+            result,
+        )
 
     def test_filter_by_keyword(self):
         result = filter_publications(
@@ -401,7 +411,7 @@ class TestRoundTrip(unittest.TestCase):
         self.assertTrue(rt_article["fields"]["author"].strip())
 
     def test_all_author_last_names_present(self):
-        """All three authors' last names must appear in the round-tripped author field."""
+        """All author last names must appear after round-trip."""
         author_str = self.pubs_rt["rt_article"]["fields"]["author"]
         for last_name in ("Warnes", "Berg", "Smith"):
             self.assertIn(
@@ -411,8 +421,10 @@ class TestRoundTrip(unittest.TestCase):
             )
 
     def test_von_particle_preserved(self):
-        """'van der' von-part should appear in the reconstructed author string."""
-        author_str = self.pubs_rt["rt_article"]["fields"]["author"]
+        """'van der' should survive in the reconstructed author string."""
+        author_str = self.pubs_rt["rt_article"]["fields"][
+            "author"
+        ]
         # pybtex stores 'van' and 'der' as prelast_names; both must survive
         self.assertIn(
             "van",
@@ -433,7 +445,7 @@ class TestRoundTrip(unittest.TestCase):
         self.assertTrue(rt_book["fields"]["editor"].strip())
 
     def test_all_editor_last_names_present(self):
-        """Both editors' last names must appear in the round-tripped editor field."""
+        """Both editor last names must appear after round-trip."""
         editor_str = self.pubs_rt["rt_book"]["fields"]["editor"]
         for last_name in ("Jones", "Brown"):
             self.assertIn(
@@ -442,7 +454,7 @@ class TestRoundTrip(unittest.TestCase):
                 f"Editor last name '{last_name}' missing from: {editor_str!r}",
             )
 
-    # --- non-person fields exactly preserved --------------------------------
+    # --- non-person fields exactly preserved ------------------------------
 
     def test_standard_fields_exact_match(self):
         """Every non-person field must survive with the same value."""
@@ -490,7 +502,10 @@ class TestRoundTrip(unittest.TestCase):
         self.assertEqual(self.pubs_rt["rt_book"]["type"], "book")
 
     def test_entry_keys_preserved(self):
-        self.assertIn("rt_article", self.pubs_rt)
+        self.assertIn(
+            "rt_article",
+            self.pubs_rt,
+        )
         self.assertIn("rt_book", self.pubs_rt)
 
     # --- helper: serialize_bibtex_entry preview ----------------------------
@@ -514,7 +529,7 @@ class TestRoundTrip(unittest.TestCase):
     # --- double round-trip stability ---------------------------------------
 
     def test_double_roundtrip_stable(self):
-        """A second parse → serialize → parse must give the same fields as the first."""
+        """A second round-trip must preserve the same fields."""
         bib_text2 = serialize_publications_to_bibtex(self.pubs_rt)
         pubs_rt2 = bibtex_text_to_publications(bib_text2)
 
@@ -522,16 +537,18 @@ class TestRoundTrip(unittest.TestCase):
             fields1 = self.pubs_rt[key]["fields"]
             fields2 = pubs_rt2[key]["fields"]
             self.assertEqual(
-                set(fields1.keys()),
-                set(fields2.keys()),
+                set(fields1),
+                set(fields2),
                 f"Field keys differ on second round-trip for '{key}'",
             )
             for fname, fval in fields1.items():
                 self.assertEqual(
                     fval,
                     fields2.get(fname),
-                    f"Field '{fname}' of '{key}' changed on second round-trip: "
-                    f"{fval!r} → {fields2.get(fname)!r}",
+                    (
+                        f"Field '{fname}' of '{key}' changed on second "
+                        f"round-trip: {fval!r} → {fields2.get(fname)!r}"
+                    ),
                 )
 
 
@@ -561,17 +578,21 @@ class TestBibtexTextToPublications(unittest.TestCase):
 
     def test_write_failure_returns_empty_dict_not_unbound_error(self):
         """If BibTeX parsing raises internally, the helper must return {}."""
-        from unittest.mock import patch
-
         with patch(
-            "utils.bibtex_parser._load_bibtex_entries",
+            "scripts.utils.bibtex_parser._load_bibtex_entries",
             side_effect=OSError("parse failed"),
         ):
             result = bibtex_text_to_publications("@article{x, title={T},}")
         self.assertEqual(result, {})
 
     def test_valid_minimal_entry_parses_correctly(self):
-        bibtex = "@article{foo2024,\n  author = {Foo, Bar},\n  title = {A Test},\n  year = {2024},\n}\n"
+        bibtex = (
+            "@article{foo2024,\n"
+            "  author = {Foo, Bar},\n"
+            "  title = {A Test},\n"
+            "  year = {2024},\n"
+            "}\n"
+        )
         result = bibtex_text_to_publications(bibtex)
         self.assertIn("foo2024", result)
         self.assertEqual(result["foo2024"]["type"], "article")
