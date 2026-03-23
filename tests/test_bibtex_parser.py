@@ -470,14 +470,9 @@ class TestBibtexTextToPublications(unittest.TestCase):
         self.assertEqual(result, {})
 
     def test_write_failure_returns_empty_dict_not_unbound_error(self):
-        """If the temp file write raises (e.g. disk full), must return {} not UnboundLocalError."""
-        from unittest.mock import patch, MagicMock
-        mock_file = MagicMock()
-        mock_file.__enter__ = MagicMock(return_value=mock_file)
-        mock_file.__exit__ = MagicMock(return_value=False)
-        mock_file.write.side_effect = OSError('No space left on device')
-        mock_file.name = '/tmp/fake.bib'
-        with patch('tempfile.NamedTemporaryFile', return_value=mock_file):
+        """If BibTeX parsing raises internally, the helper must return {}."""
+        from unittest.mock import patch
+        with patch('utils.bibtex_parser._load_bibtex_entries', side_effect=OSError('parse failed')):
             result = bibtex_text_to_publications('@article{x, title={T},}')
         self.assertEqual(result, {})
 
