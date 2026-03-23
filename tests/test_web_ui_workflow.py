@@ -34,21 +34,23 @@ from pathlib import Path
 
 import pytest
 import requests
-
-sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
+from tests.helpers.example_profiles import materialize_example_profile
 
 _PROJECT_ROOT = Path(__file__).parent.parent
 _STARTUP_TIMEOUT = 15  # seconds
+_REQUEST_TIMEOUT = 10
+_GENERATION_REQUEST_TIMEOUT = 30
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _free_port() -> int:
     """Return an OS-assigned free TCP port."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('127.0.0.1', 0))
+        s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
 
 
@@ -61,7 +63,7 @@ def _wait_for_server(url: str, timeout: int) -> bool:
             data = r.json()
             if isinstance(data, dict) and data.get("ok") is True:
                 return True
-        except Exception:
+        except (requests.RequestException, ValueError):
             pass
         time.sleep(0.5)
     return False
@@ -71,8 +73,9 @@ def _wait_for_server(url: str, timeout: int) -> bool:
 # Server fixture
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="module")
-def server():
+
+@pytest.fixture(scope="module", name="running_server")
+def server_fixture():
     """Start a fresh Flask server on a free port; yield its base URL.
 
     Uses a temporary directory for session files so the test is isolated
@@ -83,12 +86,26 @@ def server():
     base_url = f"http://127.0.0.1:{port}"
 
     with tempfile.TemporaryDirectory(prefix="cv_builder_test_") as tmpdir:
+        fixture_root = Path(tmpdir)
+        master_data_path, publications_path, output_dir = (
+            materialize_example_profile(
+                fixture_root,
+                profile_name="complex",
+            )
+        )
         cmd = [
             sys.executable,
             str(_PROJECT_ROOT / "scripts" / "web_app.py"),
-            "--llm-provider", "stub",
-            "--port", str(port),
-            "--output-dir", tmpdir,
+            "--llm-provider",
+            "stub",
+            "--port",
+            str(port),
+            "--master-data",
+            str(master_data_path),
+            "--publications",
+            str(publications_path),
+            "--output-dir",
+            str(output_dir),
         ]
         env = os.environ.copy()
         env["FLASK_ENV"] = "testing"
@@ -148,71 +165,75 @@ Responsibilities:
 """
 
 
-def test_web_ui_workflow(server):
+def test_web_ui_workflow(running_server):
     """Test complete workflow against a self-managed server."""
-    base_url = server
+    base_url = running_server
 
     print("\n🧪 Testing Complete Web UI Workflow Integration")
     print("=" * 60)
 
     # Step 0: Create a session
     print("\n🔑 Step 0: Creating session...")
-    r = requests.post(f"{base_url}/api/sessions/new")
+    r = requests.post(
+        f"{base_url}/api/sessions/new",
+        timeout=_REQUEST_TIMEOUT,
+    )
     assert r.status_code == 200, f"Session creation failed: {r.status_code}"
     session_id = r.json()["session_id"]
     print(f"  ✅ Session: {session_id}")
 
-    def _get(path, **kwargs):
-        params = kwargs.pop("params", {})
+    def _get(path, params=None, timeout=_REQUEST_TIMEOUT):
+        params = dict(params or {})
         params["session_id"] = session_id
-        return requests.get(f"{base_url}{path}", params=params, **kwargs)
+        return requests.get(
+            f"{base_url}{path}",
+            params=params,
+            timeout=timeout,
+        )
 
-    def _post(path, body=None, **kwargs):
+    def _post(path, body=None, timeout=_REQUEST_TIMEOUT):
         body = {**(body or {}), "session_id": session_id}
         return requests.post(
             f"{base_url}{path}",
             json=body,
             headers={"Content-Type": "application/json"},
-            **kwargs,
+            timeout=timeout,
         )
 
     # Step 1: Job description upload
     print("\n📄 Step 1: Uploading job description...")
     r = _post("/api/job", {"job_text": _JOB_TEXT})
-    assert r.status_code == 200, (
-        f"Job upload failed: {r.status_code} — {r.text}"
-    )
+    assert (
+        r.status_code == 200
+    ), f"Job upload failed: {r.status_code} — {r.text}"
     print("  ✅ Job description uploaded")
 
     # Step 2: Status after upload
     print("\n📊 Step 2: Checking status after upload...")
     r = _get("/api/status")
     status = r.json()
-    assert status.get("phase"), (
-        f"No phase in /api/status response: {status}"
-    )
+    assert status.get("phase"), f"No phase in /api/status response: {status}"
     print(f"  ✅ Phase: {status['phase']}")
 
     # Step 3: Analyse job
     print("\n🔍 Step 3: Analysing job description...")
     r = _post("/api/action", {"action": "analyze_job", "job_text": _JOB_TEXT})
-    assert r.status_code == 200, (
-        f"Job analysis failed: {r.status_code} — {r.text}"
-    )
+    assert (
+        r.status_code == 200
+    ), f"Job analysis failed: {r.status_code} — {r.text}"
     result = r.json()
-    print(f"  ✅ Analysis done: "
-          f"{str(result.get('result', ''))[:80]}...")
+    print(f"  ✅ Analysis done: {str(result.get('result', ''))[:80]}...")
 
     # Step 4: Customization recommendations
     print("\n🎯 Step 4: Generating customizations...")
     r = _post("/api/action", {"action": "recommend_customizations"})
-    assert r.status_code == 200, (
-        f"Customizations failed: {r.status_code} — {r.text}"
-    )
+    assert (
+        r.status_code == 200
+    ), f"Customizations failed: {r.status_code} — {r.text}"
     print("  ✅ Customizations generated")
 
-    # Step 5: Wait for customization phase
-    print("\n⏱️  Step 5: Waiting for customization phase...")
+    # Step 5: Progress through rewrite and spell-check review if needed
+    print("\n⏱️  Step 5: Waiting for generation readiness...")
     for i in range(30):
         time.sleep(1)
         r = _get("/api/status")
@@ -220,15 +241,50 @@ def test_web_ui_workflow(server):
         if status.get("phase") == "generation":
             print("  ✅ In generation phase")
             break
+        if status.get("phase") == "rewrite_review":
+            rewrites_response = _get("/api/rewrites")
+            assert rewrites_response.status_code == 200, (
+                "Rewrite fetch failed: "
+                f"{rewrites_response.status_code} — {rewrites_response.text}"
+            )
+            rewrites = rewrites_response.json().get("rewrites", [])
+            decisions = [
+                {"id": rewrite["id"], "outcome": "accept", "final_text": None}
+                for rewrite in rewrites
+            ]
+            approval = _post("/api/rewrites/approve", {"decisions": decisions})
+            assert approval.status_code == 200, (
+                "Rewrite approval failed: "
+                f"{approval.status_code} — {approval.text}"
+            )
+            print(f"  ✅ Approved {len(decisions)} rewrite(s)")
+            continue
+        if status.get("phase") == "spell_check":
+            spell_complete = _post(
+                "/api/spell-check-complete",
+                {"spell_audit": []},
+            )
+            assert spell_complete.status_code == 200, (
+                "Spell-check completion failed: "
+                f"{spell_complete.status_code} — {spell_complete.text}"
+            )
+            print("  ✅ Completed spell-check phase")
+            continue
         if i > 0 and i % 5 == 0:
             print(f"  ⏳ {i}s — phase: {status.get('phase')}")
+    else:
+        pytest.fail(f"Workflow never reached generation phase: {status}")
 
     # Step 6: Trigger CV generation
     print("\n⚙️  Step 6: Triggering CV generation...")
-    r = _post("/api/action", {"action": "generate_cv"})
-    assert r.status_code == 200, (
-        f"CV generation failed: {r.status_code} — {r.text}"
+    r = _post(
+        "/api/action",
+        {"action": "generate_cv"},
+        timeout=_GENERATION_REQUEST_TIMEOUT,
     )
+    assert (
+        r.status_code == 200
+    ), f"CV generation failed: {r.status_code} — {r.text}"
     print("  ✅ Generation initiated")
 
     # Step 7: Wait for generated files
@@ -266,9 +322,9 @@ def test_web_ui_workflow(server):
 
     for filename in files_to_test:
         dl = _get(f"/api/download/{filename}")
-        assert dl.status_code == 200, (
-            f"Download failed for {filename}: {dl.status_code}"
-        )
+        assert (
+            dl.status_code == 200
+        ), f"Download failed for {filename}: {dl.status_code}"
         print(f"  ✅ {filename} ({len(dl.content)} bytes)")
 
     print("\n✅ WORKFLOW TEST COMPLETED SUCCESSFULLY!")

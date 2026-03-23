@@ -25,7 +25,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from scripts.utils.conversation_manager import Phase  # noqa: E402
 from scripts.web_app import create_app  # noqa: E402
 
-
 SAMPLE_MASTER_DATA = {
     "personal_info": {
         "name": "Jane Example",
@@ -43,9 +42,13 @@ SAMPLE_MASTER_DATA = {
     "selected_achievements": [
         {"id": "sa_001", "text": "Built a forcasting platform"}
     ],
-    "education": [{"degree": "Doctroate", "institution": "Example University"}],
+    "education": [
+        {"degree": "Doctroate", "institution": "Example University"}
+    ],
     "awards": [{"title": "Top Perfomer"}],
-    "certifications": [{"name": "Machien Learning Cert", "issuer": "Example Org"}],
+    "certifications": [
+        {"name": "Machien Learning Cert", "issuer": "Example Org"}
+    ],
     "professional_summaries": {"default": "Experienced analytics leader."},
     "publications": [
         {
@@ -104,9 +107,13 @@ class FakeOrchestrator:
         del approved_rewrites, spell_audit, max_skills, use_semantic_match
         return {
             "personal_info": dict(self.master_data.get("personal_info", {})),
-            "summary": self.master_data.get("professional_summaries", {}).get("default", ""),
+            "summary": self.master_data.get("professional_summaries", {}).get(
+                "default", ""
+            ),
             "experiences": list(self.master_data.get("experience", [])),
-            "achievements": list(self.master_data.get("selected_achievements", [])),
+            "achievements": list(
+                self.master_data.get("selected_achievements", [])
+            ),
             "skills": list(self.master_data.get("skills", [])),
             "education": list(self.master_data.get("education", [])),
             "certifications": list(self.master_data.get("certifications", [])),
@@ -125,7 +132,12 @@ class FakeOrchestrator:
             "professional_summary": selected_content.get("summary", ""),
             "experiences": selected_content.get("experiences", []),
             "education": selected_content.get("education", []),
-            "skills_by_category": [{"category": "Programming", "skills": selected_content.get("skills", [])}],
+            "skills_by_category": [
+                {
+                    "category": "Programming",
+                    "skills": selected_content.get("skills", []),
+                }
+            ],
             "awards": selected_content.get("awards", []),
             "certifications": selected_content.get("certifications", []),
             "publications": selected_content.get("publications", []),
@@ -306,9 +318,7 @@ class FakeConversationManager:
         self.state["phase"] = Phase.SPELL_CHECK
         self._save_session()
         rejected_count = sum(
-            1
-            for decision in decisions
-            if decision.get("outcome") == "reject"
+            1 for decision in decisions if decision.get("outcome") == "reject"
         )
         return {
             "approved_count": len(decisions) - rejected_count,
@@ -599,9 +609,7 @@ def test_session_aware_routes_enforce_session_and_owner_tokens(build_app):
                 "session_id": session_id,
                 "owner_token": "owner-b",
                 "job_text": (
-                    "Staff Data Scientist\n"
-                    "Example Co\n"
-                    "Build ML systems."
+                    "Staff Data Scientist\nExample Co\nBuild ML systems."
                 ),
             },
         )
@@ -619,9 +627,7 @@ def test_session_aware_routes_enforce_session_and_owner_tokens(build_app):
                 "session_id": session_id,
                 "owner_token": "owner-a",
                 "job_text": (
-                    "Staff Data Scientist\n"
-                    "Example Co\n"
-                    "Build ML systems."
+                    "Staff Data Scientist\nExample Co\nBuild ML systems."
                 ),
             },
         )
@@ -635,9 +641,7 @@ def test_session_aware_routes_enforce_session_and_owner_tokens(build_app):
         assert status.status_code == 200
         status_payload = status.get_json()
         assert status_payload["job_description_text"] == (
-            "Staff Data Scientist\n"
-            "Example Co\n"
-            "Build ML systems."
+            "Staff Data Scientist\nExample Co\nBuild ML systems."
         )
         assert (
             status_payload["position_name"]
@@ -947,8 +951,7 @@ def test_action_route_enforces_ownership_and_forwards_payload(build_app):
         )
         assert unsupported.status_code == 400
         assert (
-            unsupported.get_json()["error"]
-            == "Invalid or unsupported action"
+            unsupported.get_json()["error"] == "Invalid or unsupported action"
         )
 
         success = client.post(
@@ -1022,8 +1025,7 @@ def test_rewrite_approval_route_updates_phase_and_enforces_ownership(
         )
         assert invalid_decisions.status_code == 400
         assert (
-            invalid_decisions.get_json()["error"]
-            == "decisions must be a list"
+            invalid_decisions.get_json()["error"] == "decisions must be a list"
         )
 
         decisions = [
@@ -1153,8 +1155,10 @@ def test_spell_check_sections_route_skips_semantic_match_scoring(build_app):
         session_id = _new_session(client)
         orchestrator = _orchestrator_for_session(tracker, session_id)
         if orchestrator.llm_client is not None:
-            orchestrator.llm_client.semantic_match.side_effect = AssertionError(
-                "spell-check sections should not call semantic_match"
+            orchestrator.llm_client.semantic_match.side_effect = (
+                AssertionError(
+                    "spell-check sections should not call semantic_match"
+                )
             )
 
         response = client.get(
@@ -1300,8 +1304,7 @@ def test_summary_and_master_data_routes_enforce_ownership(build_app):
         master_path = Path(tracker["orchestrators"][0].master_data_path)
         master_data = json.loads(master_path.read_text(encoding="utf-8"))
         assert (
-            master_data["professional_summaries"]["targeted"]
-            == "New summary"
+            master_data["professional_summaries"]["targeted"] == "New summary"
         )
         assert any(
             achievement.get("id") == "ach-001"
@@ -1405,7 +1408,10 @@ def test_cover_letter_routes_persist_text_and_metadata(build_app):
         assert generated_payload["ok"] is True
         assert generated_payload["text"].startswith("Date: ")
         assert "Generated text" in generated_payload["text"]
-        assert manager.state["cover_letter_params"]["highlight"] == "large-scale experimentation"
+        assert (
+            manager.state["cover_letter_params"]["highlight"]
+            == "large-scale experimentation"
+        )
         assert manager.state["cover_letter_text"] == generated_payload["text"]
 
         saved = client.post(
@@ -1429,7 +1435,9 @@ def test_cover_letter_routes_persist_text_and_metadata(build_app):
     assert metadata["cover_letter_reused_from"] is None
 
 
-def test_screening_search_and_generate_routes_use_library_and_context(build_app):
+def test_screening_search_and_generate_routes_use_library_and_context(
+    build_app,
+):
     app, tracker = build_app()
 
     with app.test_client() as client:
@@ -1452,7 +1460,10 @@ def test_screening_search_and_generate_routes_use_library_and_context(build_app)
         ]
         master_path.write_text(json.dumps(master_payload), encoding="utf-8")
 
-        library_path = Path(orchestrator.master_data_path).parent / "response_library.json"
+        library_path = (
+            Path(orchestrator.master_data_path).parent
+            / "response_library.json"
+        )
         library_path.write_text(
             json.dumps(
                 [
@@ -1552,7 +1563,9 @@ def test_screening_save_route_writes_outputs_and_library(build_app):
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert metadata["screening_responses"] == responses
 
-    library_path = Path(orchestrator.master_data_path).parent / "response_library.json"
+    library_path = (
+        Path(orchestrator.master_data_path).parent / "response_library.json"
+    )
     assert library_path.exists()
     library = json.loads(library_path.read_text(encoding="utf-8"))
     assert library[-1]["company"] == "Example Co"
@@ -1686,8 +1699,7 @@ def test_post_analysis_questions_route_uses_llm_output_and_persists_questions(
 ):
     app, tracker = build_app()
     question_text = (
-        "Should I emphasize platform leadership or hands-on "
-        "architecture?"
+        "Should I emphasize platform leadership or hands-on architecture?"
     )
 
     with app.test_client() as client:
@@ -1791,9 +1803,7 @@ def test_post_analysis_questions_route_handles_missing_analysis_and_fallback(
         manager = _manager_for_session(tracker, session_id)
         orchestrator = _orchestrator_for_session(tracker, session_id)
         manager.state["job_description"] = (
-            "Director of Platform AI\n"
-            "Acme Labs\n"
-            "Lead platform strategy."
+            "Director of Platform AI\nAcme Labs\nLead platform strategy."
         )
         manager.state["job_analysis"] = {
             "role_level": "director",
@@ -1816,7 +1826,10 @@ def test_post_analysis_questions_route_handles_missing_analysis_and_fallback(
     assert fallback_payload["ok"] is True
     assert fallback_payload["source"] == "fallback"
     assert len(fallback_payload["questions"]) >= 1
-    assert manager.state["post_analysis_questions"] == fallback_payload["questions"]
+    assert (
+        manager.state["post_analysis_questions"]
+        == fallback_payload["questions"]
+    )
 
 
 def test_session_listing_and_load_items_routes_include_saved_sessions_and_files(
@@ -1861,7 +1874,9 @@ def test_session_listing_and_load_items_routes_include_saved_sessions_and_files(
     assert len(session_items) == 1
     assert session_items[0]["label"] == "Director of Platform AI at Acme Labs"
     assert session_items[0]["has_cv"] is True
-    assert any(item["filename"] == "data_science_lead.txt" for item in file_items)
+    assert any(
+        item["filename"] == "data_science_lead.txt" for item in file_items
+    )
 
 
 def test_position_routes_list_positions_and_open_latest_session(build_app):
@@ -1990,7 +2005,9 @@ def test_delete_session_and_trash_routes_manage_session_lifecycle(build_app):
                 json={"path": str(manager.session_file)},
             )
             trash_after_redelete = client.get("/api/trash")
-            delete_one_path = trash_after_redelete.get_json()["items"][0]["path"]
+            delete_one_path = trash_after_redelete.get_json()["items"][0][
+                "path"
+            ]
             deleted_one = client.post(
                 "/api/trash/delete",
                 json={"path": delete_one_path},
@@ -2053,9 +2070,7 @@ def test_intake_metadata_and_prior_clarifications_routes_use_session_files(
         _claim_session(client, session_id, "owner-a")
         manager = _manager_for_session(tracker, session_id)
         manager.state["job_description"] = (
-            "Director of Platform AI\n"
-            "Acme Labs\n"
-            "Own AI platform strategy."
+            "Director of Platform AI\nAcme Labs\nOwn AI platform strategy."
         )
 
         extracted = client.get(
@@ -2204,8 +2219,7 @@ def test_editing_and_rewrite_fetch_routes_enforce_ownership(build_app):
         )
         assert missing_text.status_code == 400
         assert (
-            missing_text.get_json()["error"]
-            == "achievement_text is required"
+            missing_text.get_json()["error"] == "achievement_text is required"
         )
 
         rewritten = client.post(
@@ -2614,8 +2628,7 @@ def test_cv_ats_score_route_enriches_customizations_from_session_state(
             }
         ]
         assert (
-            customizations_arg["selected_summary"]
-            == "Targeted summary text"
+            customizations_arg["selected_summary"] == "Targeted summary text"
         )
         assert mock_score.call_args.kwargs == {"basis": "review_checkpoint"}
         assert manager.state["generation_state"]["ats_score"] == returned_score
@@ -2868,7 +2881,9 @@ def test_fetch_job_url_route_returns_protected_site_guidance(build_app):
     assert "copy the job text manually" in payload["message"].lower()
 
 
-def test_fetch_job_url_route_extracts_html_and_updates_session_state(build_app):
+def test_fetch_job_url_route_extracts_html_and_updates_session_state(
+    build_app,
+):
     app, tracker = build_app()
     html = """
         <html>
@@ -2912,7 +2927,9 @@ def test_fetch_job_url_route_extracts_html_and_updates_session_state(build_app):
 
     manager = _manager_for_session(tracker, session_id)
     assert manager.state["job_description"] == payload["job_text"]
-    assert manager.state["position_name"] == "Senior Data Scientist at Acme Corp"
+    assert (
+        manager.state["position_name"] == "Senior Data Scientist at Acme Corp"
+    )
 
 
 def test_fetch_job_url_route_prefers_json_ld_when_body_is_too_short(build_app):
@@ -2925,7 +2942,7 @@ def test_fetch_job_url_route_prefers_json_ld_when_body_is_too_short(build_app):
     html = f"""
         <html>
           <head>
-            <script type="application/ld+json">{json.dumps({'description': json_ld_description})}</script>
+            <script type="application/ld+json">{json.dumps({"description": json_ld_description})}</script>
           </head>
           <body><main>Too short</main></body>
         </html>
@@ -3056,7 +3073,9 @@ def test_upload_file_route_rejects_missing_or_unsupported_inputs(build_app):
     assert too_short.get_json()["error"] == "Insufficient Content"
 
 
-def test_load_job_file_route_reads_repo_sample_and_updates_session_state(build_app):
+def test_load_job_file_route_reads_repo_sample_and_updates_session_state(
+    build_app,
+):
     app, tracker = build_app()
     expected_text = (
         Path(__file__).parent.parent / "sample_jobs" / "data_science_lead.txt"
@@ -3066,7 +3085,10 @@ def test_load_job_file_route_reads_repo_sample_and_updates_session_state(build_a
         session_id = _new_session(client)
         response = client.post(
             "/api/load-job-file",
-            json={"session_id": session_id, "filename": "data_science_lead.txt"},
+            json={
+                "session_id": session_id,
+                "filename": "data_science_lead.txt",
+            },
         )
 
     assert response.status_code == 200
@@ -3100,11 +3122,17 @@ def test_load_job_file_route_falls_back_to_home_cv_files_and_handles_missing_fil
                 session_id = _new_session(client)
                 fallback_response = client.post(
                     "/api/load-job-file",
-                    json={"session_id": session_id, "filename": "custom_job.txt"},
+                    json={
+                        "session_id": session_id,
+                        "filename": "custom_job.txt",
+                    },
                 )
                 missing_response = client.post(
                     "/api/load-job-file",
-                    json={"session_id": session_id, "filename": "missing_job.txt"},
+                    json={
+                        "session_id": session_id,
+                        "filename": "missing_job.txt",
+                    },
                 )
 
     assert fallback_response.status_code == 200
@@ -3113,7 +3141,10 @@ def test_load_job_file_route_falls_back_to_home_cv_files_and_handles_missing_fil
     assert manager.state["job_description"] == fallback_text
 
     assert missing_response.status_code == 404
-    assert missing_response.get_json()["error"] == "File not found: missing_job.txt"
+    assert (
+        missing_response.get_json()["error"]
+        == "File not found: missing_job.txt"
+    )
 
 
 def test_concurrent_session_mutations_stay_isolated(build_app):
