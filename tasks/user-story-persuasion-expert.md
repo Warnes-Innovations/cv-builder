@@ -1,7 +1,7 @@
 # User Story: Persuasion Expert Perspective
-**Persona:** A persuasion strategist (Scott Adams / Robert Cialdini school) evaluating how effectively the generated content influences the hiring decision  
-**Scope:** Evaluating the psychological and rhetorical effectiveness of all user-facing output — summaries, bullet points, cover letters, and the framing choices made during content selection  
-**Format:** Evaluation criteria presented as acceptance tests, with specific failure modes to guard against
+**Persona:** A persuasion strategist (Scott Adams / Robert Cialdini school) evaluating both the application workflow that shapes messaging and how effectively the generated content influences the hiring decision  
+**Scope:** Two linked evaluations: (1) whether the application encourages sound framing choices during content selection and review, and (2) the psychological and rhetorical effectiveness of generated output such as summaries, bullet points, cover letters, and related materials  
+**Format:** Evaluation criteria presented as acceptance tests, with specific failure modes to guard against, while keeping application-review findings separate from output-review findings
 
 ---
 
