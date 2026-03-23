@@ -1,7 +1,7 @@
 # User Story: UI/UX Expert Perspective
-**Persona:** A senior interaction designer / usability specialist evaluating the web application's workflow and interface  
-**Scope:** All user-facing screens, interactions, flows, and feedback mechanisms in the web UI  
-**Format:** Evaluation criteria presented as acceptance tests, with specific failure modes to guard against
+**Persona:** A senior interaction designer / usability specialist evaluating both the web application's workflow/interface and the usability implications of the generated materials  
+**Scope:** Two linked evaluations: (1) all user-facing screens, interactions, flows, and feedback mechanisms in the web UI, and (2) whether the generated materials and review surfaces support clear, confident user decisions  
+**Format:** Evaluation criteria presented as acceptance tests, with specific failure modes to guard against, while keeping application-review findings separate from output-review findings
 
 ---
 
