@@ -5,7 +5,9 @@
 # For commercial licensing, contact greg@warnes-innovations.com
 
 import argparse
+import io
 import json
+import requests
 import sys
 import tempfile
 import threading
@@ -1904,6 +1906,317 @@ def test_persuasion_check_route_returns_500_on_orchestrator_error(build_app):
 
         assert response.status_code == 500
         assert response.get_json() == {"error": "persuasion failed"}
+
+
+def test_fetch_job_url_route_enforces_ownership_and_validates_input(build_app):
+    app, _tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        _claim_session(client, session_id, "owner-a")
+
+        missing_session = client.post(
+            "/api/fetch-job-url",
+            json={"url": "https://example.com/job"},
+        )
+        assert missing_session.status_code == 400
+
+        wrong_owner = client.post(
+            "/api/fetch-job-url",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-b",
+                "url": "https://example.com/job",
+            },
+        )
+        assert wrong_owner.status_code == 403
+
+        missing_url = client.post(
+            "/api/fetch-job-url",
+            json={"session_id": session_id, "owner_token": "owner-a"},
+        )
+        assert missing_url.status_code == 400
+        assert missing_url.get_json()["error"] == "Missing URL"
+
+        invalid_url = client.post(
+            "/api/fetch-job-url",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "url": "not-a-url",
+            },
+        )
+        assert invalid_url.status_code == 400
+        assert invalid_url.get_json()["error"] == "Invalid URL format"
+
+
+def test_fetch_job_url_route_returns_protected_site_guidance(build_app):
+    app, _tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+
+        response = client.post(
+            "/api/fetch-job-url",
+            json={
+                "session_id": session_id,
+                "url": "https://www.linkedin.com/jobs/view/123456",
+            },
+        )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["protected_site"] is True
+    assert payload["site_name"] == "LinkedIn"
+    assert "copy the job text manually" in payload["message"].lower()
+
+
+def test_fetch_job_url_route_extracts_html_and_updates_session_state(build_app):
+    app, tracker = build_app()
+    html = """
+        <html>
+          <body>
+            <nav>Navigation should be removed</nav>
+            <article class="job-description">
+              <h1>Senior Data Scientist</h1>
+              <p>Acme Corp</p>
+              <p>Lead machine learning initiatives across analytics, forecasting, experimentation, and platform delivery.</p>
+              <p>Partner with engineering and product to deliver measurable impact across teams and customers.</p>
+            </article>
+            <script>window.bad = true;</script>
+          </body>
+        </html>
+    """
+    mock_response = MagicMock(
+        status_code=200,
+        headers={"content-type": "text/html; charset=utf-8"},
+        text=html,
+    )
+
+    with patch("requests.get", return_value=mock_response):
+        with app.test_client() as client:
+            session_id = _new_session(client)
+            response = client.post(
+                "/api/fetch-job-url",
+                json={
+                    "session_id": session_id,
+                    "url": "https://example.com/job",
+                },
+            )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["source_url"] == "https://example.com/job"
+    assert "Navigation should be removed" not in payload["job_text"]
+    assert "window.bad" not in payload["job_text"]
+    assert "Senior Data Scientist" in payload["job_text"]
+    assert payload["content_length"] >= 100
+
+    manager = _manager_for_session(tracker, session_id)
+    assert manager.state["job_description"] == payload["job_text"]
+    assert manager.state["position_name"] == "Senior Data Scientist at Acme Corp"
+
+
+def test_fetch_job_url_route_prefers_json_ld_when_body_is_too_short(build_app):
+    app, tracker = build_app()
+    json_ld_description = (
+        "Principal Machine Learning Engineer at Example Labs. "
+        "Lead platform modernization, mentor applied scientists, own production ML systems, "
+        "and drive measurable improvements across forecasting and decision support capabilities."
+    )
+    html = f"""
+        <html>
+          <head>
+            <script type="application/ld+json">{json.dumps({'description': json_ld_description})}</script>
+          </head>
+          <body><main>Too short</main></body>
+        </html>
+    """
+    mock_response = MagicMock(
+        status_code=200,
+        headers={"content-type": "text/html"},
+        text=html,
+    )
+
+    with patch("requests.get", return_value=mock_response):
+        with app.test_client() as client:
+            session_id = _new_session(client)
+            response = client.post(
+                "/api/fetch-job-url",
+                json={
+                    "session_id": session_id,
+                    "url": "https://example.com/json-ld-job",
+                },
+            )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["job_text"] == json_ld_description
+
+    manager = _manager_for_session(tracker, session_id)
+    assert manager.state["job_description"] == json_ld_description
+    assert manager.state["position_name"].startswith(
+        "Principal Machine Learning Engineer at Example Labs."
+    )
+
+
+def test_fetch_job_url_route_handles_timeout_errors(build_app):
+    app, _tracker = build_app()
+
+    with patch("requests.get", side_effect=requests.Timeout):
+        with app.test_client() as client:
+            session_id = _new_session(client)
+            response = client.post(
+                "/api/fetch-job-url",
+                json={
+                    "session_id": session_id,
+                    "url": "https://example.com/slow-job",
+                },
+            )
+
+    assert response.status_code == 500
+    payload = response.get_json()
+    assert payload["error"] == "Request Timeout"
+    assert "manual text input" in payload["message"].lower()
+
+
+def test_upload_file_route_extracts_text_from_supported_formats(build_app):
+    app, _tracker = build_app()
+
+    with app.test_client() as client:
+        txt_response = client.post(
+            "/api/upload-file",
+            data={
+                "file": (
+                    io.BytesIO(
+                        b"Senior Data Scientist\nAcme Corp\nLead forecasting, experimentation, and model deployment across a global platform."
+                    ),
+                    "job.txt",
+                )
+            },
+            content_type="multipart/form-data",
+        )
+
+        html_response = client.post(
+            "/api/upload-file",
+            data={
+                "file": (
+                    io.BytesIO(
+                        b"<html><head><title>ignore</title></head><body><nav>ignore</nav><main><h1>Principal Engineer</h1><p>Drive architecture, reliability, and developer productivity across critical systems.</p></main></body></html>"
+                    ),
+                    "job.html",
+                )
+            },
+            content_type="multipart/form-data",
+        )
+
+    assert txt_response.status_code == 200
+    txt_payload = txt_response.get_json()
+    assert txt_payload["ok"] is True
+    assert txt_payload["filename"] == "job.txt"
+    assert "Senior Data Scientist" in txt_payload["text"]
+
+    assert html_response.status_code == 200
+    html_payload = html_response.get_json()
+    assert html_payload["ok"] is True
+    assert "Principal Engineer" in html_payload["text"]
+    assert "ignore" not in html_payload["text"]
+
+
+def test_upload_file_route_rejects_missing_or_unsupported_inputs(build_app):
+    app, _tracker = build_app()
+
+    with app.test_client() as client:
+        missing_file = client.post(
+            "/api/upload-file",
+            data={},
+            content_type="multipart/form-data",
+        )
+        empty_name = client.post(
+            "/api/upload-file",
+            data={"file": (io.BytesIO(b"abc"), "")},
+            content_type="multipart/form-data",
+        )
+        legacy_doc = client.post(
+            "/api/upload-file",
+            data={"file": (io.BytesIO(b"legacy doc"), "resume.doc")},
+            content_type="multipart/form-data",
+        )
+        too_short = client.post(
+            "/api/upload-file",
+            data={"file": (io.BytesIO(b"too short"), "job.txt")},
+            content_type="multipart/form-data",
+        )
+
+    assert missing_file.status_code == 400
+    assert missing_file.get_json()["error"] == "No file provided"
+    assert empty_name.status_code == 400
+    assert empty_name.get_json()["error"] == "Empty filename"
+    assert legacy_doc.status_code == 400
+    assert legacy_doc.get_json()["error"] == "Legacy .doc format not supported"
+    assert too_short.status_code == 400
+    assert too_short.get_json()["error"] == "Insufficient Content"
+
+
+def test_load_job_file_route_reads_repo_sample_and_updates_session_state(build_app):
+    app, tracker = build_app()
+    expected_text = (
+        Path(__file__).parent.parent / "sample_jobs" / "data_science_lead.txt"
+    ).read_text(encoding="utf-8")
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        response = client.post(
+            "/api/load-job-file",
+            json={"session_id": session_id, "filename": "data_science_lead.txt"},
+        )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["job_text"] == expected_text
+
+    manager = _manager_for_session(tracker, session_id)
+    assert manager.state["job_description"] == expected_text
+    assert manager.state["position_name"] is not None
+
+
+def test_load_job_file_route_falls_back_to_home_cv_files_and_handles_missing_file(
+    build_app,
+):
+    app, tracker = build_app()
+
+    with tempfile.TemporaryDirectory() as temp_home_dir:
+        temp_home = Path(temp_home_dir)
+        cv_dir = temp_home / "CV" / "files"
+        cv_dir.mkdir(parents=True, exist_ok=True)
+        fallback_file = cv_dir / "custom_job.txt"
+        fallback_text = (
+            "Director of Data Science\nNorthwind Labs\n"
+            "Own strategy, hiring, and platform delivery across a high-growth analytics organization."
+        )
+        fallback_file.write_text(fallback_text, encoding="utf-8")
+
+        with patch("pathlib.Path.home", return_value=temp_home):
+            with app.test_client() as client:
+                session_id = _new_session(client)
+                fallback_response = client.post(
+                    "/api/load-job-file",
+                    json={"session_id": session_id, "filename": "custom_job.txt"},
+                )
+                missing_response = client.post(
+                    "/api/load-job-file",
+                    json={"session_id": session_id, "filename": "missing_job.txt"},
+                )
+
+    assert fallback_response.status_code == 200
+    assert fallback_response.get_json()["job_text"] == fallback_text
+    manager = _manager_for_session(tracker, session_id)
+    assert manager.state["job_description"] == fallback_text
+
+    assert missing_response.status_code == 404
+    assert missing_response.get_json()["error"] == "File not found: missing_job.txt"
 
 
 def test_concurrent_session_mutations_stay_isolated(build_app):
