@@ -17,8 +17,10 @@ import {
   buildSessionSwitcherLabel,
   getActiveSessionOwnershipMeta,
   formatSessionTimestamp,
+  restoreBackendState,
 } from '../../web/session-manager.js'
 import { SESSION_PHASE_LABELS } from '../../web/utils.js'
+import { stateManager } from '../../web/state-manager.js'
 
 // ── formatSessionPhaseLabel ───────────────────────────────────────────────
 
@@ -206,5 +208,89 @@ describe('formatSessionTimestamp', () => {
     // A string that Date() can't parse — but it should not throw
     const result = formatSessionTimestamp('not-a-date')
     expect(typeof result).toBe('string')
+  })
+})
+
+// ── restoreBackendState ───────────────────────────────────────────────────
+
+describe('restoreBackendState', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+    vi.stubGlobal('parseStatusResponse', vi.fn(data => data))
+    vi.stubGlobal('refreshAtsScore', vi.fn())
+    vi.stubGlobal('updateInclusionCounts', vi.fn())
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    })
+    window.pendingRecommendations = null
+    window._savedDecisions = {}
+    window._allExperiences = []
+    window._newSkillsFromLLM = []
+    window.selectedSummaryKey = null
+    stateManager.setTabData('analysis', null)
+    stateManager.setTabData('customizations', null)
+    stateManager.setTabData('cv', null)
+    stateManager.resetGenerationState()
+    stateManager.clearAtsScore()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('syncs staged generation state and cached ATS score from backend', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_analysis: { job_title: 'Engineer' },
+          customizations: { approved_skills: [] },
+          generated_files: { output_dir: '/tmp/out' },
+          position_name: 'Engineer',
+          achievement_edits: {},
+          experience_decisions: {},
+          skill_decisions: {},
+          achievement_decisions: {},
+          publication_decisions: {},
+          summary_focus_override: null,
+          extra_skills: [],
+          extra_skill_matches: {},
+          all_experiences: [],
+          selected_summary_key: null,
+          new_skills_from_llm: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          phase: 'layout_review',
+          preview_available: true,
+          layout_confirmed: false,
+          page_count_estimate: 2,
+          page_length_warning: true,
+          layout_instructions_count: 3,
+          final_generated_at: null,
+          ats_score: { overall: 88, basis: 'review_checkpoint' },
+        }),
+      })
+
+    const restored = await restoreBackendState()
+
+    expect(restored).toBe(true)
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(1, '/api/status')
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(2, '/api/cv/generation-state')
+    expect(globalThis.refreshAtsScore).toHaveBeenCalledWith('analysis')
+    expect(stateManager.getGenerationState()).toMatchObject({
+      phase: 'layout_review',
+      previewAvailable: true,
+      layoutConfirmed: false,
+      pageCountEstimate: 2,
+      pageWarning: true,
+      layoutInstructionsCount: 3,
+    })
+    expect(stateManager.getAtsScore()).toEqual({ overall: 88, basis: 'review_checkpoint' })
   })
 })

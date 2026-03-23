@@ -351,6 +351,30 @@ async function restoreBackendState() {
       log.info('Restored CV data from backend memory');
     }
 
+    try {
+      const generationRes = await fetch('/api/cv/generation-state');
+      if (generationRes.ok) {
+        const generationData = await generationRes.json();
+        if (generationData?.ok) {
+          stateManager.setGenerationState({
+            phase: generationData.phase || 'idle',
+            previewAvailable: Boolean(generationData.preview_available),
+            layoutConfirmed: Boolean(generationData.layout_confirmed),
+            pageCountEstimate: generationData.page_count_estimate ?? null,
+            pageWarning: Boolean(generationData.page_length_warning),
+            layoutInstructionsCount: generationData.layout_instructions_count || 0,
+            finalGeneratedAt: generationData.final_generated_at || null,
+          });
+          if (generationData.ats_score) {
+            stateManager.setAtsScore(generationData.ats_score);
+          }
+          if (generationData.preview_available || generationData.final_generated_at || generationData.ats_score) {
+            serverHasData = true;
+          }
+        }
+      }
+    } catch (_e) { /* non-fatal */ }
+
     if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
 
     if (!statusData.position_name && !statusData.job_analysis) {

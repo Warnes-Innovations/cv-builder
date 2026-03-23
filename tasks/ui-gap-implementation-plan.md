@@ -1,14 +1,33 @@
 # UI Gap Implementation Plan
 
 **Created:** 2026-03-19  
-**Status:** Phases 1–5 complete (2026-03-21); Phase 6 (UX/Accessibility) complete (2026-03-20); Refactor backlog M01–M27 complete (2026-03-21)  
-**Source basis:** `tasks/ui-review.md` and `tasks/gaps.md` refreshed on 2026-03-19
+**Status:** Phases 1, 2, 3, 5, and 6 complete; Phase 4 reopened on 2026-03-23 for spell-audit preview/final consistency; Refactor backlog M01–M27 complete (2026-03-21)  
+**Source basis:** `tasks/ui-review.md` and `tasks/gaps.md` refreshed on 2026-03-23
 
 ## Overview
 
 This plan translates the March 19 source-verified UI review into an implementation sequence that closes the highest-risk workflow gaps first, then finishes story-completeness across ATS, intake, rerun, review ergonomics, and accessibility.
 
 The plan is intentionally staged. The current app has meaningful workflow infrastructure already, so the fastest path is not a full redesign. We should preserve the existing review pipeline and add the missing workflow contracts, UI surfaces, persistence, and validation layers in slices that remain testable throughout.
+
+## 2026-03-23 Approved Planning Scope
+
+The March 23 persona-rollup review narrowed the next planning slice to the items that most directly repair the applicant workflow without expanding into a full redesign.
+
+**Plan now**
+
+- Workstream 1: staged `HTML preview -> layout review -> final generation`
+- Workstream 2: ATS score visibility and keyword reasoning, delivered with the staged generation slice
+- Workstream 3: intake confirmation, with smart clarification defaults deferred if scope starts to grow
+- Workstream 3: rerun and session-recovery clarity, especially changed-item visibility and layout-stage re-entry
+- Workstream 6: accessibility and dense-review ergonomics cleanup that directly supports the repaired workflow
+- `BUG-SpellAuditPreviewMismatch`: preview generation still reads the legacy `state.spell_check.audit` key while spell-check completion persists to `state.spell_audit`; preview and final generation must use the same canonical spell-audit source
+
+**Postpone**
+
+- Standalone expansion of spell-check beyond the preview/state consistency fix
+- Broad workflow-boundary redesign; keep only lightweight boundary notes in this plan
+- Additional final-preview/versioning expansions that should be reconsidered after the staged workflow lands
 
 ## Current State
 
@@ -42,7 +61,7 @@ This plan does not treat lower-priority persuasion or broad master-data ingestio
 - ATS output uses the expected structural semantics, normalized contact formatting, and hard-vs-soft skill handling.
 - Intake includes a confirmation substep for extracted metadata and can preload prior clarification defaults for similar role types.
 - Every supported completed stage exposes rerun affordances, preserves prior decisions appropriately, and highlights changed items on re-entry.
-- Spell-check behaves as a real quality gate: required review, explicit resolution, and write-back into generated output.
+- Spell-check behaves as a real quality gate: required review, explicit resolution, and identical accepted-fix replay across preview, layout refresh, and generated output.
 - Core review and generation flows are keyboard-usable, responsive, and easier to navigate on typical laptop screens.
 
 ## Key Decisions
@@ -57,6 +76,7 @@ This plan does not treat lower-priority persuasion or broad master-data ingestio
 | Skill semantics | Introduce hard/soft skill typing in shared data structures, not only in rendering | Needed for both ATS output and UI review logic |
 | Rerun behavior | Re-review only changed or new items where possible | Preserves user trust and reduces repeat work |
 | Master data scope | Deliver structured editor after the core workflow is dependable | Important, but not the fastest path to fixing the broken applicant journey |
+| Spell-audit source of truth | Use `state['spell_audit']` as the canonical session field for preview and final generation | Prevents preview/final divergence after accepted spell-check decisions |
 
 ## Rejected Alternatives
 
@@ -173,10 +193,15 @@ This plan does not treat lower-priority persuasion or broad master-data ingestio
 
 1. Make spell-check a blocking review stage until all flagged items are explicitly resolved.
 2. Add edit-in-place and skill-name review coverage where the gap analysis says handling is incomplete.
-3. Write accepted spell/grammar corrections back into the generated text spans they govern.
-4. Persist publication review decisions under the required metadata structure.
-5. Ensure final outputs omit the publications section when nothing is selected and render the required heading/count/first-author details when items are selected.
-6. Add final-output validation for publication rendering and selected publication metadata.
+3. Fix the preview/state mismatch so preview generation, layout refresh, and final generation all replay accepted corrections from `state['spell_audit']`.
+4. Write accepted spell/grammar corrections back into the generated text spans they govern using stable identifiers and the same canonical spell-audit payload in every generation path.
+5. Persist publication review decisions under the required metadata structure.
+6. Ensure final outputs omit the publications section when nothing is selected and render the required heading/count/first-author details when items are selected.
+7. Add final-output validation for publication rendering and selected publication metadata.
+
+**Tracked bug**
+
+- GitHub issue #49: preview generation ignores persisted spell audit because preview code still reads the legacy `state.spell_check.audit` key while spell-check completion persists to `state.spell_audit`.
 
 **Dependencies**
 
@@ -304,12 +329,13 @@ Phase 3 deliverables status:
 - [x] Session persisted immediately after intake confirmation
 - [x] Spell-check and generate re-run affordances exposed
 
-### Phase 4: Quality-Gate Slice — **COMPLETE (2026-03-19)**
+### Phase 4: Quality-Gate Slice — **PARTIALLY COMPLETE (2026-03-23 reassessment)**
 
 Phase 4 deliverables status:
 - [x] Spell-check blocking guard — requires explicit resolution before proceeding
 - [x] Publication decisions persistence — decisions stored in session and respected by final output
-- [x] Write-back of accepted spell/grammar corrections integrated
+- [ ] End-to-end spell-check write-back consistency — preview generation still reads a legacy spell-audit state key; tracked in GitHub issue #49
+- [ ] Preview/layout/final spell-audit contract regression coverage
 
 ### Phase 5: Master Data Editing Slice — **COMPLETE (2026-03-21)**
 
@@ -366,7 +392,7 @@ Phase 6 deliverables status:
 | T10 | Add intake confirmation and metadata persistence | T1 | M | M |
 | T11 | Add clarification-default preload logic | T10 | M | M |
 | T12 | Expose rerun affordances and changed-item highlighting | T3, T10 | L | H |
-| T13 | Make spell-check blocking and write-back capable | T3 | L | H |
+| T13 | Normalize spell-audit state across preview and final generation, then complete spell-check write-back | T3 | L | H |
 | T14 | Persist publication decisions through final outputs | T3 | M | M |
 | T15 | Build structured Master CV editor | T1 | XL | M |
 | T16 | Improve rewrite ergonomics, reorder UI, and accessibility | T4, T12 | L | M |
