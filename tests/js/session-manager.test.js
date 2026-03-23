@@ -17,8 +17,26 @@ import {
   buildSessionSwitcherLabel,
   getActiveSessionOwnershipMeta,
   formatSessionTimestamp,
+  _claimCurrentSession,
+  showSessionsLandingPanel,
+  ensureSessionContext,
+  saveTabData,
+  restoreTabData,
 } from '../../web/session-manager.js'
 import { SESSION_PHASE_LABELS } from '../../web/utils.js'
+
+function makeStorageMock() {
+  const store = new Map()
+  return {
+    getItem: vi.fn(key => (store.has(key) ? store.get(key) : null)),
+    setItem: vi.fn((key, value) => {
+      store.set(key, String(value))
+    }),
+    removeItem: vi.fn(key => {
+      store.delete(key)
+    }),
+  }
+}
 
 // ── formatSessionPhaseLabel ───────────────────────────────────────────────
 
@@ -206,5 +224,253 @@ describe('formatSessionTimestamp', () => {
     // A string that Date() can't parse — but it should not throw
     const result = formatSessionTimestamp('not-a-date')
     expect(typeof result).toBe('string')
+  })
+})
+
+// ── _claimCurrentSession / ensureSessionContext ──────────────────────────
+
+describe('_claimCurrentSession', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+    vi.stubGlobal('getOwnerToken', vi.fn(() => 'owner-123'))
+    vi.stubGlobal('showOwnershipConflictDialog', vi.fn())
+    vi.stubGlobal('openSessionsModal', vi.fn())
+    vi.stubGlobal('escapeHtml', s => String(s ?? ''))
+    vi.stubGlobal('updateActionButtons', vi.fn())
+    vi.stubGlobal('updatePositionTitle', vi.fn())
+    globalThis.currentTab = 'analysis'
+    globalThis.currentStage = 'analysis'
+    globalThis.fetch = vi.fn()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    document.body.innerHTML = ''
+    delete globalThis.currentTab
+    delete globalThis.currentStage
+  })
+
+  it('returns true when the claim succeeds', async () => {
+    fetch.mockResolvedValue({ ok: true })
+
+    await expect(_claimCurrentSession('sess-1')).resolves.toBe(true)
+    expect(fetch).toHaveBeenCalledWith('/api/sessions/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: 'sess-1',
+        owner_token: 'owner-123',
+      }),
+    })
+  })
+
+  it('takes over the session after a conflict when the user chooses takeover', async () => {
+    fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: 'session_owned' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      })
+    showOwnershipConflictDialog.mockResolvedValue('takeover')
+
+    await expect(_claimCurrentSession('sess-2')).resolves.toBe(true)
+    expect(fetch).toHaveBeenNthCalledWith(2, '/api/sessions/takeover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: 'sess-2',
+        owner_token: 'owner-123',
+      }),
+    })
+  })
+
+  it('opens the landing panel when the user declines takeover', async () => {
+    fetch.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'session_owned' }),
+    })
+    showOwnershipConflictDialog.mockResolvedValue('different')
+
+    await expect(_claimCurrentSession('sess-3')).resolves.toBe(false)
+    expect(openSessionsModal).toHaveBeenCalled()
+    expect(document.getElementById('document-content').textContent).toContain(
+      'Select a different session or create a new one.',
+    )
+  })
+
+  it('shows the landing panel when the session no longer exists', async () => {
+    fetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'missing' }),
+    })
+
+    await expect(_claimCurrentSession('sess-4')).resolves.toBe(false)
+    expect(openSessionsModal).toHaveBeenCalled()
+    expect(document.getElementById('document-content').textContent).toContain(
+      'That session is no longer active.',
+    )
+  })
+
+  it('throws a generic error for non-conflict failures', async () => {
+    fetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'boom' }),
+    })
+
+    await expect(_claimCurrentSession('sess-5')).rejects.toThrow('boom')
+  })
+})
+
+describe('showSessionsLandingPanel and ensureSessionContext', () => {
+  beforeEach(() => {
+    const storage = makeStorageMock()
+    document.body.innerHTML = '<div id="document-content"></div>'
+    vi.stubGlobal('escapeHtml', s => String(s ?? ''))
+    vi.stubGlobal('updateActionButtons', vi.fn())
+    vi.stubGlobal('updatePositionTitle', vi.fn())
+    vi.stubGlobal('openSessionsModal', vi.fn())
+    vi.stubGlobal('getSessionIdFromURL', vi.fn(() => null))
+    vi.stubGlobal('StorageKeys', { SESSION_ID: 'session-id-key' })
+    vi.stubGlobal('localStorage', storage)
+    globalThis.currentTab = 'analysis'
+    globalThis.currentStage = 'analysis'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    document.body.innerHTML = ''
+    delete globalThis.currentTab
+    delete globalThis.currentStage
+    delete globalThis.sessionId
+  })
+
+  it('renders the landing panel and resets the current tab to job', () => {
+    showSessionsLandingPanel('Pick a session first')
+
+    expect(globalThis.currentTab).toBe('job')
+    expect(globalThis.currentStage).toBe('job')
+    expect(document.getElementById('document-content').textContent).toContain(
+      'Select a Session',
+    )
+    expect(document.getElementById('document-content').textContent).toContain(
+      'Pick a session first',
+    )
+  })
+
+  it('shows the landing panel and returns false when no session is in the URL', async () => {
+    await expect(ensureSessionContext()).resolves.toBe(false)
+    expect(openSessionsModal).toHaveBeenCalled()
+    expect(document.getElementById('document-content').textContent).toContain(
+      'Select a Session',
+    )
+  })
+})
+
+// ── saveTabData / restoreTabData ─────────────────────────────────────────
+
+describe('saveTabData and restoreTabData', () => {
+  beforeEach(() => {
+    const storage = makeStorageMock()
+    vi.stubGlobal('getScopedTabDataStorageKey', vi.fn(() => 'scoped-tab-data'))
+    vi.stubGlobal('localStorage', storage)
+    globalThis.sessionId = 'sess-1'
+    globalThis.tabData = { analysis: { score: 42 } }
+    globalThis.currentTab = 'analysis'
+    globalThis.interactiveState = { expanded: true }
+    globalThis.window.pendingRecommendations = { skills: ['Python'] }
+    globalThis.window._activeReviewPane = 'skills'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    delete globalThis.sessionId
+    delete globalThis.tabData
+    delete globalThis.currentTab
+    delete globalThis.interactiveState
+    delete globalThis.window.pendingRecommendations
+    delete globalThis.window._activeReviewPane
+  })
+
+  it('saves scoped tab data to localStorage', () => {
+    saveTabData()
+
+    const saved = JSON.parse(localStorage.getItem('scoped-tab-data'))
+    expect(saved.tabData).toEqual({ analysis: { score: 42 } })
+    expect(saved.currentTab).toBe('analysis')
+    expect(saved.pendingRecommendations).toEqual({ skills: ['Python'] })
+    expect(saved.interactiveState).toEqual({ expanded: true })
+    expect(saved.activeReviewPane).toBe('skills')
+  })
+
+  it('restores recent tab data and merges it into globals', () => {
+    localStorage.setItem(
+      'scoped-tab-data',
+      JSON.stringify({
+        tabData: { cv: { files: ['cv.pdf'] } },
+        pendingRecommendations: { achievements: ['A'] },
+        interactiveState: { expanded: false, selected: 'x' },
+        activeReviewPane: 'achievements',
+        timestamp: Date.now(),
+      }),
+    )
+
+    restoreTabData()
+
+    expect(globalThis.tabData).toEqual({
+      analysis: { score: 42 },
+      cv: { files: ['cv.pdf'] },
+    })
+    expect(globalThis.window.pendingRecommendations).toEqual({
+      achievements: ['A'],
+    })
+    expect(globalThis.interactiveState).toEqual({
+      expanded: false,
+      selected: 'x',
+    })
+    expect(globalThis.window._activeReviewPane).toBe('achievements')
+  })
+
+  it('restores only UI preferences when uiPrefsOnly is true', () => {
+    localStorage.setItem(
+      'scoped-tab-data',
+      JSON.stringify({
+        tabData: { cv: { files: ['cv.pdf'] } },
+        pendingRecommendations: { achievements: ['A'] },
+        interactiveState: { expanded: false },
+        activeReviewPane: 'achievements',
+        timestamp: Date.now(),
+      }),
+    )
+
+    restoreTabData({ uiPrefsOnly: true })
+
+    expect(globalThis.tabData).toEqual({ analysis: { score: 42 } })
+    expect(globalThis.window.pendingRecommendations).toEqual({
+      skills: ['Python'],
+    })
+    expect(globalThis.interactiveState).toEqual({ expanded: true })
+    expect(globalThis.window._activeReviewPane).toBe('achievements')
+  })
+
+  it('drops stale saved tab data older than 24 hours', () => {
+    localStorage.setItem(
+      'scoped-tab-data',
+      JSON.stringify({
+        tabData: { cv: { files: ['old.pdf'] } },
+        timestamp: Date.now() - 25 * 60 * 60 * 1000,
+      }),
+    )
+
+    restoreTabData()
+
+    expect(localStorage.getItem('scoped-tab-data')).toBeNull()
+    expect(globalThis.tabData).toEqual({ analysis: { score: 42 } })
   })
 })
