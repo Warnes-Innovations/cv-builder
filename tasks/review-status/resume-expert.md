@@ -10,11 +10,15 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Resume Expert Review Status
 
-**Last Updated:** 2026-03-19 11:24:03 EDT
+**Last Updated:** 2026-03-22 23:09 EDT
 
-**Executive Summary:** This file holds the resume-expert review-status snapshot previously embedded in the user story. It is separated so persona review subagents can update their own status artifact in parallel without mutating the story specification.
+**Executive Summary:** This file captures the source-verified resume expert review snapshot separately from the story specification so sub-agents can work in parallel safely. This legacy snapshot has been normalized to the current section structure without re-running the resume-expert review.
 
-## Review Status — 2026-03-19 11:24:03 EDT
+## Application Evaluation
+
+The preserved resume-expert findings below remain in their original story-by-story form. This legacy snapshot mixed workflow and output findings; it is retained as-is until a refreshed split review is run.
+
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/cv_orchestrator.py
 
 ### US-R1 — Resume Expert
 
@@ -225,3 +229,15 @@ For commercial licensing, contact greg@warnes-innovations.com
 | Accepted corrections change exactly and only the flagged span in the source text | ❌ Fail | Accepted spell actions are recorded in audit only; they are not written back into CV text in the reviewed files. |
 | `custom_dictionary.json` is deduplicated on every write | 🔲 Not Implemented | No reviewed deduplication logic was found in the requested files. |
 | Spell audit in `metadata.json` is non-empty when flags exist and fully empty when none were found | ✅ Pass | `web/app.js:completeSpellCheckFastPath` posts `[]` when no flags exist, `web/app.js:6578-6607` records decisions when flags do exist, and `scripts/web_app.py:3971` writes `spell_audit` into metadata on finalise. |
+
+## Generated Materials Evaluation
+
+The legacy resume-expert snapshot embedded output-quality findings in the preserved story sections above rather than separating them into a distinct generated-materials section. A refreshed resume-expert pass should split those findings explicitly.
+
+## Additional Story Gaps / Proposed Story Items
+
+None recorded yet.
+
+**Evidence standard:**
+- This file preserves a pre-existing legacy snapshot.
+- Any refreshed findings should cite repository-relative source paths with line numbers and enough supporting evidence for independent verification.

@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 import bibtexparser  # type: ignore[import-untyped]
 from bibtexparser.bparser import BibTexParser  # type: ignore[import-untyped]
 from bibtexparser.customization import (  # type: ignore[import-untyped]
+    InvalidName,
     author as split_author_field,
     convert_to_unicode,
     splitname,
@@ -129,7 +130,16 @@ def _format_authors(authors: str | List[str] | None) -> str:
 
     author_names = []
     for author_name in _split_bibtex_names(authors):
-        parsed_name = splitname(author_name)
+        cleaned_author_name = author_name.strip().rstrip(',').strip()
+        if not cleaned_author_name:
+            continue
+
+        try:
+            parsed_name = splitname(cleaned_author_name)
+        except InvalidName:
+            author_names.append(cleaned_author_name)
+            continue
+
         last_parts = parsed_name.get('von', []) + parsed_name.get('last', [])
         given_parts = parsed_name.get('first', []) + parsed_name.get('jr', [])
         last = ' '.join(last_parts).strip()
@@ -140,7 +150,7 @@ def _format_authors(authors: str | List[str] | None) -> str:
         elif last:
             author_names.append(last)
         else:
-            author_names.append(author_name)
+            author_names.append(cleaned_author_name)
 
     if len(author_names) == 1:
         return author_names[0]
