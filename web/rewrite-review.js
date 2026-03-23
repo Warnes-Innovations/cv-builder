@@ -20,6 +20,14 @@ let rewriteDecisions = {};
 let _rewritePanelCache = null;
 let persuasionWarningsAcknowledged = false;
 
+function syncRewriteGlobals() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.rewriteDecisions = rewriteDecisions;
+  window._rewritePanelCache = _rewritePanelCache;
+}
+
 async function fetchAndReviewRewrites() {
   const loadingMsg = appendLoadingMessage('Checking for text improvements...');
   setLoading(true, 'Reviewing rewrites…');
@@ -50,6 +58,7 @@ async function fetchAndReviewRewrites() {
 
     // Show rewrite review panel
     rewriteDecisions = {};
+    syncRewriteGlobals();
     renderRewritePanel(rewrites, warnings);  // Pass warnings to panel
     switchTab('rewrite');
     const n = rewrites.length;
@@ -63,6 +72,7 @@ async function fetchAndReviewRewrites() {
 
 function renderRewritePanel(rewrites, warnings = []) {
   _rewritePanelCache = { rewrites, warnings };
+  syncRewriteGlobals();
   const content = document.getElementById('document-content');
 
   // Build persuasion warnings section (Phase 10)
@@ -260,6 +270,7 @@ function applyRewriteAction(id, outcome) {
     rewriteDecisions[id] = { outcome, final_text: null };
     card.classList.add(outcome === 'accept' ? 'accepted' : 'rejected');
     document.getElementById(`rw-${outcome}-${id}`)?.classList.add('active');
+    syncRewriteGlobals();
     updateRewriteTally();
   }
 }
@@ -288,6 +299,7 @@ function saveRewriteEdit(id) {
   card.classList.add('accepted');
   ['accept', 'reject'].forEach(a => document.getElementById(`rw-${a}-${id}`)?.classList.remove('active'));
   document.getElementById(`rw-edit-${id}`)?.classList.add('active');
+  syncRewriteGlobals();
   updateRewriteTally();
 }
 
@@ -361,3 +373,5 @@ export {
   updateRewriteTally,
   submitRewriteDecisions,
 };
+
+syncRewriteGlobals();

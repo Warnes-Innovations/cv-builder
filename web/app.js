@@ -5,6 +5,9 @@
 // For commercial licensing, contact greg@warnes-innovations.com
 
 // Orchestrator entry-point — all module functions are exposed as globals by bundle.js.
+// Note: app.js is a plain legacy script (not bundled). loglevel is available
+// via globalThis.loglevel (set by bundle.js which includes web/logger.js).
+const _appLog = (typeof loglevel !== 'undefined') ? loglevel.getLogger('app') : console;
 // This file contains only init() and top-level event-wiring (≤ 300 lines).
 
 let _listenersRegistered = false;
@@ -57,10 +60,10 @@ async function init() {
       // Don't auto-recommend - let user answer questions first
       // User will type "proceed" when ready for recommendations
     } else if (status.job_analysis) {
-      console.log('Job analysis already complete, skipping auto-analysis');
+      _appLog.info('Job analysis already complete, skipping auto-analysis');
     }
   } else {
-    console.log('Reconnecting to existing session, skipping auto-analysis');
+    _appLog.info('Reconnecting to existing session, skipping auto-analysis');
   }
 }
 

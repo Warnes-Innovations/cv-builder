@@ -22,6 +22,9 @@
  *   - tabData, currentTab, currentStage, PHASES (window globals)
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('job-input');
+
 // ---------------------------------------------------------------------------
 // Job tab display
 // ---------------------------------------------------------------------------
@@ -48,7 +51,7 @@ async function populateJobTab() {
       return;
     }
   } catch (error) {
-    console.error('Error loading job description:', error);
+    log.error('Error loading job description:', error);
     await showLoadJobPanel();
   }
 }
@@ -295,12 +298,12 @@ async function deleteSession(sessionId, event) {
     const data = await res.json();
     if (data.success) {
       showLoadJobPanel();
-      console.log('Session deleted successfully');
+      log.info('Session deleted successfully');
     } else {
       alert(`Failed to delete session: ${data.error || 'Unknown error'}`);
     }
   } catch (error) {
-    console.error('Error deleting session:', error);
+    log.error('Error deleting session:', error);
     alert('Failed to delete session. Please try again.');
   }
 }
@@ -518,7 +521,7 @@ async function submitJobText() {
       return;
     }
   } catch (error) {
-    console.error('Error submitting job:', error);
+    log.error('Error submitting job:', error);
     appendRetryMessage('❌ Error submitting job description: ' + error.message, submitJobText);
   }
 
@@ -602,7 +605,7 @@ async function fetchJobFromURL() {
       await fetchStatus();
     }
   } catch (error) {
-    console.error('Error fetching URL:', error);
+    log.error('Error fetching URL:', error);
     _showFieldError('job-url-input', 'url-error', `Network error: ${error.message}`);
     appendRetryMessage(`Network error occurred: ${error.message}. Please check your connection or try manual input.`, fetchJobFromURL);
     showAlertModal('Network Error', 'Unable to connect to the server. Please try again or use the "Paste Text" option to input the job description manually.');

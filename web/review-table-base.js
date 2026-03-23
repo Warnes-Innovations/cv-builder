@@ -25,6 +25,9 @@
  *   getExperienceRecommendation, achievementDecisions
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('review-table-base');
+
 // ── Module-level state ────────────────────────────────────────────────────
 
 let userSelections = {
@@ -51,7 +54,7 @@ function updateInclusionCounts() {
     if (expTab) expTab.textContent = `📊 Experiences${expIncluded ? ' (' + expIncluded + ')' : ''}`;
     if (skillTab) skillTab.textContent = `🛠️ Skills${skillIncluded ? ' (' + skillIncluded + ')' : ''}`;
     if (achTab) achTab.textContent = `🏆 Achievements${achIncluded ? ' (' + achIncluded + ')' : ''}`;
-  } catch (e) { console.warn('Failed to update inclusion counts:', e); }
+  } catch (e) { log.warn('Failed to update inclusion counts:', e); }
 }
 
 // ── Tab switching ─────────────────────────────────────────────────────────
@@ -127,8 +130,11 @@ async function loadTabContent(tab) {
       await populateReviewTab('publications');
       break;
     case 'rewrite':
-      if (_rewritePanelCache) {
-        renderRewritePanel(_rewritePanelCache.rewrites, _rewritePanelCache.warnings);
+      if (window._rewritePanelCache) {
+        renderRewritePanel(
+          window._rewritePanelCache.rewrites,
+          window._rewritePanelCache.warnings,
+        );
       } else {
         content.innerHTML = '<div class="empty-state"><div class="icon">✏️</div><h3>Rewrites</h3><p>Complete customizations to reach this step</p></div>';
       }
@@ -258,7 +264,7 @@ function populateAnalysisTab(result) {
     html += '</div>'; // .analysis-page
     content.innerHTML = html;
   } catch (e) {
-    console.error('Analysis parsing error:', e, 'Original result:', result);
+    log.error('Analysis parsing error:', e, 'Original result:', result);
     content.innerHTML = `<div class="empty-state"><div class="icon">❌</div><h3>Analysis Error</h3><p>Could not parse analysis results: ${escapeHtml(e.message)}</p><details><summary>Debug Info</summary><pre>${escapeHtml(JSON.stringify(result, null, 2))}</pre></details></div>`;
   }
 }
@@ -294,7 +300,7 @@ async function handleCustomizationResponse(response) {
       }
     }
   } catch (e) {
-    console.error('Customization response error:', e);
+    log.error('Customization response error:', e);
     if (!isReconnecting) {
       appendMessage('assistant', response);
     }
@@ -396,7 +402,7 @@ async function populateReviewTab(pane) {
           const v = parseInt(slider.value, 10);
           if (label) label.textContent = v;
           try { await apiCall('POST', '/api/generation-settings', { max_skills: v }); }
-          catch (e) { console.warn('Failed to save max_skills setting:', e); }
+          catch (e) { log.warn('Failed to save max_skills setting:', e); }
         });
       }
     })();
@@ -516,7 +522,7 @@ async function populateCustomizationsTabWithReview(data) {
         try {
           await apiCall('POST', '/api/generation-settings', { max_skills: v });
         } catch (e) {
-          console.warn('Failed to save max_skills setting:', e);
+          log.warn('Failed to save max_skills setting:', e);
         }
       });
     }

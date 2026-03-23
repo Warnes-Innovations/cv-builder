@@ -29,6 +29,9 @@ from utils.bibtex_parser import (
     filter_publications,
     get_journal_articles,
     get_software_publications,
+    serialize_bibtex_entry,
+    serialize_publications_to_bibtex,
+    bibtex_text_to_publications,
 )
 
 
@@ -273,6 +276,248 @@ class TestHelperFilters(unittest.TestCase):
     def test_get_software_publications_excludes_articles(self):
         result = get_software_publications(self.pubs)
         self.assertNotIn('warnes2024ml', result)
+
+
+# ---------------------------------------------------------------------------
+# Round-trip fidelity: parse → serialize → parse
+# ---------------------------------------------------------------------------
+
+# A rich fixture that exercises every data-preservation concern:
+#   - multi-author with von (lowercase particle) prefix
+#   - author with lineage suffix (Jr.)
+#   - editor-only entry (book)
+#   - every common field: doi, url, volume, number, pages, note, isbn
+#   - a custom field not in _STANDARD_FIELD_ORDER
+_BIB_ROUNDTRIP = r"""
+@article{rt_article,
+  author  = {Warnes, Gregory R. and van der Berg, Pieter and Smith, Alice Jr.},
+  title   = {Round-Trip Preservation Test},
+  journal = {Journal of Testing},
+  year    = {2024},
+  volume  = {10},
+  number  = {3},
+  pages   = {1--42},
+  doi     = {10.1234/rt.2024},
+  url     = {https://example.com/paper},
+  note    = {Special issue on testing},
+  custom  = {my-custom-value},
+}
+
+@book{rt_book,
+  editor    = {Jones, Alice and Brown, Robert J.},
+  title     = {Handbook of Testing},
+  publisher = {Test Press},
+  year      = {2022},
+  address   = {New York},
+  isbn      = {978-0-000-00000-0},
+}
+"""
+
+
+class TestRoundTrip(unittest.TestCase):
+    """parse_bibtex_file → serialize_publications_to_bibtex → parse_bibtex_file
+    must produce identical pub['fields'] dicts — no data loss.
+    """
+
+    def setUp(self):
+        self.bib_path = _write_bib(_BIB_ROUNDTRIP)
+        self.pubs_orig = parse_bibtex_file(self.bib_path)
+
+        # Serialize and re-parse
+        bib_text = serialize_publications_to_bibtex(self.pubs_orig)
+        self.pubs_rt = bibtex_text_to_publications(bib_text)
+
+    def tearDown(self):
+        Path(self.bib_path).unlink(missing_ok=True)
+
+    # --- author field not silently dropped ---------------------------------
+
+    def test_author_field_present_after_roundtrip(self):
+        """The author key must survive in fields after serialize → re-parse."""
+        rt_article = self.pubs_rt['rt_article']
+        self.assertIn('author', rt_article['fields'],
+                      "'author' was lost from pub['fields'] during round-trip")
+        self.assertTrue(rt_article['fields']['author'].strip())
+
+    def test_all_author_last_names_present(self):
+        """All three authors' last names must appear in the round-tripped author field."""
+        author_str = self.pubs_rt['rt_article']['fields']['author']
+        for last_name in ('Warnes', 'Berg', 'Smith'):
+            self.assertIn(last_name, author_str,
+                          f"Author last name '{last_name}' missing from: {author_str!r}")
+
+    def test_von_particle_preserved(self):
+        """'van der' von-part should appear in the reconstructed author string."""
+        author_str = self.pubs_rt['rt_article']['fields']['author']
+        # pybtex stores 'van' and 'der' as prelast_names; both must survive
+        self.assertIn('van', author_str.lower(),
+                      f"von particle 'van' missing from: {author_str!r}")
+
+    # --- editor field not silently dropped ---------------------------------
+
+    def test_editor_field_present_after_roundtrip(self):
+        """The editor key must survive in fields for a book entry."""
+        rt_book = self.pubs_rt['rt_book']
+        self.assertIn('editor', rt_book['fields'],
+                      "'editor' was lost from pub['fields'] during round-trip")
+        self.assertTrue(rt_book['fields']['editor'].strip())
+
+    def test_all_editor_last_names_present(self):
+        """Both editors' last names must appear in the round-tripped editor field."""
+        editor_str = self.pubs_rt['rt_book']['fields']['editor']
+        for last_name in ('Jones', 'Brown'):
+            self.assertIn(last_name, editor_str,
+                          f"Editor last name '{last_name}' missing from: {editor_str!r}")
+
+    # --- non-person fields exactly preserved --------------------------------
+
+    def test_standard_fields_exact_match(self):
+        """Every non-person field must survive with the same value."""
+        for field in ('title', 'journal', 'year', 'volume', 'number',
+                      'pages', 'doi', 'url', 'note'):
+            orig_val = self.pubs_orig['rt_article']['fields'].get(field)
+            rt_val   = self.pubs_rt  ['rt_article']['fields'].get(field)
+            self.assertEqual(
+                orig_val, rt_val,
+                f"Field '{field}' changed: {orig_val!r} → {rt_val!r}",
+            )
+
+    def test_custom_field_preserved(self):
+        """Fields outside _STANDARD_FIELD_ORDER must still survive."""
+        self.assertEqual(
+            self.pubs_rt['rt_article']['fields'].get('custom'),
+            'my-custom-value',
+        )
+
+    def test_book_fields_exact_match(self):
+        """Book standard fields must survive exactly."""
+        for field in ('title', 'publisher', 'year', 'address', 'isbn'):
+            orig_val = self.pubs_orig['rt_book']['fields'].get(field)
+            rt_val   = self.pubs_rt  ['rt_book']['fields'].get(field)
+            self.assertEqual(
+                orig_val, rt_val,
+                f"Book field '{field}' changed: {orig_val!r} → {rt_val!r}",
+            )
+
+    # --- entry type and key -------------------------------------------------
+
+    def test_entry_types_preserved(self):
+        self.assertEqual(self.pubs_rt['rt_article']['type'], 'article')
+        self.assertEqual(self.pubs_rt['rt_book']['type'],    'book')
+
+    def test_entry_keys_preserved(self):
+        self.assertIn('rt_article', self.pubs_rt)
+        self.assertIn('rt_book',    self.pubs_rt)
+
+    # --- helper: serialize_bibtex_entry preview ----------------------------
+
+    def test_serialize_single_entry_contains_author(self):
+        """serialize_bibtex_entry output must contain the author string."""
+        serialized = serialize_bibtex_entry(self.pubs_orig['rt_article'])
+        self.assertIn('author', serialized)
+        self.assertIn('Warnes', serialized)
+
+    def test_serialize_entry_contains_all_fields(self):
+        """serialize_bibtex_entry output must contain doi, pages, note."""
+        serialized = serialize_bibtex_entry(self.pubs_orig['rt_article'])
+        for field in ('doi', 'pages', 'note', 'custom'):
+            self.assertIn(field, serialized,
+                          f"Field '{field}' absent from serialized output")
+
+    # --- double round-trip stability ---------------------------------------
+
+    def test_double_roundtrip_stable(self):
+        """A second parse → serialize → parse must give the same fields as the first."""
+        bib_text2 = serialize_publications_to_bibtex(self.pubs_rt)
+        pubs_rt2  = bibtex_text_to_publications(bib_text2)
+
+        for key in ('rt_article', 'rt_book'):
+            fields1 = self.pubs_rt [key]['fields']
+            fields2 = pubs_rt2     [key]['fields']
+            self.assertEqual(
+                set(fields1.keys()), set(fields2.keys()),
+                f"Field keys differ on second round-trip for '{key}'",
+            )
+            for fname, fval in fields1.items():
+                self.assertEqual(
+                    fval, fields2.get(fname),
+                    f"Field '{fname}' of '{key}' changed on second round-trip: "
+                    f"{fval!r} → {fields2.get(fname)!r}",
+                )
+
+
+# ---------------------------------------------------------------------------
+# bibtex_text_to_publications — direct edge-case coverage
+# ---------------------------------------------------------------------------
+
+class TestBibtexTextToPublications(unittest.TestCase):
+    """Direct tests for bibtex_text_to_publications edge cases."""
+
+    def test_empty_string_returns_empty_dict(self):
+        result = bibtex_text_to_publications('')
+        self.assertEqual(result, {})
+
+    def test_whitespace_only_returns_empty_dict(self):
+        result = bibtex_text_to_publications('   \n\t  ')
+        self.assertEqual(result, {})
+
+    def test_none_input_returns_empty_dict(self):
+        result = bibtex_text_to_publications(None)
+        self.assertEqual(result, {})
+
+    def test_invalid_bibtex_returns_empty_dict(self):
+        result = bibtex_text_to_publications('this is not bibtex at all!')
+        self.assertEqual(result, {})
+
+    def test_write_failure_returns_empty_dict_not_unbound_error(self):
+        """If BibTeX parsing raises internally, the helper must return {}."""
+        from unittest.mock import patch
+        with patch('utils.bibtex_parser._load_bibtex_entries', side_effect=OSError('parse failed')):
+            result = bibtex_text_to_publications('@article{x, title={T},}')
+        self.assertEqual(result, {})
+
+    def test_valid_minimal_entry_parses_correctly(self):
+        bibtex = '@article{foo2024,\n  author = {Foo, Bar},\n  title = {A Test},\n  year = {2024},\n}\n'
+        result = bibtex_text_to_publications(bibtex)
+        self.assertIn('foo2024', result)
+        self.assertEqual(result['foo2024']['type'], 'article')
+        self.assertEqual(result['foo2024']['fields'].get('title'), 'A Test')
+        self.assertIn('author', result['foo2024']['fields'])
+
+
+# ---------------------------------------------------------------------------
+# serialize_publications_to_bibtex — edge cases
+# ---------------------------------------------------------------------------
+
+class TestSerializePublicationsEdgeCases(unittest.TestCase):
+    """Edge-case coverage for serialize_publications_to_bibtex."""
+
+    def test_empty_dict_does_not_crash(self):
+        """Serializing an empty publications dict must not raise."""
+        result = serialize_publications_to_bibtex({})
+        self.assertIsInstance(result, str)
+
+    def test_year_sort_order_newest_first(self):
+        """Entries should be written in descending year order."""
+        pubs = {
+            'old': {'key': 'old', 'type': 'article', 'fields': {'title': 'Old', 'year': '2010'}},
+            'new': {'key': 'new', 'type': 'article', 'fields': {'title': 'New', 'year': '2024'}},
+            'mid': {'key': 'mid', 'type': 'article', 'fields': {'title': 'Mid', 'year': '2018'}},
+        }
+        result = serialize_publications_to_bibtex(pubs)
+        pos_new = result.index('@article{new,')
+        pos_mid = result.index('@article{mid,')
+        pos_old = result.index('@article{old,')
+        self.assertLess(pos_new, pos_mid, "2024 entry should appear before 2018")
+        self.assertLess(pos_mid, pos_old, "2018 entry should appear before 2010")
+
+    def test_non_numeric_year_does_not_crash(self):
+        """Entries with non-numeric year values must not raise."""
+        pubs = {
+            'weird': {'key': 'weird', 'type': 'misc', 'fields': {'title': 'Weird', 'year': 'forthcoming'}},
+        }
+        result = serialize_publications_to_bibtex(pubs)
+        self.assertIn('@misc{weird,', result)
 
 
 if __name__ == '__main__':

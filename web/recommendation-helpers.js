@@ -14,6 +14,9 @@
  * DEPENDENCIES: none
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('recommendation-helpers');
+
 // ---------------------------------------------------------------------------
 // Internal lookup helpers
 // ---------------------------------------------------------------------------
@@ -21,7 +24,7 @@
 /** Look up a single experience entry in experience_recommendations. */
 function _findExpRec(expId, data) {
   if (!Array.isArray(data.experience_recommendations)) {
-    console.warn('[recommendation] experience_recommendations missing; using flat-list fallback for', expId);
+    log.warn('[recommendation] experience_recommendations missing; using flat-list fallback for', expId);
     return null;
   }
   return data.experience_recommendations.find(r => r.id === expId || r.experience_id === expId) || null;
@@ -30,7 +33,7 @@ function _findExpRec(expId, data) {
 /** Look up a single skill entry in skill_recommendations. */
 function _findSkillRec(skill, data) {
   if (!Array.isArray(data.skill_recommendations)) {
-    console.warn('[recommendation] skill_recommendations missing; using flat-list fallback for', skill);
+    log.warn('[recommendation] skill_recommendations missing; using flat-list fallback for', skill);
     return null;
   }
   return data.skill_recommendations.find(r => r.skill === skill || r.name === skill) || null;
