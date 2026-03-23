@@ -8,11 +8,15 @@
 BibTeX parsing utilities for publications.bib
 """
 
-import os
-import tempfile
-
-import pybtex.database
 from typing import Dict, List, Optional
+
+import bibtexparser  # type: ignore[import-untyped]
+from bibtexparser.bparser import BibTexParser  # type: ignore[import-untyped]
+from bibtexparser.customization import (  # type: ignore[import-untyped]
+    author as split_author_field,
+    convert_to_unicode,
+    splitname,
+)
 
 # Ordered list of standard BibTeX fields — author is written first, then these
 # in order, then any remaining custom fields.
@@ -26,101 +30,118 @@ _STANDARD_FIELD_ORDER: List[str] = [
 # serialize_bibtex_entry() so they always appear first in the output.
 
 
-def _person_to_bibtex_str(person) -> str:
-    """Reconstruct a pybtex Person as a BibTeX author string fragment.
-
-    Produces the ``von Last, Jr, First Middle`` form.  All name parts are
-    lists of strings inside the Person object; we join them with spaces and
-    then assemble the comma-separated BibTeX notation.
-    """
-    # "von Last" — prelast_names contains lowercase particles like "van", "de"
-    last_parts = list(person.prelast_names) + list(person.last_names)
-    last = ' '.join(last_parts)
-
-    lineage = ' '.join(person.lineage_names)          # Jr., III, …
-    given   = ' '.join(list(person.first_names) + list(person.middle_names))
-
-    if lineage and given:
-        return f"{last}, {lineage}, {given}"
-    elif lineage:
-        return f"{last}, {lineage}"
-    elif given:
-        return f"{last}, {given}"
-    return last
+def _build_parser() -> BibTexParser:
+    """Create a bibtexparser parser with the repo's expected defaults."""
+    parser = BibTexParser(common_strings=True)
+    parser.customization = convert_to_unicode
+    return parser
 
 
-def _persons_to_bibtex_field(persons: list) -> str:
-    """Join pybtex Person objects with ' and ' — BibTeX author field format."""
-    return ' and '.join(_person_to_bibtex_str(p) for p in persons)
+def _load_bibtex_entries(bibtex_text: str) -> List[Dict[str, str]]:
+    """Parse raw BibTeX text into bibtexparser entry dictionaries."""
+    database = bibtexparser.loads(bibtex_text or '', parser=_build_parser())
+    return database.entries
+
+
+def _split_bibtex_names(names: str | List[str] | None) -> List[str]:
+    """Split a raw BibTeX author/editor field into individual names."""
+    if names is None:
+        return []
+
+    if isinstance(names, list):
+        return [name.strip() for name in names if str(name).strip()]
+
+    raw_names = str(names).strip()
+    if not raw_names:
+        return []
+
+    try:
+        return split_author_field({'author': raw_names}).get('author', [])
+    except (AttributeError, TypeError, ValueError):
+        return [
+            name.strip()
+            for name in raw_names.split(' and ')
+            if name.strip()
+        ]
+
+
+def _entry_to_publication(entry: Dict[str, str]) -> Dict[str, Dict | str]:
+    """Convert one bibtexparser entry into the repo's publication shape."""
+    key = entry.get('ID', '')
+    entry_type = entry.get('ENTRYTYPE', '')
+    fields = {
+        field_name: field_value
+        for field_name, field_value in entry.items()
+        if field_name not in {'ID', 'ENTRYTYPE'}
+    }
+    publication: Dict[str, Dict | str] = {
+        'key': key,
+        'type': entry_type,
+        'title': fields.get('title', ''),
+        'year': fields.get('year', ''),
+        'authors': _format_authors(fields.get('author')),
+        'fields': fields,
+    }
+
+    if entry_type == 'article':
+        publication['journal'] = fields.get('journal', '')
+        publication['volume'] = fields.get('volume', '')
+        publication['pages'] = fields.get('pages', '')
+    elif entry_type in ['inproceedings', 'conference']:
+        publication['booktitle'] = fields.get('booktitle', '')
+    elif entry_type == 'techreport':
+        publication['institution'] = fields.get('institution', '')
+        publication['number'] = fields.get('number', '')
+    elif entry_type == 'phdthesis':
+        publication['school'] = fields.get('school', '')
+    elif entry_type == 'misc':
+        publication['note'] = fields.get('note', '')
+        publication['url'] = fields.get('url', '')
+
+    return publication
 
 
 def parse_bibtex_file(filepath: str) -> Dict[str, Dict]:
     """
     Parse a BibTeX file and return entries as a dictionary.
-    
+
     Args:
         filepath: Path to .bib file
-        
+
     Returns:
         Dictionary mapping entry keys to publication data
     """
-    bib_data = pybtex.database.parse_file(filepath)
-    
+    with open(filepath, 'r', encoding='utf-8') as handle:
+        bib_entries = _load_bibtex_entries(handle.read())
+
     publications = {}
-    for key, entry in bib_data.entries.items():
-        pub = {
-            'key': key,
-            'type': entry.type,
-            'title': entry.fields.get('title', ''),
-            'year': entry.fields.get('year', ''),
-            'authors': _format_authors(entry.persons.get('author', [])),
-            'fields': dict(entry.fields),
-        }
-        
-        # Add type-specific fields
-        if entry.type == 'article':
-            pub['journal'] = entry.fields.get('journal', '')
-            pub['volume'] = entry.fields.get('volume', '')
-            pub['pages'] = entry.fields.get('pages', '')
-        elif entry.type in ['inproceedings', 'conference']:
-            pub['booktitle'] = entry.fields.get('booktitle', '')
-        elif entry.type == 'techreport':
-            pub['institution'] = entry.fields.get('institution', '')
-            pub['number'] = entry.fields.get('number', '')
-        elif entry.type == 'phdthesis':
-            pub['school'] = entry.fields.get('school', '')
-        elif entry.type == 'misc':
-            pub['note'] = entry.fields.get('note', '')
-            pub['url'] = entry.fields.get('url', '')
+    for entry in bib_entries:
+        publication = _entry_to_publication(entry)
+        publications[str(publication['key'])] = publication
 
-        # Person roles (author, editor) live in entry.persons, NOT entry.fields.
-        # Add them to pub['fields'] in BibTeX notation so they survive serialization.
-        for role, persons in entry.persons.items():
-            if persons:
-                pub['fields'][role] = _persons_to_bibtex_field(persons)
-
-        publications[key] = pub
-    
     return publications
 
 
-def _format_authors(authors: List) -> str:
+def _format_authors(authors: str | List[str] | None) -> str:
     """Format author list for display."""
     if not authors:
         return ''
-    
+
     author_names = []
-    for author in authors:
-        # Get last name and first name
-        last = ' '.join(author.last_names)
-        first = ' '.join(author.first_names)
-        middle = ' '.join(author.middle_names)
-        
-        if middle:
-            author_names.append(f"{last}, {first} {middle}")
+    for author_name in _split_bibtex_names(authors):
+        parsed_name = splitname(author_name)
+        last_parts = parsed_name.get('von', []) + parsed_name.get('last', [])
+        given_parts = parsed_name.get('first', []) + parsed_name.get('jr', [])
+        last = ' '.join(last_parts).strip()
+        given = ' '.join(given_parts).strip()
+
+        if last and given:
+            author_names.append(f"{last}, {given}")
+        elif last:
+            author_names.append(last)
         else:
-            author_names.append(f"{last}, {first}")
-    
+            author_names.append(author_name)
+
     if len(author_names) == 1:
         return author_names[0]
     elif len(author_names) == 2:
@@ -133,11 +154,11 @@ def _format_authors(authors: List) -> str:
 def format_publication(pub: Dict, style: str = 'apa') -> str:
     """
     Format a publication entry for display in CV.
-    
+
     Args:
         pub: Publication dictionary from parse_bibtex_file
         style: Citation style ('apa', 'ieee', 'brief')
-        
+
     Returns:
         Formatted publication string
     """
@@ -152,44 +173,44 @@ def format_publication(pub: Dict, style: str = 'apa') -> str:
 def _format_brief(pub: Dict) -> str:
     """Brief format: Authors (Year). Title. Journal/Venue."""
     parts = []
-    
+
     if pub['authors']:
         parts.append(pub['authors'])
-    
+
     if pub['year']:
         parts.append(f"({pub['year']})")
-    
+
     if pub['title']:
         # Remove LaTeX formatting
         title = pub['title'].replace('{', '').replace('}', '')
         parts.append(f"{title}.")
-    
+
     if pub['type'] == 'article' and 'journal' in pub:
         parts.append(f"{pub['journal']}.")
     elif pub['type'] in ['inproceedings', 'conference'] and 'booktitle' in pub:
         parts.append(f"{pub['booktitle']}.")
     elif pub['type'] == 'techreport' and 'institution' in pub:
         parts.append(f"{pub['institution']}.")
-    
+
     return ' '.join(parts)
 
 
 def _format_apa(pub: Dict) -> str:
     """APA-style format."""
     parts = []
-    
+
     # Authors and year
     if pub['authors']:
         parts.append(f"{pub['authors']}.")
-    
+
     if pub['year']:
         parts.append(f"({pub['year']}).")
-    
+
     # Title
     if pub['title']:
         title = pub['title'].replace('{', '').replace('}', '')
         parts.append(f"{title}.")
-    
+
     # Publication venue
     if pub['type'] == 'article':
         venue_parts = []
@@ -201,42 +222,42 @@ def _format_apa(pub: Dict) -> str:
             venue_parts.append(pub['pages'])
         if venue_parts:
             parts.append(', '.join(venue_parts) + '.')
-    
+
     elif pub['type'] in ['inproceedings', 'conference']:
         if 'booktitle' in pub:
             parts.append(f"In *{pub['booktitle']}*.")
-    
+
     elif pub['type'] == 'techreport':
         if 'institution' in pub:
             parts.append(f"{pub['institution']}.")
         if 'number' in pub:
             parts.append(f"Technical Report {pub['number']}.")
-    
+
     elif pub['type'] == 'phdthesis':
         if 'school' in pub:
             parts.append(f"Doctoral dissertation, {pub['school']}.")
-    
+
     elif pub['type'] == 'misc':
         if 'note' in pub:
             parts.append(f"{pub['note']}.")
-    
+
     return ' '.join(parts)
 
 
 def _format_ieee(pub: Dict) -> str:
     """IEEE-style format."""
     parts = []
-    
+
     # Authors
     if pub['authors']:
         # IEEE uses initials for first names
         parts.append(f"{pub['authors']},")
-    
+
     # Title in quotes
     if pub['title']:
         title = pub['title'].replace('{', '').replace('}', '')
         parts.append(f'"{title},"')
-    
+
     # Journal/venue
     if pub['type'] == 'article' and 'journal' in pub:
         venue = f"*{pub['journal']}*"
@@ -247,17 +268,17 @@ def _format_ieee(pub: Dict) -> str:
         if 'year' in pub:
             venue += f", {pub['year']}"
         parts.append(venue + '.')
-    
+
     elif pub['type'] in ['inproceedings', 'conference'] and 'booktitle' in pub:
         venue = f"in *{pub['booktitle']}*"
         if 'year' in pub:
             venue += f", {pub['year']}"
         parts.append(venue + '.')
-    
+
     else:
         if 'year' in pub:
             parts.append(f"{pub['year']}.")
-    
+
     return ' '.join(parts)
 
 
@@ -269,23 +290,23 @@ def filter_publications(
 ) -> Dict[str, Dict]:
     """
     Filter publications by type, year, and keywords.
-    
+
     Args:
         publications: Dictionary of publications
         pub_type: Filter by type ('article', 'misc', etc.)
         min_year: Minimum year (inclusive)
         keywords: List of keywords to search in title
-        
+
     Returns:
         Filtered dictionary of publications
     """
     filtered = {}
-    
+
     for key, pub in publications.items():
         # Type filter
         if pub_type and pub['type'] != pub_type:
             continue
-        
+
         # Year filter
         if min_year:
             try:
@@ -294,19 +315,21 @@ def filter_publications(
                     continue
             except (ValueError, KeyError):
                 continue
-        
+
         # Keyword filter
         if keywords:
             title_lower = pub['title'].lower()
             if not any(kw.lower() in title_lower for kw in keywords):
                 continue
-        
+
         filtered[key] = pub
-    
+
     return filtered
 
 
-def get_software_publications(publications: Dict[str, Dict]) -> Dict[str, Dict]:
+def get_software_publications(
+    publications: Dict[str, Dict],
+) -> Dict[str, Dict]:
     """Extract software/R package publications."""
     return {
         key: pub for key, pub in publications.items()
@@ -339,9 +362,9 @@ def serialize_bibtex_entry(pub: Dict) -> str:
     (``Last, First and Last2, First2``).  The "display" ``authors`` key is
     ignored here.
     """
-    key        = pub.get('key', 'unknown')
+    key = pub.get('key', 'unknown')
     entry_type = pub.get('type', 'misc')
-    fields     = dict(pub.get('fields', {}))
+    fields = dict(pub.get('fields', {}))
 
     lines = [f"@{entry_type}{{{key},"]
 
@@ -381,13 +404,19 @@ def serialize_publications_to_bibtex(publications: Dict[str, Dict]) -> str:
     def _sort_key(item):
         pub = item[1]
         try:
-            year = -int(str(pub.get('year') or pub.get('fields', {}).get('year', '0')).strip())
+            fields = pub.get('fields', {})
+            year_value = pub.get('year') or fields.get('year', '0')
+            year = -int(str(year_value).strip())
         except (ValueError, TypeError):
             year = 0
         return (year, item[0])
 
     sorted_pubs = sorted(publications.items(), key=_sort_key)
-    return "\n\n".join(serialize_bibtex_entry(pub) for _, pub in sorted_pubs) + "\n"
+    serialized = (
+        serialize_bibtex_entry(pub)
+        for _, pub in sorted_pubs
+    )
+    return "\n\n".join(serialized) + "\n"
 
 
 def bibtex_text_to_publications(bibtex_text: str) -> Dict[str, Dict]:
@@ -399,20 +428,14 @@ def bibtex_text_to_publications(bibtex_text: str) -> Dict[str, Dict]:
     if not text:
         return {}
 
-    # pybtex only reads from files, so write to a temp file
-    tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.bib', delete=False,
-                                         encoding='utf-8') as tmp:
-            tmp.write(text)
-            tmp_path = tmp.name
-        return parse_bibtex_file(tmp_path)
-    except Exception:
+        bib_entries = _load_bibtex_entries(text)
+    except (OSError, TypeError, ValueError):
         return {}
-    finally:
-        if tmp_path is not None:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
 
+    publications = {}
+    for entry in bib_entries:
+        publication = _entry_to_publication(entry)
+        publications[str(publication['key'])] = publication
+
+    return publications
