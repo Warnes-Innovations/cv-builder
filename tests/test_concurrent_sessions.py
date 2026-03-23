@@ -1796,6 +1796,116 @@ def test_cv_ats_score_route_falls_back_to_achievement_edits_when_needed(
         assert manager.save_calls == 1
 
 
+def test_persuasion_check_route_uses_selected_generated_experiences(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["generated_files"] = {
+            "output_dir": str(manager.session_dir)
+        }
+        manager.state["job_analysis"] = {"title": "Staff Data Scientist"}
+        manager.state["customizations"] = {"focus": "platform"}
+        selected_experiences = [
+            {"id": "exp-selected", "achievements": ["Built platform"]}
+        ]
+        manager.orchestrator._select_content_hybrid = MagicMock(
+            return_value={"experiences": selected_experiences}
+        )
+        manager.orchestrator.check_persuasion = MagicMock(
+            return_value={
+                "findings": [{"exp_id": "exp-selected"}],
+                "summary": {
+                    "total_bullets": 1,
+                    "flagged": 1,
+                    "strong_count": 0,
+                },
+            }
+        )
+
+        response = client.get(
+            "/api/persuasion-check",
+            query_string={"session_id": session_id},
+        )
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            "ok": True,
+            "findings": [{"exp_id": "exp-selected"}],
+            "summary": {
+                "total_bullets": 1,
+                "flagged": 1,
+                "strong_count": 0,
+            },
+        }
+        manager.orchestrator._select_content_hybrid.assert_called_once_with(
+            manager.state["job_analysis"],
+            manager.state["customizations"],
+        )
+        manager.orchestrator.check_persuasion.assert_called_once_with(
+            selected_experiences
+        )
+
+
+def test_persuasion_check_route_falls_back_to_master_data_on_selection_error(
+    build_app,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["generated_files"] = {
+            "output_dir": str(manager.session_dir)
+        }
+        manager.orchestrator.master_data["experience"] = [
+            {"id": "exp-master", "achievements": ["Helped various teams"]}
+        ]
+        manager.orchestrator._select_content_hybrid = MagicMock(
+            side_effect=RuntimeError("selection failed")
+        )
+        manager.orchestrator.check_persuasion = MagicMock(
+            return_value={
+                "findings": [{"exp_id": "exp-master"}],
+                "summary": {
+                    "total_bullets": 1,
+                    "flagged": 1,
+                    "strong_count": 0,
+                },
+            }
+        )
+
+        response = client.get(
+            "/api/persuasion-check",
+            query_string={"session_id": session_id},
+        )
+
+        assert response.status_code == 200
+        manager.orchestrator.check_persuasion.assert_called_once_with(
+            manager.orchestrator.master_data["experience"]
+        )
+
+
+def test_persuasion_check_route_returns_500_on_orchestrator_error(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.orchestrator.check_persuasion = MagicMock(
+            side_effect=ValueError("persuasion failed")
+        )
+
+        response = client.get(
+            "/api/persuasion-check",
+            query_string={"session_id": session_id},
+        )
+
+        assert response.status_code == 500
+        assert response.get_json() == {"error": "persuasion failed"}
+
+
 def test_concurrent_session_mutations_stay_isolated(build_app):
     app, tracker = build_app(job_barrier=threading.Barrier(2))
 

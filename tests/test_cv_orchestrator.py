@@ -1192,5 +1192,90 @@ class TestBulletOrderInSelectContent(unittest.TestCase):
         self.assertNotIn('ordered_achievements', exp)
 
 
+class TestCheckPersuasion(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_empty_experiences_returns_zero_summary(self):
+        result = self.orc.check_persuasion([])
+
+        self.assertEqual(result['findings'], [])
+        self.assertEqual(
+            result['summary'],
+            {'total_bullets': 0, 'flagged': 0, 'strong_count': 0},
+        )
+
+    def test_strong_quantified_bullet_counts_as_strong(self):
+        experiences = [
+            {
+                'id': 'exp-1',
+                'achievements': [
+                    'Led team of 5 engineers to reduce latency by 30% across platform.',
+                ],
+            }
+        ]
+
+        result = self.orc.check_persuasion(experiences)
+
+        self.assertEqual(result['findings'], [])
+        self.assertEqual(result['summary']['total_bullets'], 1)
+        self.assertEqual(result['summary']['flagged'], 0)
+        self.assertEqual(result['summary']['strong_count'], 1)
+
+    def test_ordered_achievements_take_precedence_and_flag_warning_issues(self):
+        experiences = [
+            {
+                'id': 'exp-2',
+                'achievements': [
+                    {'text': 'Led 10 engineers to improve reliability by 25%.'},
+                ],
+                'ordered_achievements': [
+                    {'text': 'Helped with various tasks across the platform team.'},
+                ],
+            }
+        ]
+
+        result = self.orc.check_persuasion(experiences)
+
+        self.assertEqual(result['summary']['total_bullets'], 1)
+        self.assertEqual(result['summary']['flagged'], 1)
+        self.assertEqual(result['summary']['strong_count'], 0)
+        finding = result['findings'][0]
+        self.assertEqual(finding['exp_id'], 'exp-2')
+        self.assertEqual(
+            finding['text'],
+            'Helped with various tasks across the platform team.',
+        )
+        issue_types = [issue['type'] for issue in finding['issues']]
+        self.assertIn('weak_verb', issue_types)
+        self.assertIn('no_metric', issue_types)
+        self.assertIn('vague_language', issue_types)
+        self.assertEqual(finding['severity'], 'warning')
+
+    def test_info_only_issues_keep_info_severity(self):
+        experiences = [
+            {
+                'id': 'exp-3',
+                'achievements': ['Started 3 pilots'],
+            }
+        ]
+
+        result = self.orc.check_persuasion(experiences)
+
+        self.assertEqual(result['summary']['total_bullets'], 1)
+        self.assertEqual(result['summary']['flagged'], 1)
+        finding = result['findings'][0]
+        self.assertEqual(finding['severity'], 'info')
+        self.assertEqual(
+            [issue['type'] for issue in finding['issues']],
+            ['no_strong_verb', 'too_short'],
+        )
+
+
 if __name__ == '__main__':
     unittest.main()
