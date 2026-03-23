@@ -70,6 +70,7 @@ class FakeOrchestrator:
         self.publications_path = publications_path
         self.output_dir = output_dir
         self.llm_client = llm_client
+        self.llm = llm_client
         self.master_data = dict(SAMPLE_MASTER_DATA)
 
     def propose_rewrites(
@@ -1648,6 +1649,99 @@ def test_phase_navigation_and_review_routes_update_session_state(build_app):
         assert review.get_json()["success"] is True
         assert manager.state["skill_decisions"] == {"python": "include"}
         assert manager.state["extra_skills"] == ["FastAPI"]
+
+
+def test_context_stats_route_reports_exact_prompt_usage(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        orchestrator = _orchestrator_for_session(tracker, session_id)
+        manager.conversation_history = [
+            {"role": "user", "content": "Need a platform-focused CV."},
+            {"role": "assistant", "content": "Working on it."},
+        ]
+        orchestrator.llm.model = "gpt-4o"
+        orchestrator.llm.last_usage = {"prompt_tokens": 321}
+
+        response = client.get(
+            "/api/context-stats",
+            query_string={"session_id": session_id},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "ok": True,
+        "estimated_tokens": 321,
+        "token_source": "exact",
+        "context_window": 128000,
+        "model": "gpt-4o",
+        "history_messages": 2,
+    }
+
+
+def test_post_analysis_questions_route_uses_llm_output_and_persists_questions(
+    build_app,
+):
+    app, tracker = build_app()
+    question_text = (
+        "Should I emphasize platform leadership or hands-on "
+        "architecture?"
+    )
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        _claim_session(client, session_id, "owner-a")
+        manager = _manager_for_session(tracker, session_id)
+        orchestrator = _orchestrator_for_session(tracker, session_id)
+        manager.state["job_description"] = (
+            "Director of Platform AI\n"
+            "Acme Labs\n"
+            "Lead platform strategy and execution."
+        )
+        manager.state["job_analysis"] = {
+            "title": "Director of Platform AI",
+            "company": "Acme Labs",
+            "domain": "applied AI platforms",
+        }
+        manager.state["post_analysis_answers"] = {
+            "focus": "platform leadership",
+        }
+        orchestrator.llm.chat.return_value = json.dumps(
+            [
+                {
+                    "type": "leadership_focus",
+                    "question": question_text,
+                    "choices": ["Leadership", "Architecture", "Balance both"],
+                }
+            ]
+        )
+
+        response = client.post(
+            "/api/post-analysis-questions",
+            json={"session_id": session_id, "owner_token": "owner-a"},
+        )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload == {
+        "ok": True,
+        "questions": [
+            {
+                "type": "leadership_focus",
+                "question": question_text,
+                "choices": ["Leadership", "Architecture", "Balance both"],
+            }
+        ],
+        "source": "llm",
+    }
+    assert manager.state["post_analysis_questions"] == payload["questions"]
+    assert manager.save_calls == 1
+
+    prompt = orchestrator.llm.chat.call_args.kwargs["messages"][1]["content"]
+    assert "Previously answered questions" in prompt
+    assert "focus: platform leadership" in prompt
 
 
 def test_intake_metadata_and_prior_clarifications_routes_use_session_files(
