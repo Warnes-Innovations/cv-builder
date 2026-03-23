@@ -1744,6 +1744,282 @@ def test_post_analysis_questions_route_uses_llm_output_and_persists_questions(
     assert "focus: platform leadership" in prompt
 
 
+def test_context_stats_route_estimates_usage_without_prompt_metrics(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        orchestrator = _orchestrator_for_session(tracker, session_id)
+        manager.state["job_description"] = "Director of AI Platform"
+        manager.conversation_history = [
+            {"role": "user", "content": "Please tailor this CV."},
+        ]
+        orchestrator.llm.model = "gemini-1.5-pro"
+        orchestrator.llm.last_usage = None
+
+        response = client.get(
+            "/api/context-stats",
+            query_string={"session_id": session_id},
+        )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["token_source"] == "estimated"
+    assert payload["context_window"] == 2_000_000
+    assert payload["model"] == "gemini-1.5-pro"
+    assert payload["history_messages"] == 1
+    assert payload["estimated_tokens"] > 0
+
+
+def test_post_analysis_questions_route_handles_missing_analysis_and_fallback(
+    build_app,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        empty_session_id = _new_session(client)
+        _claim_session(client, empty_session_id, "owner-a")
+        no_analysis = client.post(
+            "/api/post-analysis-questions",
+            json={"session_id": empty_session_id, "owner_token": "owner-a"},
+        )
+
+        session_id = _new_session(client)
+        _claim_session(client, session_id, "owner-b")
+        manager = _manager_for_session(tracker, session_id)
+        orchestrator = _orchestrator_for_session(tracker, session_id)
+        manager.state["job_description"] = (
+            "Director of Platform AI\n"
+            "Acme Labs\n"
+            "Lead platform strategy."
+        )
+        manager.state["job_analysis"] = {
+            "role_level": "director",
+            "required_skills": ["team leadership", "platform strategy"],
+            "domain": "applied AI",
+            "company": "Acme Labs",
+        }
+        orchestrator.llm.chat.side_effect = RuntimeError("LLM unavailable")
+
+        fallback = client.post(
+            "/api/post-analysis-questions",
+            json={"session_id": session_id, "owner_token": "owner-b"},
+        )
+
+    assert no_analysis.status_code == 200
+    assert no_analysis.get_json() == {"ok": True, "questions": []}
+
+    assert fallback.status_code == 200
+    fallback_payload = fallback.get_json()
+    assert fallback_payload["ok"] is True
+    assert fallback_payload["source"] == "fallback"
+    assert len(fallback_payload["questions"]) >= 1
+    assert manager.state["post_analysis_questions"] == fallback_payload["questions"]
+
+
+def test_session_listing_and_load_items_routes_include_saved_sessions_and_files(
+    build_app,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state.update(
+            {
+                "position_name": "Director of Platform AI at Acme Labs",
+                "phase": Phase.CUSTOMIZATION,
+                "job_description": "Lead platform strategy.",
+                "job_analysis": {"title": "Director of Platform AI"},
+                "customizations": {"selected_summary": "Targeted summary"},
+                "generated_files": {"human_pdf": "cv.pdf"},
+            }
+        )
+        manager._save_session()
+
+        with patch(
+            "utils.config.get_config",
+            return_value={"data.output_dir": str(manager.output_dir)},
+        ):
+            sessions_response = client.get("/api/sessions")
+            load_items_response = client.get("/api/load-items")
+
+    assert sessions_response.status_code == 200
+    sessions_payload = sessions_response.get_json()
+    assert len(sessions_payload["sessions"]) == 1
+    assert sessions_payload["sessions"][0]["position_name"] == (
+        "Director of Platform AI at Acme Labs"
+    )
+    assert sessions_payload["sessions"][0]["has_customizations"] is True
+
+    assert load_items_response.status_code == 200
+    items = load_items_response.get_json()["items"]
+    session_items = [item for item in items if item["kind"] == "session"]
+    file_items = [item for item in items if item["kind"] == "file"]
+    assert len(session_items) == 1
+    assert session_items[0]["label"] == "Director of Platform AI at Acme Labs"
+    assert session_items[0]["has_cv"] is True
+    assert any(item["filename"] == "data_science_lead.txt" for item in file_items)
+
+
+def test_position_routes_list_positions_and_open_latest_session(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        prior_session_id = _new_session(client)
+        prior_manager = _manager_for_session(tracker, prior_session_id)
+        prior_manager.state.update(
+            {
+                "position_name": "Director of Platform AI",
+                "job_description": "Saved role description",
+                "job_analysis": {"title": "Director of Platform AI"},
+            }
+        )
+        prior_manager._save_session()
+
+        session_id = _new_session(client)
+        _claim_session(client, session_id, "owner-a")
+        manager = _manager_for_session(tracker, session_id)
+
+        positions = client.get(
+            "/api/positions",
+            query_string={"session_id": session_id},
+        )
+        missing_name = client.post(
+            "/api/position",
+            json={"session_id": session_id, "owner_token": "owner-a"},
+        )
+        opened = client.post(
+            "/api/position",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "name": "Director of Platform AI",
+                "open_latest": True,
+            },
+        )
+
+    assert positions.status_code == 200
+    assert positions.get_json() == {"positions": ["Director of Platform AI"]}
+    assert missing_name.status_code == 400
+    assert missing_name.get_json()["error"] == "Missing name"
+
+    assert opened.status_code == 200
+    assert opened.get_json() == {
+        "ok": True,
+        "loaded": True,
+        "position_name": "Director of Platform AI",
+    }
+    assert manager.state["position_name"] == "Director of Platform AI"
+    assert manager.state["job_description"] == "Saved role description"
+
+
+def test_rename_session_route_updates_disk_and_active_manager(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["position_name"] = "Original Position"
+        manager._save_session()
+        session_path = str(manager.session_file)
+
+        with patch(
+            "scripts.web_app.get_config",
+            return_value={"data.output_dir": str(manager.output_dir)},
+        ):
+            missing_path = client.post(
+                "/api/rename-session",
+                json={"new_name": "Updated Position"},
+            )
+            renamed = client.post(
+                "/api/rename-session",
+                json={
+                    "path": session_path,
+                    "new_name": "Updated Position",
+                },
+            )
+
+    assert missing_path.status_code == 400
+    assert missing_path.get_json()["error"] == "Missing path"
+
+    assert renamed.status_code == 200
+    assert renamed.get_json() == {
+        "ok": True,
+        "new_name": "Updated Position",
+    }
+    assert manager.state["position_name"] == "Updated Position"
+    persisted = json.loads(Path(session_path).read_text(encoding="utf-8"))
+    assert persisted["state"]["position_name"] == "Updated Position"
+
+
+def test_delete_session_and_trash_routes_manage_session_lifecycle(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["position_name"] = "Trash Candidate"
+        manager._save_session()
+
+        second_session_id = _new_session(client)
+        second_manager = _manager_for_session(tracker, second_session_id)
+        second_manager.state["position_name"] = "Trash Candidate Two"
+        second_manager._save_session()
+
+        with patch(
+            "scripts.web_app.get_config",
+            return_value={"data.output_dir": str(manager.output_dir)},
+        ):
+            deleted = client.post(
+                "/api/delete-session",
+                json={"path": str(manager.session_file)},
+            )
+            trash_list = client.get("/api/trash")
+            trash_path = trash_list.get_json()["items"][0]["path"]
+            restored = client.post(
+                "/api/trash/restore",
+                json={"path": trash_path},
+            )
+            restored_path_exists = Path(manager.session_file).exists()
+
+            deleted_again = client.post(
+                "/api/delete-session",
+                json={"path": str(manager.session_file)},
+            )
+            trash_after_redelete = client.get("/api/trash")
+            delete_one_path = trash_after_redelete.get_json()["items"][0]["path"]
+            deleted_one = client.post(
+                "/api/trash/delete",
+                json={"path": delete_one_path},
+            )
+
+            client.post(
+                "/api/delete-session",
+                json={"path": str(second_manager.session_file)},
+            )
+            emptied = client.post("/api/trash/empty")
+            final_trash = client.get("/api/trash")
+
+    assert deleted.status_code == 200
+    assert deleted.get_json()["success"] is True
+    assert trash_list.status_code == 200
+    assert trash_list.get_json()["count"] == 1
+
+    assert restored.status_code == 200
+    assert restored.get_json()["success"] is True
+    assert restored_path_exists is True
+
+    assert deleted_again.status_code == 200
+    assert deleted_one.status_code == 200
+    assert deleted_one.get_json() == {"success": True}
+    assert emptied.status_code == 200
+    assert emptied.get_json() == {"success": True}
+    assert final_trash.get_json() == {"items": [], "count": 0}
+
+
 def test_intake_metadata_and_prior_clarifications_routes_use_session_files(
     build_app,
 ):
