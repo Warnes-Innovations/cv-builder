@@ -10,38 +10,33 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # HR ATS Review Status
 
-**Last Updated:** 2026-03-22 23:09 EDT
+**Last Updated:** 2026-03-23 01:35 EDT
 
-**Executive Summary:** This file captures the source-verified HR/ATS review snapshot separately from the story specification so sub-agents can work in parallel safely. This legacy snapshot has been normalized to the current section structure without re-running the HR/ATS review.
+**Executive Summary:** This file captures the source-verified HR/ATS review snapshot separately from the story specification so persona review subagents can work in parallel safely.
 
 ## Application Evaluation
 
-The preserved HR/ATS findings below remain in their original aggregate form from the earlier source-first review.
-
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/cv_orchestrator.py
+**Reviewed against:** web/app.js, scripts/web_app.py, scripts/utils/cv_orchestrator.py:780-930, scripts/utils/cv_orchestrator.py:2081-2235, scripts/utils/cv_orchestrator.py:2890-3185
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-|-------|---------|-----------|--------|------------|-------|
-| US-H* | 0 | 1 | 5 | 2 | 0 |
+| ------- | --------- | ----------- | -------- | ------------ | ------- |
+| US-H* | 0 | 6 | 2 | 0 | 0 |
 
-**Key evidence references:**
-- US-H1: ATS DOCX is paragraph-based with body contact lines, but ATS font family/size constraints are not enforced and contact is not in the first paragraph → scripts/utils/cv_orchestrator.py:1424, scripts/utils/cv_orchestrator.py:1435, scripts/utils/cv_orchestrator.py:1559
-- US-H2: ATS headings are written as `Heading 2` with labels like `PROFESSIONAL SUMMARY`, `CORE COMPETENCIES`, and `PROFESSIONAL EXPERIENCE`, not the accepted `Heading 1` labels in the story → scripts/utils/cv_orchestrator.py:1460, scripts/utils/cv_orchestrator.py:1471, scripts/utils/cv_orchestrator.py:1482
-- US-H3: Contact data is emitted on the second body paragraph and phone/name formatting is passed through raw source values with no ATS normalization → scripts/utils/cv_orchestrator.py:1428, scripts/utils/cv_orchestrator.py:1435
-- US-H4: A post-generation ATS keyword presence check exists, but it reports aggregate presence only; section-level reporting, exact/variant match typing, and verification that `knowsAbout` contains all approved rewrite skill names were not found in any reviewed source file → scripts/utils/cv_orchestrator.py:2338, scripts/utils/cv_orchestrator.py:2411
-- US-H5: ATS job entries are split across title/company and date/location paragraphs, and overlap validation was not found in any reviewed source file → scripts/utils/cv_orchestrator.py:1486, scripts/utils/cv_orchestrator.py:1497
-- US-H6: ATS validation runs from the download-tab flow and cached validation results are only written to `metadata.json` during finalise, not during generation → web/app.js:5475, scripts/web_app.py:3861, scripts/web_app.py:3973
-- US-H7: HR-ATS match-score UI and generation-time metadata persistence were not found in reviewed source files; the only live `% match` badge is for screening-question experience matching, not ATS scoring → web/app.js:8687
-- US-H8: Hard/soft skill classification, JSON-LD `additionalType`, and UI override propagation were not found in reviewed source files; ATS DOCX emits one `CORE COMPETENCIES` list rather than separate hard/soft sections → scripts/utils/cv_orchestrator.py:1471
+- US-H1: ⚠️ Partial. The ATS DOCX is paragraph-based and deliberately ATS-oriented, which is a meaningful implementation step beyond the older legacy snapshot, but the story’s stricter document contract is still not fully enforced. Evidence: scripts/utils/cv_orchestrator.py:2081-2235, scripts/utils/cv_orchestrator.py:2890-3185.
+- US-H2: ⚠️ Partial. Standardized headings and validation checks exist, but the exact heading-level and label semantics required by the ATS story are still not consistently guaranteed. Evidence: scripts/utils/cv_orchestrator.py:2081-2235, scripts/utils/cv_orchestrator.py:2890-3185.
+- US-H3: ⚠️ Partial. Contact information is included in ATS-friendly output, yet stronger normalization of field formatting and stricter placement assumptions remain incomplete. Evidence: scripts/utils/cv_orchestrator.py:2081-2235.
+- US-H4: ⚠️ Partial. JSON-LD generation and ATS keyword-presence validation are both real, but the user still does not get the richer keyword-match visibility and section-level reasoning the story expects. Evidence: scripts/utils/cv_orchestrator.py:780-930, scripts/utils/cv_orchestrator.py:2890-3185.
+- US-H5: ⚠️ Partial. Employment data is rendered in a structured ATS DOCX shape, but stronger overlap validation and tighter employment-header formatting rules were not verified. Evidence: scripts/utils/cv_orchestrator.py:2081-2235.
+- US-H6: ⚠️ Partial. ATS validation exists and checks a substantial range of generated-file semantics, but it still behaves more like a downstream report than an automatic generation-stage contract. Evidence: scripts/utils/cv_orchestrator.py:2890-3185, scripts/web_app.py.
+- US-H7: ❌ Fail. A candidate-facing ATS match score with live visibility and persisted explanation was not verified in the reviewed implementation. Evidence: web/app.js, scripts/web_app.py.
+- US-H8: ❌ Fail. Hard-vs-soft skill classification and corresponding JSON-LD or ATS DOCX semantics were not verified in the reviewed code. Evidence: scripts/utils/cv_orchestrator.py:780-930, scripts/utils/cv_orchestrator.py:2081-2235.
 
 ## Generated Materials Evaluation
 
-The legacy HR/ATS snapshot mixed output-quality findings into the preserved aggregate summary above rather than separating them into a distinct generated-materials section. A refreshed HR/ATS pass should split those findings explicitly.
+⚠️ Partial. ATS output is no longer hypothetical: paragraph-based DOCX generation, JSON-LD emission, and post-generation validation are all real. The remaining gap is that the stricter ATS-story semantics, scoring visibility, and skill-type modeling are still incomplete. Evidence: scripts/utils/cv_orchestrator.py:780-930, scripts/utils/cv_orchestrator.py:2081-2235, scripts/utils/cv_orchestrator.py:2890-3185.
 
 ## Additional Story Gaps / Proposed Story Items
 
-None recorded yet.
-
-**Evidence standard:**
-- This file preserves a pre-existing legacy snapshot.
-- Any refreshed findings should cite repository-relative source paths with line numbers and enough supporting evidence for independent verification.
+- Add a visible ATS score and per-keyword reasoning model that users can inspect before finalising.
+- Normalize ATS heading/contact/date rules into one explicit contract used by generation and validation.
+- Add hard-vs-soft skill typing to the data and output pipeline rather than treating ATS skills as one flat list.
