@@ -427,7 +427,11 @@ def create_blueprint(deps):
             session_registry.claim(sid, token)
             return jsonify({"ok": True})
         except SessionNotFoundError as e:
-            return jsonify({"error": str(e)}), 404
+            return jsonify({
+                "ok": False,
+                "error": "session_not_found",
+                "message": str(e),
+            })
         except SessionOwnedError as e:
             return jsonify({"error": "session_owned", "message": str(e)}), 409
 

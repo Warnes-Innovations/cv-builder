@@ -21,6 +21,17 @@ import {
   handleQuestionResponse,
   finishPostAnalysisQuestions,
 } from '../../web/questions-panel.js'
+import { initializeState, stateManager } from '../../web/state-manager.js'
+
+function createLocalStorageMock() {
+  let store = {}
+  return {
+    getItem: key => Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null,
+    setItem: (key, value) => { store[key] = String(value) },
+    removeItem: key => { delete store[key] },
+    clear: () => { store = {} },
+  }
+}
 
 // ── DOM helpers ───────────────────────────────────────────────────────────
 
@@ -30,9 +41,11 @@ function buildContent() {
 
 beforeEach(() => {
   document.body.innerHTML = ''
+  vi.stubGlobal('localStorage', createLocalStorageMock())
   window.postAnalysisQuestions = []
   window.questionAnswers = {}
-  window.tabData = { analysis: null }
+  initializeState()
+  stateManager.setTabData('analysis', null)
   window.waitingForQuestionResponse = false
   window.currentQuestionIndex = 0
   vi.stubGlobal('escapeHtml', s => String(s ?? ''))
@@ -50,7 +63,6 @@ afterEach(() => {
   vi.unstubAllGlobals()
   delete window.postAnalysisQuestions
   delete window.questionAnswers
-  delete window.tabData
   delete window.waitingForQuestionResponse
   delete window.currentQuestionIndex
 })
@@ -90,20 +102,20 @@ describe('populateQuestionsTab', () => {
   beforeEach(buildContent)
 
   it('shows empty state when no analysis data', () => {
-    window.tabData = { analysis: null }
+    stateManager.setTabData('analysis', null)
     populateQuestionsTab()
     expect(document.getElementById('document-content').innerHTML).toContain('No Questions Yet')
   })
 
   it('shows complete state when analysis exists but no questions', () => {
-    window.tabData = { analysis: {} }
+    stateManager.setTabData('analysis', {})
     window.postAnalysisQuestions = []
     populateQuestionsTab()
     expect(document.getElementById('document-content').innerHTML).toContain('Questions Complete')
   })
 
   it('renders questions panel when questions exist', () => {
-    window.tabData = { analysis: {} }
+    stateManager.setTabData('analysis', {})
     window.postAnalysisQuestions = [
       { type: 't1', question: 'Q1?', choices: [] },
     ]

@@ -25,6 +25,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('job-analysis');
 
+import { stateManager } from './state-manager.js';
+
 // ---------------------------------------------------------------------------
 // Post-analysis question helpers
 // ---------------------------------------------------------------------------
@@ -91,10 +93,10 @@ function mergePostAnalysisQuestions(existingQuestions, incomingQuestions) {
 // ---------------------------------------------------------------------------
 
 async function analyzeJob() {
-  if (isLoading) return;
+  if (stateManager.isLoading()) return;
 
   // Gate on intake confirmation before first analysis.
-  if (!tabData.analysis) {
+  if (!stateManager.getTabData('analysis')) {
     try {
       const res  = await llmFetch('/api/intake-metadata');
       const data = await res.json();
@@ -133,7 +135,7 @@ async function analyzeJob() {
 
       if (analysisText) appendMessage('assistant', analysisText);
       appendFormattedAnalysis(analysisData);
-      tabData.analysis = analysisData;
+      stateManager.setTabData('analysis', analysisData);
       refreshAtsScore('analysis');
       switchTab('analysis');
 

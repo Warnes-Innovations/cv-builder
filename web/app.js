@@ -45,13 +45,14 @@ async function init() {
   // Save state before page unload
   window.addEventListener('beforeunload', () => {
     saveTabData();
-    if (sessionId) {
-      localStorage.setItem(StorageKeys.SESSION_ID, sessionId);
+    const activeSessionId = stateManager.getSessionId();
+    if (activeSessionId) {
+      localStorage.setItem(StorageKeys.SESSION_ID, activeSessionId);
     }
   });
 
   // Auto-analyze job if loaded but not analyzed (only if not reconnecting)
-  if (!isReconnecting) {
+  if (!stateManager.isReconnecting()) {
     const status = await fetchStatus();
     if (!status._error && status.job_description && !status.job_analysis) {
       appendMessage('system', 'Auto-analyzing loaded job description...');
