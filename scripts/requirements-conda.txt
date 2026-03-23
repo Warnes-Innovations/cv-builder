@@ -1,4 +1,15 @@
-# Requirements for CV Generation System (pip-only, conda manages spacy/blis)
+# requirements-conda.txt — CV Builder pip dependencies for local conda development
+#
+# PURPOSE: Pip packages to install AFTER conda has set up the base environment.
+#          Excludes spacy, blis, and language-tool-python (managed by conda-forge
+#          to avoid macOS compilation issues). Adds LLM API clients not needed in CI.
+#
+# EXECUTION ORDER (local conda setup):
+#   1. conda create -n cvgen python=3.9 spacy -c conda-forge --override-channels -y
+#   2. conda activate cvgen
+#   3. pip install -r scripts/requirements-conda.txt
+#
+# For CI / pure-pip environments, use scripts/requirements.txt instead.
 
 # LLM API Clients
 openai>=1.0.0
@@ -21,7 +32,7 @@ transformers>=4.30.0
 nltk>=3.8
 
 # BibTeX Processing
-pybtex>=0.24.0
+bibtexparser>=1.4.0
 
 # Data Validation
 pydantic>=2.0.0

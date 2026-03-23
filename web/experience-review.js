@@ -18,6 +18,9 @@
  *   $, $.fn.DataTable (jQuery + DataTables)
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('experience-review');
+
 // ── Experience details fetch ───────────────────────────────────────────────
 
 async function getExperienceDetails(expId) {
@@ -32,11 +35,11 @@ async function getExperienceDetails(expId) {
       const data = await res.json();
       return data.experience || null;
     } else {
-      console.warn('Could not fetch experience details for', expId);
+      log.warn('Could not fetch experience details for', expId);
       return null;
     }
   } catch (error) {
-    console.warn('Error fetching experience details:', error);
+    log.warn('Error fetching experience details:', error);
     return null;
   }
 }
@@ -292,7 +295,7 @@ async function submitExperienceDecisions() {
       showToast(`Error: ${error.error || 'Failed to save decisions'}`, 'error');
     }
   } catch (error) {
-    console.error('Error submitting experience decisions:', error);
+    log.error('Error submitting experience decisions:', error);
     showToast('Failed to save decisions. Please try again.', 'error');
   }
 }

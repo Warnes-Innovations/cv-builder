@@ -10,6 +10,9 @@
  * Centralizes all state management logic (currentTab, interactiveState, sessionId, etc.)
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('state-manager');
+
 import { StorageKeys } from './api-client.js';
 
 /**
@@ -254,7 +257,7 @@ function loadStateFromLocalStorage() {
 
     return true;
   } catch (error) {
-    console.warn('Failed to load state from localStorage:', error);
+    log.warn('Failed to load state from localStorage:', error);
     return false;
   }
 }
@@ -282,7 +285,7 @@ function saveStateToLocalStorage() {
 
     localStorage.setItem(StorageKeys.TAB_DATA, JSON.stringify(dataToSave));
   } catch (error) {
-    console.warn('Failed to save state to localStorage:', error);
+    log.warn('Failed to save state to localStorage:', error);
   }
 }
 

@@ -25,6 +25,9 @@
  *   - isLoading, questionAnswers, pendingRecommendations (window globals)
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('message-dispatch');
+
 // ---------------------------------------------------------------------------
 // Default LLM message handler
 // ---------------------------------------------------------------------------
@@ -45,7 +48,7 @@ async function _handleLLMMessage(text) {
         document.getElementById('message-input').value = text;
         sendMessage();
       });
-      console.error('Server error:', data.error);
+      log.error('Server error:', data.error);
     } else if (data.response) {
       try {
         const cleanResponse = data.response;
@@ -63,12 +66,12 @@ async function _handleLLMMessage(text) {
           }
         }
       } catch (err) {
-        console.error('Error processing message response:', err, data.response);
+        log.error('Error processing message response:', err, data.response);
         appendMessage('system', `⚠️ I encountered an issue processing that response: ${err.message}. The conversation has been saved.`);
       }
     }
   } catch (error) {
-    console.error('=== MESSAGE ERROR ===', error.name, error.message, error.stack);
+    log.error('=== MESSAGE ERROR ===', error.name, error.message, error.stack);
     if (error.name === 'AbortError') {
       // user clicked Stop — message already shown in abortCurrentRequest()
     } else if (error instanceof TypeError) {
@@ -121,12 +124,12 @@ const _messageHandlers = [
         });
         const data = parseMessageResponse(await res.json());
         if (data.error) {
-          console.error('Backend error saving question response:', data.error);
+          log.error('Backend error saving question response:', data.error);
         } else if (data.response && !questionHandled) {
           appendMessage('assistant', data.response);
         }
       } catch (err) {
-        if (err.name !== 'AbortError') console.error('=== QUESTION RESPONSE SAVE ERROR ===', err);
+        if (err.name !== 'AbortError') log.error('=== QUESTION RESPONSE SAVE ERROR ===', err);
       }
       setLoading(false);
       if (!questionHandled) await _handleLLMMessage(t);

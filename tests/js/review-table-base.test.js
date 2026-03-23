@@ -65,7 +65,7 @@ beforeEach(() => {
   vi.stubGlobal('buildAchievementsReviewTable', vi.fn())
   vi.stubGlobal('buildSummaryFocusSection', vi.fn())
   vi.stubGlobal('buildPublicationsReviewTable', vi.fn())
-  vi.stubGlobal('getStatus', vi.fn(async () => ({ max_skills: 20 })))
+  vi.stubGlobal('fetchStatus', vi.fn(async () => ({ max_skills: 20 })))
   vi.stubGlobal('apiCall', vi.fn())
 })
 
@@ -77,6 +77,7 @@ afterEach(() => {
   delete window._reviewPaneLoaded
   delete window._activeReviewPane
   delete window._masterSkills
+  delete window._rewritePanelCache
   delete window.isReconnecting
   delete window.currentTab
   delete window.currentStage
@@ -177,6 +178,24 @@ describe('switchTab', () => {
     window.tabData = { cv: { some: 'data' } }
     switchTab('generate')
     expect(document.getElementById('document-content').classList.contains('full-width')).toBe(false)
+  })
+
+  it('re-renders the rewrite panel from the shared window cache', () => {
+    document.body.innerHTML = `
+      <button class="tab" id="tab-job" aria-selected="true">Job</button>
+      <button class="tab" id="tab-rewrite" aria-selected="false">Rewrites</button>
+      <div id="document-content" class="full-width"></div>`
+    window._rewritePanelCache = {
+      rewrites: [{ id: 'rw-1', original: 'old', proposed: 'new' }],
+      warnings: [],
+    }
+
+    switchTab('rewrite')
+
+    expect(globalThis.renderRewritePanel).toHaveBeenCalledWith(
+      window._rewritePanelCache.rewrites,
+      window._rewritePanelCache.warnings,
+    )
   })
 })
 

@@ -28,7 +28,7 @@ Additional files when relevant:
 
 ## Review outputs
 
-1. Append or refresh review status blocks in persona story files.
+1. Write or refresh separate persona review-status files under `tasks/review-status/` instead of editing the story files.
 2. Assemble `tasks/ui-review.md`.
 3. Reconcile `tasks/gaps.md` to current source-verified findings.
 

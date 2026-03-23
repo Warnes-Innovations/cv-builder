@@ -26,6 +26,9 @@
  *     rewriteDecisions, PHASES (window globals)
  */
 
+import { getLogger } from './logger.js';
+const log = getLogger('session-manager');
+
 import { SESSION_PHASE_LABELS_SHORT } from './utils.js';
 
 // ---------------------------------------------------------------------------
@@ -271,7 +274,7 @@ async function restoreSession() {
         });
 
         appendMessage('system', '🔄 Session restored from server.');
-        console.log(`Restored ${historyData.history.length} messages from backend`);
+        log.info(`Restored ${historyData.history.length} messages from backend`);
       }
 
       // Update phase
@@ -290,7 +293,7 @@ async function restoreSession() {
     isReconnecting = false;
 
   } catch (error) {
-    console.warn('Session restoration failed:', error);
+    log.warn('Session restoration failed:', error);
     appendMessage('system', `⚠️ Could not restore previous session. Starting fresh. (${error.message})`);
     isReconnecting = false;
   }
@@ -332,13 +335,13 @@ async function restoreBackendState() {
     if (statusData.job_analysis) {
       tabData.analysis = statusData.job_analysis;
       serverHasData = true;
-      console.log('Restored analysis data from backend memory');
+      log.info('Restored analysis data from backend memory');
     }
     if (statusData.customizations) {
       tabData.customizations = statusData.customizations;
       window.pendingRecommendations = statusData.customizations;
       serverHasData = true;
-      console.log('Restored customizations data from backend memory');
+      log.info('Restored customizations data from backend memory');
     }
     if (statusData.job_analysis) {
       refreshAtsScore('analysis');
@@ -346,7 +349,7 @@ async function restoreBackendState() {
     if (statusData.generated_files) {
       tabData.cv = statusData.generated_files;
       serverHasData = true;
-      console.log('Restored CV data from backend memory');
+      log.info('Restored CV data from backend memory');
     }
 
     if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
@@ -361,7 +364,7 @@ async function restoreBackendState() {
 
     return serverHasData;
   } catch (error) {
-    console.warn('Failed to restore backend state:', error);
+    log.warn('Failed to restore backend state:', error);
     return false;
   }
 }
@@ -498,7 +501,7 @@ function saveTabData() {
       timestamp: Date.now()
     }));
   } catch (error) {
-    console.warn('Failed to save tab data:', error);
+    log.warn('Failed to save tab data:', error);
   }
 }
 
@@ -525,13 +528,13 @@ function restoreTabData({ uiPrefsOnly = false } = {}) {
           window._activeReviewPane = data.activeReviewPane;
         }
 
-        console.log(`Restored tab data from localStorage (uiPrefsOnly=${uiPrefsOnly})`);
+        log.info(`Restored tab data from localStorage (uiPrefsOnly=${uiPrefsOnly})`);
       } else {
         localStorage.removeItem(getScopedTabDataStorageKey(sessionId));
       }
     }
   } catch (error) {
-    console.warn('Failed to restore tab data:', error);
+    log.warn('Failed to restore tab data:', error);
   }
 }
 
