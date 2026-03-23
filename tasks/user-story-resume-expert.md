@@ -1,7 +1,7 @@
 # User Story: Resume Optimisation Expert Perspective
-**Persona:** A certified professional résumé writer / career strategist evaluating the quality, strategy, and correctness of the system's output  
-**Scope:** Evaluating each stage where the system makes content or presentation decisions  
-**Format:** Evaluation criteria presented as acceptance tests, with specific failure modes to guard against
+**Persona:** A certified professional résumé writer / career strategist evaluating both the application workflow that shapes resume decisions and the quality of the generated materials  
+**Scope:** Two linked evaluations: (1) the application stages where the system makes content or presentation decisions, and (2) the generated resume and related materials those decisions produce  
+**Format:** Evaluation criteria presented as acceptance tests, with specific failure modes to guard against, while keeping application-review findings separate from output-review findings
 
 ---
 

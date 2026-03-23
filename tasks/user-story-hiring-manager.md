@@ -1,7 +1,7 @@
 # User Story: Hiring Manager Perspective
-**Persona:** A technical hiring manager or department head who reviews the human-readable PDF after it passes ATS screening  
-**Scope:** Visual presentation, content calibration, credibility, and strategic fit signals in the human-readable output  
-**Format:** Evaluation criteria presented as acceptance tests from a reviewer's perspective
+**Persona:** A technical hiring manager or department head who evaluates both the application workflow that prepares candidate materials and the human-readable materials produced for review  
+**Scope:** Two linked evaluations: (1) whether the application guides the user toward manager-ready materials, and (2) visual presentation, content calibration, credibility, and strategic fit signals in the generated human-readable output  
+**Format:** Evaluation criteria presented as acceptance tests from a reviewer's perspective, while keeping application-review findings separate from output-review findings
 
 ---
 
