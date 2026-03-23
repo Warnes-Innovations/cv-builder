@@ -13,6 +13,7 @@ import tempfile
 import threading
 from contextlib import ExitStack
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -1170,6 +1171,199 @@ def test_cover_letter_and_screening_routes_enforce_ownership(build_app):
         )
         assert screening_save.status_code == 400
         assert screening_save.get_json()["error"] == "No responses to save."
+
+
+def test_cover_letter_routes_persist_text_and_metadata(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        _claim_session(client, session_id, "owner-a")
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["job_analysis"] = {
+            "company": "Example Co",
+            "title": "Staff Data Scientist",
+            "required_skills": ["Python", "Machine Learning"],
+            "ats_keywords": ["experimentation", "forecasting"],
+        }
+        manager.state["post_analysis_answers"] = {
+            "focus": "platform modernization",
+            "industry": "healthcare analytics",
+        }
+        manager.state["generated_files"] = {
+            "output_dir": str(manager.session_dir)
+        }
+
+        generated = client.post(
+            "/api/cover-letter/generate",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "tone": "startup/tech",
+                "hiring_manager": "Alex HiringManager",
+                "highlight": "large-scale experimentation",
+                "reuse_body": "Previous tailored cover letter body.",
+            },
+        )
+
+        assert generated.status_code == 200
+        generated_payload = generated.get_json()
+        assert generated_payload["ok"] is True
+        assert generated_payload["text"].startswith("Date: ")
+        assert "Generated text" in generated_payload["text"]
+        assert manager.state["cover_letter_params"]["highlight"] == "large-scale experimentation"
+        assert manager.state["cover_letter_text"] == generated_payload["text"]
+
+        saved = client.post(
+            "/api/cover-letter/save",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "text": generated_payload["text"],
+            },
+        )
+
+    assert saved.status_code == 200
+    saved_payload = saved.get_json()
+    assert saved_payload["ok"] is True
+    docx_path = manager.session_dir / saved_payload["filename"]
+    metadata_path = manager.session_dir / "metadata.json"
+    assert docx_path.exists()
+    assert metadata_path.exists()
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata["cover_letter_text"] == generated_payload["text"]
+    assert metadata["cover_letter_reused_from"] is None
+
+
+def test_screening_search_and_generate_routes_use_library_and_context(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        _claim_session(client, session_id, "owner-a")
+        manager = _manager_for_session(tracker, session_id)
+        orchestrator = _orchestrator_for_session(tracker, session_id)
+        manager.state["post_analysis_answers"] = {
+            "focus": "platform leadership",
+            "industry": "life sciences",
+        }
+        manager.state["cover_letter_text"] = (
+            "Dear Hiring Manager,\nI lead platform modernization and data science delivery across regulated environments."
+        )
+        master_path = Path(orchestrator.master_data_path)
+        master_payload = json.loads(master_path.read_text(encoding="utf-8"))
+        master_payload["experience"][0]["achievements"] = [
+            "Led a cross-functional platform modernization across research and engineering.",
+            "Improved model deployment quality and stakeholder adoption.",
+        ]
+        master_path.write_text(json.dumps(master_payload), encoding="utf-8")
+
+        library_path = Path(orchestrator.master_data_path).parent / "response_library.json"
+        library_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "question": "Describe a time you led a cross-functional platform effort.",
+                        "response_text": "I aligned science, engineering, and product to deliver measurable adoption gains.",
+                        "topic_tag": "leadership",
+                        "format": "star",
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with patch(
+            "utils.config.get_config",
+            return_value=SimpleNamespace(master_cv_path=str(master_path)),
+        ):
+            search = client.post(
+                "/api/screening/search",
+                json={
+                    "session_id": session_id,
+                    "owner_token": "owner-a",
+                    "question": "Tell us about leading a cross-functional platform modernization effort.",
+                },
+            )
+
+            generate = client.post(
+                "/api/screening/generate",
+                json={
+                    "session_id": session_id,
+                    "owner_token": "owner-a",
+                    "question": "Tell us about leading a cross-functional platform modernization effort.",
+                    "format": "star",
+                    "experience_indices": [0],
+                    "prior_response": "Prior screening draft",
+                },
+            )
+
+    assert search.status_code == 200
+    search_payload = search.get_json()
+    assert search_payload["ok"] is True
+    assert search_payload["prior"] is not None
+    assert search_payload["prior"]["topic_tag"] == "leadership"
+    assert len(search_payload["experiences"]) >= 1
+    assert search_payload["experiences"][0]["title"] == "Staff Data Scientist"
+
+    assert generate.status_code == 200
+    generate_payload = generate.get_json()
+    assert generate_payload == {"ok": True, "text": "Generated text"}
+
+
+def test_screening_save_route_writes_outputs_and_library(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        _claim_session(client, session_id, "owner-a")
+        manager = _manager_for_session(tracker, session_id)
+        orchestrator = _orchestrator_for_session(tracker, session_id)
+        manager.state["job_analysis"] = {
+            "company": "Example Co",
+            "title": "Staff Data Scientist",
+        }
+
+        responses = [
+            {
+                "question": "Describe a time you improved model quality.",
+                "response_text": "I redesigned validation workflows and improved model precision by 18% while reducing false positives.",
+                "topic_tag": "modeling",
+                "format": "star",
+            }
+        ]
+        master_path = Path(orchestrator.master_data_path)
+
+        with patch(
+            "utils.config.get_config",
+            return_value=SimpleNamespace(master_cv_path=str(master_path)),
+        ):
+            saved = client.post(
+                "/api/screening/save",
+                json={
+                    "session_id": session_id,
+                    "owner_token": "owner-a",
+                    "responses": responses,
+                },
+            )
+
+    assert saved.status_code == 200
+    payload = saved.get_json()
+    assert payload["ok"] is True
+    assert payload["count"] == 1
+    assert (manager.session_dir / payload["filename"]).exists()
+
+    metadata_path = manager.session_dir / "metadata.json"
+    assert metadata_path.exists()
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata["screening_responses"] == responses
+
+    library_path = Path(orchestrator.master_data_path).parent / "response_library.json"
+    assert library_path.exists()
+    library = json.loads(library_path.read_text(encoding="utf-8"))
+    assert library[-1]["company"] == "Example Co"
+    assert library[-1]["question"] == responses[0]["question"]
+    assert manager.state["screening_responses"] == responses
 
 
 def test_phase_navigation_and_review_routes_update_session_state(build_app):
