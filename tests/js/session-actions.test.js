@@ -142,16 +142,20 @@ describe('sendAction', () => {
     vi.stubGlobal('setLoading', vi.fn())
     vi.stubGlobal('llmFetch', vi.fn())
     vi.stubGlobal('parseMessageResponse', vi.fn(value => value))
+    vi.stubGlobal('parseStatusResponse', vi.fn(value => value))
     vi.stubGlobal('handleCustomizationResponse', vi.fn(async () => {}))
     vi.stubGlobal('refreshAtsScore', vi.fn())
     vi.stubGlobal('switchTab', vi.fn())
     vi.stubGlobal('fetchStatus', vi.fn(async () => {}))
+    globalThis.fetch = vi.fn()
   })
 
   afterEach(() => {
     delete globalThis.isLoading
     delete globalThis.tabData
     delete globalThis.window.questionAnswers
+    delete globalThis.fetch
+    vi.useRealTimers()
   })
 
   it('returns immediately when a request is already in flight', async () => {
@@ -215,6 +219,89 @@ describe('sendAction', () => {
       expect.any(Function),
     )
     expect(setLoading).toHaveBeenLastCalledWith(false)
+    expect(fetchStatus).toHaveBeenCalled()
+  })
+
+  it('polls generation progress, stores CV results, and switches to layout', async () => {
+    vi.useFakeTimers()
+    const generationContent = { textContent: '' }
+
+    appendMessage.mockImplementation((_role, message) => {
+      if (message.startsWith('⏳ Generating CV files')) {
+        return { querySelector: vi.fn(() => generationContent) }
+      }
+      return undefined
+    })
+
+    llmFetch.mockResolvedValue({
+      json: async () => ({
+        result: { ats_docx: '/tmp/cv-ats.docx', human_pdf: '/tmp/cv.pdf' },
+      }),
+    })
+    fetch.mockResolvedValue({
+      json: async () => ({
+        generation_progress: [
+          { step: 'ats_docx', status: 'complete', elapsed_ms: 110 },
+          { step: 'html', status: 'complete', elapsed_ms: 220 },
+        ],
+      }),
+    })
+
+    const actionPromise = sendAction('generate_cv')
+    await vi.advanceTimersByTimeAsync(500)
+    await actionPromise
+
+    expect(fetch).toHaveBeenCalledWith('/api/status')
+    expect(parseStatusResponse).toHaveBeenCalled()
+    expect(generationContent.textContent).toContain('Generating CV:')
+    expect(generationContent.textContent).toContain('ats docx')
+    expect(generationContent.textContent).toContain('(110ms)')
+    expect(appendMessage).toHaveBeenCalledWith(
+      'assistant',
+      'CV generated successfully! Review your layout below.',
+    )
+    expect(globalThis.tabData.cv).toEqual({
+      ats_docx: '/tmp/cv-ats.docx',
+      human_pdf: '/tmp/cv.pdf',
+    })
+    expect(refreshAtsScore).toHaveBeenCalledWith('post_generation')
+    expect(switchTab).toHaveBeenCalledWith('layout')
+    expect(fetchStatus).toHaveBeenCalled()
+  })
+
+  it('keeps polling after transient status fetch failures during generate_cv', async () => {
+    vi.useFakeTimers()
+
+    appendMessage.mockImplementation((_role, message) => {
+      if (message.startsWith('⏳ Generating CV files')) {
+        return { querySelector: vi.fn(() => ({ textContent: '' })) }
+      }
+      return undefined
+    })
+
+    llmFetch.mockResolvedValue({
+      json: async () => ({
+        result: { human_docx: '/tmp/cv-human.docx' },
+      }),
+    })
+    fetch
+      .mockRejectedValueOnce(new Error('temporary status failure'))
+      .mockResolvedValueOnce({
+        json: async () => ({
+          generation_progress: [
+            { step: 'human_docx', status: 'complete', elapsed_ms: 330 },
+          ],
+        }),
+      })
+
+    const actionPromise = sendAction('generate_cv')
+    await vi.advanceTimersByTimeAsync(1000)
+    await actionPromise
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(appendRetryMessage).not.toHaveBeenCalled()
+    expect(globalThis.tabData.cv).toEqual({ human_docx: '/tmp/cv-human.docx' })
+    expect(switchTab).toHaveBeenCalledWith('layout')
     expect(fetchStatus).toHaveBeenCalled()
   })
 })
