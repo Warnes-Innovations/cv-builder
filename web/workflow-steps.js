@@ -20,6 +20,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('workflow-steps');
 
+import { stateManager } from './state-manager.js';
+
 // ── Step-order constants ─────────────────────────────────────────────────────
 
 const _STEP_ORDER = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise'];
@@ -544,7 +546,7 @@ function updateWorkflowSteps(status) {
 
   // Sync second-bar tab visibility and action buttons to the active workflow step
   if (typeof updateTabBarForStage === 'function') {
-    currentStage = activeStep;
+    stateManager.setCurrentStage(activeStep);
     updateTabBarForStage(activeStep);
   }
   updateActionButtons(activeStep);
@@ -603,13 +605,13 @@ function handleStepClick(step) {
   };
   const tabName = stepToTab[step];
   if (tabName) {
-    const currentIdx = _STEP_ORDER.indexOf(currentStage);
+    const currentIdx = _STEP_ORDER.indexOf(stateManager.getCurrentStage());
     const targetIdx  = _STEP_ORDER.indexOf(step);
     const navigatingBack = targetIdx < currentIdx && el.classList.contains('completed');
 
     if (navigatingBack) {
       _showReRunConfirmModal(step, 'back-nav', () => {
-        currentStage = step;
+        stateManager.setCurrentStage(step);
         if (typeof updateTabBarForStage === 'function') updateTabBarForStage(step);
         switchTab(tabName);
       });
@@ -617,7 +619,7 @@ function handleStepClick(step) {
     }
 
     if (typeof updateTabBarForStage === 'function') {
-      currentStage = step;
+      stateManager.setCurrentStage(step);
       updateTabBarForStage(step);
     }
     switchTab(tabName);

@@ -15,7 +15,7 @@ const log = getLogger('ui-core');
 
 import { escapeHtml } from './utils.js';
 import { StorageKeys, apiCall, fetchStatus, askPostAnalysisQuestions, sendMessage } from './api-client.js';
-import { initializeState, loadStateFromLocalStorage } from './state-manager.js';
+import { initializeState, loadStateFromLocalStorage, stateManager } from './state-manager.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Accessibility: Focus Management for Modals
@@ -133,9 +133,6 @@ const STAGE_TABS = {
   finalise:       ['download', 'finalise', 'master', 'cover-letter', 'screening'],
 };
 
-/** Currently active stage — drives second-bar tab visibility. */
-let currentStage = 'job';
-
 /**
  * Custom confirm dialog — returns a Promise<boolean>.
  * Replaces browser confirm() which can be silently suppressed once the user
@@ -239,7 +236,8 @@ async function initialize() {
     }
 
     // Load initial tab content
-    const savedTab = localStorage.getItem(StorageKeys.CURRENT_TAB) || 'job';
+    const savedTab = stateManager.getCurrentTab() || localStorage.getItem(StorageKeys.CURRENT_TAB) || 'job';
+    updateTabBarForStage(stateManager.getCurrentStage());
     switchTab(savedTab);
 
     log.info('✅ Application initialized');
@@ -267,7 +265,7 @@ function setupEventListeners() {
         typeof _showReRunConfirmModal === 'function'
       ) {
         const targetIdx  = _STEP_ORDER.indexOf(targetStage);
-        const currentIdx = _STEP_ORDER.indexOf(currentStage);
+        const currentIdx = _STEP_ORDER.indexOf(stateManager.getCurrentStage());
         const targetStepEl = document.getElementById(`step-${targetStage}`);
         if (targetIdx < currentIdx && targetStepEl && targetStepEl.classList.contains('completed')) {
           _showReRunConfirmModal(targetStage, 'back-nav', () => switchTab(tabName));
@@ -381,7 +379,7 @@ function updateTabBarForStage(stage) {
  * @param {string} stage - Key from STAGE_TABS
  */
 function switchStage(stage) {
-  currentStage = stage;
+  stateManager.setCurrentStage(stage);
   updateTabBarForStage(stage);
   const stageTabs = STAGE_TABS[stage] || [];
   if (stageTabs.length === 0) return;
@@ -414,32 +412,32 @@ async function loadTabContent(tab) {
         break;
 
       case 'analysis':
-        if (typeof populateAnalysisTab === 'function' && tabData.analysis) {
-          populateAnalysisTab(tabData.analysis);
+        if (typeof populateAnalysisTab === 'function' && stateManager.getTabData('analysis')) {
+          populateAnalysisTab(stateManager.getTabData('analysis'));
         } else {
           content.innerHTML = '<p style="padding: 20px; color: #666;">No analysis data yet. Submit a job description to begin.</p>';
         }
         break;
 
       case 'customizations':
-        if (typeof populateCustomizationsTab === 'function' && tabData.customizations) {
-          populateCustomizationsTab(tabData.customizations);
+        if (typeof populateCustomizationsTab === 'function' && stateManager.getTabData('customizations')) {
+          populateCustomizationsTab(stateManager.getTabData('customizations'));
         } else {
           content.innerHTML = '<p style="padding: 20px; color: #666;">Run analysis first to see customization recommendations.</p>';
         }
         break;
 
       case 'generate':
-        if (typeof populateCVTab === 'function' && tabData.cv) {
-          populateCVTab(tabData.cv);
+        if (typeof populateCVTab === 'function' && stateManager.getTabData('cv')) {
+          populateCVTab(stateManager.getTabData('cv'));
         } else {
           content.innerHTML = '<p style="padding: 20px; color: #666;">Generate a CV to see preview.</p>';
         }
         break;
 
       case 'download':
-        if (typeof populateDownloadTab === 'function' && tabData.cv) {
-          await populateDownloadTab(tabData.cv);
+        if (typeof populateDownloadTab === 'function' && stateManager.getTabData('cv')) {
+          await populateDownloadTab(stateManager.getTabData('cv'));
         } else {
           content.innerHTML = '<p style="padding: 20px; color: #666;">Generate a CV first to download.</p>';
         }
@@ -588,7 +586,7 @@ async function displayMessage(phase, response) {
           appendMessage('system', `Error: ${response.error}`);
         } else if (response.job_analysis) {
           // Analysis ready
-          tabData.analysis = response.job_analysis;
+          stateManager.setTabData('analysis', response.job_analysis);
           appendMessage('assistant', `Analysis complete! I'll now show you the job analysis and post-analysis questions.`);
           switchTab('analysis');
           if (typeof populateAnalysisTab === 'function') {
@@ -602,7 +600,7 @@ async function displayMessage(phase, response) {
 
       case 'customization_selection':
         if (response.customizations) {
-          tabData.customizations = response.customizations;
+          stateManager.setTabData('customizations', response.customizations);
           window.pendingRecommendations = response.customizations;
           switchTab('customizations');
           if (typeof populateCustomizationsTab === 'function') {
@@ -622,7 +620,7 @@ async function displayMessage(phase, response) {
 
       case 'generation':
         if (response.generated_files) {
-          tabData.cv = response.generated_files;
+          stateManager.setTabData('cv', response.generated_files);
           switchTab('download');
           if (typeof populateDownloadTab === 'function') {
             await populateDownloadTab(response.generated_files);

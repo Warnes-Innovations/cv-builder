@@ -402,12 +402,13 @@ def create_app(args) -> Flask:
 
     # ── Session helpers ──────────────────────────────────────────────────────
 
-    def _get_session(required: bool = True):
+    def _get_session(required: bool = True, allow_missing: bool = False):
         """Extract session_id from the request and return the SessionEntry.
 
         For GET requests reads from query string.
         For POST/PUT/DELETE reads from query string OR JSON body.
         Returns None (does not raise) when required=False and session_id absent.
+        Returns None when allow_missing=True and the supplied session_id is stale.
         Aborts 400 when required=True and session_id absent.
         Aborts 404 when session_id present but not in registry.
         """
@@ -429,6 +430,13 @@ def create_app(args) -> Flask:
         try:
             return session_registry.get_or_404(sid)
         except SessionNotFoundError:
+            if allow_missing and not required:
+                logger.debug(
+                    "_get_session: optional stale session_id=%s ignored for %s",
+                    sid,
+                    request.path,
+                )
+                return None
             _abort(404, description=f'Session not found: {sid}')
 
     def _validate_owner(entry) -> None:
@@ -2533,7 +2541,7 @@ Close professionally with a call to action.
         If a `session_id` is supplied (query or JSON body), prefer any
         session-scoped provider/model persisted in that session's state.
         """
-        entry = _get_session(required=False)
+        entry = _get_session(required=False, allow_missing=True)
         session_provider = None
         session_model = None
         if entry:
@@ -2736,7 +2744,7 @@ Close professionally with a call to action.
 
             # If the caller supplied a session_id, persist the chosen
             # provider/model into that session's state so it survives reloads.
-            entry = _get_session(required=False)
+            entry = _get_session(required=False, allow_missing=True)
             if entry:
                 try:
                     _validate_owner(entry)
@@ -6019,7 +6027,11 @@ Close professionally with a call to action.
             session_registry.claim(sid, token)
             return jsonify({"ok": True})
         except SessionNotFoundError as e:
-            return jsonify({"error": str(e)}), 404
+            return jsonify({
+                "ok": False,
+                "error": "session_not_found",
+                "message": str(e),
+            })
         except SessionOwnedError as e:
             return jsonify({"error": "session_owned", "message": str(e)}), 409
 

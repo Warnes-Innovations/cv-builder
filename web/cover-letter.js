@@ -12,6 +12,8 @@
  *   escapeHtml, showAlertModal, tabData, pendingRecommendations, CSS
  */
 
+import { stateManager } from './state-manager.js';
+
 // ── Module-level state ────────────────────────────────────────────────────────
 
 const COVER_LETTER_TONES = [
@@ -227,7 +229,8 @@ function _renderConsistencyReport(statusData) {
   const atsKeywords = (analysis.ats_keywords || []).filter(Boolean).slice(0, 8);
 
   // Strip HTML tags from CV content for text search
-  const cvHtml = (typeof tabData !== 'undefined' && tabData.cv) ? tabData.cv : '';
+  const cvState = stateManager.getTabData('cv') || '';
+  const cvHtml = typeof cvState === 'string' ? cvState : (cvState?.['*.html'] || '');
   const cvText = cvHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').toLowerCase();
 
   // Get cover letter text if present
@@ -448,7 +451,7 @@ function _getCompanyNameForCL() {
   if (analysis && analysis.company_name) return analysis.company_name;
   if (analysis && analysis.company)      return analysis.company;
   // Fall back: first non-empty line of job description in tabData
-  const jd = (typeof tabData !== 'undefined' && tabData.job) ? tabData.job : '';
+  const jd = stateManager.getTabData('job') || '';
   const firstLine = jd.split('\n').find(l => l.trim());
   return firstLine ? firstLine.trim().slice(0, 60) : '';
 }
