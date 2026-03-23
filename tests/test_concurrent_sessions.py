@@ -1639,6 +1639,163 @@ def test_ats_validate_route_caches_summary_and_page_count(build_app):
         }
 
 
+def test_cv_ats_score_route_enriches_customizations_from_session_state(
+    build_app,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["job_analysis"] = {
+            "title": "Staff Data Scientist",
+            "company": "Example Co",
+            "ats_keywords": ["python", "leadership"],
+        }
+        manager.state["customizations"] = {
+            "approved_skills": [
+                {"name": "Python", "category": "Programming"},
+                "SQL",
+            ]
+        }
+        manager.state["skill_decisions"] = {
+            "Python": "keep",
+            "Leadership": "include",
+            "Cobol": "exclude",
+        }
+        manager.state["extra_skills"] = [
+            "Leadership",
+            "Stakeholder Management",
+        ]
+        manager.state["approved_rewrites"] = [
+            {
+                "rewritten": "Led a platform modernization.",
+                "section": "experience",
+            }
+        ]
+        manager.state["achievement_edits"] = {
+            0: ["Edited bullet that should not be used"]
+        }
+        manager.state["session_summaries"] = {
+            "ai_generated": "Generated summary text",
+            "targeted": "Targeted summary text",
+        }
+        manager.state["summary_focus_override"] = "targeted"
+
+        returned_score = {
+            "score": 87,
+            "basis": "review_checkpoint",
+            "matched_keywords": ["python", "leadership"],
+        }
+
+        with patch(
+            "utils.scoring.compute_ats_score",
+            return_value=returned_score,
+        ) as mock_score:
+            response = client.post(
+                "/api/cv/ats-score",
+                json={"session_id": session_id, "basis": "review_checkpoint"},
+            )
+
+        assert response.status_code == 200
+        assert response.get_json() == {"ok": True, "ats_score": returned_score}
+        mock_score.assert_called_once()
+        job_analysis_arg, customizations_arg = mock_score.call_args.args[:2]
+        assert job_analysis_arg == manager.state["job_analysis"]
+        assert customizations_arg["approved_skills"] == [
+            {"name": "Python", "category": "Programming"},
+            "SQL",
+            "Leadership",
+            "Stakeholder Management",
+        ]
+        assert customizations_arg["approved_rewrites"] == [
+            {
+                "rewritten": "Led a platform modernization.",
+                "section": "experience",
+            }
+        ]
+        assert (
+            customizations_arg["selected_summary"]
+            == "Targeted summary text"
+        )
+        assert mock_score.call_args.kwargs == {"basis": "review_checkpoint"}
+        assert manager.state["generation_state"]["ats_score"] == returned_score
+        assert manager.save_calls == 1
+
+
+def test_cv_ats_score_route_falls_back_to_achievement_edits_when_needed(
+    build_app,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["job_analysis"] = {
+            "title": "Principal Engineer",
+            "company": "Northwind",
+        }
+        manager.state["customizations"] = {
+            "selected_summary": "Pinned summary",
+            "approved_rewrites": [],
+        }
+        manager.state["skill_decisions"] = {"Architecture": "keep"}
+        manager.state["extra_skills"] = ["Architecture", "Mentoring"]
+        manager.state["approved_rewrites"] = []
+        manager.state["achievement_edits"] = {
+            0: [
+                "Raised system reliability to 99.95%",
+                "Cut build times by 40%",
+            ],
+            1: ["   ", 123, "Expanded platform adoption"],
+        }
+        manager.state["session_summaries"] = {
+            "ai_generated": "Should not override pinned summary"
+        }
+        manager.state["summary_focus_override"] = "ai_generated"
+
+        returned_score = {
+            "score": 73,
+            "basis": "post_generation",
+            "matched_keywords": ["architecture"],
+        }
+
+        with patch(
+            "utils.scoring.compute_ats_score",
+            return_value=returned_score,
+        ) as mock_score:
+            response = client.post(
+                "/api/cv/ats-score",
+                json={"session_id": session_id, "basis": "post_generation"},
+            )
+
+        assert response.status_code == 200
+        assert response.get_json() == {"ok": True, "ats_score": returned_score}
+        _job_analysis_arg, customizations_arg = mock_score.call_args.args[:2]
+        assert customizations_arg["selected_summary"] == "Pinned summary"
+        assert customizations_arg["approved_skills"] == [
+            "Architecture",
+            "Mentoring",
+        ]
+        assert customizations_arg["approved_rewrites"] == [
+            {
+                "rewritten": "Raised system reliability to 99.95%",
+                "section": "experience",
+            },
+            {
+                "rewritten": "Cut build times by 40%",
+                "section": "experience",
+            },
+            {
+                "rewritten": "Expanded platform adoption",
+                "section": "experience",
+            },
+        ]
+        assert mock_score.call_args.kwargs == {"basis": "post_generation"}
+        assert manager.state["generation_state"]["ats_score"] == returned_score
+        assert manager.save_calls == 1
+
+
 def test_concurrent_session_mutations_stay_isolated(build_app):
     app, tracker = build_app(job_barrier=threading.Barrier(2))
 
