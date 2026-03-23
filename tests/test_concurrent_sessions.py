@@ -11,6 +11,7 @@ import requests
 import sys
 import tempfile
 import threading
+import uuid
 from contextlib import ExitStack
 from pathlib import Path
 from types import SimpleNamespace
@@ -146,7 +147,8 @@ class FakeConversationManager:
         self.llm_client = llm_client
         self.job_barrier = job_barrier
         self.session_id: str | None = None
-        self.session_dir = Path(orchestrator.output_dir)
+        self.output_dir = Path(orchestrator.output_dir)
+        self.session_dir = self.output_dir
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self.session_file = self.session_dir / "session.json"
         self.conversation_history: list[dict[str, Any]] = []
@@ -202,9 +204,67 @@ class FakeConversationManager:
 
     def _save_session(self) -> None:
         self.save_calls += 1
+        if self.session_id is None:
+            self.session_id = uuid.uuid4().hex[:8]
+        if self.session_dir == self.output_dir:
+            self.session_dir = self.output_dir / self.session_id
+            self.session_dir.mkdir(parents=True, exist_ok=True)
+        self.session_file = self.session_dir / "session.json"
+        payload = {
+            "session_id": self.session_id,
+            "timestamp": "2026-03-19T12:00:00",
+            "state": self.state,
+            "conversation_history": self.conversation_history,
+        }
+        self.session_file.write_text(
+            json.dumps(payload, indent=2, default=str),
+            encoding="utf-8",
+        )
 
     def save_session(self) -> None:
         self._save_session()
+
+    def load_session(self, session_file: str) -> None:
+        session_data = json.loads(
+            Path(session_file).read_text(encoding="utf-8")
+        )
+        self.state = session_data["state"]
+        self.conversation_history = session_data["conversation_history"]
+        self.session_id = (
+            session_data.get("session_id") or uuid.uuid4().hex[:8]
+        )
+        self.session_dir = Path(session_file).parent
+        self.session_file = Path(session_file)
+
+    def _list_positions(self) -> list[str]:
+        names: list[str] = []
+        for session_file in self.output_dir.rglob("session.json"):
+            try:
+                session_data = json.loads(
+                    session_file.read_text(encoding="utf-8")
+                )
+            except Exception:
+                continue
+            position_name = session_data.get("state", {}).get("position_name")
+            if position_name and position_name not in names:
+                names.append(position_name)
+        return sorted(names)
+
+    def _load_latest_session_for_position(self, name: str) -> bool:
+        candidates = []
+        for session_file in self.output_dir.rglob("session.json"):
+            try:
+                session_data = json.loads(
+                    session_file.read_text(encoding="utf-8")
+                )
+            except Exception:
+                continue
+            if session_data.get("state", {}).get("position_name") == name:
+                candidates.append(session_file)
+        if not candidates:
+            return False
+        self.load_session(str(sorted(candidates)[-1]))
+        return True
 
     def _process_message(self, message: str) -> dict[str, Any]:
         self.processed_messages.append(message)
@@ -308,7 +368,6 @@ class FakeConversationManager:
         previous_suggestions: list,
         suggested_text: str,
     ) -> str:
-        import uuid
         return uuid.uuid4().hex[:12]
 
     def update_achievement_rewrite_outcome(
@@ -628,6 +687,128 @@ def test_sessions_active_reports_per_session_metadata(build_app):
         assert sessions[second_session]["owned_by_requester"] is False
         assert sessions[second_session]["position_name"] is None
         assert sessions[second_session]["phase"] == Phase.INIT
+
+
+def test_load_session_route_restores_saved_session_metadata(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state.update(
+            {
+                "position_name": "Principal Engineer at Acme Labs",
+                "phase": Phase.CUSTOMIZATION,
+                "job_description": "Lead platform modernization.",
+                "job_analysis": {
+                    "title": "Principal Engineer",
+                    "company": "Acme Labs",
+                },
+            }
+        )
+        manager.conversation_history = [
+            {"role": "assistant", "content": "Loaded from disk"}
+        ]
+        manager._save_session()
+        session_path = str(manager.session_file)
+
+        evict = client.delete(f"/api/sessions/{session_id}/evict")
+        assert evict.status_code == 200
+
+        response = client.post(
+            "/api/load-session",
+            json={"path": session_path},
+        )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["session_id"] == session_id
+    assert payload["session_file"] == session_path
+    assert payload["position_name"] == "Principal Engineer at Acme Labs"
+    assert payload["phase"] == Phase.CUSTOMIZATION
+    assert payload["has_job"] is True
+    assert payload["has_analysis"] is True
+    assert payload["history_count"] == 1
+
+    loaded_entry = app.session_registry.get(session_id)
+    assert loaded_entry is not None
+    assert loaded_entry.manager.session_file == Path(session_path)
+    assert loaded_entry.manager.conversation_history == [
+        {"role": "assistant", "content": "Loaded from disk"}
+    ]
+
+
+def test_rename_current_session_persists_position_name(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        _claim_session(client, session_id, "owner-a")
+        manager = _manager_for_session(tracker, session_id)
+
+        missing_name = client.post(
+            "/api/rename-current-session",
+            json={"session_id": session_id, "owner_token": "owner-a"},
+        )
+        assert missing_name.status_code == 400
+        assert missing_name.get_json()["error"] == "Missing new_name"
+
+        wrong_owner = client.post(
+            "/api/rename-current-session",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-b",
+                "new_name": "Director of Platform AI",
+            },
+        )
+        assert wrong_owner.status_code == 403
+
+        response = client.post(
+            "/api/rename-current-session",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "new_name": "Director of Platform AI",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "ok": True,
+        "new_name": "Director of Platform AI",
+    }
+    assert manager.state["position_name"] == "Director of Platform AI"
+    assert manager.save_calls == 1
+    persisted = json.loads(manager.session_file.read_text(encoding="utf-8"))
+    assert persisted["state"]["position_name"] == "Director of Platform AI"
+
+
+def test_history_route_returns_current_session_history_and_phase(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["phase"] = Phase.GENERATION
+        manager.conversation_history = [
+            {"role": "user", "content": "Analyze this role"},
+            {"role": "assistant", "content": "Analysis complete"},
+        ]
+
+        response = client.get(
+            "/api/history",
+            query_string={"session_id": session_id},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "history": [
+            {"role": "user", "content": "Analyze this role"},
+            {"role": "assistant", "content": "Analysis complete"},
+        ],
+        "phase": Phase.GENERATION,
+    }
 
 
 def test_session_evict_route_enforces_ownership(build_app):
