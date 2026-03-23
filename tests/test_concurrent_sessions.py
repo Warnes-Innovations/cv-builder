@@ -1416,6 +1416,229 @@ def test_finalise_and_harvest_routes_enforce_ownership(build_app):
         }
 
 
+def test_layout_instruction_route_handles_validation_and_clarification(
+    build_app,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        orchestrator = _orchestrator_for_session(tracker, session_id)
+        orchestrator.apply_layout_instruction = MagicMock(
+            side_effect=[
+                {
+                    "error": "clarify",
+                    "question": "Which block should move?",
+                    "details": "Summary and skills overlap.",
+                    "confidence": 0.42,
+                    "raw_response": "Need more detail.",
+                },
+                {
+                    "html": "<html><body>Updated</body></html>",
+                    "summary": "Moved the skills block below summary.",
+                    "confidence": 0.91,
+                },
+            ]
+        )
+
+        missing_instruction = client.post(
+            "/api/layout-instruction",
+            json={"session_id": session_id, "current_html": "<html></html>"},
+        )
+        assert missing_instruction.status_code == 400
+        assert (
+            missing_instruction.get_json()["error"]
+            == "Missing instruction text"
+        )
+
+        missing_html = client.post(
+            "/api/layout-instruction",
+            json={"session_id": session_id, "instruction": "Move skills"},
+        )
+        assert missing_html.status_code == 400
+        assert missing_html.get_json()["error"] == "Missing current HTML"
+
+        clarification = client.post(
+            "/api/layout-instruction",
+            json={
+                "session_id": session_id,
+                "instruction": "Move skills",
+                "current_html": "<html><body>Current</body></html>",
+                "prior_instructions": ["Tighten margins"],
+            },
+        )
+        assert clarification.status_code == 200
+        assert clarification.get_json() == {
+            "ok": False,
+            "error": "clarify",
+            "question": "Which block should move?",
+            "details": "Summary and skills overlap.",
+            "confidence": 0.42,
+            "raw_response": "Need more detail.",
+        }
+
+        success = client.post(
+            "/api/layout-instruction",
+            json={
+                "session_id": session_id,
+                "instruction": "Move skills below summary",
+                "current_html": "<html><body>Current</body></html>",
+                "prior_instructions": ["Tighten margins"],
+            },
+        )
+        assert success.status_code == 200
+        assert success.get_json() == {
+            "ok": True,
+            "html": "<html><body>Updated</body></html>",
+            "summary": "Moved the skills block below summary.",
+            "confidence": 0.91,
+        }
+
+        assert orchestrator.apply_layout_instruction.call_count == 2
+        assert orchestrator.apply_layout_instruction.call_args.kwargs == {
+            "instruction_text": "Move skills below summary",
+            "current_html": "<html><body>Current</body></html>",
+            "prior_instructions": ["Tighten margins"],
+        }
+
+
+def test_layout_settings_route_normalizes_font_size_and_history(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["customizations"] = {"template": "standard"}
+        manager.state["layout_instructions"] = [
+            {
+                "timestamp": "2026-03-20T10:00:00",
+                "instruction_text": "Reduce header spacing",
+                "change_summary": "Pulled top margin tighter",
+                "confirmation": "accepted",
+            }
+        ]
+
+        updated = client.post(
+            "/api/layout-settings",
+            json={"session_id": session_id, "base_font_size": "10"},
+        )
+        assert updated.status_code == 200
+        assert updated.get_json() == {"ok": True}
+        assert manager.state["base_font_size"] == "10px"
+        assert manager.state["customizations"]["base_font_size"] == "10px"
+        assert manager.save_calls == 1
+
+        history = client.get(
+            "/api/layout-history",
+            query_string={"session_id": session_id},
+        )
+        assert history.status_code == 200
+        assert history.get_json() == {
+            "instructions": manager.state["layout_instructions"],
+            "count": 1,
+        }
+
+        claimed = _claim_session(client, session_id, "owner-a")
+        assert claimed.status_code == 200
+
+        missing_owner = client.post(
+            "/api/layout-settings",
+            json={"session_id": session_id, "base_font_size": "11"},
+        )
+        assert missing_owner.status_code == 403
+
+        owned_update = client.post(
+            "/api/layout-settings",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "base_font_size": "11px",
+            },
+        )
+        assert owned_update.status_code == 200
+        assert owned_update.get_json() == {"ok": True}
+        assert manager.state["base_font_size"] == "11px"
+        assert manager.state["customizations"]["base_font_size"] == "11px"
+        assert manager.save_calls == 2
+
+
+def test_ats_validate_route_caches_summary_and_page_count(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+
+        missing_generated = client.get(
+            "/api/ats-validate",
+            query_string={"session_id": session_id},
+        )
+        assert missing_generated.status_code == 400
+        assert missing_generated.get_json() == {
+            "ok": False,
+            "error": "No CV files generated yet",
+        }
+
+        manager.state["generated_files"] = {
+            "output_dir": str(manager.session_dir / "missing-output")
+        }
+        missing_dir = client.get(
+            "/api/ats-validate",
+            query_string={"session_id": session_id},
+        )
+        assert missing_dir.status_code == 404
+        assert missing_dir.get_json() == {
+            "ok": False,
+            "error": (
+                "Output directory not found: "
+                f"{manager.session_dir / 'missing-output'}"
+            ),
+        }
+
+        manager.state["generated_files"] = {
+            "output_dir": str(manager.session_dir)
+        }
+        manager.state["job_analysis"] = {
+            "title": "Staff Data Scientist",
+            "company": "Example Co",
+        }
+        checks = [
+            {"name": "Keywords present", "status": "pass"},
+            {"name": "Readable structure", "status": "warn"},
+            {"name": "Contact block found", "status": "fail"},
+        ]
+
+        with patch(
+            "scripts.web_app.validate_ats_report",
+            return_value=(checks, 2),
+        ) as mock_validate:
+            validated = client.get(
+                "/api/ats-validate",
+                query_string={"session_id": session_id},
+            )
+
+        assert validated.status_code == 200
+        assert validated.get_json() == {
+            "ok": True,
+            "checks": checks,
+            "page_count": 2,
+            "summary": {"pass": 1, "warn": 1, "fail": 1},
+        }
+        mock_validate.assert_called_once_with(
+            manager.session_dir,
+            manager.state["job_analysis"],
+        )
+        assert manager.state["page_count"] == 2
+        assert manager.state["validation_results"] == {
+            "page_count": 2,
+            "checks": checks,
+            "summary": {"pass": 1, "warn": 1, "fail": 1},
+            "validation_date": manager.state["validation_results"][
+                "validation_date"
+            ],
+        }
+
+
 def test_concurrent_session_mutations_stay_isolated(build_app):
     app, tracker = build_app(job_barrier=threading.Barrier(2))
 
