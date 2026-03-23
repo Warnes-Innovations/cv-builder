@@ -12,6 +12,7 @@ and user interaction.
 """
 
 import json
+import logging
 import re
 import uuid
 from datetime import datetime
@@ -23,6 +24,9 @@ import readline  # Enable line editing and history for input()
 from .llm_client import LLMClient, LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
 from .cv_orchestrator import CVOrchestrator
 from .config import get_config
+
+
+logger = logging.getLogger(__name__)
 
 
 # SOURCE OF TRUTH for workflow phase names.

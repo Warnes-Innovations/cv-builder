@@ -130,8 +130,11 @@ async function loadTabContent(tab) {
       await populateReviewTab('publications');
       break;
     case 'rewrite':
-      if (_rewritePanelCache) {
-        renderRewritePanel(_rewritePanelCache.rewrites, _rewritePanelCache.warnings);
+      if (window._rewritePanelCache) {
+        renderRewritePanel(
+          window._rewritePanelCache.rewrites,
+          window._rewritePanelCache.warnings,
+        );
       } else {
         content.innerHTML = '<div class="empty-state"><div class="icon">✏️</div><h3>Rewrites</h3><p>Complete customizations to reach this step</p></div>';
       }
