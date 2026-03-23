@@ -10,56 +10,34 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # UX Expert Review Status
 
-**Last Updated:** 2026-03-22 23:59 EDT
+**Last Updated:** 2026-03-23 01:35 EDT
 
-**Executive Summary:** This file captures the source-verified UX expert review snapshot separately from the story specification so sub-agents can work in parallel safely. This legacy snapshot has been normalized to the current section structure without re-running the UX review.
+**Executive Summary:** This file captures the source-verified UX expert review snapshot separately from the story specification so persona review subagents can work in parallel safely.
 
 ## Application Evaluation
 
-The preserved UX findings below are primarily application and workflow findings from the earlier source-first review.
-
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/session-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-|-------|---------|-----------|--------|------------|-------|
-| US-U1 | 3 | 1 | 0 | 0 | 0 |
-| US-U2 | 3 | 1 | 1 | 0 | 0 |
-| US-U3 | 2 | 2 | 1 | 0 | 0 |
-| US-U4 | 1 | 3 | 2 | 0 | 0 |
-| US-U5 | 3 | 1 | 1 | 0 | 0 |
-| US-U6 | 1 | 2 | 3 | 0 | 0 |
-| US-U7 | 3 | 3 | 0 | 0 | 0 |
-| US-U8 | 0 | 2 | 3 | 0 | 0 |
-| US-U9 | 0 | 2 | 1 | 4 | 0 |
+| ------- | --------- | ----------- | -------- | ------------ | ------- |
+| US-U* | 1 | 7 | 1 | 0 | 0 |
 
-**Key evidence references:**
-- US-U1: workflow steps + active/completed state → web/index.html:88, web/app.js:7589
-- US-U1: session restore, tab-state hydration, and stale-session fallback now route through shared state/session modules, preserving last-known tab data when available and falling back to session selection when a supplied session is stale → web/state-manager.js:69-119, web/state-manager.js:140-151, web/review-table-base.js:38-45, web/review-table-base.js:78-106, web/session-manager.js:144-176, scripts/web_app.py:405-439, scripts/routes/session_routes.py:423-434, scripts/routes/auth_routes.py:99-107
-- US-U2: protected-site guidance and URL fallback messaging → web/app.js:1919, scripts/web_app.py:1706
-- US-U2: editable extracted confirmation fields after URL fetch → not found in relevant source files
-- US-U3: chunked analysis layout + keyword rank badges → web/app.js:2865, web/styles.css:188
-- US-U3: clarifying questions rendered all at once with free-text textareas → web/app.js:2586
-- US-U4: bulk review controls present → web/app.js:3985, web/app.js:4134, web/app.js:4332
-- US-U4: inline row expansion / relevance score labelling → not found in relevant source files
-- US-U5: inline diff rendering + collocated controls → web/app.js:5821, web/app.js:5867, web/styles.css:645
-- US-U5: sequential keyboard review control (Approve & Next) → not found in relevant source files
-- US-U6: step-labelled generation progress → web/app.js:6668, scripts/web_app.py:738
-- US-U6: in-browser rendered preview / version list → not found in relevant source files
-- US-U7: modal focus trap + focus restore → web/ui-core.js:38, web/ui-core.js:58, web/ui-core.js:100
-- US-U7: icon-only review controls missing descriptive aria-labels in tables → web/app.js:3949, web/app.js:4289
-- US-U8: responsive column-collapsing config and skeleton placeholders → not found in relevant source files
-- US-U8: external blocking resources on initial shell load → web/index.html:7, web/index.html:299
-- US-U9: layout backend endpoints and persisted instruction history exist → scripts/web_app.py:3728, scripts/web_app.py:3782, scripts/utils/conversation_manager.py:813
-- US-U9: reviewed frontend files do not implement the layout instruction UI/undo/proceed flow → not found in relevant source files
+- US-U1: ✅ Pass. Workflow orientation, session restore, and step-state persistence are now real and coherent enough that the app no longer feels like an unstructured shell. Evidence: web/index.html, web/ui-core.js, web/state-manager.js, web/session-manager.js.
+- US-U2: ⚠️ Partial. Protected-site guidance and input fallback messaging are implemented, but editable extracted-field confirmation after URL ingestion is still missing. Evidence: web/app.js, scripts/web_app.py.
+- US-U3: ⚠️ Partial. Analysis surfaces now expose keywords and recommendation detail, but clarifying questions still appear as a dense wall rather than a staged, low-cognitive-load flow. Evidence: web/app.js, web/styles.css.
+- US-U4: ⚠️ Partial. Review tables support meaningful customization work, yet richer row expansion, stronger relevance labelling, and full row-level reorder ergonomics remain incomplete. Evidence: web/app.js, scripts/utils/conversation_manager.py.
+- US-U5: ⚠️ Partial. Rewrite presentation is strong because the user can compare and act in place, but high-volume review efficiency is still limited by missing sequential review and edit-with-context improvements. Evidence: web/app.js, web/styles.css.
+- US-U6: ⚠️ Partial. Generation progress and downstream validation exist, but the in-browser preview/version-management workflow is still not implemented to the story target. Evidence: web/app.js, scripts/web_app.py.
+- US-U7: ⚠️ Partial. Modal focus trapping and some keyboard semantics exist, but icon-only controls and uneven keyboard coverage still leave accessibility gaps in review-heavy screens. Evidence: web/ui-core.js, web/app.js.
+- US-U8: ⚠️ Partial. The app is usable on common desktop widths, but dense tables, helper text, and limited responsive collapsing keep the mobile and narrow-screen experience below the story target. Evidence: web/index.html, web/styles.css.
+- US-U9: ❌ Fail. Layout-review backend hooks exist, but the reviewed frontend still does not deliver the full layout-instruction, preview-refresh, undo, and proceed flow promised by the UX stories. Evidence: scripts/web_app.py, scripts/utils/conversation_manager.py, web/app.js.
 
 ## Generated Materials Evaluation
 
-The legacy UX snapshot did not preserve a separate generated-materials section. A refreshed UX pass should separate document-output usability findings from workflow findings.
+⚠️ Partial. UX quality is strongest in review and validation surfaces, but the artifact-review experience still lacks rich previewing, clear version comparison, and a convincing final file-review step. Evidence: web/app.js, scripts/web_app.py.
 
 ## Additional Story Gaps / Proposed Story Items
 
-None recorded yet.
-
-**Evidence standard:**
-- This file preserves a pre-existing legacy snapshot.
-- Any refreshed findings should cite repository-relative source paths with line numbers and enough supporting evidence for independent verification.
+- Add an explicit intake-confirmation substep after URL/paste ingestion.
+- Replace all-at-once clarifications with a chunked flow that preserves context and progress.
+- Finish the missing staged preview/layout-review frontend and add richer final artifact comparison views.
