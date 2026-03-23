@@ -266,6 +266,18 @@ class FakeConversationManager:
         self.load_session(str(sorted(candidates)[-1]))
         return True
 
+    def extract_intake_metadata(self) -> dict[str, str | None]:
+        lines = [
+            line.strip()
+            for line in (self.state.get("job_description") or "").splitlines()
+            if line.strip()
+        ]
+        return {
+            "role": lines[0] if lines else None,
+            "company": lines[1] if len(lines) > 1 else None,
+            "date_applied": "2026-03-19",
+        }
+
     def _process_message(self, message: str) -> dict[str, Any]:
         self.processed_messages.append(message)
         self.conversation_history.append({"role": "user", "content": message})
@@ -1636,6 +1648,146 @@ def test_phase_navigation_and_review_routes_update_session_state(build_app):
         assert review.get_json()["success"] is True
         assert manager.state["skill_decisions"] == {"python": "include"}
         assert manager.state["extra_skills"] == ["FastAPI"]
+
+
+def test_intake_metadata_and_prior_clarifications_routes_use_session_files(
+    build_app,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        prior_session_id = _new_session(client)
+        prior_manager = _manager_for_session(tracker, prior_session_id)
+        prior_manager.state.update(
+            {
+                "position_name": "Platform AI Director at Beta Corp",
+                "job_description": (
+                    "Platform AI Director\n"
+                    "Beta Corp\n"
+                    "Lead platform modernization."
+                ),
+                "intake": {
+                    "role": "Platform AI Director",
+                    "company": "Beta Corp",
+                    "date_applied": "2026-03-01",
+                    "confirmed": True,
+                },
+                "post_analysis_answers": {
+                    "focus": "scaling cross-functional delivery",
+                },
+            }
+        )
+        prior_manager._save_session()
+
+        session_id = _new_session(client)
+        _claim_session(client, session_id, "owner-a")
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["job_description"] = (
+            "Director of Platform AI\n"
+            "Acme Labs\n"
+            "Own AI platform strategy."
+        )
+
+        extracted = client.get(
+            "/api/intake-metadata",
+            query_string={"session_id": session_id},
+        )
+        assert extracted.status_code == 200
+        assert extracted.get_json() == {
+            "role": "Director of Platform AI",
+            "company": "Acme Labs",
+            "date_applied": "2026-03-19",
+            "confirmed": False,
+        }
+
+        confirmed = client.post(
+            "/api/confirm-intake",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "role": "Director of Platform AI",
+                "company": "Acme Labs",
+                "date_applied": "2026-03-19",
+            },
+        )
+        assert confirmed.status_code == 200
+        confirmed_payload = confirmed.get_json()
+        assert confirmed_payload["ok"] is True
+        assert confirmed_payload["intake"] == {
+            "role": "Director of Platform AI",
+            "company": "Acme Labs",
+            "date_applied": "2026-03-19",
+            "confirmed": True,
+        }
+        assert (
+            manager.state["position_name"]
+            == "Director of Platform AI at Acme Labs"
+        )
+
+        with patch(
+            "utils.config.get_config",
+            return_value={"data.output_dir": str(manager.output_dir)},
+        ):
+            prior = client.get(
+                "/api/prior-clarifications",
+                query_string={"session_id": session_id, "limit": 2},
+            )
+
+    assert prior.status_code == 200
+    prior_payload = prior.get_json()
+    assert prior_payload["found"] is True
+    assert len(prior_payload["matches"]) == 1
+    assert prior_payload["matches"][0]["company"] == "Beta Corp"
+    assert prior_payload["matches"][0]["answers"] == {
+        "focus": "scaling cross-functional delivery",
+    }
+    assert prior_payload["matches"][0]["overlap"] == ["director", "platform"]
+
+
+def test_post_analysis_draft_response_route_validates_and_returns_llm_text(
+    build_app,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["post_analysis_answers"] = {
+            "focus": "platform modernization",
+        }
+
+        missing_question = client.post(
+            "/api/post-analysis-draft-response",
+            json={"session_id": session_id},
+        )
+        assert missing_question.status_code == 400
+        assert missing_question.get_json() == {
+            "ok": False,
+            "error": "question required",
+        }
+
+        drafted = client.post(
+            "/api/post-analysis-draft-response",
+            json={
+                "session_id": session_id,
+                "question": (
+                    "What kind of platform work do you want to emphasize?"
+                ),
+                "question_type": "clarification",
+                "analysis": {
+                    "job_title": "Director of Platform AI",
+                    "company_name": "Acme Labs",
+                    "role_level": "director",
+                    "domain": "applied AI",
+                },
+            },
+        )
+
+    assert drafted.status_code == 200
+    assert drafted.get_json() == {
+        "ok": True,
+        "text": "Generated text",
+    }
 
 
 def test_editing_and_rewrite_fetch_routes_enforce_ownership(build_app):
