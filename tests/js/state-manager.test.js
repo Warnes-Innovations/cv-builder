@@ -113,6 +113,21 @@ describe('stateManager tab state', () => {
     expect(stateManager.getCurrentTab()).toBe('rewrites')
   })
 
+  it('mirrors currentTab onto globalThis for legacy modules', () => {
+    stateManager.setCurrentTab('analysis')
+    expect(globalThis.currentTab).toBe('analysis')
+  })
+
+  it('setCurrentStage / getCurrentStage round-trips', () => {
+    stateManager.setCurrentStage('analysis')
+    expect(stateManager.getCurrentStage()).toBe('analysis')
+  })
+
+  it('mirrors currentStage onto globalThis for legacy modules', () => {
+    stateManager.setCurrentStage('layout')
+    expect(globalThis.currentStage).toBe('layout')
+  })
+
   it('setCurrentTab persists the value to localStorage', () => {
     stateManager.setCurrentTab('analysis')
     const saved = JSON.parse(localStorage.getItem(StorageKeys.TAB_DATA))
@@ -125,6 +140,18 @@ describe('stateManager tab state', () => {
     expect(stateManager.getTabData('analysis')).toEqual(data)
   })
 
+  it('getAllTabData returns a snapshot of canonical tab state', () => {
+    stateManager.setTabData('analysis', { score: 95 })
+    stateManager.setTabData('job', 'job text')
+
+    expect(stateManager.getAllTabData()).toEqual({
+      analysis: { score: 95 },
+      customizations: null,
+      cv: null,
+      job: 'job text',
+    })
+  })
+
   it('getTabData returns null for an unset tab', () => {
     expect(stateManager.getTabData('cv')).toBeNull()
   })
@@ -133,6 +160,11 @@ describe('stateManager tab state', () => {
     stateManager.setTabData('analysis', { result: 'ok' })
     const saved = JSON.parse(localStorage.getItem(StorageKeys.TAB_DATA))
     expect(saved.tabData.analysis).toEqual({ result: 'ok' })
+  })
+
+  it('mirrors tabData onto globalThis for legacy modules', () => {
+    stateManager.setTabData('analysis', { result: 'ok' })
+    expect(globalThis.tabData.analysis).toEqual({ result: 'ok' })
   })
 })
 
@@ -236,11 +268,14 @@ describe('loadStateFromLocalStorage', () => {
       tabData:      { analysis: { score: 80 } },
       interactiveState: {},
       lastKnownPhase: 'customise',
+      currentStage: 'analysis',
     })
     localStorage.setItem(StorageKeys.TAB_DATA, fresh)
     const result = loadStateFromLocalStorage()
     expect(result).toBe(true)
     expect(stateManager.getTabData('analysis')).toEqual({ score: 80 })
+    expect(globalThis.tabData.analysis).toEqual({ score: 80 })
+    expect(stateManager.getCurrentStage()).toBe('analysis')
   })
 
   it('restores phase from saved data', () => {

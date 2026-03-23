@@ -22,6 +22,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('questions-panel');
 
+import { stateManager } from './state-manager.js';
+
 // ---------------------------------------------------------------------------
 // State persistence helpers
 // ---------------------------------------------------------------------------
@@ -82,11 +84,11 @@ async function fetchPostAnalysisQuestionsFromApi(analysisData) {
 }
 
 async function appendFollowUpPostAnalysisQuestions() {
-  if (!tabData.analysis) return 0;
+  if (!stateManager.getTabData('analysis')) return 0;
 
   let analysisData;
   try {
-    const cleanAnalysis = cleanJsonResponse(tabData.analysis);
+    const cleanAnalysis = cleanJsonResponse(stateManager.getTabData('analysis'));
     analysisData = typeof cleanAnalysis === 'string'
       ? JSON.parse(cleanAnalysis)
       : cleanAnalysis;
@@ -159,7 +161,7 @@ function populateQuestionsTab() {
   const content = document.getElementById('document-content');
   if (!content) return;
 
-  if (!tabData.analysis) {
+  if (!stateManager.getTabData('analysis')) {
     content.innerHTML = '<div class="empty-state"><div class="icon">💬</div><h3>No Questions Yet</h3><p>Run "Analyze Job" first to generate clarifying questions.</p></div>';
     return;
   }
@@ -255,9 +257,10 @@ async function draftQuestionResponse(idx) {
 
   try {
     let analysisPayload = null;
-    if (tabData.analysis) {
+    const analysisState = stateManager.getTabData('analysis');
+    if (analysisState) {
       try {
-        const cleaned = cleanJsonResponse(tabData.analysis);
+        const cleaned = cleanJsonResponse(analysisState);
         analysisPayload = typeof cleaned === 'string' ? JSON.parse(cleaned) : cleaned;
       } catch (_) { /* use null */ }
     }

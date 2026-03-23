@@ -28,6 +28,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('message-dispatch');
 
+import { stateManager } from './state-manager.js';
+
 // ---------------------------------------------------------------------------
 // Default LLM message handler
 // ---------------------------------------------------------------------------
@@ -150,7 +152,7 @@ const _messageHandlers = [
 async function sendMessage() {
   const input = document.getElementById('message-input');
   const text = normalizeText(input.value);
-  if (!text || isLoading) return;
+  if (!text || stateManager.isLoading()) return;
 
   appendMessage('user', text);
   input.value = '';

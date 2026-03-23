@@ -17,16 +17,30 @@ import {
   saveCoverLetter,
   generateCoverLetter,
 } from '../../web/cover-letter.js'
+import { initializeState, stateManager } from '../../web/state-manager.js'
+
+function createLocalStorageMock() {
+  let store = {}
+  return {
+    getItem: key => Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null,
+    setItem: (key, value) => { store[key] = String(value) },
+    removeItem: key => { delete store[key] },
+    clear: () => { store = {} },
+  }
+}
 
 // ── Global stubs ──────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  vi.stubGlobal('localStorage', createLocalStorageMock())
   vi.stubGlobal('escapeHtml', s => String(s ?? ''))
   vi.stubGlobal('showAlertModal', vi.fn())
-  vi.stubGlobal('tabData', { cv: '', job: '' })
   vi.stubGlobal('pendingRecommendations', null)
   vi.stubGlobal('_lastAnalysisData', null)
   globalThis.fetch = vi.fn()
+  initializeState()
+  stateManager.setTabData('cv', '')
+  stateManager.setTabData('job', '')
 })
 
 afterEach(() => {
@@ -63,7 +77,7 @@ describe('_getCompanyNameForCL', () => {
   })
 
   it('falls back to first line of tabData.job', () => {
-    vi.stubGlobal('tabData', { job: 'Gamma Inc\nSoftware Engineer role' })
+    stateManager.setTabData('job', 'Gamma Inc\nSoftware Engineer role')
     expect(_getCompanyNameForCL()).toBe('Gamma Inc')
   })
 
@@ -165,7 +179,7 @@ describe('_renderConsistencyReport', () => {
   })
 
   it('renders company name check when company present', () => {
-    vi.stubGlobal('tabData', { cv: '<p>Acme Corp is great</p>' })
+    stateManager.setTabData('cv', '<p>Acme Corp is great</p>')
     _renderConsistencyReport({ job_analysis: { company: 'Acme Corp' } })
     const html = document.getElementById('consistency-report').innerHTML
     expect(html).toContain('Company name')
@@ -173,21 +187,21 @@ describe('_renderConsistencyReport', () => {
   })
 
   it('renders job title check', () => {
-    vi.stubGlobal('tabData', { cv: '<p>Senior Engineer role</p>' })
+    stateManager.setTabData('cv', '<p>Senior Engineer role</p>')
     _renderConsistencyReport({ job_analysis: { title: 'Senior Engineer' } })
     const html = document.getElementById('consistency-report').innerHTML
     expect(html).toContain('Job title')
   })
 
   it('renders ATS keywords check', () => {
-    vi.stubGlobal('tabData', { cv: '<p>Python Django</p>' })
+    stateManager.setTabData('cv', '<p>Python Django</p>')
     _renderConsistencyReport({ job_analysis: { ats_keywords: ['Python', 'Django', 'Kubernetes'] } })
     const html = document.getElementById('consistency-report').innerHTML
     expect(html).toContain('ATS keywords')
   })
 
   it('renders date format check', () => {
-    vi.stubGlobal('tabData', { cv: '<p>Jan 2020</p>' })
+    stateManager.setTabData('cv', '<p>Jan 2020</p>')
     _renderConsistencyReport({ job_analysis: { company: 'Acme' } })
     const html = document.getElementById('consistency-report').innerHTML
     expect(html).toContain('Date formats')
