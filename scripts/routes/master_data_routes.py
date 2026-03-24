@@ -1,12 +1,23 @@
-"""Master data management, generate-summary, cover letter, and screening routes."""
+"""Master data management, summary, cover letter, and screening routes."""
 import json
 import re
+import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
+
+# Live blueprint module registered by `scripts.web_app.create_app()`.
+
+from utils.bibtex_parser import (
+    bibtex_text_to_publications,
+    format_publication,
+    parse_bibtex_file,
+    serialize_publications_to_bibtex,
+)
+from utils.llm_client import LLMError
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +66,6 @@ _TONE_GUIDANCE: Dict[str, str] = {
 # Text similarity helper (used in screening search)
 def _text_similarity(query: str, target: str) -> float:
     """Simple word-overlap similarity score (0–1) for response library search."""
-    import re
     _STOP = {
         'a', 'an', 'the', 'and', 'or', 'for', 'in', 'of', 'to', 'is',
         'are', 'was', 'were', 'i', 'my', 'your', 'we', 'our', 'this',
@@ -872,7 +882,7 @@ def create_blueprint(deps):
                 )
 
             with entry.lock:
-                summary = llm_client_ref().generate_professional_summary(
+                summary = llm_client_ref['value'].generate_professional_summary(
                     job_analysis=job_analysis,
                     master_data=orchestrator.master_data if orchestrator else {},
                     selected_experiences=selected_experiences,
@@ -896,6 +906,251 @@ def create_blueprint(deps):
             import traceback
             traceback.print_exc()
             return jsonify({"ok": False, "error": str(exc)}), 500
+
+    # ------------------------------------------------------------------
+    # Publication CRUD  (master-data / publications.bib)
+    # ------------------------------------------------------------------
+
+    @bp.get("/api/master-data/publications")
+    def master_data_get_publications():
+        """Return all publications stored in publications.bib."""
+        entry = get_session()
+        validate_owner(entry)
+        orchestrator = entry.orchestrator
+        pubs = orchestrator.publications or {}
+        result = []
+        for key, pub in pubs.items():
+            item: Dict[str, Any] = {
+                "key": key,
+                "type": pub.get("type", ""),
+                "fields": pub.get("fields", {}),
+            }
+            try:
+                item["formatted_citation"] = format_publication(pub, style="apa")
+            except Exception:
+                item["formatted_citation"] = ""
+            result.append(item)
+        try:
+            bib_path = orchestrator.publications_path
+            content = bib_path.read_text(encoding="utf-8") if bib_path.exists() else ""
+        except Exception:
+            content = ""
+            bib_path = orchestrator.publications_path
+        return jsonify({
+            "ok": True,
+            "publications": result,
+            "content": content,
+            "path": str(bib_path),
+            "count": len(pubs),
+        })
+
+    @bp.put("/api/master-data/publications")
+    def master_data_save_raw_publications():
+        """Overwrite publications.bib with raw BibTeX text."""
+        entry = get_session()
+        validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req = request.get_json() or {}
+        content = req.get("content", "")
+
+        try:
+            parsed = bibtex_text_to_publications(content)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"BibTeX parse error: {e}"}), 400
+
+        if content.strip() and not parsed:
+            return jsonify({
+                "ok": False,
+                "error": "No valid BibTeX entries found — file not saved.",
+            }), 400
+
+        bib_path = orchestrator.publications_path
+        backup_path = None
+        try:
+            if bib_path.exists():
+                backup_dir = bib_path.parent / "backups"
+                backup_dir.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                backup_path = backup_dir / f"{bib_path.stem}.{ts}{bib_path.suffix}"
+                shutil.copy2(bib_path, backup_path)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"Backup failed: {e}"}), 500
+
+        try:
+            bib_path.write_text(content, encoding="utf-8")
+            orchestrator.publications = parsed
+            return jsonify({"ok": True, "count": len(parsed)})
+        except Exception as e:
+            if backup_path and backup_path.exists():
+                try:
+                    shutil.copy2(backup_path, bib_path)
+                except Exception:
+                    pass
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @bp.post("/api/master-data/publications/validate")
+    def master_data_validate_publications():
+        """Parse BibTeX text and report errors without saving anything."""
+        entry = get_session()
+        validate_owner(entry)
+        req = request.get_json() or {}
+        bibtex_text = req.get("bibtex_text", "")
+
+        if not bibtex_text or not bibtex_text.strip():
+            return jsonify({"ok": True, "count": 0, "entries": []})
+
+        try:
+            parsed = bibtex_text_to_publications(bibtex_text)
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+        if not parsed:
+            return jsonify({
+                "ok": False,
+                "error": "No valid BibTeX entries found in the supplied text.",
+            }), 400
+
+        entries = [
+            {"key": key, "type": value.get("type", "")}
+            for key, value in parsed.items()
+        ]
+        return jsonify({"ok": True, "count": len(entries), "entries": entries})
+
+    @bp.post("/api/master-data/publication")
+    def master_data_update_publication():
+        """Add, update, or delete a single publication in publications.bib."""
+        entry = get_session()
+        validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req = request.get_json() or {}
+        action = (req.get("action") or "").strip()
+        if action not in ("add", "update", "delete"):
+            return jsonify({"error": "action must be add, update, or delete"}), 400
+
+        key = (req.get("key") or "").strip()
+        if not key:
+            return jsonify({"error": "key is required"}), 400
+
+        pubs = dict(orchestrator.publications or {})
+
+        try:
+            if action == "delete":
+                if key not in pubs:
+                    return jsonify({"ok": False, "error": f"Key '{key}' not found"}), 404
+                del pubs[key]
+                orchestrator.publications_path.write_text(
+                    serialize_publications_to_bibtex(pubs), encoding="utf-8"
+                )
+                orchestrator.publications = parse_bibtex_file(
+                    str(orchestrator.publications_path)
+                )
+                return jsonify({"ok": True, "action": "deleted"})
+
+            fields = req.get("fields")
+            if not isinstance(fields, dict):
+                return jsonify({"error": "fields (dict) is required for add/update"}), 400
+            entry_type = (req.get("type") or "").strip()
+            if not entry_type:
+                return jsonify({"error": "type is required for add/update"}), 400
+
+            if not fields.get("title"):
+                return jsonify({"error": "fields.title is required"}), 400
+            if not fields.get("year"):
+                return jsonify({"error": "fields.year is required"}), 400
+            if not fields.get("author") and not fields.get("editor"):
+                return jsonify({"error": "fields.author or fields.editor is required"}), 400
+
+            if action == "add" and key in pubs:
+                return jsonify({"error": f"Key '{key}' already exists; use action=update"}), 409
+
+            pubs[key] = {"key": key, "type": entry_type, "fields": fields}
+            orchestrator.publications_path.write_text(
+                serialize_publications_to_bibtex(pubs), encoding="utf-8"
+            )
+            orchestrator.publications = parse_bibtex_file(
+                str(orchestrator.publications_path)
+            )
+            return jsonify({"ok": True, "action": action, "key": key})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @bp.post("/api/master-data/publications/import")
+    def master_data_import_publications():
+        """Parse a BibTeX string and merge entries into publications.bib."""
+        entry = get_session()
+        validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req = request.get_json() or {}
+        bibtex_text = req.get("bibtex_text", "")
+        overwrite = bool(req.get("overwrite", False))
+
+        if not bibtex_text or not bibtex_text.strip():
+            return jsonify({"error": "bibtex_text is required"}), 400
+
+        try:
+            imported = bibtex_text_to_publications(bibtex_text)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"BibTeX parse error: {e}"}), 400
+
+        if not imported:
+            return jsonify({"ok": False, "error": "No valid BibTeX entries found"}), 400
+
+        pubs = dict(orchestrator.publications or {})
+        added = 0
+        updated = 0
+        skipped = 0
+        for key, pub in imported.items():
+            if key in pubs:
+                if overwrite:
+                    pubs[key] = pub
+                    updated += 1
+                else:
+                    skipped += 1
+            else:
+                pubs[key] = pub
+                added += 1
+
+        try:
+            orchestrator.publications_path.write_text(
+                serialize_publications_to_bibtex(pubs), encoding="utf-8"
+            )
+            orchestrator.publications = parse_bibtex_file(
+                str(orchestrator.publications_path)
+            )
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+        return jsonify({
+            "ok": True,
+            "added": added,
+            "updated": updated,
+            "skipped": skipped,
+            "total": len(pubs),
+        })
+
+    @bp.post("/api/master-data/publications/convert")
+    def master_data_convert_publications():
+        """Use the LLM to convert free-form citation text to BibTeX."""
+        entry = get_session()
+        validate_owner(entry)
+        orchestrator = entry.orchestrator
+
+        if not getattr(orchestrator, "llm", None):
+            return jsonify({"ok": False, "error": "No LLM provider configured for this session"}), 503
+
+        req = request.get_json() or {}
+        text = (req.get("text") or "").strip()
+        if not text:
+            return jsonify({"error": "text is required"}), 400
+
+        try:
+            bibtex = orchestrator.llm.convert_text_to_bibtex(text)
+        except LLMError as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+        return jsonify({"ok": True, "bibtex": bibtex})
 
     # ------------------------------------------------------------------
     # Cover letter
@@ -1025,7 +1280,7 @@ Close professionally with a call to action.
 """
 
             try:
-                response = llm_client_ref().chat(
+                response = llm_client_ref['value'].chat(
                     messages=[
                         {'role': 'system', 'content': 'You write tailored, professional cover letters. Return only the letter body text.'},
                         {'role': 'user',   'content': prompt},
@@ -1226,7 +1481,7 @@ Close professionally with a call to action.
             )
 
             try:
-                response_text = llm_client_ref().chat(
+                response_text = llm_client_ref['value'].chat(
                     messages=[
                         {'role': 'system', 'content': 'You write concise, tailored screening-question responses for job applications.'},
                         {'role': 'user',   'content': prompt},
