@@ -689,6 +689,58 @@ describe('restoreBackendState', () => {
     expect(restored).toBe(true)
     expect(window.achievementEdits).toEqual({})
   })
+
+  it('clears stale tab data and pending recommendations when backend status omits them', async () => {
+    stateManager.setTabData('analysis', { title: 'Stale analysis' })
+    stateManager.setTabData('customizations', { approved_skills: ['Stale skill'] })
+    stateManager.setTabData('cv', { files: ['stale.pdf'] })
+    window.pendingRecommendations = { approved_skills: ['Stale skill'] }
+
+    globalThis.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_analysis: null,
+          customizations: null,
+          generated_files: null,
+          position_name: 'Engineer',
+          achievement_edits: {},
+          experience_decisions: {},
+          skill_decisions: {},
+          achievement_decisions: {},
+          publication_decisions: {},
+          summary_focus_override: null,
+          extra_skills: [],
+          extra_skill_matches: {},
+          all_experiences: [],
+          selected_summary_key: null,
+          new_skills_from_llm: [],
+          post_analysis_questions: [],
+          post_analysis_answers: {},
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          phase: 'idle',
+          preview_available: false,
+          layout_confirmed: false,
+          page_count_estimate: null,
+          page_length_warning: false,
+          layout_instructions_count: 0,
+          final_generated_at: null,
+        }),
+      })
+
+    const restored = await restoreBackendState()
+
+    expect(restored).toBe(false)
+    expect(stateManager.getTabData('analysis')).toBeNull()
+    expect(stateManager.getTabData('customizations')).toBeNull()
+    expect(stateManager.getTabData('cv')).toBeNull()
+    expect(window.pendingRecommendations).toBeNull()
+  })
 })
 
 // ── restoreSession / loadSessionFile ─────────────────────────────────────
@@ -952,5 +1004,57 @@ describe('restoreBackendState', () => {
             'system',
             '✅ Session restored: Restored Session (rewrite_review)',
           )
+        })
+
+        it('clears stale restored tab data when the loaded session status omits them', async () => {
+          stateManager.setTabData('analysis', { title: 'Stale analysis' })
+          stateManager.setTabData('customizations', { approved_skills: ['Stale skill'] })
+          stateManager.setTabData('cv', { files: ['stale.pdf'] })
+          globalThis.window.pendingRecommendations = { approved_skills: ['Stale skill'] }
+
+          fetch
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                ok: true,
+                session_id: 'sess-1',
+                redirect_url: '/?session=sess-1',
+                session_file: '/tmp/session.json',
+                position_name: 'Restored Session',
+                phase: 'rewrite_review',
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                history: [],
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                customizations: null,
+                job_analysis: null,
+                generated_files: null,
+                post_analysis_questions: [],
+                post_analysis_answers: {},
+                summary_focus_override: null,
+                achievement_edits: {},
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                rewrites: [],
+                persuasion_warnings: [],
+              }),
+            })
+
+          await expect(loadSessionFile('/tmp/session.json')).resolves.toBe(true)
+
+          expect(stateManager.getTabData('analysis')).toBeNull()
+          expect(stateManager.getTabData('customizations')).toBeNull()
+          expect(stateManager.getTabData('cv')).toBeNull()
+          expect(globalThis.window.pendingRecommendations).toBeNull()
         })
       })
