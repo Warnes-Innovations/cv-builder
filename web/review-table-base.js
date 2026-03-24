@@ -11,13 +11,12 @@
  *
  * Dependencies (all resolved through globalThis at runtime):
  *   appendMessage, saveTabData, cleanJsonResponse, escapeHtml,
- *   tabData, currentTab, currentStage,
  *   getStageForTab, updateTabBarForStage, updateActionButtons,
  *   populateJobTab, populateQuestionsTab, buildAchievementsEditor,
  *   renderRewritePanel, populateCVEditorTab, populateCVTab,
  *   populateDownloadTab, populateSpellCheckTab, initiateLayoutInstructions,
  *   populateFinaliseTab, populateMasterTab, populateCoverLetterTab,
- *   populateScreeningTab, extractFirstJsonObject, isReconnecting,
+ *   populateScreeningTab, extractFirstJsonObject,
  *   fetchStatus, apiCall,
  *   buildExperienceReviewTable, buildSkillsReviewTable,
  *   buildAchievementsReviewTable, buildSummaryFocusSection,
@@ -28,12 +27,22 @@
 import { getLogger } from './logger.js';
 const log = getLogger('review-table-base');
 
+import { stateManager } from './state-manager.js';
+
 // ── Module-level state ────────────────────────────────────────────────────
 
 let userSelections = {
   experiences: {},  // exp_id -> 'emphasize'|'include'|'de-emphasize'|'exclude'
   skills: {}        // skill_name -> 'emphasize'|'include'|'de-emphasize'|'exclude'
 };
+
+function ensureTabDataState() {
+  return stateManager.getAllTabData();
+}
+
+function isReconnectInProgress() {
+  return stateManager.isReconnecting();
+}
 
 // ── Inclusion counts ──────────────────────────────────────────────────────
 
@@ -64,7 +73,7 @@ function switchTab(tab) {
   if (typeof getStageForTab === 'function' && typeof updateTabBarForStage === 'function') {
     const tabStage = getStageForTab(tab);
     if (tabStage) {
-      currentStage = tabStage;
+      stateManager.setCurrentStage(tabStage);
       updateTabBarForStage(tabStage);
       updateActionButtons(tabStage);
     }
@@ -80,7 +89,7 @@ function switchTab(tab) {
     activeTab.classList.add('active');
     activeTab.setAttribute('aria-selected', 'true');
   }
-  currentTab = tab;
+  stateManager.setCurrentTab(tab);
 
   // All tabs except 'cv' use full-width layout (no paper-sized centering)
   const content = document.getElementById('document-content');
@@ -92,6 +101,7 @@ function switchTab(tab) {
 
 async function loadTabContent(tab) {
   const content = document.getElementById('document-content');
+  const tabData = ensureTabDataState();
 
   switch (tab) {
     case 'job':
@@ -182,12 +192,12 @@ async function loadTabContent(tab) {
 function populateAnalysisTab(result) {
   const content = document.getElementById('document-content');
   try {
-    // Store for persistence
-    tabData.analysis = result;
-    saveTabData();
-
     const cleanResult = cleanJsonResponse(result);
     const data = typeof cleanResult === 'string' ? JSON.parse(cleanResult) : cleanResult;
+
+    // Persist only after the analysis payload has been validated.
+    stateManager.setTabData('analysis', result);
+    saveTabData();
 
     // ── Section 1: Role & Domain card ────────────────────────────────────
     let html = '<div class="analysis-page">';
@@ -284,24 +294,24 @@ async function handleCustomizationResponse(response) {
 
     if (data && (data.recommended_experiences || data.recommended_skills)) {
       // Store for persistence
-      tabData.customizations = data;
+      stateManager.setTabData('customizations', data);
       window.pendingRecommendations = data;
       saveTabData();
 
-      if (!isReconnecting) {
+      if (!isReconnectInProgress()) {
         appendMessage('assistant', '✅ Customizations generated! Please review the **Experiences** and **Skills** in the **Customizations** tab. Select your preferences using the action buttons, then submit your decisions.');
 
         // Switch to the experiences review tab.
         switchTab('exp-review');
       }
     } else {
-      if (!isReconnecting) {
+      if (!isReconnectInProgress()) {
         appendMessage('assistant', response);
       }
     }
   } catch (e) {
     log.error('Customization response error:', e);
-    if (!isReconnecting) {
+    if (!isReconnectInProgress()) {
       appendMessage('assistant', response);
     }
   }
@@ -328,8 +338,9 @@ async function showTableBasedReview() {
  */
 async function populateReviewTab(pane) {
   const content = document.getElementById('document-content');
+  const customizations = stateManager.getTabData('customizations');
 
-  if (!window.pendingRecommendations || !tabData.customizations) {
+  if (!window.pendingRecommendations || !customizations) {
     content.innerHTML = '<div class="empty-state"><div class="icon">⚙️</div><h3>Review Customizations</h3><p>Click "Recommend Customizations" to generate recommendations.</p></div>';
     return;
   }
@@ -559,13 +570,19 @@ async function switchReviewSubtab(pane) {
 
 async function _loadReviewPane(pane) {
   if (!window._reviewPaneLoaded) window._reviewPaneLoaded = {};
-  window._reviewPaneLoaded[pane] = true;
-  switch (pane) {
-    case 'experiences':   await buildExperienceReviewTable();  break;
-    case 'skills':        await buildSkillsReviewTable();       break;
-    case 'achievements':  await buildAchievementsReviewTable(); break;
-    case 'summary':       await buildSummaryFocusSection();     break;
-    case 'publications':  await buildPublicationsReviewTable(); break;
+  try {
+    switch (pane) {
+      case 'experiences':   await buildExperienceReviewTable();  break;
+      case 'skills':        await buildSkillsReviewTable();       break;
+      case 'achievements':  await buildAchievementsReviewTable(); break;
+      case 'summary':       await buildSummaryFocusSection();     break;
+      case 'publications':  await buildPublicationsReviewTable(); break;
+      default: return;
+    }
+    window._reviewPaneLoaded[pane] = true;
+  } catch (error) {
+    delete window._reviewPaneLoaded[pane];
+    throw error;
   }
 }
 

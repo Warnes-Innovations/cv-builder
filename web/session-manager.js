@@ -30,6 +30,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('session-manager');
 
 import { SESSION_PHASE_LABELS_SHORT } from './utils.js';
+import { stateManager } from './state-manager.js';
 
 // ---------------------------------------------------------------------------
 // Session phase labels (abbreviated form — for compact session-switcher UI)
@@ -140,9 +141,9 @@ async function _claimCurrentSession(sessionIdToClaim) {
     }),
   });
 
-  if (res.ok) return true;
-
   const data = await res.json().catch(() => ({}));
+  if (res.ok && data.ok !== false) return true;
+
   if (res.status === 409 && data.error === 'session_owned') {
     const action = await showOwnershipConflictDialog(
       'This session is currently claimed by another browser tab. You can take it over, start a new session, or load a different one.'
@@ -172,7 +173,7 @@ async function _claimCurrentSession(sessionIdToClaim) {
     return true;
   }
 
-  if (res.status === 404) {
+  if (res.status === 404 || data.error === 'session_not_found') {
     showSessionsLandingPanel('That session is no longer active. Load it from disk or create a new one.');
     openSessionsModal();
     return false;
@@ -199,8 +200,8 @@ function openActiveSessionFromLanding(sessionIdToOpen) {
 }
 
 function showSessionsLandingPanel(message = '') {
-  currentTab = 'job';
-  currentStage = 'job';
+  stateManager.setCurrentTab('job');
+  stateManager.setCurrentStage('job');
   updateActionButtons('job');
   updatePositionTitle({});
 
@@ -238,22 +239,20 @@ async function ensureSessionContext() {
     return false;
   }
 
-  sessionId = urlSessionId;
-  localStorage.setItem(StorageKeys.SESSION_ID, sessionId);
+  stateManager.setSessionId(urlSessionId);
   return _claimCurrentSession(urlSessionId);
 }
 
 async function restoreSession() {
   try {
-    isReconnecting = true;
+    stateManager.setIsReconnecting(true);
 
     const storedSessionId = getSessionIdFromURL() || localStorage.getItem(StorageKeys.SESSION_ID);
     if (!storedSessionId) {
-      isReconnecting = false;
+      stateManager.setIsReconnecting(false);
       return;
     }
-    sessionId = storedSessionId;
-    localStorage.setItem(StorageKeys.SESSION_ID, storedSessionId);
+    stateManager.setSessionId(storedSessionId);
 
     // Try to restore conversation history from backend
     const historyRes = await fetch('/api/history');
@@ -279,7 +278,7 @@ async function restoreSession() {
 
       // Update phase
       if (historyData.phase) {
-        lastKnownPhase = historyData.phase;
+        stateManager.setPhase(historyData.phase);
       }
     }
 
@@ -290,12 +289,12 @@ async function restoreSession() {
     // Restore UI-only prefs (activeReviewPane) from localStorage.
     restoreTabData({ uiPrefsOnly: serverHasData });
 
-    isReconnecting = false;
+    stateManager.setIsReconnecting(false);
 
   } catch (error) {
     log.warn('Session restoration failed:', error);
     appendMessage('system', `⚠️ Could not restore previous session. Starting fresh. (${error.message})`);
-    isReconnecting = false;
+    stateManager.setIsReconnecting(false);
   }
 }
 
@@ -333,12 +332,12 @@ async function restoreBackendState() {
     let serverHasData = false;
 
     if (statusData.job_analysis) {
-      tabData.analysis = statusData.job_analysis;
+      stateManager.setTabData('analysis', statusData.job_analysis);
       serverHasData = true;
       log.info('Restored analysis data from backend memory');
     }
     if (statusData.customizations) {
-      tabData.customizations = statusData.customizations;
+      stateManager.setTabData('customizations', statusData.customizations);
       window.pendingRecommendations = statusData.customizations;
       serverHasData = true;
       log.info('Restored customizations data from backend memory');
@@ -347,10 +346,34 @@ async function restoreBackendState() {
       refreshAtsScore('analysis');
     }
     if (statusData.generated_files) {
-      tabData.cv = statusData.generated_files;
+      stateManager.setTabData('cv', statusData.generated_files);
       serverHasData = true;
       log.info('Restored CV data from backend memory');
     }
+
+    try {
+      const generationRes = await fetch('/api/cv/generation-state');
+      if (generationRes.ok) {
+        const generationData = await generationRes.json();
+        if (generationData?.ok) {
+          stateManager.setGenerationState({
+            phase: generationData.phase || 'idle',
+            previewAvailable: Boolean(generationData.preview_available),
+            layoutConfirmed: Boolean(generationData.layout_confirmed),
+            pageCountEstimate: generationData.page_count_estimate ?? null,
+            pageWarning: Boolean(generationData.page_length_warning),
+            layoutInstructionsCount: generationData.layout_instructions_count || 0,
+            finalGeneratedAt: generationData.final_generated_at || null,
+          });
+          if (generationData.ats_score) {
+            stateManager.setAtsScore(generationData.ats_score);
+          }
+          if (generationData.preview_available || generationData.final_generated_at || generationData.ats_score) {
+            serverHasData = true;
+          }
+        }
+      }
+    } catch (_e) { /* non-fatal */ }
 
     if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
 
@@ -432,11 +455,11 @@ async function loadSessionFile(path) {
         const s2 = await fetch('/api/status');
         const sd = await s2.json();
         if (sd.customizations) {
-          tabData.customizations = sd.customizations;
+          stateManager.setTabData('customizations', sd.customizations);
           window.pendingRecommendations = sd.customizations;
         }
-        if (sd.job_analysis) tabData.analysis = sd.job_analysis;
-        if (sd.generated_files) tabData.cv = sd.generated_files;
+        if (sd.job_analysis) stateManager.setTabData('analysis', sd.job_analysis);
+        if (sd.generated_files) stateManager.setTabData('cv', sd.generated_files);
         if (sd.achievement_edits && Object.keys(sd.achievement_edits).length > 0) {
           window.achievementEdits = {};
           for (const [k, v] of Object.entries(sd.achievement_edits)) {
@@ -492,11 +515,11 @@ async function promptRenameCurrentSession() {
 
 function saveTabData() {
   try {
-    localStorage.setItem(getScopedTabDataStorageKey(sessionId), JSON.stringify({
-      tabData: tabData,
-      currentTab: currentTab,
+    localStorage.setItem(getScopedTabDataStorageKey(stateManager.getSessionId()), JSON.stringify({
+      tabData: stateManager.getAllTabData(),
+      currentTab: stateManager.getCurrentTab(),
       pendingRecommendations: window.pendingRecommendations || null,
-      interactiveState: interactiveState,
+      interactiveState: stateManager.getInteractiveState(),
       activeReviewPane: window._activeReviewPane || 'experiences',
       timestamp: Date.now()
     }));
@@ -507,7 +530,7 @@ function saveTabData() {
 
 function restoreTabData({ uiPrefsOnly = false } = {}) {
   try {
-    const saved = localStorage.getItem(getScopedTabDataStorageKey(sessionId));
+    const saved = localStorage.getItem(getScopedTabDataStorageKey(stateManager.getSessionId()));
     if (saved) {
       const data = JSON.parse(saved);
 
@@ -515,13 +538,15 @@ function restoreTabData({ uiPrefsOnly = false } = {}) {
       if (age < 24 * 60 * 60 * 1000) {
         if (!uiPrefsOnly) {
           if (data.tabData) {
-            tabData = { ...tabData, ...data.tabData };
+            Object.entries(data.tabData).forEach(([tab, value]) => {
+              stateManager.setTabData(tab, value);
+            });
           }
           if (data.pendingRecommendations) {
             window.pendingRecommendations = data.pendingRecommendations;
           }
           if (data.interactiveState) {
-            interactiveState = { ...interactiveState, ...data.interactiveState };
+            stateManager.setInteractiveState(data.interactiveState);
           }
         }
         if (data.activeReviewPane) {
@@ -530,7 +555,7 @@ function restoreTabData({ uiPrefsOnly = false } = {}) {
 
         log.info(`Restored tab data from localStorage (uiPrefsOnly=${uiPrefsOnly})`);
       } else {
-        localStorage.removeItem(getScopedTabDataStorageKey(sessionId));
+        localStorage.removeItem(getScopedTabDataStorageKey(stateManager.getSessionId()));
       }
     }
   } catch (error) {

@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 import bibtexparser  # type: ignore[import-untyped]
 from bibtexparser.bparser import BibTexParser  # type: ignore[import-untyped]
 from bibtexparser.customization import (  # type: ignore[import-untyped]
+    InvalidName,
     author as split_author_field,
     convert_to_unicode,
     splitname,
@@ -159,14 +160,18 @@ def _format_authors(authors: str | List[str] | None) -> str:
     author_names = []
     has_others = False
     for author_name in _split_bibtex_names(authors):
-        if _is_bibtex_others_token(author_name):
+        cleaned_author_name = _normalize_bibtex_name_token(author_name)
+        if not cleaned_author_name:
+            continue
+
+        if _is_bibtex_others_token(cleaned_author_name):
             has_others = True
             continue
 
         try:
-            parsed_name = splitname(author_name)
-        except (TypeError, ValueError):
-            author_names.append(_normalize_bibtex_name_token(author_name))
+            parsed_name = splitname(cleaned_author_name)
+        except (InvalidName, TypeError, ValueError):
+            author_names.append(cleaned_author_name)
             continue
 
         last_parts = parsed_name.get("von", []) + parsed_name.get("last", [])
@@ -179,7 +184,7 @@ def _format_authors(authors: str | List[str] | None) -> str:
         elif last:
             author_names.append(last)
         else:
-            author_names.append(_normalize_bibtex_name_token(author_name))
+            author_names.append(cleaned_author_name)
 
     if not author_names:
         return "et al." if has_others else ""

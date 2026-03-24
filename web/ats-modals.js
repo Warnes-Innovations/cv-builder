@@ -13,6 +13,8 @@
  * - index.html modal overlays: #ats-report-modal-overlay, #job-analysis-modal-overlay
  */
 
+import { stateManager } from './state-manager.js';
+
 // ---------------------------------------------------------------------------
 // ATS Report Modal
 // ---------------------------------------------------------------------------
@@ -127,7 +129,7 @@ function openJobAnalysisModal() {
   document.getElementById('job-analysis-modal-overlay').style.display = 'flex';
   const body = document.getElementById('job-analysis-modal-body');
 
-  const analysis = window.tabData?.analysis;
+  const analysis = stateManager.getTabData('analysis');
   if (analysis) {
     // Render into a temp div using populateAnalysisTab's output pattern
     const tmp = document.createElement('div');

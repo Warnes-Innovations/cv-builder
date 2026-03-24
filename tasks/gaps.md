@@ -1,17 +1,20 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-03-19
+**Generated:** 2026-03-06 | **Last updated:** 2026-03-23
 **Sources:**
-- `tasks/gaps.md` (prior baseline)
-- applicant review
-- UX review
-- `tasks/user-story-resume-expert.md` (`## Review Status` block)
-- hiring-manager review
-- persuasion review
-- HR/ATS review
-- heuristic review
 
-This document tracks the gaps that still remain after reviewing the current code against the latest source-verified story reviews. Status values below reflect the current implementation state, not prior specification intent.
+- prior backlog in `tasks/gaps.md`
+- refreshed persona review files under `tasks/review-status/` dated 2026-03-23
+- aggregate synthesis in `tasks/ui-review.md`
+
+This document tracks the gaps that still remain after reconciling the refreshed 14-persona review set against the current implementation. The March 23 refresh does not invalidate the gap IDs below; it mainly sharpens priority and confidence by replacing the older legacy-normalized persona snapshots with source-backed status files.
+
+## 2026-03-23 Reconciliation Notes
+
+- The strongest progress relative to the older rollups is in rewrite review, publication review, ATS artifact generation, cover-letter validation, finalise/archive scaffolding, and session-vs-master governance.
+- The most reinforced cross-persona gaps are still `GAP-20`, `GAP-22`, `GAP-23`, `GAP-21`, `GAP-08`, `GAP-18`, `GAP-16`, and `GAP-19`.
+- The newer personas add evidence that some issues are about story-completeness rather than missing foundations: accessibility, recruiter-ops, trust/compliance, and graphical-designer all found implemented scaffolding with incomplete last-mile behavior.
+- `GAP-03`, `GAP-04`, `GAP-05`, `GAP-09`, `GAP-14`, `GAP-15`, and `GAP-17` remain valid, but should be read as partial-completeness gaps rather than blank-feature gaps.
 
 **Severity scale:**
 `CRITICAL` - blocks a core workflow or acceptance path

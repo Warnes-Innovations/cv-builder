@@ -248,6 +248,14 @@ class TestModelAPI(unittest.TestCase):
         # Should include model identifier
         self.assertIsNotNone(data)
 
+    def test_get_model_ignores_stale_optional_session(self):
+        """GET /api/model still works when the URL has a stale session_id."""
+        response = self.client.get('/api/model?session_id=deadbeef&owner_token=test-token')
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertIsNotNone(data)
+        self.assertIn('provider', data)
+
     def test_model_catalog_endpoint_accessible(self):
         """GET /api/model-catalog returns available models."""
         response = self.client.get('/api/model-catalog')
