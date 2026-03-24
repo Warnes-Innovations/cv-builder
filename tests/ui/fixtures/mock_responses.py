@@ -276,8 +276,49 @@ API_STATUS_GENERATE = {
     },
 }
 
+# GET /api/status — in layout_review phase
+API_STATUS_LAYOUT_REVIEW = {
+    **API_STATUS_GENERATE,
+    "phase": "layout_review",
+}
+
 # GET /api/status — in refinement phase (finalise stage: #tab-download, #tab-finalise visible)
 API_STATUS_FINALISE = {
     **API_STATUS_GENERATE,
     "phase": "refinement",
+}
+
+# GET /api/cv/generation-state — canonical idle state
+API_GENERATION_STATE_IDLE = {
+    "ok": True,
+    "phase": "idle",
+    "preview_available": False,
+    "layout_confirmed": False,
+    "page_count_estimate": None,
+    "page_length_warning": False,
+    "layout_instructions_count": 0,
+    "final_generated_at": None,
+}
+
+# GET /api/cv/generation-state — active layout review preview
+API_GENERATION_STATE_LAYOUT_REVIEW = {
+    **API_GENERATION_STATE_IDLE,
+    "phase": "layout_review",
+    "preview_available": True,
+    "page_count_estimate": 2,
+    "layout_instructions_count": 1,
+}
+
+# GET /api/cv/generation-state — confirmed layout awaiting final outputs
+API_GENERATION_STATE_CONFIRMED = {
+    **API_GENERATION_STATE_LAYOUT_REVIEW,
+    "phase": "confirmed",
+    "layout_confirmed": True,
+}
+
+# GET /api/cv/generation-state — final outputs generated
+API_GENERATION_STATE_FINAL_COMPLETE = {
+    **API_GENERATION_STATE_CONFIRMED,
+    "phase": "final_complete",
+    "final_generated_at": "2026-03-24T00:47:00-04:00",
 }
