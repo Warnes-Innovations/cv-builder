@@ -40,6 +40,7 @@ import * as MessageQueue from '../message-queue.js';
 // ── Tier 2 ────────────────────────────────────────────────────────────────────
 import * as AuthProvider   from '../auth-provider.js';
 import * as AtsRefinement  from '../ats-refinement.js';
+import * as AtsModals      from '../ats-modals.js';
 import * as SessionActions from '../session-actions.js';
 import * as JobAnalysis    from '../job-analysis.js';
 
@@ -79,7 +80,7 @@ Object.assign(globalThis,
   Logger, Utils, ApiClient, State, UiCore, LayoutInstruction,
   Validators, RecommendationHelpers, UiHelpers,
   FetchUtils, MessageQueue,
-  AuthProvider, AtsRefinement, SessionActions, JobAnalysis,
+  AuthProvider, AtsRefinement, AtsModals, SessionActions, JobAnalysis,
   SessionManager, JobInput, MessageDispatch, QuestionsPanel,
   ReviewTableBase,
   ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview,

@@ -79,10 +79,16 @@
           style="display:none;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:1.1em;padding:2px 4px;line-height:1;">✏️</button>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:6px;">
-      <div id="ats-score-badge" class="ats-score-badge" aria-label="ATS match score" style="display:none;">
-        <span class="ats-score-value" id="ats-score-value">--</span>
-        <span class="ats-score-label">ATS</span>
+    <div class="position-bar-actions">
+      <div id="ats-score-header" class="ats-score-header" style="display:none;">
+        <div id="ats-score-badge" class="ats-score-badge" aria-label="ATS match score" style="display:none;">
+          <span class="ats-score-value" id="ats-score-value">--</span>
+          <span class="ats-score-label">ATS</span>
+        </div>
+        <div id="ats-score-summary" class="ats-score-summary" style="display:none;">
+          <div id="ats-score-summary-line" class="ats-score-summary-line"></div>
+          <div id="ats-score-summary-detail" class="ats-score-summary-detail"></div>
+        </div>
       </div>
       <button id="ats-report-btn" onclick="openAtsReportModal()" title="View ATS report"
         style="display:none;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;color:#475569;font-size:0.8em;padding:2px 7px;line-height:1.6;">ATS Report</button>
@@ -348,12 +354,11 @@
   <!-- Module bundle — exposes all module functions as globals via Object.assign(globalThis, ...) -->
   <script src="bundle.js"></script>
 
-  <!-- jQuery and DataTables (needed by ats-modals.js and DataTables usage) -->
+  <!-- jQuery and DataTables (needed by DataTables usage) -->
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 
   <!-- Orchestrator: init() + event-wiring; loads after bundle so globals are available -->
   <script src="app.js"></script>
-  <script src="ats-modals.js"></script>
 </body>
 </html>

@@ -141,6 +141,39 @@ class TestFinaliseEndpoint(unittest.TestCase):
         self.assertEqual(conv.state['phase'], 'refinement')
         self.assertIn('files', data['summary'])
 
+    def test_finalise_includes_cached_ats_score_in_summary_and_metadata(self):
+        """Finalise preserves cached ATS score in both response summary and metadata."""
+        ats_score = {
+            'overall': 84,
+            'hard_requirement_score': 100,
+            'soft_requirement_score': 60,
+            'basis': 'post_generation',
+            'keyword_status': [
+                {'keyword': 'Python', 'type': 'hard', 'status': 'matched', 'match_type': 'exact'},
+                {'keyword': 'SQL', 'type': 'soft', 'status': 'missing'},
+            ],
+            'section_scores': {'skills': 100},
+        }
+        app, _, _, sid, stack = _make_app(state_overrides={
+            'phase': 'generation',
+            'generation_state': {'ats_score': ats_score},
+        })
+        metadata_content = json.dumps({'company': 'Acme', 'role': 'Engineer'})
+
+        with stack, app.test_client() as client, \
+             patch('pathlib.Path.exists', return_value=True), \
+             patch('builtins.open', mock_open(read_data=metadata_content)), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run', return_value=MagicMock(returncode=1, stdout='', stderr='nothing')):
+
+            res = client.post('/api/finalise', json={'status': 'ready', 'session_id': sid})
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(data['summary']['ats_score']['overall'], 84)
+        written_metadata = mock_dump.call_args_list[0].args[0]
+        self.assertEqual(written_metadata['ats_score']['overall'], 84)
+
     def test_finalise_no_generated_files_returns_400(self):
         """Finalise without a generated CV returns 400."""
         app, conv, _, sid, stack = _make_app(state_overrides={'generated_files': None})

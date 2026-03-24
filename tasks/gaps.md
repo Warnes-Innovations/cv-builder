@@ -172,14 +172,16 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A10, US-A11
-**Status:** OPEN - verified 2026-03-19 11:36 ET; the current Master CV surface still covers only summaries and selected achievements, and no reviewed pre-workflow editor supports structured maintenance of experiences, skills, education, publications, certifications, or personal info.
-**Description:** The specification work for a fuller editor may exist elsewhere, but the current product state is still an implementation gap. Users remain unable to manage most of `Master_CV_Data.json` through a structured in-app editor.
-**Recommended resolution:** Implement a dedicated Master CV mode with full structured editing, backups before save, import/export, preview, and write-back rules shared with harvest and other master-data update flows.
+**See also:** [tasks/ui-review.md](ui-review.md#top-gaps), [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md#phase-16--master-cv-editor-gap-19)
+**Status:** PARTIAL - re-verified 2026-03-23; the app already includes a working `Master CV` surface with structured CRUD for several master-data sections plus publication editing, validation, and backup-before-write safeguards, but it still lacks the story-complete editor, history/restore model, import/export flow, preview flow, and governance UX described by GAP-19.
+**Description:** Earlier wording that framed GAP-19 as nearly absent is no longer accurate. The current product state includes meaningful Master CV foundations: a dedicated tab, editable personal info / experience / skills / education / awards / achievements / summaries, publication-editing routes, validation helpers, and backup-before-write behavior. The remaining gap is completion, not existence. Users still do not have the full durable-maintenance workflow promised by the stories, especially around history browsing, restore/undo, export, import-with-review, preview, clearer session-vs-master guidance, and any remaining section-depth gaps such as certifications or richer structured editing semantics.
+**Recommended resolution:** Preserve the existing Master CV foundation and complete it into a story-complete maintenance mode: add history/restore/undo flows, export and full preview, reviewed import paths, clearer governance messaging, and any missing structured-editor depth required to cover all target master-data sections consistently.
 
 ## GAP-20: Staged HTML Preview, Layout Review, and Final Generation Workflow
 
 **Severity:** CRITICAL
 **Affected stories:** US-A5a, US-A5b, US-A5c, US-U6, US-U9
+**See also:** [tasks/ui-review.md](ui-review.md#top-gaps)
 **Status:** OPEN - discovered 2026-03-19 11:36 ET; applicant and UX reviews found no verified inline HTML preview pane, no complete frontend layout-instruction loop, and no distinct post-layout final-generation step derived from confirmed HTML.
 **Description:** The current workflow still behaves as a bundled generation path rather than the staged `HTML preview -> layout review -> final generation` flow required by the stories. Backend layout endpoints exist, but the reviewed frontend does not provide the story-complete preview, instruction, refresh, confirmation, and final-generation sequence.
 **Recommended resolution:** Split generation into explicit stages: generate HTML preview only, review/apply layout instructions against that HTML with visible preview refresh and history, then run final PDF/ATS DOCX generation from the confirmed HTML artifact.
@@ -188,6 +190,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-H4, US-H7, US-A9
+**See also:** [tasks/ui-review.md](ui-review.md#top-gaps)
 **Status:** OPEN - discovered 2026-03-19 11:36 ET; HR/ATS and applicant reviews found no overall ATS match score, no live score updates as review decisions change, and no per-keyword matched/missing/bonus or section/match-type visibility.
 **Description:** The app surfaces keywords, missing requirements, and ATS validation warnings, but it does not provide the candidate with the unified ATS-fit scoring and keyword-level visibility the stories require. That makes it hard to judge whether customization choices improved or weakened ATS alignment.
 **Recommended resolution:** Add an ATS scoring model with hard-skill weighting, live recalculation during customization, per-keyword status labels, and persisted score details in generation metadata and final summaries.
@@ -196,6 +199,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-H1, US-H2, US-H3, US-H5, US-H8
+**See also:** [tasks/ui-review.md](ui-review.md#top-gaps)
 **Status:** OPEN - discovered 2026-03-19 11:36 ET; HR/ATS review found ATS DOCX heading levels and labels do not match the required standard, contact/date formatting is only partially normalized, and no hard-vs-soft skill classification or output separation exists.
 **Description:** The ATS output is close enough to validate, but not close enough to satisfy the stricter ATS-format stories. Structural semantics, heading conventions, contact normalization, employment-header formatting, and hard/soft skill typing all remain below the source-verified target.
 **Recommended resolution:** Normalize the ATS DOCX contract around approved heading labels and Heading 1 usage, enforce story-specific contact/date formatting rules, classify skills as hard vs soft, and represent that classification consistently in ATS DOCX, UI review, and JSON-LD.

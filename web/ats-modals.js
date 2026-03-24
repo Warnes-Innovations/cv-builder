@@ -9,11 +9,97 @@
  * ATS Report and Job Analysis modal dialogs + ATS Score tab renderer.
  *
  * DEPENDENCIES:
- * - app.js (for stateManager, tabData, htmlEscape / escapeHtml, populateAnalysisTab)
+ * - state-manager.js for persisted ATS score + analysis data
+ * - utils.js for HTML escaping
+ * - ats-refinement.js for ATS fetch/badge updates
  * - index.html modal overlays: #ats-report-modal-overlay, #job-analysis-modal-overlay
  */
 
+import { refreshAtsScore, updateAtsBadge } from './ats-refinement.js';
 import { stateManager } from './state-manager.js';
+import { escapeHtml } from './utils.js';
+
+const ATS_GROUPS = [
+  ['hard', 'Hard Requirements'],
+  ['soft', 'Preferred Skills'],
+  ['bonus', 'Bonus Keywords'],
+];
+
+function _keywordStatus(keyword) {
+  return keyword?.status || (keyword?.found ? 'matched' : 'missing');
+}
+
+function _keywordType(keyword) {
+  return keyword?.type || 'other';
+}
+
+function _isExactMatch(keyword) {
+  return _keywordStatus(keyword) === 'matched' && keyword?.match_type !== 'partial';
+}
+
+function _isPartialMatch(keyword) {
+  return _keywordStatus(keyword) === 'partial' || keyword?.match_type === 'partial';
+}
+
+function _keywordSortValue(keyword) {
+  if (_keywordStatus(keyword) === 'missing') return 0;
+  if (_isPartialMatch(keyword)) return 1;
+  return 2;
+}
+
+function _keywordStatusBadge(keyword) {
+  if (_keywordStatus(keyword) === 'missing') {
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:0.8em;font-weight:600;">Missing</span>';
+  }
+  if (_isPartialMatch(keyword)) {
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:0.8em;font-weight:600;">Partial match</span>';
+  }
+  return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-size:0.8em;font-weight:600;">Exact match</span>';
+}
+
+function _renderKeywordGroup(title, keywords) {
+  if (keywords.length === 0) return '';
+
+  const exactCount = keywords.filter(_isExactMatch).length;
+  const partialCount = keywords.filter(_isPartialMatch).length;
+  const missingCount = keywords.filter(keyword => _keywordStatus(keyword) === 'missing').length;
+  const sorted = [...keywords].sort((left, right) => {
+    const priority = _keywordSortValue(left) - _keywordSortValue(right);
+    if (priority !== 0) return priority;
+    return String(left.keyword || left.term || '').localeCompare(String(right.keyword || right.term || ''));
+  });
+
+  return `
+    <div style="margin-top:16px;">
+      <h4 style="margin:0 0 8px;font-size:1rem;color:#334155;">${escapeHtml(title)}</h4>
+      <div style="font-size:0.82em;color:#64748b;margin-bottom:8px;">${exactCount} exact • ${partialCount} partial • ${missingCount} missing</div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
+        <thead>
+          <tr style="text-align:left;color:#64748b;border-bottom:1px solid #e2e8f0;">
+            <th style="padding:6px 8px;">Keyword</th>
+            <th style="padding:6px 8px;">Coverage</th>
+            <th style="padding:6px 8px;">Sections</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sorted.map(keyword => {
+            const sections = Array.isArray(keyword.matched_in_sections) && keyword.matched_in_sections.length > 0
+              ? keyword.matched_in_sections.join(', ')
+              : 'Not found';
+            return `
+              <tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;">
+                <td style="padding:8px;">
+                  <div style="font-weight:600;color:#1e293b;">${escapeHtml(keyword.keyword || keyword.term || '')}</div>
+                  <div style="font-size:0.8em;color:#94a3b8;text-transform:capitalize;">${escapeHtml(_keywordType(keyword))}</div>
+                </td>
+                <td style="padding:8px;">${_keywordStatusBadge(keyword)}</td>
+                <td style="padding:8px;color:#475569;">${escapeHtml(sections)}</td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
 
 // ---------------------------------------------------------------------------
 // ATS Report Modal
@@ -44,7 +130,7 @@ async function openAtsReportModal() {
     const data = await res.json();
     if (data.ok && data.ats_score) {
       stateManager?.setAtsScore?.(data.ats_score);
-      if (typeof updateAtsBadge === 'function') updateAtsBadge(data.ats_score);
+      updateAtsBadge(data.ats_score);
       body.innerHTML = _renderAtsReport(data.ats_score);
     } else {
       body.innerHTML = `<p style="padding:24px;color:#ef4444;">Could not load ATS report: ${escapeHtml(data.error || 'unknown error')}</p>`;
@@ -69,21 +155,11 @@ function _renderAtsReport(score) {
   const scoreColor = overall >= 75 ? '#10b981' : overall >= 50 ? '#f59e0b' : '#ef4444';
 
   const keywords = score.keyword_status || [];
-  const matchedKw = keywords.filter(k => k.found);
-  const missingKw = keywords.filter(k => !k.found);
-
-  const kwHtml = keywords.length === 0 ? '' : `
-    <div style="margin-top:16px;">
-      <h4 style="margin:0 0 8px;font-size:1rem;color:#334155;">Keywords</h4>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        ${keywords.map(k => `
-          <span style="padding:2px 8px;border-radius:12px;font-size:0.85em;
-            background:${k.found ? '#dcfce7' : '#fee2e2'};
-            color:${k.found ? '#166534' : '#991b1b'};">
-            ${escapeHtml(k.keyword || k.term || '')}${k.rank ? ` #${k.rank}` : ''}
-          </span>`).join('')}
-      </div>
-    </div>`;
+  const missingKw = keywords.filter(keyword => _keywordStatus(keyword) === 'missing');
+  const missingHard = missingKw.filter(keyword => _keywordType(keyword) === 'hard');
+  const keywordGroups = ATS_GROUPS
+    .map(([type, title]) => _renderKeywordGroup(title, keywords.filter(keyword => _keywordType(keyword) === type)))
+    .join('');
 
   const sectionScores = score.section_scores || {};
   const sectHtml = Object.keys(sectionScores).length === 0 ? '' : `
@@ -108,12 +184,17 @@ function _renderAtsReport(score) {
           <div style="font-size:0.75em;color:#94a3b8;margin-top:2px;">Basis: ${escapeHtml(score.basis || 'review')}</div>
         </div>
       </div>
-      ${kwHtml}
+      ${keywordGroups}
       ${sectHtml}
-      ${missingKw.length > 0 ? `
+      ${missingHard.length > 0 ? `
         <div style="margin-top:16px;padding:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;">
-          <strong style="color:#9a3412;">Missing keywords (${missingKw.length}):</strong>
-          <span style="color:#7c2d12;font-size:0.9em;"> ${missingKw.map(k => escapeHtml(k.keyword || k.term || '')).join(', ')}</span>
+          <strong style="color:#9a3412;">Missing hard requirements (${missingHard.length}):</strong>
+          <span style="color:#7c2d12;font-size:0.9em;"> ${missingHard.map(keyword => escapeHtml(keyword.keyword || keyword.term || '')).join(', ')}</span>
+        </div>` : ''}
+      ${missingKw.length > missingHard.length ? `
+        <div style="margin-top:16px;padding:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;">
+          <strong style="color:#9a3412;">Remaining keyword gaps (${missingKw.length - missingHard.length}):</strong>
+          <span style="color:#7c2d12;font-size:0.9em;"> ${missingKw.filter(keyword => _keywordType(keyword) !== 'hard').map(keyword => escapeHtml(keyword.keyword || keyword.term || '')).join(', ')}</span>
         </div>` : ''}
     </div>`;
 }

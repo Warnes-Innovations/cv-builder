@@ -44,6 +44,7 @@
 			"titleBar.inactiveBackground": "#caa47399",
 			"titleBar.inactiveForeground": "#15202b99"
 		},
-		"peacock.color": "#caa473"
+		"peacock.color": "#caa473",
+		"specstory.cloudSync.enabled": "never"
 	}
 }

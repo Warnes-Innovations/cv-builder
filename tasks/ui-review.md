@@ -1,5 +1,9 @@
 # CV Builder UI Review
 
+**Related backlog docs:** [tasks/gaps.md](gaps.md), [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)
+
+**GAP-19 cross-reference:** see [GAP-19 in tasks/gaps.md](gaps.md#gap-19-structured-master-cv-editor) for the canonical gap definition and [Phase 16 in IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md#phase-16--master-cv-editor-gap-19) for the active execution plan.
+
 **Date:** 2026-03-23
 **Review basis:** refreshed source-verified persona review files dated 2026-03-23
 **Rollup inputs:** tasks/review-status/applicant.md, tasks/review-status/first-time-user.md, tasks/review-status/returning-user.md, tasks/review-status/power-user.md, tasks/review-status/ux-expert.md, tasks/review-status/accessibility-specialist.md, tasks/review-status/resume-expert.md, tasks/review-status/hiring-manager.md, tasks/review-status/hr-ats.md, tasks/review-status/persuasion-expert.md, tasks/review-status/recruiter-ops.md, tasks/review-status/master-cv-curator.md, tasks/review-status/trust-compliance.md, tasks/review-status/graphical-designer.md
@@ -18,7 +22,7 @@ The refreshed 14-persona set confirms that the product is materially further alo
 
 | Persona | Overall read | Main takeaway |
 | ------- | ------------ | ------------- |
-| Applicant | ⚠️ Partial | Rewrite review is strong, but staged generation and master-data maintenance are still incomplete. |
+| Applicant | ⚠️ Partial | Rewrite review is strong, but staged generation and story-complete master-data maintenance are still incomplete. |
 | First-time user | ⚠️ Partial | Workflow is navigable, but onboarding and phase expectations are still under-explained. |
 | Returning user | ⚠️ Partial | Session recovery works, but restored-context summaries and change visibility are still weak. |
 | Power user | ⚠️ Partial | Multi-session use is viable, but bulk actions and rapid review remain limited. |
@@ -35,14 +39,14 @@ The refreshed 14-persona set confirms that the product is materially further alo
 
 ## Top Gaps
 
-1. **GAP-20:** staged `HTML preview -> layout review -> final generation` is still not story-complete.
-2. **GAP-22:** ATS document semantics still fall short of the stricter story contract.
+1. **GAP-20:** staged `HTML preview -> layout review -> final generation` is still not story-complete. See [GAP-20 in tasks/gaps.md](gaps.md#gap-20-staged-html-preview-layout-review-and-final-generation-workflow).
+2. **GAP-22:** ATS document semantics still fall short of the stricter story contract. See [GAP-22 in tasks/gaps.md](gaps.md#gap-22-ats-document-structure-and-skill-type-semantics).
 3. **GAP-23:** job-intake confirmation and clarification defaults are still missing.
-4. **GAP-21:** users still do not get a visible ATS score plus keyword-level reasoning model.
+4. **GAP-21:** users still do not get a visible ATS score plus keyword-level reasoning model. See [GAP-21 in tasks/gaps.md](gaps.md#gap-21-ats-match-score-and-keyword-visibility).
 5. **GAP-08:** spell review exists, but accepted corrections are not yet a dependable last-mile write-back path.
 6. **GAP-18 / GAP-02:** rerun and re-entry exist, but not with the clarity and completeness the stories require.
 7. **GAP-16 / GAP-15:** dense review ergonomics, responsive behavior, and full keyboard/accessibility coverage remain open.
-8. **GAP-19 / GAP-24:** master-data editing depth and final publication rendering still trail the stronger mid-workflow review surfaces.
+8. **GAP-19 / GAP-24:** master-data maintenance has a real foundation now, but editing depth, history/review tooling, and final publication rendering still trail the stronger mid-workflow review surfaces. See [GAP-19 in tasks/gaps.md](gaps.md#gap-19-structured-master-cv-editor) and [Phase 16 in IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md#phase-16--master-cv-editor-gap-19).
 
 ## Recommended Focus Order
 
