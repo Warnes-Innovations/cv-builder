@@ -31,6 +31,12 @@ def _get_spell_audit_from_state(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     return []
 
 
+def _extra_skill_name(skill: Any) -> str:
+    if isinstance(skill, dict):
+        return str(skill.get('name') or '').strip()
+    return str(skill or '').strip()
+
+
 def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
     """Return candidate write-back items for the current session."""
     candidates: List[Dict[str, Any]] = []
@@ -169,6 +175,17 @@ def create_blueprint(deps):
     session_registry = deps['session_registry']
     load_master = deps.get('load_master')
     save_master = deps.get('save_master')
+
+    def _require_harvest_apply_phase(entry):
+        """Allow harvest write-back only from the post-job finalise window."""
+        raw_phase = (entry.manager.state or {}).get('phase')
+        current_phase = str(getattr(raw_phase, 'value', raw_phase) or '').strip()
+        if current_phase == 'refinement':
+            return None
+        return jsonify({
+            'error': 'Harvest write-back is only available from the post-job finalise workflow.',
+            'phase': current_phase or None,
+        }), 409
 
     # ------------------------------------------------------------------
     # Download
@@ -420,7 +437,12 @@ def create_blueprint(deps):
         skill_decisions = conv.state.get("skill_decisions") or {}
         extra_skills    = conv.state.get("extra_skills") or []
         kept_skills = [k for k, v in skill_decisions.items() if v != "exclude"]
-        kept_skills += [s for s in extra_skills if s not in kept_skills]
+        for skill in extra_skills:
+            skill_name = _extra_skill_name(skill)
+            if not skill_name or skill_decisions.get(skill_name) == 'exclude':
+                continue
+            if skill_name not in kept_skills:
+                kept_skills.append(skill_name)
         if kept_skills:
             existing = [
                 (s.get("name") if isinstance(s, dict) else s)
@@ -660,6 +682,9 @@ def create_blueprint(deps):
         """Write selected harvest candidates back to Master_CV_Data.json and git commit."""
         entry = get_session()
         validate_owner(entry)
+        phase_error = _require_harvest_apply_phase(entry)
+        if phase_error is not None:
+            return phase_error
         conversation = entry.manager
         sid = entry.session_id
         with entry.lock:

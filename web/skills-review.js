@@ -150,6 +150,77 @@ function _normalizeSkillSubskills(value) {
   ));
 }
 
+function _skillName(skill) {
+  return typeof skill === 'string' ? skill : String(skill?.name || skill || '').trim();
+}
+
+function _normalizeExtraSkillEntry(rawSkill, { userCreated = false } = {}) {
+  if (typeof rawSkill === 'string') {
+    const name = rawSkill.trim();
+    return name ? { name, _isNew: true } : null;
+  }
+  if (!rawSkill || typeof rawSkill !== 'object') return null;
+
+  const name = String(rawSkill.name || '').trim();
+  if (!name) return null;
+
+  const normalized = {
+    ...rawSkill,
+    name,
+    _isNew: true,
+  };
+  const subskills = _normalizeSkillSubskills(rawSkill.subskills || rawSkill.sub_skills || []);
+  if (subskills.length > 0) normalized.subskills = subskills;
+  else delete normalized.subskills;
+
+  if (userCreated || rawSkill.user_created || rawSkill._isUserCreated) {
+    normalized.user_created = true;
+    normalized._isUserCreated = true;
+  }
+
+  return normalized;
+}
+
+function _skillInlineLabel(skill) {
+  if (!skill || typeof skill === 'string') return _skillName(skill);
+  const name = _skillName(skill);
+  const parenthetical = String(skill.parenthetical || '').trim();
+  if (parenthetical) return `${name} (${parenthetical})`;
+
+  const qualifierParts = [];
+  const proficiency = String(skill.proficiency || '').trim();
+  if (proficiency) qualifierParts.push(proficiency.charAt(0).toUpperCase() + proficiency.slice(1));
+  _normalizeSkillSubskills(skill.subskills || skill.sub_skills || []).forEach(item => qualifierParts.push(item));
+  if (qualifierParts.length > 0) return `${name} (${qualifierParts.join(', ')})`;
+  return name;
+}
+
+function _buildGroupWarnings(skills) {
+  const warningMap = new Map();
+  const groups = new Map();
+  for (const skill of skills || []) {
+    if (!skill || typeof skill !== 'object') continue;
+    const skillName = _skillName(skill);
+    const groupName = String(skill.group || '').trim();
+    if (!skillName || !groupName) continue;
+    if (!groups.has(groupName)) groups.set(groupName, []);
+    groups.get(groupName).push(_skillInlineLabel(skill));
+  }
+
+  groups.forEach((labels, groupName) => {
+    const preview = labels.join(', ');
+    const crowded = preview.length >= 90 || labels.length >= 5;
+    if (!crowded) return;
+    warningMap.set(groupName, {
+      preview,
+      memberCount: labels.length,
+      message: `Inline bullet may be hard to scan (${labels.length} skills, ${preview.length} chars).`,
+    });
+  });
+
+  return warningMap;
+}
+
 async function saveSkillQualifierOverride(skillName, qualifiers) {
   const normalizedSkill = String(skillName || '').trim();
   if (!normalizedSkill) throw new Error('Skill name is required');
@@ -187,6 +258,48 @@ async function saveSkillQualifierOverride(skillName, qualifiers) {
   }
 
   return response;
+}
+
+async function saveUserCreatedSkill(skill) {
+  const payload = {
+    name: String(skill?.name || '').trim(),
+    category: String(skill?.category || '').trim(),
+    group: String(skill?.group || '').trim(),
+    proficiency: String(skill?.proficiency || '').trim(),
+    subskills: _normalizeSkillSubskills(skill?.subskills),
+    parenthetical: String(skill?.parenthetical || '').trim(),
+  };
+  if (!payload.name) throw new Error('Skill name is required');
+
+  const response = await fetch('/api/review-skill-add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to add skill');
+  }
+
+  const result = await response.json();
+  const normalized = _normalizeExtraSkillEntry(result.skill, { userCreated: true });
+  if (!normalized) throw new Error('Server did not return a skill');
+
+  const current = Array.isArray(window._skillsOrdered) ? window._skillsOrdered : [];
+  window._skillsOrdered = [normalized, ...current.filter(skill => _skillName(skill) !== normalized.name)];
+
+  window._savedDecisions = window._savedDecisions || {};
+  const existingExtras = Array.isArray(window._savedDecisions.extra_skills)
+    ? window._savedDecisions.extra_skills
+    : [];
+  window._savedDecisions.extra_skills = [
+    normalized,
+    ...existingExtras.filter(skill => _skillName(skill) !== normalized.name),
+  ];
+
+  userSelections.skills[normalized.name] = userSelections.skills[normalized.name] || 'include';
+  return normalized;
 }
 
 function _effectiveSkillCategory(skill) {
@@ -280,10 +393,12 @@ async function buildSkillsReviewTable() {
 
   // Get all skills from the API status
   let allSkills = [];
+  let persistedExtraSkills = [];
   try {
     const statusRes = await fetch('/api/status');
     const statusData = parseStatusResponse(await statusRes.json());
     allSkills = statusData.all_skills || [];
+    persistedExtraSkills = statusData.extra_skills || [];
     window._allExperiences = statusData.all_experiences || [];
   } catch (error) {
     log.error('Error fetching all skills:', error);
@@ -292,8 +407,30 @@ async function buildSkillsReviewTable() {
     window._allExperiences = [];
   }
 
+  const normalizedPersistedExtraSkills = (persistedExtraSkills || [])
+    .map(skill => _normalizeExtraSkillEntry(skill, {
+      userCreated: typeof skill === 'object' && !!skill?.user_created,
+    }))
+    .filter(Boolean);
+  if (normalizedPersistedExtraSkills.length > 0) {
+    const mergedSkills = [];
+    const seen = new Set();
+    normalizedPersistedExtraSkills.forEach(skill => {
+      if (seen.has(skill.name)) return;
+      mergedSkills.push(skill);
+      seen.add(skill.name);
+    });
+    allSkills.forEach(skill => {
+      const skillName = _skillName(skill);
+      if (!skillName || seen.has(skillName)) return;
+      mergedSkills.push(skill);
+      seen.add(skillName);
+    });
+    allSkills = mergedSkills;
+  }
+
   // Detect skills recommended by LLM that aren't in master CV and prepend them
-  const masterSkillNames = new Set(allSkills.map(s => (typeof s === 'string' ? s : s.name || s)));
+  const masterSkillNames = new Set(allSkills.map(skill => _skillName(skill)));
   const newSkills = (data.recommended_skills || []).filter(s => !masterSkillNames.has(s));
   window._newSkillsFromLLM = newSkills;
   if (newSkills.length > 0) {
@@ -364,6 +501,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   }
 
   const skills = window._skillsOrdered || [];
+  const groupWarnings = _buildGroupWarnings(skills);
   const categorySuggestions = Array.from(new Set(
     skills
       .map(skill => (typeof skill === 'object' && skill.category ? String(skill.category).trim() : ''))
@@ -372,6 +510,36 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   _syncSkillCategoryOrder();
   const categoryListId = 'skill-category-suggestions';
   let tableHTML = `
+    <div class="skill-add-panel" style="margin:0 0 12px;padding:12px;border:1px solid #dbeafe;border-radius:10px;background:#eff6ff;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="font-weight:600;">Session-Only Skills</div>
+          <div style="font-size:0.85em;color:#475569;">Add a skill for this CV without changing the master profile.</div>
+        </div>
+        <button type="button" class="bulk-btn" id="toggle-add-skill-form">+ Add Skill</button>
+      </div>
+      <form id="add-skill-form" style="display:none;margin-top:12px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+          <input type="text" name="name" placeholder="Skill name" aria-label="New skill name" style="padding:6px 8px;border:1px solid #bfdbfe;border-radius:6px;" />
+          <input type="text" name="category" placeholder="Category" aria-label="New skill category" list="${categoryListId}" style="padding:6px 8px;border:1px solid #bfdbfe;border-radius:6px;" />
+          <input type="text" name="group" placeholder="Group key" aria-label="New skill group" style="padding:6px 8px;border:1px solid #bfdbfe;border-radius:6px;" />
+          <select name="proficiency" aria-label="New skill proficiency" style="padding:6px 8px;border:1px solid #bfdbfe;border-radius:6px;">
+            <option value="">No proficiency label</option>
+            <option value="beginner">Beginner</option>
+            <option value="familiar">Familiar</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="advanced">Advanced</option>
+            <option value="expert">Expert</option>
+          </select>
+          <input type="text" name="subskills" placeholder="Sub-skills" aria-label="New skill sub-skills" style="padding:6px 8px;border:1px solid #bfdbfe;border-radius:6px;" />
+          <input type="text" name="parenthetical" placeholder="Parenthetical note" aria-label="New skill parenthetical" style="padding:6px 8px;border:1px solid #bfdbfe;border-radius:6px;" />
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+          <button type="button" class="bulk-btn bulk-exclude" id="cancel-add-skill">Cancel</button>
+          <button type="submit" class="bulk-btn bulk-include">Save Skill</button>
+        </div>
+      </form>
+    </div>
     ${_buildSkillCategoryManagerHtml()}
     <datalist id="${categoryListId}">
       ${categorySuggestions.map(category => `<option value="${escapeHtml(category)}"></option>`).join('')}
@@ -430,6 +598,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     const skillNameEsc   = escapeHtml(skillName);
 
     const groupKey = typeof skill === 'object' ? (skill.group || '') : '';
+    const groupWarning = groupWarnings.get(groupKey);
     const categoryKey = typeof skill === 'object' ? (skill.category || '') : '';
     const proficiencyKey = typeof skill === 'object' ? String(skill.proficiency || '').trim() : '';
     const subskills = typeof skill === 'object'
@@ -442,7 +611,9 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     const parentheticalKey = typeof skill === 'object' ? String(skill.parenthetical || '').trim() : '';
 
     const newBadge = isNew
-      ? '<span title="AI suggested — not yet in CV profile" style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>'
+      ? (skill._isUserCreated
+        ? '<span title="Added for this session only" style="margin-left:6px;font-size:10px;color:#0f766e;border:1px solid #0f766e;border-radius:3px;padding:1px 5px;cursor:help;">Session only</span>'
+        : '<span title="AI suggested — not yet in CV profile" style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>')
       : '';
     const skillNameLower  = skillName.toLowerCase();
     const skillTypeBadge  = hardSkillSet.has(skillNameLower)
@@ -450,9 +621,13 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
       : softSkillSet?.has(skillNameLower)
         ? '<span title="Nice-to-have per job description" style="margin-left:5px;font-size:10px;font-weight:600;color:#6b21a8;background:#f3e8ff;border-radius:3px;padding:1px 5px;">Soft</span>'
         : '';
-    const recommendationText = recommendation || (isNew ? 'Include (AI suggested)' : 'Omit');
+    const recommendationText = recommendation || (skill._isUserCreated ? 'Include (session-added)' : (isNew ? 'Include (AI suggested)' : 'Omit'));
     const confidenceBadge    = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
-    const reasoningText      = reasoning || (isNew ? 'Recommended by AI based on job requirements but not currently in your master CV.' : 'This skill was not specifically mentioned in the job requirements.');
+    const reasoningText      = reasoning || (skill._isUserCreated
+      ? 'You added this skill for the current CV session only.'
+      : (isNew
+        ? 'Recommended by AI based on job requirements but not currently in your master CV.'
+        : 'This skill was not specifically mentioned in the job requirements.'));
     const rowStyle           = isNew ? 'background:#fffbeb;' : '';
     const defaultMatches = isNew ? (savedMatches[skillName] || deriveMatches(skillName)) : [];
     const matchValue = defaultMatches.join(', ');
@@ -481,6 +656,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
             placeholder="e.g. c_family"
             title="Skills with the same group key render as one comma-separated bullet"
             style="width:100%;font-size:0.8em;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;"/>
+          ${groupWarning ? `<div class="skill-group-warning" title="${escapeHtml(groupWarning.preview)}" style="margin-top:4px;font-size:0.75em;color:#b45309;">⚠ ${escapeHtml(groupWarning.message)}</div>` : ''}
         </td>
         <td style="min-width:120px;">
           <select class="skill-proficiency-input" data-skill="${skillNameEsc}"
@@ -561,6 +737,38 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
 
   container.querySelector('#skills-review-table tbody')?.addEventListener('change', e => {
     const categoryInput = e.target.closest('.skill-category-input');
+
+  const addSkillForm = container.querySelector('#add-skill-form');
+  const toggleAddSkillForm = () => {
+    if (!addSkillForm) return;
+    addSkillForm.style.display = addSkillForm.style.display === 'none' ? 'block' : 'none';
+  };
+  container.querySelector('#toggle-add-skill-form')?.addEventListener('click', toggleAddSkillForm);
+  container.querySelector('#cancel-add-skill')?.addEventListener('click', () => {
+    if (!addSkillForm) return;
+    addSkillForm.reset();
+    addSkillForm.style.display = 'none';
+  });
+  addSkillForm?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const formData = new FormData(addSkillForm);
+    try {
+      await saveUserCreatedSkill({
+        name: formData.get('name'),
+        category: formData.get('category'),
+        group: formData.get('group'),
+        proficiency: formData.get('proficiency'),
+        subskills: formData.get('subskills'),
+        parenthetical: formData.get('parenthetical'),
+      });
+      showToast('Session-only skill added.');
+      addSkillForm.reset();
+      addSkillForm.style.display = 'none';
+      _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet);
+    } catch (error) {
+      showToast(error.message || 'Failed to add skill.', 'error');
+    }
+  });
     if (categoryInput) {
       const skillName = categoryInput.dataset.skill;
       const newCategory = categoryInput.value.trim();
@@ -709,18 +917,34 @@ async function submitSkillDecisions() {
   }
 
   try {
-    // Extra skills: LLM-suggested skills not in master CV that the user chose to include/emphasize
-    const extraSkills = (window._newSkillsFromLLM || []).filter(s => {
-      const d = decisions[s];
-      return d === 'include' || d === 'emphasize';
-    });
+    const extraSkills = (window._skillsOrdered || [])
+      .filter(skill => skill && typeof skill === 'object' && skill._isNew)
+      .filter(skill => {
+        const action = decisions[_skillName(skill)];
+        return action === 'include' || action === 'emphasize' || action === 'de-emphasize';
+      })
+      .map(skill => {
+        if (skill._isUserCreated) {
+          return {
+            name: _skillName(skill),
+            category: String(skill.category || '').trim(),
+            group: String(skill.group || '').trim(),
+            proficiency: String(skill.proficiency || '').trim(),
+            subskills: _normalizeSkillSubskills(skill.subskills || skill.sub_skills || []),
+            parenthetical: String(skill.parenthetical || '').trim(),
+            user_created: true,
+          };
+        }
+        return _skillName(skill);
+      });
+    const extraSkillNames = extraSkills.map(skill => typeof skill === 'string' ? skill : skill.name);
 
     const matchInputs = Array.from(document.querySelectorAll('.skill-match-input'));
     const allowed = new Set((window._allExperiences || []).map(e => e.id).filter(Boolean));
     const extraSkillMatches = {};
     for (const input of matchInputs) {
       const skillName = input.dataset.skill;
-      if (!skillName || !extraSkills.includes(skillName)) continue;
+      if (!skillName || !extraSkillNames.includes(skillName)) continue;
       const ids = String(input.value || '')
         .split(',')
         .map((x) => x.trim())
@@ -740,7 +964,7 @@ async function submitSkillDecisions() {
     });
 
     if (response.ok) {
-      const extraNote = extraSkills.length > 0 ? ` (${extraSkills.length} AI-suggested skill(s) added for this CV only)` : '';
+      const extraNote = extraSkills.length > 0 ? ` (${extraSkills.length} session-only skill(s) added for this CV only)` : '';
       showToast(`Skill decisions saved (${count} items)${extraNote}`);
       scheduleAtsRefresh();
       // Persist saved decisions locally so the UI reflects them immediately
@@ -772,6 +996,7 @@ export {
   renameSkillCategory,
   saveSkillCategoryOrder,
   saveSkillQualifierOverride,
+  saveUserCreatedSkill,
   buildSkillsReviewTable,
   _renderSkillsTable,
   moveSkillRow,
