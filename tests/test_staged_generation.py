@@ -430,6 +430,34 @@ class TestGeneratePreviewEndpoint(unittest.TestCase):
             [{'original': 'teh', 'final': 'the', 'outcome': 'accept'}],
         )
 
+    def test_preview_materializes_review_decisions_before_render(self):
+        self._seed_job_analysis()
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['experience_decisions'] = {
+            'exp_001': 'include',
+            'exp_002': 'exclude',
+        }
+        entry.manager.state['publication_decisions'] = {
+            'pub_a': True,
+            'pub_b': False,
+        }
+
+        with patch(
+            'utils.cv_orchestrator.CVOrchestrator.render_html_preview',
+            return_value='<html><body>Preview</body></html>',
+        ) as render_preview:
+            resp = self.client.post(
+                '/api/cv/generate-preview',
+                json={'session_id': self.session_id},
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        customizations = render_preview.call_args.kwargs['customizations']
+        self.assertEqual(customizations['recommended_experiences'], ['exp_001'])
+        self.assertEqual(customizations['omitted_experiences'], ['exp_002'])
+        self.assertEqual(customizations['accepted_publications'], ['pub_a'])
+        self.assertEqual(customizations['rejected_publications'], ['pub_b'])
+
     def test_render_failure_falls_back_to_404_when_no_file(self):
         """When render_html_preview raises and no HTML file exists, return 404."""
         self._seed_job_analysis()

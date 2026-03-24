@@ -12,12 +12,13 @@ import dataclasses
 import re
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Dict, List
 
 from flask import Blueprint, jsonify, request
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
+from utils.session_data_view import SessionDataView
 from utils.spell_checker import SpellChecker
 
 
@@ -340,6 +341,42 @@ def create_blueprint(deps):
         session_registry.touch(sid)
         return jsonify({'ok': True, 'action': 'updated', 'skill': skill_name, 'group': group_name})
 
+    @bp.post('/api/review-skill-category')
+    def save_review_skill_category_override():
+        """Persist a review-time skill category override in session state only."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+
+        skill_name = str(data.get('skill') or '').strip()
+        if not skill_name:
+            return jsonify({'error': 'skill is required'}), 400
+
+        raw_category = data.get('category')
+        category_name = None if raw_category is None else str(raw_category).strip() or None
+
+        with entry.lock:
+            overrides = dict(conversation.state.get('skill_category_overrides') or {})
+            if category_name is None:
+                overrides.pop(skill_name, None)
+            else:
+                overrides[skill_name] = category_name
+
+            customizations = dict(conversation.state.get('customizations') or {})
+            if overrides:
+                customizations['skill_category_overrides'] = overrides
+            else:
+                customizations.pop('skill_category_overrides', None)
+
+            conversation.state['skill_category_overrides'] = overrides
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'action': 'updated', 'skill': skill_name, 'category': category_name})
+
     @bp.route('/api/rewrite-achievement', methods=['POST'])
     def rewrite_achievement():
         """Ask the LLM to rewrite a single achievement bullet."""
@@ -539,9 +576,23 @@ def create_blueprint(deps):
             if not job_analysis:
                 return jsonify({"error": "Job analysis not available. Analyse the job first."}), 400
 
-            content = orchestrator.master_data
-            if not content:
+            if not orchestrator.master_data:
                 return jsonify({"error": "CV master data not loaded."}), 400
+
+            state = conversation.state
+            customizations = SessionDataView(
+                orchestrator.master_data,
+                state,
+                state.get("customizations"),
+            ).materialize_generation_customizations()
+            content = orchestrator.build_render_ready_content(
+                job_analysis,
+                customizations,
+                approved_rewrites=state.get("approved_rewrites") or [],
+                spell_audit=state.get("spell_audit") or [],
+                max_skills=state.get("max_skills"),
+                use_semantic_match=False,
+            )
 
             rewrites = orchestrator.propose_rewrites(
                 content,
@@ -886,7 +937,11 @@ def create_blueprint(deps):
         try:
             state             = conversation.state
             job_analysis      = state.get('job_analysis') or {}
-            customizations    = state.get('customizations') or {}
+            customizations = SessionDataView(
+                orchestrator.master_data,
+                state,
+                state.get('customizations'),
+            ).materialize_generation_customizations()
             approved_rewrites = state.get('approved_rewrites') or []
             spell_audit       = state.get('spell_audit') or []
 

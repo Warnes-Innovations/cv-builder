@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional
 
@@ -38,6 +39,28 @@ def _coerce_dict_mapping(raw: Any) -> Dict[str, Dict[str, Any]]:
         if not key or not isinstance(value, dict):
             continue
         cleaned[key] = dict(value)
+    return cleaned
+
+
+def _coerce_decision_mapping(raw: Any) -> Dict[str, Any]:
+    """Return a shallow decision mapping from dict or serialized JSON."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return {}
+
+    if not isinstance(raw, dict):
+        return {}
+
+    cleaned: Dict[str, Any] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            continue
+        decision_key = key.strip()
+        if not decision_key:
+            continue
+        cleaned[decision_key] = value
     return cleaned
 
 
@@ -85,6 +108,28 @@ def _coerce_skill_group_overrides(raw: Any) -> Dict[str, Optional[str]]:
     return cleaned
 
 
+def _coerce_skill_category_overrides(raw: Any) -> Dict[str, Optional[str]]:
+    """Return a stable mapping of skill name to optional session-only category."""
+    if not isinstance(raw, dict):
+        return {}
+
+    cleaned: Dict[str, Optional[str]] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            continue
+        skill_name = key.strip()
+        if not skill_name:
+            continue
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            continue
+        category_name = value.strip()
+        if category_name:
+            cleaned[skill_name] = category_name
+    return cleaned
+
+
 def _flatten_skills(raw: Any) -> List[Any]:
     """Return a flat skill list while preserving dict payloads when present."""
     if not raw:
@@ -95,11 +140,36 @@ def _flatten_skills(raw: Any) -> List[Any]:
         return []
 
     flattened: List[Any] = []
-    for category_data in raw.values():
+    for category_key, category_data in raw.items():
+        category_name = None
+        if isinstance(category_key, str):
+            category_name = category_key.strip() or None
+
         if isinstance(category_data, dict) and isinstance(category_data.get("skills"), list):
-            flattened.extend(category_data.get("skills") or [])
+            wrapper_name = str(category_data.get("category") or "").strip()
+            if wrapper_name:
+                category_name = wrapper_name
+            for skill in category_data.get("skills") or []:
+                if isinstance(skill, dict):
+                    normalized = dict(skill)
+                    if category_name and not str(normalized.get("category") or "").strip():
+                        normalized["category"] = category_name
+                    flattened.append(normalized)
+                elif category_name:
+                    flattened.append({"name": skill, "category": category_name})
+                else:
+                    flattened.append(skill)
         elif isinstance(category_data, list):
-            flattened.extend(category_data)
+            for skill in category_data:
+                if isinstance(skill, dict):
+                    normalized = dict(skill)
+                    if category_name and not str(normalized.get("category") or "").strip():
+                        normalized["category"] = category_name
+                    flattened.append(normalized)
+                elif category_name:
+                    flattened.append({"name": skill, "category": category_name})
+                else:
+                    flattened.append(skill)
     return flattened
 
 
@@ -127,13 +197,30 @@ def _skill_group(item: Any) -> Optional[str]:
     return group or None
 
 
-def _skill_payload(name: str, experiences: List[str], group: Optional[str]) -> Any:
-    if experiences or group:
+def _skill_category(item: Any) -> Optional[str]:
+    if not isinstance(item, dict):
+        return None
+    raw_category = item.get("category")
+    if raw_category is None:
+        return None
+    category = str(raw_category).strip()
+    return category or None
+
+
+def _skill_payload(
+    name: str,
+    experiences: List[str],
+    group: Optional[str],
+    category: Optional[str],
+) -> Any:
+    if experiences or group or category:
         payload: Dict[str, Any] = {"name": name}
         if experiences:
             payload["experiences"] = experiences
         if group:
             payload["group"] = group
+        if category:
+            payload["category"] = category
         return payload
     return name
 
@@ -164,6 +251,17 @@ class SessionDataView:
         merged = _coerce_skill_group_overrides((self.session_state or {}).get("skill_group_overrides"))
         merged.update(
             _coerce_skill_group_overrides((self.customizations or {}).get("skill_group_overrides"))
+        )
+        return merged
+
+    def _skill_category_overrides(self) -> Dict[str, Optional[str]]:
+        merged = _coerce_skill_category_overrides(
+            (self.session_state or {}).get("skill_category_overrides")
+        )
+        merged.update(
+            _coerce_skill_category_overrides(
+                (self.customizations or {}).get("skill_category_overrides")
+            )
         )
         return merged
 
@@ -214,9 +312,10 @@ class SessionDataView:
         return [ach for ach in achievements if str(ach.get("id") or "").strip() not in removed_ids]
 
     def normalized_skills(self) -> List[Any]:
-        """Return flat skills with session-only group overrides applied."""
+        """Return flat skills with session-only group and category overrides applied."""
         flattened = _flatten_skills(self.master_data.get("skills"))
-        overrides = self._skill_group_overrides()
+        group_overrides = self._skill_group_overrides()
+        category_overrides = self._skill_category_overrides()
         normalized: List[Any] = []
 
         for item in flattened:
@@ -224,8 +323,13 @@ class SessionDataView:
             if not name:
                 continue
             experiences = _skill_experiences(item)
-            group = overrides[name] if name in overrides else _skill_group(item)
-            normalized.append(_skill_payload(name, experiences, group))
+            group = group_overrides[name] if name in group_overrides else _skill_group(item)
+            category = (
+                category_overrides[name]
+                if name in category_overrides
+                else _skill_category(item)
+            )
+            normalized.append(_skill_payload(name, experiences, group, category))
 
         return normalized
 
@@ -291,6 +395,102 @@ class SessionDataView:
         skill_group_overrides = self._skill_group_overrides()
         if skill_group_overrides and not updated.get("skill_group_overrides"):
             updated["skill_group_overrides"] = skill_group_overrides
+
+        skill_category_overrides = self._skill_category_overrides()
+        if skill_category_overrides and not updated.get("skill_category_overrides"):
+            updated["skill_category_overrides"] = skill_category_overrides
+
+        return updated
+
+    def materialize_generation_customizations(self) -> Dict[str, Any]:
+        """Return customizations with generation-relevant review decisions applied."""
+        updated = self.materialize_customizations()
+        state = self.session_state or {}
+
+        exp_decisions = _coerce_decision_mapping(state.get("experience_decisions"))
+        if exp_decisions:
+            recommended = [
+                key for key, value in exp_decisions.items()
+                if value in ("emphasize", "include", "de-emphasize")
+            ]
+            omitted = [
+                key for key, value in exp_decisions.items()
+                if value in ("omit", "exclude")
+            ]
+            updated["recommended_experiences"] = recommended
+            updated["omitted_experiences"] = omitted
+
+        skill_decisions = _coerce_decision_mapping(state.get("skill_decisions"))
+        if skill_decisions:
+            recommended = [
+                key for key, value in skill_decisions.items()
+                if value in ("emphasize", "include", "de-emphasize")
+            ]
+            omitted = [
+                key for key, value in skill_decisions.items()
+                if value in ("omit", "exclude")
+            ]
+            updated["recommended_skills"] = recommended
+            updated["omitted_skills"] = omitted
+
+        achievement_decisions = _coerce_decision_mapping(state.get("achievement_decisions"))
+        if achievement_decisions:
+            recommended = [
+                key for key, value in achievement_decisions.items()
+                if value in ("include", "emphasize", "de-emphasize")
+            ]
+            omitted = [
+                key for key, value in achievement_decisions.items()
+                if value in ("omit", "exclude")
+            ]
+            updated["recommended_achievements"] = recommended
+            updated["omitted_achievements"] = omitted
+
+        extra_achievements = state.get("accepted_suggested_achievements") or []
+        if extra_achievements:
+            updated["extra_achievements"] = list(extra_achievements)
+
+        extra_skills = state.get("extra_skills") or []
+        if extra_skills:
+            updated["extra_skills"] = list(extra_skills)
+
+        base_font_size = state.get("base_font_size")
+        if base_font_size:
+            updated["base_font_size"] = base_font_size
+
+        achievement_orders = state.get("achievement_orders") or {}
+        if achievement_orders:
+            updated["achievement_orders"] = dict(achievement_orders)
+
+        experience_row_order = state.get("experience_row_order") or []
+        if experience_row_order:
+            updated["experience_row_order"] = list(experience_row_order)
+
+        skill_row_order = state.get("skill_row_order") or []
+        if skill_row_order:
+            updated["skill_row_order"] = list(skill_row_order)
+
+        publication_decisions = _coerce_decision_mapping(state.get("publication_decisions"))
+        if publication_decisions:
+            updated["accepted_publications"] = [
+                key for key, value in publication_decisions.items()
+                if value not in (False, "reject", 0)
+            ]
+            updated["rejected_publications"] = [
+                key for key, value in publication_decisions.items()
+                if value in (False, "reject", 0)
+            ]
+
+        post_answers = state.get("post_analysis_answers") or {}
+        accepted_str = post_answers.get("publication_accepted", "")
+        rejected_str = post_answers.get("publication_rejected", "")
+        if accepted_str or rejected_str:
+            updated["accepted_publications"] = [
+                key.strip() for key in accepted_str.split(",") if key.strip()
+            ]
+            updated["rejected_publications"] = [
+                key.strip() for key in rejected_str.split(",") if key.strip()
+            ]
 
         return updated
 
