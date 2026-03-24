@@ -444,7 +444,7 @@ def create_blueprint(deps):
             conv.state,
             customizations,
         )
-        customizations = summary_view.materialize_summary_selection()
+        customizations = summary_view.materialize_customizations()
         if customizations.get("selected_summary"):
             # duckflow: {
             #   "id": "summary_api_ats_materialize_live",

@@ -2291,6 +2291,48 @@ def test_editing_and_rewrite_fetch_routes_enforce_ownership(build_app):
             0: ["Edited bullet", "Second bullet"]
         }
 
+        review_achievement = client.post(
+            "/api/review-achievement",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "id": "ach-1",
+                "field": "title",
+                "value": "Session title",
+            },
+        )
+        assert review_achievement.status_code == 200
+        assert manager.state["achievement_overrides"] == {
+            "ach-1": {"title": "Session title"}
+        }
+
+        remove_achievement = client.post(
+            "/api/review-achievement",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "id": "ach-1",
+                "action": "delete",
+            },
+        )
+        assert remove_achievement.status_code == 200
+        assert manager.state["removed_achievement_ids"] == ["ach-1"]
+        assert manager.state["achievement_decisions"]["ach-1"] == "exclude"
+
+        skill_group = client.post(
+            "/api/review-skill-group",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "skill": "Python",
+                "group": "scripting",
+            },
+        )
+        assert skill_group.status_code == 200
+        assert manager.state["skill_group_overrides"] == {
+            "Python": "scripting"
+        }
+
         missing_text = client.post(
             "/api/rewrite-achievement",
             json={"session_id": session_id, "owner_token": "owner-a"},

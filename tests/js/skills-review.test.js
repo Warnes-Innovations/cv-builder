@@ -14,6 +14,7 @@
 import {
   _parseYearFromStr,
   _computeYearsFromIds,
+  saveSkillGroupOverride,
   moveSkillRow,
   handleSkillsResponse,
   submitSkillDecisions,
@@ -226,6 +227,37 @@ describe('submitSkillDecisions', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
     await submitSkillDecisions()
     expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('Failed'), 'error')
+  })
+})
+
+describe('saveSkillGroupOverride', () => {
+  beforeEach(() => {
+    window._skillsOrdered = [{ name: 'Python', group: '' }]
+  })
+
+  it('posts group edits to /api/review-skill-group', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveSkillGroupOverride('Python', 'scripting')
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-skill-group', expect.objectContaining({ method: 'POST' }))
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({ skill: 'Python', group: 'scripting' })
+    expect(window._skillsOrdered[0].group).toBe('scripting')
+  })
+
+  it('normalizes blank group names to null', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveSkillGroupOverride('Python', '   ')
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({ skill: 'Python', group: null })
+    expect(window._skillsOrdered[0].group).toBe('')
+  })
+
+  it('throws a helpful error when the API fails', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: 'Nope' }),
+    })
+    await expect(saveSkillGroupOverride('Python', 'scripting')).rejects.toThrow('Nope')
   })
 })
 
