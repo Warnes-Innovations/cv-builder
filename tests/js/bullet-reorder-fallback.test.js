@@ -10,12 +10,11 @@
  * as long as experience-details is available.
  */
 
-describe('showBulletReorder fallback behavior', () => {
-  let showBulletReorder
+import { showBulletReorder } from '../../web/workflow-steps.js'
 
+describe('showBulletReorder fallback behavior', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
-    vi.resetModules()
 
     // Minimal globals used by app.js during function execution.
     globalThis.window = globalThis.window || {}
@@ -36,9 +35,6 @@ describe('showBulletReorder fallback behavior', () => {
       CURRENT_TAB: 'cv-builder-current-tab',
       CHAT_COLLAPSED: 'cv-builder-chat-collapsed',
     }
-
-    const mod = require('../../web/app.js')
-    showBulletReorder = mod.showBulletReorder
   })
 
   afterEach(() => {
