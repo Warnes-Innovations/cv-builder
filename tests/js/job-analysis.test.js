@@ -13,7 +13,9 @@ import {
   normalizePostAnalysisQuestions,
   extractStructuredQuestionsFromAssistantText,
   mergePostAnalysisQuestions,
+  analyzeJob,
 } from '../../web/job-analysis.js'
+import { initializeState } from '../../web/state-manager.js'
 
 // ── normalizePostAnalysisQuestions ────────────────────────────────────────
 
@@ -128,5 +130,81 @@ describe('mergePostAnalysisQuestions', () => {
 
   it('returns empty array for null/undefined inputs', () => {
     expect(mergePostAnalysisQuestions(null, null)).toEqual([])
+  })
+})
+
+describe('analyzeJob', () => {
+  beforeEach(() => {
+    global.localStorage = {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    }
+    initializeState()
+    vi.stubGlobal('llmFetch', vi.fn())
+    vi.stubGlobal('appendLoadingMessage', vi.fn(() => 'loading-id'))
+    vi.stubGlobal('removeLoadingMessage', vi.fn())
+    vi.stubGlobal('appendMessage', vi.fn())
+    vi.stubGlobal('appendFormattedAnalysis', vi.fn())
+    vi.stubGlobal('appendRetryMessage', vi.fn())
+    vi.stubGlobal('parseMessageResponse', vi.fn(payload => payload))
+    vi.stubGlobal('setLoading', vi.fn())
+    vi.stubGlobal('refreshAtsScore', vi.fn())
+    vi.stubGlobal('switchTab', vi.fn())
+    vi.stubGlobal('fetchStatus', vi.fn())
+    vi.stubGlobal('askPostAnalysisQuestions', vi.fn())
+    vi.stubGlobal('_showIntakeConfirmCard', vi.fn())
+    vi.stubGlobal('_proceedAfterIntake', vi.fn())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('analyzes before showing intake confirmation when intake is unconfirmed', async () => {
+    globalThis.llmFetch
+      .mockResolvedValueOnce({
+        json: async () => ({
+          result: {
+            text: 'Analysis complete',
+            context_data: {
+              job_analysis: { title: 'Engineer', company: 'Acme' },
+              post_analysis_questions: [],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({ json: async () => ({ confirmed: false }) })
+
+    await analyzeJob()
+
+    expect(globalThis.llmFetch).toHaveBeenNthCalledWith(1, '/api/action', expect.objectContaining({
+      method: 'POST',
+    }))
+    expect(globalThis._showIntakeConfirmCard).toHaveBeenCalledTimes(1)
+    expect(typeof globalThis._showIntakeConfirmCard.mock.calls[0][0]).toBe('function')
+    expect(globalThis.askPostAnalysisQuestions).not.toHaveBeenCalled()
+  })
+
+  it('continues through the post-analysis handoff immediately when intake is confirmed', async () => {
+    globalThis.llmFetch
+      .mockResolvedValueOnce({
+        json: async () => ({
+          result: {
+            text: 'Analysis complete',
+            context_data: {
+              job_analysis: { title: 'Engineer', company: 'Acme' },
+              post_analysis_questions: [],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({ json: async () => ({ confirmed: true }) })
+
+    await analyzeJob()
+
+    expect(globalThis._proceedAfterIntake).toHaveBeenCalledTimes(1)
+    expect(typeof globalThis._proceedAfterIntake.mock.calls[0][0]).toBe('function')
+    expect(globalThis._showIntakeConfirmCard).not.toHaveBeenCalled()
   })
 })

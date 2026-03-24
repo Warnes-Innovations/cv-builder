@@ -281,6 +281,51 @@ class TestReRunPhaseNewSteps(unittest.TestCase):
         self.assertIn('error', result)
 
 
+class TestConfirmedIntakeSessionRename(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp.name)
+        self.manager = _make_manager(self.tmp_path)
+        self.manager.state['job_description'] = 'Original role at Original Co\nOriginal Co\nJob body'
+        self.manager._save_session()
+        self.manager._store_job_analysis({'title': 'Original role', 'company': 'Original Co'})
+        self.manager._rename_session_dir('Original Co', 'Original role')
+        self.original_dir = self.manager.session_dir
+        self.manager.state['generated_files'] = {
+            'output_dir': str(self.original_dir),
+            'files': ['session.json'],
+        }
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_confirmed_intake_renames_existing_session_directory(self):
+        self.manager.apply_confirmed_intake('Principal Engineer', 'Beta Labs', '2025-01-01')
+
+        self.assertNotEqual(self.manager.session_dir, self.original_dir)
+        self.assertFalse(self.original_dir.exists())
+        self.assertTrue(self.manager.session_dir.exists())
+        self.assertIn('BetaLabs', self.manager.session_dir.name)
+        self.assertIn('PrincipalEngineer', self.manager.session_dir.name)
+
+    def test_confirmed_intake_updates_generated_output_dir(self):
+        self.manager.apply_confirmed_intake('Principal Engineer', 'Beta Labs', '2025-01-01')
+
+        self.assertEqual(
+            self.manager.state['generated_files']['output_dir'],
+            str(self.manager.session_dir),
+        )
+
+    def test_confirmed_intake_updates_session_position_name(self):
+        self.manager.apply_confirmed_intake('Principal Engineer', 'Beta Labs', '2025-01-01')
+
+        self.assertEqual(
+            self.manager.state['position_name'],
+            'Principal Engineer at Beta Labs',
+        )
+
+
 # ---------------------------------------------------------------------------
 # load_session backward-compat — intake key
 # ---------------------------------------------------------------------------
