@@ -121,6 +121,7 @@ def test_materialize_customizations_includes_non_summary_session_overlays() -> N
             "removed_achievement_ids": ["ach-2"],
             "skill_group_overrides": {"Python": "scripting"},
             "skill_category_overrides": {"Python": "Programming"},
+            "skill_category_order": ["Programming", "Data Science"],
         },
         customizations={"approved_skills": ["Python"]},
     )
@@ -131,6 +132,7 @@ def test_materialize_customizations_includes_non_summary_session_overlays() -> N
     assert materialized["removed_achievement_ids"] == ["ach-2"]
     assert materialized["skill_group_overrides"] == {"Python": "scripting"}
     assert materialized["skill_category_overrides"] == {"Python": "Programming"}
+    assert materialized["skill_category_order"] == ["Programming", "Data Science"]
 
 
 def test_materialize_generation_customizations_applies_review_decisions() -> None:

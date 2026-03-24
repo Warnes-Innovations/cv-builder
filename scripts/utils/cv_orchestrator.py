@@ -144,8 +144,9 @@ class CVOrchestrator:
         
         # Format skills by category
         skills_by_category = self._organize_skills_by_category(
-            selected_content.get('skills', []), 
-            template_variant
+            selected_content.get('skills', []),
+            template_variant,
+            selected_content.get('skill_category_order', []),
         )
         
         # Format publications
@@ -268,7 +269,12 @@ class CVOrchestrator:
                     normalized.append(text)
         return normalized
 
-    def _organize_skills_by_category(self, skills: List[Dict], variant: str) -> List[Dict]:
+    def _organize_skills_by_category(
+        self,
+        skills: List[Dict],
+        variant: str,
+        category_order: Optional[List[str]] = None,
+    ) -> List[Dict]:
         """Organize skills by category, deduplicating by canonical synonym name."""
         if not skills:
             return []
@@ -310,6 +316,12 @@ class CVOrchestrator:
             category = skill.get('category', 'General')
             category_skills[category].append(skill)
 
+        custom_order = []
+        for category in category_order or []:
+            label = str(category or '').strip()
+            if label and label not in custom_order:
+                custom_order.append(label)
+
         # Define category priority
         priority_orders = {
             'standard': ['Core Expertise', 'Programming', 'Technical', 'Tools', 'General'],
@@ -317,7 +329,7 @@ class CVOrchestrator:
             'academic': ['Research', 'Technical', 'Programming', 'Core Expertise', 'General']
         }
 
-        priority_order = priority_orders.get(variant, priority_orders['standard'])
+        priority_order = custom_order or priority_orders.get(variant, priority_orders['standard'])
 
         sorted_categories = []
 
@@ -2028,6 +2040,7 @@ If you need clarification, return:
             'experiences': selected_experiences,
             'achievements': selected_achievements,
             'skills': selected_skills,
+            'skill_category_order': customizations.get('skill_category_order', []),
             'education': self.master_data.get('education', []),
             'certifications': self.master_data.get('certifications', []),
             'publications': selected_publications,
