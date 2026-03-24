@@ -2380,6 +2380,26 @@ def test_editing_and_rewrite_fetch_routes_enforce_ownership(build_app):
             "Python": "Data Science"
         }
 
+        skill_qualifiers = client.post(
+            "/api/review-skill-qualifiers",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "skill": "Python",
+                "proficiency": "expert",
+                "subskills": ["Pandas", "NumPy"],
+                "parenthetical": "Expert, Pandas, NumPy",
+            },
+        )
+        assert skill_qualifiers.status_code == 200
+        assert manager.state["skill_qualifier_overrides"] == {
+            "Python": {
+                "proficiency": "expert",
+                "subskills": ["Pandas", "NumPy"],
+                "parenthetical": "Expert, Pandas, NumPy",
+            }
+        }
+
         rename_categories = client.post(
             "/api/review-skill-categories",
             json={
@@ -2417,6 +2437,16 @@ def test_editing_and_rewrite_fetch_routes_enforce_ownership(build_app):
             "Applied AI",
             "Programming",
         ]
+        assert (
+            manager.state["customizations"]["skill_qualifier_overrides"]
+            == {
+                "Python": {
+                    "proficiency": "expert",
+                    "subskills": ["Pandas", "NumPy"],
+                    "parenthetical": "Expert, Pandas, NumPy",
+                }
+            }
+        )
 
         missing_text = client.post(
             "/api/rewrite-achievement",
