@@ -226,10 +226,6 @@ async function saveSession() {
   return apiCall('POST', '/api/save');
 }
 
-async function resetSession() {
-  return apiCall('POST', '/api/reset');
-}
-
 // ====================
 // Job Input & Loading
 // ====================
@@ -387,7 +383,7 @@ export {
   sessionAwareFetch,
   loadSession, deleteSession, fetchStatus, fetchHistory,
   createSession,
-  saveSession, resetSession,
+  saveSession,
   uploadJobFile, submitJobText, fetchJobFromUrl, loadJobFile, loadExistingItems,
   analyzeJob, askPostAnalysisQuestions, submitPostAnalysisAnswers,
   sendMessage, sendAction,

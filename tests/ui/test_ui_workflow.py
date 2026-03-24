@@ -138,23 +138,9 @@ class TestFullWorkflow:
         """Download tab is present and visible in the finalise stage tab bar."""
         expect(finalise_stage_page.locator("#tab-download")).to_be_visible()
 
-    def test_reset_calls_api_reset(self, page: Page):
-        """Clicking Reset calls /api/reset."""
-        api_calls = []
-
-        def capture(route):
-            api_calls.append(route.request.url)
-            route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps({"ok": True, "phase": "init"}),
-            )
-
-        page.route("**/api/reset**", capture)
-        page.locator("#reset-btn").click()
-        page.wait_for_timeout(500)
-        assert any("/api/reset" in url for url in api_calls), \
-            "/api/reset was not called after clicking Reset"
+    def test_reset_button_not_rendered(self, page: Page):
+        """The session reset control is no longer rendered in the web UI."""
+        expect(page.locator("#reset-btn")).to_have_count(0)
 
     def test_no_js_errors_on_load(self, page: Page):
         """No uncaught JavaScript errors on initial page load."""

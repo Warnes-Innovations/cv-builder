@@ -193,9 +193,6 @@ API_GENERATE_OK = {
     ],
 }
 
-# POST /api/reset → 200
-API_RESET_OK = {"ok": True, "phase": "init"}
-
 # GET /api/history (empty)
 API_HISTORY_EMPTY = {"history": [], "phase": "init"}
 
