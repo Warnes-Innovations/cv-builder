@@ -270,6 +270,24 @@ class TestModelAPI(unittest.TestCase):
             # Should be a list or dict of models
             self.assertIsNotNone(data)
 
+    def test_model_switch_error_uses_selected_provider_label(self):
+        """GitHub model probe failures should not surface the OpenAI gateway label."""
+        fake_client = MagicMock()
+        fake_client.chat.side_effect = RuntimeError(
+            'Authentication failed with OpenAI. Check that your API key is valid and has not expired.'
+        )
+
+        with patch('scripts.web_app.get_llm_provider', return_value=fake_client):
+            response = self.client.post('/api/model', json={
+                'provider': 'github',
+                'model': 'claude-3-haiku',
+            })
+
+        self.assertEqual(response.status_code, 400)
+        data = response.get_json()
+        self.assertIn('GitHub Models', data['error'])
+        self.assertNotIn('with OpenAI', data['error'])
+
 
 class TestErrorHandlingAPI(unittest.TestCase):
     """Test error handling across API layer."""

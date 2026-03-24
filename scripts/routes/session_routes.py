@@ -14,7 +14,6 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request
 
 from utils.config import get_config
-from utils.conversation_manager import Phase
 from utils.session_registry import SessionNotFoundError, SessionOwnedError
 
 
@@ -374,29 +373,6 @@ def create_blueprint(deps):
                 loaded = conversation._load_latest_session_for_position(name)
         session_registry.touch(sid)
         return jsonify({"ok": True, "loaded": loaded, "position_name": name})
-
-    @bp.post("/api/reset")
-    def reset():
-        entry = _get_session()
-        _validate_owner(entry)
-        conversation = entry.manager
-        sid = entry.session_id
-        with entry.lock:
-            conversation.conversation_history = []
-            conversation.state = {
-                "phase": Phase.INIT,
-                "position_name": None,
-                "job_description": None,
-                "job_analysis": None,
-                "post_analysis_questions": [],
-                "post_analysis_answers": {},
-                "customizations": None,
-                "generated_files":  None,
-                "generation_state": {},
-            }
-            conversation._save_session()
-        session_registry.touch(sid)
-        return jsonify({"ok": True, "message": "Conversation reset."})
 
     @bp.get("/api/history")
     def history():

@@ -244,6 +244,7 @@ def create_blueprint(deps):
             return jsonify({"error": "achievement_text is required"}), 400
 
         experience_context = ''
+        exp_idx = None
         if experience_index is not None:
             try:
                 exp_idx = int(experience_index)
@@ -256,6 +257,14 @@ def create_blueprint(deps):
                     experience_context = f"{title} at {company}".strip(' at')
             except (ValueError, TypeError, OSError):
                 pass
+
+        achievement_index = data.get('achievement_index')
+        ach_idx = None
+        if achievement_index is not None:
+            try:
+                ach_idx = int(achievement_index)
+            except (ValueError, TypeError):
+                ach_idx = None
 
         job_description = conversation.state.get('job_description') or ''
 
@@ -273,6 +282,8 @@ def create_blueprint(deps):
                 user_instructions=user_instructions,
                 previous_suggestions=previous_suggestions,
                 suggested_text=rewritten,
+                experience_index=exp_idx,
+                achievement_index=ach_idx,
             )
             return jsonify({"rewritten": rewritten, "log_id": log_id})
         except Exception as e:
@@ -985,7 +996,11 @@ def create_blueprint(deps):
         entry = _get_session()
         conversation = entry.manager
         try:
-            instructions = conversation.state.get('layout_instructions', [])
+            instructions = conversation.state.get('layout_instructions')
+            if not instructions:
+                instructions = (
+                    conversation.state.get('generation_state', {}).get('layout_instructions', [])
+                )
             return jsonify({
                 'instructions': instructions,
                 'count': len(instructions)
@@ -1003,6 +1018,11 @@ def create_blueprint(deps):
         try:
             body = request.get_json(force=True) or {}
             layout_instructions = body.get('layout_instructions', [])
+            if not layout_instructions:
+                layout_instructions = (
+                    conversation.state.get('layout_instructions')
+                    or conversation.state.get('generation_state', {}).get('layout_instructions', [])
+                )
             with entry.lock:
                 result = conversation.complete_layout_review(layout_instructions)
             session_registry.touch(sid)

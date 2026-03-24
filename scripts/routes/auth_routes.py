@@ -253,6 +253,17 @@ def create_blueprint(deps):
     @bp.post("/api/model")
     def set_model():
         """Switch the active model and optionally the provider."""
+        def _format_probe_error(provider_name: str, probe_error: Optional[str]) -> str:
+            if not probe_error:
+                return "Model probe failed."
+
+            friendly = probe_error.strip()
+            if provider_name == "github":
+                friendly = friendly.replace("with OpenAI", "with GitHub Models")
+                friendly = friendly.replace("by OpenAI", "by GitHub Models")
+                friendly = friendly.replace("(openai)", "(github)")
+            return friendly
+
         def _probe_client(candidate_client):
             try:
                 candidate_client.chat(
@@ -277,8 +288,9 @@ def create_blueprint(deps):
             candidate_client = get_llm_provider(provider=provider, model=model, auth_manager=auth_manager)
             ok, probe_error = _probe_client(candidate_client)
             if not ok:
+                formatted_error = _format_probe_error(provider, probe_error)
                 return jsonify({
-                    "error": f"Model '{model}' is not currently available for provider '{provider}'. {probe_error}",
+                    "error": f"Model '{model}' is not currently available for provider '{provider}'. {formatted_error}",
                     "provider": provider,
                     "model": model,
                 }), 400

@@ -2864,6 +2864,17 @@ Close professionally with a call to action.
         """Switch the active model and optionally the provider."""
         nonlocal llm_client, _provider_name, _current_model
 
+        def _format_probe_error(provider_name: str, probe_error: Optional[str]) -> str:
+            if not probe_error:
+                return "Model probe failed."
+
+            friendly = probe_error.strip()
+            if provider_name == "github":
+                friendly = friendly.replace("with OpenAI", "with GitHub Models")
+                friendly = friendly.replace("by OpenAI", "by GitHub Models")
+                friendly = friendly.replace("(openai)", "(github)")
+            return friendly
+
         def _probe_client(candidate_client) -> tuple[bool, Optional[str]]:
             """Run a minimal chat call to ensure model/provider is reachable."""
             try:
@@ -2892,8 +2903,9 @@ Close professionally with a call to action.
             candidate_client = get_llm_provider(provider=provider, model=model, auth_manager=auth_manager)
             ok, probe_error = _probe_client(candidate_client)
             if not ok:
+                formatted_error = _format_probe_error(provider, probe_error)
                 return jsonify({
-                    "error": f"Model '{model}' is not currently available for provider '{provider}'. {probe_error}",
+                    "error": f"Model '{model}' is not currently available for provider '{provider}'. {formatted_error}",
                     "provider": provider,
                     "model": model,
                 }), 400
@@ -3582,31 +3594,6 @@ Close professionally with a call to action.
             "ok": True,
             "max_skills": int(conversation.state.get("max_skills") or cfg_default),
         })
-
-    @app.post("/api/reset")
-    def reset():
-        # Call the reset logic via the existing method (requires user confirmation in CLI).
-        # For web, we reset directly.
-        entry = _get_session()
-        _validate_owner(entry)
-        conversation = entry.manager
-        sid = entry.session_id
-        with entry.lock:
-            conversation.conversation_history = []
-            conversation.state = {
-                "phase": Phase.INIT,
-                "position_name": None,
-                "job_description": None,
-                "job_analysis": None,
-                "post_analysis_questions": [],
-                "post_analysis_answers": {},
-                "customizations": None,
-                "generated_files":  None,
-                "generation_state": {},          # GAP-20: staged generation state
-            }
-            conversation._save_session()
-        session_registry.touch(sid)
-        return jsonify({"ok": True, "message": "Conversation reset."})
 
     @app.post("/api/post-analysis-responses")
     def post_analysis_responses():
@@ -4600,6 +4587,7 @@ Close professionally with a call to action.
 
         # Gather context: experience title + job description
         experience_context = ''
+        exp_idx = None
         if experience_index is not None:
             try:
                 exp_idx = int(experience_index)
@@ -4612,6 +4600,14 @@ Close professionally with a call to action.
                     experience_context = f"{title} at {company}".strip(' at')
             except (ValueError, TypeError, OSError):
                 pass
+
+        achievement_index = data.get('achievement_index')
+        ach_idx = None
+        if achievement_index is not None:
+            try:
+                ach_idx = int(achievement_index)
+            except (ValueError, TypeError):
+                ach_idx = None
 
         job_description = conversation.state.get('job_description') or ''
 
@@ -4629,6 +4625,8 @@ Close professionally with a call to action.
                 user_instructions=user_instructions,
                 previous_suggestions=previous_suggestions,
                 suggested_text=rewritten,
+                experience_index=exp_idx,
+                achievement_index=ach_idx,
             )
             return jsonify({"rewritten": rewritten, "log_id": log_id})
         except Exception as e:
@@ -5422,7 +5420,11 @@ Close professionally with a call to action.
         entry = _get_session()
         conversation = entry.manager
         try:
-            instructions = conversation.state.get('layout_instructions', [])
+            instructions = conversation.state.get('layout_instructions')
+            if not instructions:
+                instructions = (
+                    conversation.state.get('generation_state', {}).get('layout_instructions', [])
+                )
             return jsonify({
                 'instructions': instructions,
                 'count': len(instructions)
@@ -5447,6 +5449,11 @@ Close professionally with a call to action.
         try:
             body = request.get_json(force=True) or {}
             layout_instructions = body.get('layout_instructions', [])
+            if not layout_instructions:
+                layout_instructions = (
+                    conversation.state.get('layout_instructions')
+                    or conversation.state.get('generation_state', {}).get('layout_instructions', [])
+                )
             with entry.lock:
                 result = conversation.complete_layout_review(layout_instructions)
             session_registry.touch(sid)
@@ -5914,9 +5921,17 @@ Close professionally with a call to action.
             "final_generated_at": now,
             "final_output_paths": final_paths,
         })
+        generated.update({
+            "final_html": final_paths["html"],
+            "final_pdf": final_paths["pdf"],
+            "files": [
+                final_paths["html"],
+                final_paths["pdf"],
+            ],
+        })
         conv._save_session()
 
-        outputs = {**generated, "final_html": final_paths["html"], "final_pdf": final_paths["pdf"]}
+        outputs = dict(generated)
         return jsonify({"ok": True, "generated_at": now, "outputs": outputs})
 
     @app.post("/api/finalise")
