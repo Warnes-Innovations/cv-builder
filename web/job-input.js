@@ -25,6 +25,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('job-input');
 
+import { PHASES, stateManager } from './state-manager.js';
+
 // ---------------------------------------------------------------------------
 // Job tab display
 // ---------------------------------------------------------------------------
@@ -61,7 +63,7 @@ async function populateJobTab() {
 // ---------------------------------------------------------------------------
 
 async function showLoadJobPanel() {
-  if (currentTab !== 'job') {
+  if (stateManager.getCurrentTab() !== 'job') {
     switchTab('job');
   }
 
@@ -259,7 +261,7 @@ async function _loadServerJobFile(filename, label) {
     if (data.error) {
       appendRetryMessage(`❌ ${data.error}`, () => _loadServerJobFile(filename, label));
     } else {
-      tabData.job = data.job_text;
+      stateManager.setTabData('job', data.job_text);
       saveTabData();
       appendMessage('assistant', `✅ Job description loaded from "${label || filename}". You can now analyze it.`);
       await populateJobTab();
@@ -424,7 +426,7 @@ async function uploadJobFile() {
     if (jobData.error) {
       appendMessage('system', 'Error: ' + jobData.error);
     } else {
-      tabData.job = data.text;
+      stateManager.setTabData('job', data.text);
       saveTabData();
       appendMessage('assistant', `✅ Job description loaded from "${data.filename}" (${data.content_length.toLocaleString()} chars). You can now analyze it.`);
       await populateJobTab();
@@ -505,12 +507,12 @@ async function submitJobText() {
       appendRetryMessage('❌ Error: ' + data.error, submitJobText);
     } else {
       _clearFieldError('job-text-input', 'paste-error');
-      tabData.job = jobText;
+      stateManager.setTabData('job', jobText);
       saveTabData();
       appendMessage('assistant', '✅ Job description submitted successfully.');
 
       if (typeof updateTabBarForStage === 'function') {
-        currentStage = 'job';
+        stateManager.setCurrentStage('job');
         updateTabBarForStage('job');
       }
       switchTab('job');
@@ -598,7 +600,7 @@ async function fetchJobFromURL() {
 
       appendMessage('system', `❌ ${errorMessage}: ${data.message || 'Please try manual input.'}`);
     } else {
-      tabData.job = data.job_text;
+      stateManager.setTabData('job', data.job_text);
       saveTabData();
       appendMessage('assistant', `✅ ${data.message}! Fetched ${data.content_length || 'content'} characters. You can now analyze it.`);
       await populateJobTab();

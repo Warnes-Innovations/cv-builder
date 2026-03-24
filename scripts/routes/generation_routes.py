@@ -14,6 +14,19 @@ from flask import Blueprint, jsonify, request, send_file
 # Module-level helpers (harvest)
 # ---------------------------------------------------------------------------
 
+def _get_spell_audit_from_state(state: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return canonical spell audit data with backward-compatible fallback."""
+    spell_audit = state.get('spell_audit')
+    if spell_audit is not None:
+        return spell_audit or []
+
+    legacy_spell = state.get('spell_check') or {}
+    if isinstance(legacy_spell, dict):
+        return legacy_spell.get('audit') or []
+
+    return []
+
+
 def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
     """Return candidate write-back items for the current session."""
     candidates: List[Dict[str, Any]] = []
@@ -224,6 +237,7 @@ def create_blueprint(deps):
             "page_count_estimate":       gen.get("page_count_estimate"),
             "page_length_warning":       gen.get("page_length_warning", False),
             "layout_instructions_count": len(gen.get("layout_instructions", [])),
+            "ats_score":                 gen.get("ats_score"),
             "final_generated_at":        gen.get("final_generated_at"),
         })
 
@@ -242,7 +256,7 @@ def create_blueprint(deps):
         if customizations:
             try:
                 approved_rewrites = conv.state.get("approved_rewrites") or []
-                spell_audit       = conv.state.get("spell_check", {}).get("audit") or []
+                spell_audit       = _get_spell_audit_from_state(conv.state)
                 html_str = conv.orchestrator.render_html_preview(
                     job_analysis=conv.state["job_analysis"],
                     customizations=customizations,

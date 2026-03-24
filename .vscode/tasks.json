@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "vitest coverage summary",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"test:js:cover"
+			],
+			"isBackground": false
+		}
+	]
+}

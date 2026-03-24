@@ -99,7 +99,7 @@ def create_blueprint(deps):
     @bp.get("/api/model")
     def get_model():
         """Return current model, all provider models, and pricing metadata."""
-        entry = _get_session(required=False)
+        entry = _get_session(required=False, allow_missing=True)
         session_provider = None
         session_model = None
         if entry:
@@ -290,7 +290,7 @@ def create_blueprint(deps):
                 _entry.orchestrator.llm = candidate_client
                 _entry.manager.llm = candidate_client
 
-            entry = _get_session(required=False)
+            entry = _get_session(required=False, allow_missing=True)
             if entry:
                 try:
                     _validate_owner(entry)

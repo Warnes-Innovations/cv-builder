@@ -46,6 +46,7 @@ const GENERATION_PHASES = {
 
 // Global state variables (moved into module for clarity)
 let currentTab = 'job';
+let currentStage = 'job';
 let isLoading = false;
 globalThis.isLoading = isLoading;
 let tabData = {
@@ -65,6 +66,62 @@ let isReconnecting = false;
 // Current model/provider selection (persisted to localStorage)
 let currentModelProvider = null;
 let currentModelName = null;
+
+function installLegacyStateGlobals() {
+  const bindings = {
+    isLoading: {
+      get: () => isLoading,
+      set: (value) => { isLoading = Boolean(value); },
+    },
+    tabData: {
+      get: () => tabData,
+      set: (value) => {
+        tabData = value && typeof value === 'object'
+          ? value
+          : { analysis: null, customizations: null, cv: null };
+      },
+    },
+    currentTab: {
+      get: () => currentTab,
+      set: (value) => { currentTab = value; },
+    },
+    currentStage: {
+      get: () => currentStage,
+      set: (value) => { currentStage = value; },
+    },
+    interactiveState: {
+      get: () => interactiveState,
+      set: (value) => {
+        if (value && typeof value === 'object') {
+          interactiveState = value;
+        }
+      },
+    },
+    sessionId: {
+      get: () => sessionId,
+      set: (value) => { sessionId = value; },
+    },
+    lastKnownPhase: {
+      get: () => lastKnownPhase,
+      set: (value) => { lastKnownPhase = value; },
+    },
+    isReconnecting: {
+      get: () => isReconnecting,
+      set: (value) => { isReconnecting = Boolean(value); },
+    },
+  };
+
+  Object.entries(bindings).forEach(([name, descriptor]) => {
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      enumerable: true,
+      get: descriptor.get,
+      set: descriptor.set,
+    });
+  });
+}
+
+installLegacyStateGlobals();
 
 // Staged generation state (GAP-20): tracks preview → confirm → final pipeline.
 // Synced from /api/cv/generation-state on page load and after key transitions.
@@ -86,6 +143,8 @@ const stateManager = {
   // Tab state
   getCurrentTab: () => currentTab,
   setCurrentTab: (tab) => { currentTab = tab; saveStateToLocalStorage(); },
+  getCurrentStage: () => currentStage,
+  setCurrentStage: (stage) => { currentStage = stage; saveStateToLocalStorage(); },
 
   // Loading state
   isLoading: () => isLoading,
@@ -96,11 +155,16 @@ const stateManager = {
 
   // Tab data (analysis, customizations, CV)
   getTabData: (tab) => tabData[tab],
+  getAllTabData: () => ({ ...tabData }),
   setTabData: (tab, data) => { tabData[tab] = data; saveStateToLocalStorage(); },
 
   // Interactive state (for experience/skill selection review)
   getInteractiveState: () => interactiveState,
   setInteractiveState: (state) => { interactiveState = { ...interactiveState, ...state }; saveStateToLocalStorage(); },
+
+  // Reconnect state
+  isReconnecting: () => isReconnecting,
+  setIsReconnecting: (reconnecting) => { isReconnecting = Boolean(reconnecting); },
 
   // Session management
   getSessionId: () => sessionId,
@@ -156,6 +220,7 @@ const stateManager = {
  */
 function initializeState() {
   currentTab = 'job';
+  currentStage = 'job';
   isLoading = false;
   globalThis.isLoading = false;
   tabData = {
@@ -245,6 +310,10 @@ function loadStateFromLocalStorage() {
       lastKnownPhase = data.lastKnownPhase;
     }
 
+    if (data.currentStage) {
+      currentStage = data.currentStage;
+    }
+
     // Restore staged generation state
     if (data.generationState) {
       generationState = { ...generationState, ...data.generationState };
@@ -276,6 +345,7 @@ function saveStateToLocalStorage() {
       questionAnswers: window.questionAnswers,
       lastKnownPhase,
       currentTab,
+      currentStage,
       // Persist last-selected model/provider so UI selections survive reloads
       currentModelProvider,
       currentModelName,

@@ -335,9 +335,23 @@ class TestGenerationStateEndpoint(unittest.TestCase):
             query_string={'session_id': self.session_id},
         ).get_json()
         for key in ('ok', 'phase', 'preview_available', 'layout_confirmed',
-                    'page_count_estimate', 'page_length_warning',
+                    'page_count_estimate', 'page_length_warning', 'ats_score',
                     'layout_instructions_count', 'final_generated_at'):
             self.assertIn(key, data, f"Missing key: {key}")
+
+    def test_returns_cached_ats_score_when_present(self):
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['generation_state'] = {
+            'phase': 'layout_review',
+            'ats_score': {'overall': 81, 'basis': 'review_checkpoint'},
+        }
+
+        data = self.client.get(
+            '/api/cv/generation-state',
+            query_string={'session_id': self.session_id},
+        ).get_json()
+
+        self.assertEqual(data['ats_score'], {'overall': 81, 'basis': 'review_checkpoint'})
 
 
 class TestGeneratePreviewEndpoint(unittest.TestCase):
@@ -394,6 +408,27 @@ class TestGeneratePreviewEndpoint(unittest.TestCase):
         ).get_json()
         self.assertEqual(data['phase'], 'layout_review')
         self.assertTrue(data['preview_available'])
+
+    def test_preview_uses_canonical_spell_audit_before_legacy_key(self):
+        self._seed_job_analysis()
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['spell_audit'] = [{'original': 'teh', 'final': 'the', 'outcome': 'accept'}]
+        entry.manager.state['spell_check'] = {'audit': [{'original': 'teh', 'final': 'teh', 'outcome': 'ignore'}]}
+
+        with patch(
+            'utils.cv_orchestrator.CVOrchestrator.render_html_preview',
+            return_value='<html><body>Preview</body></html>',
+        ) as render_preview:
+            resp = self.client.post(
+                '/api/cv/generate-preview',
+                json={'session_id': self.session_id},
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            render_preview.call_args.kwargs['spell_audit'],
+            [{'original': 'teh', 'final': 'the', 'outcome': 'accept'}],
+        )
 
     def test_render_failure_falls_back_to_404_when_no_file(self):
         """When render_html_preview raises and no HTML file exists, return 404."""

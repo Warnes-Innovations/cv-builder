@@ -1,7 +1,7 @@
 # User Story: HR Staffer / ATS Perspective
-**Persona:** An HR coordinator who receives application materials and feeds them through an Applicant Tracking System (ATS) before human review  
-**Scope:** What the ATS sees, parses, and surfaces — and what it silently suppresses or misreads  
-**Format:** Parse-path walk-through with ATS failure modes and checklist validation criteria
+**Persona:** An HR coordinator who evaluates both the application workflow that produces submission artifacts and what an Applicant Tracking System (ATS) sees before human review  
+**Scope:** Two linked evaluations: (1) whether the application guides the user toward ATS-safe outputs, and (2) what the ATS sees, parses, and surfaces — and what it silently suppresses or misreads  
+**Format:** Parse-path walk-through with ATS failure modes and checklist validation criteria, while keeping application-review findings separate from output-review findings
 
 ---
 

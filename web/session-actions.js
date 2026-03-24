@@ -26,6 +26,9 @@
 import { getLogger } from './logger.js';
 const log = getLogger('session-actions');
 
+import { StorageKeys } from './api-client.js';
+import { clearState, stateManager } from './state-manager.js';
+
 /** Maps action identifiers to human-readable LLM status bar labels. */
 const _ACTION_LABELS = {
   analyze_job:              'Analysing job description…',
@@ -34,7 +37,7 @@ const _ACTION_LABELS = {
 };
 
 async function sendAction(action) {
-  if (isLoading) return;
+  if (stateManager.isLoading()) return;
 
   const loadingMsg = appendLoadingMessage(`Executing ${action}...`);
   setLoading(true, _ACTION_LABELS[action] || `${action.replace(/_/g, ' ')}…`);
@@ -77,7 +80,7 @@ async function sendAction(action) {
         } catch (_e) { /* polling error — continue */ }
       }
       appendMessage('assistant', 'CV generated successfully! Review your layout below.');
-      tabData.cv = data.result;
+      stateManager.setTabData('cv', data.result);
       refreshAtsScore('post_generation');
       switchTab('layout');
     } else {

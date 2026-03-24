@@ -107,6 +107,15 @@ _BIB_WITH_SINGLE_TOKEN_AUTHOR = r"""
 }
 """
 
+_BIB_MALFORMED_AUTHOR = r"""
+@article{malformed2026,
+    author  = {Warnes, Gregory R. and others,},
+    title   = {Malformed Author Fixture},
+    journal = {Journal of Regression Tests},
+    year    = {2026},
+}
+"""
+
 
 def _write_bib(content: str) -> str:
     """Write bib content to a temp file and return its path."""
@@ -220,6 +229,19 @@ class TestParseBibtexFile(unittest.TestCase):
             )
         finally:
             Path(single_author_path).unlink(missing_ok=True)
+
+    def test_malformed_author_with_trailing_comma_does_not_crash(self):
+        malformed_path = _write_bib(_BIB_MALFORMED_AUTHOR)
+        try:
+            result = parse_bibtex_file(malformed_path)
+            self.assertIn("malformed2026", result)
+            entry = result["malformed2026"]
+            self.assertEqual(
+                entry["authors"],
+                "Warnes, Gregory R. et al.",
+            )
+        finally:
+            Path(malformed_path).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

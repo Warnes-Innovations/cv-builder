@@ -588,6 +588,21 @@ def test_claim_and_takeover_routes_update_session_ownership(build_app):
         assert sessions[session_id]["owned_by_requester"] is True
 
 
+def test_claim_missing_session_returns_handled_payload(build_app):
+    app, _tracker = build_app()
+
+    with app.test_client() as client:
+        missing = client.post(
+            "/api/sessions/claim",
+            json={"session_id": "deadbeef", "owner_token": "owner-a"},
+        )
+
+        assert missing.status_code == 200
+        payload = missing.get_json()
+        assert payload["ok"] is False
+        assert payload["error"] == "session_not_found"
+
+
 def test_session_aware_routes_enforce_session_and_owner_tokens(build_app):
     app, _tracker = build_app()
 

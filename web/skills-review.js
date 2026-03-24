@@ -21,6 +21,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('skills-review');
 
+import { stateManager } from './state-manager.js';
+
 // ── Years-from-experience helpers ─────────────────────────────────────────
 
 function _parseYearFromStr(str) {
@@ -59,7 +61,7 @@ async function buildSkillsReviewTable() {
   const container = document.getElementById('skills-table-container');
 
   // Build skill-type lookup from job analysis (available in tabData.analysis)
-  const jobAnalysis = tabData.analysis || {};
+  const jobAnalysis = stateManager.getTabData('analysis') || {};
   const hardSkillSet = new Set((jobAnalysis.required_skills    || []).map(s => s.toLowerCase()));
   const softSkillSet = new Set((jobAnalysis.nice_to_have_skills || []).map(s => s.toLowerCase()));
 
@@ -139,7 +141,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   if (!recommendedSet) recommendedSet = new Set((window.pendingRecommendations?.recommended_skills) || []);
   if (!data) data = window.pendingRecommendations;
   if (!hardSkillSet) {
-    const ja = tabData.analysis || {};
+    const ja = stateManager.getTabData('analysis') || {};
     hardSkillSet = new Set((ja.required_skills     || []).map(s => s.toLowerCase()));
     softSkillSet = new Set((ja.nice_to_have_skills || []).map(s => s.toLowerCase()));
   }
