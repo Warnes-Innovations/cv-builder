@@ -24,6 +24,7 @@ import importlib
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1353,6 +1354,54 @@ class TestGroupInlineSkills(unittest.TestCase):
             {"name": "SQL", "parenthetical": "Window functions"}
         ])
         self.assertEqual(result[0]["display_name"], "SQL (Window functions)")
+
+    def test_select_content_hybrid_preserves_rich_extra_skill_metadata(self):
+        expected_years = datetime.now().year - 2020 + 1
+        self.orc.master_data["experience"] = [
+            {
+                "id": "exp_1",
+                "title": "Director",
+                "company": "Acme",
+                "start_date": "2020",
+                "end_date": "Present",
+                "achievements": ["Drove architecture reviews across platform teams"],
+            }
+        ]
+        self.orc.master_data["skills"] = []
+        self.orc.llm.semantic_match.return_value = 0.0
+
+        result = self.orc._select_content_hybrid(
+            {
+                "ats_keywords": ["architecture"],
+                "required_skills": [],
+                "must_have_requirements": [],
+                "nice_to_have_requirements": [],
+                "domain": "",
+            },
+            {
+                "extra_skills": [
+                    {
+                        "name": "Architecture",
+                        "category": "Leadership",
+                        "group": "strategy",
+                        "parenthetical": "platform roadmaps",
+                        "user_created": True,
+                    }
+                ]
+            },
+        )
+
+        self.assertEqual(
+            result["skills"][0],
+            {
+                "name": "Architecture",
+                "category": "Leadership",
+                "group": "strategy",
+                "parenthetical": "platform roadmaps",
+                "user_created": True,
+                "years": expected_years,
+            },
+        )
 
 
 class TestBulletOrderInSelectContent(unittest.TestCase):

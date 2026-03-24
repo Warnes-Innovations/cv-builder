@@ -73,7 +73,6 @@ function switchTab(tab) {
   if (typeof getStageForTab === 'function' && typeof updateTabBarForStage === 'function') {
     const tabStage = getStageForTab(tab);
     if (tabStage) {
-      stateManager.setCurrentStage(tabStage);
       updateTabBarForStage(tabStage);
       updateActionButtons(tabStage);
     }
@@ -597,6 +596,7 @@ function _updatePageEstimate() {
   const CHARS_SUMMARY  = 500;
   const CHARS_EXP      = { emphasize: 1200, include: 800, 'de-emphasize': 300 };
   const CHARS_SKILL    = 25;
+  const GROUP_WARN_AT  = 90;
   const CHARS_OVERHEAD = 200;
 
   let total = CHARS_HEADER + CHARS_SUMMARY + CHARS_OVERHEAD;
@@ -607,8 +607,59 @@ function _updatePageEstimate() {
   }
 
   const skillSels = userSelections.skills || {};
-  const activeSkills = Object.values(skillSels).filter(a => a !== 'exclude').length;
-  total += activeSkills * CHARS_SKILL;
+  const activeSkillNames = new Set(
+    Object.entries(skillSels)
+      .filter(([, action]) => action !== 'exclude')
+      .map(([skillName]) => skillName),
+  );
+  const groupedSkills = new Map();
+  const activeStandaloneLabels = [];
+  const skillRows = Array.isArray(window._skillsOrdered) ? window._skillsOrdered : [];
+  const formatSkillLabel = (skill) => {
+    if (!skill || typeof skill === 'string') return String(skill || '').trim();
+    const name = String(skill.name || '').trim();
+    const parenthetical = String(skill.parenthetical || '').trim();
+    if (parenthetical) return `${name} (${parenthetical})`;
+    const qualifierParts = [];
+    const proficiency = String(skill.proficiency || '').trim();
+    if (proficiency) qualifierParts.push(proficiency[0].toUpperCase() + proficiency.slice(1));
+    const rawSubskills = Array.isArray(skill.subskills)
+      ? skill.subskills
+      : Array.isArray(skill.sub_skills)
+        ? skill.sub_skills
+        : [];
+    rawSubskills
+      .map(item => String(item || '').trim())
+      .filter(Boolean)
+      .forEach(item => qualifierParts.push(item));
+    if (qualifierParts.length > 0) return `${name} (${qualifierParts.join(', ')})`;
+    return name;
+  };
+
+  for (const skill of skillRows) {
+    const skillName = typeof skill === 'string' ? skill : String(skill?.name || '').trim();
+    if (!skillName || !activeSkillNames.has(skillName)) continue;
+    const label = formatSkillLabel(skill);
+    const groupName = typeof skill === 'object' ? String(skill.group || '').trim() : '';
+    if (groupName) {
+      if (!groupedSkills.has(groupName)) groupedSkills.set(groupName, []);
+      groupedSkills.get(groupName).push(label);
+    } else {
+      activeStandaloneLabels.push(label);
+    }
+  }
+
+  let activeSkills = activeStandaloneLabels.length;
+  let crowdedGroups = 0;
+  activeStandaloneLabels.forEach(label => {
+    total += Math.max(CHARS_SKILL, Math.min(80, label.length));
+  });
+  groupedSkills.forEach(labels => {
+    activeSkills += labels.length;
+    const inlineLength = labels.join(', ').length;
+    total += Math.max(CHARS_SKILL * labels.length, Math.min(160, inlineLength));
+    if (inlineLength >= GROUP_WARN_AT || labels.length >= 5) crowdedGroups += 1;
+  });
 
   const pages = total / CHARS_PER_PAGE;
   const pct   = Math.min(100, (pages / 3) * 100); // bar maxes at 3 pages
@@ -637,6 +688,10 @@ function _updatePageEstimate() {
     cls = 'over'; colour = '#ef4444';
     msg = `🚨 ≈${pages.toFixed(1)} pages \u2014 ${expCount} of ${totalExp} experiences, ${activeSkills} skills. Likely too long \u2014 exclude or de-emphasise some entries.`;
     icon.textContent = '🚨';
+  }
+
+  if (crowdedGroups > 0) {
+    msg += ` ${crowdedGroups} grouped skill bullet${crowdedGroups === 1 ? '' : 's'} may be too dense.`;
   }
 
   widget.className = `page-estimate ${cls}`;

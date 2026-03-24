@@ -12,7 +12,7 @@ import dataclasses
 import re
 import traceback
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from flask import Blueprint, jsonify, request
 
@@ -117,6 +117,70 @@ def create_blueprint(deps):
         except Exception:
             pass
 
+    def _normalize_subskills(raw_subskills: Any) -> List[str]:
+        if isinstance(raw_subskills, str):
+            raw_subskills = [item.strip() for item in raw_subskills.split(',')]
+
+        normalized: List[str] = []
+        seen: set[str] = set()
+        if isinstance(raw_subskills, list):
+            for item in raw_subskills:
+                if not isinstance(item, str):
+                    continue
+                label = item.strip()
+                if not label or label in seen:
+                    continue
+                normalized.append(label)
+                seen.add(label)
+        return normalized
+
+    def _normalize_extra_skill_entry(raw_skill: Any) -> Any:
+        if isinstance(raw_skill, str):
+            label = raw_skill.strip()
+            return label or None
+
+        if not isinstance(raw_skill, dict):
+            return None
+
+        name = str(raw_skill.get('name') or '').strip()
+        if not name:
+            return None
+
+        normalized: Dict[str, Any] = {'name': name}
+        for field in ('category', 'group', 'proficiency', 'parenthetical'):
+            value = str(raw_skill.get(field) or '').strip()
+            if value:
+                normalized[field] = value
+
+        subskills = _normalize_subskills(
+            raw_skill.get('subskills', raw_skill.get('sub_skills')),
+        )
+        if subskills:
+            normalized['subskills'] = subskills
+
+        if raw_skill.get('user_created') or raw_skill.get('_isUserCreated'):
+            normalized['user_created'] = True
+
+        return normalized
+
+    def _normalize_extra_skills(raw_extra_skills: Any) -> List[Any]:
+        normalized: List[Any] = []
+        seen: set[str] = set()
+        for raw_skill in raw_extra_skills or []:
+            normalized_skill = _normalize_extra_skill_entry(raw_skill)
+            if not normalized_skill:
+                continue
+            skill_name = (
+                normalized_skill
+                if isinstance(normalized_skill, str)
+                else str(normalized_skill.get('name') or '').strip()
+            )
+            if not skill_name or skill_name in seen:
+                continue
+            normalized.append(normalized_skill)
+            seen.add(skill_name)
+        return normalized
+
     # ── Review decisions ─────────────────────────────────────────────────────
 
     @bp.route('/api/review-decisions', methods=['POST'])
@@ -143,9 +207,8 @@ def create_blueprint(deps):
                 message = f"Saved decisions for {len(decisions)} experiences"
             elif decision_type == 'skills':
                 conversation.state['skill_decisions'] = decisions
-                extra_skills = data.get('extra_skills', [])
-                if extra_skills:
-                    conversation.state['extra_skills'] = extra_skills
+                extra_skills = _normalize_extra_skills(data.get('extra_skills', []))
+                conversation.state['extra_skills'] = extra_skills
 
                 raw_matches = data.get('extra_skill_matches') or {}
                 sanitized_matches: Dict[str, List[str]] = {}
@@ -545,6 +608,64 @@ def create_blueprint(deps):
             'skill': skill_name,
             'qualifiers': overrides.get(skill_name, {}),
         })
+
+    @bp.post('/api/review-skill-add')
+    def add_review_skill():
+        """Persist a new session-only skill entry for the current review flow."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+
+        normalized_skill = _normalize_extra_skill_entry({
+            'name': data.get('name'),
+            'category': data.get('category'),
+            'group': data.get('group'),
+            'proficiency': data.get('proficiency'),
+            'subskills': data.get('subskills'),
+            'parenthetical': data.get('parenthetical'),
+            'user_created': True,
+        })
+        if not isinstance(normalized_skill, dict):
+            return jsonify({'error': 'name is required'}), 400
+
+        skill_name = normalized_skill['name']
+
+        with entry.lock:
+            summary_view = SessionDataView(
+                conversation.orchestrator.master_data,
+                conversation.state,
+                conversation.state.get('customizations'),
+            )
+            existing_names = {
+                str(skill.get('name') or '').strip()
+                for skill in summary_view.normalized_skills()
+                if isinstance(skill, dict)
+            }
+            existing_extra = {
+                item if isinstance(item, str) else str(item.get('name') or '').strip()
+                for item in _normalize_extra_skills(conversation.state.get('extra_skills', []))
+            }
+            if skill_name in existing_names or skill_name in existing_extra:
+                return jsonify({'error': 'skill already exists in this session'}), 409
+
+            extra_skills = _normalize_extra_skills(conversation.state.get('extra_skills', []))
+            extra_skills.append(normalized_skill)
+
+            skill_decisions = dict(conversation.state.get('skill_decisions') or {})
+            skill_decisions[skill_name] = 'include'
+
+            customizations = dict(conversation.state.get('customizations') or {})
+            customizations['extra_skills'] = extra_skills
+
+            conversation.state['extra_skills'] = extra_skills
+            conversation.state['skill_decisions'] = skill_decisions
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'skill': normalized_skill})
 
     @bp.route('/api/rewrite-achievement', methods=['POST'])
     def rewrite_achievement():

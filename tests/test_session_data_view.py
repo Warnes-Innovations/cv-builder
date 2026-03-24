@@ -229,6 +229,37 @@ def test_materialize_generation_customizations_applies_review_decisions() -> Non
     assert materialized["base_font_size"] == "11pt"
 
 
+def test_materialize_generation_customizations_preserves_rich_extra_skills() -> None:
+    view = SessionDataView(
+        master_data={"professional_summaries": {"default": "Master summary"}},
+        session_state={
+            "skill_decisions": {"Architecture": "include"},
+            "extra_skills": [
+                {
+                    "name": "Architecture",
+                    "category": "Leadership",
+                    "group": "strategy",
+                    "parenthetical": "platform roadmaps",
+                    "user_created": True,
+                }
+            ],
+        },
+        customizations={},
+    )
+
+    materialized = view.materialize_generation_customizations()
+
+    assert materialized["extra_skills"] == [
+        {
+            "name": "Architecture",
+            "category": "Leadership",
+            "group": "strategy",
+            "parenthetical": "platform roadmaps",
+            "user_created": True,
+        }
+    ]
+
+
 def test_materialize_generation_customizations_prefers_legacy_publication_overrides() -> None:
     view = SessionDataView(
         master_data={},

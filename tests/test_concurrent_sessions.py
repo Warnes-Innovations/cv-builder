@@ -2882,6 +2882,114 @@ def test_cv_ats_score_route_enriches_customizations_from_session_state(
         assert manager.save_calls == 1
 
 
+def test_cv_ats_score_route_accepts_rich_extra_skill_objects(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["job_analysis"] = {"ats_keywords": ["python", "leadership"]}
+        manager.state["customizations"] = {"approved_skills": [{"name": "Python"}]}
+        manager.state["skill_decisions"] = {
+            "Python": "include",
+            "Architecture": "de-emphasize",
+            "Cobol": "exclude",
+        }
+        manager.state["extra_skills"] = [
+            {
+                "name": "Architecture",
+                "category": "Leadership",
+                "group": "strategy",
+                "parenthetical": "platform roadmaps",
+                "user_created": True,
+            },
+            {"name": "Cobol", "user_created": True},
+        ]
+
+        with patch(
+            "utils.scoring.compute_ats_score",
+            return_value={"score": 91},
+        ) as mock_score:
+            response = client.post(
+                "/api/cv/ats-score",
+                json={"session_id": session_id},
+            )
+
+        assert response.status_code == 200
+        customizations_arg = mock_score.call_args.args[1]
+        assert customizations_arg["approved_skills"] == [
+            {"name": "Python"},
+            "Architecture",
+        ]
+
+
+def test_review_skill_add_route_persists_session_only_skill(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+
+        response = client.post(
+            "/api/review-skill-add",
+            json={
+                "session_id": session_id,
+                "name": "Architecture",
+                "category": "Leadership",
+                "group": "strategy",
+                "proficiency": "expert",
+                "subskills": ["Roadmaps", "Stakeholder alignment", "Roadmaps"],
+                "parenthetical": "Platform strategy",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "ok": True,
+        "skill": {
+            "name": "Architecture",
+            "category": "Leadership",
+            "group": "strategy",
+            "proficiency": "expert",
+            "subskills": ["Roadmaps", "Stakeholder alignment"],
+            "parenthetical": "Platform strategy",
+            "user_created": True,
+        },
+    }
+    assert manager.state["extra_skills"] == [
+        {
+            "name": "Architecture",
+            "category": "Leadership",
+            "group": "strategy",
+            "proficiency": "expert",
+            "subskills": ["Roadmaps", "Stakeholder alignment"],
+            "parenthetical": "Platform strategy",
+            "user_created": True,
+        }
+    ]
+    assert manager.state["skill_decisions"]["Architecture"] == "include"
+
+
+def test_review_skill_add_route_rejects_duplicate_session_skill(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["extra_skills"] = [{"name": "Architecture", "user_created": True}]
+
+        response = client.post(
+            "/api/review-skill-add",
+            json={
+                "session_id": session_id,
+                "name": "Architecture",
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "skill already exists in this session"}
+
+
 def test_cv_ats_score_route_falls_back_to_achievement_edits_when_needed(
     build_app,
 ):

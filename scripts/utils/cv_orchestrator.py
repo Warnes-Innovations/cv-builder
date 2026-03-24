@@ -422,6 +422,40 @@ class CVOrchestrator:
 
         return name
 
+    @staticmethod
+    def _normalize_extra_skill_entry(raw_skill: Any) -> Optional[Dict[str, Any]]:
+        """Return a dict form for session-only extra skills."""
+        if isinstance(raw_skill, str):
+            name = raw_skill.strip()
+            return {'name': name} if name else None
+        if not isinstance(raw_skill, dict):
+            return None
+
+        name = str(raw_skill.get('name') or '').strip()
+        if not name:
+            return None
+
+        normalized = dict(raw_skill)
+        normalized['name'] = name
+        raw_subskills = normalized.get('subskills', normalized.get('sub_skills'))
+        if isinstance(raw_subskills, str):
+            raw_subskills = [item.strip() for item in raw_subskills.split(',')]
+        if isinstance(raw_subskills, list):
+            cleaned = []
+            seen = set()
+            for item in raw_subskills:
+                label = str(item or '').strip()
+                if not label or label in seen:
+                    continue
+                cleaned.append(label)
+                seen.add(label)
+            if cleaned:
+                normalized['subskills'] = cleaned
+            else:
+                normalized.pop('subskills', None)
+                normalized.pop('sub_skills', None)
+        return normalized
+
     def _format_publications(self, publications: List) -> List[Dict]:
         """Format publications for template consumption."""
         owner_name = self.master_data.get('personal_info', {}).get('name', '') if self.master_data else ''
@@ -2021,12 +2055,16 @@ If you need clarification, return:
         if extra_skills:
             existing_skill_names = {s.get('name', '') for s in all_skills}
             prepend = []
-            for skill_name in extra_skills:
+            for raw_skill in extra_skills:
+                extra_skill = self._normalize_extra_skill_entry(raw_skill)
+                if not extra_skill:
+                    continue
+                skill_name = extra_skill.get('name', '')
                 if skill_name not in omitted_skill_names and skill_name not in existing_skill_names:
                     preferred_ids = match_overrides.get(skill_name, [])
                     years = _derive_years_from_matches(skill_name, preferred_ids)
-                    skill_entry: Dict[str, Any] = {'name': skill_name}
-                    if years is not None:
+                    skill_entry: Dict[str, Any] = dict(extra_skill)
+                    if years is not None and skill_entry.get('years') is None:
                         skill_entry['years'] = years
                     prepend.append(skill_entry)
             selected_skills = prepend + selected_skills

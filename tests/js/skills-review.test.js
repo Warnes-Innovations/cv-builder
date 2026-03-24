@@ -19,6 +19,7 @@ import {
   renameSkillCategory,
   saveSkillCategoryOrder,
   saveSkillQualifierOverride,
+  saveUserCreatedSkill,
   _renderSkillsTable,
   moveSkillRow,
   handleSkillsResponse,
@@ -196,11 +197,12 @@ describe('submitSkillDecisions', () => {
 
   it('includes extra_skills note in toast when LLM skills are accepted', async () => {
     window._newSkillsFromLLM = ['NewSkill']
+    window._skillsOrdered = [{ name: 'NewSkill', _isNew: true }]
     window.userSelections.skills = { NewSkill: 'include' }
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
     await submitSkillDecisions()
     expect(globalThis.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('AI-suggested'),
+      expect.stringContaining('session-only skill'),
     )
   })
 
@@ -209,6 +211,7 @@ describe('submitSkillDecisions', () => {
       <input class="skill-match-input" data-skill="NewSkill" value="exp_1, exp_2" />
     `
     window._newSkillsFromLLM = ['NewSkill']
+    window._skillsOrdered = [{ name: 'NewSkill', _isNew: true }]
     window._allExperiences = [{ id: 'exp_1' }, { id: 'exp_2' }, { id: 'exp_3' }]
     window.userSelections.skills = { NewSkill: 'include' }
 
@@ -433,6 +436,51 @@ describe('saveSkillQualifierOverride', () => {
   })
 })
 
+describe('saveUserCreatedSkill', () => {
+  beforeEach(() => {
+    window._skillsOrdered = [{ name: 'Python', category: 'Programming' }]
+    window._savedDecisions = { extra_skills: [] }
+    window.userSelections.skills = {}
+  })
+
+  it('posts a new session-only skill and updates local state', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        skill: {
+          name: 'Architecture',
+          category: 'Leadership',
+          group: 'strategy',
+          proficiency: 'expert',
+          subskills: ['Roadmaps'],
+          parenthetical: 'Platform strategy',
+          user_created: true,
+        },
+      }),
+    })
+
+    const result = await saveUserCreatedSkill({
+      name: 'Architecture',
+      category: 'Leadership',
+      group: 'strategy',
+      proficiency: 'expert',
+      subskills: 'Roadmaps',
+      parenthetical: 'Platform strategy',
+    })
+
+    expect(result).toMatchObject({
+      name: 'Architecture',
+      _isNew: true,
+      _isUserCreated: true,
+    })
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-skill-add', expect.objectContaining({ method: 'POST' }))
+    expect(window._skillsOrdered[0]).toMatchObject({ name: 'Architecture', _isUserCreated: true })
+    expect(window._savedDecisions.extra_skills[0]).toMatchObject({ name: 'Architecture', _isUserCreated: true })
+    expect(window.userSelections.skills.Architecture).toBe('include')
+  })
+})
+
 describe('_renderSkillsTable qualifier inputs', () => {
   it('posts row-level qualifier edits from rendered controls', async () => {
     document.body.innerHTML = '<div id="skills-table-container"></div>'
@@ -468,6 +516,58 @@ describe('_renderSkillsTable qualifier inputs', () => {
       subskills: ['Pandas', 'NumPy'],
       parenthetical: 'Expert, Pandas, NumPy',
     })
+  })
+
+  it('renders a warning for crowded grouped inline skills', () => {
+    document.body.innerHTML = '<div id="skills-table-container"></div>'
+    window.pendingRecommendations = { recommended_skills: [] }
+    window._skillsOrdered = [
+      { name: 'Python', category: 'Programming', group: 'analytics', parenthetical: 'Pandas, NumPy, SciPy, PySpark, orchestration' },
+      { name: 'R', category: 'Programming', group: 'analytics', parenthetical: 'tidyverse, Shiny, modeling, packages' },
+      { name: 'SQL', category: 'Programming', group: 'analytics', parenthetical: 'window functions, optimization' },
+    ]
+    stateManager.setTabData('analysis', { required_skills: [], nice_to_have_skills: [] })
+
+    const dataTableMock = vi.fn().mockReturnValue({ destroy: vi.fn() })
+    globalThis.$ = vi.fn(() => ({ DataTable: dataTableMock }))
+    globalThis.$.fn = { DataTable: { isDataTable: vi.fn().mockReturnValue(false) } }
+
+    _renderSkillsTable(document.getElementById('skills-table-container'), new Set(), window.pendingRecommendations, new Set(), new Set())
+
+    expect(document.querySelector('.skill-group-warning')).not.toBeNull()
+    expect(document.querySelector('.skill-group-warning').textContent).toContain('Inline bullet may be hard to scan')
+  })
+
+  it('submits user-created skills as rich extra_skills objects', async () => {
+    window._skillsOrdered = [
+      {
+        name: 'Architecture',
+        category: 'Leadership',
+        group: 'strategy',
+        proficiency: 'expert',
+        subskills: ['Roadmaps', 'Alignment'],
+        parenthetical: 'Platform strategy',
+        _isNew: true,
+        _isUserCreated: true,
+      },
+    ]
+    window.userSelections.skills = { Architecture: 'include' }
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+
+    await submitSkillDecisions()
+
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload.extra_skills).toEqual([
+      {
+        name: 'Architecture',
+        category: 'Leadership',
+        group: 'strategy',
+        proficiency: 'expert',
+        subskills: ['Roadmaps', 'Alignment'],
+        parenthetical: 'Platform strategy',
+        user_created: true,
+      },
+    ])
   })
 })
 
