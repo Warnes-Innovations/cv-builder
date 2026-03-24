@@ -103,26 +103,4 @@ function setupEventListeners() {
   document.getElementById('reset-btn').addEventListener('click', resetSession);
 }
 
-// CJS export shim — no-op in browsers (module is undefined).
-// Re-exports from canonical module files so existing tests continue to pass.
-// NOTE: require() on ES-module files works only under Vitest's transform pipeline.
-//       Do not run these tests with plain Node.js (no bundler/transform).
-if (typeof module !== 'undefined') {
-  /* eslint-disable global-require */
-  const _sm  = require('./session-manager.js');
-  const _ja  = require('./job-analysis.js');
-  const _ach = require('./achievements-review.js');
-  const _ws  = require('./workflow-steps.js');
-  /* eslint-enable global-require */
-  module.exports = {
-    buildSessionSwitcherLabel:                   _sm.buildSessionSwitcherLabel,
-    getActiveSessionOwnershipMeta:               _sm.getActiveSessionOwnershipMeta,
-    extractStructuredQuestionsFromAssistantText: _ja.extractStructuredQuestionsFromAssistantText,
-    saveSuggestedAchievementField:               _ach.saveSuggestedAchievementField,
-    moveSuggestedAchievementRow:                 _ach.moveSuggestedAchievementRow,
-    deleteSuggestedAchievement:                  _ach.deleteSuggestedAchievement,
-    showBulletReorder:                           _ws.showBulletReorder,
-    init,
-    setupEventListeners,
-  };
-}
+// Tests now import helper functions from their canonical ES modules directly.
