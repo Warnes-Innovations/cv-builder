@@ -265,6 +265,11 @@ class SessionDataView:
         )
         return merged
 
+    def _skill_category_order(self) -> List[str]:
+        merged = _coerce_string_list((self.session_state or {}).get("skill_category_order"))
+        custom = _coerce_string_list((self.customizations or {}).get("skill_category_order"))
+        return custom or merged
+
     def professional_summaries(self) -> Dict[str, Any]:
         """Return master summary variants overlaid with session variants."""
         merged = _coerce_summary_variants(
@@ -400,6 +405,10 @@ class SessionDataView:
         if skill_category_overrides and not updated.get("skill_category_overrides"):
             updated["skill_category_overrides"] = skill_category_overrides
 
+        skill_category_order = self._skill_category_order()
+        if skill_category_order and not updated.get("skill_category_order"):
+            updated["skill_category_order"] = skill_category_order
+
         return updated
 
     def materialize_generation_customizations(self) -> Dict[str, Any]:
@@ -469,6 +478,10 @@ class SessionDataView:
         skill_row_order = state.get("skill_row_order") or []
         if skill_row_order:
             updated["skill_row_order"] = list(skill_row_order)
+
+        skill_category_order = self._skill_category_order()
+        if skill_category_order:
+            updated["skill_category_order"] = skill_category_order
 
         publication_decisions = _coerce_decision_mapping(state.get("publication_decisions"))
         if publication_decisions:

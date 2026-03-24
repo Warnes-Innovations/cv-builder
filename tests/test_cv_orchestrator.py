@@ -1307,6 +1307,22 @@ class TestGroupInlineSkills(unittest.TestCase):
         self.assertIn("C++", group_names_lists[0])
         self.assertIn("Rcpp", group_names_lists[0])
 
+    def test_organize_by_category_honors_custom_category_order(self):
+        skills = [
+            {"name": "Python", "category": "Programming"},
+            {"name": "Leadership", "category": "Management"},
+            {"name": "SQL", "category": "Data Science"},
+        ]
+        result = self.orc._organize_skills_by_category(
+            skills,
+            "standard",
+            ["Data Science", "Management"],
+        )
+        self.assertEqual(
+            [category["category"] for category in result],
+            ["Data Science", "Management", "Programming"],
+        )
+
 
 class TestBulletOrderInSelectContent(unittest.TestCase):
     """_select_content_hybrid adds ordered_achievements by relevance."""

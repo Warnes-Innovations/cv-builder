@@ -2380,6 +2380,44 @@ def test_editing_and_rewrite_fetch_routes_enforce_ownership(build_app):
             "Python": "Data Science"
         }
 
+        rename_categories = client.post(
+            "/api/review-skill-categories",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "action": "rename",
+                "old_category": "Data Science",
+                "new_category": "Applied AI",
+            },
+        )
+        assert rename_categories.status_code == 200
+        assert manager.state["skill_category_overrides"] == {
+            "Python": "Applied AI"
+        }
+
+        reorder_categories = client.post(
+            "/api/review-skill-categories",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "action": "reorder",
+                "ordered_categories": [
+                    "Applied AI",
+                    "Programming",
+                    "Applied AI",
+                ],
+            },
+        )
+        assert reorder_categories.status_code == 200
+        assert manager.state["skill_category_order"] == [
+            "Applied AI",
+            "Programming",
+        ]
+        assert manager.state["customizations"]["skill_category_order"] == [
+            "Applied AI",
+            "Programming",
+        ]
+
         missing_text = client.post(
             "/api/rewrite-achievement",
             json={"session_id": session_id, "owner_token": "owner-a"},

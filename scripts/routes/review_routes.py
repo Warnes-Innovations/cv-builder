@@ -377,6 +377,103 @@ def create_blueprint(deps):
         session_registry.touch(sid)
         return jsonify({'ok': True, 'action': 'updated', 'skill': skill_name, 'category': category_name})
 
+    @bp.post('/api/review-skill-categories')
+    def save_review_skill_categories():
+        """Persist review-time skill category rename/order changes in session state only."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+        action = str(data.get('action') or '').strip().lower()
+
+        if action not in {'rename', 'reorder'}:
+            return jsonify({'error': "action must be 'rename' or 'reorder'"}), 400
+
+        with entry.lock:
+            customizations = dict(conversation.state.get('customizations') or {})
+
+            if action == 'rename':
+                old_category = str(data.get('old_category') or '').strip()
+                new_category = str(data.get('new_category') or '').strip()
+                if not old_category:
+                    return jsonify({'error': 'old_category is required'}), 400
+                if not new_category:
+                    return jsonify({'error': 'new_category is required'}), 400
+
+                summary_view = SessionDataView(
+                    conversation.orchestrator.master_data,
+                    conversation.state,
+                    customizations,
+                )
+                matching_skills = [
+                    str(skill.get('name') or '').strip()
+                    for skill in summary_view.normalized_skills()
+                    if isinstance(skill, dict)
+                    and str(skill.get('category') or 'General').strip() == old_category
+                ]
+                if not matching_skills:
+                    return jsonify({'error': 'old_category not found'}), 404
+
+                overrides = dict(conversation.state.get('skill_category_overrides') or {})
+                for skill_name in matching_skills:
+                    overrides[skill_name] = new_category
+
+                existing_order = [
+                    str(category).strip()
+                    for category in (conversation.state.get('skill_category_order') or [])
+                    if str(category).strip()
+                ]
+                if existing_order:
+                    remapped_order = []
+                    for category in existing_order:
+                        category = new_category if category == old_category else category
+                        if category not in remapped_order:
+                            remapped_order.append(category)
+                    conversation.state['skill_category_order'] = remapped_order
+                    customizations['skill_category_order'] = remapped_order
+
+                conversation.state['skill_category_overrides'] = overrides
+                customizations['skill_category_overrides'] = overrides
+                conversation.state['customizations'] = customizations
+                conversation._save_session()
+                session_registry.touch(sid)
+                return jsonify({
+                    'ok': True,
+                    'action': 'rename',
+                    'old_category': old_category,
+                    'new_category': new_category,
+                    'updated_skills': matching_skills,
+                })
+
+            ordered_categories = data.get('ordered_categories')
+            if not isinstance(ordered_categories, list):
+                return jsonify({'error': 'ordered_categories must be a list'}), 400
+
+            cleaned_order = []
+            seen = set()
+            for category in ordered_categories:
+                if not isinstance(category, str):
+                    continue
+                label = category.strip()
+                if not label or label in seen:
+                    continue
+                cleaned_order.append(label)
+                seen.add(label)
+
+            if cleaned_order:
+                conversation.state['skill_category_order'] = cleaned_order
+                customizations['skill_category_order'] = cleaned_order
+            else:
+                conversation.state.pop('skill_category_order', None)
+                customizations.pop('skill_category_order', None)
+
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'action': 'reorder', 'ordered_categories': cleaned_order})
+
     @bp.route('/api/rewrite-achievement', methods=['POST'])
     def rewrite_achievement():
         """Ask the LLM to rewrite a single achievement bullet."""

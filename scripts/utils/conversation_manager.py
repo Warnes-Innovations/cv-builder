@@ -84,6 +84,8 @@ class ConversationManager:
             'achievement_overrides':   {},   # Dict — top-level achievement field edits for this session only
             'removed_achievement_ids': [],   # List[str] — top-level achievements hidden for this session only
             'skill_group_overrides':   {},   # Dict — per-skill group overrides for this session only
+            'skill_category_overrides': {},  # Dict — per-skill category overrides for this session only
+            'skill_category_order':   [],    # List[str] — category display order overrides for this session only
             'achievement_rewrite_log': [],   # List[Dict] — AI rewrite interactions per achievement
             'generation_state':        {},   # Dict — GAP-20 staged generation phase/artifact state
             'intake':                  {},   # Dict — GAP-23 intake confirmation: company/role/date
