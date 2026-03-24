@@ -192,6 +192,15 @@ def create_blueprint(deps):
                 conversation.state['publication_decisions'] = decisions
                 message = f"Saved decisions for {len(decisions)} publications"
             elif decision_type == 'summary_focus':
+                # duckflow: {
+                #   "id": "summary_api_review_decision_live",
+                #   "kind": "api",
+                #   "status": "live",
+                #   "handles": ["POST /api/review-decisions"],
+                #   "reads": ["request:POST /api/review-decisions.summary_focus"],
+                #   "writes": ["state:summary_focus_override"],
+                #   "notes": "Live review-decisions route persists the selected summary key in session state."
+                # }
                 conversation.state['summary_focus_override'] = decisions
                 message = "Saved summary focus preference"
             else:
