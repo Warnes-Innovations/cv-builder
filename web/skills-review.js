@@ -73,6 +73,152 @@ async function saveSkillGroupOverride(skillName, groupName) {
   return response;
 }
 
+async function saveSkillCategoryOverride(skillName, categoryName) {
+  const normalizedCategory = categoryName == null ? null : String(categoryName).trim() || null;
+  const sk = (window._skillsOrdered || []).find(s => (typeof s === 'string' ? s : s.name || s) === skillName);
+  if (sk && typeof sk === 'object') {
+    if (normalizedCategory) sk.category = normalizedCategory;
+    else delete sk.category;
+  }
+
+  const response = await fetch('/api/review-skill-category', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ skill: skillName, category: normalizedCategory }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to save skill category');
+  }
+
+  return response;
+}
+
+async function renameSkillCategory(oldCategory, newCategory) {
+  const normalizedOld = String(oldCategory || '').trim();
+  const normalizedNew = String(newCategory || '').trim();
+
+  const response = await fetch('/api/review-skill-categories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'rename',
+      old_category: normalizedOld,
+      new_category: normalizedNew,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to rename skill category');
+  }
+
+  return response;
+}
+
+async function saveSkillCategoryOrder(orderedCategories) {
+  const normalizedOrder = Array.from(new Set(
+    (orderedCategories || [])
+      .map(category => String(category || '').trim())
+      .filter(Boolean),
+  ));
+
+  const response = await fetch('/api/review-skill-categories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'reorder',
+      ordered_categories: normalizedOrder,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to save skill category order');
+  }
+
+  return response;
+}
+
+function _effectiveSkillCategory(skill) {
+  if (!skill || typeof skill === 'string') return '';
+  return String(skill.category || '').trim() || 'General';
+}
+
+function _syncSkillCategoryOrder() {
+  const skills = Array.isArray(window._skillsOrdered) ? window._skillsOrdered : [];
+  const ordered = [];
+  for (const skill of skills) {
+    const category = _effectiveSkillCategory(skill);
+    if (category && !ordered.includes(category)) ordered.push(category);
+  }
+  window._skillCategoryOrder = ordered;
+  return ordered;
+}
+
+function _renameSkillCategoryLocally(oldCategory, newCategory) {
+  const normalizedOld = String(oldCategory || '').trim();
+  const normalizedNew = String(newCategory || '').trim();
+  if (!normalizedOld || !normalizedNew) return;
+
+  for (const skill of (window._skillsOrdered || [])) {
+    if (!skill || typeof skill !== 'object') continue;
+    if (_effectiveSkillCategory(skill) === normalizedOld) {
+      skill.category = normalizedNew;
+    }
+  }
+
+  const currentOrder = Array.isArray(window._skillCategoryOrder)
+    ? window._skillCategoryOrder
+    : _syncSkillCategoryOrder();
+  window._skillCategoryOrder = currentOrder.map(category => (
+    category === normalizedOld ? normalizedNew : category
+  )).filter((category, index, arr) => category && arr.indexOf(category) === index);
+}
+
+function _moveSkillCategoryLocally(categoryName, direction) {
+  const normalizedCategory = String(categoryName || '').trim();
+  const order = Array.isArray(window._skillCategoryOrder)
+    ? [...window._skillCategoryOrder]
+    : _syncSkillCategoryOrder();
+  const index = order.indexOf(normalizedCategory);
+  if (index < 0) return null;
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= order.length) return null;
+  [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+  window._skillCategoryOrder = order;
+  return order;
+}
+
+function _buildSkillCategoryManagerHtml() {
+  const categories = Array.isArray(window._skillCategoryOrder)
+    ? window._skillCategoryOrder
+    : _syncSkillCategoryOrder();
+  if (categories.length === 0) return '';
+
+  return `
+    <div class="skill-category-manager" style="margin:0 0 12px;padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc;">
+      <div style="font-weight:600;margin-bottom:8px;">Category Layout</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${categories.map((category, index) => `
+          <div class="skill-category-manager-row" data-category="${escapeHtml(category)}" style="display:flex;gap:8px;align-items:center;">
+            <input
+              type="text"
+              class="skill-category-manager-input"
+              value="${escapeHtml(category)}"
+              aria-label="Rename skill category ${escapeHtml(category)}"
+              style="flex:1;min-width:0;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;"
+            />
+            <button class="icon-btn" data-action="category-up" data-category="${escapeHtml(category)}" title="Move category up" ${index === 0 ? 'disabled' : ''}>↑</button>
+            <button class="icon-btn" data-action="category-down" data-category="${escapeHtml(category)}" title="Move category down" ${index === categories.length - 1 ? 'disabled' : ''}>↓</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
 // ── Build review table (fetch + initialise) ────────────────────────────────
 
 async function buildSkillsReviewTable() {
@@ -170,11 +316,23 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   }
 
   const skills = window._skillsOrdered || [];
+  const categorySuggestions = Array.from(new Set(
+    skills
+      .map(skill => (typeof skill === 'object' && skill.category ? String(skill.category).trim() : ''))
+      .filter(Boolean),
+  )).sort((left, right) => left.localeCompare(right));
+  _syncSkillCategoryOrder();
+  const categoryListId = 'skill-category-suggestions';
   let tableHTML = `
+    ${_buildSkillCategoryManagerHtml()}
+    <datalist id="${categoryListId}">
+      ${categorySuggestions.map(category => `<option value="${escapeHtml(category)}"></option>`).join('')}
+    </datalist>
     <table id="skills-review-table" class="review-table">
       <thead>
         <tr>
           <th>Skill</th>
+          <th>Category</th>
           <th>Group</th>
           <th>Recommendation</th>
           <th>Confidence</th>
@@ -221,6 +379,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     const skillNameEsc   = escapeHtml(skillName);
 
     const groupKey = typeof skill === 'object' ? (skill.group || '') : '';
+    const categoryKey = typeof skill === 'object' ? (skill.category || '') : '';
 
     const newBadge = isNew
       ? '<span title="AI suggested — not yet in CV profile" style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>'
@@ -248,6 +407,14 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     tableHTML += `
       <tr data-skill="${skillNameEsc}" style="${rowStyle}">
         <td><strong>${skillNameEsc}</strong>${skillTypeBadge}${newBadge}</td>
+        <td style="min-width:140px;">
+          <input type="text" class="skill-category-input" data-skill="${skillNameEsc}"
+            value="${escapeHtml(categoryKey)}"
+            list="${categoryListId}"
+            placeholder="e.g. Programming"
+            title="Session-only category label used when grouping skills in the generated CV"
+            style="width:100%;font-size:0.8em;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;"/>
+        </td>
         <td style="min-width:100px;">
           <input type="text" class="skill-group-input" data-skill="${skillNameEsc}"
             value="${escapeHtml(groupKey)}"
@@ -285,7 +452,38 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   container.innerHTML = tableHTML;
 
   // Save group key for this session when user finishes editing
+  container.querySelector('.skill-category-manager')?.addEventListener('change', e => {
+    const categoryManagerInput = e.target.closest('.skill-category-manager-input');
+    if (categoryManagerInput) {
+      const managerRow = categoryManagerInput.closest('.skill-category-manager-row');
+      const oldCategory = managerRow?.dataset.category || '';
+      const newCategory = categoryManagerInput.value.trim();
+      if (!oldCategory || !newCategory || oldCategory === newCategory) {
+        if (managerRow) categoryManagerInput.value = oldCategory;
+        return;
+      }
+      _renameSkillCategoryLocally(oldCategory, newCategory);
+      renameSkillCategory(oldCategory, newCategory)
+        .then(() => _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet))
+        .catch(() => {
+          _renameSkillCategoryLocally(newCategory, oldCategory);
+          if (managerRow) categoryManagerInput.value = oldCategory;
+          showToast('Failed to rename skill category.', 'error');
+        });
+    }
+  });
+
   container.querySelector('#skills-review-table tbody')?.addEventListener('change', e => {
+    const categoryInput = e.target.closest('.skill-category-input');
+    if (categoryInput) {
+      const skillName = categoryInput.dataset.skill;
+      const newCategory = categoryInput.value.trim();
+      saveSkillCategoryOverride(skillName, newCategory).catch(() => {
+        showToast('Failed to save skill category.', 'error');
+      });
+      return;
+    }
+
     const input = e.target.closest('.skill-group-input');
     if (!input) return;
     const skillName = input.dataset.skill;
@@ -323,6 +521,21 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     } else if (action) {
       handleActionClick(skillName, action, 'skill');
     }
+  });
+
+  container.querySelector('.skill-category-manager')?.addEventListener('click', e => {
+    const btn = e.target.closest('.icon-btn[data-action^="category-"]');
+    if (!btn) return;
+    const categoryName = btn.dataset.category || '';
+    const direction = btn.dataset.action === 'category-up' ? -1 : 1;
+    const updatedOrder = _moveSkillCategoryLocally(categoryName, direction);
+    if (!updatedOrder) return;
+    saveSkillCategoryOrder(updatedOrder)
+      .then(() => _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet))
+      .catch(() => {
+        _moveSkillCategoryLocally(categoryName, -direction);
+        showToast('Failed to save skill category order.', 'error');
+      });
   });
 
   const skillToolbar = document.createElement('div');
@@ -451,6 +664,9 @@ export {
   _parseYearFromStr,
   _computeYearsFromIds,
   saveSkillGroupOverride,
+  saveSkillCategoryOverride,
+  renameSkillCategory,
+  saveSkillCategoryOrder,
   buildSkillsReviewTable,
   _renderSkillsTable,
   moveSkillRow,

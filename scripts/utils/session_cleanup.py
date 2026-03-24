@@ -47,6 +47,8 @@ _MEANINGFUL_STATE_KEYS = (
     "achievement_overrides",
     "removed_achievement_ids",
     "skill_group_overrides",
+    "skill_category_overrides",
+    "skill_category_order",
     "achievement_rewrite_log",
     "generation_state",
     "intake",
