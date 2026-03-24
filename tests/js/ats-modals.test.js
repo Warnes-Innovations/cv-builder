@@ -48,7 +48,6 @@ beforeEach(() => {
   stateManager.setTabData('analysis', null)
 
   vi.stubGlobal('escapeHtml', value => String(value ?? ''))
-  vi.stubGlobal('updateAtsBadge', vi.fn())
   vi.stubGlobal('refreshAtsScore', vi.fn(async () => {}))
   globalThis.fetch = vi.fn()
   stateManager.setSessionId('session-123')
@@ -66,7 +65,9 @@ describe('openAtsReportModal', () => {
       hard_requirement_score: 90,
       soft_requirement_score: 70,
       basis: 'review_checkpoint',
-      keyword_status: [{ keyword: 'python', found: true }],
+      keyword_status: [
+        { keyword: 'python', type: 'hard', status: 'matched', match_type: 'exact' },
+      ],
     })
 
     await openAtsReportModal()
@@ -87,8 +88,8 @@ describe('openAtsReportModal', () => {
           soft_requirement_score: 61,
           basis: 'review_checkpoint',
           keyword_status: [
-            { keyword: 'python', found: true, rank: 1 },
-            { keyword: 'aws', found: false },
+            { keyword: 'python', type: 'hard', status: 'matched', match_type: 'exact' },
+            { keyword: 'aws', type: 'hard', status: 'missing' },
           ],
           section_scores: { summary: 88, skills: 70 },
         },
@@ -106,10 +107,8 @@ describe('openAtsReportModal', () => {
       }),
     })
     expect(stateManager.getAtsScore()).toEqual(expect.objectContaining({ overall: 76 }))
-    expect(updateAtsBadge).toHaveBeenCalledWith(
-      expect.objectContaining({ overall: 76 }),
-    )
-    expect(document.getElementById('ats-report-modal-body').textContent).toContain('Missing keywords (1)')
+    expect(document.getElementById('ats-report-modal-body').textContent).toContain('Hard Requirements')
+    expect(document.getElementById('ats-report-modal-body').textContent).toContain('aws')
     expect(document.getElementById('ats-report-modal-body').textContent).toContain('summary')
   })
 
@@ -134,8 +133,8 @@ describe('_renderAtsReport', () => {
       soft_requirement_score: 51,
       basis: 'post_generation',
       keyword_status: [
-        { term: 'python', found: true, rank: 1 },
-        { term: 'kubernetes', found: false },
+        { keyword: 'python', type: 'hard', status: 'matched', match_type: 'exact' },
+        { keyword: 'kubernetes', type: 'soft', status: 'missing' },
       ],
       section_scores: { summary: 60, experience: 42 },
     })
@@ -143,7 +142,8 @@ describe('_renderAtsReport', () => {
     expect(html).toContain('49%')
     expect(html).toContain('Basis: post_generation')
     expect(html).toContain('python')
-    expect(html).toContain('Missing keywords (1)')
+    expect(html).toContain('Preferred Skills')
+    expect(html).toContain('kubernetes')
     expect(html).toContain('experience')
   })
 })

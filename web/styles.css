@@ -61,19 +61,40 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .auth-status-msg { font-size: 13px; color: #64748b; text-align: center; margin-top: 12px; min-height: 20px; }
 
 /* ===== POSITION BAR ===== */
-.position-bar-row { background: #fff; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; }
+.position-bar-row { background: #fff; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .position-bar { padding: 16px 24px; display: flex; align-items: center; flex: 1 1 auto; }
 .position-title { font-size: 24px; font-weight: 700; color: #1e293b; }
 
+.position-bar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 8px 16px 8px 0; flex-wrap: wrap; }
+
+.ats-score-header { display: flex; align-items: center; gap: 10px; }
+
 /* ATS score badge (GAP-21) — right side of position-bar-row */
-.ats-score-badge { display: flex; align-items: center; gap: 4px; padding: 6px 16px 6px 12px; background: #f8fafc; border-left: 1px solid #e2e8f0; white-space: nowrap; flex-shrink: 0; }
+.ats-score-badge { display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
 .ats-score-value { font-size: 18px; font-weight: 700; color: #1e293b; min-width: 2.5ch; text-align: right; }
 .ats-score-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.ats-score-summary { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ats-score-summary-line { font-size: 12px; font-weight: 600; color: #334155; white-space: nowrap; }
+.ats-score-summary-detail { font-size: 11px; color: #64748b; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Colour thresholds applied via JS */
 .ats-score-badge.score-high .ats-score-value { color: #16a34a; }
 .ats-score-badge.score-medium .ats-score-value { color: #d97706; }
 .ats-score-badge.score-low .ats-score-value { color: #dc2626; }
-@media (max-width: 600px) { .ats-score-badge { display: none; } }
+@media (max-width: 900px) {
+  .position-bar-row { align-items: flex-start; }
+  .position-bar-actions { padding-top: 12px; }
+  .ats-score-header { flex-direction: column; align-items: flex-end; }
+  .ats-score-summary { align-items: flex-end; }
+  .ats-score-summary-detail { max-width: 240px; text-align: right; }
+}
+@media (max-width: 600px) {
+  .position-bar-row { flex-direction: column; align-items: stretch; }
+  .position-bar { width: 100%; padding-bottom: 8px; }
+  .position-bar-actions { width: 100%; padding: 0 24px 12px; justify-content: space-between; }
+  .ats-score-header { align-items: flex-start; }
+  .ats-score-summary { align-items: flex-start; }
+  .ats-score-summary-detail { max-width: 100%; text-align: left; }
+}
 .step.clickable { cursor: pointer; }
 .step.clickable:hover { filter: brightness(0.93); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
 .load-item-row:hover td { background: #f0f9ff !important; }

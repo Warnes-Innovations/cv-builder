@@ -82,15 +82,30 @@ class TestFrontendBundleHelpers(unittest.TestCase):
 
             self.assertFalse(_frontend_bundle_is_outdated(root))
 
-    def test_top_level_web_module_newer_than_bundle_marks_outdated(self):
+    def test_imported_module_newer_than_bundle_marks_outdated(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             _touch(root / 'scripts' / 'build.mjs', 100)
+            _write_text(
+                root / 'web' / 'src' / 'main.js',
+                "import '../session-manager.js';\n",
+            )
             _touch(root / 'web' / 'src' / 'main.js', 100)
             _touch(root / 'web' / 'bundle.js', 150)
             _touch(root / 'web' / 'session-manager.js', 200)
 
             self.assertTrue(_frontend_bundle_is_outdated(root))
+
+    def test_non_bundled_web_module_newer_than_bundle_does_not_mark_outdated(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _touch(root / 'scripts' / 'build.mjs', 100)
+            _write_text(root / 'web' / 'src' / 'main.js', "console.log('main')\n")
+            _touch(root / 'web' / 'src' / 'main.js', 100)
+            _touch(root / 'web' / 'bundle.js', 150)
+            _touch(root / 'web' / 'app.js', 200)
+
+            self.assertFalse(_frontend_bundle_is_outdated(root))
 
     def test_ensure_bundle_current_rebuilds_only_when_stale(self):
         with tempfile.TemporaryDirectory() as td:

@@ -184,20 +184,87 @@ def _frontend_project_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+_FRONTEND_IMPORT_RE = re.compile(
+    r'["\'](?P<spec>[^"\']+)["\']',
+)
+
+
+def _iter_frontend_import_specs(source: str) -> List[str]:
+    """Extract relative import specs from single-line import/export statements."""
+    specs: List[str] = []
+    for line in source.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith(('import ', 'export ')):
+            continue
+        if stripped.startswith('export ') and ' from ' not in stripped:
+            continue
+
+        match = _FRONTEND_IMPORT_RE.search(stripped)
+        if match:
+            specs.append(match.group('spec'))
+
+    return specs
+
+
+def _resolve_frontend_bundle_import(importer: Path, spec: str) -> Optional[Path]:
+    """Resolve a relative JS import used by the bundle entrypoint graph."""
+    if not spec.startswith('.'):
+        return None
+
+    candidate = (importer.parent / spec).resolve()
+    if candidate.is_file():
+        return candidate
+
+    if candidate.suffix:
+        return None
+
+    for resolved in (candidate.with_suffix('.js'), candidate / 'index.js'):
+        if resolved.is_file():
+            return resolved
+
+    return None
+
+
 def _frontend_bundle_inputs(project_root: Path) -> List[Path]:
     """Return source files whose mtimes determine whether the bundle is stale."""
-    web_dir = project_root / 'web'
-    inputs = [project_root / 'scripts' / 'build.mjs']
+    resolved_project_root = project_root.resolve()
+    build_script = project_root / 'scripts' / 'build.mjs'
+    entrypoint = project_root / 'web' / 'src' / 'main.js'
+    inputs: List[Path] = []
 
-    if web_dir.exists():
-        for path in web_dir.rglob('*.js'):
-            if path.name == 'bundle.js':
-                continue
-            if 'tests' in path.parts:
-                continue
-            inputs.append(path)
+    if build_script.exists():
+        inputs.append(build_script)
 
-    return [path for path in inputs if path.exists()]
+    if not entrypoint.exists():
+        return inputs
+
+    pending = [entrypoint]
+    visited: set[Path] = set()
+
+    while pending:
+        path = pending.pop()
+        if path in visited or not path.exists():
+            continue
+
+        visited.add(path)
+        inputs.append(path)
+
+        try:
+            source = path.read_text(encoding='utf-8')
+        except OSError:
+            continue
+
+        for spec in _iter_frontend_import_specs(source):
+            resolved = _resolve_frontend_bundle_import(path, spec)
+            if not resolved:
+                continue
+            try:
+                resolved.relative_to(resolved_project_root)
+            except ValueError:
+                continue
+            pending.append(resolved)
+
+    return inputs
 
 
 def _frontend_bundle_is_outdated(project_root: Optional[Path] = None) -> bool:
@@ -5898,6 +5965,9 @@ Close professionally with a call to action.
                 metadata['spell_audit']           = conversation.state.get('spell_audit') or []
                 metadata['layout_instructions']   = conversation.state.get('layout_instructions') or []
                 metadata['validation_results']    = conversation.state.get('validation_results') or {}
+                ats_score = ((conversation.state.get('generation_state') or {}).get('ats_score'))
+                if ats_score is not None:
+                    metadata['ats_score'] = ats_score
 
                 # Upsert screening responses into response_library.json (if any)
                 screening = metadata.get('screening_responses') or []
@@ -5961,6 +6031,7 @@ Close professionally with a call to action.
                     'files':          generated.get('files', []),
                     'output_dir':     str(output_dir),
                     'ats_keywords':   ats_keywords,
+                    'ats_score':      ats_score,
                     'approved_rewrites': approved_count,
                     'application_status': app_status,
                 }

@@ -311,273 +311,334 @@ describe('_claimCurrentSession', () => {
     await expect(_claimCurrentSession('sess-4')).resolves.toBe(false)
     expect(openSessionsModal).toHaveBeenCalled()
 
-          await expect(_claimCurrentSession('sess-4')).resolves.toBe(false)
-          expect(openSessionsModal).toHaveBeenCalled()
-          expect(document.getElementById('document-content').textContent).toContain(
-            'That session is no longer active.',
-          )
-        })
+    expect(document.getElementById('document-content').textContent).toContain(
+      'That session is no longer active.',
+    )
+  })
 
-        it('throws a generic error for non-conflict failures', async () => {
-          fetch.mockResolvedValue({
-            ok: false,
-            status: 500,
-            json: async () => ({ error: 'boom' }),
-          })
+  it('throws a generic error for non-conflict failures', async () => {
+    fetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'boom' }),
+    })
 
-          await expect(_claimCurrentSession('sess-5')).rejects.toThrow('boom')
-        })
-      })
+    await expect(_claimCurrentSession('sess-5')).rejects.toThrow('boom')
+  })
+})
 
-      describe('showSessionsLandingPanel and ensureSessionContext', () => {
-        beforeEach(() => {
-          const storage = makeStorageMock()
-          document.body.innerHTML = '<div id="document-content"></div>'
-          vi.stubGlobal('escapeHtml', s => String(s ?? ''))
-          vi.stubGlobal('updateActionButtons', vi.fn())
-          vi.stubGlobal('updatePositionTitle', vi.fn())
-          vi.stubGlobal('openSessionsModal', vi.fn())
-          vi.stubGlobal('getSessionIdFromURL', vi.fn(() => null))
-          vi.stubGlobal('StorageKeys', { SESSION_ID: 'session-id-key' })
-          vi.stubGlobal('localStorage', storage)
-          stateManager.setCurrentTab('analysis')
-          stateManager.setCurrentStage('analysis')
-        })
+describe('showSessionsLandingPanel and ensureSessionContext', () => {
+  beforeEach(() => {
+    const storage = makeStorageMock()
+    document.body.innerHTML = '<div id="document-content"></div>'
+    vi.stubGlobal('escapeHtml', s => String(s ?? ''))
+    vi.stubGlobal('updateActionButtons', vi.fn())
+    vi.stubGlobal('updatePositionTitle', vi.fn())
+    vi.stubGlobal('openSessionsModal', vi.fn())
+    vi.stubGlobal('getSessionIdFromURL', vi.fn(() => null))
+    vi.stubGlobal('StorageKeys', { SESSION_ID: 'session-id-key' })
+    vi.stubGlobal('localStorage', storage)
+    stateManager.setCurrentTab('analysis')
+    stateManager.setCurrentStage('analysis')
+  })
 
-        afterEach(() => {
-          vi.unstubAllGlobals()
-          document.body.innerHTML = ''
-          delete globalThis.sessionId
-        })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    document.body.innerHTML = ''
+    delete globalThis.sessionId
+  })
 
-        it('renders the landing panel and resets the current tab to job', () => {
-          showSessionsLandingPanel('Pick a session first')
+  it('renders the landing panel and resets the current tab to job', () => {
+    showSessionsLandingPanel('Pick a session first')
 
-          expect(stateManager.getCurrentTab()).toBe('job')
-          expect(stateManager.getCurrentStage()).toBe('job')
-          expect(document.getElementById('document-content').textContent).toContain(
-            'Select a Session',
-          )
-          expect(document.getElementById('document-content').textContent).toContain(
-            'Pick a session first',
-          )
-        })
+    expect(stateManager.getCurrentTab()).toBe('job')
+    expect(stateManager.getCurrentStage()).toBe('job')
+    expect(document.getElementById('document-content').textContent).toContain(
+      'Select a Session',
+    )
+    expect(document.getElementById('document-content').textContent).toContain(
+      'Pick a session first',
+    )
+  })
 
-        it('shows the landing panel and returns false when no session is in the URL', async () => {
-          await expect(ensureSessionContext()).resolves.toBe(false)
-          expect(openSessionsModal).toHaveBeenCalled()
-          expect(document.getElementById('document-content').textContent).toContain(
-            'Select a Session',
-          )
-        })
-      })
+  it('shows the landing panel and returns false when no session is in the URL', async () => {
+    await expect(ensureSessionContext()).resolves.toBe(false)
+    expect(openSessionsModal).toHaveBeenCalled()
+    expect(document.getElementById('document-content').textContent).toContain(
+      'Select a Session',
+    )
+  })
+})
 
-      // ── saveTabData / restoreTabData ─────────────────────────────────────────
+// ── saveTabData / restoreTabData ─────────────────────────────────────────
 
-      describe('saveTabData and restoreTabData', () => {
-        beforeEach(() => {
-          const storage = makeStorageMock()
-          vi.stubGlobal('getScopedTabDataStorageKey', vi.fn(() => 'scoped-tab-data'))
-          vi.stubGlobal('localStorage', storage)
-          stateManager.setSessionId('sess-1')
-          stateManager.setTabData('analysis', { score: 42 })
-          stateManager.setTabData('customizations', null)
-          stateManager.setTabData('cv', null)
-          stateManager.setCurrentTab('analysis')
-          stateManager.setInteractiveState({ expanded: true })
-          globalThis.window.pendingRecommendations = { skills: ['Python'] }
-          globalThis.window._activeReviewPane = 'skills'
-        })
+describe('saveTabData and restoreTabData', () => {
+  beforeEach(() => {
+    const storage = makeStorageMock()
+    vi.stubGlobal('getScopedTabDataStorageKey', vi.fn(() => 'scoped-tab-data'))
+    vi.stubGlobal('localStorage', storage)
+    stateManager.setSessionId('sess-1')
+    stateManager.setTabData('analysis', { score: 42 })
+    stateManager.setTabData('customizations', null)
+    stateManager.setTabData('cv', null)
+    stateManager.setCurrentTab('analysis')
+    stateManager.setInteractiveState({ expanded: true })
+    globalThis.window.pendingRecommendations = { skills: ['Python'] }
+    globalThis.window._activeReviewPane = 'skills'
+  })
 
-        afterEach(() => {
-          vi.unstubAllGlobals()
-          delete globalThis.window.pendingRecommendations
-          delete globalThis.window._activeReviewPane
-        })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    delete globalThis.window.pendingRecommendations
+    delete globalThis.window._activeReviewPane
+  })
 
-        it('saves scoped tab data to localStorage', () => {
-          saveTabData()
+  it('saves scoped tab data to localStorage', () => {
+    saveTabData()
 
-          const saved = JSON.parse(localStorage.getItem('scoped-tab-data'))
-          expect(saved.tabData).toEqual({
-            analysis: { score: 42 },
-            customizations: null,
-            cv: null,
-          })
-          expect(saved.currentTab).toBe('analysis')
-          expect(saved.pendingRecommendations).toEqual({ skills: ['Python'] })
+    const saved = JSON.parse(localStorage.getItem('scoped-tab-data'))
+    expect(saved.tabData).toEqual({
+      analysis: { score: 42 },
+      customizations: null,
+      cv: null,
+    })
+    expect(saved.currentTab).toBe('analysis')
+    expect(saved.pendingRecommendations).toEqual({ skills: ['Python'] })
     expect(saved.interactiveState).toMatchObject({ expanded: true })
-          expect(saved.activeReviewPane).toBe('skills')
-        })
+    expect(saved.activeReviewPane).toBe('skills')
+  })
 
-        it('restores recent tab data and merges it into globals', () => {
-          localStorage.setItem(
-            'scoped-tab-data',
-            JSON.stringify({
-              tabData: { cv: { files: ['cv.pdf'] } },
-              pendingRecommendations: { achievements: ['A'] },
-              interactiveState: { expanded: false, selected: 'x' },
-              activeReviewPane: 'achievements',
-              timestamp: Date.now(),
-            }),
-          )
+  it('restores recent tab data and merges it into globals', () => {
+    localStorage.setItem(
+      'scoped-tab-data',
+      JSON.stringify({
+        tabData: { cv: { files: ['cv.pdf'] } },
+        pendingRecommendations: { achievements: ['A'] },
+        interactiveState: { expanded: false, selected: 'x' },
+        activeReviewPane: 'achievements',
+        timestamp: Date.now(),
+      }),
+    )
 
-          restoreTabData()
+    restoreTabData()
 
-          expect(stateManager.getTabData('analysis')).toEqual({ score: 42 })
-          expect(stateManager.getTabData('cv')).toEqual({ files: ['cv.pdf'] })
-          expect(globalThis.window.pendingRecommendations).toEqual({
-            achievements: ['A'],
-          })
-          expect(stateManager.getInteractiveState()).toMatchObject({
-            expanded: false,
-            selected: 'x',
-          })
-          expect(globalThis.window._activeReviewPane).toBe('achievements')
-        })
-
-        it('restores only UI preferences when uiPrefsOnly is true', () => {
-          localStorage.setItem(
-            'scoped-tab-data',
-            JSON.stringify({
-              tabData: { cv: { files: ['cv.pdf'] } },
-              pendingRecommendations: { achievements: ['A'] },
-              interactiveState: { expanded: false },
-              activeReviewPane: 'achievements',
-              timestamp: Date.now(),
-            }),
-          )
-
-          restoreTabData({ uiPrefsOnly: true })
-
-          expect(stateManager.getTabData('analysis')).toEqual({ score: 42 })
-          expect(globalThis.tabData).toEqual({
-            analysis: { score: 42 },
-            customizations: null,
-            cv: null,
-          })
-          expect(globalThis.window.pendingRecommendations).toEqual({
-            skills: ['Python'],
-          })
-          expect(globalThis.interactiveState).toMatchObject({ expanded: true })
-          expect(globalThis.window._activeReviewPane).toBe('achievements')
-        })
-
-        it('drops stale saved tab data older than 24 hours', () => {
-          localStorage.setItem(
-            'scoped-tab-data',
-            JSON.stringify({
-              tabData: { cv: { files: ['old.pdf'] } },
-              timestamp: Date.now() - 25 * 60 * 60 * 1000,
-            }),
-          )
-
-          restoreTabData()
-
-          expect(localStorage.getItem('scoped-tab-data')).toBeNull()
     expect(stateManager.getTabData('analysis')).toEqual({ score: 42 })
-        })
+    expect(stateManager.getTabData('cv')).toEqual({ files: ['cv.pdf'] })
+    expect(globalThis.window.pendingRecommendations).toEqual({
+      achievements: ['A'],
+    })
+    expect(stateManager.getInteractiveState()).toMatchObject({
+      expanded: false,
+      selected: 'x',
+    })
+    expect(globalThis.window._activeReviewPane).toBe('achievements')
+  })
+
+  it('restores only UI preferences when uiPrefsOnly is true', () => {
+    localStorage.setItem(
+      'scoped-tab-data',
+      JSON.stringify({
+        tabData: { cv: { files: ['cv.pdf'] } },
+        pendingRecommendations: { achievements: ['A'] },
+        interactiveState: { expanded: false },
+        activeReviewPane: 'achievements',
+        timestamp: Date.now(),
+      }),
+    )
+
+    restoreTabData({ uiPrefsOnly: true })
+
+    expect(stateManager.getTabData('analysis')).toEqual({ score: 42 })
+    expect(globalThis.tabData).toEqual({
+      analysis: { score: 42 },
+      customizations: null,
+      cv: null,
+    })
+    expect(globalThis.window.pendingRecommendations).toEqual({
+      skills: ['Python'],
+    })
+    expect(globalThis.interactiveState).toMatchObject({ expanded: true })
+    expect(globalThis.window._activeReviewPane).toBe('achievements')
+  })
+
+  it('drops stale saved tab data older than 24 hours', () => {
+    localStorage.setItem(
+      'scoped-tab-data',
+      JSON.stringify({
+        tabData: { cv: { files: ['old.pdf'] } },
+        timestamp: Date.now() - 25 * 60 * 60 * 1000,
+      }),
+    )
+
+    restoreTabData()
+
+    expect(localStorage.getItem('scoped-tab-data')).toBeNull()
+    expect(stateManager.getTabData('analysis')).toEqual({ score: 42 })
+  })
+})
+
+// ── createNewSessionAndNavigate ──────────────────────────────────────────
+
+describe('createNewSessionAndNavigate', () => {
+  beforeEach(() => {
+    vi.stubGlobal('createSession', vi.fn())
+  })
+
+  it('throws when the new session response omits a session id', async () => {
+    createSession.mockResolvedValue({ redirect_url: '/?session=missing' })
+
+    await expect(createNewSessionAndNavigate()).rejects.toThrow('Failed to create session')
+  })
+})
+
+// ── restoreBackendState ───────────────────────────────────────────────────
+
+describe('restoreBackendState', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+    vi.stubGlobal('parseStatusResponse', vi.fn(data => data))
+    vi.stubGlobal('refreshAtsScore', vi.fn())
+    vi.stubGlobal('updateInclusionCounts', vi.fn())
+    vi.stubGlobal('StorageKeys', { SESSION_PATH: 'session_path' })
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    })
+    window.pendingRecommendations = null
+    window._savedDecisions = {}
+    window._allExperiences = []
+    window._newSkillsFromLLM = []
+    window.selectedSummaryKey = null
+    stateManager.setTabData('analysis', null)
+    stateManager.setTabData('customizations', null)
+    stateManager.setTabData('cv', null)
+    stateManager.resetGenerationState()
+    stateManager.clearAtsScore()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('syncs staged generation state and cached ATS score from backend', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_analysis: { job_title: 'Engineer' },
+          customizations: { approved_skills: [] },
+          generated_files: { output_dir: '/tmp/out' },
+          position_name: 'Engineer',
+          achievement_edits: {},
+          experience_decisions: {},
+          skill_decisions: {},
+          achievement_decisions: {},
+          publication_decisions: {},
+          summary_focus_override: null,
+          extra_skills: [],
+          extra_skill_matches: {},
+          all_experiences: [],
+          selected_summary_key: null,
+          new_skills_from_llm: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          phase: 'layout_review',
+          preview_available: true,
+          layout_confirmed: false,
+          page_count_estimate: 2,
+          page_length_warning: true,
+          layout_instructions_count: 3,
+          final_generated_at: null,
+          ats_score: { overall: 88, basis: 'review_checkpoint' },
+        }),
       })
 
-      // ── createNewSessionAndNavigate ──────────────────────────────────────────
+    const restored = await restoreBackendState()
 
-      describe('createNewSessionAndNavigate', () => {
-        beforeEach(() => {
-          vi.stubGlobal('createSession', vi.fn())
-        })
+    expect(restored).toBe(true)
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(1, '/api/status')
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(2, '/api/cv/generation-state')
+    expect(globalThis.refreshAtsScore).toHaveBeenCalledWith('analysis')
+    expect(stateManager.getGenerationState()).toMatchObject({
+      phase: 'layout_review',
+      previewAvailable: true,
+      layoutConfirmed: false,
+      pageCountEstimate: 2,
+      pageWarning: true,
+      layoutInstructionsCount: 3,
+    })
+    expect(stateManager.getAtsScore()).toEqual({ overall: 88, basis: 'review_checkpoint' })
+  })
 
-        it('throws when the new session response omits a session id', async () => {
-          createSession.mockResolvedValue({ redirect_url: '/?session=missing' })
+  it('clears stale staged generation state and ATS score when backend has none', async () => {
+    stateManager.setGenerationState({
+      phase: 'layout_review',
+      previewAvailable: true,
+      layoutConfirmed: true,
+      pageCountEstimate: 3,
+      pageWarning: true,
+      layoutInstructionsCount: 4,
+      finalGeneratedAt: '2026-03-23T10:00:00Z',
+    })
+    stateManager.setAtsScore({ overall: 91, basis: 'stale_cache' })
 
-          await expect(createNewSessionAndNavigate()).rejects.toThrow('Failed to create session')
-        })
+    globalThis.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_analysis: null,
+          customizations: null,
+          generated_files: null,
+          position_name: null,
+          achievement_edits: {},
+          experience_decisions: {},
+          skill_decisions: {},
+          achievement_decisions: {},
+          publication_decisions: {},
+          summary_focus_override: null,
+          extra_skills: [],
+          extra_skill_matches: {},
+          all_experiences: [],
+          selected_summary_key: null,
+          new_skills_from_llm: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          phase: 'idle',
+          preview_available: false,
+          layout_confirmed: false,
+          page_count_estimate: null,
+          page_length_warning: false,
+          layout_instructions_count: 0,
+          final_generated_at: null,
+        }),
       })
 
-      // ── restoreBackendState ───────────────────────────────────────────────────
+    const restored = await restoreBackendState()
 
-      describe('restoreBackendState', () => {
-        beforeEach(() => {
-          vi.stubGlobal('fetch', vi.fn())
-          vi.stubGlobal('parseStatusResponse', vi.fn(data => data))
-          vi.stubGlobal('refreshAtsScore', vi.fn())
-          vi.stubGlobal('updateInclusionCounts', vi.fn())
-          vi.stubGlobal('localStorage', {
-            getItem: vi.fn(() => null),
-            setItem: vi.fn(),
-            removeItem: vi.fn(),
-          })
-          window.pendingRecommendations = null
-          window._savedDecisions = {}
-          window._allExperiences = []
-          window._newSkillsFromLLM = []
-          window.selectedSummaryKey = null
-          stateManager.setTabData('analysis', null)
-          stateManager.setTabData('customizations', null)
-          stateManager.setTabData('cv', null)
-          stateManager.resetGenerationState()
-          stateManager.clearAtsScore()
-        })
+    expect(restored).toBe(false)
+    expect(stateManager.getGenerationState()).toMatchObject({
+      phase: 'idle',
+      previewAvailable: false,
+      layoutConfirmed: false,
+      pageCountEstimate: null,
+      pageWarning: false,
+      layoutInstructionsCount: 0,
+      finalGeneratedAt: null,
+    })
+    expect(stateManager.getAtsScore()).toBeNull()
+  })
+})
 
-        afterEach(() => {
-          vi.unstubAllGlobals()
-        })
-
-        it('syncs staged generation state and cached ATS score from backend', async () => {
-          globalThis.fetch
-            .mockResolvedValueOnce({
-              ok: true,
-              json: async () => ({
-                job_analysis: { job_title: 'Engineer' },
-                customizations: { approved_skills: [] },
-                generated_files: { output_dir: '/tmp/out' },
-                position_name: 'Engineer',
-                achievement_edits: {},
-                experience_decisions: {},
-                skill_decisions: {},
-                achievement_decisions: {},
-                publication_decisions: {},
-                summary_focus_override: null,
-                extra_skills: [],
-                extra_skill_matches: {},
-                all_experiences: [],
-                selected_summary_key: null,
-                new_skills_from_llm: [],
-              }),
-            })
-            .mockResolvedValueOnce({
-              ok: true,
-              json: async () => ({
-                ok: true,
-                phase: 'layout_review',
-                preview_available: true,
-                layout_confirmed: false,
-                page_count_estimate: 2,
-                page_length_warning: true,
-                layout_instructions_count: 3,
-                final_generated_at: null,
-                ats_score: { overall: 88, basis: 'review_checkpoint' },
-              }),
-            })
-
-          const restored = await restoreBackendState()
-
-          expect(restored).toBe(true)
-          expect(globalThis.fetch).toHaveBeenNthCalledWith(1, '/api/status')
-          expect(globalThis.fetch).toHaveBeenNthCalledWith(2, '/api/cv/generation-state')
-          expect(globalThis.refreshAtsScore).toHaveBeenCalledWith('analysis')
-          expect(stateManager.getGenerationState()).toMatchObject({
-            phase: 'layout_review',
-            previewAvailable: true,
-            layoutConfirmed: false,
-            pageCountEstimate: 2,
-            pageWarning: true,
-            layoutInstructionsCount: 3,
-          })
-          expect(stateManager.getAtsScore()).toEqual({ overall: 88, basis: 'review_checkpoint' })
-        })
-      })
-
-      // ── restoreSession / loadSessionFile ─────────────────────────────────────
+// ── restoreSession / loadSessionFile ─────────────────────────────────────
 
       describe('restoreSession', () => {
         beforeEach(() => {
