@@ -329,6 +329,23 @@ function _hydrateStatusDerivedState(statusData) {
     : {};
 }
 
+function _hydrateStatusTabState(statusData) {
+  const hasAnalysis = statusData.job_analysis !== undefined && statusData.job_analysis !== null;
+  const hasCustomizations = statusData.customizations !== undefined && statusData.customizations !== null;
+  const hasGeneratedFiles = statusData.generated_files !== undefined && statusData.generated_files !== null;
+
+  stateManager.setTabData('analysis', hasAnalysis ? statusData.job_analysis : null);
+  stateManager.setTabData('customizations', hasCustomizations ? statusData.customizations : null);
+  stateManager.setTabData('cv', hasGeneratedFiles ? statusData.generated_files : null);
+  window.pendingRecommendations = hasCustomizations ? statusData.customizations : null;
+
+  if (hasAnalysis) {
+    refreshAtsScore('analysis');
+  }
+
+  return hasAnalysis || hasCustomizations || hasGeneratedFiles;
+}
+
 async function restoreBackendState() {
   // Returns true if the server had any live session data.
   try {
@@ -338,25 +355,15 @@ async function restoreBackendState() {
 
     _hydrateStatusDerivedState(statusData);
 
-    let serverHasData = false;
+    let serverHasData = _hydrateStatusTabState(statusData);
 
-    if (statusData.job_analysis) {
-      stateManager.setTabData('analysis', statusData.job_analysis);
-      serverHasData = true;
+    if (statusData.job_analysis !== undefined && statusData.job_analysis !== null) {
       log.info('Restored analysis data from backend memory');
     }
-    if (statusData.customizations) {
-      stateManager.setTabData('customizations', statusData.customizations);
-      window.pendingRecommendations = statusData.customizations;
-      serverHasData = true;
+    if (statusData.customizations !== undefined && statusData.customizations !== null) {
       log.info('Restored customizations data from backend memory');
     }
-    if (statusData.job_analysis) {
-      refreshAtsScore('analysis');
-    }
-    if (statusData.generated_files) {
-      stateManager.setTabData('cv', statusData.generated_files);
-      serverHasData = true;
+    if (statusData.generated_files !== undefined && statusData.generated_files !== null) {
       log.info('Restored CV data from backend memory');
     }
 
@@ -475,12 +482,7 @@ async function loadSessionFile(path) {
         const s2 = await fetch('/api/status');
         const sd = parseStatusResponse(await s2.json());
         _hydrateStatusDerivedState(sd);
-        if (sd.customizations) {
-          stateManager.setTabData('customizations', sd.customizations);
-          window.pendingRecommendations = sd.customizations;
-        }
-        if (sd.job_analysis) stateManager.setTabData('analysis', sd.job_analysis);
-        if (sd.generated_files) stateManager.setTabData('cv', sd.generated_files);
+        _hydrateStatusTabState(sd);
       } catch (_) { /* non-fatal */ }
     }
 
