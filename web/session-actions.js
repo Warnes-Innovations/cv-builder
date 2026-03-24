@@ -6,7 +6,7 @@
 
 /**
  * web/session-actions.js
- * Session-level dispatch (sendAction), save/reset, and position title updates.
+ * Session-level dispatch (sendAction), save, and position title updates.
  *
  * DEPENDENCIES (all on globalThis at runtime):
  *   - isLoading, tabData, userSelections (state globals from state-manager + app)
@@ -27,7 +27,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('session-actions');
 
 import { StorageKeys } from './api-client.js';
-import { clearState, stateManager } from './state-manager.js';
+import { stateManager } from './state-manager.js';
 
 /** Maps action identifiers to human-readable LLM status bar labels. */
 const _ACTION_LABELS = {
@@ -114,36 +114,6 @@ async function saveSession() {
   }
 }
 
-async function resetSession() {
-  try {
-    const res  = await fetch('/api/reset', { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error || `Reset failed (${res.status})`);
-
-    clearState();
-    userSelections = { experiences: {}, skills: {} };
-    window.postAnalysisQuestions = [];
-    window.questionAnswers       = {};
-    window.pendingRecommendations = null;
-    window._savedDecisions       = {};
-    window._newSkillsFromLLM     = [];
-    window._activeReviewPane     = 'experiences';
-    if (typeof _pendingUploadFile !== 'undefined') _pendingUploadFile = null;
-
-    document.getElementById('conversation').innerHTML = '';
-    await fetchStatus();
-    await showLoadJobPanel();
-    clearJobInput();
-    clearURLInput();
-    _clearFieldError('job-text-input', 'paste-error');
-    _clearFieldError('job-url-input', 'url-error');
-    _updatePasteCharCount();
-  } catch (error) {
-    log.error('=== RESET SESSION ERROR ===', error);
-    appendMessage('system', 'Error: ' + error.message);
-  }
-}
-
 function updatePositionTitle(status = {}) {
   const positionEl = document.getElementById('position-title');
   if (!positionEl) return;
@@ -156,7 +126,8 @@ function updatePositionTitle(status = {}) {
       const analysis = typeof status.job_analysis === 'string'
         ? JSON.parse(cleanJsonResponse(status.job_analysis))
         : status.job_analysis;
-      label = normalizePositionLabel(analysis?.title, analysis?.company);
+      const title = analysis?.job_title || analysis?.title || analysis?.position_name || '';
+      label = normalizePositionLabel(title, analysis?.company);
     } catch (error) {
       log.warn('Failed to parse job_analysis for title:', error);
     }
@@ -177,4 +148,4 @@ function updatePositionTitle(status = {}) {
 }
 
 // ── ES module exports ──────────────────────────────────────────────────────
-export { sendAction, saveSession, resetSession, updatePositionTitle, _ACTION_LABELS };
+export { sendAction, saveSession, updatePositionTitle, _ACTION_LABELS };

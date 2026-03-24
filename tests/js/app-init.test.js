@@ -41,6 +41,7 @@ import * as SummaryReview         from '../../web/summary-review.js'
 import * as PublicationsReview    from '../../web/publications-review.js'
 import * as RewriteReview         from '../../web/rewrite-review.js'
 import * as SpellCheck            from '../../web/spell-check.js'
+import * as DownloadTab           from '../../web/download-tab.js'
 import * as WorkflowSteps         from '../../web/workflow-steps.js'
 import * as MasterCv              from '../../web/master-cv.js'
 import * as CoverLetter           from '../../web/cover-letter.js'
@@ -220,6 +221,12 @@ describe('Tier 6 — SpellCheck', () => {
   })
 })
 
+describe('Tier 6 — DownloadTab', () => {
+  it('exports populateDownloadTab', () => {
+    expect(typeof DownloadTab.populateDownloadTab).toBe('function')
+  })
+})
+
 describe('Tier 6 — WorkflowSteps', () => {
   it('exports updateWorkflowSteps', () => {
     expect(typeof WorkflowSteps.updateWorkflowSteps).toBe('function')
@@ -285,7 +292,7 @@ describe('main.js globalThis assignment', () => {
         SessionManager, JobInput, MessageDispatch, QuestionsPanel,
         ReviewTableBase,
         ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview,
-        RewriteReview, SpellCheck, WorkflowSteps, MasterCv,
+        RewriteReview, SpellCheck, DownloadTab, WorkflowSteps, MasterCv,
         CoverLetter, ScreeningQuestions, Finalise,
         SessionSwitcherUi,
       )
@@ -300,7 +307,7 @@ describe('main.js globalThis assignment', () => {
       SessionManager, JobInput, MessageDispatch, QuestionsPanel,
       ReviewTableBase,
       ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview,
-      RewriteReview, SpellCheck, WorkflowSteps, MasterCv,
+      RewriteReview, SpellCheck, DownloadTab, WorkflowSteps, MasterCv,
       CoverLetter, ScreeningQuestions, Finalise,
       SessionSwitcherUi,
     )
@@ -321,6 +328,7 @@ describe('main.js globalThis assignment', () => {
       'buildSkillsReviewTable', // skills-review
       'computeWordDiff',        // rewrite-review
       'populateSpellCheckTab',  // spell-check
+      'populateDownloadTab',    // download-tab
       'updateWorkflowSteps',    // workflow-steps
       'populateMasterTab',      // master-cv
       'populateCoverLetterTab', // cover-letter

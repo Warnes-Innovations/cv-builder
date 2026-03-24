@@ -298,6 +298,37 @@ async function restoreSession() {
   }
 }
 
+function _hydrateStatusDerivedState(statusData) {
+  window.achievementEdits = {};
+  try {
+    if (statusData.achievement_edits && Object.keys(statusData.achievement_edits).length > 0) {
+      for (const [k, v] of Object.entries(statusData.achievement_edits)) {
+        const idx = parseInt(k, 10);
+        window.achievementEdits[idx] = Array.isArray(v) ? v : [v];
+      }
+    }
+  } catch (_e) { /* non-fatal */ }
+
+  window._savedDecisions = {
+    experience_decisions: statusData.experience_decisions || {},
+    skill_decisions:      statusData.skill_decisions      || {},
+    achievement_decisions:statusData.achievement_decisions || {},
+    publication_decisions:statusData.publication_decisions || {},
+    summary_focus_override: statusData.summary_focus_override || null,
+    extra_skills:           statusData.extra_skills || [],
+    extra_skill_matches:    statusData.extra_skill_matches || {},
+  };
+  window._allExperiences = statusData.all_experiences || [];
+  window.selectedSummaryKey = statusData.summary_focus_override || statusData.selected_summary_key || null;
+  window._newSkillsFromLLM = statusData.new_skills_from_llm || [];
+  window.postAnalysisQuestions = Array.isArray(statusData.post_analysis_questions)
+    ? statusData.post_analysis_questions
+    : [];
+  window.questionAnswers = (statusData.post_analysis_answers && typeof statusData.post_analysis_answers === 'object')
+    ? statusData.post_analysis_answers
+    : {};
+}
+
 async function restoreBackendState() {
   // Returns true if the server had any live session data.
   try {
@@ -305,29 +336,7 @@ async function restoreBackendState() {
     if (!statusRes.ok) return false;
     const statusData = parseStatusResponse(await statusRes.json());
 
-    // Restore achievement edits and saved decisions into window globals
-    try {
-      if (statusData.achievement_edits && Object.keys(statusData.achievement_edits).length > 0) {
-        window.achievementEdits = {};
-        for (const [k, v] of Object.entries(statusData.achievement_edits)) {
-          const idx = parseInt(k, 10);
-          window.achievementEdits[idx] = Array.isArray(v) ? v : [v];
-        }
-      }
-    } catch (_e) { /* non-fatal */ }
-
-    window._savedDecisions = {
-      experience_decisions: statusData.experience_decisions || {},
-      skill_decisions:      statusData.skill_decisions      || {},
-      achievement_decisions:statusData.achievement_decisions || {},
-      publication_decisions:statusData.publication_decisions || {},
-      summary_focus_override: statusData.summary_focus_override || null,
-      extra_skills:           statusData.extra_skills || [],
-      extra_skill_matches:    statusData.extra_skill_matches || {},
-    };
-    window._allExperiences = statusData.all_experiences || [];
-    window.selectedSummaryKey = statusData.selected_summary_key || null;
-    window._newSkillsFromLLM = statusData.new_skills_from_llm || [];
+    _hydrateStatusDerivedState(statusData);
 
     let serverHasData = false;
 
@@ -464,19 +473,14 @@ async function loadSessionFile(path) {
     if (customizationPhases.includes(sessionPhase)) {
       try {
         const s2 = await fetch('/api/status');
-        const sd = await s2.json();
+        const sd = parseStatusResponse(await s2.json());
+        _hydrateStatusDerivedState(sd);
         if (sd.customizations) {
           stateManager.setTabData('customizations', sd.customizations);
           window.pendingRecommendations = sd.customizations;
         }
         if (sd.job_analysis) stateManager.setTabData('analysis', sd.job_analysis);
         if (sd.generated_files) stateManager.setTabData('cv', sd.generated_files);
-        if (sd.achievement_edits && Object.keys(sd.achievement_edits).length > 0) {
-          window.achievementEdits = {};
-          for (const [k, v] of Object.entries(sd.achievement_edits)) {
-            window.achievementEdits[parseInt(k, 10)] = Array.isArray(v) ? v : [v];
-          }
-        }
       } catch (_) { /* non-fatal */ }
     }
 

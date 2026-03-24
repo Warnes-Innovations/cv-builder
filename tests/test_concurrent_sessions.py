@@ -390,6 +390,8 @@ class FakeConversationManager:
         user_instructions: str,
         previous_suggestions: list,
         suggested_text: str,
+        experience_index: int | None = None,
+        achievement_index: int | None = None,
     ) -> str:
         del (
             original_text,
@@ -397,6 +399,8 @@ class FakeConversationManager:
             user_instructions,
             previous_suggestions,
             suggested_text,
+            experience_index,
+            achievement_index,
         )
         return uuid.uuid4().hex[:12]
 
@@ -642,7 +646,7 @@ def test_session_aware_routes_enforce_session_and_owner_tokens(build_app):
             "/api/reset",
             json={"session_id": session_id, "owner_token": "owner-b"},
         )
-        assert wrong_owner_reset.status_code == 403
+        assert wrong_owner_reset.status_code == 405
 
         success = client.post(
             "/api/job",
@@ -675,18 +679,21 @@ def test_session_aware_routes_enforce_session_and_owner_tokens(build_app):
             "/api/reset",
             json={"session_id": session_id, "owner_token": "owner-a"},
         )
-        assert reset.status_code == 200
-        assert reset.get_json()["ok"] is True
+        assert reset.status_code == 405
 
-        reset_status = client.get(
+        unchanged_status = client.get(
             "/api/status",
             query_string={"session_id": session_id},
         )
-        assert reset_status.status_code == 200
-        reset_payload = reset_status.get_json()
-        assert reset_payload["job_description_text"] is None
-        assert reset_payload["position_name"] is None
-        assert reset_payload["phase"] == Phase.INIT
+        assert unchanged_status.status_code == 200
+        unchanged_payload = unchanged_status.get_json()
+        assert unchanged_payload["job_description_text"] == (
+            "Staff Data Scientist\nExample Co\nBuild ML systems."
+        )
+        assert (
+            unchanged_payload["position_name"]
+            == "Staff Data Scientist at Example Co"
+        )
 
 
 def test_sessions_active_reports_per_session_metadata(build_app):

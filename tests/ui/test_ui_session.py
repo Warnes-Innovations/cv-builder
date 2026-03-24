@@ -8,7 +8,7 @@
 UI tests — Session Management
 
 Covers:
-- Reset clears state and returns to step 1
+- Reset is not exposed in the web UI
 - Save button triggers /api/save
 - Page reload restores phase from backend state (via /api/status)
 - Session conflict banner appears on 409
@@ -20,7 +20,6 @@ import json
 from playwright.sync_api import Page, expect
 
 from tests.ui.fixtures.mock_responses import (
-    API_RESET_OK,
     API_STATUS_INIT,
     API_STATUS_ANALYSIS_DONE,
     API_LOAD_ITEMS,
@@ -30,46 +29,9 @@ from tests.ui.fixtures.mock_responses import (
 )
 
 
-class TestReset:
-    def test_reset_btn_present(self, page: Page):
-        expect(page.locator("#reset-btn")).to_be_visible()
-
-    def test_reset_calls_api_reset(self, page: Page):
-        api_calls = []
-
-        def capture(route):
-            api_calls.append(route.request.url)
-            route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps(API_RESET_OK),
-            )
-
-        page.route("**/api/reset**", capture)
-        page.locator("#reset-btn").click()
-        page.wait_for_timeout(500)
-        assert any("/api/reset" in url for url in api_calls), \
-            "/api/reset was not called after clicking Reset"
-
-    def test_reset_clears_conversation(self, page: Page):
-        """
-        resetSession() appends a status message then clears the conversation.
-        After reset the conversation panel is empty (cleared by design).
-        """
-        page.route(
-            "**/api/reset**",
-            lambda r: r.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps(API_RESET_OK),
-            ),
-        )
-        page.locator("#reset-btn").click()
-        page.wait_for_timeout(800)
-        # Conversation is cleared by resetSession() — verify page is stable
-        assert page.evaluate("() => document.readyState") == "complete"
-        conv = page.locator("#conversation")
-        expect(conv).to_be_visible()
+class TestResetRemoval:
+    def test_reset_btn_absent(self, page: Page):
+        expect(page.locator("#reset-btn")).to_have_count(0)
 
 
 class TestSave:
