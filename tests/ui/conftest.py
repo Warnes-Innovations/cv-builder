@@ -48,7 +48,6 @@ from tests.ui.fixtures.mock_responses import (  # noqa: E402
     API_REWRITES_GET,
     API_REWRITES_APPROVE_OK,
     API_GENERATE_OK,
-    API_RESET_OK,
     API_HISTORY_EMPTY,
 )
 
@@ -211,8 +210,7 @@ def _install_mock_routes(
       POST /api/review-decisions   → API_REVIEW_DECISIONS_OK
       GET  /api/rewrites           → API_REWRITES_GET
       POST /api/rewrites/approve   → API_REWRITES_APPROVE_OK
-      POST /api/generate           → API_GENERATE_OK
-      POST /api/reset              → API_RESET_OK
+    POST /api/generate           → API_GENERATE_OK
     """
     if status_response is None:
         status_response = API_STATUS_JOB_LOADED
@@ -257,9 +255,6 @@ def _install_mock_routes(
 
     def handle_generate(route: Route):
         _json_route(route, API_GENERATE_OK)
-
-    def handle_reset(route: Route):
-        _json_route(route, API_RESET_OK)
 
     def handle_ats_score(route: Route):
         _json_route(route, {
@@ -345,7 +340,6 @@ def _install_mock_routes(
     page.route("**/api/rewrites**", handle_rewrites_get)
     page.route("**/api/rewrites/approve**", handle_rewrites_approve)
     page.route("**/api/generate**", handle_generate)
-    page.route("**/api/reset**", handle_reset)
     page.route("**/api/cv/ats-score**", handle_ats_score)
     page.route("**/api/intake-metadata**", handle_intake_metadata)
     page.route("**/api/master-fields**", handle_master_fields)

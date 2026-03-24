@@ -541,6 +541,7 @@ async function rewriteAchievementWithLLM(expIdx, achIdx) {
   _lastRewriteLogId = null;
   _openRewriteModal(originalText, '', null, {
     experienceIndex: expIdx,
+    achievementIndex: achIdx,
     onAccept: async (suggestion) => {
       updateAchievementText(expIdx, achIdx, suggestion);
       if (ta) ta.value = suggestion;
@@ -666,6 +667,7 @@ async function _runRewrite(originalText) {
       body: JSON.stringify({
         achievement_text:     originalText,
         experience_index:     _rewriteCallbacks?.experienceIndex ?? null,
+        achievement_index:    _rewriteCallbacks?.achievementIndex ?? null,
         user_instructions:    userInstructions,
         previous_suggestions: _rewriteSuggestionHistory,
       })
