@@ -15,6 +15,8 @@ import {
   saveSession,
   resetSession,
 } from '../../web/session-actions.js'
+import { StorageKeys } from '../../web/api-client.js'
+import { initializeState, stateManager } from '../../web/state-manager.js'
 
 // ── DOM helpers ───────────────────────────────────────────────────────────
 
@@ -34,11 +36,20 @@ function makeStorageMock() {
     removeItem: vi.fn(key => {
       store.delete(key)
     }),
+    clear: vi.fn(() => {
+      store.clear()
+    }),
   }
 }
 
 beforeEach(() => {
   document.body.innerHTML = ''
+  vi.stubGlobal('localStorage', makeStorageMock())
+  initializeState()
+  stateManager.setLoading(false)
+  stateManager.setTabData('analysis', null)
+  stateManager.setTabData('customizations', null)
+  stateManager.setTabData('cv', null)
   vi.stubGlobal('cleanJsonResponse', s => s)
   vi.stubGlobal('normalizePositionLabel', (title, company) => {
     if (!title) return 'Professional Role'
@@ -132,8 +143,8 @@ describe('_ACTION_LABELS', () => {
 
 describe('sendAction', () => {
   beforeEach(() => {
-    globalThis.isLoading = false
-    globalThis.tabData = {}
+    stateManager.setLoading(false)
+    stateManager.setTabData('cv', null)
     globalThis.window.questionAnswers = { focus: 'platform leadership' }
     vi.stubGlobal('appendLoadingMessage', vi.fn(() => ({ id: 'loading' })))
     vi.stubGlobal('removeLoadingMessage', vi.fn())
@@ -151,15 +162,13 @@ describe('sendAction', () => {
   })
 
   afterEach(() => {
-    delete globalThis.isLoading
-    delete globalThis.tabData
     delete globalThis.window.questionAnswers
     delete globalThis.fetch
     vi.useRealTimers()
   })
 
   it('returns immediately when a request is already in flight', async () => {
-    globalThis.isLoading = true
+    stateManager.setLoading(true)
 
     await sendAction('analyze_job')
 
@@ -260,7 +269,7 @@ describe('sendAction', () => {
       'assistant',
       'CV generated successfully! Review your layout below.',
     )
-    expect(globalThis.tabData.cv).toEqual({
+    expect(stateManager.getTabData('cv')).toEqual({
       ats_docx: '/tmp/cv-ats.docx',
       human_pdf: '/tmp/cv.pdf',
     })
@@ -300,7 +309,7 @@ describe('sendAction', () => {
 
     expect(fetch).toHaveBeenCalledTimes(2)
     expect(appendRetryMessage).not.toHaveBeenCalled()
-    expect(globalThis.tabData.cv).toEqual({ human_docx: '/tmp/cv-human.docx' })
+    expect(stateManager.getTabData('cv')).toEqual({ human_docx: '/tmp/cv-human.docx' })
     expect(switchTab).toHaveBeenCalledWith('layout')
     expect(fetchStatus).toHaveBeenCalled()
   })
@@ -312,8 +321,6 @@ describe('saveSession', () => {
   beforeEach(() => {
     vi.stubGlobal('appendMessage', vi.fn())
     vi.stubGlobal('appendRetryMessage', vi.fn())
-    vi.stubGlobal('StorageKeys', { SESSION_PATH: 'session-path-key' })
-    vi.stubGlobal('localStorage', makeStorageMock())
     globalThis.fetch = vi.fn()
   })
 
@@ -329,7 +336,7 @@ describe('saveSession', () => {
     await saveSession()
 
     expect(fetch).toHaveBeenCalledWith('/api/save', { method: 'POST' })
-    expect(localStorage.setItem).toHaveBeenCalledWith('session-path-key', '/tmp/session.json')
+    expect(localStorage.setItem).toHaveBeenCalledWith(StorageKeys.SESSION_PATH, '/tmp/session.json')
     expect(appendMessage).toHaveBeenCalledWith('system', 'Session saved successfully.')
   })
 
@@ -352,7 +359,6 @@ describe('saveSession', () => {
 describe('resetSession', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="conversation">existing content</div>'
-    vi.stubGlobal('clearState', vi.fn())
     vi.stubGlobal('fetchStatus', vi.fn(async () => {}))
     vi.stubGlobal('showLoadJobPanel', vi.fn(async () => {}))
     vi.stubGlobal('clearJobInput', vi.fn())
@@ -391,7 +397,6 @@ describe('resetSession', () => {
     await resetSession()
 
     expect(fetch).toHaveBeenCalledWith('/api/reset', { method: 'POST' })
-    expect(clearState).toHaveBeenCalled()
     expect(globalThis.userSelections).toEqual({ experiences: {}, skills: {} })
     expect(globalThis.window.postAnalysisQuestions).toEqual([])
     expect(globalThis.window.questionAnswers).toEqual({})

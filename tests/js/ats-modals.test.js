@@ -4,27 +4,25 @@
 // This file is part of CV-Builder.
 // For commercial licensing, contact greg@warnes-innovations.com
 
-import fs from 'node:fs'
-import path from 'node:path'
+import {
+  openAtsReportModal,
+  closeAtsReportModal,
+  _renderAtsReport,
+  openJobAnalysisModal,
+  closeJobAnalysisModal,
+  _renderAnalysisIntoEl,
+  populateAtsScoreTab,
+} from '../../web/ats-modals.js'
+import { initializeState, stateManager } from '../../web/state-manager.js'
 
-function loadAtsModals() {
-  const source = fs.readFileSync(
-    path.resolve(process.cwd(), 'web/ats-modals.js'),
-    'utf8',
-  )
-  return new Function(
-    `${source}
-    return {
-      openAtsReportModal,
-      closeAtsReportModal,
-      _renderAtsReport,
-      openJobAnalysisModal,
-      closeJobAnalysisModal,
-      _renderAnalysisIntoEl,
-      populateAtsScoreTab,
-    };
-  `,
-  )()
+function createLocalStorageMock() {
+  let store = {}
+  return {
+    getItem: key => Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null,
+    setItem: (key, value) => { store[key] = String(value) },
+    removeItem: key => { delete store[key] },
+    clear: () => { store = {} },
+  }
 }
 
 function buildDom() {
@@ -44,37 +42,34 @@ function buildDom() {
 
 beforeEach(() => {
   buildDom()
-  window.tabData = {}
+  vi.stubGlobal('localStorage', createLocalStorageMock())
+  initializeState()
+  stateManager.clearAtsScore()
+  stateManager.setTabData('analysis', null)
 
   vi.stubGlobal('escapeHtml', value => String(value ?? ''))
-  vi.stubGlobal('stateManager', {
-    getAtsScore: vi.fn(() => null),
-    setAtsScore: vi.fn(),
-    getSessionId: vi.fn(() => 'session-123'),
-  })
   vi.stubGlobal('updateAtsBadge', vi.fn())
   vi.stubGlobal('refreshAtsScore', vi.fn(async () => {}))
   globalThis.fetch = vi.fn()
+  stateManager.setSessionId('session-123')
 })
 
 afterEach(() => {
   vi.unstubAllGlobals()
   document.body.innerHTML = ''
-  delete window.tabData
 })
 
 describe('openAtsReportModal', () => {
   it('renders cached ATS score without fetching', async () => {
-    stateManager.getAtsScore.mockReturnValue({
+    stateManager.setAtsScore({
       overall: 81,
       hard_requirement_score: 90,
       soft_requirement_score: 70,
       basis: 'review_checkpoint',
       keyword_status: [{ keyword: 'python', found: true }],
     })
-    const mod = loadAtsModals()
 
-    await mod.openAtsReportModal()
+    await openAtsReportModal()
 
     expect(fetch).not.toHaveBeenCalled()
     expect(document.getElementById('ats-report-modal-overlay').style.display).toBe('flex')
@@ -99,9 +94,8 @@ describe('openAtsReportModal', () => {
         },
       }),
     })
-    const mod = loadAtsModals()
 
-    await mod.openAtsReportModal()
+    await openAtsReportModal()
 
     expect(fetch).toHaveBeenCalledWith('/api/cv/ats-score', {
       method: 'POST',
@@ -111,9 +105,7 @@ describe('openAtsReportModal', () => {
         basis: 'review_checkpoint',
       }),
     })
-    expect(stateManager.setAtsScore).toHaveBeenCalledWith(
-      expect.objectContaining({ overall: 76 }),
-    )
+    expect(stateManager.getAtsScore()).toEqual(expect.objectContaining({ overall: 76 }))
     expect(updateAtsBadge).toHaveBeenCalledWith(
       expect.objectContaining({ overall: 76 }),
     )
@@ -125,9 +117,8 @@ describe('openAtsReportModal', () => {
     fetch.mockResolvedValue({
       json: async () => ({ ok: false, error: 'scoring unavailable' }),
     })
-    const mod = loadAtsModals()
 
-    await mod.openAtsReportModal()
+    await openAtsReportModal()
 
     expect(document.getElementById('ats-report-modal-body').textContent).toContain(
       'Could not load ATS report: scoring unavailable',
@@ -137,8 +128,7 @@ describe('openAtsReportModal', () => {
 
 describe('_renderAtsReport', () => {
   it('renders score, keywords, section scores, and basis text', () => {
-    const mod = loadAtsModals()
-    const html = mod._renderAtsReport({
+    const html = _renderAtsReport({
       overall: 49,
       hard_requirement_score: 44,
       soft_requirement_score: 51,
@@ -160,7 +150,7 @@ describe('_renderAtsReport', () => {
 
 describe('job analysis modal rendering', () => {
   it('renders analysis content from window.tabData.analysis', () => {
-    window.tabData.analysis = {
+    stateManager.setTabData('analysis', {
       job_title: 'Staff Data Scientist',
       company: 'Example Co',
       domain: 'healthcare',
@@ -170,10 +160,9 @@ describe('job analysis modal rendering', () => {
       must_have_requirements: ['Lead teams'],
       culture_indicators: ['collaborative'],
       missing_required: ['Leadership'],
-    }
-    const mod = loadAtsModals()
+    })
 
-    mod.openJobAnalysisModal()
+    openJobAnalysisModal()
 
     const bodyText = document.getElementById('job-analysis-modal-body').textContent
     expect(document.getElementById('job-analysis-modal-overlay').style.display).toBe('flex')
@@ -184,9 +173,7 @@ describe('job analysis modal rendering', () => {
   })
 
   it('shows an empty-state message when no analysis is available', () => {
-    const mod = loadAtsModals()
-
-    mod.openJobAnalysisModal()
+    openJobAnalysisModal()
 
     expect(document.getElementById('job-analysis-modal-body').textContent).toContain(
       'No job analysis available. Run job analysis first.',
@@ -196,18 +183,15 @@ describe('job analysis modal rendering', () => {
 
 describe('populateAtsScoreTab', () => {
   it('renders cached ATS content into the document tab', async () => {
-    stateManager.getAtsScore.mockReturnValue({ overall: 91, basis: 'review' })
-    const mod = loadAtsModals()
+    stateManager.setAtsScore({ overall: 91, basis: 'review' })
 
-    await mod.populateAtsScoreTab()
+    await populateAtsScoreTab()
 
     expect(document.getElementById('document-content').textContent).toContain('91%')
   })
 
   it('renders an empty state when no ATS score is cached', async () => {
-    const mod = loadAtsModals()
-
-    await mod.populateAtsScoreTab()
+    await populateAtsScoreTab()
 
     expect(document.getElementById('document-content').textContent).toContain('Compute ATS Score')
   })
@@ -215,7 +199,6 @@ describe('populateAtsScoreTab', () => {
 
 describe('ats-score-updated event handling', () => {
   it('shows and hides shortcut buttons based on badge visibility', () => {
-    loadAtsModals()
     const badge = document.getElementById('ats-score-badge')
     const reportBtn = document.getElementById('ats-report-btn')
     const analysisBtn = document.getElementById('job-analysis-btn')
