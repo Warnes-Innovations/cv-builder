@@ -4,4 +4,5 @@
 # This file is part of CV-Builder.
 # For commercial licensing, contact greg@warnes-innovations.com
 
-# Routes package — Flask blueprint modules for web_app.py
+# Modular route package for the live Flask blueprint registration used by
+# `scripts.web_app.create_app()`.

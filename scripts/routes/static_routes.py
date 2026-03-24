@@ -11,6 +11,8 @@ from pathlib import Path
 
 from flask import Blueprint, redirect, send_file, send_from_directory, url_for
 
+# Live blueprint module registered by `scripts.web_app.create_app()`.
+
 
 def create_blueprint(deps):
     bp = Blueprint('static', __name__)
