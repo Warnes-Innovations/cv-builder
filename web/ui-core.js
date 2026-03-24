@@ -311,12 +311,6 @@ function setupEventListeners() {
     });
   }
 
-  // Chat toggle button
-  const toggleBtn = document.querySelector('.toggle-chat');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', toggleChat);
-  }
-
   // Modal close on ESC key
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
