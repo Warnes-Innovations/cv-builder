@@ -25,3 +25,13 @@ Always add and preserve the project-approved copyright and SPDX header in source
 - ❌ INCORRECT: Omit headers on new files, add headers to generated/vendor artifacts, or use invalid comment syntax for the file type.
 
 Why: Consistent headers keep licensing obligations explicit and reduce legal ambiguity for all downstream users.
+
+## Duckflow Annotations
+
+Use `duckflow` comments for local data-flow facts only.
+
+- Keep annotations adjacent to the code they describe.
+- Use exact tokens for route calls, state keys, response fields, and output artifacts.
+- When a flow exists in both live inline handlers and extracted route modules, annotate both.
+- Mark live code with `status: live` and extracted-but-unwired route mirrors with `status: planned`.
+- Regenerate stitched graphs with the standalone duckflow toolkit from `https://github.com/Warnes-Innovations/duckflow`, for example `duckflow-extract --repo-root .` and `duckflow-mermaid --repo-root . --match <flow>`, after changing annotations.
