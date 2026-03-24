@@ -49,3 +49,61 @@ def test_materialize_summary_selection_uses_session_focus_when_customizations_la
     assert materialized["summary_focus"] == "targeted"
     assert materialized["selected_summary"] == "Session targeted"
     assert materialized["session_summaries"] == {"targeted": "Session targeted"}
+
+
+def test_selected_achievements_overlay_session_edits_and_removals() -> None:
+    view = SessionDataView(
+        master_data={
+            "selected_achievements": [
+                {"id": "ach-1", "title": "Original", "description": "Keep"},
+                {"id": "ach-2", "title": "Remove me"},
+            ]
+        },
+        session_state={
+            "achievement_overrides": {
+                "ach-1": {"title": "Edited"},
+                "ach-3": {"title": "Session only"},
+            },
+            "removed_achievement_ids": ["ach-2"],
+        },
+    )
+
+    assert view.selected_achievements() == [
+        {"id": "ach-1", "title": "Edited", "description": "Keep"},
+        {"id": "ach-3", "title": "Session only"},
+    ]
+
+
+def test_normalized_skills_apply_session_group_overrides() -> None:
+    view = SessionDataView(
+        master_data={
+            "skills": [
+                {"name": "Python", "group": "backend"},
+                {"name": "SQL", "experiences": ["exp_1"]},
+            ]
+        },
+        session_state={"skill_group_overrides": {"Python": "scripting", "SQL": None}},
+    )
+
+    assert view.normalized_skills() == [
+        {"name": "Python", "group": "scripting"},
+        {"name": "SQL", "experiences": ["exp_1"]},
+    ]
+
+
+def test_materialize_customizations_includes_non_summary_session_overlays() -> None:
+    view = SessionDataView(
+        master_data={},
+        session_state={
+            "achievement_overrides": {"ach-1": {"title": "Edited"}},
+            "removed_achievement_ids": ["ach-2"],
+            "skill_group_overrides": {"Python": "scripting"},
+        },
+        customizations={"approved_skills": ["Python"]},
+    )
+
+    materialized = view.materialize_customizations()
+
+    assert materialized["achievement_overrides"] == {"ach-1": {"title": "Edited"}}
+    assert materialized["removed_achievement_ids"] == ["ach-2"]
+    assert materialized["skill_group_overrides"] == {"Python": "scripting"}

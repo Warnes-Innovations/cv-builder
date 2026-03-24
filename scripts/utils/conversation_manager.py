@@ -81,6 +81,9 @@ class ConversationManager:
             'publication_decisions':   {},   # Dict — per-publication accept/reject decisions
             'summary_focus_override':  None, # str — selected professional summary key
             'extra_skills':            [],   # List[str] — LLM-suggested skills not in master CV
+            'achievement_overrides':   {},   # Dict — top-level achievement field edits for this session only
+            'removed_achievement_ids': [],   # List[str] — top-level achievements hidden for this session only
+            'skill_group_overrides':   {},   # Dict — per-skill group overrides for this session only
             'achievement_rewrite_log': [],   # List[Dict] — AI rewrite interactions per achievement
             'generation_state':        {},   # Dict — GAP-20 staged generation phase/artifact state
             'intake':                  {},   # Dict — GAP-23 intake confirmation: company/role/date
@@ -723,7 +726,7 @@ Ask questions that are specific to this job posting, not generic career question
                 self.state,
                 customizations,
             )
-            customizations = summary_view.materialize_summary_selection()
+            customizations = summary_view.materialize_customizations()
             self.state['customizations'] = customizations
 
             # Inject user-defined bullet ordering (Phase 9) into customizations
@@ -1329,6 +1332,9 @@ Ask questions that are specific to this job posting, not generic career question
                 'publication_decisions':   {},
                 'summary_focus_override':  None,
                 'extra_skills':            [],
+                'achievement_overrides':   {},
+                'removed_achievement_ids': [],
+                'skill_group_overrides':   {},
                 'achievement_rewrite_log': [],
             }
             print("\n✓ Conversation reset. Let's start fresh!")
