@@ -24,6 +24,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 from scripts.utils.conversation_manager import Phase  # noqa: E402
 from scripts.web_app import create_app  # noqa: E402
+from tests.helpers.session_state_fixtures import (  # noqa: E402
+    materialize_canonical_session,
+    materialize_session,
+)
 
 SAMPLE_MASTER_DATA = {
     "personal_info": {
@@ -777,6 +781,289 @@ def test_load_session_route_restores_saved_session_metadata(build_app):
     assert loaded_entry.manager.conversation_history == [
         {"role": "assistant", "content": "Loaded from disk"}
     ]
+
+
+@pytest.mark.parametrize(
+    (
+        "combination_name",
+        "expected_phase",
+        "expected_generation_phase",
+        "preview_available",
+        "layout_confirmed",
+    ),
+    [
+        ("layout_review_idle", "layout_review", "idle", False, False),
+        (
+            "layout_review_active",
+            "layout_review",
+            "layout_review",
+            True,
+            False,
+        ),
+        (
+            "layout_review_confirmed",
+            "layout_review",
+            "confirmed",
+            True,
+            True,
+        ),
+        (
+            "refinement_final_complete",
+            "refinement",
+            "final_complete",
+            True,
+            True,
+        ),
+        ("refinement_legacy_idle", "refinement", "idle", False, False),
+    ],
+)
+def test_load_session_restores_canonical_generation_state_combinations(
+    build_app,
+    combination_name,
+    expected_phase,
+    expected_generation_phase,
+    preview_available,
+    layout_confirmed,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        session_file = materialize_canonical_session(
+            manager.output_dir,
+            combination_name,
+        )
+        loaded_session_id = session_file.parent.name
+
+        response = client.post(
+            "/api/load-session",
+            json={"path": str(session_file)},
+        )
+        assert response.status_code == 200
+
+        payload = response.get_json()
+        assert payload["ok"] is True
+        assert payload["session_id"] == loaded_session_id
+        assert payload["phase"] == expected_phase
+
+        generation_state = client.get(
+            "/api/cv/generation-state",
+            query_string={"session_id": loaded_session_id},
+        ).get_json()
+
+    assert generation_state["phase"] == expected_generation_phase
+    assert generation_state["preview_available"] is preview_available
+    assert generation_state["layout_confirmed"] is layout_confirmed
+
+    loaded_entry = app.session_registry.get(loaded_session_id)
+    assert loaded_entry is not None
+    assert loaded_entry.manager.state["phase"] == expected_phase
+
+
+def test_invalid_prelayout_confirmed_load_is_left_explicitly_inconsistent(
+    build_app,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        session_file = materialize_session(
+            manager.output_dir,
+            workflow_phase="customization",
+            generation_phase="confirmed",
+            session_id="invalid_prelayout_confirmed",
+            allow_inconsistent=True,
+        )
+
+        response = client.post(
+            "/api/load-session",
+            json={"path": str(session_file)},
+        )
+        assert response.status_code == 200
+
+        payload = response.get_json()
+        assert payload["ok"] is True
+        assert payload["session_id"] == "invalid_prelayout_confirmed"
+        assert payload["phase"] == "customization"
+
+        generation_state = client.get(
+            "/api/cv/generation-state",
+            query_string={"session_id": "invalid_prelayout_confirmed"},
+        ).get_json()
+
+    assert generation_state["phase"] == "confirmed"
+    assert generation_state["preview_available"] is True
+    assert generation_state["layout_confirmed"] is True
+
+
+@pytest.mark.parametrize(
+    (
+        "session_id",
+        "workflow_phase",
+        "generation_phase",
+        "state_overrides",
+        "expected_loaded_phase",
+        "expected_generation_phase",
+        "preview_available",
+        "layout_confirmed",
+    ),
+    [
+        (
+            "invalid_confirmed_without_preview",
+            "layout_review",
+            "confirmed",
+            {
+                "generation_state": {
+                    "phase": "confirmed",
+                    "layout_confirmed": True,
+                    "confirmed_at": "2026-03-24T00:47:00-04:00",
+                    "confirmed_preview_hash": "abc123def4567890",
+                }
+            },
+            "layout_review",
+            "confirmed",
+            False,
+            True,
+        ),
+        (
+            "invalid_final_complete_without_paths",
+            "refinement",
+            "final_complete",
+            {
+                "generation_state": {
+                    "phase": "final_complete",
+                    "preview_html": "<html><body><h1>Final Preview</h1></body></html>",
+                    "preview_request_id": "preview-003",
+                    "preview_generated_at": "2026-03-24T00:47:00-04:00",
+                    "layout_confirmed": True,
+                    "confirmed_at": "2026-03-24T00:47:00-04:00",
+                    "confirmed_preview_hash": "abc123def4567890",
+                    "final_generated_at": "2026-03-24T00:47:00-04:00",
+                    "layout_instructions": [],
+                }
+            },
+            "refinement",
+            "final_complete",
+            True,
+            True,
+        ),
+    ],
+)
+def test_restore_invalid_generation_states_remain_explicit_after_load(
+    build_app,
+    session_id,
+    workflow_phase,
+    generation_phase,
+    state_overrides,
+    expected_loaded_phase,
+    expected_generation_phase,
+    preview_available,
+    layout_confirmed,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        ephemeral_session_id = _new_session(client)
+        manager = _manager_for_session(tracker, ephemeral_session_id)
+        session_file = materialize_session(
+            manager.output_dir,
+            workflow_phase=workflow_phase,
+            generation_phase=generation_phase,
+            session_id=session_id,
+            allow_inconsistent=True,
+            state_overrides=state_overrides,
+        )
+
+        response = client.post(
+            "/api/load-session",
+            json={"path": str(session_file)},
+        )
+        assert response.status_code == 200
+
+        payload = response.get_json()
+        assert payload["ok"] is True
+        assert payload["session_id"] == session_id
+        assert payload["phase"] == expected_loaded_phase
+
+        generation_state = client.get(
+            "/api/cv/generation-state",
+            query_string={"session_id": session_id},
+        ).get_json()
+
+    assert generation_state["phase"] == expected_generation_phase
+    assert generation_state["preview_available"] is preview_available
+    assert generation_state["layout_confirmed"] is layout_confirmed
+
+    loaded_entry = app.session_registry.get(session_id)
+    assert loaded_entry is not None
+    assert loaded_entry.manager.state["generation_state"]["phase"] == (
+        expected_generation_phase
+    )
+
+
+@pytest.mark.parametrize(
+    ("combination_name", "loaded_phase"),
+    [
+        ("layout_review_active", "layout_review"),
+        ("layout_review_confirmed", "layout_review"),
+        ("refinement_final_complete", "refinement"),
+    ],
+)
+def test_back_to_phase_preserves_loaded_canonical_generation_state(
+    build_app,
+    combination_name,
+    loaded_phase,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        session_file = materialize_canonical_session(
+            manager.output_dir,
+            combination_name,
+        )
+        loaded_session_id = session_file.parent.name
+
+        load_response = client.post(
+            "/api/load-session",
+            json={"path": str(session_file)},
+        )
+        assert load_response.status_code == 200
+        assert load_response.get_json()["phase"] == loaded_phase
+
+        loaded_entry = app.session_registry.get(loaded_session_id)
+        assert loaded_entry is not None
+        prior_generation_state = json.loads(
+            json.dumps(loaded_entry.manager.state["generation_state"])
+        )
+
+        response = client.post(
+            "/api/back-to-phase",
+            json={
+                "session_id": loaded_session_id,
+                "phase": "customizations",
+                "feedback": "Revisit the selected achievements.",
+            },
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["ok"] is True
+        assert payload["phase"] == "customizations"
+
+        updated_entry = app.session_registry.get(loaded_session_id)
+        assert updated_entry is not None
+        assert updated_entry.manager.state["phase"] == "customizations"
+        assert (
+            updated_entry.manager.state["generation_state"]
+            == prior_generation_state
+        )
+        assert updated_entry.manager.conversation_history[-1]["content"] == (
+            "[Refinement feedback for customizations]: "
+            "Revisit the selected achievements."
+        )
 
 
 def test_rename_current_session_persists_position_name(build_app):

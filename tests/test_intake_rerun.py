@@ -53,6 +53,8 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from tests.helpers.session_state_fixtures import build_canonical_session_state
+
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 from scripts.web_app import create_app
@@ -249,6 +251,25 @@ class TestReRunPhaseNewSteps(unittest.TestCase):
         self.assertTrue(result['ok'])
         self.assertTrue(self.manager.state['iterating'])
         self.assertEqual(self.manager.state['phase'], Phase.LAYOUT_REVIEW)
+
+    def test_re_run_phase_from_generation_idle_preserves_prior_outputs(self):
+        canonical_state = build_canonical_session_state('generation_idle')
+        self.manager.state.update(canonical_state)
+        prior_generated_files = canonical_state['generated_files']
+        prior_pending_rewrites = canonical_state['pending_rewrites']
+
+        result = self.manager.re_run_phase('generate')
+
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['phase'], Phase.GENERATION)
+        self.assertEqual(
+            result['prior_output']['generated_files'],
+            prior_generated_files,
+        )
+        self.assertEqual(
+            result['prior_output']['pending_rewrites'],
+            prior_pending_rewrites,
+        )
 
     def test_spell_new_output_contains_phase(self):
         result = self.manager.re_run_phase('spell')
