@@ -1,0 +1,219 @@
+{
+  "personal_info": {
+    "name": "Isaac Newton",
+    "title": "Natural Philosopher and Mathematical Physicist",
+    "contact": {
+      "email": "isaac.newton@example.org",
+      "phone": "+44 20 0000 1703",
+      "address": {
+        "city": "London",
+        "state": "England",
+        "display": "London, England"
+      },
+      "website": "https://en.wikipedia.org/wiki/Isaac_Newton"
+    },
+    "languages": [
+      "English",
+      "Latin"
+    ]
+  },
+  "professional_summaries": {
+    "default": "Mathematician and natural philosopher whose work linked rigorous theory, experimental method, and institutional scientific leadership.",
+    "research": "Developed foundational theories in mechanics, gravitation, optics, and calculus while publishing enduring scientific texts.",
+    "leadership": "Led major scientific and national institutions, pairing technical depth with administrative oversight and standards-setting."
+  },
+  "experience": [
+    {
+      "id": "newton-trinity-scholar",
+      "title": "Scholar and Fellow",
+      "company": "Trinity College, Cambridge",
+      "location": {"city": "Cambridge", "state": "England"},
+      "start_date": "1661-06",
+      "end_date": "1669-10",
+      "tags": ["research", "mathematics"],
+      "domain_relevance": ["scientific-research", "higher-education"],
+      "achievements": [
+        {"id": "newton-trinity-scholar-1", "text": "Built the mathematical foundations that later became calculus and early mechanics."},
+        {"id": "newton-trinity-scholar-2", "text": "Used plague-era independent study to accelerate original work in optics, motion, and series expansions."}
+      ]
+    },
+    {
+      "id": "newton-lucasian",
+      "title": "Lucasian Professor of Mathematics",
+      "company": "University of Cambridge",
+      "location": {"city": "Cambridge", "state": "England"},
+      "start_date": "1669-10",
+      "end_date": "1701-12",
+      "tags": ["teaching", "theory"],
+      "domain_relevance": ["mathematics", "physics"],
+      "achievements": [
+        {"id": "newton-lucasian-1", "text": "Delivered lectures that formalized optical experiments and mathematical methods for motion and change."},
+        {"id": "newton-lucasian-2", "text": "Produced the research pipeline that culminated in Principia and Opticks."}
+      ]
+    },
+    {
+      "id": "newton-royal-society-fellow",
+      "title": "Fellow",
+      "company": "Royal Society",
+      "location": {"city": "London", "state": "England"},
+      "start_date": "1672-01",
+      "end_date": "1703-11",
+      "tags": ["scientific-community", "publication"],
+      "domain_relevance": ["science-leadership", "peer-review"],
+      "achievements": [
+        {"id": "newton-royal-society-fellow-1", "text": "Shared optics research with the leading scientific society of the period and drove sustained debate on experimental results."},
+        {"id": "newton-royal-society-fellow-2", "text": "Built influence through correspondence, demonstrations, and publication review."}
+      ]
+    },
+    {
+      "id": "newton-mint-warden",
+      "title": "Warden of the Mint",
+      "company": "Royal Mint",
+      "location": {"city": "London", "state": "England"},
+      "start_date": "1696-04",
+      "end_date": "1699-12",
+      "tags": ["operations", "government"],
+      "domain_relevance": ["financial-systems", "process-improvement"],
+      "achievements": [
+        {"id": "newton-mint-warden-1", "text": "Applied quantitative rigor to the Great Recoinage and anti-counterfeiting enforcement."},
+        {"id": "newton-mint-warden-2", "text": "Turned a ceremonial role into an operational leadership position with measurable national impact."}
+      ]
+    },
+    {
+      "id": "newton-mint-master",
+      "title": "Master of the Mint",
+      "company": "Royal Mint",
+      "location": {"city": "London", "state": "England"},
+      "start_date": "1699-12",
+      "end_date": "1727-03",
+      "tags": ["leadership", "quality-systems"],
+      "domain_relevance": ["operations", "governance"],
+      "achievements": [
+        {"id": "newton-mint-master-1", "text": "Oversaw coinage standards, anti-fraud controls, and long-horizon institutional stability at the Royal Mint."},
+        {"id": "newton-mint-master-2", "text": "Balanced scientific reputation with detailed administrative execution."}
+      ]
+    },
+    {
+      "id": "newton-royal-society-president",
+      "title": "President",
+      "company": "Royal Society",
+      "location": {"city": "London", "state": "England"},
+      "start_date": "1703-11",
+      "end_date": "1727-03",
+      "tags": ["executive-leadership", "institution-building"],
+      "domain_relevance": ["science-governance", "leadership"],
+      "achievements": [
+        {"id": "newton-royal-society-president-1", "text": "Directed the premier scientific institution in Britain for more than two decades."},
+        {"id": "newton-royal-society-president-2", "text": "Influenced publication priorities, recognition systems, and the public standing of natural philosophy."}
+      ]
+    },
+    {
+      "id": "newton-board-longitude",
+      "title": "Scientific Adviser",
+      "company": "Crown and navigation stakeholders",
+      "location": {"city": "London", "state": "England"},
+      "start_date": "1714-01",
+      "end_date": "1727-03",
+      "tags": ["advisory", "applied-science"],
+      "domain_relevance": ["navigation", "astronomy"],
+      "achievements": [
+        {"id": "newton-board-longitude-1", "text": "Advised on astronomical and navigational problems linking theory to national maritime priorities."},
+        {"id": "newton-board-longitude-2", "text": "Provided trusted judgment on measurement, instrumentation, and standards."}
+      ]
+    },
+    {
+      "id": "newton-author",
+      "title": "Scientific Author and Correspondent",
+      "company": "Independent scholarly work",
+      "location": {"city": "London", "state": "England"},
+      "start_date": "1665-01",
+      "end_date": "1727-03",
+      "tags": ["writing", "scientific-communication"],
+      "domain_relevance": ["research", "publication"],
+      "achievements": [
+        {"id": "newton-author-1", "text": "Published durable works that shaped mechanics, gravitation, optics, and mathematical analysis for centuries."},
+        {"id": "newton-author-2", "text": "Sustained an extensive correspondence network that amplified the reach of his ideas across Europe."}
+      ]
+    }
+  ],
+  "selected_achievements": [
+    {
+      "id": "newton-achievement-1",
+      "title": "Unified mechanics and gravitation",
+      "description": "Formulated laws of motion and universal gravitation in a single mathematical framework."
+    },
+    {
+      "id": "newton-achievement-2",
+      "title": "Experimental optics",
+      "description": "Demonstrated the composite nature of white light and advanced precision optical experimentation."
+    },
+    {
+      "id": "newton-achievement-3",
+      "title": "Institutional scientific leadership",
+      "description": "Led the Royal Society and Royal Mint with unusual depth in both theory and operations."
+    }
+  ],
+  "skills": [
+    "Classical mechanics",
+    "Mathematical analysis",
+    "Optics",
+    "Experimental design",
+    "Scientific writing",
+    "Institutional leadership",
+    "Quantitative reasoning",
+    "Standards and governance"
+  ],
+  "education": [
+    {
+      "degree": "BA",
+      "field": "Mathematics and Natural Philosophy",
+      "institution": "Trinity College, Cambridge",
+      "location": {"city": "Cambridge", "state": "England"},
+      "start_year": 1661,
+      "end_year": 1665
+    },
+    {
+      "degree": "MA",
+      "field": "Mathematics and Natural Philosophy",
+      "institution": "Trinity College, Cambridge",
+      "location": {"city": "Cambridge", "state": "England"},
+      "start_year": 1665,
+      "end_year": 1668
+    }
+  ],
+  "awards": [
+    {
+      "title": "Knighthood",
+      "year": 1705,
+      "description": "Knighted by Queen Anne in recognition of national service and scientific stature."
+    }
+  ],
+  "publications": [
+    {
+      "title": "Philosophiae Naturalis Principia Mathematica",
+      "year": 1687,
+      "formatted_citation": "Newton, I. (1687). Philosophiae Naturalis Principia Mathematica. London: Royal Society."
+    },
+    {
+      "title": "Opticks",
+      "year": 1704,
+      "formatted_citation": "Newton, I. (1704). Opticks. London: Royal Society."
+    },
+    {
+      "title": "Arithmetica Universalis",
+      "year": 1707,
+      "formatted_citation": "Newton, I. (1707). Arithmetica Universalis. Cambridge: Cornelius Crownfield."
+    },
+    {
+      "title": "De Analysi per Aequationes Numero Terminorum Infinitas",
+      "year": 1711,
+      "formatted_citation": "Newton, I. (1711). De Analysi per Aequationes Numero Terminorum Infinitas. London."
+    },
+    {
+      "title": "The System of the World",
+      "year": 1728,
+      "formatted_citation": "Newton, I. (1728). The System of the World. London."
+    }
+  ],
+  "publications_file": "publications.bib"
+}
