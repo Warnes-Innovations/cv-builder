@@ -256,7 +256,12 @@ def create_blueprint(deps):
 
         html_str = None
 
-        customizations = conv.state.get("customizations")
+        summary_view = SessionDataView(
+            conv.orchestrator.master_data,
+            conv.state,
+            conv.state.get("customizations"),
+        )
+        customizations = summary_view.materialize_generation_customizations()
         if customizations:
             try:
                 approved_rewrites = conv.state.get("approved_rewrites") or []
@@ -402,7 +407,13 @@ def create_blueprint(deps):
         entry = get_session()
         conv  = entry.manager
         job_analysis   = conv.state.get("job_analysis") or {}
-        customizations = dict(conv.state.get("customizations") or {})
+        customizations = dict(
+            SessionDataView(
+                conv.orchestrator.master_data,
+                conv.state,
+                conv.state.get("customizations"),
+            ).materialize_generation_customizations()
+        )
         body  = request.get_json(silent=True) or {}
         basis = body.get("basis", "review_checkpoint")
 
@@ -444,7 +455,7 @@ def create_blueprint(deps):
             conv.state,
             customizations,
         )
-        customizations = summary_view.materialize_customizations()
+        customizations = summary_view.materialize_generation_customizations()
         if customizations.get("selected_summary"):
             # duckflow: {
             #   "id": "summary_api_ats_materialize_live",

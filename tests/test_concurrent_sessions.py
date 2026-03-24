@@ -1201,6 +1201,39 @@ def test_spell_check_sections_route_skips_semantic_match_scoring(build_app):
     assert payload["ok"] is True
 
 
+def test_spell_check_sections_route_materializes_review_decisions(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["experience_decisions"] = {
+            "exp_001": "include",
+            "exp_999": "exclude",
+        }
+        manager.state["publication_decisions"] = {
+            "pub_a": True,
+            "pub_b": False,
+        }
+
+        with patch.object(
+            manager.orchestrator,
+            "build_render_ready_content",
+            wraps=manager.orchestrator.build_render_ready_content,
+        ) as build_content:
+            response = client.get(
+                "/api/spell-check-sections",
+                query_string={"session_id": session_id},
+            )
+
+    assert response.status_code == 200
+    customizations = build_content.call_args.args[1]
+    assert customizations["recommended_experiences"] == ["exp_001"]
+    assert customizations["omitted_experiences"] == ["exp_999"]
+    assert customizations["accepted_publications"] == ["pub_a"]
+    assert customizations["rejected_publications"] == ["pub_b"]
+
+
 def test_layout_completion_route_updates_phase_and_tracks_instructions(
     build_app,
 ):
@@ -2333,6 +2366,20 @@ def test_editing_and_rewrite_fetch_routes_enforce_ownership(build_app):
             "Python": "scripting"
         }
 
+        skill_category = client.post(
+            "/api/review-skill-category",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "skill": "Python",
+                "category": "Data Science",
+            },
+        )
+        assert skill_category.status_code == 200
+        assert manager.state["skill_category_overrides"] == {
+            "Python": "Data Science"
+        }
+
         missing_text = client.post(
             "/api/rewrite-achievement",
             json={"session_id": session_id, "owner_token": "owner-a"},
@@ -2714,6 +2761,14 @@ def test_cv_ats_score_route_enriches_customizations_from_session_state(
             "targeted": "Targeted summary text",
         }
         manager.state["summary_focus_override"] = "targeted"
+        manager.state["experience_decisions"] = {
+            "exp_001": "include",
+            "exp_404": "exclude",
+        }
+        manager.state["publication_decisions"] = {
+            "pub_a": True,
+            "pub_b": False,
+        }
 
         returned_score = {
             "score": 87,
@@ -2747,6 +2802,10 @@ def test_cv_ats_score_route_enriches_customizations_from_session_state(
                 "section": "experience",
             }
         ]
+        assert customizations_arg["recommended_experiences"] == ["exp_001"]
+        assert customizations_arg["omitted_experiences"] == ["exp_404"]
+        assert customizations_arg["accepted_publications"] == ["pub_a"]
+        assert customizations_arg["rejected_publications"] == ["pub_b"]
         assert (
             customizations_arg["selected_summary"] == "Targeted summary text"
         )
