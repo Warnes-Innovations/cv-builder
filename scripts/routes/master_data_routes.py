@@ -8,6 +8,10 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
 
+# CURRENTLY INACTIVE: this blueprint module is not registered by the current
+# `scripts.web_app.create_app()`. Keep it as part of the route-modularization
+# path unless the architecture is explicitly reverted.
+
 
 # ---------------------------------------------------------------------------
 # Module-level IO helpers (for testability)
