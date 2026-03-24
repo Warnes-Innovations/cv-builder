@@ -218,6 +218,67 @@ class TestSubmitRewriteDecisions(unittest.TestCase):
             self.cm.submit_rewrite_decisions([])
         mock_save.assert_called_once()
 
+
+class TestAchievementRewritePersistence(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm = _make_manager(self.tmp)
+        self.cm.orchestrator.master_data = {
+            'experience': [
+                {
+                    'company': 'Example Co',
+                    'achievements': [
+                        {'text': 'Original bullet one.'},
+                        {'text': 'Original bullet two.'},
+                    ],
+                },
+            ],
+        }
+
+    def test_accepted_rewrite_persists_into_achievement_edits(self):
+        log_id = self.cm.log_achievement_rewrite(
+            original_text='Original bullet two.',
+            experience_context='Engineer at Example Co',
+            user_instructions='',
+            previous_suggestions=[],
+            suggested_text='Rewritten bullet two.',
+            experience_index=0,
+            achievement_index=1,
+        )
+
+        updated = self.cm.update_achievement_rewrite_outcome(
+            log_id=log_id,
+            outcome='accepted',
+            accepted_text='Accepted bullet two.',
+        )
+
+        self.assertTrue(updated)
+        self.assertEqual(
+            self.cm.state['achievement_edits'],
+            {0: ['Original bullet one.', 'Accepted bullet two.']},
+        )
+
+    def test_rejected_rewrite_does_not_create_achievement_edits(self):
+        log_id = self.cm.log_achievement_rewrite(
+            original_text='Original bullet two.',
+            experience_context='Engineer at Example Co',
+            user_instructions='',
+            previous_suggestions=[],
+            suggested_text='Rewritten bullet two.',
+            experience_index=0,
+            achievement_index=1,
+        )
+
+        updated = self.cm.update_achievement_rewrite_outcome(
+            log_id=log_id,
+            outcome='rejected',
+            accepted_text=None,
+        )
+
+        self.assertTrue(updated)
+        self.assertNotIn('achievement_edits', self.cm.state)
+
     def test_empty_decisions_returns_zeros(self):
         summary = self.cm.submit_rewrite_decisions([])
         self.assertEqual(summary['approved_count'], 0)
