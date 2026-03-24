@@ -252,3 +252,13 @@ document.addEventListener('ats-score-updated', () => {
   if (reportBtn) reportBtn.style.display = visible ? 'inline-block' : 'none';
   if (analysisBtn) analysisBtn.style.display = visible ? 'inline-block' : 'none';
 });
+
+export {
+  openAtsReportModal,
+  closeAtsReportModal,
+  _renderAtsReport,
+  openJobAnalysisModal,
+  closeJobAnalysisModal,
+  _renderAnalysisIntoEl,
+  populateAtsScoreTab,
+};
