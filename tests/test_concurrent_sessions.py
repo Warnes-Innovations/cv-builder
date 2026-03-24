@@ -1342,6 +1342,34 @@ def test_summary_and_master_data_routes_enforce_ownership(build_app):
         )
 
 
+def test_status_route_merges_session_summary_variants(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.orchestrator.master_data['professional_summaries'] = {
+            'default': 'Master summary',
+        }
+        manager.state['session_summaries'] = {
+            'ai_generated': 'Session summary',
+        }
+        manager.state['summary_focus_override'] = 'ai_generated'
+
+        response = client.get(
+            '/api/status',
+            query_string={'session_id': session_id},
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['professional_summaries'] == {
+            'default': 'Master summary',
+            'ai_generated': 'Session summary',
+        }
+        assert payload['summary_focus_override'] == 'ai_generated'
+
+
 def test_cover_letter_and_screening_routes_enforce_ownership(build_app):
     app, tracker = build_app()
 

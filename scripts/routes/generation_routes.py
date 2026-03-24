@@ -11,6 +11,8 @@ from flask import Blueprint, jsonify, request, send_file
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
+from utils.session_data_view import SessionDataView
+
 
 # ---------------------------------------------------------------------------
 # Module-level helpers (harvest)
@@ -437,12 +439,23 @@ def create_blueprint(deps):
                     customizations["approved_rewrites"] + bullet_rewrites
                 )
 
-        session_summaries = conv.state.get("session_summaries") or {}
-        if session_summaries and not customizations.get("selected_summary"):
-            focus = conv.state.get("summary_focus_override", "ai_recommended")
-            chosen = session_summaries.get(focus) or next(iter(session_summaries.values()), "")
-            if chosen:
-                customizations["selected_summary"] = chosen
+        summary_view = SessionDataView(
+            conv.orchestrator.master_data,
+            conv.state,
+            customizations,
+        )
+        customizations = summary_view.materialize_summary_selection()
+        if customizations.get("selected_summary"):
+            # duckflow: {
+            #   "id": "summary_api_ats_materialize_live",
+            #   "kind": "api",
+            #   "status": "live",
+            #   "handles": ["POST /api/cv/ats-score"],
+            #   "reads": ["state:session_summaries.ai_generated", "state:summary_focus_override"],
+            #   "writes": ["customizations:selected_summary"],
+            #   "notes": "Live ATS scoring route materializes the selected summary into generation customizations."
+            # }
+            pass
 
         score = _compute_ats_score(job_analysis, customizations, basis=basis)
         gen = conv.state.setdefault("generation_state", {})
