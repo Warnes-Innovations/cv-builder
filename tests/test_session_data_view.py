@@ -122,6 +122,12 @@ def test_materialize_customizations_includes_non_summary_session_overlays() -> N
             "skill_group_overrides": {"Python": "scripting"},
             "skill_category_overrides": {"Python": "Programming"},
             "skill_category_order": ["Programming", "Data Science"],
+            "skill_qualifier_overrides": {
+                "Python": {
+                    "proficiency": "expert",
+                    "subskills": ["Pandas", "NumPy"],
+                }
+            },
         },
         customizations={"approved_skills": ["Python"]},
     )
@@ -133,6 +139,46 @@ def test_materialize_customizations_includes_non_summary_session_overlays() -> N
     assert materialized["skill_group_overrides"] == {"Python": "scripting"}
     assert materialized["skill_category_overrides"] == {"Python": "Programming"}
     assert materialized["skill_category_order"] == ["Programming", "Data Science"]
+    assert materialized["skill_qualifier_overrides"] == {
+        "Python": {
+            "proficiency": "expert",
+            "subskills": ["Pandas", "NumPy"],
+        }
+    }
+
+
+def test_normalized_skills_apply_session_qualifier_overrides() -> None:
+    view = SessionDataView(
+        master_data={
+            "skills": [
+                {"name": "Python", "proficiency": "intermediate"},
+                {"name": "SQL"},
+            ]
+        },
+        session_state={
+            "skill_qualifier_overrides": {
+                "Python": {
+                    "proficiency": "expert",
+                    "subskills": ["Pandas", "NumPy"],
+                },
+                "SQL": {
+                    "parenthetical": "Window functions, query tuning",
+                },
+            }
+        },
+    )
+
+    assert view.normalized_skills() == [
+        {
+            "name": "Python",
+            "proficiency": "expert",
+            "subskills": ["Pandas", "NumPy"],
+        },
+        {
+            "name": "SQL",
+            "parenthetical": "Window functions, query tuning",
+        },
+    ]
 
 
 def test_materialize_generation_customizations_applies_review_decisions() -> None:
