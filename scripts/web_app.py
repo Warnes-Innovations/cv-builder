@@ -3681,7 +3681,6 @@ def _frontend_bundle_inputs(project_root: Path) -> List[Path]:
             pass
         session_registry.remove(session_id)
         return jsonify({"ok": True})
->>>>>>> c4531aa (Fix session restore and staged generation persistence)
 
     return app
 
