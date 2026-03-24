@@ -18,6 +18,7 @@ from flask import Blueprint, jsonify, request
 
 from utils.config import get_config
 from utils.conversation_manager import Phase
+from utils.session_data_view import SessionDataView
 
 
 def create_blueprint(deps):
@@ -88,9 +89,18 @@ def create_blueprint(deps):
                     'achievements': ach_text,
                 })
             all_achievements = orchestrator.master_data.get('selected_achievements', [])
-            professional_summaries = dict(orchestrator.master_data.get('professional_summaries', {}))
-            session_summaries = conversation.state.get('session_summaries') or {}
-            professional_summaries.update(session_summaries)
+            # duckflow: {
+            #   "id": "summary_api_status_live",
+            #   "kind": "api",
+            #   "status": "live",
+            #   "handles": ["GET /api/status"],
+            #   "reads": ["state:session_summaries.ai_generated", "state:summary_focus_override"],
+            #   "writes": ["response:GET /api/status.professional_summaries"],
+            #   "returns": ["response:GET /api/status.professional_summaries", "response:GET /api/status.summary_focus_override"],
+            #   "notes": "Live status route merges master summaries with session summary overrides."
+            # }
+            summary_view = SessionDataView(orchestrator.master_data, conversation.state)
+            professional_summaries = summary_view.professional_summaries()
             skills_data = orchestrator.master_data.get('skills', [])
             all_skills = conversation.normalize_skills_data(skills_data)
         return jsonify(dataclasses.asdict(StatusResponse(

@@ -37,6 +37,7 @@ from .bibtex_parser import parse_bibtex_file, format_publication
 from .config import get_config
 from .llm_client import LLMClient
 from .master_data_validator import validate_master_data_file
+from .session_data_view import SessionDataView
 
 
 class CVOrchestrator:
@@ -422,6 +423,14 @@ class CVOrchestrator:
         Parameters mirror ``generate_cv`` but only the HTML rendering path is
         executed, so this is significantly faster than a full generation run.
         """
+        # duckflow: {
+        #   "id": "summary_orchestrator_preview_html",
+        #   "kind": "artifact",
+        #   "status": "shared",
+        #   "reads": ["cv:selected_content.summary"],
+        #   "returns": ["artifact:generation_state.preview_html"],
+        #   "notes": "Renders the selected summary into preview HTML without writing files yet."
+        # }
         selected_content = self.build_render_ready_content(
             job_analysis,
             customizations,
@@ -462,6 +471,14 @@ class CVOrchestrator:
         Returns:
             dict with keys ``html`` and ``pdf`` (absolute path strings).
         """
+        # duckflow: {
+        #   "id": "summary_orchestrator_final_files",
+        #   "kind": "artifact",
+        #   "status": "shared",
+        #   "reads": ["artifact:generation_state.preview_html"],
+        #   "writes": ["file:generated_files.final_html", "file:generated_files.final_pdf"],
+        #   "notes": "Commits the confirmed preview HTML to disk and regenerates the final PDF from that same artifact."
+        # }
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1984,13 +2001,21 @@ If you need clarification, return:
                 key=lambda s: order_map.get(s.get('name', ''), len(order_map)),
             )
 
-        # Select professional summary — session_summaries (e.g. LLM-generated
-        # "ai_recommended") overlay master data so they take precedence.
-        master_summaries  = self.master_data.get('professional_summaries', {})
-        session_summaries = customizations.get('session_summaries', {})
-        all_summaries     = {**master_summaries, **session_summaries}
-        summary_key       = customizations.get('summary_focus', 'default')
-        selected_summary  = all_summaries.get(summary_key) or all_summaries.get('default', '')
+        # Select professional summary from the resolved session/master view.
+        summary_view = SessionDataView(
+            self.master_data,
+            customizations,
+            customizations,
+        )
+        # duckflow: {
+        #   "id": "summary_orchestrator_select",
+        #   "kind": "orchestrator",
+        #   "status": "shared",
+        #   "reads": ["customizations:summary_focus", "customizations:session_summaries"],
+        #   "writes": ["cv:selected_content.summary"],
+        #   "notes": "Resolves the active summary text by overlaying session variants over master variants and selecting the requested key."
+        # }
+        selected_summary = summary_view.selected_summary()
 
         # Select publications — honour user accept/reject decisions if present
         accepted_pubs = customizations.get('accepted_publications')  # list of cite_keys or None

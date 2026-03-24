@@ -24,6 +24,7 @@ import readline  # Enable line editing and history for input()
 from .llm_client import LLMClient, LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
 from .cv_orchestrator import CVOrchestrator
 from .config import get_config
+from .session_data_view import SessionDataView
 
 
 logger = logging.getLogger(__name__)
@@ -707,17 +708,23 @@ Ask questions that are specific to this job posting, not generic career question
                 if base_font_size:
                     customizations['base_font_size'] = base_font_size
 
-                # Summary focus override (user-selected summary key)
-                summary_override = self.state.get('summary_focus_override')
-                if summary_override:
-                    customizations['summary_focus'] = summary_override
-
                 self.state['customizations'] = customizations
 
-            # Inject LLM-generated session summaries so the orchestrator can resolve them
-            session_summaries = self.state.get('session_summaries') or {}
-            if session_summaries:
-                customizations['session_summaries'] = session_summaries
+            # duckflow: {
+            #   "id": "summary_state_customizations_handoff",
+            #   "kind": "state",
+            #   "status": "shared",
+            #   "reads": ["state:summary_focus_override", "state:session_summaries.ai_generated"],
+            #   "writes": ["customizations:summary_focus", "customizations:session_summaries"],
+            #   "notes": "Copies summary selection metadata from top-level session state into the customization payload used by preview and generation."
+            # }
+            summary_view = SessionDataView(
+                self.orchestrator.master_data,
+                self.state,
+                customizations,
+            )
+            customizations = summary_view.materialize_summary_selection()
+            self.state['customizations'] = customizations
 
             # Inject user-defined bullet ordering (Phase 9) into customizations
             achievement_orders = self.state.get('achievement_orders', {})
