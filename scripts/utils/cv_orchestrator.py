@@ -1715,30 +1715,18 @@ If you need clarification, return:
 
         # Get all content
         all_experiences  = self.master_data.get('experience', [])
-        all_achievements = self.master_data.get('selected_achievements', [])
-        all_skills_raw   = self.master_data.get('skills', [])
-        all_skills: List[Dict] = []
-
-        if isinstance(all_skills_raw, dict):
-            for category_data in all_skills_raw.values():
-                if isinstance(category_data, dict) and isinstance(category_data.get('skills'), list):
-                    for skill in category_data.get('skills', []):
-                        if isinstance(skill, dict):
-                            all_skills.append(skill)
-                        elif isinstance(skill, str):
-                            all_skills.append({'name': skill})
-                elif isinstance(category_data, list):
-                    for skill in category_data:
-                        if isinstance(skill, dict):
-                            all_skills.append(skill)
-                        elif isinstance(skill, str):
-                            all_skills.append({'name': skill})
-        elif isinstance(all_skills_raw, list):
-            for skill in all_skills_raw:
-                if isinstance(skill, dict):
-                    all_skills.append(skill)
-                elif isinstance(skill, str):
-                    all_skills.append({'name': skill})
+        session_view = SessionDataView(
+            self.master_data,
+            customizations,
+            customizations,
+        )
+        all_achievements = session_view.selected_achievements()
+        all_skills = []
+        for skill in session_view.normalized_skills():
+            if isinstance(skill, dict):
+                all_skills.append(skill)
+            elif isinstance(skill, str):
+                all_skills.append({'name': skill})
 
         # Scoring helpers
         job_keywords     = set(job_analysis.get('ats_keywords', []))

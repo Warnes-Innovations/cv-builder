@@ -235,6 +235,111 @@ def create_blueprint(deps):
         total = sum(len(v) for v in normalized.values())
         return jsonify({"success": True, "message": f"Saved edits for {len(normalized)} experiences ({total} achievements)"})
 
+    @bp.post('/api/review-achievement')
+    def save_review_achievement_override():
+        """Persist a top-level achievement edit/delete in session state only."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+
+        ach_id = str(data.get('id') or '').strip()
+        action = str(data.get('action') or 'update').strip().lower()
+        field = str(data.get('field') or '').strip()
+        value = data.get('value')
+
+        if not ach_id:
+            return jsonify({'error': 'id is required'}), 400
+
+        allowed_fields = {'title', 'description', 'relevant_for', 'importance'}
+        if action == 'delete':
+            with entry.lock:
+                overrides = dict(conversation.state.get('achievement_overrides') or {})
+                overrides.pop(ach_id, None)
+
+                removed_ids = [
+                    item for item in (conversation.state.get('removed_achievement_ids') or [])
+                    if isinstance(item, str) and item.strip()
+                ]
+                if ach_id not in removed_ids:
+                    removed_ids.append(ach_id)
+
+                decisions = dict(conversation.state.get('achievement_decisions') or {})
+                decisions[ach_id] = 'exclude'
+
+                customizations = dict(conversation.state.get('customizations') or {})
+                customizations['achievement_overrides'] = overrides
+                customizations['removed_achievement_ids'] = removed_ids
+
+                conversation.state['achievement_overrides'] = overrides
+                conversation.state['removed_achievement_ids'] = removed_ids
+                conversation.state['achievement_decisions'] = decisions
+                conversation.state['customizations'] = customizations
+                conversation._save_session()
+
+            session_registry.touch(sid)
+            return jsonify({'ok': True, 'action': 'deleted', 'id': ach_id})
+
+        if field not in allowed_fields:
+            return jsonify({'error': 'field must be one of title, description, relevant_for, importance'}), 400
+
+        with entry.lock:
+            overrides = dict(conversation.state.get('achievement_overrides') or {})
+            existing = dict(overrides.get(ach_id) or {})
+            existing[field] = value
+            overrides[ach_id] = existing
+
+            removed_ids = [
+                item for item in (conversation.state.get('removed_achievement_ids') or [])
+                if isinstance(item, str) and item.strip() and item != ach_id
+            ]
+
+            customizations = dict(conversation.state.get('customizations') or {})
+            customizations['achievement_overrides'] = overrides
+            if removed_ids:
+                customizations['removed_achievement_ids'] = removed_ids
+            else:
+                customizations.pop('removed_achievement_ids', None)
+
+            conversation.state['achievement_overrides'] = overrides
+            conversation.state['removed_achievement_ids'] = removed_ids
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'action': 'updated', 'id': ach_id, 'field': field})
+
+    @bp.post('/api/review-skill-group')
+    def save_review_skill_group_override():
+        """Persist a review-time skill group override in session state only."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+
+        skill_name = str(data.get('skill') or '').strip()
+        if not skill_name:
+            return jsonify({'error': 'skill is required'}), 400
+
+        raw_group = data.get('group')
+        group_name = None if raw_group is None else str(raw_group).strip() or None
+
+        with entry.lock:
+            overrides = dict(conversation.state.get('skill_group_overrides') or {})
+            overrides[skill_name] = group_name
+
+            customizations = dict(conversation.state.get('customizations') or {})
+            customizations['skill_group_overrides'] = overrides
+
+            conversation.state['skill_group_overrides'] = overrides
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'action': 'updated', 'skill': skill_name, 'group': group_name})
+
     @bp.route('/api/rewrite-achievement', methods=['POST'])
     def rewrite_achievement():
         """Ask the LLM to rewrite a single achievement bullet."""

@@ -88,7 +88,7 @@ def create_blueprint(deps):
                     'company': exp.get('company', ''),
                     'achievements': ach_text,
                 })
-            all_achievements = orchestrator.master_data.get('selected_achievements', [])
+            all_achievements = []
             # duckflow: {
             #   "id": "summary_api_status_live",
             #   "kind": "api",
@@ -101,8 +101,8 @@ def create_blueprint(deps):
             # }
             summary_view = SessionDataView(orchestrator.master_data, conversation.state)
             professional_summaries = summary_view.professional_summaries()
-            skills_data = orchestrator.master_data.get('skills', [])
-            all_skills = conversation.normalize_skills_data(skills_data)
+            all_achievements = summary_view.selected_achievements()
+            all_skills = summary_view.normalized_skills()
         return jsonify(dataclasses.asdict(StatusResponse(
             position_name=conversation.state.get("position_name"),
             phase=conversation.state.get("phase"),

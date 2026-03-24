@@ -54,6 +54,25 @@ function _computeYearsFromIds(ids, allExperiences) {
   return total > 0 ? total : null;
 }
 
+async function saveSkillGroupOverride(skillName, groupName) {
+  const normalizedGroup = groupName == null ? null : String(groupName).trim() || null;
+  const sk = (window._skillsOrdered || []).find(s => (typeof s === 'string' ? s : s.name || s) === skillName);
+  if (sk && typeof sk === 'object') sk.group = normalizedGroup || '';
+
+  const response = await fetch('/api/review-skill-group', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ skill: skillName, group: normalizedGroup }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to save skill group');
+  }
+
+  return response;
+}
+
 // ── Build review table (fetch + initialise) ────────────────────────────────
 
 async function buildSkillsReviewTable() {
@@ -265,20 +284,15 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   tableHTML += '</tbody></table>';
   container.innerHTML = tableHTML;
 
-  // Save group key to master data when user finishes editing
+  // Save group key for this session when user finishes editing
   container.querySelector('#skills-review-table tbody')?.addEventListener('change', e => {
     const input = e.target.closest('.skill-group-input');
     if (!input) return;
     const skillName = input.dataset.skill;
     const newGroup = input.value.trim();
-    // Update in-memory skill object so re-renders preserve the value
-    const sk = (window._skillsOrdered || []).find(s => (typeof s === 'string' ? s : s.name || s) === skillName);
-    if (sk && typeof sk === 'object') sk.group = newGroup;
-    fetch('/api/master-data/skill', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'update', skill: skillName, group: newGroup || null }),
-    }).catch(() => {});
+    saveSkillGroupOverride(skillName, newGroup).catch(() => {
+      showToast('Failed to save skill group.', 'error');
+    });
   });
 
   // Update derived-years hint live as user edits the experience match input
@@ -436,6 +450,7 @@ async function submitSkillDecisions() {
 export {
   _parseYearFromStr,
   _computeYearsFromIds,
+  saveSkillGroupOverride,
   buildSkillsReviewTable,
   _renderSkillsTable,
   moveSkillRow,
