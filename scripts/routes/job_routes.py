@@ -18,9 +18,7 @@ import requests as _requests
 from bs4 import BeautifulSoup
 from flask import Blueprint, jsonify, request
 
-# CURRENTLY INACTIVE: this blueprint module is not registered by the current
-# `scripts.web_app.create_app()`. Keep it as part of the route-modularization
-# path unless the architecture is explicitly reverted.
+# Live blueprint module registered by `scripts.web_app.create_app()`.
 
 from utils.llm_client import LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
 

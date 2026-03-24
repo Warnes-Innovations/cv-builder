@@ -11,9 +11,7 @@ from pathlib import Path
 
 from flask import Blueprint, redirect, send_file, send_from_directory, url_for
 
-# CURRENTLY INACTIVE: this blueprint module is not registered by the current
-# `scripts.web_app.create_app()`. Keep it as part of the route-modularization
-# path unless the architecture is explicitly reverted.
+# Live blueprint module registered by `scripts.web_app.create_app()`.
 
 
 def create_blueprint(deps):
