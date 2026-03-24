@@ -104,6 +104,94 @@ class TestGeneration:
         seeded_page.wait_for_timeout(200)
         assert seeded_page.evaluate("() => document.readyState") == "complete"
 
+    def test_finalise_archive_shows_ats_summary(
+        self, finalise_stage_page: Page
+    ):
+        """Finalise success card shows ATS score, coverage, and reasoning."""
+
+        def capture_status(route):
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "phase": "refinement",
+                    "generated_files": {
+                        "output_dir": "/tmp/test-cv-output",
+                        "files": [
+                            "CV_Test.html",
+                            "CV_Test.pdf",
+                            "CV_Test_ATS.docx",
+                        ],
+                    },
+                    "job_analysis": {
+                        "ats_keywords": ["Python", "SQL"],
+                    },
+                }),
+            )
+
+        def capture_finalise(route):
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "ok": True,
+                    "commit_hash": "abc1234",
+                    "summary": {
+                        "files": [
+                            "CV_Test.html",
+                            "CV_Test.pdf",
+                            "CV_Test_ATS.docx",
+                        ],
+                        "output_dir": "/tmp/test-cv-output",
+                        "approved_rewrites": 2,
+                        "application_status": "ready",
+                        "ats_keywords": ["Python", "SQL"],
+                        "ats_score": {
+                            "overall": 82,
+                            "hard_requirement_score": 100,
+                            "soft_requirement_score": 50,
+                            "basis": "post_generation",
+                            "keyword_status": [
+                                {
+                                    "keyword": "Python",
+                                    "type": "hard",
+                                    "status": "matched",
+                                    "match_type": "exact",
+                                },
+                                {
+                                    "keyword": "SQL",
+                                    "type": "hard",
+                                    "status": "missing",
+                                },
+                            ],
+                            "section_scores": {"skills": 100},
+                        },
+                    },
+                }),
+            )
+
+        finalise_stage_page.route("**/api/status**", capture_status)
+        finalise_stage_page.route(
+            "**/api/harvest/candidates**",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"ok": True, "candidates": []}),
+            ),
+        )
+        finalise_stage_page.route("**/api/finalise**", capture_finalise)
+
+        finalise_stage_page.locator("#tab-finalise").click()
+        finalise_stage_page.locator("#finalise-btn").click()
+        expect(finalise_stage_page.locator("#finalise-result")).to_be_visible()
+
+        result_text = finalise_stage_page.locator(
+            "#finalise-result"
+        ).inner_text()
+        assert "ATS score: 82%" in result_text
+        assert "ATS coverage: Hard 1/2" in result_text
+        assert "ATS detail: Missing hard: SQL" in result_text
+
 
 class TestStagedGenerationFlow:
     """Regression tests for the GAP-20 staged generation contract.
@@ -183,6 +271,10 @@ class TestStagedGenerationFlow:
     def test_ats_score_badge_has_value_element(self, page: Page):
         """#ats-score-value span exists inside the ATS badge."""
         assert page.locator("#ats-score-value").count() >= 1
+
+    def test_ats_score_summary_container_present(self, page: Page):
+        """#ats-score-summary exists beside the ATS badge."""
+        assert page.locator("#ats-score-summary").count() >= 1
 
     def test_ats_score_position_bar_row_structure(self, page: Page):
         """ATS badge and position-bar are siblings inside .position-bar-row."""

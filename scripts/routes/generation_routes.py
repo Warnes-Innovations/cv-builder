@@ -530,6 +530,9 @@ def create_blueprint(deps):
                 metadata['spell_audit']           = conversation.state.get('spell_audit') or []
                 metadata['layout_instructions']   = conversation.state.get('layout_instructions') or []
                 metadata['validation_results']    = conversation.state.get('validation_results') or {}
+                ats_score = ((conversation.state.get('generation_state') or {}).get('ats_score'))
+                if ats_score is not None:
+                    metadata['ats_score'] = ats_score
 
                 screening = metadata.get('screening_responses') or []
                 if screening:
@@ -587,6 +590,7 @@ def create_blueprint(deps):
                     'files':          generated.get('files', []),
                     'output_dir':     str(output_dir),
                     'ats_keywords':   ats_keywords,
+                    'ats_score':      ats_score,
                     'approved_rewrites': approved_count,
                     'application_status': app_status,
                 }

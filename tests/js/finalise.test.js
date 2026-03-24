@@ -59,6 +59,40 @@ describe('finaliseApplication', () => {
     expect(result.innerHTML).toContain('archived')
   })
 
+  it('renders ATS score reasoning when finalise returns cached ATS details', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          summary: {
+            approved_rewrites: 1,
+            ats_keywords: ['Python', 'SQL'],
+            ats_score: {
+              overall: 82,
+              hard_requirement_score: 100,
+              soft_requirement_score: 60,
+              basis: 'post_generation',
+              keyword_status: [
+                { keyword: 'Python', type: 'hard', status: 'matched', match_type: 'exact' },
+                { keyword: 'SQL', type: 'hard', status: 'missing' },
+              ],
+              section_scores: {},
+            },
+          },
+          commit_hash: 'abc123',
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: false }) })
+
+    await finaliseApplication()
+
+    const result = document.getElementById('finalise-result')
+    expect(result.innerHTML).toContain('ATS score: <strong>82%</strong>')
+    expect(result.innerHTML).toContain('ATS coverage: Hard 1/2')
+    expect(result.innerHTML).toContain('ATS detail: Missing hard')
+  })
+
   it('shows commit hash in result', async () => {
     globalThis.fetch = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, summary: {}, commit_hash: 'deadbeef' }) })

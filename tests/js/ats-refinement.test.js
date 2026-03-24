@@ -14,8 +14,14 @@ import { updateAtsBadge, refreshAtsScore, scheduleAtsRefresh } from '../../web/a
 
 function buildAtsBadge() {
   document.body.innerHTML = `
-    <div id="ats-score-badge" style="display:none">
-      <span id="ats-score-value"></span>
+    <div id="ats-score-header" style="display:none">
+      <div id="ats-score-badge" style="display:none">
+        <span id="ats-score-value"></span>
+      </div>
+      <div id="ats-score-summary" style="display:none">
+        <div id="ats-score-summary-line"></div>
+        <div id="ats-score-summary-detail"></div>
+      </div>
     </div>`
 }
 
@@ -43,6 +49,7 @@ describe('updateAtsBadge', () => {
   it('hides badge when score is null', () => {
     updateAtsBadge(null)
     expect(document.getElementById('ats-score-badge').style.display).toBe('none')
+    expect(document.getElementById('ats-score-header').style.display).toBe('none')
   })
 
   it('hides badge when overall is not a number', () => {
@@ -53,7 +60,40 @@ describe('updateAtsBadge', () => {
   it('shows badge and sets percentage text', () => {
     updateAtsBadge({ overall: 82, basis: 'review_checkpoint' })
     expect(document.getElementById('ats-score-badge').style.display).toBe('flex')
+    expect(document.getElementById('ats-score-header').style.display).toBe('flex')
     expect(document.getElementById('ats-score-value').textContent).toBe('82%')
+  })
+
+  it('renders hard soft and bonus keyword summary when keyword status is present', () => {
+    updateAtsBadge({
+      overall: 82,
+      keyword_status: [
+        { keyword: 'Python', type: 'hard', status: 'matched', match_type: 'exact' },
+        { keyword: 'SQL', type: 'hard', status: 'missing' },
+        { keyword: 'Leadership', type: 'soft', status: 'partial', match_type: 'partial' },
+        { keyword: 'Genomics', type: 'bonus', status: 'matched', match_type: 'exact' },
+      ],
+    })
+
+    expect(document.getElementById('ats-score-summary').style.display).toBe('flex')
+    expect(document.getElementById('ats-score-summary-line').textContent)
+      .toBe('Hard 1/2 • Soft 1/1 • Bonus 1/1')
+    expect(document.getElementById('ats-score-summary-detail').textContent)
+      .toBe('Missing hard: SQL')
+  })
+
+  it('falls back to top sections when there are no missing hard keywords', () => {
+    updateAtsBadge({
+      overall: 82,
+      section_scores: { skills: 80, experience: 55, summary: 25 },
+      keyword_status: [
+        { keyword: 'Python', type: 'hard', status: 'matched', match_type: 'exact' },
+        { keyword: 'Leadership', type: 'soft', status: 'partial', match_type: 'partial' },
+      ],
+    })
+
+    expect(document.getElementById('ats-score-summary-detail').textContent)
+      .toBe('Top sections: skills 80% • experience 55%')
   })
 
   it('adds score-high class for score >= 75', () => {
@@ -83,6 +123,15 @@ describe('updateAtsBadge', () => {
     updateAtsBadge({ overall: 72, basis: 'analysis' })
     expect(document.getElementById('ats-score-badge').getAttribute('aria-label'))
       .toContain('72%')
+  })
+
+  it('dispatches an ats-score-updated event after rendering', () => {
+    const handler = vi.fn()
+    document.addEventListener('ats-score-updated', handler)
+
+    updateAtsBadge({ overall: 72, basis: 'analysis' })
+
+    expect(handler).toHaveBeenCalledTimes(1)
   })
 
   it('does not throw when elements are absent', () => {
