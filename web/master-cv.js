@@ -144,6 +144,16 @@ async function populateMasterTab() {
       <div class="master-section-header">
         <h2>📖 Publications</h2>
         <div style="display:flex;align-items:center;gap:8px;">
+          <button class="action-btn secondary" id="master-pub-import-btn"
+              onclick="showImportPublicationsModal()"
+              aria-label="Import BibTeX publications">
+            ⬆️ Import BibTeX
+          </button>
+          <button class="action-btn secondary" id="master-pub-convert-btn"
+              onclick="showConvertPublicationsModal()"
+              aria-label="Convert citation text to BibTeX">
+            🪄 Convert Text
+          </button>
           <button class="action-btn secondary" id="master-pub-toggle-btn"
               onclick="togglePublicationsView()"
               aria-label="Toggle between structured CRUD view and raw BibTeX editor">
@@ -305,6 +315,94 @@ async function populateMasterTab() {
         <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;">
           <button class="action-btn" onclick="closePublicationModal()">Cancel</button>
           <button class="action-btn primary" onclick="saveMasterPublication()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="master-pub-import-modal-overlay" style="display:none;" role="dialog" aria-modal="true"
+        aria-labelledby="master-pub-import-modal-title" class="modal-overlay"
+        onclick="if(event.target===this)closeImportPublicationsModal()">
+      <div class="modal" style="max-width:680px;">
+        <div class="modal-header">
+          <h2 id="master-pub-import-modal-title">Import BibTeX Publications</h2>
+          <button onclick="closeImportPublicationsModal()" aria-label="Close BibTeX import dialog"
+              style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:20px;">
+          <p style="color:#6b7280;font-size:0.9em;margin:0 0 12px;">
+            Paste one or more BibTeX entries to merge them into <code>publications.bib</code>.
+          </p>
+          <textarea id="master-pub-import-textarea"
+              class="edit-input"
+              rows="12"
+              style="width:100%;font-family:monospace;font-size:0.85em;resize:vertical;"
+              placeholder="@article{smith2025,...}"
+              aria-label="BibTeX import content"
+              spellcheck="false"></textarea>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:12px;color:#334155;">
+            <input type="checkbox" id="master-pub-import-overwrite" />
+            Overwrite existing entries when cite keys already exist
+          </label>
+          <div id="master-pub-import-status"
+              style="margin-top:10px;font-size:0.85em;color:#6b7280;"
+              aria-live="polite"></div>
+        </div>
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;">
+          <button class="action-btn" onclick="closeImportPublicationsModal()">Cancel</button>
+          <button class="action-btn primary" id="master-pub-import-submit-btn"
+              onclick="importPublicationsBib()">Import</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="master-pub-convert-modal-overlay" style="display:none;" role="dialog" aria-modal="true"
+        aria-labelledby="master-pub-convert-modal-title" class="modal-overlay"
+        onclick="if(event.target===this)closeConvertPublicationsModal()">
+      <div class="modal" style="max-width:760px;">
+        <div class="modal-header">
+          <h2 id="master-pub-convert-modal-title">Convert Citation Text to BibTeX</h2>
+          <button onclick="closeConvertPublicationsModal()" aria-label="Close citation conversion dialog"
+              style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:20px;">
+          <p style="color:#6b7280;font-size:0.9em;margin:0 0 12px;">
+            Paste free-form citation text, review the generated BibTeX, then import it when it looks correct.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr;gap:14px;">
+            <div>
+              <label for="master-pub-convert-input" style="display:block;font-weight:600;margin-bottom:4px;">Citation Text</label>
+              <textarea id="master-pub-convert-input"
+                  class="edit-input"
+                  rows="7"
+                  style="width:100%;resize:vertical;"
+                  placeholder="Doe, J. (2025). Article title. Journal Name, 12(3), 1-10."
+                  aria-label="Citation text to convert"></textarea>
+            </div>
+            <div>
+              <label for="master-pub-convert-output" style="display:block;font-weight:600;margin-bottom:4px;">Generated BibTeX Preview</label>
+              <textarea id="master-pub-convert-output"
+                  class="edit-input"
+                  rows="10"
+                  style="width:100%;font-family:monospace;font-size:0.85em;resize:vertical;"
+                  placeholder="Converted BibTeX will appear here"
+                  aria-label="Generated BibTeX preview"
+                  spellcheck="false"></textarea>
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:12px;color:#334155;">
+            <input type="checkbox" id="master-pub-convert-overwrite" />
+            Overwrite existing entries when importing the generated BibTeX
+          </label>
+          <div id="master-pub-convert-status"
+              style="margin-top:10px;font-size:0.85em;color:#6b7280;"
+              aria-live="polite"></div>
+        </div>
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;">
+          <button class="action-btn" onclick="closeConvertPublicationsModal()">Close</button>
+          <button class="action-btn secondary" id="master-pub-convert-submit-btn"
+              onclick="convertPublicationText()">Generate BibTeX</button>
+          <button class="action-btn primary" id="master-pub-convert-import-btn"
+              onclick="importConvertedPublicationText()">Import Preview</button>
         </div>
       </div>
     </div>
@@ -824,6 +922,8 @@ function _renderEducationList(education) {
 
 /** Current view mode: 'crud' | 'raw' */
 let _pubViewMode = 'crud';
+let _pubSortMode = 'year_desc';
+let _pubGroupMode = 'none';
 
 function togglePublicationsView() {
   _pubViewMode = _pubViewMode === 'crud' ? 'raw' : 'crud';
@@ -885,14 +985,103 @@ function _updatePubCount(n) {
   if (el) el.textContent = `${n} publication${n !== 1 ? 's' : ''} on file`;
 }
 
+function _setPublicationStatus(elementId, text, color = '#6b7280') {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = color;
+}
+
+function setPublicationSortMode(mode) {
+  _pubSortMode = mode || 'year_desc';
+  void loadPublications();
+}
+
+function setPublicationGroupMode(mode) {
+  _pubGroupMode = mode || 'none';
+  void loadPublications();
+}
+
+function _getPublicationYear(pub) {
+  const rawYear = pub?.fields?.year ?? pub?.year ?? '';
+  const match = String(rawYear).match(/\d{4}/);
+  return match ? Number(match[0]) : null;
+}
+
+function _comparePublications(left, right) {
+  const leftYear = _getPublicationYear(left) ?? -Infinity;
+  const rightYear = _getPublicationYear(right) ?? -Infinity;
+  const leftType = String(left?.type || '').toLowerCase();
+  const rightType = String(right?.type || '').toLowerCase();
+  const leftKey = String(left?.key || '').toLowerCase();
+  const rightKey = String(right?.key || '').toLowerCase();
+
+  switch (_pubSortMode) {
+    case 'year_asc':
+      return (leftYear - rightYear) || leftType.localeCompare(rightType) || leftKey.localeCompare(rightKey);
+    case 'type_asc':
+      return leftType.localeCompare(rightType) || (rightYear - leftYear) || leftKey.localeCompare(rightKey);
+    case 'type_desc':
+      return rightType.localeCompare(leftType) || (rightYear - leftYear) || leftKey.localeCompare(rightKey);
+    case 'year_desc':
+    default:
+      return (rightYear - leftYear) || leftType.localeCompare(rightType) || leftKey.localeCompare(rightKey);
+  }
+}
+
+function _groupPublicationLabel(pub) {
+  if (_pubGroupMode === 'year') {
+    return String(_getPublicationYear(pub) ?? 'Unknown year');
+  }
+  if (_pubGroupMode === 'type') {
+    return pub?.type ? String(pub.type) : 'Unknown type';
+  }
+  return 'Publications';
+}
+
 function _renderPublicationsCrudList(pubs) {
   const container = document.getElementById('master-pub-crud-container');
   if (!container) return;
+  const controlsHtml = `
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:12px;">
+      <label style="display:flex;align-items:center;gap:6px;color:#475569;font-size:0.9em;">
+        Sort
+        <select id="master-pub-sort-select" class="edit-input" style="width:auto;min-width:150px;" onchange="setPublicationSortMode(this.value)">
+          <option value="year_desc" ${_pubSortMode === 'year_desc' ? 'selected' : ''}>Year newest first</option>
+          <option value="year_asc" ${_pubSortMode === 'year_asc' ? 'selected' : ''}>Year oldest first</option>
+          <option value="type_asc" ${_pubSortMode === 'type_asc' ? 'selected' : ''}>Type A–Z</option>
+          <option value="type_desc" ${_pubSortMode === 'type_desc' ? 'selected' : ''}>Type Z–A</option>
+        </select>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;color:#475569;font-size:0.9em;">
+        Group
+        <select id="master-pub-group-select" class="edit-input" style="width:auto;min-width:140px;" onchange="setPublicationGroupMode(this.value)">
+          <option value="none" ${_pubGroupMode === 'none' ? 'selected' : ''}>No grouping</option>
+          <option value="year" ${_pubGroupMode === 'year' ? 'selected' : ''}>By year</option>
+          <option value="type" ${_pubGroupMode === 'type' ? 'selected' : ''}>By type</option>
+        </select>
+      </label>
+    </div>`;
   if (!pubs.length) {
-    container.innerHTML = '<p style="color:#6b7280;padding:12px 0;">No publications on file. Click "+ Add Publication" above, or switch to Raw BibTeX to paste/import entries.</p>';
+    container.innerHTML = `${controlsHtml}<p style="color:#6b7280;padding:12px 0;">No publications on file. Click "+ Add Publication" above, or switch to Raw BibTeX to paste/import entries.</p>`;
     return;
   }
-  const rows = pubs.map(pub => {
+  const sorted = [...pubs].sort(_comparePublications);
+  const groups = [];
+  for (const pub of sorted) {
+    const label = _groupPublicationLabel(pub);
+    let group = groups.find((entry) => entry.label === label);
+    if (!group) {
+      group = { label, items: [] };
+      groups.push(group);
+    }
+    group.items.push(pub);
+  }
+  const sectionHtml = groups.map(({ label, items }) => {
+    const headingHtml = _pubGroupMode === 'none'
+      ? ''
+      : `<div style="margin:16px 0 8px;font-size:0.9em;font-weight:700;color:#334155;">${escapeHtml(label)}</div>`;
+    const rows = items.map(pub => {
     const key      = escapeHtml(pub.key || '');
     const type     = escapeHtml(pub.type || '');
     const citation = escapeHtml((pub.formatted_citation || '').slice(0, 160));
@@ -912,8 +1101,8 @@ function _renderPublicationsCrudList(pubs) {
               aria-label="Delete publication: ${key}" title="Delete">🗑️</button>
         </td>
       </tr>`;
-  }).join('');
-  container.innerHTML = `
+    }).join('');
+    return `${headingHtml}
     <table class="review-table" style="width:100%;">
       <thead>
         <tr>
@@ -924,6 +1113,8 @@ function _renderPublicationsCrudList(pubs) {
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
+  }).join('');
+  container.innerHTML = `${controlsHtml}${sectionHtml}`;
 }
 
 /** Validate BibTeX in the textarea without saving. */
@@ -999,6 +1190,173 @@ async function savePublicationsBib() {
     }
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
+  }
+}
+
+function showImportPublicationsModal() {
+  document.getElementById('master-pub-import-textarea').value = '';
+  document.getElementById('master-pub-import-overwrite').checked = false;
+  _setPublicationStatus('master-pub-import-status', '');
+  document.getElementById('master-pub-import-modal-overlay').style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('master-pub-import-modal-overlay');
+  trapFocus('master-pub-import-modal-overlay');
+}
+
+function closeImportPublicationsModal() {
+  document.getElementById('master-pub-import-modal-overlay').style.display = 'none';
+  restoreFocus();
+}
+
+async function importPublicationsBib() {
+  const textarea = document.getElementById('master-pub-import-textarea');
+  const overwrite = document.getElementById('master-pub-import-overwrite');
+  const button = document.getElementById('master-pub-import-submit-btn');
+  if (!textarea) return;
+  const bibtexText = textarea.value.trim();
+  if (!bibtexText) {
+    _setPublicationStatus('master-pub-import-status', '⚠️ Paste BibTeX entries to import.', '#dc2626');
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+    button.textContent = '⏳ Importing…';
+  }
+  _setPublicationStatus('master-pub-import-status', 'Importing BibTeX…');
+  try {
+    const res = await fetch('/api/master-data/publications/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bibtex_text: bibtexText,
+        overwrite: Boolean(overwrite?.checked),
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const parts = [
+        `${data.added || 0} added`,
+        `${data.updated || 0} updated`,
+        `${data.skipped || 0} skipped`,
+      ];
+      _setPublicationStatus('master-pub-import-status', `✅ Imported: ${parts.join(', ')}.`, '#15803d');
+      _setMasterChangeNotice('Publications', 'imported');
+      await loadPublications();
+      showAlertModal('✅ Imported', `Imported BibTeX entries: ${parts.join(', ')}.`);
+      closeImportPublicationsModal();
+    } else {
+      _setPublicationStatus('master-pub-import-status', `❌ ${data.error || 'Import failed'}`, '#dc2626');
+    }
+  } catch (err) {
+    _setPublicationStatus('master-pub-import-status', `❌ ${err.message}`, '#dc2626');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Import';
+    }
+  }
+}
+
+function showConvertPublicationsModal() {
+  document.getElementById('master-pub-convert-input').value = '';
+  document.getElementById('master-pub-convert-output').value = '';
+  document.getElementById('master-pub-convert-overwrite').checked = false;
+  _setPublicationStatus('master-pub-convert-status', '');
+  document.getElementById('master-pub-convert-modal-overlay').style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('master-pub-convert-modal-overlay');
+  trapFocus('master-pub-convert-modal-overlay');
+}
+
+function closeConvertPublicationsModal() {
+  document.getElementById('master-pub-convert-modal-overlay').style.display = 'none';
+  restoreFocus();
+}
+
+async function convertPublicationText() {
+  const input = document.getElementById('master-pub-convert-input');
+  const output = document.getElementById('master-pub-convert-output');
+  const button = document.getElementById('master-pub-convert-submit-btn');
+  if (!input || !output) return;
+  const text = input.value.trim();
+  if (!text) {
+    _setPublicationStatus('master-pub-convert-status', '⚠️ Paste citation text to convert.', '#dc2626');
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+    button.textContent = '⏳ Generating…';
+  }
+  _setPublicationStatus('master-pub-convert-status', 'Generating BibTeX preview…');
+  try {
+    const res = await fetch('/api/master-data/publications/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      output.value = data.bibtex || '';
+      _setPublicationStatus('master-pub-convert-status', '✅ Review the generated BibTeX, then import it if it looks correct.', '#15803d');
+    } else {
+      _setPublicationStatus('master-pub-convert-status', `❌ ${data.error || 'Conversion failed'}`, '#dc2626');
+    }
+  } catch (err) {
+    _setPublicationStatus('master-pub-convert-status', `❌ ${err.message}`, '#dc2626');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Generate BibTeX';
+    }
+  }
+}
+
+async function importConvertedPublicationText() {
+  const output = document.getElementById('master-pub-convert-output');
+  const overwrite = document.getElementById('master-pub-convert-overwrite');
+  const button = document.getElementById('master-pub-convert-import-btn');
+  if (!output) return;
+  const bibtexText = output.value.trim();
+  if (!bibtexText) {
+    _setPublicationStatus('master-pub-convert-status', '⚠️ Generate or edit BibTeX before importing.', '#dc2626');
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+    button.textContent = '⏳ Importing…';
+  }
+  _setPublicationStatus('master-pub-convert-status', 'Importing reviewed BibTeX…');
+  try {
+    const res = await fetch('/api/master-data/publications/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bibtex_text: bibtexText,
+        overwrite: Boolean(overwrite?.checked),
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const parts = [
+        `${data.added || 0} added`,
+        `${data.updated || 0} updated`,
+        `${data.skipped || 0} skipped`,
+      ];
+      _setPublicationStatus('master-pub-convert-status', `✅ Imported preview: ${parts.join(', ')}.`, '#15803d');
+      _setMasterChangeNotice('Publications', 'imported');
+      await loadPublications();
+      showAlertModal('✅ Imported', `Imported generated BibTeX: ${parts.join(', ')}.`);
+      closeConvertPublicationsModal();
+    } else {
+      _setPublicationStatus('master-pub-convert-status', `❌ ${data.error || 'Import failed'}`, '#dc2626');
+    }
+  } catch (err) {
+    _setPublicationStatus('master-pub-convert-status', `❌ ${err.message}`, '#dc2626');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Import Preview';
+    }
   }
 }
 
@@ -1927,8 +2285,17 @@ export {
   loadPublications,
   loadPublicationsBib,
   togglePublicationsView,
+  setPublicationSortMode,
+  setPublicationGroupMode,
   validatePublicationsBib,
   savePublicationsBib,
+  showImportPublicationsModal,
+  closeImportPublicationsModal,
+  importPublicationsBib,
+  showConvertPublicationsModal,
+  closeConvertPublicationsModal,
+  convertPublicationText,
+  importConvertedPublicationText,
   showAddPublicationModal,
   editMasterPublication,
   closePublicationModal,
