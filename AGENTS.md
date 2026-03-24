@@ -34,4 +34,4 @@ Use `duckflow` comments for local data-flow facts only.
 - Use exact tokens for route calls, state keys, response fields, and output artifacts.
 - When a flow exists in both live inline handlers and extracted route modules, annotate both.
 - Mark live code with `status: live` and extracted-but-unwired route mirrors with `status: planned`.
-- Regenerate stitched graphs with the standalone duckflow toolkit, for example `python "$HOME/src/duckflow/scripts/extract_duckflow.py" --repo-root .` and `python "$HOME/src/duckflow/scripts/generate_duckflow_mermaid.py" --repo-root . --match <flow>`, after changing annotations.
+- Regenerate stitched graphs with the standalone duckflow toolkit from `https://github.com/Warnes-Innovations/duckflow`, for example `duckflow-extract --repo-root .` and `duckflow-mermaid --repo-root . --match <flow>`, after changing annotations.
