@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
 
+# Live blueprint module registered by `scripts.web_app.create_app()`.
+
 from utils.config import get_config
 from utils.conversation_manager import Phase
 

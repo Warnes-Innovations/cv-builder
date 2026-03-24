@@ -18,6 +18,8 @@ import requests as _requests
 from bs4 import BeautifulSoup
 from flask import Blueprint, jsonify, request
 
+# Live blueprint module registered by `scripts.web_app.create_app()`.
+
 from utils.llm_client import LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
 
 

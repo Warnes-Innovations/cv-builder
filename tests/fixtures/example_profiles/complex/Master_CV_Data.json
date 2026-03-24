@@ -1,0 +1,388 @@
+{
+  "personal_info": {
+    "name": "Albert Einstein",
+    "title": "Theoretical Physicist and Scientific Public Intellectual",
+    "contact": {
+      "email": "albert.einstein@example.org",
+      "phone": "+1 609 000 1933",
+      "address": {
+        "city": "Princeton",
+        "state": "New Jersey",
+        "display": "Princeton, New Jersey"
+      },
+      "website": "https://en.wikipedia.org/wiki/Albert_Einstein"
+    },
+    "languages": [
+      "German",
+      "English",
+      "French",
+      "Italian"
+    ]
+  },
+  "professional_summaries": {
+    "default": "Theoretical physicist whose work reshaped modern physics across relativity, statistical mechanics, quantum theory, and scientific communication.",
+    "research_leadership": "Built influential research programs, lectures, and collaborations across Europe and the United States while defining multiple fields at once.",
+    "scientific_communication": "Translated difficult foundational ideas into enduring papers, lectures, and public explanations that changed both science and culture.",
+    "institution_builder": "Combined elite research appointments with advisory and institution-building roles spanning academies, institutes, and international scientific communities."
+  },
+  "experience": [
+    {
+      "id": "einstein-tutor",
+      "title": "Private Tutor and Substitute Teacher",
+      "company": "Independent appointments",
+      "location": {"city": "Winterthur", "state": "Switzerland"},
+      "start_date": "1900-07",
+      "end_date": "1902-06",
+      "tags": ["teaching", "early-career"],
+      "domain_relevance": ["education", "physics"],
+      "achievements": [
+        {"id": "einstein-tutor-1", "text": "Supported himself through short teaching appointments while continuing original work in thermodynamics and molecular theory."},
+        {"id": "einstein-tutor-2", "text": "Maintained an independent research agenda outside formal academic structures."}
+      ]
+    },
+    {
+      "id": "einstein-patent-office",
+      "title": "Technical Expert, Third Class",
+      "company": "Swiss Patent Office",
+      "location": {"city": "Bern", "state": "Switzerland"},
+      "start_date": "1902-06",
+      "end_date": "1909-10",
+      "tags": ["analysis", "innovation-review"],
+      "domain_relevance": ["systems-thinking", "physics"],
+      "achievements": [
+        {"id": "einstein-patent-office-1", "text": "Evaluated electromechanical inventions with unusual rigor while producing the annus mirabilis papers in parallel."},
+        {"id": "einstein-patent-office-2", "text": "Used patent-review discipline to sharpen intuition for clocks, reference frames, and measurement systems."}
+      ]
+    },
+    {
+      "id": "einstein-bern-privatdozent",
+      "title": "Privatdozent",
+      "company": "University of Bern",
+      "location": {"city": "Bern", "state": "Switzerland"},
+      "start_date": "1908-02",
+      "end_date": "1909-10",
+      "tags": ["teaching", "lectures"],
+      "domain_relevance": ["higher-education", "theoretical-physics"],
+      "achievements": [
+        {"id": "einstein-bern-privatdozent-1", "text": "Transitioned from independent researcher to academic lecturer while extending work in radiation and Brownian motion."},
+        {"id": "einstein-bern-privatdozent-2", "text": "Built early teaching materials around relativity and statistical mechanics."}
+      ]
+    },
+    {
+      "id": "einstein-zurich-associate",
+      "title": "Associate Professor of Theoretical Physics",
+      "company": "University of Zurich",
+      "location": {"city": "Zurich", "state": "Switzerland"},
+      "start_date": "1909-10",
+      "end_date": "1911-04",
+      "tags": ["research", "faculty"],
+      "domain_relevance": ["theoretical-physics", "research"],
+      "achievements": [
+        {"id": "einstein-zurich-associate-1", "text": "Expanded photon and specific-heat work in his first full academic professorship."},
+        {"id": "einstein-zurich-associate-2", "text": "Increased research visibility through lectures and widely cited papers."}
+      ]
+    },
+    {
+      "id": "einstein-prague",
+      "title": "Professor of Theoretical Physics",
+      "company": "German University in Prague",
+      "location": {"city": "Prague", "state": "Bohemia"},
+      "start_date": "1911-04",
+      "end_date": "1912-08",
+      "tags": ["research", "gravitation"],
+      "domain_relevance": ["relativity", "physics"],
+      "achievements": [
+        {"id": "einstein-prague-1", "text": "Pushed early gravitation research toward what became general relativity."},
+        {"id": "einstein-prague-2", "text": "Published on gravity's influence on light propagation and related thought experiments."}
+      ]
+    },
+    {
+      "id": "einstein-eth-professor",
+      "title": "Professor of Theoretical Physics",
+      "company": "ETH Zurich",
+      "location": {"city": "Zurich", "state": "Switzerland"},
+      "start_date": "1912-08",
+      "end_date": "1914-04",
+      "tags": ["collaboration", "mathematics"],
+      "domain_relevance": ["relativity", "geometry"],
+      "achievements": [
+        {"id": "einstein-eth-professor-1", "text": "Worked closely with Marcel Grossmann to import differential geometry into gravitation research."},
+        {"id": "einstein-eth-professor-2", "text": "Converted physical intuition into a mathematically tractable program for field equations."}
+      ]
+    },
+    {
+      "id": "einstein-prussian-academy",
+      "title": "Member",
+      "company": "Prussian Academy of Sciences",
+      "location": {"city": "Berlin", "state": "Germany"},
+      "start_date": "1914-04",
+      "end_date": "1933-03",
+      "tags": ["academy", "research-leadership"],
+      "domain_relevance": ["relativity", "scientific-leadership"],
+      "achievements": [
+        {"id": "einstein-prussian-academy-1", "text": "Completed the general theory of relativity and many of its first major applications while in Berlin."},
+        {"id": "einstein-prussian-academy-2", "text": "Used academy status to shape international physics discourse through lectures and publications."}
+      ]
+    },
+    {
+      "id": "einstein-kaiser-wilhelm",
+      "title": "Director",
+      "company": "Kaiser Wilhelm Institute for Physics",
+      "location": {"city": "Berlin", "state": "Germany"},
+      "start_date": "1917-10",
+      "end_date": "1933-03",
+      "tags": ["institute-leadership", "research"],
+      "domain_relevance": ["physics", "institution-building"],
+      "achievements": [
+        {"id": "einstein-kaiser-wilhelm-1", "text": "Anchored a flagship research institute during a period of intense change in modern physics."},
+        {"id": "einstein-kaiser-wilhelm-2", "text": "Provided scientific leadership while continuing foundational work in cosmology, quantum theory, and unified fields."}
+      ]
+    },
+    {
+      "id": "einstein-leiden",
+      "title": "Special Visiting Professor",
+      "company": "Leiden University",
+      "location": {"city": "Leiden", "state": "Netherlands"},
+      "start_date": "1920-02",
+      "end_date": "1930-12",
+      "tags": ["visiting-appointment", "international-collaboration"],
+      "domain_relevance": ["scientific-network", "lectures"],
+      "achievements": [
+        {"id": "einstein-leiden-1", "text": "Sustained an important international collaboration hub through recurring lectures and visits."},
+        {"id": "einstein-leiden-2", "text": "Strengthened exchange among leading European physicists during an era of rapid theoretical change."}
+      ]
+    },
+    {
+      "id": "einstein-solvay",
+      "title": "Conference Leader and Scientific Correspondent",
+      "company": "International physics congresses and collaborators",
+      "location": {"city": "Brussels", "state": "Belgium"},
+      "start_date": "1911-01",
+      "end_date": "1930-12",
+      "tags": ["scientific-community", "debate"],
+      "domain_relevance": ["quantum-mechanics", "scientific-leadership"],
+      "achievements": [
+        {"id": "einstein-solvay-1", "text": "Drove high-stakes debates on quantum theory through conference leadership and wide correspondence."},
+        {"id": "einstein-solvay-2", "text": "Set the agenda for foundational questions that remained central long after the meetings ended."}
+      ]
+    },
+    {
+      "id": "einstein-hebrew-university",
+      "title": "Founding Supporter and Board Participant",
+      "company": "Hebrew University of Jerusalem",
+      "location": {"city": "Jerusalem", "state": "Mandatory Palestine"},
+      "start_date": "1921-01",
+      "end_date": "1928-12",
+      "tags": ["institution-building", "education"],
+      "domain_relevance": ["higher-education", "governance"],
+      "achievements": [
+        {"id": "einstein-hebrew-university-1", "text": "Helped advocate for and fund an enduring research university with international stature."},
+        {"id": "einstein-hebrew-university-2", "text": "Linked scientific credibility with educational institution building."}
+      ]
+    },
+    {
+      "id": "einstein-caltech",
+      "title": "Visiting Professor",
+      "company": "California Institute of Technology",
+      "location": {"city": "Pasadena", "state": "California"},
+      "start_date": "1931-01",
+      "end_date": "1933-01",
+      "tags": ["visiting-appointment", "us-transition"],
+      "domain_relevance": ["physics", "scientific-network"],
+      "achievements": [
+        {"id": "einstein-caltech-1", "text": "Built strong ties to the American physics community before permanent relocation to the United States."},
+        {"id": "einstein-caltech-2", "text": "Extended cosmology and relativity discussions through high-profile lectures."}
+      ]
+    },
+    {
+      "id": "einstein-ias",
+      "title": "Professor",
+      "company": "Institute for Advanced Study",
+      "location": {"city": "Princeton", "state": "New Jersey"},
+      "start_date": "1933-10",
+      "end_date": "1955-04",
+      "tags": ["research", "senior-faculty"],
+      "domain_relevance": ["theoretical-physics", "advanced-study"],
+      "achievements": [
+        {"id": "einstein-ias-1", "text": "Served as one of the defining figures of the Institute for Advanced Study and its research identity."},
+        {"id": "einstein-ias-2", "text": "Continued work on unified field theories, cosmology, and quantum foundations from Princeton."}
+      ]
+    },
+    {
+      "id": "einstein-public-intellectual",
+      "title": "Public Lecturer and Scientific Author",
+      "company": "Independent speaking and publishing work",
+      "location": {"city": "Princeton", "state": "New Jersey"},
+      "start_date": "1919-01",
+      "end_date": "1955-04",
+      "tags": ["communication", "writing"],
+      "domain_relevance": ["science-communication", "publication"],
+      "achievements": [
+        {"id": "einstein-public-intellectual-1", "text": "Turned difficult physical theories into essays, books, and lectures with broad global reach."},
+        {"id": "einstein-public-intellectual-2", "text": "Used public visibility to defend scientific openness and international cooperation."}
+      ]
+    },
+    {
+      "id": "einstein-emergency-committee",
+      "title": "Chair",
+      "company": "Emergency Committee of Atomic Scientists",
+      "location": {"city": "Princeton", "state": "New Jersey"},
+      "start_date": "1946-05",
+      "end_date": "1950-12",
+      "tags": ["advocacy", "leadership"],
+      "domain_relevance": ["science-policy", "public-engagement"],
+      "achievements": [
+        {"id": "einstein-emergency-committee-1", "text": "Led postwar advocacy on the societal consequences of atomic science and international control of nuclear weapons."},
+        {"id": "einstein-emergency-committee-2", "text": "Connected scientific authority to practical policy communication in the early atomic era."}
+      ]
+    }
+  ],
+  "selected_achievements": [
+    {
+      "id": "einstein-achievement-1",
+      "title": "Special relativity",
+      "description": "Reframed space, time, and simultaneity through a theory that became a foundation of modern physics."
+    },
+    {
+      "id": "einstein-achievement-2",
+      "title": "General relativity",
+      "description": "Developed a geometric theory of gravitation that still anchors astrophysics and cosmology."
+    },
+    {
+      "id": "einstein-achievement-3",
+      "title": "Photon and quantum theory",
+      "description": "Extended Planck's ideas into the light quantum framework and related quantum-statistical advances."
+    },
+    {
+      "id": "einstein-achievement-4",
+      "title": "Brownian motion and statistical mechanics",
+      "description": "Provided decisive theoretical support for the atomic view of matter through statistical arguments and observable consequences."
+    },
+    {
+      "id": "einstein-achievement-5",
+      "title": "Scientific institution leadership",
+      "description": "Held high-impact academic and public roles across Europe and the United States while shaping twentieth-century physics."
+    }
+  ],
+  "skills": {
+    "relativity": {
+      "category": "Relativity and Gravitation",
+      "skills": ["Special relativity", "General relativity", "Tensor calculus", "Cosmology"]
+    },
+    "statistical_mechanics": {
+      "category": "Statistical Mechanics",
+      "skills": ["Brownian motion", "Fluctuation theory", "Thermodynamics", "Molecular theory"]
+    },
+    "quantum_theory": {
+      "category": "Quantum Theory",
+      "skills": ["Photon theory", "Specific heats", "Bose-Einstein statistics", "Quantum foundations"]
+    },
+    "scientific_communication": {
+      "category": "Scientific Communication",
+      "skills": ["Research writing", "Public lectures", "Thought experiments", "Scholarly correspondence"]
+    },
+    "leadership": {
+      "category": "Institutional Leadership",
+      "skills": ["Research institute leadership", "Academic advising", "International collaboration", "Science policy advocacy"]
+    }
+  },
+  "education": [
+    {
+      "degree": "Diploma",
+      "field": "Mathematics and Physics Teaching",
+      "institution": "Swiss Federal Polytechnic",
+      "location": {"city": "Zurich", "state": "Switzerland"},
+      "start_year": 1896,
+      "end_year": 1900
+    },
+    {
+      "degree": "Doctor of Philosophy",
+      "field": "Physics",
+      "institution": "University of Zurich",
+      "location": {"city": "Zurich", "state": "Switzerland"},
+      "start_year": 1905,
+      "end_year": 1905
+    },
+    {
+      "degree": "Gymnasium Completion",
+      "field": "General Studies",
+      "institution": "Aargau Cantonal School",
+      "location": {"city": "Aarau", "state": "Switzerland"},
+      "start_year": 1895,
+      "end_year": 1896
+    },
+    {
+      "degree": "Technical Secondary Study",
+      "field": "Science and Mathematics",
+      "institution": "Luitpold Gymnasium",
+      "location": {"city": "Munich", "state": "Germany"},
+      "start_year": 1888,
+      "end_year": 1894
+    }
+  ],
+  "awards": [
+    {
+      "title": "Nobel Prize in Physics",
+      "year": 1921,
+      "description": "Awarded for services to theoretical physics, especially discovery of the law of the photoelectric effect."
+    },
+    {
+      "title": "Copley Medal",
+      "year": 1925,
+      "description": "Recognized for enduring contributions to physics and scientific thought."
+    }
+  ],
+  "publications": [
+    {
+      "title": "Folgerungen aus den Kapillaritatserscheinungen",
+      "year": 1901,
+      "formatted_citation": "Einstein, A. (1901). Folgerungen aus den Kapillaritatserscheinungen. Annalen der Physik."
+    },
+    {
+      "title": "Kinetische Theorie des Warmegleichgewichtes und des zweiten Hauptsatzes der Thermodynamik",
+      "year": 1902,
+      "formatted_citation": "Einstein, A. (1902). Kinetische Theorie des Warmegleichgewichtes und des zweiten Hauptsatzes der Thermodynamik. Annalen der Physik."
+    },
+    {
+      "title": "Uber einen die Erzeugung und Verwandlung des Lichtes betreffenden heuristischen Gesichtspunkt",
+      "year": 1905,
+      "formatted_citation": "Einstein, A. (1905). Uber einen die Erzeugung und Verwandlung des Lichtes betreffenden heuristischen Gesichtspunkt. Annalen der Physik."
+    },
+    {
+      "title": "Uber die von der molekularkinetischen Theorie der Warme geforderte Bewegung von in ruhenden Flussigkeiten suspendierten Teilchen",
+      "year": 1905,
+      "formatted_citation": "Einstein, A. (1905). Uber die von der molekularkinetischen Theorie der Warme geforderte Bewegung von in ruhenden Flussigkeiten suspendierten Teilchen. Annalen der Physik."
+    },
+    {
+      "title": "Zur Elektrodynamik bewegter Korper",
+      "year": 1905,
+      "formatted_citation": "Einstein, A. (1905). Zur Elektrodynamik bewegter Korper. Annalen der Physik."
+    },
+    {
+      "title": "Ist die Tragheit eines Korpers von seinem Energieinhalt abhangig?",
+      "year": 1905,
+      "formatted_citation": "Einstein, A. (1905). Ist die Tragheit eines Korpers von seinem Energieinhalt abhangig? Annalen der Physik."
+    },
+    {
+      "title": "Plancksche Theorie der Strahlung und die Theorie der Spezifischen Warme",
+      "year": 1907,
+      "formatted_citation": "Einstein, A. (1907). Plancksche Theorie der Strahlung und die Theorie der Spezifischen Warme. Annalen der Physik."
+    },
+    {
+      "title": "Zum gegenwartigen Stande des Strahlungsproblems",
+      "year": 1909,
+      "formatted_citation": "Einstein, A. (1909). Zum gegenwartigen Stande des Strahlungsproblems. Physikalische Zeitschrift."
+    },
+    {
+      "title": "Einfluss der Schwerkraft auf die Ausbreitung des Lichtes",
+      "year": 1911,
+      "formatted_citation": "Einstein, A. (1911). Einfluss der Schwerkraft auf die Ausbreitung des Lichtes. Annalen der Physik."
+    },
+    {
+      "title": "Theorie des statischen Gravitationsfeldes",
+      "year": 1912,
+      "formatted_citation": "Einstein, A. (1912). Theorie des statischen Gravitationsfeldes. Annalen der Physik."
+    }
+  ],
+  "publications_file": "publications.bib"
+}

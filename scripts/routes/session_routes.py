@@ -13,8 +13,9 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
+# Live blueprint module registered by `scripts.web_app.create_app()`.
+
 from utils.config import get_config
-from utils.conversation_manager import Phase
 from utils.session_registry import SessionNotFoundError, SessionOwnedError
 
 
@@ -25,8 +26,15 @@ def create_blueprint(deps):
     _validate_owner = deps['validate_owner']
     session_registry = deps['session_registry']
     _app_config = deps['app_config']
+    output_dir = deps.get('output_dir')
     SessionItem = deps['SessionItem']
     SessionListResponse = deps['SessionListResponse']
+
+    def _output_base() -> Path:
+        if output_dir:
+            return Path(output_dir).expanduser()
+        cfg = get_config()
+        return Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
 
     @bp.post("/api/save")
     def save():
@@ -44,8 +52,7 @@ def create_blueprint(deps):
     def list_sessions():
         """List saved sessions, most recent first."""
         try:
-            cfg = get_config()
-            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            output_base = _output_base()
             trash_dir   = output_base / '.trash'
             sessions = []
             if output_base.exists():
@@ -77,8 +84,7 @@ def create_blueprint(deps):
         items = []
 
         try:
-            cfg = get_config()
-            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            output_base = _output_base()
             trash_dir   = output_base / '.trash'
             if output_base.exists():
                 for session_file in sorted(output_base.rglob("session.json"), reverse=True):
@@ -160,8 +166,7 @@ def create_blueprint(deps):
             return jsonify({"error": "Missing path or session_id"}), 400
 
         try:
-            cfg = get_config()
-            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            output_base = _output_base()
             trash_dir   = output_base / '.trash'
 
             def _move_to_trash(job_dir: Path):
@@ -206,8 +211,7 @@ def create_blueprint(deps):
     def list_trash():
         """List sessions in the .trash folder."""
         try:
-            cfg = get_config()
-            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            output_base = _output_base()
             trash_dir   = output_base / '.trash'
             items = []
             if trash_dir.exists():
@@ -236,8 +240,7 @@ def create_blueprint(deps):
         if not path_param:
             return jsonify({"error": "Missing path"}), 400
         try:
-            cfg = get_config()
-            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            output_base = _output_base()
             trash_dir   = output_base / '.trash'
             candidate   = Path(path_param)
             if not candidate.exists() or candidate.name != 'session.json':
@@ -263,8 +266,7 @@ def create_blueprint(deps):
         if not path_param:
             return jsonify({"error": "Missing path"}), 400
         try:
-            cfg = get_config()
-            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            output_base = _output_base()
             trash_dir   = output_base / '.trash'
             candidate   = Path(path_param)
             if not candidate.exists() or candidate.name != 'session.json':
@@ -283,8 +285,7 @@ def create_blueprint(deps):
     def trash_empty():
         """Permanently delete everything in the .trash folder."""
         try:
-            cfg = get_config()
-            output_base = Path(cfg.get('data.output_dir', '~/CV/files')).expanduser()
+            output_base = _output_base()
             trash_dir   = output_base / '.trash'
             if trash_dir.exists():
                 import shutil as _shutil
@@ -325,8 +326,7 @@ def create_blueprint(deps):
         if not session_file.exists():
             return jsonify({"error": f"Session not found: {path}"}), 404
         try:
-            cfg = get_config()
-            output_base = Path(cfg.get("data.output_dir", "~/CV/files")).expanduser()
+            output_base = _output_base()
             if not session_file.resolve().is_relative_to(output_base.resolve()):
                 return jsonify({"error": "Path is outside the output directory"}), 400
         except Exception:
@@ -374,29 +374,6 @@ def create_blueprint(deps):
                 loaded = conversation._load_latest_session_for_position(name)
         session_registry.touch(sid)
         return jsonify({"ok": True, "loaded": loaded, "position_name": name})
-
-    @bp.post("/api/reset")
-    def reset():
-        entry = _get_session()
-        _validate_owner(entry)
-        conversation = entry.manager
-        sid = entry.session_id
-        with entry.lock:
-            conversation.conversation_history = []
-            conversation.state = {
-                "phase": Phase.INIT,
-                "position_name": None,
-                "job_description": None,
-                "job_analysis": None,
-                "post_analysis_questions": [],
-                "post_analysis_answers": {},
-                "customizations": None,
-                "generated_files":  None,
-                "generation_state": {},
-            }
-            conversation._save_session()
-        session_registry.touch(sid)
-        return jsonify({"ok": True, "message": "Conversation reset."})
 
     @bp.get("/api/history")
     def history():
