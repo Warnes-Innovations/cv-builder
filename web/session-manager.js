@@ -227,6 +227,26 @@ function showSessionsLandingPanel(message = '') {
   `;
 }
 
+function _restoreTabForPhase(sessionPhase) {
+  const phaseTabMap = {
+    [PHASES.INIT]: 'job',
+    [PHASES.JOB_ANALYSIS]: 'analysis',
+    [PHASES.CUSTOMIZATION]: 'exp-review',
+    [PHASES.REWRITE_REVIEW]: 'rewrite',
+    [PHASES.SPELL_CHECK]: 'spell',
+    [PHASES.GENERATION]: 'generate',
+    [PHASES.LAYOUT_REVIEW]: 'layout',
+    [PHASES.REFINEMENT]: 'finalise',
+  };
+  const targetTab = phaseTabMap[sessionPhase] || 'job';
+
+  if (typeof switchTab === 'function') {
+    switchTab(targetTab);
+  } else {
+    stateManager.setCurrentTab(targetTab);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Session context / restore
 // ---------------------------------------------------------------------------
@@ -385,6 +405,8 @@ async function restoreBackendState() {
         }
       }
     } catch (_e) { /* non-fatal */ }
+
+    _restoreTabForPhase(statusData.phase || PHASES.INIT);
 
     if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
 
