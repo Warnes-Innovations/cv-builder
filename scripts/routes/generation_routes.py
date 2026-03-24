@@ -9,6 +9,8 @@ from typing import Any, Dict, List
 
 from flask import Blueprint, jsonify, request, send_file
 
+# Live blueprint module registered by `scripts.web_app.create_app()`.
+
 
 # ---------------------------------------------------------------------------
 # Module-level helpers (harvest)
@@ -484,9 +486,17 @@ def create_blueprint(deps):
             "final_generated_at": now,
             "final_output_paths": final_paths,
         })
+        generated.update({
+            "final_html": final_paths["html"],
+            "final_pdf": final_paths["pdf"],
+            "files": [
+                final_paths["html"],
+                final_paths["pdf"],
+            ],
+        })
         conv._save_session()
 
-        outputs = {**generated, "final_html": final_paths["html"], "final_pdf": final_paths["pdf"]}
+        outputs = dict(generated)
         return jsonify({"ok": True, "generated_at": now, "outputs": outputs})
 
     # ------------------------------------------------------------------

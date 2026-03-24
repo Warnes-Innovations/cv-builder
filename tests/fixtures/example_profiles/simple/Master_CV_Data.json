@@ -1,0 +1,171 @@
+{
+  "personal_info": {
+    "name": "Florence Nightingale",
+    "title": "Nursing Reformer and Health Systems Statistician",
+    "contact": {
+      "email": "florence.nightingale@example.org",
+      "phone": "+44 20 0000 1854",
+      "address": {
+        "city": "London",
+        "state": "England",
+        "display": "London, England"
+      },
+      "website": "https://en.wikipedia.org/wiki/Florence_Nightingale"
+    },
+    "languages": [
+      "English",
+      "French",
+      "Italian"
+    ]
+  },
+  "professional_summaries": {
+    "default": "Pioneering nurse, statistician, and public health reformer known for building repeatable hospital systems and using evidence to change policy.",
+    "public_health": "Led hospital redesign, sanitation reform, and outcome measurement programs that reduced mortality and influenced national health policy."
+  },
+  "experience": [
+    {
+      "id": "nightingale-kaiserswerth",
+      "title": "Nursing Trainee",
+      "company": "Institute of Protestant Deaconesses at Kaiserswerth",
+      "location": {"city": "Kaiserswerth", "state": "Prussia"},
+      "start_date": "1850-07",
+      "end_date": "1851-07",
+      "tags": ["training", "clinical-operations"],
+      "domain_relevance": ["nursing", "hospital-care"],
+      "achievements": [
+        {
+          "id": "nightingale-kaiserswerth-1",
+          "text": "Completed hands-on nurse training and documented operating procedures that later informed civilian and military care models."
+        }
+      ]
+    },
+    {
+      "id": "nightingale-harley-street",
+      "title": "Superintendent",
+      "company": "Institution for Gentlewomen in Distressed Circumstances",
+      "location": {"city": "London", "state": "England"},
+      "start_date": "1853-08",
+      "end_date": "1854-10",
+      "tags": ["leadership", "care-delivery"],
+      "domain_relevance": ["health-operations", "patient-care"],
+      "achievements": [
+        {
+          "id": "nightingale-harley-street-1",
+          "text": "Stabilized a struggling care institution by improving staffing discipline, supplies management, and patient record-keeping."
+        }
+      ]
+    },
+    {
+      "id": "nightingale-scutari",
+      "title": "Head of Nursing Services",
+      "company": "British Military Hospitals at Scutari",
+      "location": {"city": "Istanbul", "state": "Ottoman Empire"},
+      "start_date": "1854-11",
+      "end_date": "1856-08",
+      "tags": ["crisis-response", "hospital-operations"],
+      "domain_relevance": ["public-health", "military-medicine"],
+      "achievements": [
+        {
+          "id": "nightingale-scutari-1",
+          "text": "Introduced sanitation, triage, and supply workflows that materially reduced preventable deaths during the Crimean War."
+        }
+      ]
+    },
+    {
+      "id": "nightingale-school",
+      "title": "Founder",
+      "company": "Nightingale Training School for Nurses",
+      "location": {"city": "London", "state": "England"},
+      "start_date": "1860-07",
+      "end_date": "1873-12",
+      "tags": ["education", "institution-building"],
+      "domain_relevance": ["nursing-education", "health-workforce"],
+      "achievements": [
+        {
+          "id": "nightingale-school-1",
+          "text": "Established a formal nurse training model that professionalized nursing and scaled through affiliated hospitals."
+        }
+      ]
+    },
+    {
+      "id": "nightingale-reform",
+      "title": "Statistical and Public Health Adviser",
+      "company": "War Office and Royal Commission collaborators",
+      "location": {"city": "London", "state": "England"},
+      "start_date": "1857-01",
+      "end_date": "1883-12",
+      "tags": ["analytics", "policy"],
+      "domain_relevance": ["public-health", "health-policy"],
+      "achievements": [
+        {
+          "id": "nightingale-reform-1",
+          "text": "Used statistical evidence and visual communication to drive reforms in army health, sanitation, and hospital administration."
+        }
+      ]
+    }
+  ],
+  "selected_achievements": [
+    {
+      "id": "nightingale-achievement-1",
+      "title": "Hospital mortality reduction",
+      "description": "Combined sanitation reform and operational controls to cut preventable mortality in military hospitals.",
+      "keywords": ["sanitation", "operations", "outcomes"]
+    },
+    {
+      "id": "nightingale-achievement-2",
+      "title": "Evidence-based reform",
+      "description": "Popularized the use of statistical graphics and measured outcomes in public health decision-making.",
+      "keywords": ["statistics", "policy", "data-visualization"]
+    }
+  ],
+  "skills": [
+    "Clinical operations",
+    "Public health reform",
+    "Statistical analysis",
+    "Data visualization",
+    "Training program design"
+  ],
+  "education": [
+    {
+      "degree": "Private Classical and Mathematical Study",
+      "field": "Languages, Mathematics, and Philosophy",
+      "institution": "Family Tutors and Independent Study",
+      "location": {"city": "Embley", "state": "England"},
+      "start_year": 1830,
+      "end_year": 1844
+    },
+    {
+      "degree": "Nursing Training Certificate",
+      "field": "Hospital Nursing and Administration",
+      "institution": "Institute of Protestant Deaconesses at Kaiserswerth",
+      "location": {"city": "Kaiserswerth", "state": "Prussia"},
+      "start_year": 1850,
+      "end_year": 1851
+    }
+  ],
+  "awards": [
+    {
+      "title": "Royal Red Cross",
+      "year": 1883,
+      "description": "Recognized for foundational contributions to military nursing and hospital reform."
+    }
+  ],
+  "publications": [
+    {
+      "title": "Notes on Nursing: What It Is, and What It Is Not",
+      "year": 1859,
+      "formatted_citation": "Nightingale, F. (1859). Notes on Nursing: What It Is, and What It Is Not. London: Harrison."
+    },
+    {
+      "title": "Notes on Hospitals",
+      "year": 1859,
+      "formatted_citation": "Nightingale, F. (1859). Notes on Hospitals. London: John W. Parker and Son."
+    },
+    {
+      "title": "A Contribution to the Sanitary History of the British Army during the Late War with Russia",
+      "year": 1859,
+      "formatted_citation": "Nightingale, F. (1859). A Contribution to the Sanitary History of the British Army during the Late War with Russia. London: John W. Parker and Son."
+    }
+  ],
+  "publications_file": "publications.bib"
+}
