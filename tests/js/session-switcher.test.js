@@ -11,23 +11,19 @@
  */
 
 import { formatSessionPhaseLabel } from '../../web/utils.js';
+import {
+  buildSessionSwitcherLabel,
+  getActiveSessionOwnershipMeta,
+} from '../../web/session-manager.js'
 
 describe('session switcher helpers', () => {
-  let app
   let originalFetch
 
-  function loadApp() {
-    app = require('../../web/app.js')
-    return app
-  }
-
   beforeEach(() => {
-    vi.resetModules()
     window.history.replaceState({}, '', 'http://localhost/')
     sessionStorage.clear()
     originalFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn())
-    loadApp()
   })
 
   afterEach(() => {
@@ -46,18 +42,18 @@ describe('session switcher helpers', () => {
   })
 
   it('builds a header label from position name and phase', () => {
-    expect(app.buildSessionSwitcherLabel({
+    expect(buildSessionSwitcherLabel({
       position_name: 'Senior Data Scientist',
       phase: 'generation',
     })).toBe('Senior Data Scientist · Generate')
   })
 
   it('falls back to the default sessions label when no session is active', () => {
-    expect(app.buildSessionSwitcherLabel({})).toBe('📂 Sessions')
+    expect(buildSessionSwitcherLabel({})).toBe('📂 Sessions')
   })
 
   it('marks the current session as owned by the current tab', () => {
-    const meta = app.getActiveSessionOwnershipMeta(
+    const meta = getActiveSessionOwnershipMeta(
       { session_id: 'sess-1', owned_by_requester: true, claimed: true },
       { currentSessionId: 'sess-1' },
     )
@@ -70,7 +66,7 @@ describe('session switcher helpers', () => {
   })
 
   it('marks foreign owned sessions distinctly', () => {
-    const meta = app.getActiveSessionOwnershipMeta(
+    const meta = getActiveSessionOwnershipMeta(
       { session_id: 'sess-2', owned_by_requester: false, claimed: true },
       { currentSessionId: 'sess-1' },
     )
@@ -83,7 +79,7 @@ describe('session switcher helpers', () => {
   })
 
   it('marks unclaimed sessions as available', () => {
-    const meta = app.getActiveSessionOwnershipMeta(
+    const meta = getActiveSessionOwnershipMeta(
       { session_id: 'sess-3', owned_by_requester: false, claimed: false },
       { currentSessionId: 'sess-1' },
     )

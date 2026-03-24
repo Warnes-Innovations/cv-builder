@@ -26,6 +26,7 @@ import * as FetchUtils            from '../../web/fetch-utils.js'
 import * as MessageQueue          from '../../web/message-queue.js'
 import * as AuthProvider          from '../../web/auth-provider.js'
 import * as AtsRefinement         from '../../web/ats-refinement.js'
+import * as AtsModals             from '../../web/ats-modals.js'
 import * as SessionActions        from '../../web/session-actions.js'
 import * as JobAnalysis           from '../../web/job-analysis.js'
 import * as SessionManager        from '../../web/session-manager.js'
@@ -57,6 +58,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
 })
+
+const STANDALONE_WEB_MODULES = new Set(['app.js', 'bundle.js'])
 
 // ── Helper: check all exports in a namespace are non-null ─────────────────────
 
@@ -110,6 +113,16 @@ describe('Tier 2 — AtsRefinement', () => {
   it('exports at least one symbol', () => assertAllExports(AtsRefinement, 'AtsRefinement'))
   it('exports updateAtsBadge', () => {
     expect(typeof AtsRefinement.updateAtsBadge).toBe('function')
+  })
+})
+
+describe('Tier 2 — AtsModals', () => {
+  it('exports ATS modal entry points', () => {
+    expect(typeof AtsModals.openAtsReportModal).toBe('function')
+    expect(typeof AtsModals.closeAtsReportModal).toBe('function')
+    expect(typeof AtsModals.openJobAnalysisModal).toBe('function')
+    expect(typeof AtsModals.closeJobAnalysisModal).toBe('function')
+    expect(typeof AtsModals.populateAtsScoreTab).toBe('function')
   })
 })
 
@@ -268,7 +281,7 @@ describe('main.js globalThis assignment', () => {
       Object.assign({},
         Validators, RecommendationHelpers, UiHelpers,
         FetchUtils, MessageQueue,
-        AuthProvider, AtsRefinement, SessionActions, JobAnalysis,
+        AuthProvider, AtsRefinement, AtsModals, SessionActions, JobAnalysis,
         SessionManager, JobInput, MessageDispatch, QuestionsPanel,
         ReviewTableBase,
         ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview,
@@ -283,7 +296,7 @@ describe('main.js globalThis assignment', () => {
     const merged = Object.assign({},
       Validators, RecommendationHelpers, UiHelpers,
       FetchUtils, MessageQueue,
-      AuthProvider, AtsRefinement, SessionActions, JobAnalysis,
+      AuthProvider, AtsRefinement, AtsModals, SessionActions, JobAnalysis,
       SessionManager, JobInput, MessageDispatch, QuestionsPanel,
       ReviewTableBase,
       ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview,
@@ -295,6 +308,8 @@ describe('main.js globalThis assignment', () => {
       'parseStatusResponse',    // validators
       'llmFetch',               // fetch-utils
       'updateAtsBadge',         // ats-refinement
+      'openAtsReportModal',     // ats-modals
+      'populateAtsScoreTab',    // ats-modals
       'sendAction',             // session-actions
       'analyzeJob',             // job-analysis
       'restoreSession',         // session-manager
@@ -318,5 +333,27 @@ describe('main.js globalThis assignment', () => {
       expect(merged, `merged surface should contain ${key}`).toHaveProperty(key)
       expect(typeof merged[key]).toBe('function')
     }
+  })
+
+  it('main.js imports every top-level runtime web module', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const { fileURLToPath } = await import('node:url')
+
+    const testDir = path.dirname(fileURLToPath(import.meta.url))
+    const webDir = path.resolve(testDir, '../../web')
+    const mainPath = path.resolve(webDir, 'src/main.js')
+    const mainSource = fs.readFileSync(mainPath, 'utf8')
+
+    const importedModules = new Set(
+      Array.from(mainSource.matchAll(/from '\.\.\/(.+?\.js)'/g)).map(match => match[1])
+    )
+
+    const runtimeModules = fs.readdirSync(webDir)
+      .filter(name => name.endsWith('.js'))
+      .filter(name => !name.endsWith('.bak'))
+      .filter(name => !STANDALONE_WEB_MODULES.has(name))
+
+    expect(importedModules).toEqual(new Set(runtimeModules))
   })
 })

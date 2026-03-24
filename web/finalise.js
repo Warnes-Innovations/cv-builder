@@ -14,7 +14,28 @@
  */
 
 import { getLogger } from './logger.js';
+import { formatAtsScoreSummary } from './ats-refinement.js';
 const log = getLogger('finalise');
+
+function _renderFinaliseAtsItems(score, atsKeywords) {
+  if (!score || typeof score.overall !== 'number') {
+    return `<li>ATS keywords tracked: ${atsKeywords.length}</li>`;
+  }
+
+  const summary = formatAtsScoreSummary(score);
+  const hardScore = typeof score.hard_requirement_score === 'number'
+    ? `${Math.round(score.hard_requirement_score)}%`
+    : 'n/a';
+  const softScore = typeof score.soft_requirement_score === 'number'
+    ? `${Math.round(score.soft_requirement_score)}%`
+    : 'n/a';
+
+  return [
+    `<li>ATS score: <strong>${summary.overall}%</strong> <span style="color:#475569;">(hard ${hardScore} • soft ${softScore})</span></li>`,
+    `<li>ATS coverage: ${escapeHtml(summary.line)}</li>`,
+    `<li>ATS detail: ${escapeHtml(summary.detail)}</li>`,
+  ].join('');
+}
 
 // ── Populate finalise tab ─────────────────────────────────────────────────────
 
@@ -133,7 +154,8 @@ async function finaliseApplication() {
       ? `<p style="color:#d97706;font-size:0.87em;margin-top:8px;">⚠ Git: ${escapeHtml(data.git_error)}</p>`
       : '';
     const approvedCount = summary.approved_rewrites ?? 0;
-    const atsCount      = (summary.ats_keywords || []).length;
+    const atsKeywords   = summary.ats_keywords || [];
+    const atsScore      = summary.ats_score || null;
 
     result.style.display = 'block';
     result.innerHTML = `
@@ -142,7 +164,7 @@ async function finaliseApplication() {
         <ul style="margin:8px 0 0;padding-left:20px;line-height:1.8;font-size:0.92em;">
           <li>Status: <strong>${escapeHtml(status)}</strong></li>
           <li>Approved rewrites: ${approvedCount}</li>
-          <li>ATS keywords tracked: ${atsCount}</li>
+          ${_renderFinaliseAtsItems(atsScore, atsKeywords)}
           <li>Git commit: ${hash}</li>
         </ul>
         ${gitWarn}

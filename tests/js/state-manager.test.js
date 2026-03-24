@@ -37,12 +37,12 @@ const lsMock = createLocalStorageMock()
 let stateManager, initializeState, loadStateFromLocalStorage, saveStateToLocalStorage, clearState
 let StorageKeys
 
-beforeAll(() => {
+beforeAll(async () => {
   // Stub localStorage before any module code runs
   vi.stubGlobal('localStorage', lsMock)
 
   // 1. Load api-client exports and expose globals (mirrors browser load order)
-  const apiClient = require('../../web/api-client.js')
+  const apiClient = await import('../../web/api-client.js')
   StorageKeys = apiClient.StorageKeys
   globalThis.StorageKeys = StorageKeys
 
@@ -50,7 +50,7 @@ beforeAll(() => {
   globalThis.apiCall = vi.fn().mockResolvedValue({ messages: [], phase: 'init' })
 
   // 3. Now load state-manager (it references StorageKeys + apiCall at call time)
-  const sm = require('../../web/state-manager.js')
+  const sm = await import('../../web/state-manager.js')
   stateManager              = sm.stateManager
   initializeState           = sm.initializeState
   loadStateFromLocalStorage = sm.loadStateFromLocalStorage

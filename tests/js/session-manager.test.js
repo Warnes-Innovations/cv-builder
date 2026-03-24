@@ -6,9 +6,7 @@
 
 /**
  * tests/js/session-manager.test.js
- * Unit tests for web/session-manager.js — pure helper functions only.
- * (restoreSession / restoreBackendState / loadSessionFile are orchestration-heavy
- *  and covered by integration tests.)
+ * Unit tests for web/session-manager.js helpers and session restore flows.
  */
 import {
   formatSessionPhaseLabel,
@@ -17,10 +15,31 @@ import {
   buildSessionSwitcherLabel,
   getActiveSessionOwnershipMeta,
   formatSessionTimestamp,
+  _claimCurrentSession,
+  showSessionsLandingPanel,
+  ensureSessionContext,
+  createNewSessionAndNavigate,
+  restoreSession,
+  loadSessionFile,
+  saveTabData,
+  restoreTabData,
   restoreBackendState,
 } from '../../web/session-manager.js'
 import { SESSION_PHASE_LABELS } from '../../web/utils.js'
 import { stateManager } from '../../web/state-manager.js'
+
+function makeStorageMock() {
+  const store = new Map()
+  return {
+    getItem: vi.fn(key => (store.has(key) ? store.get(key) : null)),
+    setItem: vi.fn((key, value) => {
+      store.set(key, String(value))
+    }),
+    removeItem: vi.fn(key => {
+      store.delete(key)
+    }),
+  }
+}
 
 // ── formatSessionPhaseLabel ───────────────────────────────────────────────
 
@@ -75,9 +94,6 @@ describe('_getCurrentSessionIdValue', () => {
   })
 
   it('falls back to URLSearchParams when getSessionIdFromURL is absent', () => {
-    // jsdom sets window.location.search; can't assign directly in strict mode,
-    // but we can stub getSessionIdFromURL to return null and read via URL parsing.
-    // Since jsdom URL has no session param by default, expect null.
     expect(_getCurrentSessionIdValue()).toBeNull()
   })
 })
@@ -199,15 +215,279 @@ describe('formatSessionTimestamp', () => {
   })
 
   it('omits time when includeTime is false', () => {
-    const withTime    = formatSessionTimestamp('2026-01-15T10:30:00Z', { includeTime: true })
+    const withTime = formatSessionTimestamp('2026-01-15T10:30:00Z', { includeTime: true })
     const withoutTime = formatSessionTimestamp('2026-01-15T10:30:00Z', { includeTime: false })
     expect(withoutTime.length).toBeLessThanOrEqual(withTime.length)
   })
 
   it('falls back gracefully for unparseable input', () => {
-    // A string that Date() can't parse — but it should not throw
     const result = formatSessionTimestamp('not-a-date')
     expect(typeof result).toBe('string')
+  })
+})
+
+// ── _claimCurrentSession / ensureSessionContext ──────────────────────────
+
+describe('_claimCurrentSession', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+    vi.stubGlobal('getOwnerToken', vi.fn(() => 'owner-123'))
+    vi.stubGlobal('showOwnershipConflictDialog', vi.fn())
+    vi.stubGlobal('openSessionsModal', vi.fn())
+    vi.stubGlobal('escapeHtml', s => String(s ?? ''))
+    vi.stubGlobal('updateActionButtons', vi.fn())
+    vi.stubGlobal('updatePositionTitle', vi.fn())
+    vi.stubGlobal('localStorage', makeStorageMock())
+    stateManager.setCurrentTab('analysis')
+    stateManager.setCurrentStage('analysis')
+    globalThis.fetch = vi.fn()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    document.body.innerHTML = ''
+  })
+
+  it('returns true when the claim succeeds', async () => {
+    fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) })
+
+    await expect(_claimCurrentSession('sess-1')).resolves.toBe(true)
+    expect(fetch).toHaveBeenCalledWith('/api/sessions/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: 'sess-1',
+        owner_token: 'owner-123',
+      }),
+    })
+  })
+
+  it('takes over the session after a conflict when the user chooses takeover', async () => {
+    fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: 'session_owned' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      })
+    showOwnershipConflictDialog.mockResolvedValue('takeover')
+
+    await expect(_claimCurrentSession('sess-2')).resolves.toBe(true)
+    expect(fetch).toHaveBeenNthCalledWith(2, '/api/sessions/takeover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: 'sess-2',
+        owner_token: 'owner-123',
+      }),
+    })
+  })
+
+  it('opens the landing panel when the user declines takeover', async () => {
+    fetch.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'session_owned' }),
+    })
+    showOwnershipConflictDialog.mockResolvedValue('different')
+
+    await expect(_claimCurrentSession('sess-3')).resolves.toBe(false)
+    expect(openSessionsModal).toHaveBeenCalled()
+    expect(document.getElementById('document-content').textContent).toContain(
+      'Select a different session or create a new one.',
+    )
+  })
+
+  it('shows the landing panel when the session no longer exists', async () => {
+    fetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'missing' }),
+    })
+
+    await expect(_claimCurrentSession('sess-4')).resolves.toBe(false)
+    expect(openSessionsModal).toHaveBeenCalled()
+
+    expect(document.getElementById('document-content').textContent).toContain(
+      'That session is no longer active.',
+    )
+  })
+
+  it('throws a generic error for non-conflict failures', async () => {
+    fetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'boom' }),
+    })
+
+    await expect(_claimCurrentSession('sess-5')).rejects.toThrow('boom')
+  })
+})
+
+describe('showSessionsLandingPanel and ensureSessionContext', () => {
+  beforeEach(() => {
+    const storage = makeStorageMock()
+    document.body.innerHTML = '<div id="document-content"></div>'
+    vi.stubGlobal('escapeHtml', s => String(s ?? ''))
+    vi.stubGlobal('updateActionButtons', vi.fn())
+    vi.stubGlobal('updatePositionTitle', vi.fn())
+    vi.stubGlobal('openSessionsModal', vi.fn())
+    vi.stubGlobal('getSessionIdFromURL', vi.fn(() => null))
+    vi.stubGlobal('StorageKeys', { SESSION_ID: 'session-id-key' })
+    vi.stubGlobal('localStorage', storage)
+    stateManager.setCurrentTab('analysis')
+    stateManager.setCurrentStage('analysis')
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    document.body.innerHTML = ''
+    delete globalThis.sessionId
+  })
+
+  it('renders the landing panel and resets the current tab to job', () => {
+    showSessionsLandingPanel('Pick a session first')
+
+    expect(stateManager.getCurrentTab()).toBe('job')
+    expect(stateManager.getCurrentStage()).toBe('job')
+    expect(document.getElementById('document-content').textContent).toContain(
+      'Select a Session',
+    )
+    expect(document.getElementById('document-content').textContent).toContain(
+      'Pick a session first',
+    )
+  })
+
+  it('shows the landing panel and returns false when no session is in the URL', async () => {
+    await expect(ensureSessionContext()).resolves.toBe(false)
+    expect(openSessionsModal).toHaveBeenCalled()
+    expect(document.getElementById('document-content').textContent).toContain(
+      'Select a Session',
+    )
+  })
+})
+
+// ── saveTabData / restoreTabData ─────────────────────────────────────────
+
+describe('saveTabData and restoreTabData', () => {
+  beforeEach(() => {
+    const storage = makeStorageMock()
+    vi.stubGlobal('getScopedTabDataStorageKey', vi.fn(() => 'scoped-tab-data'))
+    vi.stubGlobal('localStorage', storage)
+    stateManager.setSessionId('sess-1')
+    stateManager.setTabData('analysis', { score: 42 })
+    stateManager.setTabData('customizations', null)
+    stateManager.setTabData('cv', null)
+    stateManager.setCurrentTab('analysis')
+    stateManager.setInteractiveState({ expanded: true })
+    globalThis.window.pendingRecommendations = { skills: ['Python'] }
+    globalThis.window._activeReviewPane = 'skills'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    delete globalThis.window.pendingRecommendations
+    delete globalThis.window._activeReviewPane
+  })
+
+  it('saves scoped tab data to localStorage', () => {
+    saveTabData()
+
+    const saved = JSON.parse(localStorage.getItem('scoped-tab-data'))
+    expect(saved.tabData).toEqual({
+      analysis: { score: 42 },
+      customizations: null,
+      cv: null,
+    })
+    expect(saved.currentTab).toBe('analysis')
+    expect(saved.pendingRecommendations).toEqual({ skills: ['Python'] })
+    expect(saved.interactiveState).toMatchObject({ expanded: true })
+    expect(saved.activeReviewPane).toBe('skills')
+  })
+
+  it('restores recent tab data and merges it into globals', () => {
+    localStorage.setItem(
+      'scoped-tab-data',
+      JSON.stringify({
+        tabData: { cv: { files: ['cv.pdf'] } },
+        pendingRecommendations: { achievements: ['A'] },
+        interactiveState: { expanded: false, selected: 'x' },
+        activeReviewPane: 'achievements',
+        timestamp: Date.now(),
+      }),
+    )
+
+    restoreTabData()
+
+    expect(stateManager.getTabData('analysis')).toEqual({ score: 42 })
+    expect(stateManager.getTabData('cv')).toEqual({ files: ['cv.pdf'] })
+    expect(globalThis.window.pendingRecommendations).toEqual({
+      achievements: ['A'],
+    })
+    expect(stateManager.getInteractiveState()).toMatchObject({
+      expanded: false,
+      selected: 'x',
+    })
+    expect(globalThis.window._activeReviewPane).toBe('achievements')
+  })
+
+  it('restores only UI preferences when uiPrefsOnly is true', () => {
+    localStorage.setItem(
+      'scoped-tab-data',
+      JSON.stringify({
+        tabData: { cv: { files: ['cv.pdf'] } },
+        pendingRecommendations: { achievements: ['A'] },
+        interactiveState: { expanded: false },
+        activeReviewPane: 'achievements',
+        timestamp: Date.now(),
+      }),
+    )
+
+    restoreTabData({ uiPrefsOnly: true })
+
+    expect(stateManager.getTabData('analysis')).toEqual({ score: 42 })
+    expect(globalThis.tabData).toEqual({
+      analysis: { score: 42 },
+      customizations: null,
+      cv: null,
+    })
+    expect(globalThis.window.pendingRecommendations).toEqual({
+      skills: ['Python'],
+    })
+    expect(globalThis.interactiveState).toMatchObject({ expanded: true })
+    expect(globalThis.window._activeReviewPane).toBe('achievements')
+  })
+
+  it('drops stale saved tab data older than 24 hours', () => {
+    localStorage.setItem(
+      'scoped-tab-data',
+      JSON.stringify({
+        tabData: { cv: { files: ['old.pdf'] } },
+        timestamp: Date.now() - 25 * 60 * 60 * 1000,
+      }),
+    )
+
+    restoreTabData()
+
+    expect(localStorage.getItem('scoped-tab-data')).toBeNull()
+    expect(stateManager.getTabData('analysis')).toEqual({ score: 42 })
+  })
+})
+
+// ── createNewSessionAndNavigate ──────────────────────────────────────────
+
+describe('createNewSessionAndNavigate', () => {
+  beforeEach(() => {
+    vi.stubGlobal('createSession', vi.fn())
+  })
+
+  it('throws when the new session response omits a session id', async () => {
+    createSession.mockResolvedValue({ redirect_url: '/?session=missing' })
+
+    await expect(createNewSessionAndNavigate()).rejects.toThrow('Failed to create session')
   })
 })
 
@@ -219,6 +499,7 @@ describe('restoreBackendState', () => {
     vi.stubGlobal('parseStatusResponse', vi.fn(data => data))
     vi.stubGlobal('refreshAtsScore', vi.fn())
     vi.stubGlobal('updateInclusionCounts', vi.fn())
+    vi.stubGlobal('StorageKeys', { SESSION_PATH: 'session_path' })
     vi.stubGlobal('localStorage', {
       getItem: vi.fn(() => null),
       setItem: vi.fn(),
@@ -293,4 +574,314 @@ describe('restoreBackendState', () => {
     })
     expect(stateManager.getAtsScore()).toEqual({ overall: 88, basis: 'review_checkpoint' })
   })
+
+  it('clears stale staged generation state and ATS score when backend has none', async () => {
+    stateManager.setGenerationState({
+      phase: 'layout_review',
+      previewAvailable: true,
+      layoutConfirmed: true,
+      pageCountEstimate: 3,
+      pageWarning: true,
+      layoutInstructionsCount: 4,
+      finalGeneratedAt: '2026-03-23T10:00:00Z',
+    })
+    stateManager.setAtsScore({ overall: 91, basis: 'stale_cache' })
+
+    globalThis.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_analysis: null,
+          customizations: null,
+          generated_files: null,
+          position_name: null,
+          achievement_edits: {},
+          experience_decisions: {},
+          skill_decisions: {},
+          achievement_decisions: {},
+          publication_decisions: {},
+          summary_focus_override: null,
+          extra_skills: [],
+          extra_skill_matches: {},
+          all_experiences: [],
+          selected_summary_key: null,
+          new_skills_from_llm: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          phase: 'idle',
+          preview_available: false,
+          layout_confirmed: false,
+          page_count_estimate: null,
+          page_length_warning: false,
+          layout_instructions_count: 0,
+          final_generated_at: null,
+        }),
+      })
+
+    const restored = await restoreBackendState()
+
+    expect(restored).toBe(false)
+    expect(stateManager.getGenerationState()).toMatchObject({
+      phase: 'idle',
+      previewAvailable: false,
+      layoutConfirmed: false,
+      pageCountEstimate: null,
+      pageWarning: false,
+      layoutInstructionsCount: 0,
+      finalGeneratedAt: null,
+    })
+    expect(stateManager.getAtsScore()).toBeNull()
+  })
 })
+
+// ── restoreSession / loadSessionFile ─────────────────────────────────────
+
+      describe('restoreSession', () => {
+        beforeEach(() => {
+          const storage = makeStorageMock()
+          document.body.innerHTML = '<div id="conversation">placeholder</div>'
+          vi.stubGlobal('StorageKeys', {
+            SESSION_ID: 'session-id-key',
+            SESSION_PATH: 'session-path-key',
+          })
+          vi.stubGlobal('localStorage', storage)
+          vi.stubGlobal('getSessionIdFromURL', vi.fn(() => null))
+          vi.stubGlobal('getScopedTabDataStorageKey', vi.fn(sessionId => `scoped-${sessionId}`))
+          vi.stubGlobal('appendMessage', vi.fn())
+          vi.stubGlobal('parseStatusResponse', vi.fn(value => value))
+          vi.stubGlobal('parseRewritesResponse', vi.fn(value => value))
+          vi.stubGlobal('refreshAtsScore', vi.fn())
+          vi.stubGlobal('updateInclusionCounts', vi.fn())
+          vi.stubGlobal('fetchStatus', vi.fn(async () => {}))
+          vi.stubGlobal('renderRewritePanel', vi.fn())
+          vi.stubGlobal('switchTab', vi.fn())
+          vi.stubGlobal('PHASES', {
+            INIT: 'init',
+            JOB_ANALYSIS: 'job_analysis',
+            CUSTOMIZATION: 'customization',
+            REWRITE_REVIEW: 'rewrite_review',
+            SPELL_CHECK: 'spell_check',
+            GENERATION: 'generation',
+            LAYOUT_REVIEW: 'layout_review',
+            REFINEMENT: 'refinement',
+          })
+          globalThis.fetch = vi.fn()
+          globalThis.sessionId = null
+          globalThis.tabData = {}
+          globalThis.interactiveState = { expanded: true }
+          globalThis.window.pendingRecommendations = null
+          globalThis.window._activeReviewPane = 'experiences'
+          globalThis.isReconnecting = false
+          globalThis.lastKnownPhase = null
+          globalThis.rewriteDecisions = { stale: true }
+        })
+
+        afterEach(() => {
+          vi.unstubAllGlobals()
+          document.body.innerHTML = ''
+          delete globalThis.fetch
+          delete globalThis.tabData
+          delete globalThis.interactiveState
+          delete globalThis.window.pendingRecommendations
+          delete globalThis.window._activeReviewPane
+          delete globalThis.window.achievementEdits
+          delete globalThis.window._savedDecisions
+          delete globalThis.window._allExperiences
+          delete globalThis.window.selectedSummaryKey
+          delete globalThis.window._newSkillsFromLLM
+          delete globalThis.isReconnecting
+          delete globalThis.lastKnownPhase
+          delete globalThis.rewriteDecisions
+          delete globalThis.sessionId
+        })
+
+        it('returns without fetching when there is no stored session id', async () => {
+          await restoreSession()
+
+          expect(fetch).not.toHaveBeenCalled()
+          expect(globalThis.isReconnecting).toBe(false)
+        })
+
+        it('restores history, backend state, and UI-only preferences for a live session', async () => {
+          getSessionIdFromURL.mockReturnValue('sess-1')
+          localStorage.setItem(
+            'scoped-sess-1',
+            JSON.stringify({
+              activeReviewPane: 'skills',
+              timestamp: Date.now(),
+            }),
+          )
+          fetch
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                history: [
+                  { role: 'user', content: 'Job text' },
+                  { role: 'assistant', content: 'Analysis reply' },
+                ],
+                phase: 'customization',
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                position_name: 'Staff Data Scientist',
+                phase: 'customization',
+                job_analysis: { title: 'Staff Data Scientist' },
+                customizations: { approved_skills: ['Python'] },
+                generated_files: { files: ['cv.pdf'] },
+                experience_decisions: { exp_1: 'keep' },
+                skill_decisions: { Python: 'keep' },
+                achievement_decisions: {},
+                publication_decisions: {},
+                extra_skills: ['Leadership'],
+                extra_skill_matches: { Leadership: ['exp_1'] },
+                achievement_edits: { '0': ['Edited bullet'] },
+                all_experiences: [{ id: 'exp_1' }],
+                new_skills_from_llm: ['FastAPI'],
+                selected_summary_key: 'targeted',
+              }),
+            })
+
+          await restoreSession()
+
+          expect(localStorage.setItem).toHaveBeenCalledWith('cv-builder-session-id', 'sess-1')
+          expect(appendMessage).toHaveBeenCalledWith('user', 'Job text')
+          expect(appendMessage).toHaveBeenCalledWith('assistant', 'Analysis reply')
+          expect(appendMessage).toHaveBeenCalledWith('system', '🔄 Session restored from server.')
+          expect(stateManager.getPhase()).toBe('customization')
+          expect(stateManager.getTabData('analysis')).toEqual({ title: 'Staff Data Scientist' })
+          expect(stateManager.getTabData('customizations')).toEqual({ approved_skills: ['Python'] })
+          expect(stateManager.getTabData('cv')).toEqual({ files: ['cv.pdf'] })
+          expect(globalThis.window.pendingRecommendations).toEqual({ approved_skills: ['Python'] })
+          expect(globalThis.window._activeReviewPane).toBe('skills')
+          expect(globalThis.window.achievementEdits[0]).toEqual(['Edited bullet'])
+          expect(globalThis.window._savedDecisions.extra_skills).toEqual(['Leadership'])
+          expect(refreshAtsScore).toHaveBeenCalledWith('analysis')
+          expect(updateInclusionCounts).toHaveBeenCalled()
+          expect(globalThis.isReconnecting).toBe(false)
+        })
+
+        it('surfaces restoration failures and clears reconnecting state', async () => {
+          getSessionIdFromURL.mockReturnValue('sess-1')
+          fetch.mockRejectedValue(new Error('offline'))
+
+          await restoreSession()
+
+          expect(appendMessage).toHaveBeenCalledWith(
+            'system',
+            '⚠️ Could not restore previous session. Starting fresh. (offline)',
+          )
+          expect(globalThis.isReconnecting).toBe(false)
+        })
+      })
+
+      describe('loadSessionFile', () => {
+        beforeEach(() => {
+          const storage = makeStorageMock()
+          document.body.innerHTML = '<div id="conversation">stale content</div>'
+          vi.stubGlobal('StorageKeys', {
+            SESSION_ID: 'session-id-key',
+            SESSION_PATH: 'session-path-key',
+          })
+          vi.stubGlobal('localStorage', storage)
+          vi.stubGlobal('getSessionIdFromURL', vi.fn(() => 'sess-1'))
+          vi.stubGlobal('appendMessage', vi.fn())
+          vi.stubGlobal('fetchStatus', vi.fn(async () => {}))
+          vi.stubGlobal('parseRewritesResponse', vi.fn(value => value))
+          vi.stubGlobal('renderRewritePanel', vi.fn())
+          vi.stubGlobal('switchTab', vi.fn())
+          vi.stubGlobal('PHASES', {
+            INIT: 'init',
+            JOB_ANALYSIS: 'job_analysis',
+            CUSTOMIZATION: 'customization',
+            REWRITE_REVIEW: 'rewrite_review',
+            SPELL_CHECK: 'spell_check',
+            GENERATION: 'generation',
+            LAYOUT_REVIEW: 'layout_review',
+            REFINEMENT: 'refinement',
+          })
+          globalThis.fetch = vi.fn()
+          globalThis.tabData = {}
+          globalThis.window.pendingRecommendations = null
+          globalThis.rewriteDecisions = { stale: true }
+        })
+
+        afterEach(() => {
+          vi.unstubAllGlobals()
+          document.body.innerHTML = ''
+          delete globalThis.fetch
+          delete globalThis.tabData
+          delete globalThis.window.pendingRecommendations
+          delete globalThis.window.achievementEdits
+          delete globalThis.rewriteDecisions
+        })
+
+        it('rehydrates rewrite-review state when the loaded session stays on the same URL session', async () => {
+          fetch
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                ok: true,
+                session_id: 'sess-1',
+                redirect_url: '/?session=sess-1',
+                session_file: '/tmp/session.json',
+                position_name: 'Restored Session',
+                phase: 'rewrite_review',
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                history: [
+                  { role: 'user', content: 'Restored user message' },
+                  { role: 'assistant', content: 'Restored assistant message' },
+                  { role: 'system', content: 'ignore me' },
+                ],
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                customizations: { approved_skills: ['Python'] },
+                job_analysis: { title: 'Restored Session' },
+                generated_files: { files: ['cv.pdf'] },
+                achievement_edits: { '0': ['Edited bullet'] },
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                rewrites: [{ id: 'rw1' }],
+                persuasion_warnings: [{ severity: 'warn' }],
+              }),
+            })
+
+          await expect(loadSessionFile('/tmp/session.json')).resolves.toBe(true)
+
+          expect(localStorage.setItem).toHaveBeenCalledWith('session-path-key', '/tmp/session.json')
+          expect(appendMessage).toHaveBeenCalledWith('system', '🔄 Restoring session from file...')
+          expect(appendMessage).toHaveBeenCalledWith('user', 'Restored user message')
+          expect(appendMessage).toHaveBeenCalledWith('assistant', 'Restored assistant message')
+          expect(fetchStatus).toHaveBeenCalled()
+          expect(stateManager.getTabData('customizations')).toEqual({ approved_skills: ['Python'] })
+          expect(stateManager.getTabData('analysis')).toEqual({ title: 'Restored Session' })
+          expect(stateManager.getTabData('cv')).toEqual({ files: ['cv.pdf'] })
+          expect(globalThis.window.pendingRecommendations).toEqual({ approved_skills: ['Python'] })
+          expect(globalThis.window.achievementEdits[0]).toEqual(['Edited bullet'])
+          expect(globalThis.rewriteDecisions).toEqual({})
+          expect(renderRewritePanel).toHaveBeenCalledWith(
+            [{ id: 'rw1' }],
+            [{ severity: 'warn' }],
+          )
+          expect(switchTab).toHaveBeenCalledWith('rewrite')
+          expect(appendMessage).toHaveBeenCalledWith(
+            'system',
+            '✅ Session restored: Restored Session (rewrite_review)',
+          )
+        })
+      })

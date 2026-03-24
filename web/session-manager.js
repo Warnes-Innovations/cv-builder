@@ -356,6 +356,13 @@ async function restoreBackendState() {
       if (generationRes.ok) {
         const generationData = await generationRes.json();
         if (generationData?.ok) {
+          const hasCachedAtsScore = Boolean(generationData.ats_score);
+          const hasPersistedGenerationData = Boolean(
+            generationData.preview_available
+              || generationData.final_generated_at
+              || hasCachedAtsScore
+          );
+
           stateManager.setGenerationState({
             phase: generationData.phase || 'idle',
             previewAvailable: Boolean(generationData.preview_available),
@@ -365,10 +372,14 @@ async function restoreBackendState() {
             layoutInstructionsCount: generationData.layout_instructions_count || 0,
             finalGeneratedAt: generationData.final_generated_at || null,
           });
-          if (generationData.ats_score) {
+
+          if (hasCachedAtsScore) {
             stateManager.setAtsScore(generationData.ats_score);
+          } else {
+            stateManager.clearAtsScore();
           }
-          if (generationData.preview_available || generationData.final_generated_at || generationData.ats_score) {
+
+          if (hasPersistedGenerationData) {
             serverHasData = true;
           }
         }
