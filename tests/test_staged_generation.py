@@ -34,6 +34,7 @@ from utils.conversation_manager import ConversationManager
 from utils.cv_orchestrator import CVOrchestrator
 from utils.llm_client import LLMClient
 from utils.config import get_config
+from tests.helpers.session_state_fixtures import materialize_canonical_session
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +297,36 @@ class TestGenerationStatePersistence(unittest.TestCase):
         self.assertTrue(gen['layout_confirmed'])
         self.assertEqual(gen['preview_html'], '<html>test</html>')
 
+    def test_round_trip_preserves_canonical_generation_state_artifacts(self):
+        cases = [
+            ('layout_review_active', 'layout_review', True, False),
+            ('layout_review_confirmed', 'confirmed', True, True),
+            ('refinement_final_complete', 'final_complete', True, True),
+        ]
+
+        for combination_name, expected_phase, preview_available, layout_confirmed in cases:
+            with self.subTest(combination_name=combination_name):
+                session_file = materialize_canonical_session(
+                    self.sess_dir,
+                    combination_name,
+                    session_id=f'{combination_name}-roundtrip',
+                )
+
+                self.manager.load_session(str(session_file))
+                self.manager._save_session()
+                self.manager.state['generation_state'] = {}
+                self.manager.load_session(
+                    str(self.manager.session_dir / 'session.json')
+                )
+
+                generation_state = self.manager.state['generation_state']
+                self.assertEqual(generation_state['phase'], expected_phase)
+                self.assertEqual(bool(generation_state.get('preview_html')), preview_available)
+                self.assertEqual(generation_state.get('layout_confirmed'), layout_confirmed)
+
+                if expected_phase == 'final_complete':
+                    self.assertIn('final_output_paths', generation_state)
+
 
 # ---------------------------------------------------------------------------
 # Flask-level tests — /api/cv/* endpoints
@@ -328,6 +359,36 @@ class TestGenerationStateEndpoint(unittest.TestCase):
         self.assertEqual(data['phase'], 'idle')
         self.assertFalse(data['preview_available'])
         self.assertFalse(data['layout_confirmed'])
+
+    def test_missing_generation_state_normalizes_to_idle(self):
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state.pop('generation_state', None)
+
+        data = self.client.get(
+            '/api/cv/generation-state',
+            query_string={'session_id': self.session_id},
+        ).get_json()
+
+        self.assertEqual(data['phase'], 'idle')
+        self.assertFalse(data['preview_available'])
+        self.assertFalse(data['layout_confirmed'])
+
+    def test_inconsistent_confirmed_without_preview_html_is_reported(self):
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['generation_state'] = {
+            'phase': 'confirmed',
+            'layout_confirmed': True,
+            'confirmed_at': '2026-03-24T00:47:00-04:00',
+        }
+
+        data = self.client.get(
+            '/api/cv/generation-state',
+            query_string={'session_id': self.session_id},
+        ).get_json()
+
+        self.assertEqual(data['phase'], 'confirmed')
+        self.assertFalse(data['preview_available'])
+        self.assertTrue(data['layout_confirmed'])
 
     def test_required_keys_present(self):
         data = self.client.get(
