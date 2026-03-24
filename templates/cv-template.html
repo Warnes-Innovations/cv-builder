@@ -616,7 +616,7 @@
                             <h4>{{ cat.category }}</h4>
                             <ul class="skill-list">
                                 {% for skill in cat.skills %}
-                                <li>{% if skill.group_names %}{{ skill.group_names|join(', ') }}{% else %}{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}{% if skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}{% endif %}</li>
+                                <li>{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}{% endif %}{% if not skill.group_display_names and skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}</li>
                                 {% endfor %}
                             </ul>
                         </div>
@@ -687,7 +687,7 @@
                             <h4>{{ cat.category }}</h4>
                             <ul class="skill-list">
                                 {% for skill in cat.skills %}
-                                <li>{% if skill.group_names %}{{ skill.group_names|join(', ') }}{% else %}{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}{% if skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}{% endif %}</li>
+                                <li>{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}{% endif %}{% if not skill.group_display_names and skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}</li>
                                 {% endfor %}
                             </ul>
                         </div>
@@ -749,7 +749,7 @@ EDUCATION
 --------------------------------------------------------------------------------
 TECHNICAL SKILLS
 --------------------------------------------------------------------------------
-{% for cat in skills_by_category %}{{ cat.category }}: {{ cat.skills | map(attribute='name') | join(', ') }}
+{% for cat in skills_by_category %}{{ cat.category }}: {% for skill in cat.skills %}{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
 {% endfor %}{% endif %}
 {% if certifications %}
 --------------------------------------------------------------------------------

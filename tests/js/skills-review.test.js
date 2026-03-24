@@ -18,6 +18,7 @@ import {
   saveSkillCategoryOverride,
   renameSkillCategory,
   saveSkillCategoryOrder,
+  saveSkillQualifierOverride,
   _renderSkillsTable,
   moveSkillRow,
   handleSkillsResponse,
@@ -385,6 +386,88 @@ describe('skill category manager helpers', () => {
       new_category: 'Applied AI',
     })
     expect(window._skillsOrdered.every(skill => skill.category === 'Applied AI')).toBe(true)
+  })
+})
+
+describe('saveSkillQualifierOverride', () => {
+  beforeEach(() => {
+    window._skillsOrdered = [{ name: 'Python' }]
+  })
+
+  it('posts qualifier edits to /api/review-skill-qualifiers', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveSkillQualifierOverride('Python', {
+      proficiency: 'expert',
+      subskills: 'Pandas, NumPy, Pandas',
+      parenthetical: 'Expert, Pandas, NumPy',
+    })
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-skill-qualifiers', expect.objectContaining({ method: 'POST' }))
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({
+      skill: 'Python',
+      proficiency: 'expert',
+      subskills: ['Pandas', 'NumPy'],
+      parenthetical: 'Expert, Pandas, NumPy',
+    })
+    expect(window._skillsOrdered[0]).toMatchObject({
+      proficiency: 'expert',
+      subskills: ['Pandas', 'NumPy'],
+      parenthetical: 'Expert, Pandas, NumPy',
+    })
+  })
+
+  it('removes blank qualifier fields from the local skill object', async () => {
+    window._skillsOrdered = [{
+      name: 'Python',
+      proficiency: 'expert',
+      subskills: ['Pandas'],
+      parenthetical: 'Expert, Pandas',
+    }]
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveSkillQualifierOverride('Python', {
+      proficiency: ' ',
+      subskills: ' ',
+      parenthetical: ' ',
+    })
+    expect(window._skillsOrdered[0]).toEqual({ name: 'Python' })
+  })
+})
+
+describe('_renderSkillsTable qualifier inputs', () => {
+  it('posts row-level qualifier edits from rendered controls', async () => {
+    document.body.innerHTML = '<div id="skills-table-container"></div>'
+    window.pendingRecommendations = { recommended_skills: [] }
+    window._skillsOrdered = [
+      {
+        name: 'Python',
+        category: 'Programming',
+      },
+    ]
+    stateManager.setTabData('analysis', { required_skills: [], nice_to_have_skills: [] })
+
+    const dataTableMock = vi.fn().mockReturnValue({ destroy: vi.fn() })
+    globalThis.$ = vi.fn(() => ({ DataTable: dataTableMock }))
+    globalThis.$.fn = { DataTable: { isDataTable: vi.fn().mockReturnValue(false) } }
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+
+    _renderSkillsTable(document.getElementById('skills-table-container'), new Set(), window.pendingRecommendations, new Set(), new Set())
+
+    document.querySelector('.skill-proficiency-input').value = 'expert'
+    document.querySelector('.skill-subskills-input').value = 'Pandas, NumPy'
+    const parentheticalInput = document.querySelector('.skill-parenthetical-input')
+    parentheticalInput.value = 'Expert, Pandas, NumPy'
+    parentheticalInput.dispatchEvent(new Event('change', { bubbles: true }))
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({
+      skill: 'Python',
+      proficiency: 'expert',
+      subskills: ['Pandas', 'NumPy'],
+      parenthetical: 'Expert, Pandas, NumPy',
+    })
   })
 })
 

@@ -377,9 +377,50 @@ class CVOrchestrator:
         for g, members in groups.items():
             primary = dict(members[0])
             primary['group_names'] = [m['name'] for m in members]
+            primary['group_display_names'] = [self._skill_inline_label(m) for m in members]
+            primary['display_name'] = self._skill_inline_label(primary)
             result[group_insertion_idx[g]] = primary
 
-        return [s for s in result if s is not None]
+        finalized = [s for s in result if s is not None]
+        for skill in finalized:
+            if isinstance(skill, dict) and 'display_name' not in skill:
+                skill['display_name'] = self._skill_inline_label(skill)
+        return finalized
+
+    @staticmethod
+    def _skill_inline_label(skill: Dict[str, Any]) -> str:
+        """Return a human-readable inline label for a skill entry."""
+        name = str(skill.get('name') or '').strip()
+        if not name:
+            return ''
+
+        parenthetical = str(skill.get('parenthetical') or '').strip()
+        if parenthetical:
+            return f"{name} ({parenthetical})"
+
+        qualifier_parts = []
+        proficiency = str(skill.get('proficiency') or '').strip()
+        if proficiency:
+            qualifier_parts.append(proficiency[:1].upper() + proficiency[1:])
+
+        raw_subskills = skill.get('subskills', skill.get('sub_skills', []))
+        if isinstance(raw_subskills, str):
+            raw_subskills = [item.strip() for item in raw_subskills.split(',')]
+        subskills = [
+            str(item).strip()
+            for item in raw_subskills or []
+            if str(item).strip()
+        ]
+        qualifier_parts.extend(subskills)
+
+        if qualifier_parts:
+            return f"{name} ({', '.join(qualifier_parts)})"
+
+        years = skill.get('years')
+        if years:
+            return f"{name} ({years} yrs)"
+
+        return name
 
     def _format_publications(self, publications: List) -> List[Dict]:
         """Format publications for template consumption."""

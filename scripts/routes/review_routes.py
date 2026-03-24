@@ -474,6 +474,78 @@ def create_blueprint(deps):
         session_registry.touch(sid)
         return jsonify({'ok': True, 'action': 'reorder', 'ordered_categories': cleaned_order})
 
+    @bp.post('/api/review-skill-qualifiers')
+    def save_review_skill_qualifier_overrides():
+        """Persist review-time skill qualifier overrides in session state only."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+
+        skill_name = str(data.get('skill') or '').strip()
+        if not skill_name:
+            return jsonify({'error': 'skill is required'}), 400
+
+        proficiency = str(data.get('proficiency') or '').strip() or None
+        parenthetical = str(data.get('parenthetical') or '').strip() or None
+        raw_subskills = data.get('subskills')
+        if isinstance(raw_subskills, str):
+            raw_subskills = [item.strip() for item in raw_subskills.split(',')]
+        subskills = []
+        seen_subskills = set()
+        if isinstance(raw_subskills, list):
+            for item in raw_subskills:
+                if not isinstance(item, str):
+                    continue
+                label = item.strip()
+                if not label or label in seen_subskills:
+                    continue
+                subskills.append(label)
+                seen_subskills.add(label)
+
+        with entry.lock:
+            overrides = dict(conversation.state.get('skill_qualifier_overrides') or {})
+            current = dict(overrides.get(skill_name) or {})
+
+            if proficiency:
+                current['proficiency'] = proficiency
+            else:
+                current.pop('proficiency', None)
+
+            if subskills:
+                current['subskills'] = subskills
+            else:
+                current.pop('subskills', None)
+
+            if parenthetical:
+                current['parenthetical'] = parenthetical
+            else:
+                current.pop('parenthetical', None)
+
+            if current:
+                overrides[skill_name] = current
+            else:
+                overrides.pop(skill_name, None)
+
+            customizations = dict(conversation.state.get('customizations') or {})
+            if overrides:
+                customizations['skill_qualifier_overrides'] = overrides
+            else:
+                customizations.pop('skill_qualifier_overrides', None)
+
+            conversation.state['skill_qualifier_overrides'] = overrides
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({
+            'ok': True,
+            'action': 'updated',
+            'skill': skill_name,
+            'qualifiers': overrides.get(skill_name, {}),
+        })
+
     @bp.route('/api/rewrite-achievement', methods=['POST'])
     def rewrite_achievement():
         """Ask the LLM to rewrite a single achievement bullet."""

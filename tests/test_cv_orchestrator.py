@@ -1323,6 +1323,37 @@ class TestGroupInlineSkills(unittest.TestCase):
             ["Data Science", "Management", "Programming"],
         )
 
+    def test_group_inline_skills_formats_per_skill_qualifiers(self):
+        skills = [
+            {
+                "name": "Python",
+                "group": "analytics",
+                "category": "Programming",
+                "proficiency": "expert",
+                "subskills": ["Pandas", "NumPy"],
+            },
+            {
+                "name": "R",
+                "group": "analytics",
+                "category": "Programming",
+                "parenthetical": "tidyverse, Shiny",
+            },
+        ]
+        result = self.orc._group_inline_skills(skills)
+        self.assertEqual(
+            result[0]["group_display_names"],
+            [
+                "Python (Expert, Pandas, NumPy)",
+                "R (tidyverse, Shiny)",
+            ],
+        )
+
+    def test_group_inline_skills_formats_ungrouped_display_name(self):
+        result = self.orc._group_inline_skills([
+            {"name": "SQL", "parenthetical": "Window functions"}
+        ])
+        self.assertEqual(result[0]["display_name"], "SQL (Window functions)")
+
 
 class TestBulletOrderInSelectContent(unittest.TestCase):
     """_select_content_hybrid adds ordered_achievements by relevance."""

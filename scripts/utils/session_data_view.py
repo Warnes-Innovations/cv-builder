@@ -130,6 +130,46 @@ def _coerce_skill_category_overrides(raw: Any) -> Dict[str, Optional[str]]:
     return cleaned
 
 
+def _coerce_skill_qualifier_overrides(raw: Any) -> Dict[str, Dict[str, Any]]:
+    """Return a stable mapping of skill name to session-only qualifier fields."""
+    if not isinstance(raw, dict):
+        return {}
+
+    cleaned: Dict[str, Dict[str, Any]] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            continue
+        skill_name = key.strip()
+        if not skill_name or not isinstance(value, dict):
+            continue
+
+        normalized: Dict[str, Any] = {}
+
+        if "proficiency" in value:
+            proficiency = value.get("proficiency")
+            if proficiency is None:
+                normalized["proficiency"] = None
+            elif isinstance(proficiency, str):
+                normalized["proficiency"] = proficiency.strip() or None
+
+        if "subskills" in value or "sub_skills" in value:
+            normalized["subskills"] = _coerce_string_list(
+                value.get("subskills", value.get("sub_skills"))
+            )
+
+        if "parenthetical" in value:
+            parenthetical = value.get("parenthetical")
+            if parenthetical is None:
+                normalized["parenthetical"] = None
+            elif isinstance(parenthetical, str):
+                normalized["parenthetical"] = parenthetical.strip() or None
+
+        if normalized:
+            cleaned[skill_name] = normalized
+
+    return cleaned
+
+
 def _flatten_skills(raw: Any) -> List[Any]:
     """Return a flat skill list while preserving dict payloads when present."""
     if not raw:
@@ -212,9 +252,11 @@ def _skill_payload(
     experiences: List[str],
     group: Optional[str],
     category: Optional[str],
+    extras: Optional[Mapping[str, Any]] = None,
 ) -> Any:
-    if experiences or group or category:
-        payload: Dict[str, Any] = {"name": name}
+    payload: Dict[str, Any] = dict(extras or {})
+    payload["name"] = name
+    if experiences or group or category or len(payload) > 1:
         if experiences:
             payload["experiences"] = experiences
         if group:
@@ -270,6 +312,17 @@ class SessionDataView:
         custom = _coerce_string_list((self.customizations or {}).get("skill_category_order"))
         return custom or merged
 
+    def _skill_qualifier_overrides(self) -> Dict[str, Dict[str, Any]]:
+        merged = _coerce_skill_qualifier_overrides(
+            (self.session_state or {}).get("skill_qualifier_overrides")
+        )
+        merged.update(
+            _coerce_skill_qualifier_overrides(
+                (self.customizations or {}).get("skill_qualifier_overrides")
+            )
+        )
+        return merged
+
     def professional_summaries(self) -> Dict[str, Any]:
         """Return master summary variants overlaid with session variants."""
         merged = _coerce_summary_variants(
@@ -321,12 +374,14 @@ class SessionDataView:
         flattened = _flatten_skills(self.master_data.get("skills"))
         group_overrides = self._skill_group_overrides()
         category_overrides = self._skill_category_overrides()
+        qualifier_overrides = self._skill_qualifier_overrides()
         normalized: List[Any] = []
 
         for item in flattened:
             name = _skill_name(item)
             if not name:
                 continue
+            extras = dict(item) if isinstance(item, dict) else {}
             experiences = _skill_experiences(item)
             group = group_overrides[name] if name in group_overrides else _skill_group(item)
             category = (
@@ -334,7 +389,33 @@ class SessionDataView:
                 if name in category_overrides
                 else _skill_category(item)
             )
-            normalized.append(_skill_payload(name, experiences, group, category))
+
+            qualifier_override = qualifier_overrides.get(name, {})
+            if "proficiency" in qualifier_override:
+                if qualifier_override["proficiency"]:
+                    extras["proficiency"] = qualifier_override["proficiency"]
+                else:
+                    extras.pop("proficiency", None)
+            if "subskills" in qualifier_override:
+                if qualifier_override["subskills"]:
+                    extras["subskills"] = list(qualifier_override["subskills"])
+                else:
+                    extras.pop("subskills", None)
+                    extras.pop("sub_skills", None)
+            if "parenthetical" in qualifier_override:
+                if qualifier_override["parenthetical"]:
+                    extras["parenthetical"] = qualifier_override["parenthetical"]
+                else:
+                    extras.pop("parenthetical", None)
+
+            extras = {
+                key: value
+                for key, value in extras.items()
+                if key not in {"name", "experiences", "group", "category"}
+            }
+            normalized.append(
+                _skill_payload(name, experiences, group, category, extras=extras)
+            )
 
         return normalized
 
@@ -404,6 +485,10 @@ class SessionDataView:
         skill_category_overrides = self._skill_category_overrides()
         if skill_category_overrides and not updated.get("skill_category_overrides"):
             updated["skill_category_overrides"] = skill_category_overrides
+
+        skill_qualifier_overrides = self._skill_qualifier_overrides()
+        if skill_qualifier_overrides and not updated.get("skill_qualifier_overrides"):
+            updated["skill_qualifier_overrides"] = skill_qualifier_overrides
 
         skill_category_order = self._skill_category_order()
         if skill_category_order and not updated.get("skill_category_order"):
@@ -482,6 +567,10 @@ class SessionDataView:
         skill_category_order = self._skill_category_order()
         if skill_category_order:
             updated["skill_category_order"] = skill_category_order
+
+        skill_qualifier_overrides = self._skill_qualifier_overrides()
+        if skill_qualifier_overrides:
+            updated["skill_qualifier_overrides"] = skill_qualifier_overrides
 
         publication_decisions = _coerce_decision_mapping(state.get("publication_decisions"))
         if publication_decisions:
