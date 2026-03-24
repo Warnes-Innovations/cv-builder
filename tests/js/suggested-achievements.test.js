@@ -4,6 +4,12 @@
 // This file is part of CV-Builder.
 // For commercial licensing, contact greg@warnes-innovations.com
 
+import {
+  deleteSuggestedAchievement,
+  moveSuggestedAchievementRow,
+  saveSuggestedAchievementField,
+} from '../../web/achievements-review.js'
+
 /**
  * Unit tests for AI-suggested achievement helpers:
  *   saveSuggestedAchievementField
@@ -12,15 +18,8 @@
  *   _suggestedAchsOrdered reset on loadSessionFile
  */
 
-let saveSuggestedAchievementField, moveSuggestedAchievementRow, deleteSuggestedAchievement
-
 describe('suggested achievement helpers', () => {
   beforeEach(() => {
-    vi.resetModules()
-    const app = require('../../web/app.js')
-    saveSuggestedAchievementField = app.saveSuggestedAchievementField
-    moveSuggestedAchievementRow   = app.moveSuggestedAchievementRow
-    deleteSuggestedAchievement    = app.deleteSuggestedAchievement
     // Seed a small ordered list with stable IDs
     window._suggestedAchsOrdered = [
       { _suggId: 'sugg::0', title: 'Alpha', description: 'Desc A' },
