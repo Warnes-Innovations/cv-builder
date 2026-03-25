@@ -32,6 +32,7 @@ Use `duckflow` comments for local data-flow facts only.
 
 - Keep annotations adjacent to the code they describe.
 - Use exact tokens for route calls, state keys, response fields, and output artifacts.
+- Require a UTC `timestamp` field in `YYYY-MM-DDTHH:MM:SSZ` format and refresh it whenever the annotated code changes.
 - When a flow exists in both live inline handlers and extracted route modules, annotate both.
 - Mark live code with `status: live` and extracted-but-unwired route mirrors with `status: planned`.
 - Regenerate stitched graphs with the standalone duckflow toolkit, for example `python "$HOME/src/duckflow/scripts/extract_duckflow.py" --repo-root .` and `python "$HOME/src/duckflow/scripts/generate_duckflow_mermaid.py" --repo-root . --match <flow>`, after changing annotations.
