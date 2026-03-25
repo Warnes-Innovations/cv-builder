@@ -1,0 +1,397 @@
+{
+  "generation_date": "2026-03-25T15:39:38.041536",
+  "company": "Genentech",
+  "role": "Senior R Package Developer",
+  "job_analysis": {
+    "title": "Senior R Package Developer",
+    "company": "Genentech",
+    "domain": "Bioinformatics / Research Infrastructure",
+    "role_level": "Senior IC",
+    "required_skills": [
+      "R",
+      "S4 object system",
+      "Bioconductor",
+      "testthat",
+      "roxygen2",
+      "CI/CD",
+      "REST API integration",
+      "OAuth2",
+      "JWT",
+      "Git/GitLab"
+    ],
+    "preferred_skills": [
+      "Cloud object storage",
+      "Multipart uploads",
+      "HDF5",
+      "JSON Schema validation",
+      "SQLite",
+      "C++",
+      "Rcpp",
+      "Bioinformatics domain knowledge"
+    ],
+    "must_have_requirements": [
+      "3+ years developing production R packages",
+      "Strong understanding of S4 object system and generic method dispatch",
+      "Experience with Bioconductor ecosystem and release cycles",
+      "Proficiency with modern R development tools (testthat, roxygen2, CI/CD)",
+      "Experience with REST API integration and authentication patterns",
+      "Track record of maintaining production systems and managing technical debt"
+    ],
+    "nice_to_have_requirements": [
+      "Experience with cloud storage integration (presigned URLs, temporary credentials)",
+      "Knowledge of genomic data structures and workflows",
+      "Open-source contributions demonstrating sustained project involvement",
+      "Experience with performance-critical code using Rcpp"
+    ],
+    "culture_indicators": [
+      "Sustainable pace",
+      "Quality over speed",
+      "Async collaboration",
+      "Meaningful autonomy",
+      "Craft and depth",
+      "Long-term systems stability"
+    ],
+    "ats_keywords": [
+      "R Package Development",
+      "Bioconductor",
+      "S4 Classes",
+      "testthat",
+      "roxygen2",
+      "CI/CD",
+      "REST API",
+      "OAuth2",
+      "Rcpp",
+      "Bioinformatics"
+    ]
+  },
+  "customizations": {
+    "experience_recommendations": [
+      {
+        "id": "exp_001",
+        "recommendation": "Include",
+        "confidence": "High",
+        "reasoning": "While a CTO role, it should be framed through the 'Hands-on Architect' lens, focusing on the technical decisions and refactoring of the startup's core infrastructure rather than just executive leadership."
+      },
+      {
+        "id": "exp_002",
+        "recommendation": "Emphasize",
+        "confidence": "Very High",
+        "reasoning": "This is the core of the R package development identity. Highlighting the creation and maintenance of foundational packages like gplots and gmodels directly addresses the 'sustained impact' and 'mastery' Genentech seeks."
+      },
+      {
+        "id": "exp_003",
+        "recommendation": "De-emphasize",
+        "confidence": "High",
+        "reasoning": "Wireless innovations are less relevant to the bioinformatics and R-package ecosystem focus of Genentech. Mention briefly to show career breadth but keep the focus on software architecture."
+      },
+      {
+        "id": "exp_004",
+        "recommendation": "Emphasize",
+        "confidence": "Very High",
+        "reasoning": "Per user instructions, focus on the complex data deconvolution problem. This demonstrates the ability to integrate diverse data sources and naming standards, a key skill for bioinformatics workflows."
+      },
+      {
+        "id": "exp_005",
+        "recommendation": "Emphasize",
+        "confidence": "Very High",
+        "reasoning": "Critical for highlighting MiDAS and the specific OAuth2/JWT/Cloud Object Storage work requested. This directly maps to the job's requirements for REST API integration and large-scale data transfers."
+      },
+      {
+        "id": "exp_006",
+        "recommendation": "Include",
+        "confidence": "High",
+        "reasoning": "Provides essential domain context in Biostatistics within a major pharma environment, reinforcing the candidate's understanding of industry-standard clinical data."
+      },
+      {
+        "id": "exp_007",
+        "recommendation": "Include",
+        "confidence": "High",
+        "reasoning": "Relevant bioinformatics domain knowledge at Novartis. Supports the 'Systems Architect' narrative within a life sciences context."
+      },
+      {
+        "id": "exp_008",
+        "recommendation": "Include",
+        "confidence": "Medium",
+        "reasoning": "Establishes deep theoretical roots in biostatistics, which is valuable for understanding the 'why' behind the R packages being maintained."
+      },
+      {
+        "id": "exp_008a",
+        "recommendation": "Emphasize",
+        "confidence": "Very High",
+        "reasoning": "Foundational to the R ecosystem. Being a co-founder of Revolution Analytics cements the 'Architect' status and long-term commitment to the R language."
+      },
+      {
+        "id": "exp_009",
+        "recommendation": "Include",
+        "confidence": "High",
+        "reasoning": "Additional pharma experience at Pfizer. Useful for demonstrating long-term stability and understanding of regulated environments."
+      },
+      {
+        "id": "exp_010",
+        "recommendation": "De-emphasize",
+        "confidence": "High",
+        "reasoning": "Historical internship; while prestigious (Bell Labs), it should be a single line to save space for more recent architectural achievements."
+      },
+      {
+        "id": "exp_011",
+        "recommendation": "Omit",
+        "confidence": "Very High",
+        "reasoning": "QA management in the insurance sector is the least relevant experience to a Senior R Developer role in bioinformatics."
+      },
+      {
+        "id": "exp_012",
+        "recommendation": "De-emphasize",
+        "confidence": "High",
+        "reasoning": "Early career research assistant role. Group with other RA roles to show the academic progression without taking up significant space."
+      },
+      {
+        "id": "exp_013",
+        "recommendation": "De-emphasize",
+        "confidence": "High",
+        "reasoning": "Early career research assistant role. Relevant domain (Biostatistics) but secondary to professional package development."
+      },
+      {
+        "id": "exp_014",
+        "recommendation": "De-emphasize",
+        "confidence": "High",
+        "reasoning": "Early career research assistant role. Relevant domain (Cancer Research) but secondary to professional package development."
+      }
+    ],
+    "skill_recommendations": [
+      {
+        "skill": "R Package Development (S4, roxygen2, testthat)",
+        "recommendation": "Emphasize",
+        "confidence": "Very High",
+        "reasoning": "The core technical requirement of the role; must be the centerpiece of the skills section."
+      },
+      {
+        "skill": "OAuth2 / JWT / Token Lifecycle Management",
+        "recommendation": "Emphasize",
+        "confidence": "Very High",
+        "reasoning": "Specifically requested by the user and a 'must-have' for the Genentech role's API integration needs."
+      },
+      {
+        "skill": "Cloud Object Storage / Multipart Uploads",
+        "recommendation": "Emphasize",
+        "confidence": "Very High",
+        "reasoning": "Directly requested by user; matches Genentech's 'nice-to-have' for handling large-scale data transfers."
+      },
+      {
+        "skill": "Bioconductor Ecosystem",
+        "recommendation": "Emphasize",
+        "confidence": "High",
+        "reasoning": "Genentech heavily utilizes Bioconductor; demonstrating mastery here is essential for the 'Architect' positioning."
+      },
+      {
+        "skill": "C++ / Rcpp",
+        "recommendation": "Include",
+        "confidence": "High",
+        "reasoning": "A preferred skill for high-performance R development and modernizing legacy codebases."
+      }
+    ],
+    "recommended_skills": [
+      "S4 Classes",
+      "Bioconductor",
+      "OAuth2",
+      "JWT",
+      "Cloud Object Storage",
+      "REST API",
+      "Rcpp",
+      "GitLab",
+      "HDF5",
+      "Technical Debt Management",
+      "System Refactoring",
+      "R",
+      "CI/CD",
+      "Algorithmic Architecture",
+      "Analytic Software Development",
+      "Genomics (NGS, GWAS)",
+      "RNA-Seq, scRNA-Seq",
+      "Multi-omics Integration",
+      "Pipeline Development",
+      "Python",
+      "C/C++",
+      "AWS",
+      "Google Cloud",
+      "Data Architecture"
+    ],
+    "achievement_recommendations": [
+      {
+        "id": "sa_001",
+        "recommendation": "Emphasize",
+        "confidence": "Very High",
+        "reasoning": "Aligns with the 'Hands-on Architect' goal of modernizing complex ecosystems and ensuring long-term health."
+      },
+      {
+        "id": "sa_002",
+        "recommendation": "Emphasize",
+        "confidence": "Very High",
+        "reasoning": "Directly relevant to Genentech's bioinformatics domain and the need for robust, production-grade pipelines."
+      },
+      {
+        "id": "sa_003",
+        "recommendation": "Include",
+        "confidence": "Medium",
+        "reasoning": "Relevant, but should be secondary to achievements focused on package architecture and infrastructure."
+      },
+      {
+        "id": "sa_004",
+        "recommendation": "Emphasize",
+        "confidence": "Very High",
+        "reasoning": "Perfectly matches the job's focus on maintaining a 20+ package ecosystem and creating tools for scientific workflows."
+      },
+      {
+        "id": "sa_005",
+        "recommendation": "Emphasize",
+        "confidence": "Very High",
+        "reasoning": "Vital for establishing the candidate as a foundational figure in the R community, which justifies the 'Senior Architect' level."
+      }
+    ],
+    "recommended_achievements": [
+      "sa_001",
+      "sa_002",
+      "sa_003",
+      "sa_005",
+      "sa_004"
+    ],
+    "summary_focus": "ai_generated",
+    "reasoning": "The strategy shifts the candidate from a 'Leadership/CTO' profile back to a 'Master IC/Architect' profile. By highlighting specific technical achievements (OAuth2, multipart uploads) alongside foundational contributions (Revolution Analytics, gplots), we satisfy Genentech's need for both deep technical mastery and a commitment to long-term system stability.",
+    "recommended_experiences": [
+      "exp_004",
+      "exp_005",
+      "exp_002",
+      "exp_008a",
+      "exp_006",
+      "exp_007",
+      "exp_008",
+      "exp_009"
+    ],
+    "omitted_experiences": [
+      "exp_001",
+      "exp_003",
+      "exp_010",
+      "exp_014",
+      "exp_013",
+      "exp_012",
+      "exp_011"
+    ],
+    "omitted_skills": [
+      "Data Science",
+      "Biostatistics",
+      "Statistical Modeling",
+      "High Performance Computing",
+      "Full-Stack Development",
+      "Epigenetics",
+      "Clinical Trials (CDISC)",
+      "Systems Biology",
+      "QC Automation",
+      "Machine Learning",
+      "Deep Learning",
+      "MLOps",
+      "Bayesian Statistics",
+      "MCMC",
+      "Time Series Analysis",
+      "PK/PD Modeling",
+      "DDE/ODE Modeling",
+      "scikit-learn",
+      "PyTorch",
+      "TensorFlow",
+      "Java",
+      "JavaScript",
+      "SQL",
+      "Bash",
+      "Docker",
+      "Linux",
+      "ETL/ELT",
+      "Tableau",
+      "Spotfire"
+    ],
+    "omitted_achievements": [],
+    "extra_skills": [
+      "S4 Classes",
+      "Bioconductor",
+      "OAuth2",
+      "JWT",
+      "Cloud Object Storage",
+      "REST API",
+      "Rcpp",
+      "GitLab",
+      "HDF5",
+      "Technical Debt Management",
+      "System Refactoring"
+    ],
+    "session_summaries": {
+      "ai_recommended": "Position as a 'Hands-on Systems Architect' and 'Master of the R Ecosystem'. Emphasize a deep fulfillment in refactoring, modernizing complex codebases, and managing technical debt. Highlight specific expertise in OAuth2/JWT, Cloud Object Storage, and S4/Bioconductor. Focus on the 'sustained impact' of ensuring core tools remain robust, high-performance industry standards.",
+      "ai_generated": "Senior Bioinformatics Software Engineer with over 25 years of experience specializing in high-performance R Package Development and robust Software Architecture for complex Genomics research. Currently provides expert consulting on experimental design and RNA-Seq analysis while maintaining a portfolio of enterprise-grade R tools and Bioconductor-aligned workflows. Previously created the MiDAS Genomic Workflow System at Pfizer, automating RNA microarray analysis from raw data QC to final biological interpretation, and led the conversion of legacy clinical trial data into CDISC standards. Reduces Technical Debt across large-scale projects by implementing rigorous CI/CD practices and the S4 object system to ensure codebase scalability. Seeking to leverage deep expertise in R package development and statistical computing to advance Genentech\u2019s bioinformatics ecosystem and accelerate biological discovery."
+    },
+    "selected_summary": "Senior Bioinformatics Software Engineer with over 25 years of experience specializing in high-performance R Package Development and robust Software Architecture for complex Genomics research. Currently provides expert consulting on experimental design and RNA-Seq analysis while maintaining a portfolio of enterprise-grade R tools and Bioconductor-aligned workflows. Previously created the MiDAS Genomic Workflow System at Pfizer, automating RNA microarray analysis from raw data QC to final biological interpretation, and led the conversion of legacy clinical trial data into CDISC standards. Reduces Technical Debt across large-scale projects by implementing rigorous CI/CD practices and the S4 object system to ensure codebase scalability. Seeking to leverage deep expertise in R package development and statistical computing to advance Genentech\u2019s bioinformatics ecosystem and accelerate biological discovery.",
+    "accepted_publications": [
+      "warnes2007geneticsdesign",
+      "warnes2005geneticsbase",
+      "warnes2002rsoap",
+      "warnes2002genetics",
+      "warnes2005gtools",
+      "warnes2005gdata",
+      "warnes2005gplots",
+      "warnes2005gmodels",
+      "warnes2003rsessionda",
+      "warnes2007sasxport",
+      "warnes2004ssize",
+      "warnes2003genetics",
+      "warnes2002session",
+      "moriera2004rpy",
+      "warnes2001gregmisc",
+      "wu2008dediscover",
+      "kooner2008genome",
+      "qiu2007geneticsqc",
+      "burrows2007statistical",
+      "qiu2006fbat",
+      "warnes2006ssize",
+      "smith2005rlsf",
+      "dickinson2004differentiation"
+    ],
+    "rejected_publications": [
+      "warnes2021irrigatorpro",
+      "warnes2017patent",
+      "warnes2010sii",
+      "warnes2007dediscover",
+      "mankseymour2006association",
+      "warnes2006balloonplot",
+      "warnes2006technical",
+      "warnes2005wardlisting",
+      "caba2005differentiating",
+      "warnes2004rsoap",
+      "warnes2003fork",
+      "warnes2003fpconst",
+      "warnes2003csvfile",
+      "warnes2003gregmisc",
+      "ullman2002soappy",
+      "warnes2002hydra",
+      "warnes2002nkc",
+      "yanez2001univariate",
+      "warnes2001nkc",
+      "warnes2001hydra",
+      "warnes2000distlib",
+      "warnes2000mcgibbsit",
+      "warnes2000hydra",
+      "warnes2000thesis",
+      "warnes1999clusternfs"
+    ]
+  },
+  "approved_rewrites": [],
+  "rewrite_audit": [],
+  "spell_audit": [],
+  "selected_content_summary": {
+    "experiences_count": 8,
+    "skills_count": 24,
+    "achievements_count": 5
+  },
+  "files_generated": [
+    "CV_Genentech_SeniorRPackageDevelo_2026-03-25_ATS.docx",
+    "CV_Genentech_SeniorRPackageDevelo_2026-03-25.html",
+    "CV_Genentech_SeniorRPackageDevelo_2026-03-25.pdf",
+    "CV_Genentech_SeniorRPackageDevelo_2026-03-25.docx"
+  ],
+  "cover_letter_text": "March 25, 2026\n\nDear Hiring Manager,\n\nI am writing to express interest in the Senior R Package Developer opportunity at Genentech. This locally rendered cover letter is intended for layout and content-debugging workflows, while still drawing from the current CV source data.\n\nMy background is summarized as follows: Senior Machine Learning Scientist and Analytic Architect with over 25 years of experience architecting scalable analytic pipelines, developing advanced statistical models, and productionizing software solutions. Ph.D. in Biostatistics with deep expertise in Genomics (RNA-Seq, scRNA-Seq, Multi-omics), Systems Biology, and Clinical Data Integration (CDISC). Proven track record of bridging scientific discovery and software engineering\u2014from co-founding Revolution Analytics (acquired by Microsoft) to building award-winning genomic workflow systems at Pfizer and Medidata. Expert in interpreting complex multi-omics datasets, automating QC/normalization processes, and translating customer scientific needs into robust production features. Key strengths represented in the attached materials include Data Science, Biostatistics, Statistical Modeling, Algorithmic Architecture, Analytic Software Development, High Performance Computing.\n\nPlease treat this draft as a deterministic rendering artifact for Gregory R. Warnes, Ph.D.. It can be replaced by a session-saved or LLM-generated letter whenever a finalized version is available.\n\nThank you for your consideration.\n\nSincerely,\nGregory R. Warnes, Ph.D.",
+  "cover_letter_reused_from": "/Users/warnes/Library/CloudStorage/GoogleDrive-greg@warnes.net/My Drive/CV/cv-builder/sessions/Genentech_SeniorRPackageDevelo_2026-03-18/session.json"
+}

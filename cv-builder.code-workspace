@@ -26,6 +26,10 @@
 			"/^cd /Users/warnes/src/cv-builder && cat ~/CV/Master_CV_Data\\.json \\| python3 -c \"\nimport json, sys\nd = json\\.load\\(sys\\.stdin\\)\nsk = d\\['skills'\\]\nfor k,v in sk\\.items\\(\\):\n    print\\(f'\\{k\\}: \\{len\\(v\\)\\} items, sample:', v\\[:2\\] if v else 'empty'\\)\nprint\\(\\)\nprint\\('=== education\\[0\\] ==='\\)\nprint\\(json\\.dumps\\(d\\['education'\\]\\[0\\], indent=2\\)\\)\nprint\\('=== awards\\[0\\] ==='\\)\nprint\\(json\\.dumps\\(d\\['awards'\\]\\[0\\], indent=2\\)\\)\nprint\\('=== experience\\[0\\] full ==='\\)\nprint\\(json\\.dumps\\(d\\['experience'\\]\\[0\\], indent=2\\)\\)\n\"$/": {
 				"approve": true,
 				"matchCommandLine": true
+			},
+			"/^npm --prefix /Users/warnes/src/cv-builder run build$/": {
+				"approve": true,
+				"matchCommandLine": true
 			}
 		},
 		"workbench.colorCustomizations": {
