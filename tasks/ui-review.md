@@ -4,19 +4,20 @@
 
 **GAP-19 cross-reference:** see [GAP-19 in tasks/gaps.md](gaps.md#gap-19-structured-master-cv-editor) for the canonical gap definition and [Phase 16 in IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md#phase-16--master-cv-editor-gap-19) for the active execution plan.
 
-**Date:** 2026-03-23
-**Review basis:** refreshed source-verified persona review files dated 2026-03-23
+**Date:** 2026-03-25
+**Review basis:** refreshed source-verified persona review files dated 2026-03-25, including a terminology/layout refresh against the staged generation contract
 **Rollup inputs:** tasks/review-status/applicant.md, tasks/review-status/first-time-user.md, tasks/review-status/returning-user.md, tasks/review-status/power-user.md, tasks/review-status/ux-expert.md, tasks/review-status/accessibility-specialist.md, tasks/review-status/resume-expert.md, tasks/review-status/hiring-manager.md, tasks/review-status/hr-ats.md, tasks/review-status/persuasion-expert.md, tasks/review-status/recruiter-ops.md, tasks/review-status/master-cv-curator.md, tasks/review-status/trust-compliance.md, tasks/review-status/graphical-designer.md
 
 ## Summary
 
-The refreshed 14-persona set confirms that the product is materially further along than the older normalized snapshots suggested. Core workflow state, rewrite review, publication curation, cover-letter scaffolding, ATS artifact generation, session recovery, finalise/archive, and master-data governance boundaries are all real. The main problem is no longer total absence of capability; it is story-completeness. Several high-value surfaces stop one stage short of the behavior the stories promise.
+The strongest remaining UX problem is no longer missing infrastructure. It is product language. The backend now exposes a staged preview, layout confirmation, and final-generation contract, but the frontend still presents `Generate`, `Generated CV`, `Layout Review`, `File Review`, and `Finalise` as overlapping concepts. Users can reach the right outputs, but the app does not make it immediately clear what artifact they are viewing, whether it is current, or what action comes next.
 
 ## Cross-Persona Read
 
-- Strongest implemented areas: rewrite approval and audit capture, publication triage, session-vs-master governance, cover-letter validation, finalise/archive scaffolding, and ATS artifact generation plus validation.
-- Most consistent partials across personas: workflow orientation, analysis/clarification UX, review ergonomics, accessibility coverage, rerun/re-entry, and recruiter-facing package readiness.
-- Largest remaining holes: staged `HTML preview -> layout review -> final generation`, ATS score visibility plus skill semantics, intake confirmation/default reuse, spell-check write-back, and richer final artifact preview.
+- Strongest implemented area: session-backed preview/layout APIs and final-file generation are real and distinct on the backend.
+- Most damaging UX gap: the frontend still collapses those backend stages into unclear labels and a single `Complete Layout Review` action.
+- Highest trust gap: the layout freshness spec exists, but the UI does not surface current versus outdated preview or final-file state.
+- Highest terminology gap: the product mixes `Customise`, `Customisations`, `customization`, `Layout Review`, `Layout`, `Finalise`, and `Done` across different surfaces for the same workflow.
 
 ## Persona Matrix
 
@@ -39,19 +40,19 @@ The refreshed 14-persona set confirms that the product is materially further alo
 
 ## Top Gaps
 
-1. **GAP-20:** staged `HTML preview -> layout review -> final generation` is still not story-complete. See [GAP-20 in tasks/gaps.md](gaps.md#gap-20-staged-html-preview-layout-review-and-final-generation-workflow).
-2. **GAP-22:** ATS document semantics still fall short of the stricter story contract. See [GAP-22 in tasks/gaps.md](gaps.md#gap-22-ats-document-structure-and-skill-type-semantics).
-3. **GAP-23:** job-intake confirmation and clarification defaults are still missing.
-4. **GAP-21:** users still do not get a visible ATS score plus keyword-level reasoning model. See [GAP-21 in tasks/gaps.md](gaps.md#gap-21-ats-match-score-and-keyword-visibility).
-5. **GAP-08:** spell review exists, but accepted corrections are not yet a dependable last-mile write-back path.
-6. **GAP-18 / GAP-02:** rerun and re-entry exist, but not with the clarity and completeness the stories require.
-7. **GAP-16 / GAP-15:** dense review ergonomics, responsive behavior, and full keyboard/accessibility coverage remain open.
+1. **GAP-20:** the user-facing staged `HTML preview -> layout confirmation -> final generation` flow is still not story-complete, even though the APIs exist. See [GAP-20 in tasks/gaps.md](gaps.md#gap-20-staged-html-preview-layout-review-and-final-generation-workflow).
+2. **GAP-14:** workflow orientation remains weak because step labels, tab labels, action buttons, and session-phase text describe the same states differently.
+3. **GAP-20 plus the layout freshness spec:** preview and final-file staleness are specified but still not implemented in the UI. See [tasks/layout-stale-ui-spec.md](layout-stale-ui-spec.md).
+4. **GAP-16:** output review information architecture still makes artifacts harder to trust than they should be because preview and final-file surfaces are named too loosely.
+5. **GAP-18 / GAP-02:** rerun and restore context remain too phase-centric and not artifact-centric.
+6. **GAP-22:** ATS document semantics still fall short of the stricter story contract. See [GAP-22 in tasks/gaps.md](gaps.md#gap-22-ats-document-structure-and-skill-type-semantics).
+7. **GAP-21:** users still do not get a visible ATS score plus keyword-level reasoning model. See [GAP-21 in tasks/gaps.md](gaps.md#gap-21-ats-match-score-and-keyword-visibility).
 8. **GAP-19 / GAP-24:** master-data maintenance has a real foundation now, but editing depth, history/review tooling, and final publication rendering still trail the stronger mid-workflow review surfaces. See [GAP-19 in tasks/gaps.md](gaps.md#gap-19-structured-master-cv-editor) and [Phase 16 in IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md#phase-16--master-cv-editor-gap-19).
 
 ## Recommended Focus Order
 
-1. Finish the staged generation contract so preview, layout iteration, and final generation are distinct and dependable.
-2. Tighten ATS semantics, scoring visibility, and skill classification so the generated outputs match the HR/ATS stories.
-3. Add intake confirmation, default reuse, and stronger rerun context so the workflow is dependable for both first-time and returning users.
-4. Complete spell-check write-back and richer artifact review so the last-mile quality gate is trustworthy.
-5. Improve review ergonomics, accessibility, and visual preview once the workflow contract is stable.
+1. Make preview, layout confirmation, final file generation, and finalise visibly separate user actions with one consistent vocabulary across the step bar, tabs, buttons, and session chips.
+2. Implement the layout freshness model from tasks/layout-stale-ui-spec.md so users can immediately see when preview or final files are outdated.
+3. Surface generation substate in the workflow and restore UI: preview ready, layout confirmed, and final files generated.
+4. Rename `Generated CV` and related helper text so preview versus final output is explicit.
+5. After stage language is stable, tighten `File Review` and `Finalise` around the same artifact vocabulary.
