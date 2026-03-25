@@ -16,6 +16,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('publications-review');
 
+import { stateManager } from './state-manager.js';
+
 // Track publication accept/reject decisions: cite_key → true (accept) | false (reject)
 window.publicationDecisions = {};
 
@@ -211,6 +213,7 @@ async function submitPublicationDecisions() {
     });
 
     if (response.ok) {
+      stateManager.markContentChanged();
       const accepted = Object.values(window.publicationDecisions).filter(Boolean).length;
       const rejected = count - accepted;
       showToast(`Publication selections saved: ${accepted} kept, ${rejected} excluded`);

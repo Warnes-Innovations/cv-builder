@@ -964,6 +964,7 @@ async function submitSkillDecisions() {
     });
 
     if (response.ok) {
+      stateManager.markContentChanged();
       const extraNote = extraSkills.length > 0 ? ` (${extraSkills.length} session-only skill(s) added for this CV only)` : '';
       showToast(`Skill decisions saved (${count} items)${extraNote}`);
       scheduleAtsRefresh();

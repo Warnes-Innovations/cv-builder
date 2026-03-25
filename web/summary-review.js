@@ -13,6 +13,8 @@
  *   escapeHtml, showToast, switchTab, setLoading
  */
 
+import { stateManager } from './state-manager.js';
+
 // ── Build summary-focus section ─────────────────────────────────────────────
 
 /**
@@ -253,18 +255,26 @@ function selectSummaryKey(key) {
 
 async function saveSummaryFocusToBackend(key) {
   try {
-    await fetch('/api/review-decisions', {
+    const response = await fetch('/api/review-decisions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'summary_focus', decisions: key })
     });
-  } catch (e) { /* silent */ }
+    return response.ok;
+  } catch (e) {
+    return false;
+  }
 }
 
 async function submitSummaryFocusDecision() {
   const key = window.selectedSummaryKey;
   if (!key) return;
-  await saveSummaryFocusToBackend(key);
+  const saved = await saveSummaryFocusToBackend(key);
+  if (!saved) {
+    showToast('Failed to save summary selection.', 'error');
+    return;
+  }
+  stateManager.markContentChanged();
   showToast(`Summary selection saved: "${key.replace(/_/g, ' ')}"`);
   switchTab('publications-review');
 }

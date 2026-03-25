@@ -48,16 +48,122 @@ function getWorkflowStepForPhase(phase) {
 
 /**
  * Staged generation workflow phases (GAP-20 implementation).
- * These track the preview → layout-review → confirmed → final pipeline
+ * These track the preview/layout review → confirmed → final pipeline
  * independently of the main conversation PHASES above.
  * Backend source of truth is session_data['generation_state']['phase'].
  */
 const GENERATION_PHASES = {
-  IDLE:           'idle',           // No preview generated yet
-  PREVIEW:        'preview',        // HTML preview generated; in layout review
-  CONFIRMED:      'confirmed',      // Layout confirmed; awaiting final outputs
-  FINAL_COMPLETE: 'final_complete', // Final PDF/DOCX produced
+  IDLE:           'idle',
+  LAYOUT_REVIEW:  'layout_review',
+  CONFIRMED:      'confirmed',
+  FINAL_COMPLETE: 'final_complete',
 };
+
+const GENERATION_STATE_EVENT = 'cvbuilder:generation-state-changed';
+
+function createDefaultGenerationState() {
+  return {
+    phase: GENERATION_PHASES.IDLE,
+    previewAvailable: false,
+    previewOutputs: null,
+    layoutConfirmed: false,
+    pageCountEstimate: null,
+    pageCountExact: null,
+    pageCountConfidence: null,
+    pageCountSource: null,
+    pageNeedsExactRecheck: false,
+    pageWarning: false,
+    layoutInstructionsCount: 0,
+    finalGeneratedAt: null,
+    contentRevision: 0,
+    lastPreviewContentRevision: null,
+    lastFinalContentRevision: null,
+  };
+}
+
+function normalizeRevision(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+function getLastRenderedContentRevision(state) {
+  const revisions = [
+    normalizeRevision(state.lastPreviewContentRevision),
+    normalizeRevision(state.lastFinalContentRevision),
+  ].filter(value => value !== null);
+  return revisions.length > 0 ? Math.max(...revisions) : null;
+}
+
+function getLayoutFreshnessFromState(state) {
+  const previewAvailable = Boolean(state.previewAvailable);
+  const hasFinalOutputs = Boolean(
+    state.finalGeneratedAt
+      || state.phase === GENERATION_PHASES.FINAL_COMPLETE
+      || normalizeRevision(state.lastFinalContentRevision) !== null
+  );
+
+  if (!previewAvailable) {
+    return {
+      showChip: false,
+      isStale: false,
+      isCritical: false,
+      hasFinalOutputs,
+      label: '',
+      ariaLabel: '',
+      tone: 'hidden',
+    };
+  }
+
+  const contentRevision = normalizeRevision(state.contentRevision) ?? 0;
+  const lastRenderedRevision = getLastRenderedContentRevision(state);
+  const isStale = lastRenderedRevision !== null && contentRevision > lastRenderedRevision;
+  const isCritical = isStale && hasFinalOutputs;
+
+  if (isCritical) {
+    return {
+      showChip: true,
+      isStale,
+      isCritical,
+      hasFinalOutputs,
+      label: 'Files outdated',
+      ariaLabel: 'Files outdated. Activate to review layout and regenerate outputs.',
+      tone: 'critical',
+    };
+  }
+
+  if (isStale) {
+    return {
+      showChip: true,
+      isStale,
+      isCritical,
+      hasFinalOutputs,
+      label: 'Layout outdated',
+      ariaLabel: 'Layout outdated. Activate to review and regenerate preview.',
+      tone: 'stale',
+    };
+  }
+
+  return {
+    showChip: true,
+    isStale,
+    isCritical,
+    hasFinalOutputs,
+    label: 'Layout current',
+    ariaLabel: 'Layout current. Preview matches latest content.',
+    tone: 'fresh',
+  };
+}
+
+function emitGenerationStateChanged() {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent(GENERATION_STATE_EVENT, {
+    detail: {
+      generationState: { ...generationState },
+      layoutFreshness: getLayoutFreshnessFromState(generationState),
+    },
+  }));
+}
 
 // Global state variables (moved into module for clarity)
 let currentTab = 'job';
@@ -139,14 +245,7 @@ installLegacyStateGlobals();
 
 // Staged generation state (GAP-20): tracks preview → confirm → final pipeline.
 // Synced from /api/cv/generation-state on page load and after key transitions.
-let generationState = {
-  phase: GENERATION_PHASES.IDLE,
-  previewAvailable: false,
-  layoutConfirmed: false,
-  pageCountEstimate: null,
-  pageWarning: false,
-  layoutInstructionsCount: 0,
-};
+let generationState = createDefaultGenerationState();
 
 // ATS score state (GAP-21): cached score from /api/cv/ats-score.
 // Null until first score is fetched.
@@ -212,20 +311,60 @@ const stateManager = {
 
   // Staged generation state (GAP-20)
   getGenerationState: () => generationState,
+  getLayoutFreshness: () => getLayoutFreshnessFromState(generationState),
   setGenerationState: (update) => {
     generationState = { ...generationState, ...update };
     saveStateToLocalStorage();
+    emitGenerationStateChanged();
   },
-  resetGenerationState: () => {
+  markContentChanged: () => {
     generationState = {
-      phase: GENERATION_PHASES.IDLE,
-      previewAvailable: false,
-      layoutConfirmed: false,
-      pageCountEstimate: null,
-      pageWarning: false,
-      layoutInstructionsCount: 0,
+      ...generationState,
+      contentRevision: (normalizeRevision(generationState.contentRevision) ?? 0) + 1,
     };
     saveStateToLocalStorage();
+    emitGenerationStateChanged();
+  },
+  markPreviewGenerated: (update = {}) => {
+    const contentRevision = normalizeRevision(generationState.contentRevision) ?? 0;
+    generationState = {
+      ...generationState,
+      ...update,
+      phase: GENERATION_PHASES.LAYOUT_REVIEW,
+      previewAvailable: true,
+      layoutConfirmed: false,
+      lastPreviewContentRevision: contentRevision,
+    };
+    saveStateToLocalStorage();
+    emitGenerationStateChanged();
+  },
+  markLayoutConfirmed: (update = {}) => {
+    generationState = {
+      ...generationState,
+      ...update,
+      phase: GENERATION_PHASES.CONFIRMED,
+      layoutConfirmed: true,
+    };
+    saveStateToLocalStorage();
+    emitGenerationStateChanged();
+  },
+  markFinalGenerated: (generatedAt = null, update = {}) => {
+    const contentRevision = normalizeRevision(generationState.contentRevision) ?? 0;
+    generationState = {
+      ...generationState,
+      ...update,
+      phase: GENERATION_PHASES.FINAL_COMPLETE,
+      layoutConfirmed: true,
+      finalGeneratedAt: generatedAt || update.finalGeneratedAt || new Date().toISOString(),
+      lastFinalContentRevision: contentRevision,
+    };
+    saveStateToLocalStorage();
+    emitGenerationStateChanged();
+  },
+  resetGenerationState: () => {
+    generationState = createDefaultGenerationState();
+    saveStateToLocalStorage();
+    emitGenerationStateChanged();
   },
 };
 
@@ -250,14 +389,7 @@ function initializeState() {
   window.postAnalysisQuestions = [];
   window.questionAnswers = {};
   lastKnownPhase = PHASES.INIT;
-  generationState = {
-    phase: GENERATION_PHASES.IDLE,
-    previewAvailable: false,
-    layoutConfirmed: false,
-    pageCountEstimate: null,
-    pageWarning: false,
-    layoutInstructionsCount: 0,
-  };
+  generationState = createDefaultGenerationState();
 
   // Get or generate session ID
   let storedId = localStorage.getItem(StorageKeys.SESSION_ID);
@@ -268,6 +400,7 @@ function initializeState() {
   sessionId = storedId;
 
   saveStateToLocalStorage();
+  emitGenerationStateChanged();
 }
 
 /**
@@ -337,6 +470,7 @@ function loadStateFromLocalStorage() {
       atsScore = data.atsScore;
     }
 
+    emitGenerationStateChanged();
     return true;
   } catch (error) {
     log.warn('Failed to load state from localStorage:', error);
@@ -388,6 +522,7 @@ export {
   PHASES,
   PHASE_TO_STEP,
   GENERATION_PHASES,
+  GENERATION_STATE_EVENT,
   stateManager,
   getWorkflowStepForPhase,
   initializeState, loadStateFromLocalStorage, saveStateToLocalStorage,

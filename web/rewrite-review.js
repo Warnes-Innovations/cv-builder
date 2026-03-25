@@ -15,6 +15,8 @@
  *   escapeHtml, parseRewritesResponse, PHASES
  */
 
+import { stateManager } from './state-manager.js';
+
 // Module-level state
 let rewriteDecisions = {};
 let _rewritePanelCache = null;
@@ -348,6 +350,7 @@ async function submitRewriteDecisions() {
 
     const accepted = data.approved_count || 0;
     const rejected = data.rejected_count || 0;
+    stateManager.markContentChanged();
     appendMessage('assistant', `✅ Rewrite decisions recorded: ${accepted} accepted, ${rejected} rejected. Starting spell check…`);
     scheduleAtsRefresh('review_checkpoint');
     switchTab('spell');

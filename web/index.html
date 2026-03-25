@@ -90,6 +90,7 @@
           <div id="ats-score-summary-detail" class="ats-score-summary-detail"></div>
         </div>
       </div>
+      <button id="layout-freshness-chip" class="layout-freshness-chip" onclick="handleLayoutFreshnessChipClick()" aria-label="" style="display:none;"></button>
       <button id="ats-report-btn" onclick="openAtsReportModal()" title="View ATS report"
         style="display:none;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;color:#475569;font-size:0.8em;padding:2px 7px;line-height:1.6;">ATS Report</button>
       <button id="job-analysis-btn" onclick="openJobAnalysisModal()" title="View job analysis"
@@ -119,7 +120,7 @@
       <div class="arrow">→</div>
       <div class="step" id="step-generate" title="Generate CV files" onclick="handleStepClick('generate')">📄 Generate</div>
       <div class="arrow">→</div>
-      <div class="step" id="step-layout" title="Layout instructions" onclick="handleStepClick('layout')">🎨 Layout</div>
+      <div class="step" id="step-layout" title="Layout review" onclick="handleStepClick('layout')">🎨 Layout</div>
       <div class="arrow">→</div>
       <div class="step" id="step-finalise" title="Finalise &amp; archive" onclick="handleStepClick('finalise')">✅ Finalise</div>
     </div>
@@ -162,8 +163,8 @@
           <button class="action-btn primary" id="generate-btn"          style="display:none">✏️ Review Rewrites</button>
           <button class="action-btn primary" id="rewrite-btn"           style="display:none">✓ Submit Rewrites</button>
           <button class="action-btn primary" id="spell-btn"             style="display:none">✓ Done — Generate CV</button>
-          <button class="action-btn primary" id="generate-proceed-btn"  style="display:none">🎨 Review Layout →</button>
-          <button class="action-btn primary" id="layout-btn"            style="display:none">✅ Complete Layout</button>
+          <button class="action-btn primary" id="generate-proceed-btn"  style="display:none">🎨 Open Layout Review →</button>
+          <button class="action-btn primary" id="layout-btn"            style="display:none">✅ Confirm Layout</button>
           <button class="action-btn primary" id="finalise-action-btn"   style="display:none">✅ Finalise</button>
         </div>
       </div>
@@ -189,7 +190,7 @@
           <!-- CV Editor tab disabled: session-copy editing superseded by Master CV app mode (GAP-19) -->
           <div class="tab"        id="tab-editor"         data-tab="editor"         role="tab" aria-selected="false" aria-controls="document-content" style="display:none">📝 CV Editor</div>
           <div class="tab"        id="tab-generate"       data-tab="generate"       role="tab" aria-selected="false" aria-controls="document-content">📄 Generated CV</div>
-          <div class="tab"        id="tab-layout"         data-tab="layout"         role="tab" aria-selected="false" aria-controls="document-content">🎨 Layout</div>
+          <div class="tab"        id="tab-layout"         data-tab="layout"         role="tab" aria-selected="false" aria-controls="document-content">🎨 Layout Review</div>
           <div class="tab"        id="tab-download"       data-tab="download"       role="tab" aria-selected="false" aria-controls="document-content">⬇️ File Review</div>
           <div class="tab"        id="tab-finalise"       data-tab="finalise"       role="tab" aria-selected="false" aria-controls="document-content">✅ Finalise</div>
           <div class="tab"        id="tab-master"         data-tab="master"         role="tab" aria-selected="false" aria-controls="document-content">📚 Master CV</div>
