@@ -118,13 +118,13 @@ describe('stateManager tab state', () => {
     expect(globalThis.currentTab).toBe('analysis')
   })
 
-  it('setCurrentStage / getCurrentStage round-trips', () => {
-    stateManager.setCurrentStage('analysis')
+  it('derives the current workflow step from phase', () => {
+    stateManager.setPhase('job_analysis')
     expect(stateManager.getCurrentStage()).toBe('analysis')
   })
 
-  it('mirrors currentStage onto globalThis for legacy modules', () => {
-    stateManager.setCurrentStage('layout')
+  it('mirrors the derived workflow step onto globalThis for legacy modules', () => {
+    stateManager.setPhase('layout_review')
     expect(globalThis.currentStage).toBe('layout')
   })
 
@@ -267,8 +267,8 @@ describe('loadStateFromLocalStorage', () => {
       timestamp:    Date.now(),
       tabData:      { analysis: { score: 80 } },
       interactiveState: {},
-      lastKnownPhase: 'customise',
-      currentStage: 'analysis',
+      lastKnownPhase: 'job_analysis',
+      currentTab: 'analysis',
     })
     localStorage.setItem(StorageKeys.TAB_DATA, fresh)
     const result = loadStateFromLocalStorage()
@@ -276,6 +276,7 @@ describe('loadStateFromLocalStorage', () => {
     expect(stateManager.getTabData('analysis')).toEqual({ score: 80 })
     expect(globalThis.tabData.analysis).toEqual({ score: 80 })
     expect(stateManager.getCurrentStage()).toBe('analysis')
+    expect(stateManager.getCurrentTab()).toBe('analysis')
   })
 
   it('restores phase from saved data', () => {

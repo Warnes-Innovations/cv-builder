@@ -102,6 +102,20 @@ def create_blueprint(deps):
         m = re.search(r'(19|20)\d{2}', text)
         return int(m.group(0)) if m else None
 
+    def _require_master_data_write_phase(entry):
+        """Allow direct master-data writes only in the pre-job and post-job windows."""
+        raw_phase = (entry.manager.state or {}).get('phase')
+        current_phase = str(getattr(raw_phase, 'value', raw_phase) or '').strip()
+        if current_phase in ('init', 'refinement'):
+            return None
+        return jsonify({
+            "error": (
+                "Master data can only be modified before job analysis begins or from the "
+                "post-job finalise workflow."
+            ),
+            "phase": current_phase or None,
+        }), 409
+
     # ------------------------------------------------------------------
     # master-fields (fast endpoint, no session required)
     # ------------------------------------------------------------------
@@ -168,6 +182,9 @@ def create_blueprint(deps):
         """Update or delete a selected achievement, or add a new one to the master CV."""
         entry = get_session()
         validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
         orchestrator = entry.orchestrator
         req    = request.get_json() or {}
         ach_id = (req.get('id') or '').strip()
@@ -206,6 +223,9 @@ def create_blueprint(deps):
         """Update, add, or delete a named professional summary variant in the master CV."""
         entry = get_session()
         validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
         orchestrator = entry.orchestrator
         req  = request.get_json() or {}
         key  = (req.get('key') or '').strip()
@@ -383,6 +403,9 @@ def create_blueprint(deps):
         """Update personal_info fields in the master CV."""
         entry = get_session()
         validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
         orchestrator = entry.orchestrator
         req = request.get_json() or {}
 
@@ -421,6 +444,9 @@ def create_blueprint(deps):
         """Add, update, or delete an experience entry in the master CV."""
         entry = get_session()
         validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
         orchestrator = entry.orchestrator
         req    = request.get_json() or {}
         action = (req.get('action') or '').strip()
@@ -522,6 +548,9 @@ def create_blueprint(deps):
         """Add, update, or delete a skill, or manage skill categories."""
         entry = get_session()
         validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
         orchestrator = entry.orchestrator
         req = request.get_json() or {}
         action = (req.get('action') or '').strip()
@@ -717,6 +746,9 @@ def create_blueprint(deps):
         """Add, update, or delete an education entry in the master CV."""
         entry = get_session()
         validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
         orchestrator = entry.orchestrator
         req    = request.get_json() or {}
         action = (req.get('action') or '').strip()
@@ -792,6 +824,9 @@ def create_blueprint(deps):
         """Add, update, or delete an award entry in the master CV."""
         entry = get_session()
         validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
         orchestrator = entry.orchestrator
         req    = request.get_json() or {}
         action = (req.get('action') or '').strip()
@@ -964,6 +999,9 @@ def create_blueprint(deps):
         """Overwrite publications.bib with raw BibTeX text."""
         entry = get_session()
         validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
         orchestrator = entry.orchestrator
         req = request.get_json() or {}
         content = req.get("content", "")
@@ -1036,6 +1074,9 @@ def create_blueprint(deps):
         """Add, update, or delete a single publication in publications.bib."""
         entry = get_session()
         validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
         orchestrator = entry.orchestrator
         req = request.get_json() or {}
         action = (req.get("action") or "").strip()
@@ -1094,6 +1135,9 @@ def create_blueprint(deps):
         """Parse a BibTeX string and merge entries into publications.bib."""
         entry = get_session()
         validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
         orchestrator = entry.orchestrator
         req = request.get_json() or {}
         bibtex_text = req.get("bibtex_text", "")

@@ -239,7 +239,7 @@ describe('_claimCurrentSession', () => {
     vi.stubGlobal('updatePositionTitle', vi.fn())
     vi.stubGlobal('localStorage', makeStorageMock())
     stateManager.setCurrentTab('analysis')
-    stateManager.setCurrentStage('analysis')
+    stateManager.setPhase('job_analysis')
     globalThis.fetch = vi.fn()
   })
 
@@ -339,7 +339,7 @@ describe('showSessionsLandingPanel and ensureSessionContext', () => {
     vi.stubGlobal('StorageKeys', { SESSION_ID: 'session-id-key' })
     vi.stubGlobal('localStorage', storage)
     stateManager.setCurrentTab('analysis')
-    stateManager.setCurrentStage('analysis')
+    stateManager.setPhase('job_analysis')
   })
 
   afterEach(() => {
