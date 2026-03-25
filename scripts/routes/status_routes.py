@@ -92,6 +92,7 @@ def create_blueprint(deps):
             # duckflow: {
             #   "id": "summary_api_status_live",
             #   "kind": "api",
+            #   "timestamp": "2026-03-25T21:39:48Z",
             #   "status": "live",
             #   "handles": ["GET /api/status"],
             #   "reads": ["state:session_summaries.ai_generated", "state:summary_focus_override"],

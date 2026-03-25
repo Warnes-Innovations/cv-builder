@@ -265,6 +265,18 @@ async function handleExperienceResponse(message) {
 // ── Submit decisions ───────────────────────────────────────────────────────
 
 async function submitExperienceDecisions() {
+  /* duckflow: {
+   *   "id": "experience_ui_submit_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:experience-review.submit"],
+   *   "calls": ["POST /api/review-decisions", "POST /api/cv/layout-estimate"],
+   *   "reads": ["window:userSelections.experiences"],
+   *   "writes": ["request:POST /api/review-decisions.decisions", "window:_savedDecisions.experience_decisions"],
+   *   "notes": "Persists per-experience inclusion decisions and triggers downstream ATS/layout refreshes that depend on the same review choices."
+  * }
+  */
   const decisions = userSelections.experiences;
   const count = Object.keys(decisions).length;
 

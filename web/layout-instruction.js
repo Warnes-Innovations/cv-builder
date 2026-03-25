@@ -378,6 +378,18 @@ async function applyBaseFontSize(value) {
  * request body) when no session preview exists.
  */
 async function submitLayoutInstruction(instructionText) {
+  /* duckflow: {
+   *   "id": "layout_ui_refine_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:layout.submit-instruction"],
+   *   "calls": ["POST /api/cv/layout-refine", "POST /api/layout-instruction"],
+   *   "reads": ["dom:#instruction-input.value", "state:generation_state.previewAvailable", "state:generation_state.phase", "window:layoutInstructions"],
+   *   "writes": ["request:POST /api/cv/layout-refine.instruction", "dom:#layout-preview", "window:layoutInstructions", "state:generation_state.preview_outputs"],
+   *   "notes": "Submits a natural-language layout instruction against the staged preview when available, then refreshes the preview and local instruction history from the returned HTML."
+  * }
+  */
   const currentHtml = getCvArtifacts()['*.html'] || '';
   const priorInstructions = window.layoutInstructions || [];
 
@@ -743,6 +755,18 @@ async function advanceLayoutToRefinement() {
 }
 
 async function generateFinalOutputs() {
+  /* duckflow: {
+   *   "id": "layout_ui_generate_final_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:layout.generate-final"],
+   *   "calls": ["POST /api/cv/generate-final", "POST /api/layout-complete"],
+   *   "reads": ["state:generation_state.layoutConfirmed", "state:generation_state.phase", "state:layout_freshness"],
+   *   "writes": ["tab:cvArtifacts", "state:generation_state.final_generated_at", "ui:workflow.refinement"],
+   *   "notes": "Generates the final human-readable outputs from the confirmed preview and advances the UI into file review/finalise with the new artifact set."
+  * }
+  */
   try {
     showProcessing(true);
 

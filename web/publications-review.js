@@ -197,6 +197,18 @@ function handlePubAction(citeKey, accept) {
 // ── Submit decisions ─────────────────────────────────────────────────────────
 
 async function submitPublicationDecisions() {
+  /* duckflow: {
+   *   "id": "publications_ui_submit_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:publications-review.submit"],
+   *   "calls": ["POST /api/review-decisions", "GET /api/rewrites"],
+   *   "reads": ["window:publicationDecisions"],
+   *   "writes": ["request:POST /api/review-decisions.decisions"],
+   *   "notes": "Persists publication include/exclude decisions before the rewrite stage derives downstream content proposals from the accepted publication set."
+  * }
+  */
   const decisions = window.publicationDecisions || {};
   const count = Object.keys(decisions).length;
   if (count === 0) {
