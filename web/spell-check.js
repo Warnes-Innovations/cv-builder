@@ -18,6 +18,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('spell-check');
 
+import { stateManager } from './state-manager.js';
+
 // Module-level state
 let spellAudit = [];
 
@@ -351,6 +353,7 @@ async function submitSpellCheckDecisions() {
       showAlertModal('❌ Error', `Failed to save spell check: ${data.error || 'Unknown error'}`);
       return;
     }
+    stateManager.markContentChanged();
     appendMessage('assistant', `✅ Spell check complete — ${spellAudit.length} item${spellAudit.length !== 1 ? 's' : ''} reviewed. Generating your CV…`);
     scheduleAtsRefresh('review_checkpoint');
     await fetchStatus();
