@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from bs4 import BeautifulSoup
 from scripts.utils.cv_orchestrator import CVOrchestrator
 from tests.helpers.example_profiles import (
     EXAMPLE_PROFILES_ROOT,
@@ -23,8 +24,9 @@ FIXTURES_ROOT = REPO_ROOT / "tests" / "fixtures"
 DEFAULT_JOB_FIXTURE = FIXTURES_ROOT / "fixture_job_engineering.json"
 DEFAULT_PROFILE_NAME = "complex"
 RAW_OUTPUT_DIRNAME = "raw"
+NORMALIZED_DIRNAME = "normalized"
 MANIFEST_FILENAME = "fixture-review-manifest.json"
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 
 DEFAULT_CUSTOMIZATIONS = {
     "recommended_experiences": [],
@@ -65,6 +67,72 @@ def load_fixture_job_analysis(
 ) -> dict[str, Any]:
     fixture_path = resolve_fixture_job(job_fixture_path)
     return json.loads(fixture_path.read_text(encoding="utf-8"))
+
+
+def _write_normalized_exports(
+    bundle_root: Path,
+    html_path: Path,
+    orchestrator: CVOrchestrator,
+) -> tuple[dict[str, str | None], list[str]]:
+    normalized_dir = bundle_root / NORMALIZED_DIRNAME
+    normalized_dir.mkdir(parents=True, exist_ok=True)
+
+    html_text = html_path.read_text(encoding="utf-8")
+    outline_path = normalized_dir / "structure-outline.txt"
+    outline_path.write_text(
+        orchestrator._serialize_html_for_context(html_text),
+        encoding="utf-8",
+    )
+
+    plain_text_path = normalized_dir / "plain-text.txt"
+    plain_text = BeautifulSoup(html_text, "html.parser").get_text(
+        "\n",
+        strip=True,
+    )
+    plain_text_path.write_text(plain_text, encoding="utf-8")
+
+    render_status_path = normalized_dir / "render-status.txt"
+    render_png_path = normalized_dir / "render.png"
+    warnings: list[str] = []
+    render_png_relative: str | None = None
+
+    try:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            page = browser.new_page(viewport={"width": 1440, "height": 2200})
+            page.goto(html_path.resolve().as_uri(), wait_until="networkidle")
+            page.screenshot(path=str(render_png_path), full_page=True)
+            browser.close()
+        render_status = (
+            "Rendered normalized screenshot with Playwright Chromium."
+        )
+        render_png_relative = str(
+            Path(NORMALIZED_DIRNAME) / render_png_path.name
+        )
+    except Exception as exc:
+        render_status = (
+            "Skipped normalized screenshot export. Install Chromium with "
+            "`playwright install chromium` to enable render.png. "
+            f"Reason: {exc}"
+        )
+        warnings.append(render_status)
+
+    render_status_path.write_text(render_status, encoding="utf-8")
+
+    normalized_exports = {
+        "root": NORMALIZED_DIRNAME,
+        "structure_outline_txt": str(
+            Path(NORMALIZED_DIRNAME) / outline_path.name
+        ),
+        "plain_text_txt": str(Path(NORMALIZED_DIRNAME) / plain_text_path.name),
+        "render_png": render_png_relative,
+        "render_status_txt": str(
+            Path(NORMALIZED_DIRNAME) / render_status_path.name
+        ),
+    }
+    return normalized_exports, warnings
 
 
 def generate_fixture_review_bundle(
@@ -127,6 +195,17 @@ def generate_fixture_review_bundle(
             artifact_paths["human_docx"] = bundle_relative_path
 
     metadata = generation_result["metadata"]
+    html_relative_path = artifact_paths["human_html"]
+    if html_relative_path is None:
+        raise ValueError(
+            "Fixture review bundle generation did not produce HTML"
+        )
+    normalized_exports, warnings = _write_normalized_exports(
+        bundle_root,
+        bundle_root / html_relative_path,
+        orchestrator,
+    )
+
     manifest = {
         "manifest_version": MANIFEST_VERSION,
         "bundle_kind": "fixture_layout_review",
@@ -152,6 +231,7 @@ def generate_fixture_review_bundle(
             "raw_output_dir": RAW_OUTPUT_DIRNAME,
         },
         "artifacts": artifact_paths,
+        "normalized_exports": normalized_exports,
         "summary": {
             "files_generated": list(generation_result["files"]),
             "artifacts_generated": len(generation_result["files"]),
@@ -159,6 +239,7 @@ def generate_fixture_review_bundle(
                 metadata.get("selected_content_summary", {})
             ),
         },
+        "warnings": warnings,
     }
 
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
