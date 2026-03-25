@@ -72,10 +72,15 @@ def test_generate_fixture_review_bundle_creates_manifest_and_raw_artifacts(
 
     normalized_exports = manifest["normalized_exports"]
     assert normalized_exports["root"] == "normalized"
-    assert (bundle_root / normalized_exports["structure_outline_txt"]).exists()
+    outline_path = bundle_root / normalized_exports["structure_outline_txt"]
+    assert outline_path.exists()
     assert (bundle_root / normalized_exports["plain_text_txt"]).exists()
     render_status_path = bundle_root / normalized_exports["render_status_txt"]
     assert render_status_path.exists()
+
+    outline_text = outline_path.read_text(encoding="utf-8")
+    assert "Summary" in outline_text
+    assert "Experience" in outline_text
 
     render_png = normalized_exports["render_png"]
     if render_png is not None:

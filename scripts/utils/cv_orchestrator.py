@@ -1732,19 +1732,18 @@ For manual generation:
         Returns:
             Human-readable outline showing section structure and item counts
         """
-        import re
+        from bs4 import BeautifulSoup
 
-        # Extract major sections (h1, h2)
+        soup = BeautifulSoup(html, 'html.parser')
         outline = []
 
-        # Find all major headings
-        h_tags = re.findall(r'<h[23][^>]*>([^<]+)</h[23]>', html)
-
-        # Count total items in document (simple heuristic for LLM context)
-        total_li_count = len(re.findall(r'<li[^>]*>[^<]*</li>', html))
+        h_tags = soup.find_all(['h2', 'h3'])
+        total_li_count = len(soup.find_all('li'))
 
         for i, heading in enumerate(h_tags, 1):
-            outline.append(f"{i}. {heading.strip()}")
+            heading_text = heading.get_text(' ', strip=True)
+            if heading_text:
+                outline.append(f"{i}. {heading_text}")
 
         if total_li_count > 0:
             outline.append(f"\nTotal items: {total_li_count}")
