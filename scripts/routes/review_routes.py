@@ -186,6 +186,34 @@ def create_blueprint(deps):
     @bp.route('/api/review-decisions', methods=['POST'])
     def save_review_decisions():
         """Save user's review decisions for experiences/skills."""
+        # duckflow: {
+        #   "id": "review_api_decisions_live",
+        #   "kind": "api",
+        #   "timestamp": "2026-03-25T21:39:48Z",
+        #   "status": "live",
+        #   "handles": ["POST /api/review-decisions"],
+        #   "reads": [
+        #     "request:POST /api/review-decisions.type",
+        #     "request:POST /api/review-decisions.decisions",
+        #     "request:POST /api/review-decisions.extra_skills",
+        #     "request:POST /api/review-decisions.extra_skill_matches",
+        #     "request:POST /api/review-decisions.accepted_suggestions"
+        #   ],
+        #   "writes": [
+        #     "state:experience_decisions",
+        #     "state:skill_decisions",
+        #     "state:extra_skills",
+        #     "state:extra_skill_matches",
+        #     "state:customizations.extra_skills",
+        #     "state:customizations.extra_skill_matches",
+        #     "state:achievement_decisions",
+        #     "state:accepted_suggested_achievements",
+        #     "state:publication_decisions",
+        #     "state:summary_focus_override"
+        #   ],
+        #   "returns": ["response:POST /api/review-decisions.success"],
+        #   "notes": "Persists per-surface review decisions in session state; skill decisions also update session customizations so downstream generation can materialize the same choices."
+        # }
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -259,6 +287,7 @@ def create_blueprint(deps):
                 # duckflow: {
                 #   "id": "summary_api_review_decision_live",
                 #   "kind": "api",
+                #   "timestamp": "2026-03-25T21:39:48Z",
                 #   "status": "live",
                 #   "handles": ["POST /api/review-decisions"],
                 #   "reads": ["request:POST /api/review-decisions.summary_focus"],
@@ -283,6 +312,17 @@ def create_blueprint(deps):
     @bp.route('/api/save-achievement-edits', methods=['POST'])
     def save_achievement_edits():
         """Save per-experience achievement edits from the achievements editor tab."""
+        # duckflow: {
+        #   "id": "review_api_achievement_edits_live",
+        #   "kind": "api",
+        #   "timestamp": "2026-03-25T21:39:48Z",
+        #   "status": "live",
+        #   "handles": ["POST /api/save-achievement-edits"],
+        #   "reads": ["request:POST /api/save-achievement-edits.edits"],
+        #   "writes": ["state:achievement_edits"],
+        #   "returns": ["response:POST /api/save-achievement-edits.success"],
+        #   "notes": "Stores raw per-experience bullet edits in session state so later generation and ATS materialization can overlay them without mutating master data."
+        # }
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -1373,6 +1413,17 @@ def create_blueprint(deps):
     @bp.post("/api/spell-check-complete")
     def spell_check_complete():
         """Record spell-check audit and advance phase to generation."""
+        # duckflow: {
+        #   "id": "review_api_spell_complete_live",
+        #   "kind": "api",
+        #   "timestamp": "2026-03-25T21:39:48Z",
+        #   "status": "live",
+        #   "handles": ["POST /api/spell-check-complete"],
+        #   "reads": ["request:POST /api/spell-check-complete.spell_audit"],
+        #   "writes": ["state:spell_audit", "state:phase"],
+        #   "returns": ["response:POST /api/spell-check-complete.ok"],
+        #   "notes": "Persists the reviewed spell audit into canonical session state and advances the workflow into generation."
+        # }
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager

@@ -515,6 +515,7 @@ class CVOrchestrator:
         # duckflow: {
         #   "id": "summary_orchestrator_preview_html",
         #   "kind": "artifact",
+        #   "timestamp": "2026-03-25T21:39:48Z",
         #   "status": "shared",
         #   "reads": ["cv:selected_content.summary"],
         #   "returns": ["artifact:generation_state.preview_html"],
@@ -565,6 +566,7 @@ class CVOrchestrator:
         # duckflow: {
         #   "id": "summary_orchestrator_final_files",
         #   "kind": "artifact",
+        #   "timestamp": "2026-03-25T21:39:48Z",
         #   "status": "shared",
         #   "reads": ["artifact:generation_state.preview_html"],
         #   "writes": ["file:generated_files.final_html", "file:generated_files.final_pdf"],
@@ -2216,6 +2218,7 @@ If you need clarification, return:
         # duckflow: {
         #   "id": "summary_orchestrator_select",
         #   "kind": "orchestrator",
+        #   "timestamp": "2026-03-25T21:39:48Z",
         #   "status": "shared",
         #   "reads": ["customizations:summary_focus", "customizations:session_summaries"],
         #   "writes": ["cv:selected_content.summary"],

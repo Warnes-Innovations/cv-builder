@@ -325,6 +325,18 @@ function updateRewriteTally() {
 }
 
 async function submitRewriteDecisions() {
+  /* duckflow: {
+   *   "id": "rewrite_ui_submit_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:rewrite-review.submit"],
+   *   "calls": ["POST /api/rewrites/approve", "POST /api/cv/layout-estimate"],
+   *   "reads": ["window:rewriteDecisions"],
+   *   "writes": ["request:POST /api/rewrites/approve.decisions"],
+   *   "notes": "Submits the final per-rewrite outcomes and edited text so backend state can persist approved rewrites and the full rewrite audit before spell-check."
+  * }
+  */
   const decisions = Object.entries(rewriteDecisions).map(([id, dec]) => ({
     id,
     outcome:    dec.outcome,
