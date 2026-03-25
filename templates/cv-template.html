@@ -616,7 +616,7 @@
             <!-- Left Column (Skills) -->
             <aside class="left-col">
                 <section class="section">
-                    <h2 class="section-title"><i class="fas fa-code"></i> Technical Skills</h2>
+                    <h2 class="section-title"><i class="fas fa-code"></i> {{ template_metadata.skills_section_title }}</h2>
                     <div class="skills-grid">
                         {% for cat in skills_by_category[:5] %}
                         <div class="skill-group">
@@ -687,7 +687,7 @@
              <!-- Left Column (Skills Continuation) -->
              <aside class="left-col">
                 <section class="section">
-                    <h2 class="section-title"><i class="fas fa-code"></i> Technical Skills</h2>
+                    <h2 class="section-title"><i class="fas fa-code"></i> {{ template_metadata.skills_section_title }}</h2>
                     <div class="skills-grid">
                         {% for cat in skills_by_category[5:] %}
                         <div class="skill-group">
@@ -754,7 +754,7 @@ EDUCATION
 {% endfor %}{% endif %}
 {% if skills_by_category %}
 --------------------------------------------------------------------------------
-TECHNICAL SKILLS
+{{ template_metadata.skills_section_title | upper }}
 --------------------------------------------------------------------------------
 {% for cat in skills_by_category %}{{ cat.category }}: {% for skill in cat.skills %}{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
 {% endfor %}{% endif %}

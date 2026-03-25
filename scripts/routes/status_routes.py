@@ -48,6 +48,10 @@ def create_blueprint(deps):
 
     @bp.get("/api/status")
     def status():
+        # duckflow: flow=session-status status=live
+        #   route: GET /api/status
+        #   state_read: session.state["max_skills"], session.state["skills_section_title"]
+        #   response: {max_skills: int, skills_section_title: str, ...}
         from pathlib import Path
         entry = _get_session(required=False)
         _provider_name = _provider_name_ref['value']
@@ -135,6 +139,7 @@ def create_blueprint(deps):
             extra_skill_matches=conversation.state.get("extra_skill_matches") or {},
             session_file=str(getattr(conversation, "session_file", "") or ""),
             max_skills=int(conversation.state.get("max_skills") or get_config().get("generation.max_skills", 20)),
+            skills_section_title=conversation.state.get("skills_section_title") or "Skills",
             achievement_edits=conversation.state.get("achievement_edits")       or {},
             intake=conversation.state.get("intake")                             or {},
         )))
@@ -193,27 +198,40 @@ def create_blueprint(deps):
 
     @bp.post("/api/generation-settings")
     def update_generation_settings():
-        """Update per-session generation settings (max_skills, etc.)."""
+        # duckflow: flow=generation-settings status=live
+        #   route: POST /api/generation-settings
+        #   request: {max_skills?: int, skills_section_title?: str}
+        #   state_write: session.state["max_skills"], session.state["skills_section_title"],
+        #                customizations["max_skills"], customizations["skills_section_title"]
+        #   response: {ok: bool, max_skills: int, skills_section_title: str}
+        """Update per-session generation settings (max_skills, skills_section_title, etc.)."""
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
-        if "max_skills" in data:
-            v = data["max_skills"]
-            if not isinstance(v, int) or not (1 <= v <= 100):
-                return jsonify({"error": "max_skills must be an integer between 1 and 100"}), 400
-            with entry.lock:
+        with entry.lock:
+            if "max_skills" in data:
+                v = data["max_skills"]
+                if not isinstance(v, int) or not (1 <= v <= 100):
+                    return jsonify({"error": "max_skills must be an integer between 1 and 100"}), 400
                 conversation.state["max_skills"] = v
-                conversation._save_session()
-        else:
-            with entry.lock:
-                conversation._save_session()
+                if "customizations" in conversation.state:
+                    conversation.state["customizations"]["max_skills"] = v
+            if "skills_section_title" in data:
+                raw = str(data["skills_section_title"]).strip()
+                if not raw:
+                    return jsonify({"error": "skills_section_title must not be empty"}), 400
+                conversation.state["skills_section_title"] = raw
+                if "customizations" in conversation.state:
+                    conversation.state["customizations"]["skills_section_title"] = raw
+            conversation._save_session()
         session_registry.touch(sid)
         cfg_default = get_config().get("generation.max_skills", 20)
         return jsonify({
             "ok": True,
             "max_skills": int(conversation.state.get("max_skills") or cfg_default),
+            "skills_section_title": conversation.state.get("skills_section_title") or "Skills",
         })
 
     @bp.post("/api/post-analysis-responses")

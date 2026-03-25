@@ -400,8 +400,14 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
             self._selected(), self._job()
         )
         meta = result["template_metadata"]
-        for key in ("variant", "generated_date", "job_title", "company"):
+        for key in ("variant", "generated_date", "job_title", "company", "skills_section_title"):
             self.assertIn(key, meta, f"Missing metadata key: {key}")
+
+    def test_template_metadata_skills_section_title_default(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(), self._job()
+        )
+        self.assertEqual(result["template_metadata"]["skills_section_title"], "Skills")
 
     def test_template_metadata_job_title_populated(self):
         result = self.orc._prepare_cv_data_for_template(
