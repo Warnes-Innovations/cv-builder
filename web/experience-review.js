@@ -21,6 +21,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('experience-review');
 
+import { stateManager } from './state-manager.js';
+
 // ── Experience details fetch ───────────────────────────────────────────────
 
 async function getExperienceDetails(expId) {
@@ -282,6 +284,7 @@ async function submitExperienceDecisions() {
     });
 
     if (response.ok) {
+      stateManager.markContentChanged();
       showToast(`Experience decisions saved (${count} items)`);
       scheduleAtsRefresh();
       // Persist saved decisions locally so the UI reflects them immediately

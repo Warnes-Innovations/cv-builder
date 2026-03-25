@@ -220,6 +220,70 @@ describe('stateManager phase tracking', () => {
   })
 })
 
+// ── layout freshness ───────────────────────────────────────────────────────
+
+describe('stateManager layout freshness', () => {
+  it('starts with no visible layout freshness chip before preview generation', () => {
+    expect(stateManager.getLayoutFreshness()).toMatchObject({
+      showChip: false,
+      isStale: false,
+    })
+  })
+
+  it('marks preview generation as fresh at the current content revision', () => {
+    stateManager.markContentChanged()
+    stateManager.markPreviewGenerated()
+
+    expect(stateManager.getGenerationState()).toMatchObject({
+      previewAvailable: true,
+      phase: 'layout_review',
+      lastPreviewContentRevision: 1,
+    })
+    expect(stateManager.getLayoutFreshness()).toMatchObject({
+      showChip: true,
+      label: 'Layout current',
+      isStale: false,
+    })
+  })
+
+  it('marks layout stale after content changes following preview generation', () => {
+    stateManager.markPreviewGenerated()
+    stateManager.markContentChanged()
+
+    expect(stateManager.getLayoutFreshness()).toMatchObject({
+      showChip: true,
+      label: 'Layout outdated',
+      isStale: true,
+      isCritical: false,
+    })
+  })
+
+  it('marks final outputs as critically stale after later content changes', () => {
+    stateManager.markPreviewGenerated()
+    stateManager.markLayoutConfirmed()
+    stateManager.markFinalGenerated('2026-03-25T12:00:00')
+    stateManager.markContentChanged()
+
+    expect(stateManager.getLayoutFreshness()).toMatchObject({
+      label: 'Files outdated',
+      isStale: true,
+      isCritical: true,
+    })
+  })
+
+  it('persists revision-backed generation freshness state to localStorage', () => {
+    stateManager.markPreviewGenerated()
+    stateManager.markContentChanged()
+
+    const saved = JSON.parse(localStorage.getItem(StorageKeys.TAB_DATA))
+    expect(saved.generationState).toMatchObject({
+      previewAvailable: true,
+      contentRevision: 1,
+      lastPreviewContentRevision: 0,
+    })
+  })
+})
+
 // ── pending recommendations ───────────────────────────────────────────────────
 
 describe('stateManager pending recommendations', () => {

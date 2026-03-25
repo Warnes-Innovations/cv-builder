@@ -42,6 +42,8 @@
  *   - CSS.escape                    (browser built-in)
  */
 
+import { stateManager } from './state-manager.js';
+
 // Module-level state
 let _rewriteSuggestionHistory = [];
 let _lastRewriteLogId = null;
@@ -344,6 +346,7 @@ async function submitAchievementDecisions() {
       body: JSON.stringify({ type: 'achievements', decisions, accepted_suggestions: acceptedSuggestions })
     });
     if (response.ok) {
+      stateManager.markContentChanged();
       showToast(`Achievement selections saved (${count} items)`);
       scheduleAtsRefresh();
       // Persist locally so the review UI immediately reflects saved choices
@@ -824,6 +827,7 @@ async function saveAchievementEditsAndContinue() {
       showToast(`Error saving: ${err.error || 'Unknown error'}`, 'error');
       return;
     }
+    stateManager.markContentChanged();
     showToast('Achievement edits saved.');
     switchTab('skills-review');
   } catch (e) {

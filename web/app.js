@@ -98,7 +98,7 @@ function setupEventListeners() {
   document.getElementById('rewrite-btn').addEventListener('click', submitRewriteDecisions);
   document.getElementById('spell-btn').addEventListener('click', submitSpellCheckDecisions);
   document.getElementById('generate-proceed-btn').addEventListener('click', () => switchTab('layout'));
-  document.getElementById('layout-btn').addEventListener('click', completeLayoutReview);
+  document.getElementById('layout-btn').addEventListener('click', handleLayoutPrimaryAction);
   document.getElementById('finalise-action-btn').addEventListener('click', () => switchTab('finalise'));
 }
 
