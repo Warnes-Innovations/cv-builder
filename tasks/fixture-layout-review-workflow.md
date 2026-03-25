@@ -28,8 +28,10 @@ If Chromium is unavailable, the helper still writes the raw artifacts and normal
 Run this from the repository root:
 
 ```bash
-/usr/local/Caskroom/miniconda/base/envs/cvgen/bin/python -c "from pathlib import Path; from tests.helpers.fixture_review import generate_fixture_review_bundle; manifest = generate_fixture_review_bundle(Path('test_output/fixture-review-bundle')); print(manifest['bundle']['root'])"
+/usr/local/Caskroom/miniconda/base/envs/cvgen/bin/python scripts/generate_fixture_review_bundle.py --output-dir test_output/fixture-review-bundle
 ```
+
+This prints the manifest JSON for the run. The local script is the approved Phase 4 automation surface; CI gating is still deferred.
 
 ## Bundle Layout
 
