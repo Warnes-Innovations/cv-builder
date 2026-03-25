@@ -1,0 +1,39 @@
+{
+  "title": "Senior Platform Engineer",
+  "company": "Northstar Systems",
+  "domain": "platform engineering",
+  "required_skills": [
+    "Python",
+    "Docker",
+    "Kubernetes",
+    "AWS",
+    "CI/CD",
+    "Observability"
+  ],
+  "must_have_requirements": [
+    "Design and operate reliable internal platforms for software delivery.",
+    "Improve developer productivity through build, deployment, and observability tooling.",
+    "Partner with product and infrastructure teams on resilient service architecture.",
+    "Demonstrated strength in Python-based automation and cloud-native operations."
+  ],
+  "nice_to_have_requirements": [
+    "Experience leading migration efforts from monoliths to service-oriented platforms.",
+    "Comfort mentoring engineers on operational excellence and release hygiene.",
+    "Background in regulated or scientifically rigorous environments."
+  ],
+  "ats_keywords": [
+    "platform engineering",
+    "developer productivity",
+    "python",
+    "docker",
+    "kubernetes",
+    "aws",
+    "terraform",
+    "ci/cd",
+    "observability",
+    "release engineering",
+    "infrastructure as code",
+    "distributed systems"
+  ],
+  "original_text": "Northstar Systems is hiring a Senior Platform Engineer to improve developer productivity and service reliability across a cloud-native product portfolio. The role owns internal platform automation, CI/CD, Kubernetes operations, observability, and infrastructure as code. Candidates should bring strong Python experience, practical AWS operations, and a track record of building resilient systems that help engineering teams ship safely and quickly."
+}
