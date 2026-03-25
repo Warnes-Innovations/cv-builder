@@ -30,7 +30,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('session-manager');
 
 import { SESSION_PHASE_LABELS_SHORT } from './utils.js';
-import { stateManager } from './state-manager.js';
+import { PHASES, stateManager } from './state-manager.js';
 
 // ---------------------------------------------------------------------------
 // Session phase labels (abbreviated form — for compact session-switcher UI)
@@ -201,7 +201,7 @@ function openActiveSessionFromLanding(sessionIdToOpen) {
 
 function showSessionsLandingPanel(message = '') {
   stateManager.setCurrentTab('job');
-  stateManager.setCurrentStage('job');
+  stateManager.setPhase(PHASES.INIT);
   updateActionButtons('job');
   updatePositionTitle({});
 

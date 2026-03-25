@@ -120,6 +120,8 @@ def _make_app_and_client(tmp_dir: Path, bib_content: str = SAMPLE_BIB_TEXT):
     with app.test_client() as tmp_client:
         session_id = tmp_client.post('/api/sessions/new').get_json()['session_id']
 
+    app.session_registry.get(session_id).manager.state['phase'] = 'refinement'
+
     return app, session_id, stack
 
 
@@ -727,6 +729,24 @@ class TestRawSavePublications(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 400)
 
+    def test_save_rejected_outside_allowed_master_write_phases(self):
+        entry = self.app.session_registry.get(self.sid)
+        entry.manager.state['phase'] = 'customization'
+
+        r = self._put_bib(SAMPLE_BIB_TEXT)
+
+        self.assertEqual(r.status_code, 409)
+        self.assertIn('Master data can only be modified', r.get_json()['error'])
+
+    def test_save_allowed_in_init_phase(self):
+        entry = self.app.session_registry.get(self.sid)
+        entry.manager.state['phase'] = 'init'
+
+        r = self._put_bib(SAMPLE_BIB_TEXT)
+
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.get_json()['ok'])
+
 
 # ---------------------------------------------------------------------------
 # POST /api/master-data/publications/validate
@@ -808,6 +828,47 @@ class TestValidatePublications(unittest.TestCase):
             content_type='application/json',
         )
         self.assertEqual(r.status_code, 400)
+
+
+class TestPublicationWritePhaseRestrictions(unittest.TestCase):
+    def setUp(self):
+        self.tmp    = tempfile.TemporaryDirectory()
+        self.path   = Path(self.tmp.name)
+        self.app, self.sid, self._stack = _make_app_and_client(self.path)
+        self.client = self.app.test_client()
+        self.addCleanup(self._stack.close)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_publication_add_rejected_outside_allowed_master_write_phases(self):
+        entry = self.app.session_registry.get(self.sid)
+        entry.manager.state['phase'] = 'customization'
+
+        r = _post(self.client, '/api/master-data/publication', self.sid, {
+            'action': 'add',
+            'key': 'blocked2026',
+            'type': 'article',
+            'fields': {
+                'author': 'Blocked, Example',
+                'title': 'Blocked write',
+                'year': '2026',
+            },
+        })
+
+        self.assertEqual(r.status_code, 409)
+        self.assertIn('Master data can only be modified', r.get_json()['error'])
+
+    def test_publication_import_rejected_outside_allowed_master_write_phases(self):
+        entry = self.app.session_registry.get(self.sid)
+        entry.manager.state['phase'] = 'customization'
+
+        r = _post(self.client, '/api/master-data/publications/import', self.sid, {
+            'bibtex_text': IMPORT_BIB_TEXT,
+        })
+
+        self.assertEqual(r.status_code, 409)
+        self.assertIn('Master data can only be modified', r.get_json()['error'])
 
 
 if __name__ == '__main__':

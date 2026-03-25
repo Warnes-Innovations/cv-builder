@@ -51,7 +51,7 @@ def _make_args(**overrides) -> argparse.Namespace:
     return argparse.Namespace(**defaults)
 
 
-def _make_app():
+def _make_app(validate_master_data_file_mock=None):
     mock_llm          = MagicMock()
     mock_orchestrator = MagicMock()
     mock_orchestrator.master_data      = {'experience': [], 'skills': []}
@@ -60,6 +60,9 @@ def _make_app():
     mock_conversation = MagicMock()
     mock_conversation.state = {'phase': 'refinement'}
 
+    if validate_master_data_file_mock is None:
+        validate_master_data_file_mock = MagicMock(return_value=ValidationResult(valid=True))
+
     stack = ExitStack()
     stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
     stack.enter_context(patch('scripts.web_app.CVOrchestrator', return_value=mock_orchestrator))
@@ -67,7 +70,7 @@ def _make_app():
     # Skip file-existence check in _load_master so tests can use mock_open freely
     stack.enter_context(patch(
         'scripts.web_app.validate_master_data_file',
-        return_value=ValidationResult(valid=True),
+        new=validate_master_data_file_mock,
     ))
 
     app = create_app(_make_args())
@@ -336,6 +339,56 @@ class TestMasterDataUpdateSummary(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestMasterDataFieldValidation(unittest.TestCase):
+
+    def test_master_data_write_routes_reject_customization_phase(self):
+        app, _, sid, stack = _make_app()
+        app.session_registry.get(sid).manager.state['phase'] = 'customization'
+
+        routes = [
+            ('/api/master-data/update-summary', {'key': 'targeted', 'text': 'New summary'}),
+            ('/api/master-data/personal-info', {'email': 'person@example.com'}),
+            (
+                '/api/master-data/experience',
+                {
+                    'action': 'add',
+                    'experience': {
+                        'title': 'Engineer',
+                        'company': 'Acme',
+                    },
+                },
+            ),
+        ]
+
+        with stack, app.test_client() as client, patch('builtins.open') as mock_open_file:
+            for url, payload in routes:
+                with self.subTest(url=url):
+                    res = client.post(url, json={**payload, 'session_id': sid})
+                    data = res.get_json()
+                    self.assertEqual(res.status_code, 409)
+                    self.assertIn('Master data can only be modified', data['error'])
+                    self.assertEqual(data['phase'], 'customization')
+
+        mock_open_file.assert_not_called()
+
+    def test_master_data_write_routes_allow_init_phase(self):
+        app, _, sid, stack = _make_app()
+        app.session_registry.get(sid).manager.state['phase'] = 'init'
+
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'professional_summaries': {}}))), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/update-summary',
+                json={'key': 'targeted', 'text': 'New summary', 'session_id': sid},
+            )
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['action'], 'added')
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(dumped['professional_summaries']['targeted'], 'New summary')
 
     def test_personal_info_invalid_email_returns_400(self):
         app, _, sid, stack = _make_app()
@@ -957,12 +1010,9 @@ class TestMasterDataValidateEndpoint(unittest.TestCase):
     }
 
     def test_valid_data_returns_ok_true(self):
-        app, _, sid, stack = _make_app()
-        master_json = json.dumps(self._MASTER)
-        with stack, app.test_client() as client, \
-             patch('scripts.web_app.validate_master_data_file') as mock_v:
-            from scripts.utils.master_data_validator import ValidationResult
-            mock_v.return_value = ValidationResult(valid=True, errors=[], warnings=[])
+        mock_v = MagicMock(return_value=ValidationResult(valid=True, errors=[], warnings=[]))
+        app, _, sid, stack = _make_app(validate_master_data_file_mock=mock_v)
+        with stack, app.test_client() as client:
             res  = client.get('/api/master-data/validate', query_string={'session_id': sid})
             data = res.get_json()
         self.assertEqual(res.status_code, 200)
@@ -970,11 +1020,11 @@ class TestMasterDataValidateEndpoint(unittest.TestCase):
         self.assertEqual(data['errors'], [])
 
     def test_invalid_data_returns_ok_false(self):
-        app, _, sid, stack = _make_app()
-        with stack, app.test_client() as client, \
-             patch('scripts.web_app.validate_master_data_file') as mock_v:
-            from scripts.utils.master_data_validator import ValidationResult
-            mock_v.return_value = ValidationResult(valid=False, errors=['experience must be a list'])
+        mock_v = MagicMock(
+            return_value=ValidationResult(valid=False, errors=['experience must be a list'])
+        )
+        app, _, sid, stack = _make_app(validate_master_data_file_mock=mock_v)
+        with stack, app.test_client() as client:
             res  = client.get('/api/master-data/validate', query_string={'session_id': sid})
             data = res.get_json()
         self.assertEqual(res.status_code, 200)
@@ -982,11 +1032,9 @@ class TestMasterDataValidateEndpoint(unittest.TestCase):
         self.assertIn('experience must be a list', data['errors'])
 
     def test_use_schema_false_passes_through(self):
-        app, _, sid, stack = _make_app()
-        with stack, app.test_client() as client, \
-             patch('scripts.web_app.validate_master_data_file') as mock_v:
-            from scripts.utils.master_data_validator import ValidationResult
-            mock_v.return_value = ValidationResult(valid=True, errors=[], warnings=[])
+        mock_v = MagicMock(return_value=ValidationResult(valid=True, errors=[], warnings=[]))
+        app, _, sid, stack = _make_app(validate_master_data_file_mock=mock_v)
+        with stack, app.test_client() as client:
             client.get('/api/master-data/validate',
                        query_string={'session_id': sid, 'use_schema': 'false'})
         mock_v.assert_called_once()

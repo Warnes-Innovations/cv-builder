@@ -44,7 +44,7 @@ beforeEach(() => {
   window._masterSkills = []
   stateManager.setIsReconnecting(false)
   stateManager.setCurrentTab('job')
-  stateManager.setCurrentStage('job')
+  stateManager.setPhase('init')
   // Function stubs
   vi.stubGlobal('appendMessage', vi.fn())
   vi.stubGlobal('saveTabData', vi.fn())
@@ -502,6 +502,7 @@ describe('_updatePageEstimate', () => {
   })
 
   it('counts only non-excluded skills for estimate', () => {
+    window._skillsOrdered = [{ name: 's1' }, { name: 's2' }, { name: 's3' }]
     userSelections.skills = { s1: 'include', s2: 'exclude', s3: 'emphasize' }
     _updatePageEstimate()
     // Just verify no throw and label contains count info

@@ -18,11 +18,11 @@ Actions requiring explicit confirmation:
 
 All user edits during the customization workflow — accepted AI suggestions, skill decisions, achievement edits, rewrites, summary overrides — must be stored in the **session file only**.
 
-The Master CV is modified **only** during two permitted stages:
-1. **Master CV management tab** (Phase 8) — direct edits via `/api/master-data/*` endpoints
-2. **Finalise → Harvest Apply** — the `POST /api/harvest/apply` endpoint writes harvested improvements (improved bullets, new skills, summary variants) back to the master as an explicit user-initiated action at the end of the finalization workflow. This is treated as an extension of the master modification workflow, not part of customization.
+The Master CV is modified **only** during two permitted workflow windows:
+1. **Pre-job master-data window** (`phase == init`) — direct edits via `/api/master-data/*` endpoints, including `publications.bib`, are allowed before job analysis begins.
+2. **Post-job finalise window** (`phase == refinement`) — direct `/api/master-data/*` edits remain available, and `POST /api/harvest/apply` writes harvested improvements (improved bullets, new skills, summary variants) back to the master as an explicit user-initiated action at the end of the finalization workflow.
 
-Any code that writes to the master file outside of these two stages is a bug.
+Any code that writes to the master file outside of these two workflow windows is a bug.
 
 ✅ CORRECT — store in session state:
 ```python

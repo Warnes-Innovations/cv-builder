@@ -5,7 +5,7 @@ import subprocess
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request, send_file
 
@@ -37,13 +37,224 @@ def _extra_skill_name(skill: Any) -> str:
     return str(skill or '').strip()
 
 
+def _normalize_harvest_string_list(raw: Any) -> List[str]:
+    if isinstance(raw, str):
+        raw = [item.strip() for item in raw.split(',')]
+    if not isinstance(raw, list):
+        return []
+
+    normalized: List[str] = []
+    seen = set()
+    for item in raw:
+        label = str(item or '').strip()
+        if not label or label in seen:
+            continue
+        normalized.append(label)
+        seen.add(label)
+    return normalized
+
+
+def _normalize_harvest_skill(skill: Any) -> Optional[Dict[str, Any]]:
+    name = _extra_skill_name(skill)
+    if not name:
+        return None
+
+    if not isinstance(skill, dict):
+        return {'name': name}
+
+    normalized = dict(skill)
+    normalized['name'] = name
+
+    for field in ('category', 'group', 'proficiency', 'parenthetical'):
+        if field in normalized:
+            value = str(normalized.get(field) or '').strip()
+            if value:
+                normalized[field] = value
+            else:
+                normalized.pop(field, None)
+
+    subskills = _normalize_harvest_string_list(
+        normalized.get('subskills', normalized.get('sub_skills'))
+    )
+    if subskills:
+        normalized['subskills'] = subskills
+    else:
+        normalized.pop('subskills', None)
+        normalized.pop('sub_skills', None)
+
+    aliases = _normalize_harvest_string_list(normalized.get('aliases'))
+    if aliases:
+        normalized['aliases'] = aliases
+    else:
+        normalized.pop('aliases', None)
+
+    years = normalized.get('years')
+    if years is None or years == '':
+        normalized.pop('years', None)
+    else:
+        try:
+            years_value = int(years)
+        except (TypeError, ValueError):
+            normalized.pop('years', None)
+        else:
+            if years_value > 0:
+                normalized['years'] = years_value
+            else:
+                normalized.pop('years', None)
+
+    for field in ('user_created', '_isUserCreated', 'display_name', 'group_names', 'group_display_names'):
+        normalized.pop(field, None)
+
+    return normalized
+
+
+def _harvest_skill_key(skill: Any) -> str:
+    name = _extra_skill_name(skill)
+    return name.casefold()
+
+
+def _render_harvest_skill(skill: Any) -> str:
+    normalized = _normalize_harvest_skill(skill)
+    if not normalized:
+        return ''
+
+    name = normalized['name']
+    parenthetical = str(normalized.get('parenthetical') or '').strip()
+    if parenthetical:
+        body = f"{name} ({parenthetical})"
+    else:
+        qualifiers: List[str] = []
+        proficiency = str(normalized.get('proficiency') or '').strip()
+        if proficiency:
+            qualifiers.append(proficiency[:1].upper() + proficiency[1:])
+        qualifiers.extend(normalized.get('subskills') or [])
+        if qualifiers:
+            body = f"{name} ({', '.join(qualifiers)})"
+        elif normalized.get('years'):
+            body = f"{name} ({normalized['years']} yrs)"
+        else:
+            body = name
+
+    category = str(normalized.get('category') or '').strip()
+    if category:
+        return f"{category}: {body}"
+    return body
+
+
+def _merge_harvest_skill(existing: Any, incoming: Any) -> Optional[Dict[str, Any]]:
+    base = _normalize_harvest_skill(existing)
+    update = _normalize_harvest_skill(incoming)
+    if not base:
+        return update
+    if not update:
+        return base
+
+    merged = dict(base)
+    merged['name'] = update['name']
+
+    for field in ('category', 'group', 'proficiency', 'parenthetical', 'years'):
+        value = update.get(field)
+        if value not in (None, '', []):
+            merged[field] = value
+
+    for field in ('subskills', 'aliases'):
+        combined: List[str] = []
+        seen = set()
+        for value in (merged.get(field) or []) + (update.get(field) or []):
+            label = str(value or '').strip()
+            if not label or label in seen:
+                continue
+            combined.append(label)
+            seen.add(label)
+        if combined:
+            merged[field] = combined
+        else:
+            merged.pop(field, None)
+
+    for key, value in update.items():
+        if key in merged or key in {'name', 'category', 'group', 'proficiency', 'parenthetical', 'years', 'subskills', 'aliases'}:
+            continue
+        merged[key] = value
+
+    return merged
+
+
+def _collect_harvest_skill_candidates(conversation) -> List[Dict[str, Any]]:
+    state = conversation.state or {}
+    customizations = state.get('customizations') or {}
+    materialized = {}
+
+    try:
+        materialized = SessionDataView(
+            conversation.orchestrator.master_data,
+            state,
+            customizations,
+        ).materialize_generation_customizations()
+    except Exception:
+        materialized = dict(customizations)
+
+    candidates_by_key: Dict[str, Dict[str, Any]] = {}
+
+    def _add_skill_candidate(raw_skill: Any, candidate_type: str, rationale: str) -> None:
+        normalized = _normalize_harvest_skill(raw_skill)
+        if not normalized:
+            return
+
+        key = _harvest_skill_key(normalized)
+        existing = candidates_by_key.get(key)
+        merged_skill = _merge_harvest_skill(existing.get('proposed_skill') if existing else None, normalized)
+        if not merged_skill:
+            return
+
+        if existing is None:
+            skill_name = merged_skill['name']
+            prefix = 'skill' if candidate_type == 'new_skill' else 'skill_gap'
+            label_prefix = 'New skill' if candidate_type == 'new_skill' else 'Confirmed skill'
+            candidates_by_key[key] = {
+                'id':             f"{prefix}_{skill_name.replace(' ', '_')}",
+                'type':           candidate_type,
+                'label':          f"{label_prefix} — {skill_name}",
+                'original':       '(not in master data)',
+                'proposed':       _render_harvest_skill(merged_skill),
+                'proposed_skill': merged_skill,
+                'rationale':      rationale,
+            }
+            return
+
+        existing['proposed_skill'] = merged_skill
+        existing['proposed'] = _render_harvest_skill(merged_skill)
+        if existing['type'] != 'new_skill' and candidate_type == 'new_skill':
+            skill_name = merged_skill['name']
+            existing['id'] = f"skill_{skill_name.replace(' ', '_')}"
+            existing['type'] = 'new_skill'
+            existing['label'] = f"New skill — {skill_name}"
+            existing['rationale'] = rationale
+
+    for raw_skill in materialized.get('extra_skills') or []:
+        _add_skill_candidate(raw_skill, 'new_skill', 'Skill was added during the skills review step.')
+
+    for raw_skill in customizations.get('new_skills_added') or []:
+        _add_skill_candidate(raw_skill, 'new_skill', 'Skill was added during the skills review step.')
+
+    post_answers = state.get('post_analysis_answers') or {}
+    for key, val in post_answers.items():
+        if not isinstance(val, str):
+            continue
+        if key.startswith('skill_gap_') and val.lower() in ('yes', 'true', '1'):
+            _add_skill_candidate(
+                key[len('skill_gap_'):],
+                'skill_gap_confirmed',
+                'You confirmed this skill in response to a clarifying question.',
+            )
+
+    return list(candidates_by_key.values())
+
+
 def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
     """Return candidate write-back items for the current session."""
     candidates: List[Dict[str, Any]] = []
 
     approved_rewrites = conversation.state.get('approved_rewrites') or []
-    customizations    = conversation.state.get('customizations') or {}
-    post_answers      = conversation.state.get('post_analysis_answers') or {}
 
     for rw in approved_rewrites:
         if rw.get('section') == 'summary':
@@ -63,17 +274,7 @@ def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
             'rationale': rw.get('rationale') or 'Approved rewrite improves ATS-keyword coverage or adds a quantified metric.',
         })
 
-    for skill in customizations.get('new_skills_added') or []:
-        if not skill:
-            continue
-        candidates.append({
-            'id':        f"skill_{skill.replace(' ', '_')}",
-            'type':      'new_skill',
-            'label':     f"New skill — {skill}",
-            'original':  '(not in master data)',
-            'proposed':  skill,
-            'rationale': 'Skill was added during the skills review step.',
-        })
+    candidates.extend(_collect_harvest_skill_candidates(conversation))
 
     summary_rewrite = next(
         (rw for rw in approved_rewrites if rw.get('section') == 'summary'), None
@@ -89,22 +290,6 @@ def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
                 'proposed':  summary_rewrite.get('proposed', ''),
                 'rationale': 'Rewritten summary could be stored as a named variant for future reuse.',
             })
-
-    for key, val in post_answers.items():
-        if not isinstance(val, str):
-            continue
-        if key.startswith('skill_gap_') and val.lower() in ('yes', 'true', '1'):
-            skill_name = key[len('skill_gap_'):]
-            cand_id    = f'skill_gap_{skill_name}'
-            if not any(c['id'] == cand_id for c in candidates):
-                candidates.append({
-                    'id':        cand_id,
-                    'type':      'skill_gap_confirmed',
-                    'label':     f"Confirmed skill — {skill_name}",
-                    'original':  '(not in master data)',
-                    'proposed':  skill_name,
-                    'rationale': 'You confirmed this skill in response to a clarifying question.',
-                })
 
     return candidates
 
@@ -129,29 +314,118 @@ def _harvest_apply_bullet(master: Dict, original: str, proposed: str) -> bool:
     return False
 
 
-def _harvest_add_skill(master: Dict, skill_name: str) -> bool:
-    """Add ``skill_name`` to master skills data; returns True if actually added."""
-    skills = master.get('skills')
-    if isinstance(skills, list):
-        if skill_name not in skills:
-            skills.append(skill_name)
-            return True
+def _skill_entry_name(skill: Any) -> str:
+    if isinstance(skill, dict):
+        return str(skill.get('name') or '').strip()
+    return str(skill or '').strip()
+
+
+def _skill_entries_equal(left: Any, right: Any) -> bool:
+    return _skill_entry_name(left).casefold() == _skill_entry_name(right).casefold()
+
+
+def _skill_list_ref(category_value: Any) -> Optional[List[Any]]:
+    if isinstance(category_value, list):
+        return category_value
+    if isinstance(category_value, dict) and isinstance(category_value.get('skills'), list):
+        return category_value['skills']
+    return None
+
+
+def _dict_uses_skill_wrappers(skills: Dict[str, Any]) -> bool:
+    return any(isinstance(value, dict) and isinstance(value.get('skills'), list) for value in skills.values())
+
+
+def _choose_skill_category(skills: Dict[str, Any], skill: Dict[str, Any]) -> str:
+    preferred = str(skill.get('category') or '').strip()
+    if preferred:
+        return preferred
+
+    for key in skills:
+        if str(key).strip().lower() in ('other', 'general', 'additional'):
+            return key
+    return 'Other'
+
+
+def _ensure_skill_category(skills: Dict[str, Any], category_name: str) -> List[Any]:
+    existing = _skill_list_ref(skills.get(category_name))
+    if existing is not None:
+        return existing
+
+    if _dict_uses_skill_wrappers(skills):
+        skills[category_name] = {
+            'category': category_name,
+            'skills': [],
+        }
+        return skills[category_name]['skills']
+
+    skills[category_name] = []
+    return skills[category_name]
+
+
+def _skill_to_master_entry(skill: Dict[str, Any], *, keep_as_string: bool = False) -> Any:
+    if keep_as_string and set(skill.keys()) == {'name'}:
+        return skill['name']
+    return dict(skill)
+
+
+def _merge_master_skill(existing: Any, incoming: Dict[str, Any]) -> Any:
+    merged = _merge_harvest_skill(existing, incoming)
+    if not merged:
+        return existing
+    if isinstance(existing, str) and set(merged.keys()) == {'name'}:
+        return merged['name']
+    return merged
+
+
+def _harvest_add_skill(master: Dict, skill_name: Any) -> bool:
+    """Add or merge a harvested skill into master data."""
+    normalized = _normalize_harvest_skill(skill_name)
+    if not normalized:
         return False
-    elif isinstance(skills, dict):
-        for cat_key, cat_val in skills.items():
-            cat_list: List[str] = []
-            if isinstance(cat_val, list):
-                cat_list = cat_val
-            elif isinstance(cat_val, dict) and isinstance(cat_val.get('skills'), list):
-                cat_list = cat_val['skills']
-            if cat_key.lower() in ('other', 'general', 'additional'):
-                if skill_name not in cat_list:
-                    cat_list.append(skill_name)
-                    return True
+
+    skills = master.get('skills')
+
+    if isinstance(skills, list):
+        for index, existing in enumerate(skills):
+            if not _skill_entries_equal(existing, normalized):
+                continue
+            merged = _merge_master_skill(existing, normalized)
+            if merged == existing:
                 return False
-        skills['Other'] = [skill_name]
+            skills[index] = merged
+            return True
+
+        skills.append(_skill_to_master_entry(normalized, keep_as_string=True))
         return True
-    master['skills'] = [skill_name]
+
+    if isinstance(skills, dict):
+        target_category = _choose_skill_category(skills, normalized)
+
+        for cat_key, cat_val in skills.items():
+            cat_list = _skill_list_ref(cat_val)
+            if cat_list is None:
+                continue
+            for index, existing in enumerate(cat_list):
+                if not _skill_entries_equal(existing, normalized):
+                    continue
+                merged = _merge_master_skill(existing, normalized)
+                desired_category = str(merged.get('category') or cat_key).strip() if isinstance(merged, dict) else cat_key
+                if desired_category and desired_category != cat_key:
+                    del cat_list[index]
+                    target_list = _ensure_skill_category(skills, desired_category)
+                    target_list.append(_skill_to_master_entry(merged, keep_as_string=True))
+                    return True
+                if merged == existing:
+                    return False
+                cat_list[index] = merged
+                return True
+
+        target_list = _ensure_skill_category(skills, target_category)
+        target_list.append(_skill_to_master_entry(normalized, keep_as_string=True))
+        return True
+
+    master['skills'] = [_skill_to_master_entry(normalized, keep_as_string=True)]
     return True
 
 
@@ -721,7 +995,7 @@ def create_blueprint(deps):
                             'label':   cand['label'],
                         })
                     elif ctype in ('new_skill', 'skill_gap_confirmed'):
-                        skill_name = cand['proposed']
+                        skill_name = cand.get('proposed_skill', cand['proposed'])
                         applied    = _harvest_add_skill(master, skill_name)
                         diff_summary.append({
                             'id':      cand['id'],
