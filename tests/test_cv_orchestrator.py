@@ -23,6 +23,8 @@ import json
 import importlib
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +40,8 @@ except ModuleNotFoundError:
     CVOrchestrator = importlib.import_module(
         "utils.cv_orchestrator"
     ).CVOrchestrator
+
+ORCHESTRATOR_MODULE = CVOrchestrator.__module__
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -513,7 +517,7 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
             del _args, _kwargs
             Path(path).write_bytes(b"%PDF-1.4\n%%EOF\n")
 
-        self._wp_patcher = patch("utils.cv_orchestrator.weasyprint.HTML")
+        self._wp_patcher = patch(f"{ORCHESTRATOR_MODULE}.weasyprint.HTML")
         mock_html = self._wp_patcher.start()
         mock_html.return_value.write_pdf.side_effect = _fake_write_pdf
 
@@ -602,6 +606,145 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
         self.orc._render_cv_html_pdf(self._cv_data(), out_dir, "smoke_test")
         html = (out_dir / "smoke_test.html").read_text(encoding="utf-8")
         self.assertIn('id="plaintext"', html)
+
+
+class TestConvertHtmlToPdf(unittest.TestCase):
+    """Focused tests for renderer selection and reporting."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_convert_html_to_pdf_forces_chrome(self):
+        html_path = Path(self.tmp.name) / "input.html"
+        pdf_path = Path(self.tmp.name) / "output.pdf"
+        html_path.write_text("<html><body>hi</body></html>", encoding="utf-8")
+
+        def _fake_run(command, **_kwargs):
+            pdf_target = next(
+                arg.split("=", 1)[1]
+                for arg in command
+                if arg.startswith("--print-to-pdf=")
+            )
+            Path(pdf_target).write_bytes(b"%PDF-1.4\n%%EOF\n")
+            return MagicMock(returncode=0)
+
+        with patch(
+            f"{ORCHESTRATOR_MODULE}.subprocess.run",
+            side_effect=_fake_run,
+        ) as mock_run:
+            result = self.orc._convert_html_to_pdf(
+                html_path,
+                pdf_path,
+                preferred_renderer="chrome",
+            )
+
+        self.assertEqual(result["renderer"], "chrome")
+        self.assertTrue(result["detail"])
+        self.assertTrue(pdf_path.exists())
+        mock_run.assert_called_once()
+
+    def test_convert_html_to_pdf_forces_weasyprint(self):
+        html_path = Path(self.tmp.name) / "input.html"
+        pdf_path = Path(self.tmp.name) / "output.pdf"
+        html_path.write_text("<html><body>hi</body></html>", encoding="utf-8")
+
+        def _fake_run(command, **_kwargs):
+            Path(command[4]).write_bytes(b"%PDF-1.4\n%%EOF\n")
+            return MagicMock(returncode=0, stderr=b"")
+
+        with patch(
+            f"{ORCHESTRATOR_MODULE}.subprocess.run",
+            side_effect=_fake_run,
+        ) as mock_run:
+            result = self.orc._convert_html_to_pdf(
+                html_path,
+                pdf_path,
+                preferred_renderer="weasyprint",
+            )
+
+        self.assertEqual(result["renderer"], "weasyprint")
+        self.assertEqual(result["detail"], sys.executable)
+        self.assertTrue(pdf_path.exists())
+        mock_run.assert_called_once()
+
+    def test_generate_pdf_variants_from_html_writes_both_renderer_outputs(self):
+        out_dir = Path(self.tmp.name) / "preview-output"
+
+        def _fake_run(command, **_kwargs):
+            pdf_target = None
+            for arg in command:
+                if isinstance(arg, str) and arg.startswith("--print-to-pdf="):
+                    pdf_target = arg.split("=", 1)[1]
+                    break
+
+            if pdf_target is not None:
+                Path(pdf_target).write_bytes(b"%PDF-1.4\n%%EOF\n")
+                return MagicMock(returncode=0)
+
+            if len(command) >= 5 and command[0] == sys.executable and command[1] == "-c":
+                Path(command[4]).write_bytes(b"%PDF-1.4\n%%EOF\n")
+                return MagicMock(returncode=0, stderr=b"")
+
+            raise AssertionError(f"Unexpected subprocess command: {command!r}")
+
+        with patch(
+            f"{ORCHESTRATOR_MODULE}.subprocess.run",
+            side_effect=_fake_run,
+        ) as mock_run:
+            result = self.orc.generate_pdf_variants_from_html(
+                confirmed_html="<html><body>preview</body></html>",
+                output_dir=out_dir,
+                filename_base="preview_case",
+            )
+
+        self.assertTrue(Path(result["html"]).exists())
+        self.assertEqual(set(result["pdfs"].keys()), {"chrome", "weasyprint"})
+        self.assertTrue(result["pdfs"]["chrome"]["ok"])
+        self.assertTrue(result["pdfs"]["weasyprint"]["ok"])
+        self.assertTrue(Path(result["pdfs"]["chrome"]["pdf"]).exists())
+        self.assertTrue(Path(result["pdfs"]["weasyprint"]["pdf"]).exists())
+        self.assertEqual(mock_run.call_count, 2)
+
+    def test_generate_pdf_variants_from_html_runs_renderers_concurrently(self):
+        out_dir = Path(self.tmp.name) / "preview-output-concurrent"
+        active_calls = 0
+        overlap_event = threading.Event()
+        active_lock = threading.Lock()
+
+        def _fake_convert(_html_path, pdf_path, preferred_renderer):
+            nonlocal active_calls
+            with active_lock:
+                active_calls += 1
+                if active_calls == 2:
+                    overlap_event.set()
+            time.sleep(0.05)
+            Path(pdf_path).write_bytes(b"%PDF-1.4\n%%EOF\n")
+            with active_lock:
+                active_calls -= 1
+            return {
+                "renderer": preferred_renderer,
+                "detail": f"{preferred_renderer}-detail",
+            }
+
+        with patch.object(
+            self.orc,
+            "_convert_html_to_pdf",
+            side_effect=_fake_convert,
+        ) as mock_convert:
+            result = self.orc.generate_pdf_variants_from_html(
+                confirmed_html="<html><body>preview</body></html>",
+                output_dir=out_dir,
+                filename_base="preview_case",
+            )
+
+        self.assertTrue(overlap_event.is_set())
+        self.assertEqual(mock_convert.call_count, 2)
+        self.assertTrue(result["pdfs"]["chrome"]["ok"])
+        self.assertTrue(result["pdfs"]["weasyprint"]["ok"])
 
 
 # ---------------------------------------------------------------------------

@@ -61,7 +61,14 @@
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
 
-        /* --- Page Structure (Browser View) --- */
+          /* --- Page Structure (Browser View) --- */
+          /*
+              Layout-digest contract note:
+              The server-side staged-generation estimator assumes this template
+              keeps the current two-column structure. Update
+              scripts/utils/layout_digest.py and ARCHITECTURE.md whenever this
+              page topology changes.
+          */
         .page {
             display: flex;
             align-items: stretch;

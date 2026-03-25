@@ -1,7 +1,10 @@
 """CV generation, download, finalise, and harvest routes."""
+import copy
 import json
 import re
 import subprocess
+import sys
+import tempfile
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +14,20 @@ from flask import Blueprint, jsonify, request, send_file
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
+from utils.layout_digest import (
+    TEMPLATE_VERSION as LAYOUT_TEMPLATE_VERSION,
+    UPDATE_NOTE as LAYOUT_TEMPLATE_UPDATE_NOTE,
+    blend_layout_prediction,
+    build_layout_digest,
+    compare_layout_digests,
+)
+from utils.layout_estimator_model import predict_layout_pages
 from utils.session_data_view import SessionDataView
+
+
+_CURRENT_MODULE = sys.modules[__name__]
+sys.modules.setdefault('routes.generation_routes', _CURRENT_MODULE)
+sys.modules.setdefault('scripts.routes.generation_routes', _CURRENT_MODULE)
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +264,254 @@ def _collect_harvest_skill_candidates(conversation) -> List[Dict[str, Any]]:
             )
 
     return list(candidates_by_key.values())
+
+
+def _materialize_preview_html(
+    conversation,
+    state_override: Optional[Dict[str, Any]] = None,
+    use_semantic_match: bool = True,
+) -> Optional[str]:
+    state = state_override or conversation.state
+    if not state.get('job_analysis'):
+        return None
+
+    customizations = state.get('customizations')
+    summary_view = SessionDataView(
+        conversation.orchestrator.master_data,
+        state,
+        customizations,
+    )
+    materialized = summary_view.materialize_generation_customizations()
+    if not materialized:
+        return None
+
+    return conversation.orchestrator.render_html_preview(
+        job_analysis=state['job_analysis'],
+        customizations=materialized,
+        approved_rewrites=state.get('approved_rewrites') or [],
+        spell_audit=_get_spell_audit_from_state(state),
+        use_semantic_match=use_semantic_match,
+    )
+
+
+def _resolve_preview_artifact_dir(conversation) -> Path:
+    generated = conversation.state.get('generated_files') or {}
+    output_dir_str = generated.get('output_dir')
+    if output_dir_str:
+        base_dir = Path(output_dir_str)
+    else:
+        if not conversation.session_dir:
+            conversation._save_session()
+        if conversation.session_dir:
+            base_dir = Path(conversation.session_dir)
+        else:
+            session_id = getattr(conversation, 'session_id', 'session')
+            base_dir = (
+                Path(conversation.orchestrator.output_dir)
+                / 'preview_artifacts'
+                / session_id
+            )
+
+    preview_dir = base_dir / 'preview_artifacts'
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    return preview_dir
+
+
+def _generate_preview_outputs(
+    conversation,
+    preview_html: str,
+    preview_request_id: str,
+) -> Dict[str, Any]:
+    preview_dir = _resolve_preview_artifact_dir(conversation)
+    return conversation.orchestrator.generate_pdf_variants_from_html(
+        confirmed_html=preview_html,
+        output_dir=preview_dir,
+        filename_base=f'preview_{preview_request_id}',
+    )
+
+
+def _read_pdf_page_count(pdf_path: Path) -> Optional[int]:
+    try:
+        import pypdf
+    except Exception:
+        return None
+
+    try:
+        reader = pypdf.PdfReader(str(pdf_path))
+    except Exception:
+        return None
+    return len(reader.pages)
+
+
+def _compute_exact_page_count(conversation, preview_html: str) -> Dict[str, Any]:
+    with tempfile.TemporaryDirectory(prefix='layout-page-count-') as tmp_dir:
+        render_dir = Path(tmp_dir)
+        final_paths = conversation.orchestrator.generate_final_from_confirmed_html(
+            confirmed_html=preview_html,
+            output_dir=render_dir,
+            filename_base='layout_exact',
+        )
+        pdf_path = Path(final_paths['pdf'])
+        return {
+            'page_count': _read_pdf_page_count(pdf_path),
+            'renderer': final_paths.get('renderer'),
+            'renderer_detail': final_paths.get('renderer_detail', ''),
+        }
+
+
+def _page_warning(page_count: Optional[float]) -> bool:
+    if page_count is None:
+        return False
+    return float(page_count) < 2.0 or float(page_count) > 3.0
+
+
+def _persist_layout_baseline(
+    conversation,
+    preview_html: str,
+    *,
+    source: str,
+) -> Dict[str, Any]:
+    digest = build_layout_digest(preview_html)
+    exact = _compute_exact_page_count(conversation, preview_html)
+    page_count = exact.get('page_count')
+
+    gen = conversation.state.setdefault('generation_state', {})
+    gen.update({
+        'baseline_layout_digest': digest,
+        'baseline_exact_page_count': page_count,
+        'baseline_updated_at': datetime.now().isoformat(),
+        'baseline_source': source,
+        'layout_template_version': LAYOUT_TEMPLATE_VERSION,
+        'layout_template_update_note': LAYOUT_TEMPLATE_UPDATE_NOTE,
+        'page_count_estimate': page_count,
+        'page_count_exact': page_count,
+        'page_count_confidence': 1.0 if page_count is not None else None,
+        'page_count_source': 'exact' if page_count is not None else 'unknown',
+        'page_count_needs_exact_recheck': False,
+        'page_length_warning': _page_warning(page_count),
+        'page_count_renderer': exact.get('renderer'),
+        'page_count_renderer_detail': exact.get('renderer_detail', ''),
+    })
+    return {
+        'digest': digest,
+        'page_count': page_count,
+        'renderer': exact.get('renderer'),
+        'renderer_detail': exact.get('renderer_detail', ''),
+    }
+
+
+def _overlay_layout_estimate_state(
+    state: Dict[str, Any],
+    body: Dict[str, Any],
+) -> Dict[str, Any]:
+    overlay = copy.deepcopy(state)
+
+    for key in (
+        'experience_decisions',
+        'skill_decisions',
+        'achievement_decisions',
+        'publication_decisions',
+        'approved_rewrites',
+        'achievement_edits',
+        'extra_skills',
+    ):
+        if key in body and body[key] is not None:
+            overlay[key] = body[key]
+
+    if body.get('summary_focus_override') is not None:
+        overlay['summary_focus_override'] = body.get('summary_focus_override')
+
+    if body.get('selected_summary_key') is not None:
+        overlay['selected_summary_key'] = body.get('selected_summary_key')
+
+    if body.get('base_font_size'):
+        overlay['base_font_size'] = body['base_font_size']
+        customizations = dict(overlay.get('customizations') or {})
+        customizations['base_font_size'] = body['base_font_size']
+        overlay['customizations'] = customizations
+
+    return overlay
+
+
+def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]:
+    overlay_state = _overlay_layout_estimate_state(conversation.state, body)
+    current_html = _materialize_preview_html(
+        conversation,
+        state_override=overlay_state,
+        use_semantic_match=False,
+    )
+    if not current_html:
+        raise RuntimeError('Unable to render preview HTML for layout estimate.')
+
+    gen = conversation.state.setdefault('generation_state', {})
+    baseline_digest = gen.get('baseline_layout_digest')
+    baseline_exact_page_count = gen.get('baseline_exact_page_count')
+    if not baseline_digest:
+        baseline = _persist_layout_baseline(
+            conversation,
+            current_html,
+            source='layout_estimate_seed',
+        )
+        baseline_digest = baseline['digest']
+        baseline_exact_page_count = baseline['page_count']
+
+    current_digest = build_layout_digest(current_html)
+    estimate = compare_layout_digests(
+        baseline_digest,
+        baseline_exact_page_count,
+        current_digest,
+    )
+    model_prediction = predict_layout_pages(current_digest)
+    estimate = blend_layout_prediction(estimate, model_prediction)
+
+    exact_page_count = None
+    exact_renderer = None
+    exact_renderer_detail = ''
+    used_exact_recheck = False
+    if estimate['needs_exact_recheck']:
+        exact = _compute_exact_page_count(conversation, current_html)
+        exact_page_count = exact.get('page_count')
+        exact_renderer = exact.get('renderer')
+        exact_renderer_detail = exact.get('renderer_detail', '')
+        used_exact_recheck = exact_page_count is not None
+
+    page_count_value = exact_page_count
+    page_count_source = (
+        'exact-recheck'
+        if used_exact_recheck
+        else estimate.get('source', 'delta-estimate')
+    )
+    if page_count_value is None:
+        page_count_value = round(float(estimate['estimated_pages']), 1)
+
+    gen.update({
+        'layout_template_version': LAYOUT_TEMPLATE_VERSION,
+        'layout_template_update_note': LAYOUT_TEMPLATE_UPDATE_NOTE,
+        'page_count_estimate': page_count_value,
+        'page_count_exact': exact_page_count,
+        'page_count_confidence': estimate['confidence'],
+        'page_count_source': page_count_source,
+        'page_count_needs_exact_recheck': estimate['needs_exact_recheck'],
+        'page_length_warning': _page_warning(page_count_value),
+        'page_count_renderer': exact_renderer,
+        'page_count_renderer_detail': exact_renderer_detail,
+    })
+    conversation._save_session()
+
+    return {
+        'ok': True,
+        'page_count_estimate': page_count_value,
+        'page_count_exact': exact_page_count,
+        'page_count_confidence': estimate['confidence'],
+        'page_count_source': page_count_source,
+        'page_count_needs_exact_recheck': estimate['needs_exact_recheck'],
+        'page_length_warning': _page_warning(page_count_value),
+        'baseline_exact_page_count': baseline_exact_page_count,
+        'layout_template_version': LAYOUT_TEMPLATE_VERSION,
+        'layout_template_update_note': LAYOUT_TEMPLATE_UPDATE_NOTE,
+        'contributors': estimate['contributors'],
+        'used_exact_recheck': used_exact_recheck,
+    }
 
 
 def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
@@ -515,6 +779,33 @@ def create_blueprint(deps):
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
+    @bp.get("/api/cv/preview-output/<renderer>")
+    def download_preview_output(renderer):
+        """Open a renderer-specific preview PDF from the current staged preview."""
+        entry = get_session()
+        generation_state = entry.manager.state.get('generation_state') or {}
+        preview_outputs = generation_state.get('preview_output_paths') or {}
+        renderer_key = str(renderer).strip().lower()
+        pdf_record = (preview_outputs.get('pdfs') or {}).get(renderer_key) or {}
+
+        if not pdf_record.get('ok'):
+            return jsonify({
+                'error': f'No preview PDF is available for renderer: {renderer_key}',
+            }), 404
+
+        pdf_path = Path(str(pdf_record.get('pdf') or ''))
+        if not pdf_path.is_file():
+            return jsonify({
+                'error': f'Preview PDF not found for renderer: {renderer_key}',
+            }), 404
+
+        return send_file(
+            str(pdf_path),
+            mimetype='application/pdf',
+            as_attachment=False,
+            download_name=pdf_path.name,
+        )
+
     # ------------------------------------------------------------------
     # Staged generation (GAP-20)
     # ------------------------------------------------------------------
@@ -530,10 +821,22 @@ def create_blueprint(deps):
             "preview_available":         bool(gen.get("preview_html")),
             "layout_confirmed":          gen.get("layout_confirmed", False),
             "page_count_estimate":       gen.get("page_count_estimate"),
+            "page_count_exact":          gen.get("page_count_exact"),
+            "page_count_confidence":     gen.get("page_count_confidence"),
+            "page_count_source":         gen.get("page_count_source"),
+            "page_count_needs_exact_recheck": gen.get(
+                "page_count_needs_exact_recheck",
+                False,
+            ),
             "page_length_warning":       gen.get("page_length_warning", False),
             "layout_instructions_count": len(gen.get("layout_instructions", [])),
             "ats_score":                 gen.get("ats_score"),
             "final_generated_at":        gen.get("final_generated_at"),
+            "layout_template_version":   gen.get("layout_template_version"),
+            "layout_template_update_note": gen.get(
+                "layout_template_update_note"
+            ),
+            "preview_outputs":           gen.get("preview_output_paths"),
         })
 
     @bp.post("/api/cv/generate-preview")
@@ -547,25 +850,11 @@ def create_blueprint(deps):
 
         html_str = None
 
-        summary_view = SessionDataView(
-            conv.orchestrator.master_data,
-            conv.state,
-            conv.state.get("customizations"),
-        )
-        customizations = summary_view.materialize_generation_customizations()
-        if customizations:
-            try:
-                approved_rewrites = conv.state.get("approved_rewrites") or []
-                spell_audit       = _get_spell_audit_from_state(conv.state)
-                html_str = conv.orchestrator.render_html_preview(
-                    job_analysis=conv.state["job_analysis"],
-                    customizations=customizations,
-                    approved_rewrites=approved_rewrites,
-                    spell_audit=spell_audit,
-                )
-            except Exception as _exc:
-                import flask
-                flask.current_app.logger.warning("render_html_preview failed: %s", _exc)
+        try:
+            html_str = _materialize_preview_html(conv)
+        except Exception as _exc:
+            import flask
+            flask.current_app.logger.warning("render_html_preview failed: %s", _exc)
 
         if not html_str:
             generated      = conv.state.get("generated_files") or {}
@@ -581,6 +870,7 @@ def create_blueprint(deps):
 
         now     = datetime.now().isoformat()
         prev_id = str(_u.uuid4())
+        preview_outputs = _generate_preview_outputs(conv, html_str, prev_id)
         gen = conv.state.setdefault("generation_state", {})
         gen.update({
             "phase":                "layout_review",
@@ -588,17 +878,55 @@ def create_blueprint(deps):
             "preview_request_id":   prev_id,
             "preview_generated_at": now,
             "layout_confirmed":     False,
+            "preview_output_paths": preview_outputs,
         })
         if "layout_instructions" not in gen:
             gen["layout_instructions"] = []
+
+        baseline = _persist_layout_baseline(
+            conv,
+            html_str,
+            source='generate_preview',
+        )
         conv._save_session()
         return jsonify({
             "ok":                  True,
             "html":                html_str,
+            "preview_outputs":     preview_outputs,
             "preview_request_id":  prev_id,
             "page_count_estimate": gen.get("page_count_estimate"),
+            "page_count_exact":    baseline.get('page_count'),
+            "page_count_source":   gen.get("page_count_source"),
+            "page_count_confidence": gen.get("page_count_confidence"),
             "page_length_warning": gen.get("page_length_warning", False),
         })
+
+    @bp.post("/api/cv/layout-estimate")
+    def estimate_cv_layout():
+        """Estimate layout impact from current review choices."""
+        entry = get_session()
+        conv = entry.manager
+        body = request.get_json(force=True) or {}
+
+        # duckflow: {
+        #   "id": "layout_estimate_live",
+        #   "kind": "api",
+        #   "status": "live",
+        #   "handles": ["POST /api/cv/layout-estimate"],
+        #   "reads": ["state:experience_decisions", "state:skill_decisions", "state:generation_state.baseline_layout_digest"],
+        #   "writes": ["state:generation_state.page_count_estimate", "state:generation_state.page_count_confidence"],
+        #   "returns": ["response:page_count_estimate", "response:page_count_confidence", "response:page_count_exact"],
+        #   "notes": "Server-side layout estimate renders preview HTML, compares it to the stored digest baseline, and rerenders exactly when confidence is low or near a page boundary."
+        # }
+        try:
+            return jsonify(_apply_layout_estimate(conv, body))
+        except Exception as exc:
+            import flask
+            flask.current_app.logger.error('layout estimate failed: %s', exc)
+            return jsonify({
+                'ok': False,
+                'error': f'Layout estimate failed: {exc}',
+            }), 500
 
     @bp.post("/api/cv/layout-refine")
     def refine_cv_layout():
@@ -653,13 +981,22 @@ def create_blueprint(deps):
             "confidence":   result.get("confidence"),
         }
 
+        preview_outputs = _generate_preview_outputs(conv, updated_html, prev_id)
+
         gen = conv.state.setdefault("generation_state", {})
         gen["preview_html"]        = updated_html
         gen["preview_request_id"]  = prev_id
         gen["preview_generated_at"] = now
         gen["phase"]               = "layout_review"
         gen["layout_confirmed"]    = False
+        gen["preview_output_paths"] = preview_outputs
         gen.setdefault("layout_instructions", []).append(instruction_record)
+
+        baseline = _persist_layout_baseline(
+            conv,
+            updated_html,
+            source='layout_refine',
+        )
         conv._save_session()
 
         return jsonify({
@@ -667,7 +1004,13 @@ def create_blueprint(deps):
             "html":               updated_html,
             "summary":            result.get("summary", ""),
             "confidence":         result.get("confidence"),
+            "preview_outputs":    preview_outputs,
             "preview_request_id": prev_id,
+            "page_count_estimate": gen.get("page_count_estimate"),
+            "page_count_exact":    baseline.get('page_count'),
+            "page_count_source":   gen.get("page_count_source"),
+            "page_count_confidence": gen.get("page_count_confidence"),
+            "page_length_warning": gen.get("page_length_warning", False),
         })
 
     @bp.post("/api/cv/confirm-layout")
@@ -806,6 +1149,16 @@ def create_blueprint(deps):
             "final_generated_at": now,
             "final_output_paths": final_paths,
         })
+        final_html_path = Path(final_paths['html'])
+        if final_html_path.is_file():
+            final_html = final_html_path.read_text(encoding='utf-8')
+        else:
+            final_html = confirmed_html
+        baseline = _persist_layout_baseline(
+            conv,
+            final_html,
+            source='generate_final',
+        )
         generated.update({
             "final_html": final_paths["html"],
             "final_pdf": final_paths["pdf"],
@@ -817,7 +1170,13 @@ def create_blueprint(deps):
         conv._save_session()
 
         outputs = dict(generated)
-        return jsonify({"ok": True, "generated_at": now, "outputs": outputs})
+        return jsonify({
+            "ok": True,
+            "generated_at": now,
+            "outputs": outputs,
+            "page_count_exact": baseline.get('page_count'),
+            "page_count_estimate": gen.get("page_count_estimate"),
+        })
 
     # ------------------------------------------------------------------
     # Finalise
