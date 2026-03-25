@@ -9,7 +9,7 @@
  * Workflow progress bar, phase re-run/back-nav, and bullet reorder modal.
  *
  * Dependencies (resolved through globalThis at runtime):
- *   PHASES, currentStage, escapeHtml,
+ *   PHASES, escapeHtml,
  *   appendLoadingMessage, removeLoadingMessage, appendRetryMessage, appendMessage,
  *   setLoading, fetchStatus, switchTab, sendAction,
  *   showLoadJobPanel, updateActionButtons, updateTabBarForStage,
@@ -546,7 +546,6 @@ function updateWorkflowSteps(status) {
 
   // Sync second-bar tab visibility and action buttons to the active workflow step
   if (typeof updateTabBarForStage === 'function') {
-    stateManager.setCurrentStage(activeStep);
     updateTabBarForStage(activeStep);
   }
   updateActionButtons(activeStep);
@@ -605,13 +604,15 @@ function handleStepClick(step) {
   };
   const tabName = stepToTab[step];
   if (tabName) {
-    const currentIdx = _STEP_ORDER.indexOf(stateManager.getCurrentStage());
+    const visibleStage = typeof getVisibleStage === 'function'
+      ? getVisibleStage()
+      : stateManager.getCurrentStage();
+    const currentIdx = _STEP_ORDER.indexOf(visibleStage);
     const targetIdx  = _STEP_ORDER.indexOf(step);
     const navigatingBack = targetIdx < currentIdx && el.classList.contains('completed');
 
     if (navigatingBack) {
       _showReRunConfirmModal(step, 'back-nav', () => {
-        stateManager.setCurrentStage(step);
         if (typeof updateTabBarForStage === 'function') updateTabBarForStage(step);
         switchTab(tabName);
       });
@@ -619,7 +620,6 @@ function handleStepClick(step) {
     }
 
     if (typeof updateTabBarForStage === 'function') {
-      stateManager.setCurrentStage(step);
       updateTabBarForStage(step);
     }
     switchTab(tabName);

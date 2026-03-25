@@ -19,7 +19,7 @@
  *   - confirmDialog (ui-core.js)
  *   - showAlertModal (ui-helpers.js)
  *   - loadSessionFile (session-manager.js)
- *   - tabData, currentTab, currentStage, PHASES (window globals)
+ *   - tabData, currentTab, PHASES (window globals)
  */
 
 import { getLogger } from './logger.js';
@@ -512,7 +512,6 @@ async function submitJobText() {
       appendMessage('assistant', '✅ Job description submitted successfully.');
 
       if (typeof updateTabBarForStage === 'function') {
-        stateManager.setCurrentStage('job');
         updateTabBarForStage('job');
       }
       switchTab('job');

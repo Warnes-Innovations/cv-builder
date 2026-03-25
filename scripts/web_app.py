@@ -75,6 +75,12 @@ from utils.bibtex_parser import (
 from utils.session_registry import (
     SessionRegistry, SessionNotFoundError, SessionOwnedError
 )
+from routes.generation_routes import (
+    _compile_harvest_candidates,
+    _harvest_add_skill,
+    _harvest_add_summary_variant,
+    _harvest_apply_bullet,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1047,156 +1053,6 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
         ['git', '-C', str(master_path.parent), 'add', master_path.name],
         capture_output=True, check=False,
     )
-
-
-# ---------------------------------------------------------------------------
-# Phase 11 harvest helpers (module-level for testability)
-# ---------------------------------------------------------------------------
-
-def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
-    """Return candidate write-back items for the current session.
-
-    Extracted from the harvest_candidates view so harvest_apply can call it
-    directly without round-tripping through the Flask response layer.
-    """
-    candidates: List[Dict[str, Any]] = []
-
-    approved_rewrites = conversation.state.get('approved_rewrites') or []
-    customizations    = conversation.state.get('customizations') or {}
-    post_answers      = conversation.state.get('post_analysis_answers') or {}
-
-    # 1. Improved bullets — approved rewrites where content differs from master
-    for rw in approved_rewrites:
-        if rw.get('section') == 'summary':  # handled separately as summary_variant
-            continue
-        proposed = rw.get('proposed', '')
-        original = rw.get('original', '')
-        if not proposed or not original:
-            continue
-        if proposed.strip() == original.strip():
-            continue
-        candidates.append({
-            'id':        f"rewrite_{rw.get('id', len(candidates))}",
-            'type':      'improved_bullet',
-            'label':     f"Improved bullet — {rw.get('context', rw.get('id', 'unknown'))}",
-            'original':  original,
-            'proposed':  proposed,
-            'rationale': rw.get('rationale') or 'Approved rewrite improves ATS-keyword coverage or adds a quantified metric.',
-        })
-
-    # 2. New / renamed skills added during the session
-    for skill in customizations.get('new_skills_added') or []:
-        if not skill:
-            continue
-        candidates.append({
-            'id':        f"skill_{skill.replace(' ', '_')}",
-            'type':      'new_skill',
-            'label':     f"New skill — {skill}",
-            'original':  '(not in master data)',
-            'proposed':  skill,
-            'rationale': 'Skill was added during the skills review step.',
-        })
-
-    # 3. Summary variant — if summary was rewritten and approved
-    summary_rewrite = next(
-        (rw for rw in approved_rewrites if rw.get('section') == 'summary'), None
-    )
-    if summary_rewrite and summary_rewrite.get('proposed'):
-        cand_id = 'summary_variant'
-        if not any(c['id'] == cand_id for c in candidates):
-            candidates.append({
-                'id':        cand_id,
-                'type':      'summary_variant',
-                'label':     'Professional summary variant',
-                'original':  summary_rewrite.get('original', ''),
-                'proposed':  summary_rewrite.get('proposed', ''),
-                'rationale': 'Rewritten summary could be stored as a named variant for future reuse.',
-            })
-
-    # 4. Clarification-answer-revealed skills (user confirmed yes to a skill gap)
-    for key, val in post_answers.items():
-        if not isinstance(val, str):
-            continue
-        if key.startswith('skill_gap_') and val.lower() in ('yes', 'true', '1'):
-            skill_name = key[len('skill_gap_'):]
-            cand_id    = f'skill_gap_{skill_name}'
-            if not any(c['id'] == cand_id for c in candidates):
-                candidates.append({
-                    'id':        cand_id,
-                    'type':      'skill_gap_confirmed',
-                    'label':     f"Confirmed skill — {skill_name}",
-                    'original':  '(not in master data)',
-                    'proposed':  skill_name,
-                    'rationale': 'You confirmed this skill in response to a clarifying question.',
-                })
-
-    return candidates
-
-
-def _harvest_apply_bullet(master: Dict, original: str, proposed: str) -> bool:
-    """Replace ``original`` bullet text with ``proposed`` in master experience data."""
-    experiences = (
-        master.get('experience')
-        or master.get('experiences')
-        or []
-    )
-    for exp in experiences:
-        achievements = exp.get('achievements') or exp.get('bullets') or []
-        for i, bullet in enumerate(achievements):
-            text = bullet if isinstance(bullet, str) else bullet.get('text', '')
-            if text.strip() == original.strip():
-                if isinstance(bullet, str):
-                    achievements[i] = proposed
-                else:
-                    bullet['text'] = proposed
-                return True
-    return False
-
-
-def _harvest_add_skill(master: Dict, skill_name: str) -> bool:
-    """Add ``skill_name`` to master skills data; returns True if actually added."""
-    skills = master.get('skills')
-    if isinstance(skills, list):
-        if skill_name not in skills:
-            skills.append(skill_name)
-            return True
-        return False
-    elif isinstance(skills, dict):
-        # Category dict — add to a named 'other'/'general'/'additional' bucket;
-        # never auto-add to an arbitrary category.
-        for cat_key, cat_val in skills.items():
-            cat_list: List[str] = []
-            if isinstance(cat_val, list):
-                cat_list = cat_val
-            elif isinstance(cat_val, dict) and isinstance(cat_val.get('skills'), list):
-                cat_list = cat_val['skills']
-            if cat_key.lower() in ('other', 'general', 'additional'):
-                if skill_name not in cat_list:
-                    cat_list.append(skill_name)
-                    return True
-                return False
-        # No suitable category — add a new 'Other' category
-        skills['Other'] = [skill_name]
-        return True
-    # skills field is missing — create as list
-    master['skills'] = [skill_name]
-    return True
-
-
-def _harvest_add_summary_variant(master: Dict, new_summary: str) -> bool:
-    """Store ``new_summary`` as a named variant in master data.
-
-    If ``professional_summaries`` already exists as a list, appends.
-    Otherwise creates it.
-    """
-    variants = master.get('professional_summaries')
-    if isinstance(variants, list):
-        if new_summary not in variants:
-            variants.append(new_summary)
-            return True
-        return False
-    master['professional_summaries'] = [new_summary]
-    return True
 
 
 def parse_args():

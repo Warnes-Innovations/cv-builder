@@ -31,6 +31,21 @@ const PHASES = {
   REFINEMENT:     'refinement',
 };
 
+const PHASE_TO_STEP = {
+  [PHASES.INIT]:           'job',
+  [PHASES.JOB_ANALYSIS]:   'analysis',
+  [PHASES.CUSTOMIZATION]:  'customizations',
+  [PHASES.REWRITE_REVIEW]: 'rewrite',
+  [PHASES.SPELL_CHECK]:    'spell',
+  [PHASES.GENERATION]:     'generate',
+  [PHASES.LAYOUT_REVIEW]:  'layout',
+  [PHASES.REFINEMENT]:     'finalise',
+};
+
+function getWorkflowStepForPhase(phase) {
+  return PHASE_TO_STEP[phase] || 'job';
+}
+
 /**
  * Staged generation workflow phases (GAP-20 implementation).
  * These track the preview → layout-review → confirmed → final pipeline
@@ -46,7 +61,6 @@ const GENERATION_PHASES = {
 
 // Global state variables (moved into module for clarity)
 let currentTab = 'job';
-let currentStage = 'job';
 let isLoading = false;
 globalThis.isLoading = isLoading;
 let tabData = {
@@ -86,8 +100,8 @@ function installLegacyStateGlobals() {
       set: (value) => { currentTab = value; },
     },
     currentStage: {
-      get: () => currentStage,
-      set: (value) => { currentStage = value; },
+      get: () => getWorkflowStepForPhase(lastKnownPhase),
+      set: () => {},
     },
     interactiveState: {
       get: () => interactiveState,
@@ -143,8 +157,7 @@ const stateManager = {
   // Tab state
   getCurrentTab: () => currentTab,
   setCurrentTab: (tab) => { currentTab = tab; saveStateToLocalStorage(); },
-  getCurrentStage: () => currentStage,
-  setCurrentStage: (stage) => { currentStage = stage; saveStateToLocalStorage(); },
+  getCurrentStage: () => getWorkflowStepForPhase(lastKnownPhase),
 
   // Loading state
   isLoading: () => isLoading,
@@ -178,6 +191,7 @@ const stateManager = {
   // Phase tracking
   getPhase: () => lastKnownPhase,
   setPhase: (phase) => { lastKnownPhase = phase; saveStateToLocalStorage(); },
+  getWorkflowStep: () => getWorkflowStepForPhase(lastKnownPhase),
 
   // Post-analysis questions
   getPostAnalysisQuestions: () => window.postAnalysisQuestions || [],
@@ -220,7 +234,6 @@ const stateManager = {
  */
 function initializeState() {
   currentTab = 'job';
-  currentStage = 'job';
   isLoading = false;
   globalThis.isLoading = false;
   tabData = {
@@ -279,6 +292,10 @@ function loadStateFromLocalStorage() {
       tabData = { ...tabData, ...data.tabData };
     }
 
+    if (data.currentTab) {
+      currentTab = data.currentTab;
+    }
+
     // Restore interactive state
     if (data.interactiveState) {
       interactiveState = { ...interactiveState, ...data.interactiveState };
@@ -308,10 +325,6 @@ function loadStateFromLocalStorage() {
     // Restore phase
     if (data.lastKnownPhase) {
       lastKnownPhase = data.lastKnownPhase;
-    }
-
-    if (data.currentStage) {
-      currentStage = data.currentStage;
     }
 
     // Restore staged generation state
@@ -345,7 +358,6 @@ function saveStateToLocalStorage() {
       questionAnswers: window.questionAnswers,
       lastKnownPhase,
       currentTab,
-      currentStage,
       // Persist last-selected model/provider so UI selections survive reloads
       currentModelProvider,
       currentModelName,
@@ -374,8 +386,10 @@ function clearState() {
 
 export {
   PHASES,
+  PHASE_TO_STEP,
   GENERATION_PHASES,
   stateManager,
+  getWorkflowStepForPhase,
   initializeState, loadStateFromLocalStorage, saveStateToLocalStorage,
   clearState,
 };
