@@ -70,8 +70,24 @@ def test_generate_fixture_review_bundle_creates_manifest_and_raw_artifacts(
         assert artifact_path is not None
         assert (bundle_root / artifact_path).exists()
 
+    normalized_exports = manifest["normalized_exports"]
+    assert normalized_exports["root"] == "normalized"
+    assert (bundle_root / normalized_exports["structure_outline_txt"]).exists()
+    assert (bundle_root / normalized_exports["plain_text_txt"]).exists()
+    render_status_path = bundle_root / normalized_exports["render_status_txt"]
+    assert render_status_path.exists()
+
+    render_png = normalized_exports["render_png"]
+    if render_png is not None:
+        assert (bundle_root / render_png).exists()
+        assert "warnings" in manifest
+    else:
+        render_status = render_status_path.read_text(encoding="utf-8")
+        assert "playwright install chromium" in render_status
+
     summary = manifest["summary"]
     assert summary["artifacts_generated"] >= 5
     assert summary["selected_content_summary"]["experiences_count"] >= 12
     assert summary["selected_content_summary"]["skills_count"] >= 5
     assert summary["selected_content_summary"]["achievements_count"] >= 5
+    assert "warnings" in manifest
