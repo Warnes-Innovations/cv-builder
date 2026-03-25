@@ -14,6 +14,7 @@ This module coordinates between:
 """
 
 import copy
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import logging
 import re
@@ -500,6 +501,7 @@ class CVOrchestrator:
         spell_audit: Optional[List[Dict]] = None,
         max_skills: Optional[int] = None,
         template_variant: str = 'standard',
+        use_semantic_match: bool = True,
     ) -> str:
         """Render CV as HTML for preview without generating PDF or DOCX.
 
@@ -524,6 +526,7 @@ class CVOrchestrator:
             approved_rewrites=approved_rewrites,
             spell_audit=spell_audit,
             max_skills=max_skills,
+            use_semantic_match=use_semantic_match,
         )
         cv_data = self._prepare_cv_data_for_template(
             selected_content, job_analysis, template_variant
@@ -546,6 +549,7 @@ class CVOrchestrator:
         confirmed_html: str,
         output_dir: Path,
         filename_base: str = "CV_final",
+        preferred_renderer: str = 'auto',
     ) -> Dict:
         """Write confirmed HTML to disk and regenerate the human-readable PDF.
 
@@ -573,11 +577,83 @@ class CVOrchestrator:
         html_path.write_text(confirmed_html, encoding="utf-8")
 
         pdf_path = output_dir / f"{filename_base}.pdf"
-        self._convert_html_to_pdf(html_path, pdf_path)
+        renderer_info = self._convert_html_to_pdf(
+            html_path,
+            pdf_path,
+            preferred_renderer=preferred_renderer,
+        )
 
         return {
             "html": str(html_path),
             "pdf":  str(pdf_path),
+            "renderer": renderer_info["renderer"],
+            "renderer_detail": renderer_info.get("detail", ""),
+        }
+
+    def generate_pdf_variants_from_html(
+        self,
+        confirmed_html: str,
+        output_dir: Path,
+        filename_base: str = "CV_preview",
+        renderers: tuple[str, ...] = ('chrome', 'weasyprint'),
+    ) -> Dict[str, Any]:
+        """Write HTML once and attempt PDF generation for each requested renderer."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        html_path = output_dir / f"{filename_base}.html"
+        html_path.write_text(confirmed_html, encoding="utf-8")
+
+        normalized_renderers = [
+            str(renderer_name).strip().lower()
+            for renderer_name in renderers
+            if str(renderer_name).strip()
+        ]
+        pdfs: Dict[str, Dict[str, Any]] = {}
+
+        def _render_variant(renderer_key: str) -> tuple[str, Dict[str, Any]]:
+            pdf_path = output_dir / f"{filename_base}_{renderer_key}.pdf"
+            try:
+                renderer_info = self._convert_html_to_pdf(
+                    html_path,
+                    pdf_path,
+                    preferred_renderer=renderer_key,
+                )
+                return renderer_key, {
+                    'ok': True,
+                    'pdf': str(pdf_path),
+                    'renderer': renderer_info['renderer'],
+                    'renderer_detail': renderer_info.get('detail', ''),
+                    'error': None,
+                }
+            except Exception as exc:
+                logger.warning(
+                    "Preview PDF generation failed for %s (%s)",
+                    renderer_key,
+                    exc,
+                )
+                return renderer_key, {
+                    'ok': False,
+                    'pdf': str(pdf_path),
+                    'renderer': renderer_key,
+                    'renderer_detail': '',
+                    'error': str(exc),
+                }
+
+        if normalized_renderers:
+            max_workers = min(len(normalized_renderers), 4)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_map = {
+                    executor.submit(_render_variant, renderer_key): renderer_key
+                    for renderer_key in normalized_renderers
+                }
+                for future in as_completed(future_map):
+                    renderer_key, result = future.result()
+                    pdfs[renderer_key] = result
+
+        return {
+            'html': str(html_path),
+            'pdfs': pdfs,
         }
 
     def _render_cv_html_pdf(
@@ -756,7 +832,12 @@ class CVOrchestrator:
         
         return '\n'.join(html_parts)
     
-    def _convert_html_to_pdf(self, html_file: Path, pdf_output: Path) -> None:
+    def _convert_html_to_pdf(
+        self,
+        html_file: Path,
+        pdf_output: Path,
+        preferred_renderer: str = 'auto',
+    ) -> Dict[str, str]:
         """Convert HTML file to PDF.
 
         Chrome/Chromium headless is the primary renderer (--headless=new mode,
@@ -767,6 +848,12 @@ class CVOrchestrator:
         environments where Chrome is unavailable (e.g. headless Linux servers),
         then to a plain-text instruction file as last resort.
         """
+        renderer_mode = (preferred_renderer or 'auto').strip().lower()
+        if renderer_mode not in {'auto', 'chrome', 'weasyprint'}:
+            raise ValueError(
+                "preferred_renderer must be one of: auto, chrome, weasyprint"
+            )
+
         # --- Chrome/Chromium headless (primary) ---
         # Try known binary locations: Linux paths first, then macOS app bundles.
         _chrome_candidates = [
@@ -777,53 +864,89 @@ class CVOrchestrator:
             '/Applications/Chromium.app/Contents/MacOS/Chromium',
         ]
         html_url = html_file.as_uri()   # file:///absolute/path/to/file.html
+        def _try_chrome() -> Dict[str, str]:
+            chrome_err_local = None
+            for _chrome_bin in _chrome_candidates:
+                try:
+                    subprocess.run(
+                        [
+                            _chrome_bin,
+                            '--headless=new',
+                            '--disable-gpu',
+                            '--no-sandbox',
+                            f'--print-to-pdf={pdf_output}',
+                            '--print-to-pdf-no-header',
+                            html_url,
+                        ],
+                        check=True,
+                        capture_output=True,
+                        timeout=60,
+                    )
+                    logger.info(
+                        "Generated PDF via Chrome (%s): %s",
+                        Path(_chrome_bin).name,
+                        pdf_output.name,
+                    )
+                    return {
+                        'renderer': 'chrome',
+                        'detail': str(_chrome_bin),
+                    }
+                except FileNotFoundError:
+                    continue
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                    chrome_err_local = str(exc)
+                    break
+
+            if chrome_err_local:
+                raise RuntimeError(chrome_err_local)
+            raise FileNotFoundError('Chrome/Chromium not found')
+
+        def _try_weasyprint() -> Dict[str, str]:
+            wp_script = (
+                "import sys, weasyprint; "
+                "weasyprint.HTML(filename=sys.argv[1]).write_pdf(sys.argv[2])"
+            )
+            wp_result = subprocess.run(
+                [sys.executable, '-c', wp_script, str(html_file), str(pdf_output)],
+                capture_output=True,
+                timeout=120,
+            )
+            if wp_result.returncode == 0:
+                logger.info("Generated PDF using WeasyPrint: %s", pdf_output.name)
+                return {
+                    'renderer': 'weasyprint',
+                    'detail': sys.executable,
+                }
+
+            wp_error_local = (
+                wp_result.stderr.decode(errors='replace').strip()
+                or f"exit {wp_result.returncode}"
+            )
+            raise RuntimeError(wp_error_local)
+
         chrome_err = None
-        for _chrome_bin in _chrome_candidates:
-            try:
-                subprocess.run(
-                    [
-                        _chrome_bin,
-                        '--headless=new',       # Modern headless; full CSS paged media support
-                        '--disable-gpu',
-                        '--no-sandbox',
-                        f'--print-to-pdf={pdf_output}',
-                        '--print-to-pdf-no-header',
-                        html_url,
-                    ],
-                    check=True,
-                    capture_output=True,
-                    timeout=60,
-                )
-                logger.info("Generated PDF via Chrome (%s): %s", Path(_chrome_bin).name, pdf_output.name)
-                return
-            except FileNotFoundError:
-                continue
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                chrome_err = str(exc)
-                break
+        wp_error = None
 
-        if chrome_err:
-            logger.warning("Chrome headless failed (%s), trying WeasyPrint...", chrome_err)
-        else:
-            logger.warning("Chrome/Chromium not found, trying WeasyPrint...")
+        if renderer_mode == 'chrome':
+            return _try_chrome()
 
-        # --- WeasyPrint in subprocess (crash-safe fallback) ---
-        # Runs in a child process so a native segfault cannot kill the Flask server.
-        wp_script = (
-            "import sys, weasyprint; "
-            "weasyprint.HTML(filename=sys.argv[1]).write_pdf(sys.argv[2])"
-        )
-        wp_result = subprocess.run(
-            [sys.executable, '-c', wp_script, str(html_file), str(pdf_output)],
-            capture_output=True,
-            timeout=120,
-        )
-        if wp_result.returncode == 0:
-            logger.info("Generated PDF using WeasyPrint: %s", pdf_output.name)
-            return
+        if renderer_mode == 'weasyprint':
+            return _try_weasyprint()
 
-        wp_error = wp_result.stderr.decode(errors='replace').strip() or f"exit {wp_result.returncode}"
-        logger.warning("WeasyPrint also failed (%s)", wp_error)
+        try:
+            return _try_chrome()
+        except (FileNotFoundError, RuntimeError) as exc:
+            chrome_err = str(exc)
+            if isinstance(exc, FileNotFoundError):
+                logger.warning("Chrome/Chromium not found, trying WeasyPrint...")
+            else:
+                logger.warning("Chrome headless failed (%s), trying WeasyPrint...", chrome_err)
+
+        try:
+            return _try_weasyprint()
+        except RuntimeError as exc:
+            wp_error = str(exc)
+            logger.warning("WeasyPrint also failed (%s)", wp_error)
 
         # --- Plain-text fallback ---
         fallback_content = f"""PDF Generation Failed
@@ -841,6 +964,10 @@ The HTML file contains your formatted CV ready for conversion.
 """
         pdf_output.write_text(fallback_content.strip(), encoding='utf-8')
         logger.warning("Created fallback instructions: %s", pdf_output.name)
+        return {
+            'renderer': 'fallback-text',
+            'detail': pdf_output.name,
+        }
 
     def _generate_human_pdf(
         self,
