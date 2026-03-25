@@ -14,9 +14,11 @@ import {
   showProcessing,
   showConfirmationMessage,
   renderInstructionHistory,
+  renderPreviewOutputStatus,
   addToInstructionHistory,
   undoInstruction,
   completeLayoutReview,
+  generateFinalOutputs,
   loadLayoutInstructionHistory,
 } from '../../web/layout-instruction.js'
 import { apiCall } from '../../web/api-client.js'
@@ -24,9 +26,15 @@ import { stateManager } from '../../web/state-manager.js'
 
 vi.mock('../../web/api-client.js', () => ({ apiCall: vi.fn() }))
 vi.mock('../../web/state-manager.js', () => ({
+  GENERATION_STATE_EVENT: 'generation-state-change',
   stateManager: {
     getGenerationState: vi.fn(() => ({})),
+    getLayoutFreshness: vi.fn(() => ({ isStale: false })),
+    getSessionId: vi.fn(() => 'session-123'),
     setGenerationState: vi.fn(),
+    markPreviewGenerated: vi.fn(),
+    markLayoutConfirmed: vi.fn(),
+    markFinalGenerated: vi.fn(),
     setPhase: vi.fn(),
     getTabData: vi.fn(() => ({})),
     setTabData: vi.fn(),
@@ -39,8 +47,11 @@ function buildDom() {
   document.body.innerHTML = `
     <div id="processing-indicator" style="display:none"></div>
     <div id="confirmation-message" style="display:none"></div>
+    <div id="layout-stale-callout" style="display:none"></div>
     <div id="instruction-history"></div>
+    <div id="preview-output-status"></div>
     <span id="instruction-count">0</span>
+    <button id="confirm-layout-btn" style="display:none"></button>
     <button id="proceed-to-finalise-btn" style="display:none"></button>`
 }
 
@@ -55,7 +66,12 @@ beforeEach(() => {
   apiCall.mockReset()
   stateManager.getGenerationState.mockReset()
   stateManager.getGenerationState.mockReturnValue({})
+  stateManager.getLayoutFreshness.mockReset()
+  stateManager.getLayoutFreshness.mockReturnValue({ isStale: false })
   stateManager.setGenerationState.mockReset()
+  stateManager.markPreviewGenerated.mockReset()
+  stateManager.markLayoutConfirmed.mockReset()
+  stateManager.markFinalGenerated.mockReset()
   stateManager.setPhase.mockReset()
   stateManager.getTabData.mockReset()
   stateManager.getTabData.mockReturnValue({})
@@ -93,28 +109,27 @@ describe('staged layout regressions', () => {
     ])
   })
 
-  it('does not report success when staged final generation fails', async () => {
-    apiCall
-      .mockResolvedValueOnce({
-        instructions: [
-          {
-            timestamp: '12:01',
-            instruction_text: 'Move Publications',
-            change_summary: 'Moved publications section',
-            confirmation: true,
-          },
-        ],
-      })
-      .mockResolvedValueOnce({ ok: true })
-      .mockResolvedValueOnce({ ok: false, error: 'Final generation failed' })
+  it('confirms layout without generating final files immediately', async () => {
+    apiCall.mockResolvedValueOnce({ ok: true })
 
-    stateManager.getGenerationState.mockReturnValue({ phase: 'layout_review', previewAvailable: true })
+    stateManager.getGenerationState.mockReturnValue({ phase: 'layout_review', previewAvailable: true, layoutConfirmed: false })
 
     await completeLayoutReview()
 
-    expect(apiCall).toHaveBeenNthCalledWith(1, 'GET', '/api/layout-history')
-    expect(apiCall).toHaveBeenNthCalledWith(2, 'POST', '/api/cv/confirm-layout', {})
-    expect(apiCall).toHaveBeenNthCalledWith(3, 'POST', '/api/cv/generate-final', {})
+    expect(apiCall).toHaveBeenCalledWith('POST', '/api/cv/confirm-layout', {})
+    expect(apiCall).not.toHaveBeenCalledWith('POST', '/api/cv/generate-final', {})
+    expect(apiCall).not.toHaveBeenCalledWith('POST', '/api/layout-complete', expect.anything())
+    expect(stateManager.markLayoutConfirmed).toHaveBeenCalled()
+  })
+
+  it('does not report success when staged final generation fails', async () => {
+    apiCall.mockResolvedValueOnce({ ok: false, error: 'Final generation failed' })
+
+    stateManager.getGenerationState.mockReturnValue({ phase: 'confirmed', previewAvailable: true, layoutConfirmed: true })
+
+    await generateFinalOutputs()
+
+    expect(apiCall).toHaveBeenCalledWith('POST', '/api/cv/generate-final', {})
     expect(apiCall).not.toHaveBeenCalledWith('POST', '/api/layout-complete', expect.anything())
     expect(globalThis.appendMessage).toHaveBeenCalledWith(
       'system',
@@ -201,6 +216,51 @@ describe('renderInstructionHistory', () => {
     document.body.innerHTML = ''
     window.layoutInstructions = [{ instruction_text: 'x', change_summary: 'y' }]
     expect(() => renderInstructionHistory()).not.toThrow()
+  })
+})
+
+// ── renderPreviewOutputStatus ────────────────────────────────────────────
+
+describe('renderPreviewOutputStatus', () => {
+  it('shows an empty message when no renderer outputs exist', () => {
+    renderPreviewOutputStatus(null)
+
+    expect(document.getElementById('preview-output-status').textContent)
+      .toContain('Preview PDFs will appear here')
+  })
+
+  it('renders status and link for successful renderer output', () => {
+    renderPreviewOutputStatus({
+      pdfs: {
+        chrome: {
+          ok: true,
+          renderer_detail: 'chrome-bin',
+        },
+      },
+    })
+
+    const container = document.getElementById('preview-output-status')
+    expect(container.textContent).toContain('Chrome Ready')
+    expect(container.querySelector('.preview-output-badge-link').getAttribute('href'))
+      .toBe('/api/cv/preview-output/chrome?session_id=session-123')
+    expect(container.querySelector('.preview-output-link')).toBeNull()
+  })
+
+  it('renders failure detail when a renderer output is unavailable', () => {
+    renderPreviewOutputStatus({
+      pdfs: {
+        weasyprint: {
+          ok: false,
+          error: 'renderer unavailable',
+        },
+      },
+    })
+
+    const container = document.getElementById('preview-output-status')
+    expect(container.textContent).toContain('WeasyPrint Failed')
+    expect(container.textContent).toContain('renderer unavailable')
+    expect(container.querySelector('.preview-output-badge-link')).toBeNull()
+    expect(container.querySelector('.preview-output-link')).toBeNull()
   })
 })
 
