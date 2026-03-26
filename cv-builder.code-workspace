@@ -16,6 +16,9 @@
 			"path": "../cv-builder-prod"
 		},
 		{
+			"path": "../oboe-mcp"
+		},
+		{
 			"path": "../duckflow"
 		}
 	],
