@@ -187,6 +187,18 @@ describe('_showIntakeConfirmCard', () => {
     expect(globalThis.analyzeJob).toHaveBeenCalled()
   })
 
+  it('preserves a provided continuation when already confirmed', async () => {
+    const continuation = vi.fn()
+    globalThis.llmFetch
+      .mockResolvedValueOnce({ json: async () => ({ confirmed: true }) })
+      .mockResolvedValueOnce({ json: async () => ({ found: false }) })
+
+    await _showIntakeConfirmCard(continuation)
+
+    expect(continuation).toHaveBeenCalled()
+    expect(globalThis.analyzeJob).not.toHaveBeenCalled()
+  })
+
   it('proceeds with empty defaults on network error', async () => {
     globalThis.llmFetch.mockRejectedValue(new Error('network'))
     await expect(_showIntakeConfirmCard()).resolves.not.toThrow()
@@ -209,15 +221,48 @@ describe('_skipIntakeCard', () => {
     // _proceedAfterIntake is called internally; its observable effect is analyzeJob()
     expect(globalThis.analyzeJob).toHaveBeenCalled()
   })
+
+  it('runs a provided continuation instead of re-analyzing', async () => {
+    const continuation = vi.fn()
+    await _skipIntakeCard(continuation)
+    expect(continuation).toHaveBeenCalled()
+    expect(globalThis.analyzeJob).not.toHaveBeenCalled()
+  })
+})
+
+describe('_submitIntakeCard', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="intake-confirm-card"></div>
+      <input id="intake-role-input" value="Staff Engineer">
+      <input id="intake-company-input" value="Acme Labs">
+      <input id="intake-date-input" value="2026-03-24">
+      <button id="intake-confirm-btn"></button>`
+  })
+
+  it('posts confirmation and continues with the provided continuation', async () => {
+    const continuation = vi.fn()
+    globalThis.llmFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+      .mockResolvedValueOnce({ json: async () => ({ found: false }) })
+
+    await _submitIntakeCard(continuation)
+
+    expect(globalThis.llmFetch).toHaveBeenNthCalledWith(1, '/api/confirm-intake', expect.objectContaining({
+      method: 'POST',
+    }))
+    expect(continuation).toHaveBeenCalled()
+    expect(globalThis.analyzeJob).not.toHaveBeenCalled()
+  })
 })
 
 // ── _dismissPriorClarifications ───────────────────────────────────────────
 
 describe('_dismissPriorClarifications', () => {
-  it('removes banner, deletes pending answers, calls analyzeJob', () => {
+  it('removes banner, deletes pending answers, calls analyzeJob', async () => {
     document.body.innerHTML = '<div id="prior-clar-banner"></div>'
     window._pendingPriorAnswers = { type1: 'answer' }
-    _dismissPriorClarifications()
+    await _dismissPriorClarifications()
     expect(document.getElementById('prior-clar-banner')).toBeNull()
     expect(window._pendingPriorAnswers).toBeUndefined()
     expect(globalThis.analyzeJob).toHaveBeenCalled()
@@ -227,21 +272,21 @@ describe('_dismissPriorClarifications', () => {
 // ── _loadPriorClarifications ──────────────────────────────────────────────
 
 describe('_loadPriorClarifications', () => {
-  it('merges pending answers into questionAnswers and calls analyzeJob', () => {
+  it('merges pending answers into questionAnswers and calls analyzeJob', async () => {
     document.body.innerHTML = '<div id="prior-clar-banner"></div>'
     window._pendingPriorAnswers = { experience_level: 'Senior' }
     window.questionAnswers = { existing_type: 'value' }
-    _loadPriorClarifications()
+    await _loadPriorClarifications()
     expect(window.questionAnswers.experience_level).toBe('Senior')
     expect(window.questionAnswers.existing_type).toBe('value')
     expect(globalThis.analyzeJob).toHaveBeenCalled()
   })
 
-  it('initializes questionAnswers when absent', () => {
+  it('initializes questionAnswers when absent', async () => {
     document.body.innerHTML = '<div id="prior-clar-banner"></div>'
     window._pendingPriorAnswers = { t: 'a' }
     window.questionAnswers = null
-    _loadPriorClarifications()
+    await _loadPriorClarifications()
     expect(window.questionAnswers).toEqual({ t: 'a' })
   })
 })
