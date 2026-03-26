@@ -129,6 +129,8 @@ class StatusResponse:
     extra_skill_matches: Dict[str, List[str]]
     session_file: str
     max_skills: int
+    # duckflow: flow=session-status status=live
+    #   response: StatusResponse.skills_section_title → GET /api/status
     skills_section_title: str
     achievement_edits: Dict[str, Any]
     intake: Dict[str, Any]
