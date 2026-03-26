@@ -106,8 +106,8 @@ function generateSessionId() {
     return `session-${token}`;
   }
 
-  log.warn('Web Crypto API unavailable; falling back to timestamp-based session id generation.');
-  return `session-${Date.now().toString(36)}`;
+  log.warn('Web Crypto API unavailable; falling back to timestamp-plus-random session id generation.');
+  return `session-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 function getLayoutFreshnessFromState(state) {
