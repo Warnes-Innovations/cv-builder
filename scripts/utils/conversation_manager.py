@@ -1335,6 +1335,8 @@ Ask questions that are specific to this job posting, not generic career question
         user_instructions: str,
         previous_suggestions: list,
         suggested_text: str,
+        experience_index: Optional[int] = None,
+        achievement_index: Optional[int] = None,
     ) -> str:
         """Record one AI rewrite generation in the session and persist.
 
@@ -1347,6 +1349,8 @@ Ask questions that are specific to this job posting, not generic career question
             'timestamp':           datetime.now().isoformat(),
             'original_text':       original_text,
             'experience_context':  experience_context,
+            'experience_index':    experience_index,
+            'achievement_index':   achievement_index,
             'user_instructions':   user_instructions,
             'previous_suggestions': list(previous_suggestions),
             'suggested_text':      suggested_text,
@@ -1358,6 +1362,67 @@ Ask questions that are specific to this job posting, not generic career question
         self.state['achievement_rewrite_log'].append(entry)
         self._save_session()
         return log_id
+
+    def _get_experience_achievement_texts(self, experience_index: int) -> List[str]:
+        """Return plain-text achievements for one master CV experience."""
+        master_data = getattr(self.orchestrator, 'master_data', None) or {}
+        experiences = master_data.get('experience') or []
+        if not (0 <= experience_index < len(experiences)):
+            return []
+
+        experience = experiences[experience_index] or {}
+        achievements = experience.get('key_achievements') or experience.get('achievements') or []
+
+        texts: List[str] = []
+        for achievement in achievements:
+            if isinstance(achievement, str):
+                texts.append(achievement)
+                continue
+            if isinstance(achievement, dict):
+                texts.append(
+                    achievement.get('text')
+                    or achievement.get('description')
+                    or achievement.get('content')
+                    or ''
+                )
+                continue
+            texts.append('')
+        return texts
+
+    def _persist_accepted_achievement_rewrite(
+        self,
+        experience_index: int,
+        achievement_index: int,
+        accepted_text: str,
+    ) -> bool:
+        """Persist an accepted rewrite into session achievement edits immediately."""
+        if not accepted_text:
+            return False
+        if experience_index < 0 or achievement_index < 0:
+            return False
+
+        raw_edits = self.state.get('achievement_edits') or {}
+        normalized_edits: Dict[int, List[str]] = {}
+        for key, value in raw_edits.items():
+            try:
+                exp_idx = int(key)
+            except (TypeError, ValueError):
+                continue
+            normalized_edits[exp_idx] = list(value) if isinstance(value, list) else [str(value)]
+
+        edits = normalized_edits.get(experience_index)
+        if edits is None:
+            edits = self._get_experience_achievement_texts(experience_index)
+        else:
+            edits = list(edits)
+
+        while len(edits) <= achievement_index:
+            edits.append('')
+
+        edits[achievement_index] = accepted_text
+        normalized_edits[experience_index] = edits
+        self.state['achievement_edits'] = normalized_edits
+        return True
 
     def update_achievement_rewrite_outcome(
         self,
@@ -1375,6 +1440,15 @@ Ask questions that are specific to this job posting, not generic career question
                 entry['outcome'] = outcome
                 if accepted_text is not None:
                     entry['accepted_text'] = accepted_text
+                if outcome == 'accepted' and accepted_text is not None:
+                    exp_idx = entry.get('experience_index')
+                    ach_idx = entry.get('achievement_index')
+                    if isinstance(exp_idx, int) and isinstance(ach_idx, int):
+                        self._persist_accepted_achievement_rewrite(
+                            experience_index=exp_idx,
+                            achievement_index=ach_idx,
+                            accepted_text=accepted_text,
+                        )
                 self._save_session()
                 return True
         return False

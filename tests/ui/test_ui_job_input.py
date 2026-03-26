@@ -52,8 +52,8 @@ class TestPageLoad:
         """#generate-btn is visible in customization stage (page fixture)."""
         expect(page.locator("#generate-btn")).to_be_visible()
 
-    def test_reset_button_present(self, page: Page):
-        expect(page.locator("#reset-btn")).to_be_visible()
+    def test_reset_button_absent(self, page: Page):
+        expect(page.locator("#reset-btn")).to_have_count(0)
 
     def test_job_tab_active_on_load(self, job_stage_page: Page):
         """#tab-job is visible when the app is in the job/init stage."""

@@ -16,11 +16,21 @@ import {
   renderInstructionHistory,
   addToInstructionHistory,
   undoInstruction,
+  completeLayoutReview,
+  loadLayoutInstructionHistory,
 } from '../../web/layout-instruction.js'
+import { apiCall } from '../../web/api-client.js'
+import { stateManager } from '../../web/state-manager.js'
 
 vi.mock('../../web/api-client.js', () => ({ apiCall: vi.fn() }))
 vi.mock('../../web/state-manager.js', () => ({
-  stateManager: { getGenerationState: vi.fn(() => ({})), setPhase: vi.fn() },
+  stateManager: {
+    getGenerationState: vi.fn(() => ({})),
+    setGenerationState: vi.fn(),
+    setPhase: vi.fn(),
+    getTabData: vi.fn(() => ({})),
+    setTabData: vi.fn(),
+  },
 }))
 
 // ── DOM helpers ───────────────────────────────────────────────────────────
@@ -40,12 +50,79 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.stubGlobal('htmlEscape', s => s)
   vi.stubGlobal('appendMessage', vi.fn())
+  vi.stubGlobal('switchTab', vi.fn())
+  vi.stubGlobal('scheduleAtsRefresh', vi.fn())
+  apiCall.mockReset()
+  stateManager.getGenerationState.mockReset()
+  stateManager.getGenerationState.mockReturnValue({})
+  stateManager.setGenerationState.mockReset()
+  stateManager.setPhase.mockReset()
+  stateManager.getTabData.mockReset()
+  stateManager.getTabData.mockReturnValue({})
+  stateManager.setTabData.mockReset()
 })
 
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
   delete window.layoutInstructions
+})
+
+describe('staged layout regressions', () => {
+  it('reloads layout instruction history from the backend', async () => {
+    apiCall.mockResolvedValueOnce({
+      instructions: [
+        {
+          timestamp: '12:01',
+          instruction: 'Move Publications',
+          summary: 'Moved publications section',
+        },
+      ],
+    })
+
+    const instructions = await loadLayoutInstructionHistory()
+
+    expect(apiCall).toHaveBeenCalledWith('GET', '/api/layout-history')
+    expect(instructions).toEqual([
+      {
+        timestamp: '12:01',
+        instruction_text: 'Move Publications',
+        change_summary: 'Moved publications section',
+        confirmation: true,
+      },
+    ])
+  })
+
+  it('does not report success when staged final generation fails', async () => {
+    apiCall
+      .mockResolvedValueOnce({
+        instructions: [
+          {
+            timestamp: '12:01',
+            instruction_text: 'Move Publications',
+            change_summary: 'Moved publications section',
+            confirmation: true,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: false, error: 'Final generation failed' })
+
+    stateManager.getGenerationState.mockReturnValue({ phase: 'layout_review', previewAvailable: true })
+
+    await completeLayoutReview()
+
+    expect(apiCall).toHaveBeenNthCalledWith(1, 'GET', '/api/layout-history')
+    expect(apiCall).toHaveBeenNthCalledWith(2, 'POST', '/api/cv/confirm-layout', {})
+    expect(apiCall).toHaveBeenNthCalledWith(3, 'POST', '/api/cv/generate-final', {})
+    expect(apiCall).not.toHaveBeenCalledWith('POST', '/api/layout-complete', expect.anything())
+    expect(globalThis.appendMessage).toHaveBeenCalledWith(
+      'system',
+      expect.stringContaining('Final generation failed')
+    )
+    expect(stateManager.setPhase).not.toHaveBeenCalled()
+    expect(globalThis.switchTab).not.toHaveBeenCalled()
+  })
 })
 
 // ── showProcessing ────────────────────────────────────────────────────────

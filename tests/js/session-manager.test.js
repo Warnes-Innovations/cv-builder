@@ -510,6 +510,8 @@ describe('restoreBackendState', () => {
     window._allExperiences = []
     window._newSkillsFromLLM = []
     window.selectedSummaryKey = null
+    window.postAnalysisQuestions = []
+    window.questionAnswers = {}
     stateManager.setTabData('analysis', null)
     stateManager.setTabData('customizations', null)
     stateManager.setTabData('cv', null)
@@ -530,12 +532,14 @@ describe('restoreBackendState', () => {
           customizations: { approved_skills: [] },
           generated_files: { output_dir: '/tmp/out' },
           position_name: 'Engineer',
+          post_analysis_questions: [{ type: 'clarification_1', question: 'Need more detail?' }],
+          post_analysis_answers: { clarification_1: 'Yes.' },
           achievement_edits: {},
           experience_decisions: {},
           skill_decisions: {},
           achievement_decisions: {},
           publication_decisions: {},
-          summary_focus_override: null,
+          summary_focus_override: 'targeted',
           extra_skills: [],
           extra_skill_matches: {},
           all_experiences: [],
@@ -564,6 +568,9 @@ describe('restoreBackendState', () => {
     expect(globalThis.fetch).toHaveBeenNthCalledWith(1, '/api/status')
     expect(globalThis.fetch).toHaveBeenNthCalledWith(2, '/api/cv/generation-state')
     expect(globalThis.refreshAtsScore).toHaveBeenCalledWith('analysis')
+    expect(window.postAnalysisQuestions).toEqual([{ type: 'clarification_1', question: 'Need more detail?' }])
+    expect(window.questionAnswers).toEqual({ clarification_1: 'Yes.' })
+    expect(window.selectedSummaryKey).toBe('targeted')
     expect(stateManager.getGenerationState()).toMatchObject({
       phase: 'layout_review',
       previewAvailable: true,
@@ -635,6 +642,104 @@ describe('restoreBackendState', () => {
       finalGeneratedAt: null,
     })
     expect(stateManager.getAtsScore()).toBeNull()
+  })
+
+  it('clears stale achievement edits when backend status has none', async () => {
+    window.achievementEdits = { 0: ['Stale bullet'] }
+
+    globalThis.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_analysis: { job_title: 'Engineer' },
+          customizations: null,
+          generated_files: null,
+          position_name: 'Engineer',
+          achievement_edits: {},
+          experience_decisions: {},
+          skill_decisions: {},
+          achievement_decisions: {},
+          publication_decisions: {},
+          summary_focus_override: null,
+          extra_skills: [],
+          extra_skill_matches: {},
+          all_experiences: [],
+          selected_summary_key: null,
+          new_skills_from_llm: [],
+          post_analysis_questions: [],
+          post_analysis_answers: {},
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          phase: 'idle',
+          preview_available: false,
+          layout_confirmed: false,
+          page_count_estimate: null,
+          page_length_warning: false,
+          layout_instructions_count: 0,
+          final_generated_at: null,
+        }),
+      })
+
+    const restored = await restoreBackendState()
+
+    expect(restored).toBe(true)
+    expect(window.achievementEdits).toEqual({})
+  })
+
+  it('clears stale tab data and pending recommendations when backend status omits them', async () => {
+    stateManager.setTabData('analysis', { title: 'Stale analysis' })
+    stateManager.setTabData('customizations', { approved_skills: ['Stale skill'] })
+    stateManager.setTabData('cv', { files: ['stale.pdf'] })
+    window.pendingRecommendations = { approved_skills: ['Stale skill'] }
+
+    globalThis.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_analysis: null,
+          customizations: null,
+          generated_files: null,
+          position_name: 'Engineer',
+          achievement_edits: {},
+          experience_decisions: {},
+          skill_decisions: {},
+          achievement_decisions: {},
+          publication_decisions: {},
+          summary_focus_override: null,
+          extra_skills: [],
+          extra_skill_matches: {},
+          all_experiences: [],
+          selected_summary_key: null,
+          new_skills_from_llm: [],
+          post_analysis_questions: [],
+          post_analysis_answers: {},
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          phase: 'idle',
+          preview_available: false,
+          layout_confirmed: false,
+          page_count_estimate: null,
+          page_length_warning: false,
+          layout_instructions_count: 0,
+          final_generated_at: null,
+        }),
+      })
+
+    const restored = await restoreBackendState()
+
+    expect(restored).toBe(false)
+    expect(stateManager.getTabData('analysis')).toBeNull()
+    expect(stateManager.getTabData('customizations')).toBeNull()
+    expect(stateManager.getTabData('cv')).toBeNull()
+    expect(window.pendingRecommendations).toBeNull()
   })
 })
 
@@ -734,16 +839,19 @@ describe('restoreBackendState', () => {
                 job_analysis: { title: 'Staff Data Scientist' },
                 customizations: { approved_skills: ['Python'] },
                 generated_files: { files: ['cv.pdf'] },
+                post_analysis_questions: [{ type: 'clarification_1', question: 'Need more detail?' }],
+                post_analysis_answers: { clarification_1: 'Use the architect framing.' },
                 experience_decisions: { exp_1: 'keep' },
                 skill_decisions: { Python: 'keep' },
                 achievement_decisions: {},
                 publication_decisions: {},
+                summary_focus_override: 'targeted',
                 extra_skills: ['Leadership'],
                 extra_skill_matches: { Leadership: ['exp_1'] },
                 achievement_edits: { '0': ['Edited bullet'] },
                 all_experiences: [{ id: 'exp_1' }],
                 new_skills_from_llm: ['FastAPI'],
-                selected_summary_key: 'targeted',
+                selected_summary_key: null,
               }),
             })
 
@@ -760,6 +868,9 @@ describe('restoreBackendState', () => {
           expect(globalThis.window.pendingRecommendations).toEqual({ approved_skills: ['Python'] })
           expect(globalThis.window._activeReviewPane).toBe('skills')
           expect(globalThis.window.achievementEdits[0]).toEqual(['Edited bullet'])
+          expect(globalThis.window.postAnalysisQuestions).toEqual([{ type: 'clarification_1', question: 'Need more detail?' }])
+          expect(globalThis.window.questionAnswers).toEqual({ clarification_1: 'Use the architect framing.' })
+          expect(globalThis.window.selectedSummaryKey).toBe('targeted')
           expect(globalThis.window._savedDecisions.extra_skills).toEqual(['Leadership'])
           expect(refreshAtsScore).toHaveBeenCalledWith('analysis')
           expect(updateInclusionCounts).toHaveBeenCalled()
@@ -792,6 +903,7 @@ describe('restoreBackendState', () => {
           vi.stubGlobal('getSessionIdFromURL', vi.fn(() => 'sess-1'))
           vi.stubGlobal('appendMessage', vi.fn())
           vi.stubGlobal('fetchStatus', vi.fn(async () => {}))
+          vi.stubGlobal('parseStatusResponse', vi.fn(value => value))
           vi.stubGlobal('parseRewritesResponse', vi.fn(value => value))
           vi.stubGlobal('renderRewritePanel', vi.fn())
           vi.stubGlobal('switchTab', vi.fn())
@@ -807,6 +919,9 @@ describe('restoreBackendState', () => {
           })
           globalThis.fetch = vi.fn()
           globalThis.tabData = {}
+          stateManager.setTabData('analysis', null)
+          stateManager.setTabData('customizations', null)
+          stateManager.setTabData('cv', null)
           globalThis.window.pendingRecommendations = null
           globalThis.rewriteDecisions = { stale: true }
         })
@@ -850,6 +965,9 @@ describe('restoreBackendState', () => {
                 customizations: { approved_skills: ['Python'] },
                 job_analysis: { title: 'Restored Session' },
                 generated_files: { files: ['cv.pdf'] },
+                post_analysis_questions: [{ type: 'clarification_1', question: 'Need more detail?' }],
+                post_analysis_answers: { clarification_1: 'Use the architect framing.' },
+                summary_focus_override: 'targeted',
                 achievement_edits: { '0': ['Edited bullet'] },
               }),
             })
@@ -873,6 +991,9 @@ describe('restoreBackendState', () => {
           expect(stateManager.getTabData('cv')).toEqual({ files: ['cv.pdf'] })
           expect(globalThis.window.pendingRecommendations).toEqual({ approved_skills: ['Python'] })
           expect(globalThis.window.achievementEdits[0]).toEqual(['Edited bullet'])
+          expect(globalThis.window.postAnalysisQuestions).toEqual([{ type: 'clarification_1', question: 'Need more detail?' }])
+          expect(globalThis.window.questionAnswers).toEqual({ clarification_1: 'Use the architect framing.' })
+          expect(globalThis.window.selectedSummaryKey).toBe('targeted')
           expect(globalThis.rewriteDecisions).toEqual({})
           expect(renderRewritePanel).toHaveBeenCalledWith(
             [{ id: 'rw1' }],
@@ -883,5 +1004,57 @@ describe('restoreBackendState', () => {
             'system',
             '✅ Session restored: Restored Session (rewrite_review)',
           )
+        })
+
+        it('clears stale restored tab data when the loaded session status omits them', async () => {
+          stateManager.setTabData('analysis', { title: 'Stale analysis' })
+          stateManager.setTabData('customizations', { approved_skills: ['Stale skill'] })
+          stateManager.setTabData('cv', { files: ['stale.pdf'] })
+          globalThis.window.pendingRecommendations = { approved_skills: ['Stale skill'] }
+
+          fetch
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                ok: true,
+                session_id: 'sess-1',
+                redirect_url: '/?session=sess-1',
+                session_file: '/tmp/session.json',
+                position_name: 'Restored Session',
+                phase: 'rewrite_review',
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                history: [],
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                customizations: null,
+                job_analysis: null,
+                generated_files: null,
+                post_analysis_questions: [],
+                post_analysis_answers: {},
+                summary_focus_override: null,
+                achievement_edits: {},
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                rewrites: [],
+                persuasion_warnings: [],
+              }),
+            })
+
+          await expect(loadSessionFile('/tmp/session.json')).resolves.toBe(true)
+
+          expect(stateManager.getTabData('analysis')).toBeNull()
+          expect(stateManager.getTabData('customizations')).toBeNull()
+          expect(stateManager.getTabData('cv')).toBeNull()
+          expect(globalThis.window.pendingRecommendations).toBeNull()
         })
       })

@@ -28,11 +28,20 @@ function setPreviewHtml(html) {
   updateCvArtifacts({ ...getCvArtifacts(), '*.html': html });
 }
 
+function normalizeLayoutInstruction(instruction = {}) {
+  return {
+    timestamp: instruction.timestamp || '',
+    instruction_text: instruction.instruction_text || instruction.instruction || '',
+    change_summary: instruction.change_summary || instruction.summary || '',
+    confirmation: instruction.confirmation !== false,
+  };
+}
+
 /**
  * Initialize layout instruction UI and event handlers.
  * Called when layout tab is activated.
  */
-function initiateLayoutInstructions() {
+async function initiateLayoutInstructions() {
   const instructionTab = document.getElementById('document-content');
   if (!instructionTab) return;
 
@@ -124,7 +133,7 @@ function initiateLayoutInstructions() {
   }
 
   // Restore any prior instructions from session
-  restoreInstructionHistory();
+  await restoreInstructionHistory();
 }
 
 /**
@@ -381,7 +390,7 @@ function addToInstructionHistory(instruction) {
     window.layoutInstructions = [];
   }
 
-  window.layoutInstructions.push(instruction);
+  window.layoutInstructions.push(normalizeLayoutInstruction(instruction));
   renderInstructionHistory();
 }
 
@@ -415,7 +424,21 @@ function renderInstructionHistory() {
 /**
  * Restore instruction history from session state.
  */
-function restoreInstructionHistory() {
+async function loadLayoutInstructionHistory() {
+  try {
+    const response = await apiCall('GET', '/api/layout-history');
+    if (!response?.instructions || !Array.isArray(response.instructions)) {
+      return window.layoutInstructions || [];
+    }
+
+    return response.instructions.map((instruction) => normalizeLayoutInstruction(instruction));
+  } catch (_error) {
+    return window.layoutInstructions || [];
+  }
+}
+
+async function restoreInstructionHistory() {
+  window.layoutInstructions = await loadLayoutInstructionHistory();
   renderInstructionHistory();
 
   // Show proceed button if any instructions applied
@@ -502,25 +525,29 @@ async function completeLayoutReview() {
   try {
     showProcessing(true);
 
+    let layoutInstructions = window.layoutInstructions || [];
+    if (layoutInstructions.length === 0) {
+      layoutInstructions = await loadLayoutInstructionHistory();
+      window.layoutInstructions = layoutInstructions;
+      renderInstructionHistory();
+    }
+
     // Confirm layout and generate final outputs when staged flow is active (GAP-20).
     const genState = stateManager?.getGenerationState?.() || {};
     if (genState.previewAvailable || genState.phase === 'layout_review') {
-      try {
-        await apiCall('POST', '/api/cv/confirm-layout', {});
-      } catch (_e) {
-        // non-fatal: continue to final generation attempt
+      const confirmRes = await apiCall('POST', '/api/cv/confirm-layout', {});
+      if (!confirmRes?.ok) {
+        throw new Error(confirmRes?.error || 'Failed to confirm layout.');
       }
 
       // Produce final PDF/DOCX from the confirmed HTML.
-      try {
-        const finalRes = await apiCall('POST', '/api/cv/generate-final', {});
-        if (finalRes && finalRes.ok && finalRes.outputs) {
-          updateCvArtifacts(finalRes.outputs);
-          stateManager?.setGenerationState?.({ phase: 'final_complete' });
-        }
-      } catch (_e) {
-        // non-fatal: legacy outputs remain available for download
+      const finalRes = await apiCall('POST', '/api/cv/generate-final', {});
+      if (!finalRes?.ok || !finalRes.outputs) {
+        throw new Error(finalRes?.error || 'Failed to generate final CV output.');
       }
+
+      updateCvArtifacts(finalRes.outputs);
+      stateManager?.setGenerationState?.({ phase: 'final_complete' });
 
       // Refresh ATS badge after final generation (GAP-21).
       if (typeof scheduleAtsRefresh === 'function') {
@@ -529,7 +556,7 @@ async function completeLayoutReview() {
     }
 
     const response = await apiCall('POST', '/api/layout-complete', {
-      layout_instructions: window.layoutInstructions || []
+      layout_instructions: layoutInstructions
     });
 
     if (!response.ok) {
@@ -554,6 +581,7 @@ async function completeLayoutReview() {
 export {
   initiateLayoutInstructions,
   completeLayoutReview,
+  loadLayoutInstructionHistory,
   // helpers exported for unit tests
   showProcessing,
   showConfirmationMessage,

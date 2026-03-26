@@ -388,7 +388,8 @@ class TestRewriteAchievementPersistence(unittest.TestCase):
 
         resp = self._post({
             'achievement_text':     'Old text.',
-            'experience_index':     None,
+            'experience_index':     2,
+            'achievement_index':    1,
             'user_instructions':    'be concise',
             'previous_suggestions': ['Earlier attempt.'],
         })
@@ -397,6 +398,8 @@ class TestRewriteAchievementPersistence(unittest.TestCase):
         self.conversation.log_achievement_rewrite.assert_called_once()
         call_kwargs = self.conversation.log_achievement_rewrite.call_args[1]
         self.assertEqual(call_kwargs['original_text'], 'Old text.')
+        self.assertEqual(call_kwargs['experience_index'], 2)
+        self.assertEqual(call_kwargs['achievement_index'], 1)
         self.assertEqual(call_kwargs['user_instructions'], 'be concise')
         self.assertEqual(call_kwargs['previous_suggestions'], ['Earlier attempt.'])
 
