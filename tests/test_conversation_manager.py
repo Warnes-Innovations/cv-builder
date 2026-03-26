@@ -218,6 +218,67 @@ class TestSubmitRewriteDecisions(unittest.TestCase):
             self.cm.submit_rewrite_decisions([])
         mock_save.assert_called_once()
 
+
+class TestAchievementRewritePersistence(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm = _make_manager(self.tmp)
+        self.cm.orchestrator.master_data = {
+            'experience': [
+                {
+                    'company': 'Example Co',
+                    'achievements': [
+                        {'text': 'Original bullet one.'},
+                        {'text': 'Original bullet two.'},
+                    ],
+                },
+            ],
+        }
+
+    def test_accepted_rewrite_persists_into_achievement_edits(self):
+        log_id = self.cm.log_achievement_rewrite(
+            original_text='Original bullet two.',
+            experience_context='Engineer at Example Co',
+            user_instructions='',
+            previous_suggestions=[],
+            suggested_text='Rewritten bullet two.',
+            experience_index=0,
+            achievement_index=1,
+        )
+
+        updated = self.cm.update_achievement_rewrite_outcome(
+            log_id=log_id,
+            outcome='accepted',
+            accepted_text='Accepted bullet two.',
+        )
+
+        self.assertTrue(updated)
+        self.assertEqual(
+            self.cm.state['achievement_edits'],
+            {0: ['Original bullet one.', 'Accepted bullet two.']},
+        )
+
+    def test_rejected_rewrite_does_not_create_achievement_edits(self):
+        log_id = self.cm.log_achievement_rewrite(
+            original_text='Original bullet two.',
+            experience_context='Engineer at Example Co',
+            user_instructions='',
+            previous_suggestions=[],
+            suggested_text='Rewritten bullet two.',
+            experience_index=0,
+            achievement_index=1,
+        )
+
+        updated = self.cm.update_achievement_rewrite_outcome(
+            log_id=log_id,
+            outcome='rejected',
+            accepted_text=None,
+        )
+
+        self.assertTrue(updated)
+        self.assertNotIn('achievement_edits', self.cm.state)
+
     def test_empty_decisions_returns_zeros(self):
         summary = self.cm.submit_rewrite_decisions([])
         self.assertEqual(summary['approved_count'], 0)
@@ -266,6 +327,34 @@ class TestCompleteSpellCheck(unittest.TestCase):
     def test_none_audit_treated_as_empty(self):
         self.cm.complete_spell_check(None)
         self.assertEqual(self.cm.state['spell_audit'], [])
+
+
+class TestGenerateCVSummarySelection(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm = _make_manager(self.tmp)
+        self.cm.state['job_analysis'] = {'title': 'Staff Engineer'}
+        self.cm.state['customizations'] = {'recommended_experiences': []}
+        self.cm.state['session_summaries'] = {
+            'targeted': 'Targeted summary from session.',
+        }
+        self.cm.state['summary_focus_override'] = 'targeted'
+        self.cm.orchestrator.generate_cv.return_value = {
+            'output_dir': str(self.tmp),
+            'files': [],
+            'generation_progress': [],
+        }
+
+    def test_generate_cv_materializes_summary_without_table_decisions(self):
+        self.cm._execute_action({'action': 'generate_cv'})
+
+        _, customizations_arg = self.cm.orchestrator.generate_cv.call_args.args[:2]
+        self.assertEqual(customizations_arg['summary_focus'], 'targeted')
+        self.assertEqual(
+            customizations_arg['selected_summary'],
+            'Targeted summary from session.',
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +517,22 @@ class TestBackToPhase(unittest.TestCase):
         self.assertIsNotNone(self.cm.state.get('generated_files'))
         self.assertIsNotNone(self.cm.state.get('job_analysis'))
         self.assertEqual(self.cm.state.get('experience_decisions'), {'exp_001': 'emphasize'})
+
+    def test_back_to_phase_preserves_state_across_canonical_layout_nodes(self):
+        cases = [
+            ('layout_review', {'phase': 'layout_review', 'preview_html': '<html>preview</html>', 'layout_confirmed': False}),
+            ('confirmed', {'phase': 'confirmed', 'preview_html': '<html>confirmed</html>', 'layout_confirmed': True}),
+            ('final_complete', {'phase': 'final_complete', 'preview_html': '<html>final</html>', 'layout_confirmed': True, 'final_output_paths': {'html': '/tmp/CV_final.html', 'pdf': '/tmp/CV_final.pdf'}}),
+        ]
+
+        for generation_phase, generation_state in cases:
+            with self.subTest(generation_phase=generation_phase):
+                self.cm.state['phase'] = 'layout_review' if generation_phase != 'final_complete' else 'refinement'
+                self.cm.state['generation_state'] = generation_state.copy()
+
+                self.cm.back_to_phase('customizations')
+
+                self.assertEqual(self.cm.state['generation_state'], generation_state)
 
     def test_iterating_flag_set(self):
         self.cm.back_to_phase('rewrite')

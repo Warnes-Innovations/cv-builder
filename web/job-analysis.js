@@ -19,7 +19,7 @@
  *   - refreshAtsScore (ats-refinement.js)
  *   - switchTab (review-table-base.js, Tier 4)
  *   - fetchStatus (app.js orchestrator, Tier 8)
- *   - _showIntakeConfirmCard (message-dispatch.js, Tier 3)
+ *   - _showIntakeConfirmCard, _proceedAfterIntake (message-dispatch.js, Tier 3)
  */
 
 import { getLogger } from './logger.js';
@@ -95,18 +95,6 @@ function mergePostAnalysisQuestions(existingQuestions, incomingQuestions) {
 async function analyzeJob() {
   if (stateManager.isLoading()) return;
 
-  // Gate on intake confirmation before first analysis.
-  if (!stateManager.getTabData('analysis')) {
-    try {
-      const res  = await llmFetch('/api/intake-metadata');
-      const data = await res.json();
-      if (!data.confirmed) {
-        await _showIntakeConfirmCard();
-        return;
-      }
-    } catch (_e) { /* network error — proceed without gate */ }
-  }
-
   const loadingMsg = appendLoadingMessage('Analyzing job description...');
   setLoading(true, 'Analysing job description…');
 
@@ -139,7 +127,21 @@ async function analyzeJob() {
       refreshAtsScore('analysis');
       switchTab('analysis');
 
-      await askPostAnalysisQuestions(analysisData, structuredQuestions);
+      const continueAfterIntake = async () => {
+        await askPostAnalysisQuestions(analysisData, structuredQuestions);
+      };
+
+      try {
+        const intakeRes  = await llmFetch('/api/intake-metadata');
+        const intakeData = await intakeRes.json();
+        if (intakeData.confirmed) {
+          await _proceedAfterIntake(continueAfterIntake);
+        } else {
+          await _showIntakeConfirmCard(continueAfterIntake);
+        }
+      } catch (_e) {
+        await continueAfterIntake();
+      }
     }
   } catch (error) {
     log.error('=== ANALYZE JOB ERROR ===', error);

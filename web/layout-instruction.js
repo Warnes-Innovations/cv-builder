@@ -14,7 +14,9 @@ import { getLogger } from './logger.js';
 const log = getLogger('layout-instruction');
 
 import { apiCall } from './api-client.js';
-import { stateManager } from './state-manager.js';
+import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
+
+let dismissedStaleCalloutRevision = null;
 
 function getCvArtifacts() {
   return stateManager.getTabData('cv') || {};
@@ -28,11 +30,120 @@ function setPreviewHtml(html) {
   updateCvArtifacts({ ...getCvArtifacts(), '*.html': html });
 }
 
+function getPreviewOutputs() {
+  return stateManager?.getGenerationState?.()?.previewOutputs || null;
+}
+
+function getPreviewOutputUrl(renderer) {
+  const sessionId = stateManager?.getSessionId?.();
+  const suffix = sessionId
+    ? `?session_id=${encodeURIComponent(sessionId)}`
+    : '';
+  return `/api/cv/preview-output/${encodeURIComponent(renderer)}${suffix}`;
+}
+
+function renderPreviewOutputStatus(previewOutputs = null) {
+  const container = document.getElementById('preview-output-status');
+  if (!container) return;
+
+  const pdfs = previewOutputs?.pdfs || {};
+  const rendererOrder = ['chrome', 'weasyprint'];
+  const availableRenderers = rendererOrder.filter((rendererKey) => rendererKey in pdfs);
+
+  if (availableRenderers.length === 0) {
+    container.innerHTML = `
+      <div class="preview-output-empty">
+        Preview PDFs will appear here after the current layout is rendered.
+      </div>
+    `;
+    return;
+  }
+
+  const rendererLabels = {
+    chrome: 'Chrome',
+    weasyprint: 'WeasyPrint',
+  };
+
+  container.innerHTML = availableRenderers.map((rendererKey) => {
+    const renderer = pdfs[rendererKey] || {};
+    const ok = Boolean(renderer.ok);
+    const detail = renderer.renderer_detail || renderer.error || 'No detail available';
+    const rendererLabel = rendererLabels[rendererKey] || rendererKey;
+    const badgeMarkup = ok
+      ? `<a class="preview-output-badge preview-output-badge-link is-ready" href="${getPreviewOutputUrl(rendererKey)}" target="_blank" rel="noopener">${rendererLabel} Ready</a>`
+      : `<span class="preview-output-badge is-failed">${rendererLabel} Failed</span>`;
+
+    return `
+      <div class="preview-output-row ${ok ? 'is-ready' : 'is-failed'}">
+        <div class="preview-output-copy">
+          <div class="preview-output-title-row">
+            ${badgeMarkup}
+          </div>
+          <div class="preview-output-detail">${htmlEscape(detail)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function normalizeLayoutInstruction(instruction = {}) {
+  return {
+    timestamp: instruction.timestamp || '',
+    instruction_text: instruction.instruction_text || instruction.instruction || '',
+    change_summary: instruction.change_summary || instruction.summary || '',
+    confirmation: instruction.confirmation !== false,
+  };
+}
+
+function getCurrentContentRevision() {
+  return stateManager.getGenerationState().contentRevision ?? 0;
+}
+
+function renderLayoutStaleCallout() {
+  const callout = document.getElementById('layout-stale-callout');
+  if (!callout) return;
+
+  const freshness = stateManager.getLayoutFreshness();
+  const contentRevision = getCurrentContentRevision();
+  const isDismissed = dismissedStaleCalloutRevision === contentRevision;
+
+  if (!freshness.isStale || isDismissed) {
+    if (!freshness.isStale) dismissedStaleCalloutRevision = null;
+    callout.style.display = 'none';
+    return;
+  }
+
+  callout.style.display = 'block';
+}
+
+function refreshLayoutReviewState() {
+  const freshness = stateManager.getLayoutFreshness();
+  const generationState = stateManager.getGenerationState();
+  const confirmBtn = document.getElementById('confirm-layout-btn');
+  const finalBtn = document.getElementById('proceed-to-finalise-btn');
+
+  renderLayoutStaleCallout();
+
+  if (confirmBtn) {
+    confirmBtn.style.display = generationState.previewAvailable && !freshness.isStale && !generationState.layoutConfirmed
+      ? 'block'
+      : 'none';
+  }
+
+  if (finalBtn) {
+    finalBtn.style.display = generationState.previewAvailable
+      && !freshness.isStale
+      && (generationState.layoutConfirmed || generationState.phase === 'confirmed')
+      ? 'block'
+      : 'none';
+  }
+}
+
 /**
  * Initialize layout instruction UI and event handlers.
  * Called when layout tab is activated.
  */
-function initiateLayoutInstructions() {
+async function initiateLayoutInstructions() {
   const instructionTab = document.getElementById('document-content');
   if (!instructionTab) return;
 
@@ -48,8 +159,25 @@ function initiateLayoutInstructions() {
         </div>
 
         <div class="layout-input-pane">
-          <h3>Layout Instructions</h3>
+          <h3>Layout Review</h3>
           <p class="layout-scope-label">💡 Layout changes only — approved text is never modified</p>
+
+          <div id="layout-stale-callout" class="layout-stale-callout" style="display:none;">
+            <h4>Layout preview is out of date</h4>
+            <p>You changed CV content after the current preview was generated. Regenerate the preview before trusting page count, layout feedback, or final files.</p>
+            <div class="layout-stale-callout-actions">
+              <button id="regenerate-layout-preview-btn" class="btn btn-warning layout-action-btn">Regenerate preview</button>
+              <button id="dismiss-layout-stale-btn" class="btn btn-secondary layout-action-btn">Keep reviewing current preview</button>
+            </div>
+          </div>
+
+          <div class="preview-output-card">
+            <div class="preview-output-card-header">
+              <h4>Preview PDFs</h4>
+              <span class="preview-output-card-note">Chrome and WeasyPrint render in parallel</span>
+            </div>
+            <div id="preview-output-status" class="preview-output-status"></div>
+          </div>
 
           <div class="layout-settings-row" style="display:flex; align-items:center; gap:10px; margin-bottom:14px; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;">
             <label for="base-font-size-input" style="font-size:0.85em; font-weight:600; color:#475569; white-space:nowrap;">Base font size (px):</label>
@@ -72,11 +200,11 @@ function initiateLayoutInstructions() {
             rows="8"></textarea>
 
           <button id="apply-instruction-btn" class="btn btn-primary layout-action-btn">
-            Apply Instruction
+            Apply Layout Changes
           </button>
 
-          <button id="finalize-layout-btn" class="btn btn-success layout-action-btn" onclick="completeLayoutReview()">
-            Finalize Layout
+          <button id="confirm-layout-btn" class="btn btn-success layout-action-btn" style="display:none;">
+            Confirm Layout
           </button>
 
           <div id="processing-indicator" class="processing-indicator" style="display: none;">
@@ -95,7 +223,7 @@ function initiateLayoutInstructions() {
           </div>
 
           <button id="proceed-to-finalise-btn" class="btn btn-success layout-action-btn" style="display: none;">
-            Proceed to Final Generation
+            Generate Final Files
           </button>
         </div>
       </div>
@@ -112,6 +240,8 @@ function initiateLayoutInstructions() {
     if (input) input.value = parseFloat(savedFontSize) || 10;
   }
 
+  renderPreviewOutputStatus(getPreviewOutputs());
+
   // Load and display current HTML preview via the staged generation contract.
   // /api/cv/generate-preview generates fresh HTML and stores it in session state.
   // Fall back to the legacy /api/layout-html endpoint if the session has no
@@ -124,7 +254,8 @@ function initiateLayoutInstructions() {
   }
 
   // Restore any prior instructions from session
-  restoreInstructionHistory();
+  await restoreInstructionHistory();
+  refreshLayoutReviewState();
 }
 
 /**
@@ -132,7 +263,10 @@ function initiateLayoutInstructions() {
  */
 function setupLayoutInstructionListeners() {
   const applyBtn          = document.getElementById('apply-instruction-btn');
+  const confirmBtn        = document.getElementById('confirm-layout-btn');
   const proceedBtn        = document.getElementById('proceed-to-finalise-btn');
+  const regenerateBtn     = document.getElementById('regenerate-layout-preview-btn');
+  const dismissCalloutBtn = document.getElementById('dismiss-layout-stale-btn');
   const instructionInput  = document.getElementById('instruction-input');
   const historyToggle     = document.querySelector('.history-toggle');
   const applyFontSizeBtn  = document.getElementById('apply-font-size-btn');
@@ -156,8 +290,23 @@ function setupLayoutInstructionListeners() {
     });
   }
 
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', confirmLayoutReview);
+  }
+
   if (proceedBtn) {
-    proceedBtn.addEventListener('click', completeLayoutReview);
+    proceedBtn.addEventListener('click', generateFinalOutputs);
+  }
+
+  if (regenerateBtn) {
+    regenerateBtn.addEventListener('click', handleRegeneratePreviewAction);
+  }
+
+  if (dismissCalloutBtn) {
+    dismissCalloutBtn.addEventListener('click', () => {
+      dismissedStaleCalloutRevision = getCurrentContentRevision();
+      renderLayoutStaleCallout();
+    });
   }
 
   if (historyToggle) {
@@ -201,7 +350,18 @@ async function applyBaseFontSize(value) {
     if (previewRes.ok && previewRes.html) {
       displayLayoutPreview(previewRes.html);
       setPreviewHtml(previewRes.html);
-      stateManager?.setGenerationState?.({ phase: 'layout_review', previewAvailable: true });
+      dismissedStaleCalloutRevision = null;
+      stateManager?.markPreviewGenerated?.({
+        previewAvailable: true,
+        previewOutputs: previewRes.preview_outputs || null,
+        pageCountEstimate: previewRes.page_count_estimate ?? null,
+        pageCountExact: previewRes.page_count_exact ?? null,
+        pageCountConfidence: previewRes.page_count_confidence ?? null,
+        pageCountSource: previewRes.page_count_source || null,
+        pageWarning: Boolean(previewRes.page_length_warning),
+      });
+      renderPreviewOutputStatus(previewRes.preview_outputs || null);
+      refreshLayoutReviewState();
     }
     if (statusEl) { statusEl.textContent = '✅ Applied'; setTimeout(() => { statusEl.textContent = ''; }, 2000); }
   } catch (err) {
@@ -218,6 +378,18 @@ async function applyBaseFontSize(value) {
  * request body) when no session preview exists.
  */
 async function submitLayoutInstruction(instructionText) {
+  /* duckflow: {
+   *   "id": "layout_ui_refine_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:layout.submit-instruction"],
+   *   "calls": ["POST /api/cv/layout-refine", "POST /api/layout-instruction"],
+   *   "reads": ["dom:#instruction-input.value", "state:generation_state.previewAvailable", "state:generation_state.phase", "window:layoutInstructions"],
+   *   "writes": ["request:POST /api/cv/layout-refine.instruction", "dom:#layout-preview", "window:layoutInstructions", "state:generation_state.preview_outputs"],
+   *   "notes": "Submits a natural-language layout instruction against the staged preview when available, then refreshes the preview and local instruction history from the returned HTML."
+  * }
+  */
   const currentHtml = getCvArtifacts()['*.html'] || '';
   const priorInstructions = window.layoutInstructions || [];
 
@@ -260,6 +432,18 @@ async function submitLayoutInstruction(instructionText) {
 
     // Update state
     setPreviewHtml(newHtml);
+    dismissedStaleCalloutRevision = null;
+    stateManager?.markPreviewGenerated?.({
+      previewAvailable: true,
+      previewOutputs: response.preview_outputs || null,
+      layoutConfirmed: false,
+      pageCountEstimate: response.page_count_estimate ?? null,
+      pageCountExact: response.page_count_exact ?? null,
+      pageCountConfidence: response.page_count_confidence ?? null,
+      pageCountSource: response.page_count_source || null,
+      pageWarning: Boolean(response.page_length_warning),
+    });
+    renderPreviewOutputStatus(response.preview_outputs || null);
 
     // Add to instruction history
     const instruction = {
@@ -273,9 +457,9 @@ async function submitLayoutInstruction(instructionText) {
     // Show confirmation
     showConfirmationMessage(`✅ ${response.summary}`);
 
-    // Clear input and show proceed button
+    // Clear input and refresh the staged controls.
     document.getElementById('instruction-input').value = '';
-    document.getElementById('proceed-to-finalise-btn').style.display = 'block';
+    refreshLayoutReviewState();
 
   } catch (error) {
     appendMessage('system', `❌ Failed to apply layout instruction: ${error.message}`);
@@ -300,7 +484,18 @@ async function _fetchAndDisplayLayoutPreview() {
       displayLayoutPreview(data.html);
       setPreviewHtml(data.html);
       // Mark client state so completeLayoutReview() enters the staged generation path.
-      stateManager?.setGenerationState?.({ phase: 'layout_review', previewAvailable: true });
+      dismissedStaleCalloutRevision = null;
+      stateManager?.markPreviewGenerated?.({
+        previewAvailable: true,
+        previewOutputs: data.preview_outputs || null,
+        pageCountEstimate: data.page_count_estimate ?? null,
+        pageCountExact: data.page_count_exact ?? null,
+        pageCountConfidence: data.page_count_confidence ?? null,
+        pageCountSource: data.page_count_source || null,
+        pageWarning: Boolean(data.page_length_warning),
+      });
+      renderPreviewOutputStatus(data.preview_outputs || null);
+      refreshLayoutReviewState();
       return;
     }
   } catch (_e) {
@@ -313,6 +508,7 @@ async function _fetchAndDisplayLayoutPreview() {
     if (data.ok && data.html) {
       displayLayoutPreview(data.html);
       setPreviewHtml(data.html);
+      refreshLayoutReviewState();
     } else {
       log.warn('Layout preview not available:', data.error || 'no HTML returned');
     }
@@ -381,7 +577,7 @@ function addToInstructionHistory(instruction) {
     window.layoutInstructions = [];
   }
 
-  window.layoutInstructions.push(instruction);
+  window.layoutInstructions.push(normalizeLayoutInstruction(instruction));
   renderInstructionHistory();
 }
 
@@ -415,13 +611,34 @@ function renderInstructionHistory() {
 /**
  * Restore instruction history from session state.
  */
-function restoreInstructionHistory() {
-  renderInstructionHistory();
+async function loadLayoutInstructionHistory() {
+  try {
+    const response = await apiCall('GET', '/api/layout-history');
+    if (!response?.instructions || !Array.isArray(response.instructions)) {
+      return window.layoutInstructions || [];
+    }
 
-  // Show proceed button if any instructions applied
-  const instructions = window.layoutInstructions || [];
-  if (instructions.length > 0) {
-    document.getElementById('proceed-to-finalise-btn').style.display = 'block';
+    return response.instructions.map((instruction) => normalizeLayoutInstruction(instruction));
+  } catch (_error) {
+    return window.layoutInstructions || [];
+  }
+}
+
+async function restoreInstructionHistory() {
+  window.layoutInstructions = await loadLayoutInstructionHistory();
+  renderInstructionHistory();
+  refreshLayoutReviewState();
+}
+
+async function handleRegeneratePreviewAction() {
+  try {
+    showProcessing(true);
+    await _fetchAndDisplayLayoutPreview();
+    showConfirmationMessage('✅ Preview regenerated from the latest content.');
+  } catch (error) {
+    appendMessage('system', `❌ Failed to regenerate preview: ${error.message}`);
+  } finally {
+    showProcessing(false);
   }
 }
 
@@ -493,67 +710,126 @@ window.addEventListener('resize', () => {
   }
 });
 
-/**
- * Complete layout review: confirm layout via staged generation contract,
- * trigger final PDF/DOCX generation from the confirmed HTML, then advance
- * the conversation phase via the legacy /api/layout-complete endpoint.
- */
-async function completeLayoutReview() {
+async function confirmLayoutReview() {
   try {
     showProcessing(true);
 
-    // Confirm layout and generate final outputs when staged flow is active (GAP-20).
-    const genState = stateManager?.getGenerationState?.() || {};
-    if (genState.previewAvailable || genState.phase === 'layout_review') {
-      try {
-        await apiCall('POST', '/api/cv/confirm-layout', {});
-      } catch (_e) {
-        // non-fatal: continue to final generation attempt
-      }
-
-      // Produce final PDF/DOCX from the confirmed HTML.
-      try {
-        const finalRes = await apiCall('POST', '/api/cv/generate-final', {});
-        if (finalRes && finalRes.ok && finalRes.outputs) {
-          updateCvArtifacts(finalRes.outputs);
-          stateManager?.setGenerationState?.({ phase: 'final_complete' });
-        }
-      } catch (_e) {
-        // non-fatal: legacy outputs remain available for download
-      }
-
-      // Refresh ATS badge after final generation (GAP-21).
-      if (typeof scheduleAtsRefresh === 'function') {
-        scheduleAtsRefresh('post_generation');
-      }
+    const freshness = stateManager.getLayoutFreshness();
+    if (freshness.isStale) {
+      throw new Error('Preview is outdated. Regenerate the preview before confirming layout.');
     }
 
-    const response = await apiCall('POST', '/api/layout-complete', {
-      layout_instructions: window.layoutInstructions || []
-    });
-
-    if (!response.ok) {
-      appendMessage('system', `❌ Error: ${response.error}`);
-      return;
+    const confirmRes = await apiCall('POST', '/api/cv/confirm-layout', {});
+    if (!confirmRes?.ok) {
+      throw new Error(confirmRes?.error || 'Failed to confirm layout.');
     }
 
-    appendMessage('assistant', '✅ Layout confirmed and final output generated.');
-
-    // Update phase and switch to download/generation tab
-    stateManager.setPhase('refinement');
-    switchTab('download');
-
+    stateManager.markLayoutConfirmed();
+    showConfirmationMessage('✅ Layout confirmed. Generate final files when you are ready.');
+    appendMessage('assistant', '✅ Layout confirmed. Review the preview if needed, then generate the final files.');
+    refreshLayoutReviewState();
   } catch (error) {
-    appendMessage('system', `❌ Failed to complete layout review: ${error.message}`);
+    appendMessage('system', `❌ Failed to confirm layout: ${error.message}`);
   } finally {
     showProcessing(false);
   }
+}
+
+async function advanceLayoutToRefinement() {
+  let layoutInstructions = window.layoutInstructions || [];
+  if (layoutInstructions.length === 0) {
+    layoutInstructions = await loadLayoutInstructionHistory();
+    window.layoutInstructions = layoutInstructions;
+    renderInstructionHistory();
+  }
+
+  const response = await apiCall('POST', '/api/layout-complete', {
+    layout_instructions: layoutInstructions,
+  });
+  if (!response.ok) {
+    throw new Error(response.error || 'Failed to advance to final review.');
+  }
+
+  stateManager.setPhase('refinement');
+  switchTab('download');
+}
+
+async function generateFinalOutputs() {
+  /* duckflow: {
+   *   "id": "layout_ui_generate_final_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:layout.generate-final"],
+   *   "calls": ["POST /api/cv/generate-final", "POST /api/layout-complete"],
+   *   "reads": ["state:generation_state.layoutConfirmed", "state:generation_state.phase", "state:layout_freshness"],
+   *   "writes": ["tab:cvArtifacts", "state:generation_state.final_generated_at", "ui:workflow.refinement"],
+   *   "notes": "Generates the final human-readable outputs from the confirmed preview and advances the UI into file review/finalise with the new artifact set."
+  * }
+  */
+  try {
+    showProcessing(true);
+
+    const freshness = stateManager.getLayoutFreshness();
+    const generationState = stateManager.getGenerationState();
+    if (freshness.isStale) {
+      throw new Error('Preview is outdated. Regenerate the preview before generating final files.');
+    }
+    if (!generationState.layoutConfirmed && generationState.phase !== 'confirmed') {
+      throw new Error('Confirm layout before generating final files.');
+    }
+
+    const finalRes = await apiCall('POST', '/api/cv/generate-final', {});
+    if (!finalRes?.ok || !finalRes.outputs) {
+      throw new Error(finalRes?.error || 'Failed to generate final CV output.');
+    }
+
+    updateCvArtifacts(finalRes.outputs);
+    stateManager.markFinalGenerated(finalRes.generated_at || null, {
+      pageCountEstimate: finalRes.page_count_estimate ?? null,
+      pageCountExact: finalRes.page_count_exact ?? null,
+    });
+
+    if (typeof scheduleAtsRefresh === 'function') {
+      scheduleAtsRefresh('post_generation');
+    }
+
+    await advanceLayoutToRefinement();
+    appendMessage('assistant', '✅ Final files generated from the confirmed layout.');
+  } catch (error) {
+    appendMessage('system', `❌ Failed to generate final files: ${error.message}`);
+  } finally {
+    showProcessing(false);
+  }
+}
+
+async function handleLayoutPrimaryAction() {
+  const freshness = stateManager.getLayoutFreshness();
+  const generationState = stateManager.getGenerationState();
+  if (freshness.isStale) return handleRegeneratePreviewAction();
+  if (generationState.layoutConfirmed || generationState.phase === 'confirmed') {
+    return generateFinalOutputs();
+  }
+  return confirmLayoutReview();
+}
+
+async function completeLayoutReview() {
+  return handleLayoutPrimaryAction();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(GENERATION_STATE_EVENT, refreshLayoutReviewState);
 }
 
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
   initiateLayoutInstructions,
   completeLayoutReview,
+  confirmLayoutReview,
+  generateFinalOutputs,
+  handleLayoutPrimaryAction,
+  loadLayoutInstructionHistory,
+  renderPreviewOutputStatus,
   // helpers exported for unit tests
   showProcessing,
   showConfirmationMessage,

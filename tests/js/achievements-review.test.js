@@ -16,6 +16,8 @@ import {
   handleAchievementAction,
   bulkAchievementAction,
   submitAchievementDecisions,
+  saveTopLevelAchievementField,
+  deleteTopLevelAchievement,
   moveAchievementRow,
   updateAchievementText,
   moveAchievement,
@@ -192,6 +194,50 @@ describe('submitAchievementDecisions', () => {
     })
     await submitAchievementDecisions()
     expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('Server error'), 'error')
+  })
+})
+
+// ── top-level achievement session overrides ──────────────────────────────
+
+describe('top-level achievement session overrides', () => {
+  beforeEach(() => {
+    window._achievementsOrdered = [{ id: 'ach-1', title: 'Old title', description: 'Old desc' }]
+    document.body.innerHTML = `
+      <input id="ach-title-ach-1" value="Old title" />
+      <textarea id="ach-desc-ach-1">Old desc</textarea>
+    `
+  })
+
+  it('posts field edits to /api/review-achievement', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveTopLevelAchievementField('ach-1', 'title', 'New title')
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-achievement', expect.objectContaining({ method: 'POST' }))
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({ id: 'ach-1', field: 'title', value: 'New title' })
+    expect(window._achievementsOrdered[0].title).toBe('New title')
+  })
+
+  it('rolls back optimistic field edits on failure', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: 'Save failed' }),
+    })
+    await saveTopLevelAchievementField('ach-1', 'title', 'New title')
+    expect(window._achievementsOrdered[0].title).toBe('Old title')
+    expect(document.getElementById('ach-title-ach-1').value).toBe('Old title')
+    expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('Failed to save achievement'), 'error')
+  })
+
+  it('posts deletes to /api/review-achievement and removes the item locally', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, action: 'deleted', id: 'ach-1' }),
+    })
+    await deleteTopLevelAchievement('ach-1')
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-achievement', expect.objectContaining({ method: 'POST' }))
+    expect(window._achievementsOrdered).toEqual([])
+    expect(globalThis.showToast).toHaveBeenCalledWith('Achievement deleted.')
   })
 })
 

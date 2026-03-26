@@ -12,19 +12,21 @@ Covers:
   - POST /api/finalise: missing generated_files returns 400
   - POST /api/finalise: invalid status value returns 400
   - GET /api/harvest/candidates: improved_bullet candidate from approved_rewrites
-  - GET /api/harvest/candidates: new_skill candidate from customizations
+    - GET /api/harvest/candidates: new_skill candidate from legacy and rich extra-skill sources
   - GET /api/harvest/candidates: summary_variant candidate from approved_rewrites
   - GET /api/harvest/candidates: skill_gap_confirmed candidate from post_analysis_answers
   - GET /api/harvest/candidates: empty session returns empty list
   - POST /api/harvest/apply: no selected_ids returns 0 written
-  - POST /api/harvest/apply: applies bullet + skill candidates
+    - POST /api/harvest/apply: applies bullet + skill + summary candidates, including rich skills
   - _harvest_apply_bullet: string bullet found and replaced
   - _harvest_apply_bullet: dict bullet found and replaced
   - _harvest_apply_bullet: bullet not found returns False
   - _harvest_add_skill: list — adds new skill
   - _harvest_add_skill: list — duplicate not re-added
+    - _harvest_add_skill: list — upgrades existing string entry to rich object
   - _harvest_add_skill: dict with 'Other' key — adds to it
   - _harvest_add_skill: dict with no 'other' key — creates 'Other'
+    - _harvest_add_skill: dict — adds rich skill to requested category and preserves metadata
   - _harvest_add_skill: missing skills field — creates list
   - _harvest_add_summary_variant: creates new list
   - _harvest_add_summary_variant: appends to existing list
@@ -322,6 +324,52 @@ class TestHarvestCandidates(unittest.TestCase):
         skill_cand = next(c for c in data['candidates'] if c['type'] == 'new_skill')
         self.assertEqual(skill_cand['proposed'], 'Kubernetes')
 
+    def test_rich_extra_skills_and_legacy_paths_merge_into_candidates(self):
+        """Harvest candidates merge rich extra skills, legacy skill additions, and confirmed gaps."""
+        app, _, _, sid, stack = _make_app(state_overrides={
+            'extra_skills': [
+                {
+                    'name': 'Architecture',
+                    'category': 'Leadership',
+                    'group': 'strategy',
+                    'proficiency': 'expert',
+                    'subskills': ['Roadmaps', 'Stakeholder alignment', 'Roadmaps'],
+                    'parenthetical': 'Platform strategy',
+                    'user_created': True,
+                },
+            ],
+            'customizations': {
+                'new_skills_added': ['Architecture', 'FastAPI'],
+            },
+            'post_analysis_answers': {
+                'skill_gap_Architecture': 'yes',
+                'skill_gap_Terraform': 'yes',
+            },
+        })
+        with stack, app.test_client() as client:
+            data = client.get('/api/harvest/candidates', query_string={'session_id': sid}).get_json()
+
+        candidates = {candidate['id']: candidate for candidate in data['candidates']}
+        self.assertIn('skill_Architecture', candidates)
+        self.assertIn('skill_FastAPI', candidates)
+        self.assertIn('skill_gap_Terraform', candidates)
+        self.assertNotIn('skill_gap_Architecture', candidates)
+
+        architecture = candidates['skill_Architecture']
+        self.assertEqual(architecture['type'], 'new_skill')
+        self.assertEqual(architecture['proposed'], 'Leadership: Architecture (Platform strategy)')
+        self.assertEqual(architecture['proposed_skill'], {
+            'name': 'Architecture',
+            'category': 'Leadership',
+            'group': 'strategy',
+            'proficiency': 'expert',
+            'subskills': ['Roadmaps', 'Stakeholder alignment'],
+            'parenthetical': 'Platform strategy',
+        })
+        self.assertEqual(candidates['skill_FastAPI']['proposed'], 'FastAPI')
+        self.assertEqual(candidates['skill_gap_Terraform']['type'], 'skill_gap_confirmed')
+        self.assertEqual(candidates['skill_gap_Terraform']['proposed'], 'Terraform')
+
     def test_summary_variant_candidate(self):
         """Approved rewrite with section='summary' produces a summary_variant candidate only."""
         rewrite = {
@@ -364,6 +412,17 @@ class TestHarvestCandidates(unittest.TestCase):
 
 class TestHarvestApply(unittest.TestCase):
 
+    def test_harvest_apply_rejected_outside_refinement_phase(self):
+        """Harvest write-back stays post-job only even though direct master edits allow init."""
+        app, _, _, sid, stack = _make_app(state_overrides={'phase': 'init'})
+        with stack, app.test_client() as client:
+            res = client.post('/api/harvest/apply', json={'selected_ids': [], 'session_id': sid})
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 409)
+        self.assertIn('Harvest write-back is only available', data['error'])
+        self.assertEqual(data['phase'], 'init')
+
     def test_no_selected_ids_returns_zero_written(self):
         """Empty selected_ids returns ok with written_count=0."""
         app, _, _, sid, stack = _make_app()
@@ -391,6 +450,92 @@ class TestHarvestApply(unittest.TestCase):
 
         self.assertTrue(data['ok'])
         self.assertGreaterEqual(data['written_count'], 1)
+
+    def test_apply_all_relevant_candidate_types_with_rich_skill_payloads(self):
+        """Harvest apply writes bullets, summaries, legacy skills, rich skills, and confirmed gaps."""
+        app, _, orch, sid, stack = _make_app(state_overrides={
+            'approved_rewrites': [
+                {
+                    'id': 'rw-exp',
+                    'section': 'experience',
+                    'original': 'Wrote scripts.',
+                    'proposed': 'Built automation that reduced turnaround time by 40%.',
+                    'context': 'exp_001',
+                },
+                {
+                    'id': 'rw-summary',
+                    'section': 'summary',
+                    'original': 'Experienced engineer.',
+                    'proposed': 'Staff engineer leading platform strategy and delivery.',
+                },
+            ],
+            'extra_skills': [
+                {
+                    'name': 'Architecture',
+                    'category': 'Leadership',
+                    'group': 'strategy',
+                    'proficiency': 'expert',
+                    'subskills': ['Roadmaps', 'Stakeholder alignment'],
+                    'parenthetical': 'Platform strategy',
+                    'user_created': True,
+                },
+            ],
+            'customizations': {'new_skills_added': ['FastAPI']},
+            'post_analysis_answers': {'skill_gap_Terraform': 'yes'},
+        })
+        orch.master_data = {
+            'experience': [{'achievements': ['Wrote scripts.']}],
+            'skills': {'Backend': ['Python']},
+            'professional_summaries': ['Existing summary.'],
+        }
+
+        master_json = json.dumps(orch.master_data)
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run', return_value=MagicMock(returncode=0, stdout='abc')):
+            res = client.post(
+                '/api/harvest/apply',
+                json={
+                    'selected_ids': [
+                        'rewrite_rw-exp',
+                        'skill_Architecture',
+                        'skill_FastAPI',
+                        'skill_gap_Terraform',
+                        'summary_variant',
+                    ],
+                    'session_id': sid,
+                },
+            )
+            data = res.get_json()
+
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['written_count'], 5)
+
+        written_master = mock_dump.call_args[0][0]
+        self.assertEqual(
+            written_master['experience'][0]['achievements'][0],
+            'Built automation that reduced turnaround time by 40%.',
+        )
+        self.assertIn('Staff engineer leading platform strategy and delivery.', written_master['professional_summaries'])
+        self.assertEqual(written_master['skills']['Leadership'], [
+            {
+                'name': 'Architecture',
+                'category': 'Leadership',
+                'group': 'strategy',
+                'proficiency': 'expert',
+                'subskills': ['Roadmaps', 'Stakeholder alignment'],
+                'parenthetical': 'Platform strategy',
+            },
+        ])
+        self.assertEqual(written_master['skills']['Other'], ['FastAPI', 'Terraform'])
+
+        diff_by_id = {item['id']: item for item in data['diff_summary']}
+        self.assertTrue(diff_by_id['rewrite_rw-exp']['applied'])
+        self.assertTrue(diff_by_id['skill_Architecture']['applied'])
+        self.assertTrue(diff_by_id['skill_FastAPI']['applied'])
+        self.assertTrue(diff_by_id['skill_gap_Terraform']['applied'])
+        self.assertTrue(diff_by_id['summary_variant']['applied'])
 
     def test_apply_unknown_id_silently_skipped(self):
         """An unknown id in selected_ids is silently skipped."""
@@ -467,6 +612,22 @@ class TestHarvestAddSkill(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(master['skills'].count('Python'), 1)
 
+    def test_list_upgrades_matching_string_to_rich_object(self):
+        master = {'skills': ['Python', 'SQL']}
+        result = _harvest_add_skill(master, {
+            'name': 'Python',
+            'category': 'Languages',
+            'proficiency': 'expert',
+            'subskills': ['Pandas', 'FastAPI'],
+        })
+        self.assertTrue(result)
+        self.assertEqual(master['skills'][0], {
+            'name': 'Python',
+            'category': 'Languages',
+            'proficiency': 'expert',
+            'subskills': ['Pandas', 'FastAPI'],
+        })
+
     def test_dict_with_other_category(self):
         master = {'skills': {'Backend': ['Python'], 'Other': ['Redis']}}
         result = _harvest_add_skill(master, 'Kubernetes')
@@ -480,6 +641,50 @@ class TestHarvestAddSkill(unittest.TestCase):
         # Docker should end up somewhere in the skills dict
         all_skills = [s for lst in master['skills'].values() for s in lst]
         self.assertIn('Docker', all_skills)
+
+    def test_dict_adds_rich_skill_to_requested_category(self):
+        master = {'skills': {'Backend': ['Python'], 'Other': ['Redis']}}
+        result = _harvest_add_skill(master, {
+            'name': 'Architecture',
+            'category': 'Leadership',
+            'group': 'strategy',
+            'proficiency': 'expert',
+            'subskills': ['Roadmaps', 'Stakeholder alignment'],
+            'parenthetical': 'Platform strategy',
+        })
+        self.assertTrue(result)
+        self.assertEqual(master['skills']['Leadership'], [
+            {
+                'name': 'Architecture',
+                'category': 'Leadership',
+                'group': 'strategy',
+                'proficiency': 'expert',
+                'subskills': ['Roadmaps', 'Stakeholder alignment'],
+                'parenthetical': 'Platform strategy',
+            },
+        ])
+
+    def test_dict_wrapper_moves_existing_skill_to_new_category_with_metadata(self):
+        master = {
+            'skills': {
+                'Other': {'category': 'Other', 'skills': ['Architecture']},
+            },
+        }
+        result = _harvest_add_skill(master, {
+            'name': 'Architecture',
+            'category': 'Leadership',
+            'proficiency': 'expert',
+        })
+        self.assertTrue(result)
+        self.assertEqual(master['skills']['Other']['skills'], [])
+        self.assertEqual(master['skills']['Leadership']['category'], 'Leadership')
+        self.assertEqual(master['skills']['Leadership']['skills'], [
+            {
+                'name': 'Architecture',
+                'category': 'Leadership',
+                'proficiency': 'expert',
+            },
+        ])
 
     def test_missing_skills_creates_list(self):
         master = {}

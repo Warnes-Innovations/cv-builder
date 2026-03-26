@@ -61,7 +61,14 @@
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
 
-        /* --- Page Structure (Browser View) --- */
+          /* --- Page Structure (Browser View) --- */
+          /*
+              Layout-digest contract note:
+              The server-side staged-generation estimator assumes this template
+              keeps the current two-column structure. Update
+              scripts/utils/layout_digest.py and ARCHITECTURE.md whenever this
+              page topology changes.
+          */
         .page {
             display: flex;
             align-items: stretch;
@@ -609,14 +616,16 @@
             <!-- Left Column (Skills) -->
             <aside class="left-col">
                 <section class="section">
-                    <h2 class="section-title"><i class="fas fa-code"></i> Technical Skills</h2>
+                    {# duckflow: flow=cv-render status=live
+                       artifact: template_metadata.skills_section_title → h2.section-title (page-2) #}
+                    <h2 class="section-title"><i class="fas fa-code"></i> {{ template_metadata.skills_section_title }}</h2>
                     <div class="skills-grid">
                         {% for cat in skills_by_category[:5] %}
                         <div class="skill-group">
                             <h4>{{ cat.category }}</h4>
                             <ul class="skill-list">
                                 {% for skill in cat.skills %}
-                                <li>{% if skill.group_names %}{{ skill.group_names|join(', ') }}{% else %}{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}{% if skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}{% endif %}</li>
+                                <li>{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}{% endif %}{% if not skill.group_display_names and skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}</li>
                                 {% endfor %}
                             </ul>
                         </div>
@@ -680,14 +689,16 @@
              <!-- Left Column (Skills Continuation) -->
              <aside class="left-col">
                 <section class="section">
-                    <h2 class="section-title"><i class="fas fa-code"></i> Technical Skills</h2>
+                    {# duckflow: flow=cv-render status=live
+                       artifact: template_metadata.skills_section_title → h2.section-title (page-3) #}
+                    <h2 class="section-title"><i class="fas fa-code"></i> {{ template_metadata.skills_section_title }}</h2>
                     <div class="skills-grid">
                         {% for cat in skills_by_category[5:] %}
                         <div class="skill-group">
                             <h4>{{ cat.category }}</h4>
                             <ul class="skill-list">
                                 {% for skill in cat.skills %}
-                                <li>{% if skill.group_names %}{{ skill.group_names|join(', ') }}{% else %}{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}{% if skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}{% endif %}</li>
+                                <li>{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}{% endif %}{% if not skill.group_display_names and skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}</li>
                                 {% endfor %}
                             </ul>
                         </div>
@@ -747,9 +758,11 @@ EDUCATION
 {% endfor %}{% endif %}
 {% if skills_by_category %}
 --------------------------------------------------------------------------------
-TECHNICAL SKILLS
+{# duckflow: flow=cv-render status=live
+    artifact: "SKILLS" → ATS plain-text heading #}
+SKILLS
 --------------------------------------------------------------------------------
-{% for cat in skills_by_category %}{{ cat.category }}: {{ cat.skills | map(attribute='name') | join(', ') }}
+{% for cat in skills_by_category %}{{ cat.category }}: {% for skill in cat.skills %}{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
 {% endfor %}{% endif %}
 {% if certifications %}
 --------------------------------------------------------------------------------

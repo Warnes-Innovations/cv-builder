@@ -30,10 +30,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 from scripts.web_app import create_app
+from scripts.routes import generation_routes as generation_routes_module
 from utils.conversation_manager import ConversationManager
 from utils.cv_orchestrator import CVOrchestrator
 from utils.llm_client import LLMClient
 from utils.config import get_config
+from tests.helpers.session_state_fixtures import materialize_canonical_session
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +298,36 @@ class TestGenerationStatePersistence(unittest.TestCase):
         self.assertTrue(gen['layout_confirmed'])
         self.assertEqual(gen['preview_html'], '<html>test</html>')
 
+    def test_round_trip_preserves_canonical_generation_state_artifacts(self):
+        cases = [
+            ('layout_review_active', 'layout_review', True, False),
+            ('layout_review_confirmed', 'confirmed', True, True),
+            ('refinement_final_complete', 'final_complete', True, True),
+        ]
+
+        for combination_name, expected_phase, preview_available, layout_confirmed in cases:
+            with self.subTest(combination_name=combination_name):
+                session_file = materialize_canonical_session(
+                    self.sess_dir,
+                    combination_name,
+                    session_id=f'{combination_name}-roundtrip',
+                )
+
+                self.manager.load_session(str(session_file))
+                self.manager._save_session()
+                self.manager.state['generation_state'] = {}
+                self.manager.load_session(
+                    str(self.manager.session_dir / 'session.json')
+                )
+
+                generation_state = self.manager.state['generation_state']
+                self.assertEqual(generation_state['phase'], expected_phase)
+                self.assertEqual(bool(generation_state.get('preview_html')), preview_available)
+                self.assertEqual(generation_state.get('layout_confirmed'), layout_confirmed)
+
+                if expected_phase == 'final_complete':
+                    self.assertIn('final_output_paths', generation_state)
+
 
 # ---------------------------------------------------------------------------
 # Flask-level tests — /api/cv/* endpoints
@@ -329,14 +361,48 @@ class TestGenerationStateEndpoint(unittest.TestCase):
         self.assertFalse(data['preview_available'])
         self.assertFalse(data['layout_confirmed'])
 
+    def test_missing_generation_state_normalizes_to_idle(self):
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state.pop('generation_state', None)
+
+        data = self.client.get(
+            '/api/cv/generation-state',
+            query_string={'session_id': self.session_id},
+        ).get_json()
+
+        self.assertEqual(data['phase'], 'idle')
+        self.assertFalse(data['preview_available'])
+        self.assertFalse(data['layout_confirmed'])
+
+    def test_inconsistent_confirmed_without_preview_html_is_reported(self):
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['generation_state'] = {
+            'phase': 'confirmed',
+            'layout_confirmed': True,
+            'confirmed_at': '2026-03-24T00:47:00-04:00',
+        }
+
+        data = self.client.get(
+            '/api/cv/generation-state',
+            query_string={'session_id': self.session_id},
+        ).get_json()
+
+        self.assertEqual(data['phase'], 'confirmed')
+        self.assertFalse(data['preview_available'])
+        self.assertTrue(data['layout_confirmed'])
+
     def test_required_keys_present(self):
         data = self.client.get(
             '/api/cv/generation-state',
             query_string={'session_id': self.session_id},
         ).get_json()
         for key in ('ok', 'phase', 'preview_available', 'layout_confirmed',
-                    'page_count_estimate', 'page_length_warning', 'ats_score',
-                    'layout_instructions_count', 'final_generated_at'):
+                    'page_count_estimate', 'page_count_exact',
+                    'page_count_confidence', 'page_count_source',
+                    'page_count_needs_exact_recheck', 'page_length_warning',
+                    'ats_score', 'layout_instructions_count',
+                    'final_generated_at', 'layout_template_version',
+                'layout_template_update_note', 'preview_outputs'):
             self.assertIn(key, data, f"Missing key: {key}")
 
     def test_returns_cached_ats_score_when_present(self):
@@ -385,15 +451,53 @@ class TestGeneratePreviewEndpoint(unittest.TestCase):
             'utils.cv_orchestrator.CVOrchestrator.render_html_preview',
             return_value='<html><body>Preview</body></html>',
         ):
-            resp = self.client.post(
-                '/api/cv/generate-preview',
-                json={'session_id': self.session_id},
-            )
+            with patch(
+                'utils.cv_orchestrator.CVOrchestrator.generate_pdf_variants_from_html',
+                return_value={
+                    'html': '/tmp/preview_artifacts/preview.html',
+                    'pdfs': {
+                        'chrome': {
+                            'ok': True,
+                            'pdf': '/tmp/preview_artifacts/preview_chrome.pdf',
+                            'renderer': 'chrome',
+                            'renderer_detail': 'chrome-bin',
+                            'error': None,
+                        },
+                        'weasyprint': {
+                            'ok': True,
+                            'pdf': '/tmp/preview_artifacts/preview_weasyprint.pdf',
+                            'renderer': 'weasyprint',
+                            'renderer_detail': sys.executable,
+                            'error': None,
+                        },
+                    },
+                },
+            ):
+                with patch.object(
+                    generation_routes_module,
+                    '_persist_layout_baseline',
+                    return_value={
+                        'digest': {'template_version': 'test'},
+                        'page_count': 2,
+                        'renderer': 'chrome',
+                        'renderer_detail': 'chrome-bin',
+                    },
+                ):
+                    resp = self.client.post(
+                        '/api/cv/generate-preview',
+                        json={'session_id': self.session_id},
+                    )
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data['ok'])
         self.assertIn('<html>', data['html'])
         self.assertIn('preview_request_id', data)
+        self.assertEqual(data['page_count_exact'], 2)
+        self.assertIn('preview_outputs', data)
+        self.assertEqual(
+            set(data['preview_outputs']['pdfs'].keys()),
+            {'chrome', 'weasyprint'},
+        )
 
     def test_generation_state_updated_after_preview(self):
         self._seed_job_analysis()
@@ -401,13 +505,116 @@ class TestGeneratePreviewEndpoint(unittest.TestCase):
             'utils.cv_orchestrator.CVOrchestrator.render_html_preview',
             return_value='<html><body>Preview</body></html>',
         ):
-            self.client.post('/api/cv/generate-preview', json={'session_id': self.session_id})
+            with patch(
+                'utils.cv_orchestrator.CVOrchestrator.generate_pdf_variants_from_html',
+                return_value={
+                    'html': '/tmp/preview_artifacts/preview.html',
+                    'pdfs': {
+                        'chrome': {
+                            'ok': True,
+                            'pdf': '/tmp/preview_artifacts/preview_chrome.pdf',
+                            'renderer': 'chrome',
+                            'renderer_detail': 'chrome-bin',
+                            'error': None,
+                        },
+                        'weasyprint': {
+                            'ok': True,
+                            'pdf': '/tmp/preview_artifacts/preview_weasyprint.pdf',
+                            'renderer': 'weasyprint',
+                            'renderer_detail': sys.executable,
+                            'error': None,
+                        },
+                    },
+                },
+            ):
+                with patch.object(
+                    generation_routes_module,
+                    '_persist_layout_baseline',
+                    return_value={
+                        'digest': {'template_version': 'test'},
+                        'page_count': 2,
+                        'renderer': 'chrome',
+                        'renderer_detail': 'chrome-bin',
+                    },
+                ):
+                    self.client.post(
+                        '/api/cv/generate-preview',
+                        json={'session_id': self.session_id},
+                    )
         data = self.client.get(
             '/api/cv/generation-state',
             query_string={'session_id': self.session_id},
         ).get_json()
         self.assertEqual(data['phase'], 'layout_review')
         self.assertTrue(data['preview_available'])
+        self.assertIn('preview_outputs', data)
+        self.assertEqual(
+            set((data['preview_outputs'] or {}).get('pdfs', {}).keys()),
+            {'chrome', 'weasyprint'},
+        )
+
+    def test_preview_output_download_serves_renderer_pdf(self):
+        self._seed_job_analysis()
+        chrome_pdf = Path(self.tmp.name) / 'preview_chrome.pdf'
+        chrome_pdf.write_bytes(b'%PDF-1.4\n%%EOF\n')
+
+        with patch(
+            'utils.cv_orchestrator.CVOrchestrator.render_html_preview',
+            return_value='<html><body>Preview</body></html>',
+        ):
+            with patch(
+                'utils.cv_orchestrator.CVOrchestrator.generate_pdf_variants_from_html',
+                return_value={
+                    'html': '/tmp/preview_artifacts/preview.html',
+                    'pdfs': {
+                        'chrome': {
+                            'ok': True,
+                            'pdf': str(chrome_pdf),
+                            'renderer': 'chrome',
+                            'renderer_detail': 'chrome-bin',
+                            'error': None,
+                        },
+                        'weasyprint': {
+                            'ok': False,
+                            'pdf': '/tmp/preview_artifacts/preview_weasyprint.pdf',
+                            'renderer': 'weasyprint',
+                            'renderer_detail': '',
+                            'error': 'renderer unavailable',
+                        },
+                    },
+                },
+            ):
+                with patch.object(
+                    generation_routes_module,
+                    '_persist_layout_baseline',
+                    return_value={
+                        'digest': {'template_version': 'test'},
+                        'page_count': 2,
+                        'renderer': 'chrome',
+                        'renderer_detail': 'chrome-bin',
+                    },
+                ):
+                    self.client.post(
+                        '/api/cv/generate-preview',
+                        json={'session_id': self.session_id},
+                    )
+
+        resp = self.client.get(
+            '/api/cv/preview-output/chrome',
+            query_string={'session_id': self.session_id},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.mimetype, 'application/pdf')
+        self.assertEqual(resp.data, b'%PDF-1.4\n%%EOF\n')
+
+    def test_preview_output_download_returns_404_for_missing_renderer(self):
+        resp = self.client.get(
+            '/api/cv/preview-output/chrome',
+            query_string={'session_id': self.session_id},
+        )
+
+        self.assertEqual(resp.status_code, 404)
 
     def test_preview_uses_canonical_spell_audit_before_legacy_key(self):
         self._seed_job_analysis()
@@ -419,16 +626,64 @@ class TestGeneratePreviewEndpoint(unittest.TestCase):
             'utils.cv_orchestrator.CVOrchestrator.render_html_preview',
             return_value='<html><body>Preview</body></html>',
         ) as render_preview:
-            resp = self.client.post(
-                '/api/cv/generate-preview',
-                json={'session_id': self.session_id},
-            )
+            with patch.object(
+                generation_routes_module,
+                '_persist_layout_baseline',
+                return_value={
+                    'digest': {'template_version': 'test'},
+                    'page_count': 2,
+                    'renderer': 'chrome',
+                    'renderer_detail': 'chrome-bin',
+                },
+            ):
+                resp = self.client.post(
+                    '/api/cv/generate-preview',
+                    json={'session_id': self.session_id},
+                )
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(
             render_preview.call_args.kwargs['spell_audit'],
             [{'original': 'teh', 'final': 'the', 'outcome': 'accept'}],
         )
+
+    def test_preview_materializes_review_decisions_before_render(self):
+        self._seed_job_analysis()
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['experience_decisions'] = {
+            'exp_001': 'include',
+            'exp_002': 'exclude',
+        }
+        entry.manager.state['publication_decisions'] = {
+            'pub_a': True,
+            'pub_b': False,
+        }
+
+        with patch(
+            'utils.cv_orchestrator.CVOrchestrator.render_html_preview',
+            return_value='<html><body>Preview</body></html>',
+        ) as render_preview:
+            with patch.object(
+                generation_routes_module,
+                '_persist_layout_baseline',
+                return_value={
+                    'digest': {'template_version': 'test'},
+                    'page_count': 2,
+                    'renderer': 'chrome',
+                    'renderer_detail': 'chrome-bin',
+                },
+            ):
+                resp = self.client.post(
+                    '/api/cv/generate-preview',
+                    json={'session_id': self.session_id},
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        customizations = render_preview.call_args.kwargs['customizations']
+        self.assertEqual(customizations['recommended_experiences'], ['exp_001'])
+        self.assertEqual(customizations['omitted_experiences'], ['exp_002'])
+        self.assertEqual(customizations['accepted_publications'], ['pub_a'])
+        self.assertEqual(customizations['rejected_publications'], ['pub_b'])
 
     def test_render_failure_falls_back_to_404_when_no_file(self):
         """When render_html_preview raises and no HTML file exists, return 404."""
@@ -442,6 +697,104 @@ class TestGeneratePreviewEndpoint(unittest.TestCase):
                 json={'session_id': self.session_id},
             )
         self.assertEqual(resp.status_code, 404)
+
+    def test_layout_estimate_returns_server_side_estimate(self):
+        self._seed_job_analysis()
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['generation_state'] = {
+            'baseline_layout_digest': {
+                'template_markers': {
+                    'page_one': True,
+                    'page_two': True,
+                    'page_three': True,
+                }
+            },
+            'baseline_exact_page_count': 2,
+        }
+
+        with patch.object(
+            generation_routes_module,
+            '_apply_layout_estimate',
+            return_value={
+                'ok': True,
+                'page_count_estimate': 2.4,
+                'page_count_exact': None,
+                'page_count_confidence': 0.72,
+                'page_count_source': 'delta-estimate',
+                'page_count_needs_exact_recheck': False,
+                'page_length_warning': False,
+                'baseline_exact_page_count': 2,
+                'layout_template_version': 'test',
+                'layout_template_update_note': 'update me',
+                'contributors': ['skills column pressure changed'],
+                'used_exact_recheck': False,
+            },
+        ):
+            resp = self.client.post(
+                '/api/cv/layout-estimate',
+                json={
+                    'session_id': self.session_id,
+                    'skill_decisions': {'Python': 'include'},
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['page_count_estimate'], 2.4)
+        self.assertEqual(data['page_count_confidence'], 0.72)
+
+    def test_layout_estimate_disables_semantic_matching_during_preview_render(self):
+        self._seed_job_analysis()
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['generation_state'] = {
+            'baseline_layout_digest': {
+                'template_markers': {
+                    'page_one': True,
+                    'page_two': True,
+                    'page_three': True,
+                }
+            },
+            'baseline_exact_page_count': 2,
+        }
+
+        with patch(
+            'utils.cv_orchestrator.CVOrchestrator.render_html_preview',
+            return_value='<html><body>Preview</body></html>',
+        ) as render_preview:
+            with patch.object(
+                generation_routes_module,
+                'build_layout_digest',
+                return_value={'template_markers': {'page_one': True}},
+            ):
+                with patch.object(
+                    generation_routes_module,
+                    'compare_layout_digests',
+                    return_value={
+                        'estimated_pages': 2.0,
+                        'confidence': 0.84,
+                        'source': 'delta-estimate',
+                        'needs_exact_recheck': False,
+                        'contributors': [],
+                    },
+                ):
+                    with patch.object(
+                        generation_routes_module,
+                        'predict_layout_pages',
+                        return_value=None,
+                    ):
+                        with patch.object(
+                            generation_routes_module,
+                            'blend_layout_prediction',
+                            side_effect=lambda estimate, _prediction: estimate,
+                        ):
+                            resp = self.client.post(
+                                '/api/cv/layout-estimate',
+                                json={'session_id': self.session_id},
+                            )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(render_preview.call_args.kwargs['use_semantic_match'])
 
 
 class TestLayoutRefineEndpoint(unittest.TestCase):
@@ -491,15 +844,29 @@ class TestLayoutRefineEndpoint(unittest.TestCase):
                 'confidence': 0.9,
             },
         ):
-            resp = self.client.post(
-                '/api/cv/layout-refine',
-                json={'session_id': self.session_id, 'instruction': 'Move skills up'},
-            )
+            with patch.object(
+                generation_routes_module,
+                '_persist_layout_baseline',
+                return_value={
+                    'digest': {'template_version': 'test'},
+                    'page_count': 3,
+                    'renderer': 'chrome',
+                    'renderer_detail': 'chrome-bin',
+                },
+            ):
+                resp = self.client.post(
+                    '/api/cv/layout-refine',
+                    json={
+                        'session_id': self.session_id,
+                        'instruction': 'Move skills up',
+                    },
+                )
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data['ok'])
         self.assertIn('Updated CV', data['html'])
         self.assertEqual(data['summary'], 'Moved skills section')
+        self.assertEqual(data['page_count_exact'], 3)
 
     def test_instruction_appended_to_history(self):
         self._seed_preview()
@@ -507,10 +874,23 @@ class TestLayoutRefineEndpoint(unittest.TestCase):
             'utils.cv_orchestrator.CVOrchestrator.apply_layout_instruction',
             return_value={'html': '<html>X</html>', 'summary': 'done', 'confidence': 1.0},
         ):
-            self.client.post(
-                '/api/cv/layout-refine',
-                json={'session_id': self.session_id, 'instruction': 'Remove skills'},
-            )
+            with patch.object(
+                generation_routes_module,
+                '_persist_layout_baseline',
+                return_value={
+                    'digest': {'template_version': 'test'},
+                    'page_count': 2,
+                    'renderer': 'chrome',
+                    'renderer_detail': 'chrome-bin',
+                },
+            ):
+                self.client.post(
+                    '/api/cv/layout-refine',
+                    json={
+                        'session_id': self.session_id,
+                        'instruction': 'Remove skills',
+                    },
+                )
         gen_data = self.client.get(
             '/api/cv/generation-state',
             query_string={'session_id': self.session_id},
@@ -661,16 +1041,38 @@ class TestGenerateFinalEndpoint(unittest.TestCase):
     def test_generation_state_phase_set_to_final_complete(self):
         self._seed_confirmed_layout()
         final_paths = {'html': str(self.output_dir / 'CV_final.html'), 'pdf': str(self.output_dir / 'CV_final.pdf')}
+        Path(final_paths['html']).write_text('<html>Final</html>', encoding='utf-8')
         with patch(
             'utils.cv_orchestrator.CVOrchestrator.generate_final_from_confirmed_html',
             return_value=final_paths,
         ):
-            self.client.post('/api/cv/generate-final', json={'session_id': self.session_id})
+            with patch.object(
+                generation_routes_module,
+                '_persist_layout_baseline',
+                return_value={
+                    'digest': {'template_version': 'test'},
+                    'page_count': 3,
+                    'renderer': 'chrome',
+                    'renderer_detail': 'chrome-bin',
+                },
+            ):
+                self.client.post(
+                    '/api/cv/generate-final',
+                    json={'session_id': self.session_id},
+                )
         gen_data = self.client.get(
             '/api/cv/generation-state',
             query_string={'session_id': self.session_id},
         ).get_json()
         self.assertEqual(gen_data['phase'], 'final_complete')
+
+        entry = self.app.session_registry.get(self.session_id)
+        self.assertEqual(entry.manager.state['generated_files']['final_html'], final_paths['html'])
+        self.assertEqual(entry.manager.state['generated_files']['final_pdf'], final_paths['pdf'])
+        self.assertEqual(
+            entry.manager.state['generated_files']['files'],
+            [final_paths['html'], final_paths['pdf']],
+        )
 
     def test_orchestrator_failure_returns_500(self):
         self._seed_confirmed_layout()
@@ -685,6 +1087,65 @@ class TestGenerateFinalEndpoint(unittest.TestCase):
         self.assertEqual(resp.status_code, 500)
         data = resp.get_json()
         self.assertIn('error', data)
+
+
+class TestLegacyLayoutEndpoints(unittest.TestCase):
+    """Legacy layout endpoints should preserve staged history on reload/finalize."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.app, self.session_id, self._stack = _make_app_and_client(Path(self.tmp.name))
+        self.client = self.app.test_client()
+        self.addCleanup(self._stack.close)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_layout_history_falls_back_to_generation_state(self):
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['generation_state'] = {
+            'layout_instructions': [
+                {
+                    'timestamp': '12:00',
+                    'instruction_text': 'Move Publications',
+                    'change_summary': 'Moved publications section',
+                    'confirmation': True,
+                }
+            ]
+        }
+
+        resp = self.client.get(
+            '/api/layout-history',
+            query_string={'session_id': self.session_id},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data['count'], 1)
+        self.assertEqual(data['instructions'][0]['instruction_text'], 'Move Publications')
+
+    def test_layout_complete_reuses_staged_history_when_request_empty(self):
+        entry = self.app.session_registry.get(self.session_id)
+        staged_history = [
+            {
+                'timestamp': '12:00',
+                'instruction_text': 'Move Publications',
+                'change_summary': 'Moved publications section',
+                'confirmation': True,
+            }
+        ]
+        entry.manager.state['generation_state'] = {
+            'layout_instructions': staged_history,
+        }
+
+        resp = self.client.post(
+            '/api/layout-complete',
+            json={'session_id': self.session_id, 'layout_instructions': []},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json()['ok'])
+        self.assertEqual(entry.manager.state['layout_instructions'], staged_history)
 
 
 if __name__ == '__main__':

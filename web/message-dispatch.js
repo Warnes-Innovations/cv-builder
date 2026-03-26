@@ -30,6 +30,8 @@ const log = getLogger('message-dispatch');
 
 import { stateManager } from './state-manager.js';
 
+let _pendingPostIntakeContinuation = null;
+
 // ---------------------------------------------------------------------------
 // Default LLM message handler
 // ---------------------------------------------------------------------------
@@ -169,13 +171,17 @@ async function sendMessage() {
 // Intake confirmation card (GAP-23)
 // ---------------------------------------------------------------------------
 
-async function _showIntakeConfirmCard() {
+async function _showIntakeConfirmCard(continuation = null) {
+  if (typeof continuation === 'function') {
+    _pendingPostIntakeContinuation = continuation;
+  }
+
   let extracted = {role: '', company: '', date_applied: ''};
   try {
     const res  = await llmFetch('/api/intake-metadata');
     const data = await res.json();
     if (data.confirmed) {
-      await _proceedAfterIntake();
+      await _proceedAfterIntake(continuation);
       return;
     }
     extracted = data;
@@ -202,7 +208,7 @@ async function _showIntakeConfirmCard() {
       </div>
       <div class="intake-actions">
         <button class="btn-secondary" onclick="_skipIntakeCard()" type="button">Skip</button>
-        <button class="btn-primary"   onclick="_submitIntakeCard()" type="button" id="intake-confirm-btn">Confirm &amp; Analyze</button>
+        <button class="btn-primary"   onclick="_submitIntakeCard()" type="button" id="intake-confirm-btn">Confirm &amp; Continue</button>
       </div>
     </div>`;
   appendRawHtml(cardHtml);
@@ -211,7 +217,7 @@ async function _showIntakeConfirmCard() {
   if (roleInput && !roleInput.value.trim()) roleInput.focus();
 }
 
-async function _submitIntakeCard() {
+async function _submitIntakeCard(continuation = null) {
   const role         = (document.getElementById('intake-role-input')?.value    || '').trim();
   const company      = (document.getElementById('intake-company-input')?.value || '').trim();
   const date_applied = (document.getElementById('intake-date-input')?.value    || '').trim();
@@ -228,25 +234,33 @@ async function _submitIntakeCard() {
   } catch (_e) { /* non-fatal */ }
 
   document.getElementById('intake-confirm-card')?.remove();
-  await _proceedAfterIntake();
+  await _proceedAfterIntake(continuation);
 }
 
-async function _skipIntakeCard() {
+async function _skipIntakeCard(continuation = null) {
   document.getElementById('intake-confirm-card')?.remove();
-  await _proceedAfterIntake();
+  await _proceedAfterIntake(continuation);
 }
 
-async function _proceedAfterIntake() {
+async function _proceedAfterIntake(continuation = null) {
+  const effectiveContinuation =
+    (typeof continuation === 'function' && continuation)
+    || _pendingPostIntakeContinuation
+    || (async () => analyzeJob());
+
   try {
     const res  = await llmFetch('/api/prior-clarifications');
     const data = await res.json();
     if (data.found && data.matches && data.matches.length > 0) {
       const best = data.matches[0];
+      _pendingPostIntakeContinuation = effectiveContinuation;
       await _offerPriorClarifications(best);
       return;
     }
   } catch (_e) { /* fall through */ }
-  await analyzeJob();
+
+  _pendingPostIntakeContinuation = null;
+  await effectiveContinuation();
 }
 
 async function _offerPriorClarifications(match) {
@@ -265,13 +279,15 @@ async function _offerPriorClarifications(match) {
   window._pendingPriorAnswers = match.answers || {};
 }
 
-function _dismissPriorClarifications() {
+async function _dismissPriorClarifications() {
   document.getElementById('prior-clar-banner')?.remove();
   delete window._pendingPriorAnswers;
-  analyzeJob();
+  const continuation = _pendingPostIntakeContinuation || (async () => analyzeJob());
+  _pendingPostIntakeContinuation = null;
+  await continuation();
 }
 
-function _loadPriorClarifications() {
+async function _loadPriorClarifications() {
   document.getElementById('prior-clar-banner')?.remove();
   const answers = window._pendingPriorAnswers || {};
   delete window._pendingPriorAnswers;
@@ -280,7 +296,9 @@ function _loadPriorClarifications() {
   } else {
     window.questionAnswers = Object.assign({}, answers);
   }
-  analyzeJob();
+  const continuation = _pendingPostIntakeContinuation || (async () => analyzeJob());
+  _pendingPostIntakeContinuation = null;
+  await continuation();
 }
 
 // ── ES module exports ──────────────────────────────────────────────────────

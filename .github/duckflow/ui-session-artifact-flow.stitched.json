@@ -1,0 +1,1403 @@
+{
+  "nodes": [
+    {
+      "id": "achievements_ui_submit_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:achievements-review.submit"
+      ],
+      "calls": [
+        "POST /api/review-decisions",
+        "POST /api/cv/layout-estimate"
+      ],
+      "reads": [
+        "window:achievementDecisions",
+        "window:_suggestedAchsOrdered"
+      ],
+      "writes": [
+        "request:POST /api/review-decisions.decisions",
+        "request:POST /api/review-decisions.accepted_suggestions",
+        "window:_savedDecisions.achievement_decisions",
+        "window:_savedDecisions.accepted_suggested_achievements"
+      ],
+      "returns": [],
+      "notes": "Persists achievement inclusion decisions and the accepted AI-suggested achievements that should remain session-only until an explicit harvest step.",
+      "path": "web/achievements-review.js",
+      "line": 324
+    },
+    {
+      "id": "cover_letter_api_save_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/cover-letter/save"
+      ],
+      "calls": [],
+      "reads": [
+        "request:POST /api/cover-letter/save.text",
+        "state:generated_files.output_dir",
+        "state:cover_letter_reused_from"
+      ],
+      "writes": [
+        "state:cover_letter_text",
+        "file:metadata.cover_letter_text",
+        "file:metadata.cover_letter_reused_from",
+        "file:artifact.cover_letter_docx"
+      ],
+      "returns": [
+        "response:POST /api/cover-letter/save.filename"
+      ],
+      "notes": "Saves the finalized cover-letter body to session state, writes a DOCX artifact in the application output directory, and appends the reusable text metadata.",
+      "path": "scripts/routes/master_data_routes.py",
+      "line": 1365
+    },
+    {
+      "id": "cover_letter_ui_generate_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:cover-letter.generate"
+      ],
+      "calls": [
+        "POST /api/cover-letter/generate"
+      ],
+      "reads": [
+        "dom:#cl-tone-select.value",
+        "dom:#cl-hiring-manager.value",
+        "dom:#cl-company-address.value",
+        "dom:#cl-highlight.value",
+        "dom:input[name=cl-prior].checked"
+      ],
+      "writes": [
+        "request:POST /api/cover-letter/generate.tone",
+        "request:POST /api/cover-letter/generate.hiring_manager",
+        "request:POST /api/cover-letter/generate.company_address",
+        "request:POST /api/cover-letter/generate.highlight",
+        "request:POST /api/cover-letter/generate.reuse_body",
+        "dom:#cl-letter-textarea.value"
+      ],
+      "returns": [],
+      "notes": "Submits cover-letter prompt inputs and optional reuse text, then writes the generated body into the editable cover-letter textarea.",
+      "path": "web/cover-letter.js",
+      "line": 135
+    },
+    {
+      "id": "cover_letter_ui_save_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:cover-letter.save"
+      ],
+      "calls": [
+        "POST /api/cover-letter/save"
+      ],
+      "reads": [
+        "dom:#cl-letter-textarea.value"
+      ],
+      "writes": [
+        "request:POST /api/cover-letter/save.text"
+      ],
+      "returns": [],
+      "notes": "Submits the user-edited cover-letter body for session persistence, metadata write-through, and archive artifact generation.",
+      "path": "web/cover-letter.js",
+      "line": 196
+    },
+    {
+      "id": "experience_ui_submit_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:experience-review.submit"
+      ],
+      "calls": [
+        "POST /api/review-decisions",
+        "POST /api/cv/layout-estimate"
+      ],
+      "reads": [
+        "window:userSelections.experiences"
+      ],
+      "writes": [
+        "request:POST /api/review-decisions.decisions",
+        "window:_savedDecisions.experience_decisions"
+      ],
+      "returns": [],
+      "notes": "Persists per-experience inclusion decisions and triggers downstream ATS/layout refreshes that depend on the same review choices.",
+      "path": "web/experience-review.js",
+      "line": 268
+    },
+    {
+      "id": "finalise_ui_submit_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:finalise.submit"
+      ],
+      "calls": [
+        "POST /api/finalise"
+      ],
+      "reads": [
+        "dom:#finalise-status.value",
+        "dom:#finalise-notes.value"
+      ],
+      "writes": [
+        "request:POST /api/finalise.status",
+        "request:POST /api/finalise.notes",
+        "dom:#finalise-result"
+      ],
+      "returns": [],
+      "notes": "Submits final application status and notes so backend metadata, archive state, and optional git finalization can be written from the current session.",
+      "path": "web/finalise.js",
+      "line": 122
+    },
+    {
+      "id": "generation_api_final_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/cv/generate-final"
+      ],
+      "calls": [
+        "orchestrator:generate_final_from_confirmed_html",
+        "state:generation_state.baseline_layout_digest"
+      ],
+      "reads": [
+        "state:generation_state.layout_confirmed",
+        "state:generation_state.preview_html",
+        "state:generated_files.output_dir"
+      ],
+      "writes": [
+        "state:generation_state.phase",
+        "state:generation_state.final_generated_at",
+        "state:generation_state.final_output_paths",
+        "state:generated_files.final_html",
+        "state:generated_files.final_pdf",
+        "state:generated_files.files",
+        "state:generation_state.baseline_layout_digest"
+      ],
+      "returns": [
+        "response:POST /api/cv/generate-final.outputs",
+        "response:POST /api/cv/generate-final.generated_at",
+        "response:POST /api/cv/generate-final.page_count_exact"
+      ],
+      "notes": "Converts the confirmed preview HTML into final human-readable artifacts and updates both generation_state and generated_files with the final output paths.",
+      "path": "scripts/routes/generation_routes.py",
+      "line": 1145
+    },
+    {
+      "id": "generation_api_finalise_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/finalise"
+      ],
+      "calls": [],
+      "reads": [
+        "request:POST /api/finalise.status",
+        "request:POST /api/finalise.notes",
+        "state:generated_files.output_dir",
+        "state:post_analysis_answers",
+        "state:spell_audit",
+        "state:layout_instructions",
+        "state:generation_state.ats_score"
+      ],
+      "writes": [
+        "file:metadata.application_status",
+        "file:metadata.notes",
+        "file:metadata.finalised_at",
+        "file:metadata.clarification_answers",
+        "file:metadata.spell_audit",
+        "file:metadata.layout_instructions",
+        "file:metadata.validation_results",
+        "file:metadata.ats_score",
+        "file:response_library.json",
+        "state:phase"
+      ],
+      "returns": [
+        "response:POST /api/finalise.summary",
+        "response:POST /api/finalise.commit_hash",
+        "response:POST /api/finalise.git_error"
+      ],
+      "notes": "Finalises the application archive by writing metadata derived from session state, optionally updating the response library, and marking the workflow as refinement.",
+      "path": "scripts/routes/generation_routes.py",
+      "line": 1227
+    },
+    {
+      "id": "generation_api_layout_refine_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/cv/layout-refine"
+      ],
+      "calls": [
+        "orchestrator:apply_layout_instruction",
+        "state:generation_state.baseline_layout_digest"
+      ],
+      "reads": [
+        "request:POST /api/cv/layout-refine.instruction",
+        "state:generation_state.preview_html",
+        "state:generation_state.layout_instructions"
+      ],
+      "writes": [
+        "state:generation_state.preview_html",
+        "state:generation_state.preview_request_id",
+        "state:generation_state.preview_generated_at",
+        "state:generation_state.preview_output_paths",
+        "state:generation_state.layout_instructions",
+        "state:generation_state.layout_confirmed",
+        "state:generation_state.phase",
+        "state:generation_state.baseline_layout_digest"
+      ],
+      "returns": [
+        "response:POST /api/cv/layout-refine.html",
+        "response:POST /api/cv/layout-refine.summary",
+        "response:POST /api/cv/layout-refine.preview_outputs"
+      ],
+      "notes": "Applies a natural-language layout instruction against the staged preview, appends the instruction history in generation_state, and regenerates preview artifacts from the updated HTML.",
+      "path": "scripts/routes/generation_routes.py",
+      "line": 948
+    },
+    {
+      "id": "generation_api_preview_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/cv/generate-preview"
+      ],
+      "calls": [
+        "orchestrator:render_html_preview",
+        "state:generation_state.baseline_layout_digest"
+      ],
+      "reads": [
+        "state:job_analysis",
+        "state:customizations",
+        "state:approved_rewrites",
+        "state:spell_audit",
+        "state:generated_files.output_dir"
+      ],
+      "writes": [
+        "state:generation_state.preview_html",
+        "state:generation_state.preview_request_id",
+        "state:generation_state.preview_generated_at",
+        "state:generation_state.preview_output_paths",
+        "state:generation_state.layout_confirmed",
+        "state:generation_state.phase",
+        "state:generation_state.baseline_layout_digest"
+      ],
+      "returns": [
+        "response:POST /api/cv/generate-preview.html",
+        "response:POST /api/cv/generate-preview.preview_outputs",
+        "response:POST /api/cv/generate-preview.page_count_exact"
+      ],
+      "notes": "Builds or reloads the preview HTML from current session-backed content, stores the staged preview artifacts in generation_state, and refreshes the baseline layout digest.",
+      "path": "scripts/routes/generation_routes.py",
+      "line": 846
+    },
+    {
+      "id": "job_api_submit_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/job"
+      ],
+      "calls": [],
+      "reads": [
+        "request:POST /api/job.job_text"
+      ],
+      "writes": [
+        "state:job_description",
+        "state:position_name",
+        "history:user.job_text"
+      ],
+      "returns": [
+        "response:POST /api/job.ok"
+      ],
+      "notes": "Stores the submitted job text in session state, infers the position name, and appends the raw text to conversation history.",
+      "path": "scripts/routes/job_routes.py",
+      "line": 38
+    },
+    {
+      "id": "job_ui_submit_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:job-input.submit-text"
+      ],
+      "calls": [
+        "POST /api/job",
+        "POST /api/action"
+      ],
+      "reads": [
+        "dom:#job-text-input.value"
+      ],
+      "writes": [
+        "request:POST /api/job.job_text",
+        "tab:job",
+        "ui:workflow.job"
+      ],
+      "returns": [],
+      "notes": "Submits pasted job text to the backend, caches the same text in tab state, and then starts job analysis through the normal action flow.",
+      "path": "web/job-input.js",
+      "line": 478
+    },
+    {
+      "id": "layout_estimate_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/cv/layout-estimate"
+      ],
+      "calls": [],
+      "reads": [
+        "state:experience_decisions",
+        "state:skill_decisions",
+        "state:generation_state.baseline_layout_digest"
+      ],
+      "writes": [
+        "state:generation_state.page_count_estimate",
+        "state:generation_state.page_count_confidence"
+      ],
+      "returns": [
+        "response:page_count_estimate",
+        "response:page_count_confidence",
+        "response:page_count_exact"
+      ],
+      "notes": "Server-side layout estimate renders preview HTML, compares it to the stored digest baseline, and rerenders exactly when confidence is low or near a page boundary.",
+      "path": "scripts/routes/generation_routes.py",
+      "line": 923
+    },
+    {
+      "id": "layout_ui_generate_final_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:layout.generate-final"
+      ],
+      "calls": [
+        "POST /api/cv/generate-final",
+        "POST /api/layout-complete"
+      ],
+      "reads": [
+        "state:generation_state.layoutConfirmed",
+        "state:generation_state.phase",
+        "state:layout_freshness"
+      ],
+      "writes": [
+        "tab:cvArtifacts",
+        "state:generation_state.final_generated_at",
+        "ui:workflow.refinement"
+      ],
+      "returns": [],
+      "notes": "Generates the final human-readable outputs from the confirmed preview and advances the UI into file review/finalise with the new artifact set.",
+      "path": "web/layout-instruction.js",
+      "line": 758
+    },
+    {
+      "id": "layout_ui_refine_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:layout.submit-instruction"
+      ],
+      "calls": [
+        "POST /api/cv/layout-refine",
+        "POST /api/layout-instruction"
+      ],
+      "reads": [
+        "dom:#instruction-input.value",
+        "state:generation_state.previewAvailable",
+        "state:generation_state.phase",
+        "window:layoutInstructions"
+      ],
+      "writes": [
+        "request:POST /api/cv/layout-refine.instruction",
+        "dom:#layout-preview",
+        "window:layoutInstructions",
+        "state:generation_state.preview_outputs"
+      ],
+      "returns": [],
+      "notes": "Submits a natural-language layout instruction against the staged preview when available, then refreshes the preview and local instruction history from the returned HTML.",
+      "path": "web/layout-instruction.js",
+      "line": 381
+    },
+    {
+      "id": "publications_ui_submit_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:publications-review.submit"
+      ],
+      "calls": [
+        "POST /api/review-decisions",
+        "GET /api/rewrites"
+      ],
+      "reads": [
+        "window:publicationDecisions"
+      ],
+      "writes": [
+        "request:POST /api/review-decisions.decisions"
+      ],
+      "returns": [],
+      "notes": "Persists publication include/exclude decisions before the rewrite stage derives downstream content proposals from the accepted publication set.",
+      "path": "web/publications-review.js",
+      "line": 200
+    },
+    {
+      "id": "questions_ui_submit_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:questions.submit-all"
+      ],
+      "calls": [
+        "POST /api/post-analysis-responses",
+        "POST /api/action"
+      ],
+      "reads": [
+        "window:postAnalysisQuestions",
+        "dom:q-input-*.value"
+      ],
+      "writes": [
+        "window:questionAnswers",
+        "request:POST /api/post-analysis-responses.answers"
+      ],
+      "returns": [],
+      "notes": "Collects the clarifying-question answers from the UI, persists them to session state, and then advances into customization recommendation generation.",
+      "path": "web/questions-panel.js",
+      "line": 324
+    },
+    {
+      "id": "review_api_achievement_edits_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/save-achievement-edits"
+      ],
+      "calls": [],
+      "reads": [
+        "request:POST /api/save-achievement-edits.edits"
+      ],
+      "writes": [
+        "state:achievement_edits"
+      ],
+      "returns": [
+        "response:POST /api/save-achievement-edits.success"
+      ],
+      "notes": "Stores raw per-experience bullet edits in session state so later generation and ATS materialization can overlay them without mutating master data.",
+      "path": "scripts/routes/review_routes.py",
+      "line": 315
+    },
+    {
+      "id": "review_api_decisions_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/review-decisions"
+      ],
+      "calls": [],
+      "reads": [
+        "request:POST /api/review-decisions.type",
+        "request:POST /api/review-decisions.decisions",
+        "request:POST /api/review-decisions.extra_skills",
+        "request:POST /api/review-decisions.extra_skill_matches",
+        "request:POST /api/review-decisions.accepted_suggestions"
+      ],
+      "writes": [
+        "state:experience_decisions",
+        "state:skill_decisions",
+        "state:extra_skills",
+        "state:extra_skill_matches",
+        "state:customizations.extra_skills",
+        "state:customizations.extra_skill_matches",
+        "state:achievement_decisions",
+        "state:accepted_suggested_achievements",
+        "state:publication_decisions",
+        "state:summary_focus_override"
+      ],
+      "returns": [
+        "response:POST /api/review-decisions.success"
+      ],
+      "notes": "Persists per-surface review decisions in session state; skill decisions also update session customizations so downstream generation can materialize the same choices.",
+      "path": "scripts/routes/review_routes.py",
+      "line": 189
+    },
+    {
+      "id": "review_api_spell_complete_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/spell-check-complete"
+      ],
+      "calls": [],
+      "reads": [
+        "request:POST /api/spell-check-complete.spell_audit"
+      ],
+      "writes": [
+        "state:spell_audit",
+        "state:phase"
+      ],
+      "returns": [
+        "response:POST /api/spell-check-complete.ok"
+      ],
+      "notes": "Persists the reviewed spell audit into canonical session state and advances the workflow into generation.",
+      "path": "scripts/routes/review_routes.py",
+      "line": 1416
+    },
+    {
+      "id": "rewrite_ui_submit_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:rewrite-review.submit"
+      ],
+      "calls": [
+        "POST /api/rewrites/approve",
+        "POST /api/cv/layout-estimate"
+      ],
+      "reads": [
+        "window:rewriteDecisions"
+      ],
+      "writes": [
+        "request:POST /api/rewrites/approve.decisions"
+      ],
+      "returns": [],
+      "notes": "Submits the final per-rewrite outcomes and edited text so backend state can persist approved rewrites and the full rewrite audit before spell-check.",
+      "path": "web/rewrite-review.js",
+      "line": 328
+    },
+    {
+      "id": "screening_api_save_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/screening/save"
+      ],
+      "calls": [],
+      "reads": [
+        "request:POST /api/screening/save.responses",
+        "state:job_analysis.company"
+      ],
+      "writes": [
+        "state:screening_responses",
+        "file:metadata.screening_responses",
+        "file:artifact.screening_docx",
+        "file:response_library.json"
+      ],
+      "returns": [
+        "response:POST /api/screening/save.filename",
+        "response:POST /api/screening/save.count"
+      ],
+      "notes": "Persists saved screening responses in session state, writes the archive DOCX and metadata entry, and upserts the reusable response library.",
+      "path": "scripts/routes/master_data_routes.py",
+      "line": 1572
+    },
+    {
+      "id": "screening_ui_generate_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:screening.generate-response"
+      ],
+      "calls": [
+        "POST /api/screening/generate"
+      ],
+      "reads": [
+        "dom:sc-question-block.question",
+        "window:_screeningState.format",
+        "window:_screeningState.priorResponse",
+        "window:_screeningState.experienceIndices"
+      ],
+      "writes": [
+        "request:POST /api/screening/generate.question",
+        "request:POST /api/screening/generate.format",
+        "request:POST /api/screening/generate.experience_indices",
+        "request:POST /api/screening/generate.prior_response",
+        "window:_screeningState.responseText",
+        "window:_screeningState.format"
+      ],
+      "returns": [],
+      "notes": "Generates a single screening response from the selected format, prior-response seed, and chosen experience evidence, then stores the draft back into UI state for editing.",
+      "path": "web/screening-questions.js",
+      "line": 189
+    },
+    {
+      "id": "screening_ui_save_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:screening.save-all"
+      ],
+      "calls": [
+        "POST /api/screening/save"
+      ],
+      "reads": [
+        "window:_screeningState",
+        "dom:.sc-question-block",
+        "dom:#sc-text-*.value",
+        "dom:#sc-topic-*.value"
+      ],
+      "writes": [
+        "request:POST /api/screening/save.responses"
+      ],
+      "returns": [],
+      "notes": "Aggregates the edited screening responses and topic tags from the UI into the structured payload that backend state, metadata, archive DOCX, and the response library all persist.",
+      "path": "web/screening-questions.js",
+      "line": 243
+    },
+    {
+      "id": "skills_ui_submit_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:skills-review.submit"
+      ],
+      "calls": [
+        "POST /api/review-decisions",
+        "POST /api/cv/layout-estimate"
+      ],
+      "reads": [
+        "window:userSelections.skills",
+        "window:_skillsOrdered",
+        "dom:.skill-match-input.value"
+      ],
+      "writes": [
+        "request:POST /api/review-decisions.decisions",
+        "request:POST /api/review-decisions.extra_skills",
+        "request:POST /api/review-decisions.extra_skill_matches",
+        "window:_savedDecisions.skill_decisions",
+        "window:_savedDecisions.extra_skills",
+        "window:_savedDecisions.extra_skill_matches"
+      ],
+      "returns": [],
+      "notes": "Submits skill inclusion decisions together with session-only extra skills and experience-match evidence so backend generation can materialize the same overlay state.",
+      "path": "web/skills-review.js",
+      "line": 911
+    },
+    {
+      "id": "spell_ui_submit_live",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "ui:spell-check.submit"
+      ],
+      "calls": [
+        "POST /api/spell-check-complete",
+        "POST /api/action"
+      ],
+      "reads": [
+        "window:_spellSugMap"
+      ],
+      "writes": [
+        "request:POST /api/spell-check-complete.spell_audit",
+        "window:spellAudit"
+      ],
+      "returns": [],
+      "notes": "Collapses reviewed spell suggestions into the canonical spell audit, persists that audit in session state, and then triggers generation using the corrected content.",
+      "path": "web/spell-check.js",
+      "line": 321
+    },
+    {
+      "id": "summary_api_ats_materialize_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/cv/ats-score"
+      ],
+      "calls": [],
+      "reads": [
+        "state:session_summaries.ai_generated",
+        "state:summary_focus_override"
+      ],
+      "writes": [
+        "customizations:selected_summary"
+      ],
+      "returns": [],
+      "notes": "Live ATS scoring route materializes the selected summary into generation customizations.",
+      "path": "scripts/routes/generation_routes.py",
+      "line": 1124
+    },
+    {
+      "id": "summary_api_generate_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/generate-summary"
+      ],
+      "calls": [
+        "llm:generate_professional_summary"
+      ],
+      "reads": [
+        "state:job_analysis",
+        "state:experience_decisions",
+        "state:customizations.recommended_experiences"
+      ],
+      "writes": [
+        "state:session_summaries.ai_generated",
+        "state:summary_focus_override"
+      ],
+      "returns": [
+        "response:POST /api/generate-summary.summary"
+      ],
+      "notes": "Live summary-generation route writes the generated summary into session state and sets it active.",
+      "path": "scripts/routes/master_data_routes.py",
+      "line": 889
+    },
+    {
+      "id": "summary_api_review_decision_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "POST /api/review-decisions"
+      ],
+      "calls": [],
+      "reads": [
+        "request:POST /api/review-decisions.summary_focus"
+      ],
+      "writes": [
+        "state:summary_focus_override"
+      ],
+      "returns": [],
+      "notes": "Live review-decisions route persists the selected summary key in session state.",
+      "path": "scripts/routes/review_routes.py",
+      "line": 287
+    },
+    {
+      "id": "summary_api_status_live",
+      "kind": "api",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "live",
+      "handles": [
+        "GET /api/status"
+      ],
+      "calls": [],
+      "reads": [
+        "state:session_summaries.ai_generated",
+        "state:summary_focus_override"
+      ],
+      "writes": [
+        "response:GET /api/status.professional_summaries"
+      ],
+      "returns": [
+        "response:GET /api/status.professional_summaries",
+        "response:GET /api/status.summary_focus_override"
+      ],
+      "notes": "Live status route merges master summaries with session summary overrides.",
+      "path": "scripts/routes/status_routes.py",
+      "line": 92
+    },
+    {
+      "id": "summary_orchestrator_final_files",
+      "kind": "artifact",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "shared",
+      "handles": [],
+      "calls": [],
+      "reads": [
+        "artifact:generation_state.preview_html"
+      ],
+      "writes": [
+        "file:generated_files.final_html",
+        "file:generated_files.final_pdf"
+      ],
+      "returns": [],
+      "notes": "Commits the confirmed preview HTML to disk and regenerates the final PDF from that same artifact.",
+      "path": "scripts/utils/cv_orchestrator.py",
+      "line": 566
+    },
+    {
+      "id": "summary_orchestrator_preview_html",
+      "kind": "artifact",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "shared",
+      "handles": [],
+      "calls": [],
+      "reads": [
+        "cv:selected_content.summary"
+      ],
+      "writes": [],
+      "returns": [
+        "artifact:generation_state.preview_html"
+      ],
+      "notes": "Renders the selected summary into preview HTML without writing files yet.",
+      "path": "scripts/utils/cv_orchestrator.py",
+      "line": 515
+    },
+    {
+      "id": "summary_orchestrator_select",
+      "kind": "orchestrator",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "shared",
+      "handles": [],
+      "calls": [],
+      "reads": [
+        "customizations:summary_focus",
+        "customizations:session_summaries"
+      ],
+      "writes": [
+        "cv:selected_content.summary"
+      ],
+      "returns": [],
+      "notes": "Resolves the active summary text by overlaying session variants over master variants and selecting the requested key.",
+      "path": "scripts/utils/cv_orchestrator.py",
+      "line": 2218
+    },
+    {
+      "id": "summary_ui_build",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "shared",
+      "handles": [
+        "ui:summary-review.build"
+      ],
+      "calls": [
+        "GET /api/master-fields",
+        "GET /api/status",
+        "ui:summary-review.generate"
+      ],
+      "reads": [
+        "window:pendingRecommendations",
+        "response:GET /api/master-fields.professional_summaries",
+        "response:GET /api/status.professional_summaries",
+        "state:session_summaries.ai_generated"
+      ],
+      "writes": [
+        "dom:#summary-focus-container",
+        "window:selectedSummaryKey"
+      ],
+      "returns": [],
+      "notes": "Builds the summary review UI from master variants plus session overrides and seeds the selected key.",
+      "path": "web/summary-review.js",
+      "line": 21
+    },
+    {
+      "id": "summary_ui_generate",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "shared",
+      "handles": [
+        "ui:summary-review.generate"
+      ],
+      "calls": [
+        "POST /api/generate-summary",
+        "ui:summary-review.persist"
+      ],
+      "reads": [
+        "response:POST /api/generate-summary.summary",
+        "window:_aiGeneratedSummary"
+      ],
+      "writes": [
+        "dom:#ai-summary-text",
+        "dom:#ai-summary-status",
+        "window:_aiGeneratedSummary",
+        "window:selectedSummaryKey"
+      ],
+      "returns": [],
+      "notes": "Requests a generated or refined summary, updates the local UI, and persists the selected summary key.",
+      "path": "web/summary-review.js",
+      "line": 162
+    },
+    {
+      "id": "summary_ui_persist",
+      "kind": "ui",
+      "timestamp": "2026-03-25T21:39:48Z",
+      "status": "shared",
+      "handles": [
+        "ui:summary-review.persist"
+      ],
+      "calls": [
+        "POST /api/review-decisions"
+      ],
+      "reads": [
+        "window:selectedSummaryKey"
+      ],
+      "writes": [
+        "request:POST /api/review-decisions.summary_focus"
+      ],
+      "returns": [],
+      "notes": "Persists only the selected summary key so backend state can resolve the active summary variant later.",
+      "path": "web/summary-review.js",
+      "line": 246
+    }
+  ],
+  "edges": [
+    {
+      "source": "achievements_ui_submit_live",
+      "target": "layout_estimate_live",
+      "kind": "call",
+      "token": "POST /api/cv/layout-estimate"
+    },
+    {
+      "source": "achievements_ui_submit_live",
+      "target": "review_api_decisions_live",
+      "kind": "call",
+      "token": "POST /api/review-decisions"
+    },
+    {
+      "source": "achievements_ui_submit_live",
+      "target": "review_api_decisions_live",
+      "kind": "data",
+      "token": "request:POST /api/review-decisions.accepted_suggestions"
+    },
+    {
+      "source": "achievements_ui_submit_live",
+      "target": "review_api_decisions_live",
+      "kind": "data",
+      "token": "request:POST /api/review-decisions.decisions"
+    },
+    {
+      "source": "achievements_ui_submit_live",
+      "target": "summary_api_review_decision_live",
+      "kind": "call",
+      "token": "POST /api/review-decisions"
+    },
+    {
+      "source": "cover_letter_ui_generate_live",
+      "target": "cover_letter_ui_save_live",
+      "kind": "data",
+      "token": "dom:#cl-letter-textarea.value"
+    },
+    {
+      "source": "cover_letter_ui_save_live",
+      "target": "cover_letter_api_save_live",
+      "kind": "call",
+      "token": "POST /api/cover-letter/save"
+    },
+    {
+      "source": "cover_letter_ui_save_live",
+      "target": "cover_letter_api_save_live",
+      "kind": "data",
+      "token": "request:POST /api/cover-letter/save.text"
+    },
+    {
+      "source": "experience_ui_submit_live",
+      "target": "layout_estimate_live",
+      "kind": "call",
+      "token": "POST /api/cv/layout-estimate"
+    },
+    {
+      "source": "experience_ui_submit_live",
+      "target": "review_api_decisions_live",
+      "kind": "call",
+      "token": "POST /api/review-decisions"
+    },
+    {
+      "source": "experience_ui_submit_live",
+      "target": "review_api_decisions_live",
+      "kind": "data",
+      "token": "request:POST /api/review-decisions.decisions"
+    },
+    {
+      "source": "experience_ui_submit_live",
+      "target": "summary_api_review_decision_live",
+      "kind": "call",
+      "token": "POST /api/review-decisions"
+    },
+    {
+      "source": "finalise_ui_submit_live",
+      "target": "generation_api_finalise_live",
+      "kind": "call",
+      "token": "POST /api/finalise"
+    },
+    {
+      "source": "finalise_ui_submit_live",
+      "target": "generation_api_finalise_live",
+      "kind": "data",
+      "token": "request:POST /api/finalise.notes"
+    },
+    {
+      "source": "finalise_ui_submit_live",
+      "target": "generation_api_finalise_live",
+      "kind": "data",
+      "token": "request:POST /api/finalise.status"
+    },
+    {
+      "source": "generation_api_final_live",
+      "target": "layout_estimate_live",
+      "kind": "data",
+      "token": "state:generation_state.baseline_layout_digest"
+    },
+    {
+      "source": "generation_api_final_live",
+      "target": "layout_ui_generate_final_live",
+      "kind": "data",
+      "token": "state:generation_state.phase"
+    },
+    {
+      "source": "generation_api_final_live",
+      "target": "layout_ui_refine_live",
+      "kind": "data",
+      "token": "state:generation_state.phase"
+    },
+    {
+      "source": "generation_api_layout_refine_live",
+      "target": "generation_api_final_live",
+      "kind": "data",
+      "token": "state:generation_state.layout_confirmed"
+    },
+    {
+      "source": "generation_api_layout_refine_live",
+      "target": "generation_api_final_live",
+      "kind": "data",
+      "token": "state:generation_state.preview_html"
+    },
+    {
+      "source": "generation_api_layout_refine_live",
+      "target": "layout_estimate_live",
+      "kind": "data",
+      "token": "state:generation_state.baseline_layout_digest"
+    },
+    {
+      "source": "generation_api_layout_refine_live",
+      "target": "layout_ui_generate_final_live",
+      "kind": "data",
+      "token": "state:generation_state.phase"
+    },
+    {
+      "source": "generation_api_layout_refine_live",
+      "target": "layout_ui_refine_live",
+      "kind": "data",
+      "token": "state:generation_state.phase"
+    },
+    {
+      "source": "generation_api_preview_live",
+      "target": "generation_api_final_live",
+      "kind": "data",
+      "token": "state:generation_state.layout_confirmed"
+    },
+    {
+      "source": "generation_api_preview_live",
+      "target": "generation_api_final_live",
+      "kind": "data",
+      "token": "state:generation_state.preview_html"
+    },
+    {
+      "source": "generation_api_preview_live",
+      "target": "generation_api_layout_refine_live",
+      "kind": "data",
+      "token": "state:generation_state.preview_html"
+    },
+    {
+      "source": "generation_api_preview_live",
+      "target": "layout_estimate_live",
+      "kind": "data",
+      "token": "state:generation_state.baseline_layout_digest"
+    },
+    {
+      "source": "generation_api_preview_live",
+      "target": "layout_ui_generate_final_live",
+      "kind": "data",
+      "token": "state:generation_state.phase"
+    },
+    {
+      "source": "generation_api_preview_live",
+      "target": "layout_ui_refine_live",
+      "kind": "data",
+      "token": "state:generation_state.phase"
+    },
+    {
+      "source": "job_ui_submit_live",
+      "target": "job_api_submit_live",
+      "kind": "call",
+      "token": "POST /api/job"
+    },
+    {
+      "source": "job_ui_submit_live",
+      "target": "job_api_submit_live",
+      "kind": "data",
+      "token": "request:POST /api/job.job_text"
+    },
+    {
+      "source": "layout_ui_generate_final_live",
+      "target": "generation_api_final_live",
+      "kind": "call",
+      "token": "POST /api/cv/generate-final"
+    },
+    {
+      "source": "layout_ui_refine_live",
+      "target": "generation_api_layout_refine_live",
+      "kind": "call",
+      "token": "POST /api/cv/layout-refine"
+    },
+    {
+      "source": "layout_ui_refine_live",
+      "target": "generation_api_layout_refine_live",
+      "kind": "data",
+      "token": "request:POST /api/cv/layout-refine.instruction"
+    },
+    {
+      "source": "publications_ui_submit_live",
+      "target": "review_api_decisions_live",
+      "kind": "call",
+      "token": "POST /api/review-decisions"
+    },
+    {
+      "source": "publications_ui_submit_live",
+      "target": "review_api_decisions_live",
+      "kind": "data",
+      "token": "request:POST /api/review-decisions.decisions"
+    },
+    {
+      "source": "publications_ui_submit_live",
+      "target": "summary_api_review_decision_live",
+      "kind": "call",
+      "token": "POST /api/review-decisions"
+    },
+    {
+      "source": "review_api_decisions_live",
+      "target": "layout_estimate_live",
+      "kind": "data",
+      "token": "state:experience_decisions"
+    },
+    {
+      "source": "review_api_decisions_live",
+      "target": "layout_estimate_live",
+      "kind": "data",
+      "token": "state:skill_decisions"
+    },
+    {
+      "source": "review_api_decisions_live",
+      "target": "summary_api_ats_materialize_live",
+      "kind": "data",
+      "token": "state:summary_focus_override"
+    },
+    {
+      "source": "review_api_decisions_live",
+      "target": "summary_api_generate_live",
+      "kind": "data",
+      "token": "state:experience_decisions"
+    },
+    {
+      "source": "review_api_decisions_live",
+      "target": "summary_api_status_live",
+      "kind": "data",
+      "token": "state:summary_focus_override"
+    },
+    {
+      "source": "review_api_spell_complete_live",
+      "target": "generation_api_finalise_live",
+      "kind": "data",
+      "token": "state:spell_audit"
+    },
+    {
+      "source": "review_api_spell_complete_live",
+      "target": "generation_api_preview_live",
+      "kind": "data",
+      "token": "state:spell_audit"
+    },
+    {
+      "source": "rewrite_ui_submit_live",
+      "target": "layout_estimate_live",
+      "kind": "call",
+      "token": "POST /api/cv/layout-estimate"
+    },
+    {
+      "source": "screening_ui_save_live",
+      "target": "screening_api_save_live",
+      "kind": "call",
+      "token": "POST /api/screening/save"
+    },
+    {
+      "source": "screening_ui_save_live",
+      "target": "screening_api_save_live",
+      "kind": "data",
+      "token": "request:POST /api/screening/save.responses"
+    },
+    {
+      "source": "skills_ui_submit_live",
+      "target": "layout_estimate_live",
+      "kind": "call",
+      "token": "POST /api/cv/layout-estimate"
+    },
+    {
+      "source": "skills_ui_submit_live",
+      "target": "review_api_decisions_live",
+      "kind": "call",
+      "token": "POST /api/review-decisions"
+    },
+    {
+      "source": "skills_ui_submit_live",
+      "target": "review_api_decisions_live",
+      "kind": "data",
+      "token": "request:POST /api/review-decisions.decisions"
+    },
+    {
+      "source": "skills_ui_submit_live",
+      "target": "review_api_decisions_live",
+      "kind": "data",
+      "token": "request:POST /api/review-decisions.extra_skill_matches"
+    },
+    {
+      "source": "skills_ui_submit_live",
+      "target": "review_api_decisions_live",
+      "kind": "data",
+      "token": "request:POST /api/review-decisions.extra_skills"
+    },
+    {
+      "source": "skills_ui_submit_live",
+      "target": "summary_api_review_decision_live",
+      "kind": "call",
+      "token": "POST /api/review-decisions"
+    },
+    {
+      "source": "spell_ui_submit_live",
+      "target": "review_api_spell_complete_live",
+      "kind": "call",
+      "token": "POST /api/spell-check-complete"
+    },
+    {
+      "source": "spell_ui_submit_live",
+      "target": "review_api_spell_complete_live",
+      "kind": "data",
+      "token": "request:POST /api/spell-check-complete.spell_audit"
+    },
+    {
+      "source": "summary_api_generate_live",
+      "target": "summary_api_ats_materialize_live",
+      "kind": "data",
+      "token": "state:session_summaries.ai_generated"
+    },
+    {
+      "source": "summary_api_generate_live",
+      "target": "summary_api_ats_materialize_live",
+      "kind": "data",
+      "token": "state:summary_focus_override"
+    },
+    {
+      "source": "summary_api_generate_live",
+      "target": "summary_api_status_live",
+      "kind": "data",
+      "token": "state:session_summaries.ai_generated"
+    },
+    {
+      "source": "summary_api_generate_live",
+      "target": "summary_api_status_live",
+      "kind": "data",
+      "token": "state:summary_focus_override"
+    },
+    {
+      "source": "summary_api_generate_live",
+      "target": "summary_ui_build",
+      "kind": "data",
+      "token": "state:session_summaries.ai_generated"
+    },
+    {
+      "source": "summary_api_generate_live",
+      "target": "summary_ui_generate",
+      "kind": "data",
+      "token": "response:POST /api/generate-summary.summary"
+    },
+    {
+      "source": "summary_api_review_decision_live",
+      "target": "summary_api_ats_materialize_live",
+      "kind": "data",
+      "token": "state:summary_focus_override"
+    },
+    {
+      "source": "summary_api_review_decision_live",
+      "target": "summary_api_status_live",
+      "kind": "data",
+      "token": "state:summary_focus_override"
+    },
+    {
+      "source": "summary_api_status_live",
+      "target": "summary_ui_build",
+      "kind": "data",
+      "token": "response:GET /api/status.professional_summaries"
+    },
+    {
+      "source": "summary_orchestrator_preview_html",
+      "target": "summary_orchestrator_final_files",
+      "kind": "data",
+      "token": "artifact:generation_state.preview_html"
+    },
+    {
+      "source": "summary_orchestrator_select",
+      "target": "summary_orchestrator_preview_html",
+      "kind": "data",
+      "token": "cv:selected_content.summary"
+    },
+    {
+      "source": "summary_ui_build",
+      "target": "summary_api_status_live",
+      "kind": "call",
+      "token": "GET /api/status"
+    },
+    {
+      "source": "summary_ui_build",
+      "target": "summary_ui_generate",
+      "kind": "call",
+      "token": "ui:summary-review.generate"
+    },
+    {
+      "source": "summary_ui_build",
+      "target": "summary_ui_persist",
+      "kind": "data",
+      "token": "window:selectedSummaryKey"
+    },
+    {
+      "source": "summary_ui_generate",
+      "target": "summary_api_generate_live",
+      "kind": "call",
+      "token": "POST /api/generate-summary"
+    },
+    {
+      "source": "summary_ui_generate",
+      "target": "summary_ui_persist",
+      "kind": "call",
+      "token": "ui:summary-review.persist"
+    },
+    {
+      "source": "summary_ui_generate",
+      "target": "summary_ui_persist",
+      "kind": "data",
+      "token": "window:selectedSummaryKey"
+    },
+    {
+      "source": "summary_ui_persist",
+      "target": "review_api_decisions_live",
+      "kind": "call",
+      "token": "POST /api/review-decisions"
+    },
+    {
+      "source": "summary_ui_persist",
+      "target": "summary_api_review_decision_live",
+      "kind": "call",
+      "token": "POST /api/review-decisions"
+    },
+    {
+      "source": "summary_ui_persist",
+      "target": "summary_api_review_decision_live",
+      "kind": "data",
+      "token": "request:POST /api/review-decisions.summary_focus"
+    }
+  ]
+}

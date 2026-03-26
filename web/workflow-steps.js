@@ -9,7 +9,7 @@
  * Workflow progress bar, phase re-run/back-nav, and bullet reorder modal.
  *
  * Dependencies (resolved through globalThis at runtime):
- *   PHASES, currentStage, escapeHtml,
+ *   PHASES, escapeHtml,
  *   appendLoadingMessage, removeLoadingMessage, appendRetryMessage, appendMessage,
  *   setLoading, fetchStatus, switchTab, sendAction,
  *   showLoadJobPanel, updateActionButtons, updateTabBarForStage,
@@ -20,7 +20,7 @@
 import { getLogger } from './logger.js';
 const log = getLogger('workflow-steps');
 
-import { stateManager } from './state-manager.js';
+import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
 
 // ── Step-order constants ─────────────────────────────────────────────────────
 
@@ -34,6 +34,48 @@ const _ACTION_LABELS = {
   recommend_customizations: 'Selecting experiences & skills…',
   generate_cv: 'Generating CV…',
 };
+
+const _NAV_TAB_LABELS = {
+  generate: '📄 Generated CV',
+  download: '⬇️ File Review',
+  finalise: '✅ Finalise',
+};
+
+function applyLayoutFreshnessNavigationState() {
+  const freshness = stateManager.getLayoutFreshness();
+  const generationState = stateManager.getGenerationState();
+  const layoutStep = document.getElementById('step-layout');
+
+  if (layoutStep) {
+    layoutStep.classList.remove('stale', 'stale-critical');
+    const rerun = layoutStep.querySelector('.step-rerun')?.outerHTML || '';
+    const refineBadge = layoutStep.querySelector('.step-inline-badge')?.outerHTML || '';
+    const staleBadge = freshness.isStale
+      ? ' <span class="step-inline-badge step-stale-badge">Outdated</span>'
+      : '';
+    if (freshness.isStale) {
+      layoutStep.classList.add('stale');
+      if (freshness.isCritical) layoutStep.classList.add('stale-critical');
+    }
+    layoutStep.innerHTML = `🎨 Layout${staleBadge}${refineBadge ? ` ${refineBadge}` : ''}${rerun ? ` ${rerun}` : ''}`;
+  }
+
+  const showDownstreamBadge = freshness.isStale && Boolean(
+    generationState.finalGeneratedAt || generationState.phase === 'final_complete'
+  );
+  Object.entries(_NAV_TAB_LABELS).forEach(([tab, label]) => {
+    const tabEl = document.getElementById(`tab-${tab}`);
+    if (!tabEl) return;
+    tabEl.classList.remove('tab-stale', 'tab-stale-critical');
+    if (showDownstreamBadge) {
+      tabEl.classList.add('tab-stale');
+      if (freshness.isCritical) tabEl.classList.add('tab-stale-critical');
+      tabEl.innerHTML = `${label} <span class="tab-stale-badge">Outdated</span>`;
+    } else {
+      tabEl.textContent = label;
+    }
+  });
+}
 
 // ── Back to phase ─────────────────────────────────────────────────────────────
 
@@ -517,8 +559,7 @@ function updateWorkflowSteps(status) {
       el.classList.add('active');
       // "↻ Refining" badge shown on the active step when iterating
       if (status.iterating && reentryStep === step) {
-        label += ' <span style="font-size:0.75em;background:#fef9c3;color:#92400e;' +
-                 'border-radius:6px;padding:1px 5px;vertical-align:middle;">↻ Refining</span>';
+        label += ' <span class="step-inline-badge">↻ Refining</span>';
       }
     } else if (done[step]) {
       el.classList.add('completed');
@@ -535,6 +576,8 @@ function updateWorkflowSteps(status) {
     el.innerHTML = label;
   });
 
+  applyLayoutFreshnessNavigationState();
+
   // Show ↻ icons via CSS :hover on the parent .completed step
   // (inject a <style> only once)
   if (!document.getElementById('step-rerun-style')) {
@@ -546,10 +589,13 @@ function updateWorkflowSteps(status) {
 
   // Sync second-bar tab visibility and action buttons to the active workflow step
   if (typeof updateTabBarForStage === 'function') {
-    stateManager.setCurrentStage(activeStep);
     updateTabBarForStage(activeStep);
   }
   updateActionButtons(activeStep);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(GENERATION_STATE_EVENT, applyLayoutFreshnessNavigationState);
 }
 
 // ── Step click (back-nav) ─────────────────────────────────────────────────────
@@ -605,13 +651,15 @@ function handleStepClick(step) {
   };
   const tabName = stepToTab[step];
   if (tabName) {
-    const currentIdx = _STEP_ORDER.indexOf(stateManager.getCurrentStage());
+    const visibleStage = typeof getVisibleStage === 'function'
+      ? getVisibleStage()
+      : stateManager.getCurrentStage();
+    const currentIdx = _STEP_ORDER.indexOf(visibleStage);
     const targetIdx  = _STEP_ORDER.indexOf(step);
     const navigatingBack = targetIdx < currentIdx && el.classList.contains('completed');
 
     if (navigatingBack) {
       _showReRunConfirmModal(step, 'back-nav', () => {
-        stateManager.setCurrentStage(step);
         if (typeof updateTabBarForStage === 'function') updateTabBarForStage(step);
         switchTab(tabName);
       });
@@ -619,7 +667,6 @@ function handleStepClick(step) {
     }
 
     if (typeof updateTabBarForStage === 'function') {
-      stateManager.setCurrentStage(step);
       updateTabBarForStage(step);
     }
     switchTab(tabName);
@@ -639,6 +686,7 @@ export {
   reRunPhase,
   _highlightChangedItems,
   _markChanged,
+  applyLayoutFreshnessNavigationState,
   showBulletReorder,
   _applyBulletOrder,
   moveBullet,
