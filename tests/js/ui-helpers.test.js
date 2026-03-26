@@ -15,6 +15,7 @@ import {
   toggleChat,
   updateActionButtons,
 } from '../../web/ui-helpers.js'
+import { stateManager } from '../../web/state-manager.js'
 
 // ── DOM fixture helpers ───────────────────────────────────────────────────
 
@@ -52,11 +53,13 @@ function buildActionButtons() {
     'rewrite-btn', 'spell-btn', 'generate-proceed-btn',
     'layout-btn', 'finalise-action-btn',
   ]
+  document.body.innerHTML += '<button id="layout-freshness-chip" style="display:none"></button>'
   document.body.innerHTML += ids.map(id => `<button id="${id}"></button>`).join('')
 }
 
 beforeEach(() => {
   document.body.innerHTML = ''
+  stateManager.resetGenerationState()
   // Stub focus-trap globals so showAlertModal doesn't throw
   vi.stubGlobal('setInitialFocus', vi.fn())
   vi.stubGlobal('trapFocus', vi.fn())
@@ -239,6 +242,31 @@ describe('updateActionButtons', () => {
     updateActionButtons('rewrite')
     expect(document.getElementById('rewrite-btn').style.display).toBe('')
     expect(document.getElementById('spell-btn').style.display).toBe('none')
+  })
+
+  it('labels the layout action as confirm when preview is current and unconfirmed', () => {
+    stateManager.markPreviewGenerated()
+    updateActionButtons('layout')
+
+    expect(document.getElementById('layout-btn').textContent).toBe('✅ Confirm Layout')
+    expect(document.getElementById('layout-freshness-chip').style.display).toBe('')
+  })
+
+  it('labels the layout action as generate final after confirmation', () => {
+    stateManager.markPreviewGenerated()
+    stateManager.markLayoutConfirmed()
+    updateActionButtons('layout')
+
+    expect(document.getElementById('layout-btn').textContent).toBe('⬇️ Generate Final Files')
+  })
+
+  it('labels the layout action as regenerate preview when content is stale', () => {
+    stateManager.markPreviewGenerated()
+    stateManager.markContentChanged()
+    updateActionButtons('layout')
+
+    expect(document.getElementById('layout-btn').textContent).toBe('↻ Regenerate Preview')
+    expect(document.getElementById('layout-freshness-chip').textContent).toContain('Layout outdated')
   })
 
   it('hides all action buttons for an unknown stage', () => {

@@ -1105,7 +1105,48 @@ def generate_cv():
 
 ## 5. Document Generation Pipeline
 
-### 5.1 Actual Implementation (Jinja2 + WeasyPrint)
+### 5.1 Layout Digest Contract
+
+The staged-generation layout estimator is coupled to the current HTML template at
+[templates/cv-template.html](/Users/warnes/src/cv-builder/templates/cv-template.html).
+
+Update this section and [scripts/utils/layout_digest.py](/Users/warnes/src/cv-builder/scripts/utils/layout_digest.py)
+whenever the template structure changes.
+
+Current assumptions:
+
+1. Each rendered CV page uses a two-column layout.
+2. If either column overflows, the resume requires an additional page, so both column lengths must be tracked.
+3. The current design always produces at least two pages.
+4. The left column on page one is unlikely to overflow under the current sidebar design.
+5. Skills occupy the left column of page two and any following skills-continuation page.
+6. The main narrative sections occupy the right column: name, job title, summary, achievements, experience, publications, and related content.
+7. The ideal layout keeps name, job title, summary, and achievements on page one.
+8. Experience may begin on page one and continue onto following pages, but individual experience entries should remain whole units with no mid-entry page breaks.
+9. The current estimator therefore tracks first-page right-column pressure separately from the following-page left and right columns.
+
+### 5.2 Layout Model Refresh
+
+The digest heuristic can be recalibrated with a fixture-backed Monte Carlo
+trainer at [scripts/train_layout_estimator.py](/Users/warnes/src/cv-builder/scripts/train_layout_estimator.py).
+
+Current refresh mechanism:
+
+1. The trainer performs a user-specified number of Monte Carlo runs, defaulting to 500 total samples.
+2. Each run randomly selects one of the supported example-profile tiers: simple, medium, or complex.
+3. The trainer perturbs the generated preview HTML with probabilistic include/exclude, text-length, and skill-group membership changes.
+4. Each mutated HTML sample is rendered to an exact PDF page count using the normal HTML-to-PDF pipeline.
+5. The trainer flattens the resulting layout digest into numeric features and fits a random-forest regressor.
+6. The trained model is written to the repository-local artifact path consumed by [scripts/utils/layout_estimator_model.py](/Users/warnes/src/cv-builder/scripts/utils/layout_estimator_model.py).
+7. The live staged-generation estimator blends the digest heuristic with the trained model when that artifact is present; otherwise it falls back to the digest heuristic alone.
+
+Operational notes:
+
+1. The trainer uses multiple cores via `ProcessPoolExecutor`; each render sample is generated independently so the refresh process scales with available CPU cores.
+2. The trainer also writes JSONL sample rows and a summary JSON file so model refreshes can be inspected, compared, and repeated after template changes.
+3. Retrain the model whenever [templates/cv-template.html](/Users/warnes/src/cv-builder/templates/cv-template.html) or other layout-driving render logic changes materially.
+
+### 5.3 Actual Implementation (Jinja2 + WeasyPrint)
 
 The specification document mentions Quarto, but the **actual implementation uses Jinja2 + WeasyPrint** for reliability and simplicity. No Quarto installation is required.
 

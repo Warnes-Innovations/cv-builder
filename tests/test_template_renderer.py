@@ -16,6 +16,7 @@ Covers:
   - create_cv_context
   - load_template / render_template (integration)
 """
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -334,6 +335,7 @@ class TestLoadAndRenderTemplate(unittest.TestCase):
                 'generated_date': '2025-01-01',
                 'job_title':      'Test Engineer',
                 'company':        'Test Corp',
+                'skills_section_title': 'Technical Skills',
             },
             # Normally built by CVOrchestrator._build_json_ld before rendering
             'json_ld_str': (
@@ -345,6 +347,17 @@ class TestLoadAndRenderTemplate(unittest.TestCase):
                 '}'
             ),
         }
+
+    @staticmethod
+    def _plaintext_slice(html: str) -> str:
+        match = re.search(
+            r'<section id="plaintext"[^>]*><pre>(.*?)</pre></section>',
+            html,
+            re.DOTALL,
+        )
+        if match is None:
+            raise AssertionError('Could not locate plaintext container in rendered HTML')
+        return match.group(1)
 
     def test_template_loads_without_error(self):
         template = load_template(str(self._TEMPLATE_PATH))
@@ -411,17 +424,30 @@ class TestLoadAndRenderTemplate(unittest.TestCase):
     def test_plaintext_section_contains_work_experience_heading(self):
         template = load_template(str(self._TEMPLATE_PATH))
         html = render_template(template, self._minimal_context())
-        self.assertIn('WORK EXPERIENCE', html)
+        plaintext = self._plaintext_slice(html)
+        self.assertIn('WORK EXPERIENCE', plaintext)
 
     def test_plaintext_section_contains_technical_skills_heading(self):
         template = load_template(str(self._TEMPLATE_PATH))
         html = render_template(template, self._minimal_context())
-        self.assertIn('TECHNICAL SKILLS', html)
+        plaintext = self._plaintext_slice(html)
+        self.assertIn('SKILLS', plaintext)
 
     def test_plaintext_section_contains_contact_email(self):
         template = load_template(str(self._TEMPLATE_PATH))
         html = render_template(template, self._minimal_context())
-        self.assertIn('test@example.com', html)
+        plaintext = self._plaintext_slice(html)
+        self.assertIn('test@example.com', plaintext)
+
+    def test_human_skills_heading_does_not_change_plaintext_heading(self):
+        template = load_template(str(self._TEMPLATE_PATH))
+        context = self._minimal_context()
+        context['template_metadata']['skills_section_title'] = 'Core Capabilities'
+        html = render_template(template, context)
+        plaintext = self._plaintext_slice(html)
+        self.assertIn('Core Capabilities', html)
+        self.assertNotIn('Core Capabilities', plaintext)
+        self.assertIn('SKILLS', plaintext)
 
     def test_plaintext_section_not_visible(self):
         """The plaintext section must be hidden from visual/print rendering."""

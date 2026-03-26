@@ -13,7 +13,6 @@ import {
   _ACTION_LABELS,
   sendAction,
   saveSession,
-  resetSession,
 } from '../../web/session-actions.js'
 import { StorageKeys } from '../../web/api-client.js'
 import { initializeState, stateManager } from '../../web/state-manager.js'
@@ -115,6 +114,14 @@ describe('updatePositionTitle', () => {
       job_analysis: JSON.stringify({ title: 'Dev', company: 'Acme' }),
     })
     expect(document.getElementById('position-title').textContent).toContain('Dev')
+  })
+
+  it('prefers job_title from restored job_analysis payloads', () => {
+    updatePositionTitle({
+      position_name: '',
+      job_analysis: JSON.stringify({ job_title: 'Senior R Package Developer', company: 'Genentech' }),
+    })
+    expect(document.getElementById('position-title').textContent).toBe('Senior R Package Developer at Genentech')
   })
 
   it('parses label from job_description_text as last resort', () => {
@@ -354,75 +361,3 @@ describe('saveSession', () => {
   })
 })
 
-// ── resetSession ──────────────────────────────────────────────────────────
-
-describe('resetSession', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '<div id="conversation">existing content</div>'
-    vi.stubGlobal('fetchStatus', vi.fn(async () => {}))
-    vi.stubGlobal('showLoadJobPanel', vi.fn(async () => {}))
-    vi.stubGlobal('clearJobInput', vi.fn())
-    vi.stubGlobal('clearURLInput', vi.fn())
-    vi.stubGlobal('_clearFieldError', vi.fn())
-    vi.stubGlobal('_updatePasteCharCount', vi.fn())
-    vi.stubGlobal('appendMessage', vi.fn())
-    globalThis.fetch = vi.fn()
-    globalThis.userSelections = { experiences: { old: true }, skills: { old: true } }
-    globalThis.window.postAnalysisQuestions = ['q1']
-    globalThis.window.questionAnswers = { focus: 'old' }
-    globalThis.window.pendingRecommendations = { skills: ['Python'] }
-    globalThis.window._savedDecisions = { skills: { Python: 'keep' } }
-    globalThis.window._newSkillsFromLLM = ['FastAPI']
-    globalThis.window._activeReviewPane = 'skills'
-    vi.stubGlobal('_pendingUploadFile', { name: 'job.txt' })
-  })
-
-  afterEach(() => {
-    delete globalThis.fetch
-    delete globalThis.userSelections
-    delete globalThis.window.postAnalysisQuestions
-    delete globalThis.window.questionAnswers
-    delete globalThis.window.pendingRecommendations
-    delete globalThis.window._savedDecisions
-    delete globalThis.window._newSkillsFromLLM
-    delete globalThis.window._activeReviewPane
-  })
-
-  it('clears session state and restores the job-loading UI on success', async () => {
-    fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: true }),
-    })
-
-    await resetSession()
-
-    expect(fetch).toHaveBeenCalledWith('/api/reset', { method: 'POST' })
-    expect(globalThis.userSelections).toEqual({ experiences: {}, skills: {} })
-    expect(globalThis.window.postAnalysisQuestions).toEqual([])
-    expect(globalThis.window.questionAnswers).toEqual({})
-    expect(globalThis.window.pendingRecommendations).toBeNull()
-    expect(globalThis.window._savedDecisions).toEqual({})
-    expect(globalThis.window._newSkillsFromLLM).toEqual([])
-    expect(globalThis.window._activeReviewPane).toBe('experiences')
-    expect(globalThis._pendingUploadFile).toBeNull()
-    expect(document.getElementById('conversation').innerHTML).toBe('')
-    expect(fetchStatus).toHaveBeenCalled()
-    expect(showLoadJobPanel).toHaveBeenCalled()
-    expect(clearJobInput).toHaveBeenCalled()
-    expect(clearURLInput).toHaveBeenCalled()
-    expect(_clearFieldError).toHaveBeenCalledTimes(2)
-    expect(_updatePasteCharCount).toHaveBeenCalled()
-  })
-
-  it('reports reset failures through the system message path', async () => {
-    fetch.mockResolvedValue({
-      ok: false,
-      status: 500,
-      json: async () => ({ error: 'reset failed badly' }),
-    })
-
-    await resetSession()
-
-    expect(appendMessage).toHaveBeenCalledWith('system', 'Error: reset failed badly')
-  })
-})

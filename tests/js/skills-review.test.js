@@ -14,6 +14,13 @@
 import {
   _parseYearFromStr,
   _computeYearsFromIds,
+  saveSkillGroupOverride,
+  saveSkillCategoryOverride,
+  renameSkillCategory,
+  saveSkillCategoryOrder,
+  saveSkillQualifierOverride,
+  saveUserCreatedSkill,
+  _renderSkillsTable,
   moveSkillRow,
   handleSkillsResponse,
   submitSkillDecisions,
@@ -50,7 +57,11 @@ beforeEach(() => {
   vi.stubGlobal('scheduleAtsRefresh', vi.fn())
   vi.stubGlobal('updateInclusionCounts', vi.fn())
   vi.stubGlobal('switchTab', vi.fn())
+  vi.stubGlobal('escapeHtml', value => String(value))
   vi.stubGlobal('finishInteractiveReview', vi.fn())
+  vi.stubGlobal('getSkillRecommendation', vi.fn(() => 'Include'))
+  vi.stubGlobal('getSkillConfidence', vi.fn(() => ({ level: 'medium', text: 'Medium' })))
+  vi.stubGlobal('getSkillReasoning', vi.fn(() => 'Relevant to the role'))
   vi.stubGlobal('_updatePageEstimate', vi.fn())
   vi.stubGlobal('_renderSkillsTable', vi.fn())
   vi.stubGlobal('handleActionClick', vi.fn())
@@ -186,11 +197,12 @@ describe('submitSkillDecisions', () => {
 
   it('includes extra_skills note in toast when LLM skills are accepted', async () => {
     window._newSkillsFromLLM = ['NewSkill']
+    window._skillsOrdered = [{ name: 'NewSkill', _isNew: true }]
     window.userSelections.skills = { NewSkill: 'include' }
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
     await submitSkillDecisions()
     expect(globalThis.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('AI-suggested'),
+      expect.stringContaining('session-only skill'),
     )
   })
 
@@ -199,6 +211,7 @@ describe('submitSkillDecisions', () => {
       <input class="skill-match-input" data-skill="NewSkill" value="exp_1, exp_2" />
     `
     window._newSkillsFromLLM = ['NewSkill']
+    window._skillsOrdered = [{ name: 'NewSkill', _isNew: true }]
     window._allExperiences = [{ id: 'exp_1' }, { id: 'exp_2' }, { id: 'exp_3' }]
     window.userSelections.skills = { NewSkill: 'include' }
 
@@ -226,6 +239,335 @@ describe('submitSkillDecisions', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
     await submitSkillDecisions()
     expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('Failed'), 'error')
+  })
+})
+
+describe('saveSkillGroupOverride', () => {
+  beforeEach(() => {
+    window._skillsOrdered = [{ name: 'Python', group: '' }]
+  })
+
+  it('posts group edits to /api/review-skill-group', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveSkillGroupOverride('Python', 'scripting')
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-skill-group', expect.objectContaining({ method: 'POST' }))
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({ skill: 'Python', group: 'scripting' })
+    expect(window._skillsOrdered[0].group).toBe('scripting')
+  })
+
+  it('normalizes blank group names to null', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveSkillGroupOverride('Python', '   ')
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({ skill: 'Python', group: null })
+    expect(window._skillsOrdered[0].group).toBe('')
+  })
+
+  it('throws a helpful error when the API fails', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: 'Nope' }),
+    })
+    await expect(saveSkillGroupOverride('Python', 'scripting')).rejects.toThrow('Nope')
+  })
+})
+
+describe('saveSkillCategoryOverride', () => {
+  beforeEach(() => {
+    window._skillsOrdered = [{ name: 'Python', category: 'Programming' }]
+  })
+
+  it('posts category edits to /api/review-skill-category', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveSkillCategoryOverride('Python', 'Data Science')
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-skill-category', expect.objectContaining({ method: 'POST' }))
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({ skill: 'Python', category: 'Data Science' })
+    expect(window._skillsOrdered[0].category).toBe('Data Science')
+  })
+
+  it('normalizes blank category names to null and removes local override', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveSkillCategoryOverride('Python', '   ')
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({ skill: 'Python', category: null })
+    expect('category' in window._skillsOrdered[0]).toBe(false)
+  })
+
+  it('throws a helpful error when the API fails', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: 'Nope' }),
+    })
+    await expect(saveSkillCategoryOverride('Python', 'Data Science')).rejects.toThrow('Nope')
+  })
+})
+
+describe('skill category manager helpers', () => {
+  it('posts category renames to /api/review-skill-categories', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await renameSkillCategory('Programming', 'Data Science')
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-skill-categories', expect.objectContaining({ method: 'POST' }))
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({
+      action: 'rename',
+      old_category: 'Programming',
+      new_category: 'Data Science',
+    })
+  })
+
+  it('posts category ordering to /api/review-skill-categories', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveSkillCategoryOrder(['Data Science', 'Programming', 'Programming'])
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({
+      action: 'reorder',
+      ordered_categories: ['Data Science', 'Programming'],
+    })
+  })
+
+  it('renders a category manager and persists reorder clicks', async () => {
+    document.body.innerHTML = '<div id="skills-table-container"></div>'
+    window.pendingRecommendations = { recommended_skills: [] }
+    window._skillsOrdered = [
+      { name: 'Python', category: 'Programming' },
+      { name: 'SQL', category: 'Data Science' },
+    ]
+    stateManager.setTabData('analysis', { required_skills: [], nice_to_have_skills: [] })
+
+    const dataTableMock = vi.fn().mockReturnValue({ destroy: vi.fn() })
+    globalThis.$ = vi.fn(() => ({ DataTable: dataTableMock }))
+    globalThis.$.fn = { DataTable: { isDataTable: vi.fn().mockReturnValue(false) } }
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+
+    _renderSkillsTable(document.getElementById('skills-table-container'), new Set(), window.pendingRecommendations, new Set(), new Set())
+
+    const manager = document.querySelector('.skill-category-manager')
+    expect(manager).not.toBeNull()
+
+    const moveDown = manager.querySelector('[data-action="category-down"][data-category="Programming"]')
+    moveDown.click()
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({
+      action: 'reorder',
+      ordered_categories: ['Data Science', 'Programming'],
+    })
+  })
+
+  it('renders a category manager and persists rename changes', async () => {
+    document.body.innerHTML = '<div id="skills-table-container"></div>'
+    window.pendingRecommendations = { recommended_skills: [] }
+    window._skillsOrdered = [
+      { name: 'Python', category: 'Programming' },
+      { name: 'SQL', category: 'Programming' },
+    ]
+    stateManager.setTabData('analysis', { required_skills: [], nice_to_have_skills: [] })
+
+    const dataTableMock = vi.fn().mockReturnValue({ destroy: vi.fn() })
+    globalThis.$ = vi.fn(() => ({ DataTable: dataTableMock }))
+    globalThis.$.fn = { DataTable: { isDataTable: vi.fn().mockReturnValue(false) } }
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+
+    _renderSkillsTable(document.getElementById('skills-table-container'), new Set(), window.pendingRecommendations, new Set(), new Set())
+
+    const input = document.querySelector('.skill-category-manager-input')
+    input.value = 'Applied AI'
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({
+      action: 'rename',
+      old_category: 'Programming',
+      new_category: 'Applied AI',
+    })
+    expect(window._skillsOrdered.every(skill => skill.category === 'Applied AI')).toBe(true)
+  })
+})
+
+describe('saveSkillQualifierOverride', () => {
+  beforeEach(() => {
+    window._skillsOrdered = [{ name: 'Python' }]
+  })
+
+  it('posts qualifier edits to /api/review-skill-qualifiers', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveSkillQualifierOverride('Python', {
+      proficiency: 'expert',
+      subskills: 'Pandas, NumPy, Pandas',
+      parenthetical: 'Expert, Pandas, NumPy',
+    })
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-skill-qualifiers', expect.objectContaining({ method: 'POST' }))
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({
+      skill: 'Python',
+      proficiency: 'expert',
+      subskills: ['Pandas', 'NumPy'],
+      parenthetical: 'Expert, Pandas, NumPy',
+    })
+    expect(window._skillsOrdered[0]).toMatchObject({
+      proficiency: 'expert',
+      subskills: ['Pandas', 'NumPy'],
+      parenthetical: 'Expert, Pandas, NumPy',
+    })
+  })
+
+  it('removes blank qualifier fields from the local skill object', async () => {
+    window._skillsOrdered = [{
+      name: 'Python',
+      proficiency: 'expert',
+      subskills: ['Pandas'],
+      parenthetical: 'Expert, Pandas',
+    }]
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveSkillQualifierOverride('Python', {
+      proficiency: ' ',
+      subskills: ' ',
+      parenthetical: ' ',
+    })
+    expect(window._skillsOrdered[0]).toEqual({ name: 'Python' })
+  })
+})
+
+describe('saveUserCreatedSkill', () => {
+  beforeEach(() => {
+    window._skillsOrdered = [{ name: 'Python', category: 'Programming' }]
+    window._savedDecisions = { extra_skills: [] }
+    window.userSelections.skills = {}
+  })
+
+  it('posts a new session-only skill and updates local state', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        skill: {
+          name: 'Architecture',
+          category: 'Leadership',
+          group: 'strategy',
+          proficiency: 'expert',
+          subskills: ['Roadmaps'],
+          parenthetical: 'Platform strategy',
+          user_created: true,
+        },
+      }),
+    })
+
+    const result = await saveUserCreatedSkill({
+      name: 'Architecture',
+      category: 'Leadership',
+      group: 'strategy',
+      proficiency: 'expert',
+      subskills: 'Roadmaps',
+      parenthetical: 'Platform strategy',
+    })
+
+    expect(result).toMatchObject({
+      name: 'Architecture',
+      _isNew: true,
+      _isUserCreated: true,
+    })
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-skill-add', expect.objectContaining({ method: 'POST' }))
+    expect(window._skillsOrdered[0]).toMatchObject({ name: 'Architecture', _isUserCreated: true })
+    expect(window._savedDecisions.extra_skills[0]).toMatchObject({ name: 'Architecture', _isUserCreated: true })
+    expect(window.userSelections.skills.Architecture).toBe('include')
+  })
+})
+
+describe('_renderSkillsTable qualifier inputs', () => {
+  it('posts row-level qualifier edits from rendered controls', async () => {
+    document.body.innerHTML = '<div id="skills-table-container"></div>'
+    window.pendingRecommendations = { recommended_skills: [] }
+    window._skillsOrdered = [
+      {
+        name: 'Python',
+        category: 'Programming',
+      },
+    ]
+    stateManager.setTabData('analysis', { required_skills: [], nice_to_have_skills: [] })
+
+    const dataTableMock = vi.fn().mockReturnValue({ destroy: vi.fn() })
+    globalThis.$ = vi.fn(() => ({ DataTable: dataTableMock }))
+    globalThis.$.fn = { DataTable: { isDataTable: vi.fn().mockReturnValue(false) } }
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+
+    _renderSkillsTable(document.getElementById('skills-table-container'), new Set(), window.pendingRecommendations, new Set(), new Set())
+
+    document.querySelector('.skill-proficiency-input').value = 'expert'
+    document.querySelector('.skill-subskills-input').value = 'Pandas, NumPy'
+    const parentheticalInput = document.querySelector('.skill-parenthetical-input')
+    parentheticalInput.value = 'Expert, Pandas, NumPy'
+    parentheticalInput.dispatchEvent(new Event('change', { bubbles: true }))
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({
+      skill: 'Python',
+      proficiency: 'expert',
+      subskills: ['Pandas', 'NumPy'],
+      parenthetical: 'Expert, Pandas, NumPy',
+    })
+  })
+
+  it('renders a warning for crowded grouped inline skills', () => {
+    document.body.innerHTML = '<div id="skills-table-container"></div>'
+    window.pendingRecommendations = { recommended_skills: [] }
+    window._skillsOrdered = [
+      { name: 'Python', category: 'Programming', group: 'analytics', parenthetical: 'Pandas, NumPy, SciPy, PySpark, orchestration' },
+      { name: 'R', category: 'Programming', group: 'analytics', parenthetical: 'tidyverse, Shiny, modeling, packages' },
+      { name: 'SQL', category: 'Programming', group: 'analytics', parenthetical: 'window functions, optimization' },
+    ]
+    stateManager.setTabData('analysis', { required_skills: [], nice_to_have_skills: [] })
+
+    const dataTableMock = vi.fn().mockReturnValue({ destroy: vi.fn() })
+    globalThis.$ = vi.fn(() => ({ DataTable: dataTableMock }))
+    globalThis.$.fn = { DataTable: { isDataTable: vi.fn().mockReturnValue(false) } }
+
+    _renderSkillsTable(document.getElementById('skills-table-container'), new Set(), window.pendingRecommendations, new Set(), new Set())
+
+    expect(document.querySelector('.skill-group-warning')).not.toBeNull()
+    expect(document.querySelector('.skill-group-warning').textContent).toContain('Inline bullet may be hard to scan')
+  })
+
+  it('submits user-created skills as rich extra_skills objects', async () => {
+    window._skillsOrdered = [
+      {
+        name: 'Architecture',
+        category: 'Leadership',
+        group: 'strategy',
+        proficiency: 'expert',
+        subskills: ['Roadmaps', 'Alignment'],
+        parenthetical: 'Platform strategy',
+        _isNew: true,
+        _isUserCreated: true,
+      },
+    ]
+    window.userSelections.skills = { Architecture: 'include' }
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+
+    await submitSkillDecisions()
+
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload.extra_skills).toEqual([
+      {
+        name: 'Architecture',
+        category: 'Leadership',
+        group: 'strategy',
+        proficiency: 'expert',
+        subskills: ['Roadmaps', 'Alignment'],
+        parenthetical: 'Platform strategy',
+        user_created: true,
+      },
+    ])
   })
 })
 

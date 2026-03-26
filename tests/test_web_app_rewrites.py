@@ -182,19 +182,37 @@ class TestGetRewrites(unittest.TestCase):
         self.assertIn('error', resp.get_json())
 
     def test_propose_rewrites_called_with_content_and_analysis(self):
-        """orchestrator.propose_rewrites receives master_data and job_analysis."""
+        """orchestrator.propose_rewrites receives materialized content and job_analysis."""
         self.orch.propose_rewrites.return_value = []
         analysis = {'keywords': ['Python']}
         self.conv.state['job_analysis'] = analysis
+        selected_content = {'summary': 'Scoped summary'}
+        self.orch.build_render_ready_content.return_value = selected_content
 
         self.client.get('/api/rewrites', query_string={'session_id': self.session_id})
 
+        self.orch.build_render_ready_content.assert_called_once()
         self.orch.propose_rewrites.assert_called_once_with(
-            self.orch.master_data,
+            selected_content,
             analysis,
             conversation_history=self.conv.conversation_history,
             user_preferences=self.conv.state.get('post_analysis_answers'),
         )
+
+    def test_rewrites_materialize_review_decisions_before_selection(self):
+        """Rewrite proposals are generated from session-materialized review selections."""
+        self.orch.propose_rewrites.return_value = []
+        self.orch.build_render_ready_content.return_value = {'summary': 'Scoped summary'}
+        self.conv.state['experience_decisions'] = {'exp_001': 'include', 'exp_002': 'exclude'}
+        self.conv.state['publication_decisions'] = {'pub_a': True, 'pub_b': False}
+
+        self.client.get('/api/rewrites', query_string={'session_id': self.session_id})
+
+        customizations = self.orch.build_render_ready_content.call_args.args[1]
+        self.assertEqual(customizations['recommended_experiences'], ['exp_001'])
+        self.assertEqual(customizations['omitted_experiences'], ['exp_002'])
+        self.assertEqual(customizations['accepted_publications'], ['pub_a'])
+        self.assertEqual(customizations['rejected_publications'], ['pub_b'])
 
 
 # ---------------------------------------------------------------------------
@@ -388,7 +406,8 @@ class TestRewriteAchievementPersistence(unittest.TestCase):
 
         resp = self._post({
             'achievement_text':     'Old text.',
-            'experience_index':     None,
+            'experience_index':     2,
+            'achievement_index':    1,
             'user_instructions':    'be concise',
             'previous_suggestions': ['Earlier attempt.'],
         })
@@ -397,6 +416,8 @@ class TestRewriteAchievementPersistence(unittest.TestCase):
         self.conversation.log_achievement_rewrite.assert_called_once()
         call_kwargs = self.conversation.log_achievement_rewrite.call_args[1]
         self.assertEqual(call_kwargs['original_text'], 'Old text.')
+        self.assertEqual(call_kwargs['experience_index'], 2)
+        self.assertEqual(call_kwargs['achievement_index'], 1)
         self.assertEqual(call_kwargs['user_instructions'], 'be concise')
         self.assertEqual(call_kwargs['previous_suggestions'], ['Earlier attempt.'])
 

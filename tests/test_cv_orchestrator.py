@@ -23,7 +23,10 @@ import json
 import importlib
 import sys
 import tempfile
+import threading
+import time
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -37,6 +40,8 @@ except ModuleNotFoundError:
     CVOrchestrator = importlib.import_module(
         "utils.cv_orchestrator"
     ).CVOrchestrator
+
+ORCHESTRATOR_MODULE = CVOrchestrator.__module__
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -395,8 +400,14 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
             self._selected(), self._job()
         )
         meta = result["template_metadata"]
-        for key in ("variant", "generated_date", "job_title", "company"):
+        for key in ("variant", "generated_date", "job_title", "company", "skills_section_title"):
             self.assertIn(key, meta, f"Missing metadata key: {key}")
+
+    def test_template_metadata_skills_section_title_default(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(), self._job()
+        )
+        self.assertEqual(result["template_metadata"]["skills_section_title"], "Skills")
 
     def test_template_metadata_job_title_populated(self):
         result = self.orc._prepare_cv_data_for_template(
@@ -512,7 +523,7 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
             del _args, _kwargs
             Path(path).write_bytes(b"%PDF-1.4\n%%EOF\n")
 
-        self._wp_patcher = patch("utils.cv_orchestrator.weasyprint.HTML")
+        self._wp_patcher = patch(f"{ORCHESTRATOR_MODULE}.weasyprint.HTML")
         mock_html = self._wp_patcher.start()
         mock_html.return_value.write_pdf.side_effect = _fake_write_pdf
 
@@ -548,6 +559,7 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
                 "generated_date": "2025-01-01",
                 "job_title": "Test Engineer",
                 "company": "Test Corp",
+                "skills_section_title": "Technical Skills",
             },
             # JSON-LD is injected by _build_json_ld before rendering
             "json_ld_str": (
@@ -555,6 +567,18 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
                 '"@type": "Person", "name": "Smoke Test User"}'
             ),
         }
+
+    @staticmethod
+    def _plaintext_slice(html: str) -> str:
+        marker = '<section id="plaintext"'
+        start = html.find(marker)
+        if start == -1:
+            raise AssertionError("Could not locate plaintext section in rendered HTML")
+        pre_start = html.find('<pre>', start)
+        pre_end = html.find('</pre>', pre_start)
+        if pre_start == -1 or pre_end == -1:
+            raise AssertionError("Could not locate plaintext preformatted content in rendered HTML")
+        return html[pre_start + len('<pre>'):pre_end]
 
     def test_html_file_written(self):
         out_dir = Path(self.tmp.name) / "output"
@@ -601,6 +625,208 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
         self.orc._render_cv_html_pdf(self._cv_data(), out_dir, "smoke_test")
         html = (out_dir / "smoke_test.html").read_text(encoding="utf-8")
         self.assertIn('id="plaintext"', html)
+
+    def test_html_uses_custom_skills_heading_for_human_sections_only(self):
+        out_dir = Path(self.tmp.name) / "output"
+        cv_data = self._cv_data()
+        cv_data["skills_by_category"] = [
+            {"category": "Programming", "skills": [{"name": "Python"}]}
+        ]
+        cv_data["template_metadata"]["skills_section_title"] = "Core Capabilities"
+
+        self.orc._render_cv_html_pdf(cv_data, out_dir, "smoke_test")
+        html = (out_dir / "smoke_test.html").read_text(encoding="utf-8")
+        plaintext = self._plaintext_slice(html)
+
+        self.assertIn("Core Capabilities", html)
+        self.assertNotIn("Core Capabilities", plaintext)
+        self.assertIn("SKILLS", plaintext)
+
+
+class TestGenerateHumanDocx(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _content(self):
+        return {
+            "personal_info": {
+                "name": "Jane Doe",
+                "contact": {
+                    "email": "jane@example.com",
+                    "phone": "5555551234",
+                },
+            },
+            "professional_summary": "Experienced scientist.",
+            "experiences": [],
+            "skills_by_category": [
+                {"category": "Programming", "skills": [{"name": "Python"}]}
+            ],
+            "skills_section_title": "Core Capabilities",
+            "education": [],
+            "certifications": [],
+            "publications": [],
+        }
+
+    def test_human_docx_uses_custom_skills_heading(self):
+        from docx import Document  # type: ignore
+
+        out_dir = Path(self.tmp.name) / "output"
+        out_dir.mkdir()
+
+        human_docx = self.orc._generate_human_docx(
+            self._content(),
+            {"company": "Acme Corp", "title": "Data Scientist"},
+            out_dir,
+        )
+        doc = Document(str(human_docx))
+        paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+
+        self.assertIn("CORE CAPABILITIES", paragraphs)
+        self.assertNotIn("SKILLS", paragraphs)
+
+
+class TestConvertHtmlToPdf(unittest.TestCase):
+    """Focused tests for renderer selection and reporting."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_convert_html_to_pdf_forces_chrome(self):
+        html_path = Path(self.tmp.name) / "input.html"
+        pdf_path = Path(self.tmp.name) / "output.pdf"
+        html_path.write_text("<html><body>hi</body></html>", encoding="utf-8")
+
+        def _fake_run(command, **_kwargs):
+            pdf_target = next(
+                arg.split("=", 1)[1]
+                for arg in command
+                if arg.startswith("--print-to-pdf=")
+            )
+            Path(pdf_target).write_bytes(b"%PDF-1.4\n%%EOF\n")
+            return MagicMock(returncode=0)
+
+        with patch(
+            f"{ORCHESTRATOR_MODULE}.subprocess.run",
+            side_effect=_fake_run,
+        ) as mock_run:
+            result = self.orc._convert_html_to_pdf(
+                html_path,
+                pdf_path,
+                preferred_renderer="chrome",
+            )
+
+        self.assertEqual(result["renderer"], "chrome")
+        self.assertTrue(result["detail"])
+        self.assertTrue(pdf_path.exists())
+        mock_run.assert_called_once()
+
+    def test_convert_html_to_pdf_forces_weasyprint(self):
+        html_path = Path(self.tmp.name) / "input.html"
+        pdf_path = Path(self.tmp.name) / "output.pdf"
+        html_path.write_text("<html><body>hi</body></html>", encoding="utf-8")
+
+        def _fake_run(command, **_kwargs):
+            Path(command[4]).write_bytes(b"%PDF-1.4\n%%EOF\n")
+            return MagicMock(returncode=0, stderr=b"")
+
+        with patch(
+            f"{ORCHESTRATOR_MODULE}.subprocess.run",
+            side_effect=_fake_run,
+        ) as mock_run:
+            result = self.orc._convert_html_to_pdf(
+                html_path,
+                pdf_path,
+                preferred_renderer="weasyprint",
+            )
+
+        self.assertEqual(result["renderer"], "weasyprint")
+        self.assertEqual(result["detail"], sys.executable)
+        self.assertTrue(pdf_path.exists())
+        mock_run.assert_called_once()
+
+    def test_generate_pdf_variants_from_html_writes_both_renderer_outputs(self):
+        out_dir = Path(self.tmp.name) / "preview-output"
+
+        def _fake_run(command, **_kwargs):
+            pdf_target = None
+            for arg in command:
+                if isinstance(arg, str) and arg.startswith("--print-to-pdf="):
+                    pdf_target = arg.split("=", 1)[1]
+                    break
+
+            if pdf_target is not None:
+                Path(pdf_target).write_bytes(b"%PDF-1.4\n%%EOF\n")
+                return MagicMock(returncode=0)
+
+            if len(command) >= 5 and command[0] == sys.executable and command[1] == "-c":
+                Path(command[4]).write_bytes(b"%PDF-1.4\n%%EOF\n")
+                return MagicMock(returncode=0, stderr=b"")
+
+            raise AssertionError(f"Unexpected subprocess command: {command!r}")
+
+        with patch(
+            f"{ORCHESTRATOR_MODULE}.subprocess.run",
+            side_effect=_fake_run,
+        ) as mock_run:
+            result = self.orc.generate_pdf_variants_from_html(
+                confirmed_html="<html><body>preview</body></html>",
+                output_dir=out_dir,
+                filename_base="preview_case",
+            )
+
+        self.assertTrue(Path(result["html"]).exists())
+        self.assertEqual(set(result["pdfs"].keys()), {"chrome", "weasyprint"})
+        self.assertTrue(result["pdfs"]["chrome"]["ok"])
+        self.assertTrue(result["pdfs"]["weasyprint"]["ok"])
+        self.assertTrue(Path(result["pdfs"]["chrome"]["pdf"]).exists())
+        self.assertTrue(Path(result["pdfs"]["weasyprint"]["pdf"]).exists())
+        self.assertEqual(mock_run.call_count, 2)
+
+    def test_generate_pdf_variants_from_html_runs_renderers_concurrently(self):
+        out_dir = Path(self.tmp.name) / "preview-output-concurrent"
+        active_calls = 0
+        overlap_event = threading.Event()
+        active_lock = threading.Lock()
+
+        def _fake_convert(_html_path, pdf_path, preferred_renderer):
+            nonlocal active_calls
+            with active_lock:
+                active_calls += 1
+                if active_calls == 2:
+                    overlap_event.set()
+            time.sleep(0.05)
+            Path(pdf_path).write_bytes(b"%PDF-1.4\n%%EOF\n")
+            with active_lock:
+                active_calls -= 1
+            return {
+                "renderer": preferred_renderer,
+                "detail": f"{preferred_renderer}-detail",
+            }
+
+        with patch.object(
+            self.orc,
+            "_convert_html_to_pdf",
+            side_effect=_fake_convert,
+        ) as mock_convert:
+            result = self.orc.generate_pdf_variants_from_html(
+                confirmed_html="<html><body>preview</body></html>",
+                output_dir=out_dir,
+                filename_base="preview_case",
+            )
+
+        self.assertTrue(overlap_event.is_set())
+        self.assertEqual(mock_convert.call_count, 2)
+        self.assertTrue(result["pdfs"]["chrome"]["ok"])
+        self.assertTrue(result["pdfs"]["weasyprint"]["ok"])
 
 
 # ---------------------------------------------------------------------------
@@ -1306,6 +1532,101 @@ class TestGroupInlineSkills(unittest.TestCase):
         self.assertEqual(len(group_names_lists), 1)
         self.assertIn("C++", group_names_lists[0])
         self.assertIn("Rcpp", group_names_lists[0])
+
+    def test_organize_by_category_honors_custom_category_order(self):
+        skills = [
+            {"name": "Python", "category": "Programming"},
+            {"name": "Leadership", "category": "Management"},
+            {"name": "SQL", "category": "Data Science"},
+        ]
+        result = self.orc._organize_skills_by_category(
+            skills,
+            "standard",
+            ["Data Science", "Management"],
+        )
+        self.assertEqual(
+            [category["category"] for category in result],
+            ["Data Science", "Management", "Programming"],
+        )
+
+    def test_group_inline_skills_formats_per_skill_qualifiers(self):
+        skills = [
+            {
+                "name": "Python",
+                "group": "analytics",
+                "category": "Programming",
+                "proficiency": "expert",
+                "subskills": ["Pandas", "NumPy"],
+            },
+            {
+                "name": "R",
+                "group": "analytics",
+                "category": "Programming",
+                "parenthetical": "tidyverse, Shiny",
+            },
+        ]
+        result = self.orc._group_inline_skills(skills)
+        self.assertEqual(
+            result[0]["group_display_names"],
+            [
+                "Python (Expert, Pandas, NumPy)",
+                "R (tidyverse, Shiny)",
+            ],
+        )
+
+    def test_group_inline_skills_formats_ungrouped_display_name(self):
+        result = self.orc._group_inline_skills([
+            {"name": "SQL", "parenthetical": "Window functions"}
+        ])
+        self.assertEqual(result[0]["display_name"], "SQL (Window functions)")
+
+    def test_select_content_hybrid_preserves_rich_extra_skill_metadata(self):
+        expected_years = datetime.now().year - 2020 + 1
+        self.orc.master_data["experience"] = [
+            {
+                "id": "exp_1",
+                "title": "Director",
+                "company": "Acme",
+                "start_date": "2020",
+                "end_date": "Present",
+                "achievements": ["Drove architecture reviews across platform teams"],
+            }
+        ]
+        self.orc.master_data["skills"] = []
+        self.orc.llm.semantic_match.return_value = 0.0
+
+        result = self.orc._select_content_hybrid(
+            {
+                "ats_keywords": ["architecture"],
+                "required_skills": [],
+                "must_have_requirements": [],
+                "nice_to_have_requirements": [],
+                "domain": "",
+            },
+            {
+                "extra_skills": [
+                    {
+                        "name": "Architecture",
+                        "category": "Leadership",
+                        "group": "strategy",
+                        "parenthetical": "platform roadmaps",
+                        "user_created": True,
+                    }
+                ]
+            },
+        )
+
+        self.assertEqual(
+            result["skills"][0],
+            {
+                "name": "Architecture",
+                "category": "Leadership",
+                "group": "strategy",
+                "parenthetical": "platform roadmaps",
+                "user_created": True,
+                "years": expected_years,
+            },
+        )
 
 
 class TestBulletOrderInSelectContent(unittest.TestCase):

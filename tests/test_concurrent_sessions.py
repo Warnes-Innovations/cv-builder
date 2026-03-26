@@ -24,6 +24,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 from scripts.utils.conversation_manager import Phase  # noqa: E402
 from scripts.web_app import create_app  # noqa: E402
+from tests.helpers.session_state_fixtures import (  # noqa: E402
+    materialize_canonical_session,
+    materialize_session,
+)
 
 SAMPLE_MASTER_DATA = {
     "personal_info": {
@@ -291,6 +295,26 @@ class FakeConversationManager:
             "date_applied": "2026-03-19",
         }
 
+    def apply_confirmed_intake(
+        self,
+        role: str | None,
+        company: str | None,
+        date_applied: str | None,
+    ) -> None:
+        self.state["intake"] = {
+            "role": role,
+            "company": company,
+            "date_applied": date_applied,
+            "confirmed": True,
+        }
+        if role and company:
+            self.state["position_name"] = f"{role} at {company}"
+        elif role:
+            self.state["position_name"] = role
+        elif company:
+            self.state["position_name"] = company
+        self._save_session()
+
     def _process_message(self, message: str) -> dict[str, Any]:
         self.processed_messages.append(message)
         self.conversation_history.append({"role": "user", "content": message})
@@ -390,6 +414,8 @@ class FakeConversationManager:
         user_instructions: str,
         previous_suggestions: list,
         suggested_text: str,
+        experience_index: int | None = None,
+        achievement_index: int | None = None,
     ) -> str:
         del (
             original_text,
@@ -397,6 +423,8 @@ class FakeConversationManager:
             user_instructions,
             previous_suggestions,
             suggested_text,
+            experience_index,
+            achievement_index,
         )
         return uuid.uuid4().hex[:12]
 
@@ -642,7 +670,7 @@ def test_session_aware_routes_enforce_session_and_owner_tokens(build_app):
             "/api/reset",
             json={"session_id": session_id, "owner_token": "owner-b"},
         )
-        assert wrong_owner_reset.status_code == 403
+        assert wrong_owner_reset.status_code == 405
 
         success = client.post(
             "/api/job",
@@ -675,18 +703,21 @@ def test_session_aware_routes_enforce_session_and_owner_tokens(build_app):
             "/api/reset",
             json={"session_id": session_id, "owner_token": "owner-a"},
         )
-        assert reset.status_code == 200
-        assert reset.get_json()["ok"] is True
+        assert reset.status_code == 405
 
-        reset_status = client.get(
+        unchanged_status = client.get(
             "/api/status",
             query_string={"session_id": session_id},
         )
-        assert reset_status.status_code == 200
-        reset_payload = reset_status.get_json()
-        assert reset_payload["job_description_text"] is None
-        assert reset_payload["position_name"] is None
-        assert reset_payload["phase"] == Phase.INIT
+        assert unchanged_status.status_code == 200
+        unchanged_payload = unchanged_status.get_json()
+        assert unchanged_payload["job_description_text"] == (
+            "Staff Data Scientist\nExample Co\nBuild ML systems."
+        )
+        assert (
+            unchanged_payload["position_name"]
+            == "Staff Data Scientist at Example Co"
+        )
 
 
 def test_sessions_active_reports_per_session_metadata(build_app):
@@ -777,6 +808,289 @@ def test_load_session_route_restores_saved_session_metadata(build_app):
     assert loaded_entry.manager.conversation_history == [
         {"role": "assistant", "content": "Loaded from disk"}
     ]
+
+
+@pytest.mark.parametrize(
+    (
+        "combination_name",
+        "expected_phase",
+        "expected_generation_phase",
+        "preview_available",
+        "layout_confirmed",
+    ),
+    [
+        ("layout_review_idle", "layout_review", "idle", False, False),
+        (
+            "layout_review_active",
+            "layout_review",
+            "layout_review",
+            True,
+            False,
+        ),
+        (
+            "layout_review_confirmed",
+            "layout_review",
+            "confirmed",
+            True,
+            True,
+        ),
+        (
+            "refinement_final_complete",
+            "refinement",
+            "final_complete",
+            True,
+            True,
+        ),
+        ("refinement_legacy_idle", "refinement", "idle", False, False),
+    ],
+)
+def test_load_session_restores_canonical_generation_state_combinations(
+    build_app,
+    combination_name,
+    expected_phase,
+    expected_generation_phase,
+    preview_available,
+    layout_confirmed,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        session_file = materialize_canonical_session(
+            manager.output_dir,
+            combination_name,
+        )
+        loaded_session_id = session_file.parent.name
+
+        response = client.post(
+            "/api/load-session",
+            json={"path": str(session_file)},
+        )
+        assert response.status_code == 200
+
+        payload = response.get_json()
+        assert payload["ok"] is True
+        assert payload["session_id"] == loaded_session_id
+        assert payload["phase"] == expected_phase
+
+        generation_state = client.get(
+            "/api/cv/generation-state",
+            query_string={"session_id": loaded_session_id},
+        ).get_json()
+
+    assert generation_state["phase"] == expected_generation_phase
+    assert generation_state["preview_available"] is preview_available
+    assert generation_state["layout_confirmed"] is layout_confirmed
+
+    loaded_entry = app.session_registry.get(loaded_session_id)
+    assert loaded_entry is not None
+    assert loaded_entry.manager.state["phase"] == expected_phase
+
+
+def test_invalid_prelayout_confirmed_load_is_left_explicitly_inconsistent(
+    build_app,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        session_file = materialize_session(
+            manager.output_dir,
+            workflow_phase="customization",
+            generation_phase="confirmed",
+            session_id="invalid_prelayout_confirmed",
+            allow_inconsistent=True,
+        )
+
+        response = client.post(
+            "/api/load-session",
+            json={"path": str(session_file)},
+        )
+        assert response.status_code == 200
+
+        payload = response.get_json()
+        assert payload["ok"] is True
+        assert payload["session_id"] == "invalid_prelayout_confirmed"
+        assert payload["phase"] == "customization"
+
+        generation_state = client.get(
+            "/api/cv/generation-state",
+            query_string={"session_id": "invalid_prelayout_confirmed"},
+        ).get_json()
+
+    assert generation_state["phase"] == "confirmed"
+    assert generation_state["preview_available"] is True
+    assert generation_state["layout_confirmed"] is True
+
+
+@pytest.mark.parametrize(
+    (
+        "session_id",
+        "workflow_phase",
+        "generation_phase",
+        "state_overrides",
+        "expected_loaded_phase",
+        "expected_generation_phase",
+        "preview_available",
+        "layout_confirmed",
+    ),
+    [
+        (
+            "invalid_confirmed_without_preview",
+            "layout_review",
+            "confirmed",
+            {
+                "generation_state": {
+                    "phase": "confirmed",
+                    "layout_confirmed": True,
+                    "confirmed_at": "2026-03-24T00:47:00-04:00",
+                    "confirmed_preview_hash": "abc123def4567890",
+                }
+            },
+            "layout_review",
+            "confirmed",
+            False,
+            True,
+        ),
+        (
+            "invalid_final_complete_without_paths",
+            "refinement",
+            "final_complete",
+            {
+                "generation_state": {
+                    "phase": "final_complete",
+                    "preview_html": "<html><body><h1>Final Preview</h1></body></html>",
+                    "preview_request_id": "preview-003",
+                    "preview_generated_at": "2026-03-24T00:47:00-04:00",
+                    "layout_confirmed": True,
+                    "confirmed_at": "2026-03-24T00:47:00-04:00",
+                    "confirmed_preview_hash": "abc123def4567890",
+                    "final_generated_at": "2026-03-24T00:47:00-04:00",
+                    "layout_instructions": [],
+                }
+            },
+            "refinement",
+            "final_complete",
+            True,
+            True,
+        ),
+    ],
+)
+def test_restore_invalid_generation_states_remain_explicit_after_load(
+    build_app,
+    session_id,
+    workflow_phase,
+    generation_phase,
+    state_overrides,
+    expected_loaded_phase,
+    expected_generation_phase,
+    preview_available,
+    layout_confirmed,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        ephemeral_session_id = _new_session(client)
+        manager = _manager_for_session(tracker, ephemeral_session_id)
+        session_file = materialize_session(
+            manager.output_dir,
+            workflow_phase=workflow_phase,
+            generation_phase=generation_phase,
+            session_id=session_id,
+            allow_inconsistent=True,
+            state_overrides=state_overrides,
+        )
+
+        response = client.post(
+            "/api/load-session",
+            json={"path": str(session_file)},
+        )
+        assert response.status_code == 200
+
+        payload = response.get_json()
+        assert payload["ok"] is True
+        assert payload["session_id"] == session_id
+        assert payload["phase"] == expected_loaded_phase
+
+        generation_state = client.get(
+            "/api/cv/generation-state",
+            query_string={"session_id": session_id},
+        ).get_json()
+
+    assert generation_state["phase"] == expected_generation_phase
+    assert generation_state["preview_available"] is preview_available
+    assert generation_state["layout_confirmed"] is layout_confirmed
+
+    loaded_entry = app.session_registry.get(session_id)
+    assert loaded_entry is not None
+    assert loaded_entry.manager.state["generation_state"]["phase"] == (
+        expected_generation_phase
+    )
+
+
+@pytest.mark.parametrize(
+    ("combination_name", "loaded_phase"),
+    [
+        ("layout_review_active", "layout_review"),
+        ("layout_review_confirmed", "layout_review"),
+        ("refinement_final_complete", "refinement"),
+    ],
+)
+def test_back_to_phase_preserves_loaded_canonical_generation_state(
+    build_app,
+    combination_name,
+    loaded_phase,
+):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        session_file = materialize_canonical_session(
+            manager.output_dir,
+            combination_name,
+        )
+        loaded_session_id = session_file.parent.name
+
+        load_response = client.post(
+            "/api/load-session",
+            json={"path": str(session_file)},
+        )
+        assert load_response.status_code == 200
+        assert load_response.get_json()["phase"] == loaded_phase
+
+        loaded_entry = app.session_registry.get(loaded_session_id)
+        assert loaded_entry is not None
+        prior_generation_state = json.loads(
+            json.dumps(loaded_entry.manager.state["generation_state"])
+        )
+
+        response = client.post(
+            "/api/back-to-phase",
+            json={
+                "session_id": loaded_session_id,
+                "phase": "customizations",
+                "feedback": "Revisit the selected achievements.",
+            },
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["ok"] is True
+        assert payload["phase"] == "customizations"
+
+        updated_entry = app.session_registry.get(loaded_session_id)
+        assert updated_entry is not None
+        assert updated_entry.manager.state["phase"] == "customizations"
+        assert (
+            updated_entry.manager.state["generation_state"]
+            == prior_generation_state
+        )
+        assert updated_entry.manager.conversation_history[-1]["content"] == (
+            "[Refinement feedback for customizations]: "
+            "Revisit the selected achievements."
+        )
 
 
 def test_rename_current_session_persists_position_name(build_app):
@@ -1194,6 +1508,39 @@ def test_spell_check_sections_route_skips_semantic_match_scoring(build_app):
     assert payload["ok"] is True
 
 
+def test_spell_check_sections_route_materializes_review_decisions(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["experience_decisions"] = {
+            "exp_001": "include",
+            "exp_999": "exclude",
+        }
+        manager.state["publication_decisions"] = {
+            "pub_a": True,
+            "pub_b": False,
+        }
+
+        with patch.object(
+            manager.orchestrator,
+            "build_render_ready_content",
+            wraps=manager.orchestrator.build_render_ready_content,
+        ) as build_content:
+            response = client.get(
+                "/api/spell-check-sections",
+                query_string={"session_id": session_id},
+            )
+
+    assert response.status_code == 200
+    customizations = build_content.call_args.args[1]
+    assert customizations["recommended_experiences"] == ["exp_001"]
+    assert customizations["omitted_experiences"] == ["exp_999"]
+    assert customizations["accepted_publications"] == ["pub_a"]
+    assert customizations["rejected_publications"] == ["pub_b"]
+
+
 def test_layout_completion_route_updates_phase_and_tracks_instructions(
     build_app,
 ):
@@ -1333,6 +1680,34 @@ def test_summary_and_master_data_routes_enforce_ownership(build_app):
             achievement.get("id") == "ach-001"
             for achievement in master_data["selected_achievements"]
         )
+
+
+def test_status_route_merges_session_summary_variants(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.orchestrator.master_data['professional_summaries'] = {
+            'default': 'Master summary',
+        }
+        manager.state['session_summaries'] = {
+            'ai_generated': 'Session summary',
+        }
+        manager.state['summary_focus_override'] = 'ai_generated'
+
+        response = client.get(
+            '/api/status',
+            query_string={'session_id': session_id},
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['professional_summaries'] == {
+            'default': 'Master summary',
+            'ai_generated': 'Session summary',
+        }
+        assert payload['summary_focus_override'] == 'ai_generated'
 
 
 def test_cover_letter_and_screening_routes_enforce_ownership(build_app):
@@ -1672,8 +2047,23 @@ def test_phase_navigation_and_review_routes_update_session_state(build_app):
             },
         )
         assert generation_settings.status_code == 200
-        assert generation_settings.get_json() == {"ok": True, "max_skills": 7}
+        assert generation_settings.get_json() == {"ok": True, "max_skills": 7, "skills_section_title": "Skills"}
         assert manager.state["max_skills"] == 7
+
+        # skills_section_title persists via generation-settings
+        title_settings = client.post(
+            "/api/generation-settings",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "skills_section_title": "Technical Skills",
+            },
+        )
+        assert title_settings.status_code == 200
+        body = title_settings.get_json()
+        assert body["ok"] is True
+        assert body["skills_section_title"] == "Technical Skills"
+        assert manager.state["skills_section_title"] == "Technical Skills"
 
         responses = client.post(
             "/api/post-analysis-responses",
@@ -2256,6 +2646,130 @@ def test_editing_and_rewrite_fetch_routes_enforce_ownership(build_app):
             0: ["Edited bullet", "Second bullet"]
         }
 
+        review_achievement = client.post(
+            "/api/review-achievement",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "id": "ach-1",
+                "field": "title",
+                "value": "Session title",
+            },
+        )
+        assert review_achievement.status_code == 200
+        assert manager.state["achievement_overrides"] == {
+            "ach-1": {"title": "Session title"}
+        }
+
+        remove_achievement = client.post(
+            "/api/review-achievement",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "id": "ach-1",
+                "action": "delete",
+            },
+        )
+        assert remove_achievement.status_code == 200
+        assert manager.state["removed_achievement_ids"] == ["ach-1"]
+        assert manager.state["achievement_decisions"]["ach-1"] == "exclude"
+
+        skill_group = client.post(
+            "/api/review-skill-group",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "skill": "Python",
+                "group": "scripting",
+            },
+        )
+        assert skill_group.status_code == 200
+        assert manager.state["skill_group_overrides"] == {
+            "Python": "scripting"
+        }
+
+        skill_category = client.post(
+            "/api/review-skill-category",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "skill": "Python",
+                "category": "Data Science",
+            },
+        )
+        assert skill_category.status_code == 200
+        assert manager.state["skill_category_overrides"] == {
+            "Python": "Data Science"
+        }
+
+        skill_qualifiers = client.post(
+            "/api/review-skill-qualifiers",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "skill": "Python",
+                "proficiency": "expert",
+                "subskills": ["Pandas", "NumPy"],
+                "parenthetical": "Expert, Pandas, NumPy",
+            },
+        )
+        assert skill_qualifiers.status_code == 200
+        assert manager.state["skill_qualifier_overrides"] == {
+            "Python": {
+                "proficiency": "expert",
+                "subskills": ["Pandas", "NumPy"],
+                "parenthetical": "Expert, Pandas, NumPy",
+            }
+        }
+
+        rename_categories = client.post(
+            "/api/review-skill-categories",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "action": "rename",
+                "old_category": "Data Science",
+                "new_category": "Applied AI",
+            },
+        )
+        assert rename_categories.status_code == 200
+        assert manager.state["skill_category_overrides"] == {
+            "Python": "Applied AI"
+        }
+
+        reorder_categories = client.post(
+            "/api/review-skill-categories",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "action": "reorder",
+                "ordered_categories": [
+                    "Applied AI",
+                    "Programming",
+                    "Applied AI",
+                ],
+            },
+        )
+        assert reorder_categories.status_code == 200
+        assert manager.state["skill_category_order"] == [
+            "Applied AI",
+            "Programming",
+        ]
+        assert manager.state["customizations"]["skill_category_order"] == [
+            "Applied AI",
+            "Programming",
+        ]
+        assert (
+            manager.state["customizations"]["skill_qualifier_overrides"]
+            == {
+                "Python": {
+                    "proficiency": "expert",
+                    "subskills": ["Pandas", "NumPy"],
+                    "parenthetical": "Expert, Pandas, NumPy",
+                }
+            }
+        )
+
         missing_text = client.post(
             "/api/rewrite-achievement",
             json={"session_id": session_id, "owner_token": "owner-a"},
@@ -2637,6 +3151,14 @@ def test_cv_ats_score_route_enriches_customizations_from_session_state(
             "targeted": "Targeted summary text",
         }
         manager.state["summary_focus_override"] = "targeted"
+        manager.state["experience_decisions"] = {
+            "exp_001": "include",
+            "exp_404": "exclude",
+        }
+        manager.state["publication_decisions"] = {
+            "pub_a": True,
+            "pub_b": False,
+        }
 
         returned_score = {
             "score": 87,
@@ -2670,12 +3192,124 @@ def test_cv_ats_score_route_enriches_customizations_from_session_state(
                 "section": "experience",
             }
         ]
+        assert customizations_arg["recommended_experiences"] == ["exp_001"]
+        assert customizations_arg["omitted_experiences"] == ["exp_404"]
+        assert customizations_arg["accepted_publications"] == ["pub_a"]
+        assert customizations_arg["rejected_publications"] == ["pub_b"]
         assert (
             customizations_arg["selected_summary"] == "Targeted summary text"
         )
         assert mock_score.call_args.kwargs == {"basis": "review_checkpoint"}
         assert manager.state["generation_state"]["ats_score"] == returned_score
         assert manager.save_calls == 1
+
+
+def test_cv_ats_score_route_accepts_rich_extra_skill_objects(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["job_analysis"] = {"ats_keywords": ["python", "leadership"]}
+        manager.state["customizations"] = {"approved_skills": [{"name": "Python"}]}
+        manager.state["skill_decisions"] = {
+            "Python": "include",
+            "Architecture": "de-emphasize",
+            "Cobol": "exclude",
+        }
+        manager.state["extra_skills"] = [
+            {
+                "name": "Architecture",
+                "category": "Leadership",
+                "group": "strategy",
+                "parenthetical": "platform roadmaps",
+                "user_created": True,
+            },
+            {"name": "Cobol", "user_created": True},
+        ]
+
+        with patch(
+            "utils.scoring.compute_ats_score",
+            return_value={"score": 91},
+        ) as mock_score:
+            response = client.post(
+                "/api/cv/ats-score",
+                json={"session_id": session_id},
+            )
+
+        assert response.status_code == 200
+        customizations_arg = mock_score.call_args.args[1]
+        assert customizations_arg["approved_skills"] == [
+            {"name": "Python"},
+            "Architecture",
+        ]
+
+
+def test_review_skill_add_route_persists_session_only_skill(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+
+        response = client.post(
+            "/api/review-skill-add",
+            json={
+                "session_id": session_id,
+                "name": "Architecture",
+                "category": "Leadership",
+                "group": "strategy",
+                "proficiency": "expert",
+                "subskills": ["Roadmaps", "Stakeholder alignment", "Roadmaps"],
+                "parenthetical": "Platform strategy",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "ok": True,
+        "skill": {
+            "name": "Architecture",
+            "category": "Leadership",
+            "group": "strategy",
+            "proficiency": "expert",
+            "subskills": ["Roadmaps", "Stakeholder alignment"],
+            "parenthetical": "Platform strategy",
+            "user_created": True,
+        },
+    }
+    assert manager.state["extra_skills"] == [
+        {
+            "name": "Architecture",
+            "category": "Leadership",
+            "group": "strategy",
+            "proficiency": "expert",
+            "subskills": ["Roadmaps", "Stakeholder alignment"],
+            "parenthetical": "Platform strategy",
+            "user_created": True,
+        }
+    ]
+    assert manager.state["skill_decisions"]["Architecture"] == "include"
+
+
+def test_review_skill_add_route_rejects_duplicate_session_skill(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["extra_skills"] = [{"name": "Architecture", "user_created": True}]
+
+        response = client.post(
+            "/api/review-skill-add",
+            json={
+                "session_id": session_id,
+                "name": "Architecture",
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "skill already exists in this session"}
 
 
 def test_cv_ats_score_route_falls_back_to_achievement_edits_when_needed(

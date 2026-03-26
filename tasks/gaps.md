@@ -182,9 +182,9 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 **Severity:** CRITICAL
 **Affected stories:** US-A5a, US-A5b, US-A5c, US-U6, US-U9
 **See also:** [tasks/ui-review.md](ui-review.md#top-gaps)
-**Status:** OPEN - discovered 2026-03-19 11:36 ET; applicant and UX reviews found no verified inline HTML preview pane, no complete frontend layout-instruction loop, and no distinct post-layout final-generation step derived from confirmed HTML.
-**Description:** The current workflow still behaves as a bundled generation path rather than the staged `HTML preview -> layout review -> final generation` flow required by the stories. Backend layout endpoints exist, but the reviewed frontend does not provide the story-complete preview, instruction, refresh, confirmation, and final-generation sequence.
-**Recommended resolution:** Split generation into explicit stages: generate HTML preview only, review/apply layout instructions against that HTML with visible preview refresh and history, then run final PDF/ATS DOCX generation from the confirmed HTML artifact.
+**Status:** PARTIAL - re-verified 2026-03-25; the app now has a real inline preview pane, session-backed layout refresh calls, and distinct backend endpoints for preview generation, layout confirmation, and final generation, but the frontend still presents those stages with overlapping terminology and collapses confirm-layout plus final-file generation into one user action.
+**Description:** Earlier wording that treated staged generation as mostly absent is no longer accurate. The remaining blocker is the user-facing contract. The backend exposes a staged `HTML preview -> layout confirmation -> final generation` sequence, and the layout staleness spec defines how freshness should be communicated, but the reviewed frontend still behaves like a bundled generation path because preview/final artifacts are named inconsistently and stale/current state is not surfaced.
+**Recommended resolution:** Preserve the existing backend staging and complete the frontend contract: use one consistent vocabulary for preview, layout-confirmed, and final-file states; separate layout confirmation from final generation as visible user actions; and implement the stale/current signaling defined in `tasks/layout-stale-ui-spec.md`.
 
 ## GAP-21: ATS Match Score and Keyword Visibility
 

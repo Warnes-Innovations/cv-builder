@@ -44,7 +44,7 @@ beforeEach(() => {
   window._masterSkills = []
   stateManager.setIsReconnecting(false)
   stateManager.setCurrentTab('job')
-  stateManager.setCurrentStage('job')
+  stateManager.setPhase('init')
   // Function stubs
   vi.stubGlobal('appendMessage', vi.fn())
   vi.stubGlobal('saveTabData', vi.fn())
@@ -169,6 +169,14 @@ describe('switchTab', () => {
   it('updates canonical currentTab state', () => {
     switchTab('analysis')
     expect(stateManager.getCurrentTab()).toBe('analysis')
+  })
+
+  it('updates stage-scoped chrome without requiring a mutable currentStage setter', () => {
+    globalThis.getStageForTab.mockReturnValue('layout')
+
+    expect(() => switchTab('analysis')).not.toThrow()
+    expect(globalThis.updateTabBarForStage).toHaveBeenCalledWith('layout')
+    expect(globalThis.updateActionButtons).toHaveBeenCalledWith('layout')
   })
 
   it('adds full-width class for non-generate tabs', () => {
@@ -458,6 +466,7 @@ describe('_loadReviewPane', () => {
 
 describe('_updatePageEstimate', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     document.body.innerHTML = `
       <div id="page-estimate-widget" class="page-estimate ok">
         <span id="pe-icon">📄</span>
@@ -467,6 +476,20 @@ describe('_updatePageEstimate', () => {
     // Reset userSelections
     userSelections.experiences = {}
     userSelections.skills = {}
+    globalThis.apiCall.mockResolvedValue({
+      ok: true,
+      page_count_estimate: 2.4,
+      page_count_exact: null,
+      page_count_confidence: 0.72,
+      page_count_source: 'delta-estimate',
+      page_count_needs_exact_recheck: false,
+      page_length_warning: false,
+      contributors: ['skills column pressure changed'],
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('does nothing when widget element is absent', () => {
@@ -476,35 +499,57 @@ describe('_updatePageEstimate', () => {
 
   it('updates label text', () => {
     _updatePageEstimate()
-    expect(document.getElementById('pe-label').textContent).toContain('pages')
+    return vi.runAllTimersAsync().then(() => {
+      expect(document.getElementById('pe-label').textContent).toContain('Estimated: 2.4 pages')
+    })
   })
 
   it('adds "ok" class for short estimated length', () => {
-    // No selections → very short → ok
     _updatePageEstimate()
-    expect(document.getElementById('page-estimate-widget').className).toContain('ok')
+    return vi.runAllTimersAsync().then(() => {
+      expect(document.getElementById('page-estimate-widget').className).toContain('ok')
+    })
   })
 
-  it('adds "over" class when many experiences are emphasised', () => {
-    // Fill with many 'emphasize' entries to push beyond 2.8 pages
-    for (let i = 0; i < 10; i++) {
-      userSelections.experiences[`e${i}`] = 'emphasize'
-    }
+  it('adds "over" class when server warns the estimate is too long', () => {
+    globalThis.apiCall.mockResolvedValueOnce({
+      ok: true,
+      page_count_estimate: 3.4,
+      page_count_exact: null,
+      page_count_confidence: 0.61,
+      page_count_source: 'delta-estimate',
+      page_count_needs_exact_recheck: true,
+      page_length_warning: true,
+      contributors: ['experience/publications column pressure changed'],
+    })
     _updatePageEstimate()
-    const cls = document.getElementById('page-estimate-widget').className
-    expect(cls === 'page-estimate ok' || cls === 'page-estimate warn' || cls === 'page-estimate over').toBe(true)
+    return vi.runAllTimersAsync().then(() => {
+      const cls = document.getElementById('page-estimate-widget').className
+      expect(cls).toContain('over')
+    })
   })
 
   it('updates pe-fill width', () => {
     _updatePageEstimate()
-    const fill = document.getElementById('pe-fill')
-    expect(fill.style.width).toMatch(/\d+(\.\d+)?%/)
+    return vi.runAllTimersAsync().then(() => {
+      const fill = document.getElementById('pe-fill')
+      expect(fill.style.width).toMatch(/\d+(\.\d+)?%/)
+    })
   })
 
-  it('counts only non-excluded skills for estimate', () => {
+  it('sends current experience and skill decisions to the server', () => {
     userSelections.skills = { s1: 'include', s2: 'exclude', s3: 'emphasize' }
+    userSelections.experiences = { e1: 'include' }
     _updatePageEstimate()
-    // Just verify no throw and label contains count info
-    expect(document.getElementById('pe-label').textContent).toContain('2 skills')
+    return vi.runAllTimersAsync().then(() => {
+      expect(globalThis.apiCall).toHaveBeenCalledWith(
+        'POST',
+        '/api/cv/layout-estimate',
+        expect.objectContaining({
+          experience_decisions: { e1: 'include' },
+          skill_decisions: { s1: 'include', s2: 'exclude', s3: 'emphasize' },
+        }),
+      )
+    })
   })
 })

@@ -18,6 +18,7 @@ from flask import Blueprint, jsonify, request
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
+from utils.session_data_view import SessionDataView
 from utils.spell_checker import SpellChecker
 
 
@@ -116,11 +117,103 @@ def create_blueprint(deps):
         except Exception:
             pass
 
+    def _normalize_subskills(raw_subskills: Any) -> List[str]:
+        if isinstance(raw_subskills, str):
+            raw_subskills = [item.strip() for item in raw_subskills.split(',')]
+
+        normalized: List[str] = []
+        seen: set[str] = set()
+        if isinstance(raw_subskills, list):
+            for item in raw_subskills:
+                if not isinstance(item, str):
+                    continue
+                label = item.strip()
+                if not label or label in seen:
+                    continue
+                normalized.append(label)
+                seen.add(label)
+        return normalized
+
+    def _normalize_extra_skill_entry(raw_skill: Any) -> Any:
+        if isinstance(raw_skill, str):
+            label = raw_skill.strip()
+            return label or None
+
+        if not isinstance(raw_skill, dict):
+            return None
+
+        name = str(raw_skill.get('name') or '').strip()
+        if not name:
+            return None
+
+        normalized: Dict[str, Any] = {'name': name}
+        for field in ('category', 'group', 'proficiency', 'parenthetical'):
+            value = str(raw_skill.get(field) or '').strip()
+            if value:
+                normalized[field] = value
+
+        subskills = _normalize_subskills(
+            raw_skill.get('subskills', raw_skill.get('sub_skills')),
+        )
+        if subskills:
+            normalized['subskills'] = subskills
+
+        if raw_skill.get('user_created') or raw_skill.get('_isUserCreated'):
+            normalized['user_created'] = True
+
+        return normalized
+
+    def _normalize_extra_skills(raw_extra_skills: Any) -> List[Any]:
+        normalized: List[Any] = []
+        seen: set[str] = set()
+        for raw_skill in raw_extra_skills or []:
+            normalized_skill = _normalize_extra_skill_entry(raw_skill)
+            if not normalized_skill:
+                continue
+            skill_name = (
+                normalized_skill
+                if isinstance(normalized_skill, str)
+                else str(normalized_skill.get('name') or '').strip()
+            )
+            if not skill_name or skill_name in seen:
+                continue
+            normalized.append(normalized_skill)
+            seen.add(skill_name)
+        return normalized
+
     # ── Review decisions ─────────────────────────────────────────────────────
 
     @bp.route('/api/review-decisions', methods=['POST'])
     def save_review_decisions():
         """Save user's review decisions for experiences/skills."""
+        # duckflow: {
+        #   "id": "review_api_decisions_live",
+        #   "kind": "api",
+        #   "timestamp": "2026-03-25T21:39:48Z",
+        #   "status": "live",
+        #   "handles": ["POST /api/review-decisions"],
+        #   "reads": [
+        #     "request:POST /api/review-decisions.type",
+        #     "request:POST /api/review-decisions.decisions",
+        #     "request:POST /api/review-decisions.extra_skills",
+        #     "request:POST /api/review-decisions.extra_skill_matches",
+        #     "request:POST /api/review-decisions.accepted_suggestions"
+        #   ],
+        #   "writes": [
+        #     "state:experience_decisions",
+        #     "state:skill_decisions",
+        #     "state:extra_skills",
+        #     "state:extra_skill_matches",
+        #     "state:customizations.extra_skills",
+        #     "state:customizations.extra_skill_matches",
+        #     "state:achievement_decisions",
+        #     "state:accepted_suggested_achievements",
+        #     "state:publication_decisions",
+        #     "state:summary_focus_override"
+        #   ],
+        #   "returns": ["response:POST /api/review-decisions.success"],
+        #   "notes": "Persists per-surface review decisions in session state; skill decisions also update session customizations so downstream generation can materialize the same choices."
+        # }
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -142,9 +235,8 @@ def create_blueprint(deps):
                 message = f"Saved decisions for {len(decisions)} experiences"
             elif decision_type == 'skills':
                 conversation.state['skill_decisions'] = decisions
-                extra_skills = data.get('extra_skills', [])
-                if extra_skills:
-                    conversation.state['extra_skills'] = extra_skills
+                extra_skills = _normalize_extra_skills(data.get('extra_skills', []))
+                conversation.state['extra_skills'] = extra_skills
 
                 raw_matches = data.get('extra_skill_matches') or {}
                 sanitized_matches: Dict[str, List[str]] = {}
@@ -192,6 +284,16 @@ def create_blueprint(deps):
                 conversation.state['publication_decisions'] = decisions
                 message = f"Saved decisions for {len(decisions)} publications"
             elif decision_type == 'summary_focus':
+                # duckflow: {
+                #   "id": "summary_api_review_decision_live",
+                #   "kind": "api",
+                #   "timestamp": "2026-03-25T21:39:48Z",
+                #   "status": "live",
+                #   "handles": ["POST /api/review-decisions"],
+                #   "reads": ["request:POST /api/review-decisions.summary_focus"],
+                #   "writes": ["state:summary_focus_override"],
+                #   "notes": "Live review-decisions route persists the selected summary key in session state."
+                # }
                 conversation.state['summary_focus_override'] = decisions
                 message = "Saved summary focus preference"
             else:
@@ -210,6 +312,17 @@ def create_blueprint(deps):
     @bp.route('/api/save-achievement-edits', methods=['POST'])
     def save_achievement_edits():
         """Save per-experience achievement edits from the achievements editor tab."""
+        # duckflow: {
+        #   "id": "review_api_achievement_edits_live",
+        #   "kind": "api",
+        #   "timestamp": "2026-03-25T21:39:48Z",
+        #   "status": "live",
+        #   "handles": ["POST /api/save-achievement-edits"],
+        #   "reads": ["request:POST /api/save-achievement-edits.edits"],
+        #   "writes": ["state:achievement_edits"],
+        #   "returns": ["response:POST /api/save-achievement-edits.success"],
+        #   "notes": "Stores raw per-experience bullet edits in session state so later generation and ATS materialization can overlay them without mutating master data."
+        # }
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -225,6 +338,374 @@ def create_blueprint(deps):
         session_registry.touch(sid)
         total = sum(len(v) for v in normalized.values())
         return jsonify({"success": True, "message": f"Saved edits for {len(normalized)} experiences ({total} achievements)"})
+
+    @bp.post('/api/review-achievement')
+    def save_review_achievement_override():
+        """Persist a top-level achievement edit/delete in session state only."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+
+        ach_id = str(data.get('id') or '').strip()
+        action = str(data.get('action') or 'update').strip().lower()
+        field = str(data.get('field') or '').strip()
+        value = data.get('value')
+
+        if not ach_id:
+            return jsonify({'error': 'id is required'}), 400
+
+        allowed_fields = {'title', 'description', 'relevant_for', 'importance'}
+        if action == 'delete':
+            with entry.lock:
+                overrides = dict(conversation.state.get('achievement_overrides') or {})
+                overrides.pop(ach_id, None)
+
+                removed_ids = [
+                    item for item in (conversation.state.get('removed_achievement_ids') or [])
+                    if isinstance(item, str) and item.strip()
+                ]
+                if ach_id not in removed_ids:
+                    removed_ids.append(ach_id)
+
+                decisions = dict(conversation.state.get('achievement_decisions') or {})
+                decisions[ach_id] = 'exclude'
+
+                customizations = dict(conversation.state.get('customizations') or {})
+                customizations['achievement_overrides'] = overrides
+                customizations['removed_achievement_ids'] = removed_ids
+
+                conversation.state['achievement_overrides'] = overrides
+                conversation.state['removed_achievement_ids'] = removed_ids
+                conversation.state['achievement_decisions'] = decisions
+                conversation.state['customizations'] = customizations
+                conversation._save_session()
+
+            session_registry.touch(sid)
+            return jsonify({'ok': True, 'action': 'deleted', 'id': ach_id})
+
+        if field not in allowed_fields:
+            return jsonify({'error': 'field must be one of title, description, relevant_for, importance'}), 400
+
+        with entry.lock:
+            overrides = dict(conversation.state.get('achievement_overrides') or {})
+            existing = dict(overrides.get(ach_id) or {})
+            existing[field] = value
+            overrides[ach_id] = existing
+
+            removed_ids = [
+                item for item in (conversation.state.get('removed_achievement_ids') or [])
+                if isinstance(item, str) and item.strip() and item != ach_id
+            ]
+
+            customizations = dict(conversation.state.get('customizations') or {})
+            customizations['achievement_overrides'] = overrides
+            if removed_ids:
+                customizations['removed_achievement_ids'] = removed_ids
+            else:
+                customizations.pop('removed_achievement_ids', None)
+
+            conversation.state['achievement_overrides'] = overrides
+            conversation.state['removed_achievement_ids'] = removed_ids
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'action': 'updated', 'id': ach_id, 'field': field})
+
+    @bp.post('/api/review-skill-group')
+    def save_review_skill_group_override():
+        """Persist a review-time skill group override in session state only."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+
+        skill_name = str(data.get('skill') or '').strip()
+        if not skill_name:
+            return jsonify({'error': 'skill is required'}), 400
+
+        raw_group = data.get('group')
+        group_name = None if raw_group is None else str(raw_group).strip() or None
+
+        with entry.lock:
+            overrides = dict(conversation.state.get('skill_group_overrides') or {})
+            overrides[skill_name] = group_name
+
+            customizations = dict(conversation.state.get('customizations') or {})
+            customizations['skill_group_overrides'] = overrides
+
+            conversation.state['skill_group_overrides'] = overrides
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'action': 'updated', 'skill': skill_name, 'group': group_name})
+
+    @bp.post('/api/review-skill-category')
+    def save_review_skill_category_override():
+        """Persist a review-time skill category override in session state only."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+
+        skill_name = str(data.get('skill') or '').strip()
+        if not skill_name:
+            return jsonify({'error': 'skill is required'}), 400
+
+        raw_category = data.get('category')
+        category_name = None if raw_category is None else str(raw_category).strip() or None
+
+        with entry.lock:
+            overrides = dict(conversation.state.get('skill_category_overrides') or {})
+            if category_name is None:
+                overrides.pop(skill_name, None)
+            else:
+                overrides[skill_name] = category_name
+
+            customizations = dict(conversation.state.get('customizations') or {})
+            if overrides:
+                customizations['skill_category_overrides'] = overrides
+            else:
+                customizations.pop('skill_category_overrides', None)
+
+            conversation.state['skill_category_overrides'] = overrides
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'action': 'updated', 'skill': skill_name, 'category': category_name})
+
+    @bp.post('/api/review-skill-categories')
+    def save_review_skill_categories():
+        """Persist review-time skill category rename/order changes in session state only."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+        action = str(data.get('action') or '').strip().lower()
+
+        if action not in {'rename', 'reorder'}:
+            return jsonify({'error': "action must be 'rename' or 'reorder'"}), 400
+
+        with entry.lock:
+            customizations = dict(conversation.state.get('customizations') or {})
+
+            if action == 'rename':
+                old_category = str(data.get('old_category') or '').strip()
+                new_category = str(data.get('new_category') or '').strip()
+                if not old_category:
+                    return jsonify({'error': 'old_category is required'}), 400
+                if not new_category:
+                    return jsonify({'error': 'new_category is required'}), 400
+
+                summary_view = SessionDataView(
+                    conversation.orchestrator.master_data,
+                    conversation.state,
+                    customizations,
+                )
+                matching_skills = [
+                    str(skill.get('name') or '').strip()
+                    for skill in summary_view.normalized_skills()
+                    if isinstance(skill, dict)
+                    and str(skill.get('category') or 'General').strip() == old_category
+                ]
+                if not matching_skills:
+                    return jsonify({'error': 'old_category not found'}), 404
+
+                overrides = dict(conversation.state.get('skill_category_overrides') or {})
+                for skill_name in matching_skills:
+                    overrides[skill_name] = new_category
+
+                existing_order = [
+                    str(category).strip()
+                    for category in (conversation.state.get('skill_category_order') or [])
+                    if str(category).strip()
+                ]
+                if existing_order:
+                    remapped_order = []
+                    for category in existing_order:
+                        category = new_category if category == old_category else category
+                        if category not in remapped_order:
+                            remapped_order.append(category)
+                    conversation.state['skill_category_order'] = remapped_order
+                    customizations['skill_category_order'] = remapped_order
+
+                conversation.state['skill_category_overrides'] = overrides
+                customizations['skill_category_overrides'] = overrides
+                conversation.state['customizations'] = customizations
+                conversation._save_session()
+                session_registry.touch(sid)
+                return jsonify({
+                    'ok': True,
+                    'action': 'rename',
+                    'old_category': old_category,
+                    'new_category': new_category,
+                    'updated_skills': matching_skills,
+                })
+
+            ordered_categories = data.get('ordered_categories')
+            if not isinstance(ordered_categories, list):
+                return jsonify({'error': 'ordered_categories must be a list'}), 400
+
+            cleaned_order = []
+            seen = set()
+            for category in ordered_categories:
+                if not isinstance(category, str):
+                    continue
+                label = category.strip()
+                if not label or label in seen:
+                    continue
+                cleaned_order.append(label)
+                seen.add(label)
+
+            if cleaned_order:
+                conversation.state['skill_category_order'] = cleaned_order
+                customizations['skill_category_order'] = cleaned_order
+            else:
+                conversation.state.pop('skill_category_order', None)
+                customizations.pop('skill_category_order', None)
+
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'action': 'reorder', 'ordered_categories': cleaned_order})
+
+    @bp.post('/api/review-skill-qualifiers')
+    def save_review_skill_qualifier_overrides():
+        """Persist review-time skill qualifier overrides in session state only."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+
+        skill_name = str(data.get('skill') or '').strip()
+        if not skill_name:
+            return jsonify({'error': 'skill is required'}), 400
+
+        proficiency = str(data.get('proficiency') or '').strip() or None
+        parenthetical = str(data.get('parenthetical') or '').strip() or None
+        raw_subskills = data.get('subskills')
+        if isinstance(raw_subskills, str):
+            raw_subskills = [item.strip() for item in raw_subskills.split(',')]
+        subskills = []
+        seen_subskills = set()
+        if isinstance(raw_subskills, list):
+            for item in raw_subskills:
+                if not isinstance(item, str):
+                    continue
+                label = item.strip()
+                if not label or label in seen_subskills:
+                    continue
+                subskills.append(label)
+                seen_subskills.add(label)
+
+        with entry.lock:
+            overrides = dict(conversation.state.get('skill_qualifier_overrides') or {})
+            current = dict(overrides.get(skill_name) or {})
+
+            if proficiency:
+                current['proficiency'] = proficiency
+            else:
+                current.pop('proficiency', None)
+
+            if subskills:
+                current['subskills'] = subskills
+            else:
+                current.pop('subskills', None)
+
+            if parenthetical:
+                current['parenthetical'] = parenthetical
+            else:
+                current.pop('parenthetical', None)
+
+            if current:
+                overrides[skill_name] = current
+            else:
+                overrides.pop(skill_name, None)
+
+            customizations = dict(conversation.state.get('customizations') or {})
+            if overrides:
+                customizations['skill_qualifier_overrides'] = overrides
+            else:
+                customizations.pop('skill_qualifier_overrides', None)
+
+            conversation.state['skill_qualifier_overrides'] = overrides
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({
+            'ok': True,
+            'action': 'updated',
+            'skill': skill_name,
+            'qualifiers': overrides.get(skill_name, {}),
+        })
+
+    @bp.post('/api/review-skill-add')
+    def add_review_skill():
+        """Persist a new session-only skill entry for the current review flow."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+
+        normalized_skill = _normalize_extra_skill_entry({
+            'name': data.get('name'),
+            'category': data.get('category'),
+            'group': data.get('group'),
+            'proficiency': data.get('proficiency'),
+            'subskills': data.get('subskills'),
+            'parenthetical': data.get('parenthetical'),
+            'user_created': True,
+        })
+        if not isinstance(normalized_skill, dict):
+            return jsonify({'error': 'name is required'}), 400
+
+        skill_name = normalized_skill['name']
+
+        with entry.lock:
+            summary_view = SessionDataView(
+                conversation.orchestrator.master_data,
+                conversation.state,
+                conversation.state.get('customizations'),
+            )
+            existing_names = {
+                str(skill.get('name') or '').strip()
+                for skill in summary_view.normalized_skills()
+                if isinstance(skill, dict)
+            }
+            existing_extra = {
+                item if isinstance(item, str) else str(item.get('name') or '').strip()
+                for item in _normalize_extra_skills(conversation.state.get('extra_skills', []))
+            }
+            if skill_name in existing_names or skill_name in existing_extra:
+                return jsonify({'error': 'skill already exists in this session'}), 409
+
+            extra_skills = _normalize_extra_skills(conversation.state.get('extra_skills', []))
+            extra_skills.append(normalized_skill)
+
+            skill_decisions = dict(conversation.state.get('skill_decisions') or {})
+            skill_decisions[skill_name] = 'include'
+
+            customizations = dict(conversation.state.get('customizations') or {})
+            customizations['extra_skills'] = extra_skills
+
+            conversation.state['extra_skills'] = extra_skills
+            conversation.state['skill_decisions'] = skill_decisions
+            conversation.state['customizations'] = customizations
+            conversation._save_session()
+
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'skill': normalized_skill})
 
     @bp.route('/api/rewrite-achievement', methods=['POST'])
     def rewrite_achievement():
@@ -425,9 +906,23 @@ def create_blueprint(deps):
             if not job_analysis:
                 return jsonify({"error": "Job analysis not available. Analyse the job first."}), 400
 
-            content = orchestrator.master_data
-            if not content:
+            if not orchestrator.master_data:
                 return jsonify({"error": "CV master data not loaded."}), 400
+
+            state = conversation.state
+            customizations = SessionDataView(
+                orchestrator.master_data,
+                state,
+                state.get("customizations"),
+            ).materialize_generation_customizations()
+            content = orchestrator.build_render_ready_content(
+                job_analysis,
+                customizations,
+                approved_rewrites=state.get("approved_rewrites") or [],
+                spell_audit=state.get("spell_audit") or [],
+                max_skills=state.get("max_skills"),
+                use_semantic_match=False,
+            )
 
             rewrites = orchestrator.propose_rewrites(
                 content,
@@ -772,7 +1267,11 @@ def create_blueprint(deps):
         try:
             state             = conversation.state
             job_analysis      = state.get('job_analysis') or {}
-            customizations    = state.get('customizations') or {}
+            customizations = SessionDataView(
+                orchestrator.master_data,
+                state,
+                state.get('customizations'),
+            ).materialize_generation_customizations()
             approved_rewrites = state.get('approved_rewrites') or []
             spell_audit       = state.get('spell_audit') or []
 
@@ -914,6 +1413,17 @@ def create_blueprint(deps):
     @bp.post("/api/spell-check-complete")
     def spell_check_complete():
         """Record spell-check audit and advance phase to generation."""
+        # duckflow: {
+        #   "id": "review_api_spell_complete_live",
+        #   "kind": "api",
+        #   "timestamp": "2026-03-25T21:39:48Z",
+        #   "status": "live",
+        #   "handles": ["POST /api/spell-check-complete"],
+        #   "reads": ["request:POST /api/spell-check-complete.spell_audit"],
+        #   "writes": ["state:spell_audit", "state:phase"],
+        #   "returns": ["response:POST /api/spell-check-complete.ok"],
+        #   "notes": "Persists the reviewed spell audit into canonical session state and advances the workflow into generation."
+        # }
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager

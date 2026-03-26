@@ -18,11 +18,11 @@ Actions requiring explicit confirmation:
 
 All user edits during the customization workflow — accepted AI suggestions, skill decisions, achievement edits, rewrites, summary overrides — must be stored in the **session file only**.
 
-The Master CV is modified **only** during two permitted stages:
-1. **Master CV management tab** (Phase 8) — direct edits via `/api/master-data/*` endpoints
-2. **Finalise → Harvest Apply** — the `POST /api/harvest/apply` endpoint writes harvested improvements (improved bullets, new skills, summary variants) back to the master as an explicit user-initiated action at the end of the finalization workflow. This is treated as an extension of the master modification workflow, not part of customization.
+The Master CV is modified **only** during two permitted workflow windows:
+1. **Pre-job master-data window** (`phase == init`) — direct edits via `/api/master-data/*` endpoints, including `publications.bib`, are allowed before job analysis begins.
+2. **Post-job finalise window** (`phase == refinement`) — direct `/api/master-data/*` edits remain available, and `POST /api/harvest/apply` writes harvested improvements (improved bullets, new skills, summary variants) back to the master as an explicit user-initiated action at the end of the finalization workflow.
 
-Any code that writes to the master file outside of these two stages is a bug.
+Any code that writes to the master file outside of these two workflow windows is a bug.
 
 ✅ CORRECT — store in session state:
 ```python
@@ -75,7 +75,7 @@ the tests.
 - Config precedence is intentional and must be preserved: env vars > `.env` > `config.yaml` > defaults (`scripts/utils/config.py`).
 - Session persistence is file-based (`~/CV/files/sessions` by default); avoid introducing hidden in-memory-only state for core workflow.
 - `skills` in master data can be either a list or category dict; existing code handles both—keep that compatibility.
-- Maintain and use `duckflow` annotations in cv-builder source files to capture local data-flow facts. Keep annotations adjacent to the code they describe, use exact route/state/response/artifact tokens, annotate both live inline handlers and extracted route mirrors when both exist, and regenerate stitched outputs with the standalone duckflow toolkit from `https://github.com/Warnes-Innovations/duckflow`, for example `duckflow-extract --repo-root .` and `duckflow-mermaid --repo-root . --match <flow>`.
+- Maintain and use `duckflow` annotations in cv-builder source files to capture local data-flow facts. Keep annotations adjacent to the code they describe, use exact route/state/response/artifact tokens, require a UTC `timestamp` field in `YYYY-MM-DDTHH:MM:SSZ` format and refresh it whenever the annotated code changes, annotate both live inline handlers and extracted route mirrors when both exist, and regenerate stitched outputs with the standalone duckflow toolkit from `https://github.com/Warnes-Innovations/duckflow`, for example `duckflow-extract --repo-root .` and `duckflow-mermaid --repo-root . --match <flow>`.
 - If app changes alter the `Master_CV_Data.json` structure, update all three together in the same change: `MASTER_CV_DATA_SPECIFICATION.md`, `scripts/utils/master_data_validator.py`, and `schemas/master_cv_data.schema.json`.
 - Recommendation semantics are strict: each recommendation includes `recommendation`, `confidence`, and `reasoning` with project-specific enums (see prompt logic in `scripts/utils/llm_client.py` and `scripts/utils/conversation_manager.py`).
 - `scripts/llm_cv_generator.py` CLI currently restricts `--llm-provider` choices to `github|openai|anthropic|local`, while backend factory supports more providers (`copilot-oauth`, `copilot`, `gemini`, `groq`). Keep changes consistent when touching provider UX.

@@ -18,6 +18,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('spell-check');
 
+import { stateManager } from './state-manager.js';
+
 // Module-level state
 let spellAudit = [];
 
@@ -316,6 +318,18 @@ async function addSpellWord(word, sugId) {
 // ── Submit audit ──────────────────────────────────────────────────────────────
 
 async function submitSpellCheckDecisions() {
+  /* duckflow: {
+   *   "id": "spell_ui_submit_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:spell-check.submit"],
+   *   "calls": ["POST /api/spell-check-complete", "POST /api/action"],
+   *   "reads": ["window:_spellSugMap"],
+   *   "writes": ["request:POST /api/spell-check-complete.spell_audit", "window:spellAudit"],
+   *   "notes": "Collapses reviewed spell suggestions into the canonical spell audit, persists that audit in session state, and then triggers generation using the corrected content."
+  * }
+  */
   // Count items still marked 'pending' (not explicitly reviewed)
   const pendingEntries = Object.values(window._spellSugMap || {}).filter(e => e.outcome === 'pending');
   if (pendingEntries.length > 0) {
@@ -351,6 +365,7 @@ async function submitSpellCheckDecisions() {
       showAlertModal('❌ Error', `Failed to save spell check: ${data.error || 'Unknown error'}`);
       return;
     }
+    stateManager.markContentChanged();
     appendMessage('assistant', `✅ Spell check complete — ${spellAudit.length} item${spellAudit.length !== 1 ? 's' : ''} reviewed. Generating your CV…`);
     scheduleAtsRefresh('review_checkpoint');
     await fetchStatus();

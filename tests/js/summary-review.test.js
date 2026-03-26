@@ -166,7 +166,7 @@ describe('saveSummaryFocusToBackend', () => {
 
   it('does not throw on network error (silent fail)', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
-    await expect(saveSummaryFocusToBackend('key')).resolves.toBeUndefined()
+    await expect(saveSummaryFocusToBackend('key')).resolves.toBe(false)
   })
 })
 

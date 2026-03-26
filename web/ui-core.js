@@ -15,7 +15,12 @@ const log = getLogger('ui-core');
 
 import { escapeHtml } from './utils.js';
 import { StorageKeys, apiCall, fetchStatus, askPostAnalysisQuestions, sendMessage } from './api-client.js';
-import { initializeState, loadStateFromLocalStorage, stateManager } from './state-manager.js';
+import {
+  getWorkflowStepForPhase,
+  initializeState,
+  loadStateFromLocalStorage,
+  stateManager,
+} from './state-manager.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Accessibility: Focus Management for Modals
@@ -237,7 +242,7 @@ async function initialize() {
 
     // Load initial tab content
     const savedTab = stateManager.getCurrentTab() || localStorage.getItem(StorageKeys.CURRENT_TAB) || 'job';
-    updateTabBarForStage(stateManager.getCurrentStage());
+    updateTabBarForStage(getStageForTab(savedTab) || getWorkflowStepForPhase(stateManager.getPhase()));
     switchTab(savedTab);
 
     log.info('✅ Application initialized');
@@ -265,7 +270,7 @@ function setupEventListeners() {
         typeof _showReRunConfirmModal === 'function'
       ) {
         const targetIdx  = _STEP_ORDER.indexOf(targetStage);
-        const currentIdx = _STEP_ORDER.indexOf(stateManager.getCurrentStage());
+        const currentIdx = _STEP_ORDER.indexOf(getVisibleStage());
         const targetStepEl = document.getElementById(`step-${targetStage}`);
         if (targetIdx < currentIdx && targetStepEl && targetStepEl.classList.contains('completed')) {
           _showReRunConfirmModal(targetStage, 'back-nav', () => switchTab(tabName));
@@ -311,12 +316,6 @@ function setupEventListeners() {
     });
   }
 
-  // Chat toggle button
-  const toggleBtn = document.querySelector('.toggle-chat');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', toggleChat);
-  }
-
   // Modal close on ESC key
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -344,6 +343,11 @@ function getStageForTab(tab) {
     if (tabs.includes(tab)) return stage;
   }
   return null;
+}
+
+function getVisibleStage() {
+  const activeTab = stateManager.getCurrentTab();
+  return getStageForTab(activeTab) || getWorkflowStepForPhase(stateManager.getPhase());
 }
 
 /**
@@ -379,7 +383,6 @@ function updateTabBarForStage(stage) {
  * @param {string} stage - Key from STAGE_TABS
  */
 function switchStage(stage) {
-  stateManager.setCurrentStage(stage);
   updateTabBarForStage(stage);
   const stageTabs = STAGE_TABS[stage] || [];
   if (stageTabs.length === 0) return;
@@ -1187,7 +1190,7 @@ export {
   confirmDialog, openModal, closeModal, closeAllModals,
   showSessionConflictBanner, showAlertModal, closeAlertModal,
   // Tab & stage management
-  setupEventListeners, getStageForTab, updateTabBarForStage, switchStage, loadTabContent,
+  setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage, switchStage, loadTabContent,
   // Chat
   toggleChat,
   // Phase / status

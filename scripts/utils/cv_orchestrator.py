@@ -14,6 +14,7 @@ This module coordinates between:
 """
 
 import copy
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import logging
 import re
@@ -37,6 +38,7 @@ from .bibtex_parser import parse_bibtex_file, format_publication
 from .config import get_config
 from .llm_client import LLMClient
 from .master_data_validator import validate_master_data_file
+from .session_data_view import SessionDataView
 
 
 class CVOrchestrator:
@@ -143,8 +145,9 @@ class CVOrchestrator:
         
         # Format skills by category
         skills_by_category = self._organize_skills_by_category(
-            selected_content.get('skills', []), 
-            template_variant
+            selected_content.get('skills', []),
+            template_variant,
+            selected_content.get('skill_category_order', []),
         )
         
         # Format publications
@@ -162,12 +165,16 @@ class CVOrchestrator:
         certifications = selected_content.get('certifications', [])
         
         # Add template metadata
+        # duckflow: flow=cv-render status=live
+        #   artifact: template_metadata["skills_section_title"] → cv-template.html
+        #   default: "Skills" (overridden per-render by customizations["skills_section_title"])
         template_metadata = {
             'variant': template_variant,
             'generated_date': datetime.now().isoformat(),
             'job_title': job_analysis.get('title', ''),
             'company': job_analysis.get('company', ''),
             'total_publications_count': len(self.publications) if self.publications else 0,
+            'skills_section_title': 'Skills',
         }
         
         cv_data = {
@@ -267,7 +274,12 @@ class CVOrchestrator:
                     normalized.append(text)
         return normalized
 
-    def _organize_skills_by_category(self, skills: List[Dict], variant: str) -> List[Dict]:
+    def _organize_skills_by_category(
+        self,
+        skills: List[Dict],
+        variant: str,
+        category_order: Optional[List[str]] = None,
+    ) -> List[Dict]:
         """Organize skills by category, deduplicating by canonical synonym name."""
         if not skills:
             return []
@@ -309,6 +321,12 @@ class CVOrchestrator:
             category = skill.get('category', 'General')
             category_skills[category].append(skill)
 
+        custom_order = []
+        for category in category_order or []:
+            label = str(category or '').strip()
+            if label and label not in custom_order:
+                custom_order.append(label)
+
         # Define category priority
         priority_orders = {
             'standard': ['Core Expertise', 'Programming', 'Technical', 'Tools', 'General'],
@@ -316,7 +334,7 @@ class CVOrchestrator:
             'academic': ['Research', 'Technical', 'Programming', 'Core Expertise', 'General']
         }
 
-        priority_order = priority_orders.get(variant, priority_orders['standard'])
+        priority_order = custom_order or priority_orders.get(variant, priority_orders['standard'])
 
         sorted_categories = []
 
@@ -364,9 +382,84 @@ class CVOrchestrator:
         for g, members in groups.items():
             primary = dict(members[0])
             primary['group_names'] = [m['name'] for m in members]
+            primary['group_display_names'] = [self._skill_inline_label(m) for m in members]
+            primary['display_name'] = self._skill_inline_label(primary)
             result[group_insertion_idx[g]] = primary
 
-        return [s for s in result if s is not None]
+        finalized = [s for s in result if s is not None]
+        for skill in finalized:
+            if isinstance(skill, dict) and 'display_name' not in skill:
+                skill['display_name'] = self._skill_inline_label(skill)
+        return finalized
+
+    @staticmethod
+    def _skill_inline_label(skill: Dict[str, Any]) -> str:
+        """Return a human-readable inline label for a skill entry."""
+        name = str(skill.get('name') or '').strip()
+        if not name:
+            return ''
+
+        parenthetical = str(skill.get('parenthetical') or '').strip()
+        if parenthetical:
+            return f"{name} ({parenthetical})"
+
+        qualifier_parts = []
+        proficiency = str(skill.get('proficiency') or '').strip()
+        if proficiency:
+            qualifier_parts.append(proficiency[:1].upper() + proficiency[1:])
+
+        raw_subskills = skill.get('subskills', skill.get('sub_skills', []))
+        if isinstance(raw_subskills, str):
+            raw_subskills = [item.strip() for item in raw_subskills.split(',')]
+        subskills = [
+            str(item).strip()
+            for item in raw_subskills or []
+            if str(item).strip()
+        ]
+        qualifier_parts.extend(subskills)
+
+        if qualifier_parts:
+            return f"{name} ({', '.join(qualifier_parts)})"
+
+        years = skill.get('years')
+        if years:
+            return f"{name} ({years} yrs)"
+
+        return name
+
+    @staticmethod
+    def _normalize_extra_skill_entry(raw_skill: Any) -> Optional[Dict[str, Any]]:
+        """Return a dict form for session-only extra skills."""
+        if isinstance(raw_skill, str):
+            name = raw_skill.strip()
+            return {'name': name} if name else None
+        if not isinstance(raw_skill, dict):
+            return None
+
+        name = str(raw_skill.get('name') or '').strip()
+        if not name:
+            return None
+
+        normalized = dict(raw_skill)
+        normalized['name'] = name
+        raw_subskills = normalized.get('subskills', normalized.get('sub_skills'))
+        if isinstance(raw_subskills, str):
+            raw_subskills = [item.strip() for item in raw_subskills.split(',')]
+        if isinstance(raw_subskills, list):
+            cleaned = []
+            seen = set()
+            for item in raw_subskills:
+                label = str(item or '').strip()
+                if not label or label in seen:
+                    continue
+                cleaned.append(label)
+                seen.add(label)
+            if cleaned:
+                normalized['subskills'] = cleaned
+            else:
+                normalized.pop('subskills', None)
+                normalized.pop('sub_skills', None)
+        return normalized
 
     def _format_publications(self, publications: List) -> List[Dict]:
         """Format publications for template consumption."""
@@ -412,6 +505,7 @@ class CVOrchestrator:
         spell_audit: Optional[List[Dict]] = None,
         max_skills: Optional[int] = None,
         template_variant: str = 'standard',
+        use_semantic_match: bool = True,
     ) -> str:
         """Render CV as HTML for preview without generating PDF or DOCX.
 
@@ -422,12 +516,22 @@ class CVOrchestrator:
         Parameters mirror ``generate_cv`` but only the HTML rendering path is
         executed, so this is significantly faster than a full generation run.
         """
+        # duckflow: {
+        #   "id": "summary_orchestrator_preview_html",
+        #   "kind": "artifact",
+        #   "timestamp": "2026-03-25T21:39:48Z",
+        #   "status": "shared",
+        #   "reads": ["cv:selected_content.summary"],
+        #   "returns": ["artifact:generation_state.preview_html"],
+        #   "notes": "Renders the selected summary into preview HTML without writing files yet."
+        # }
         selected_content = self.build_render_ready_content(
             job_analysis,
             customizations,
             approved_rewrites=approved_rewrites,
             spell_audit=spell_audit,
             max_skills=max_skills,
+            use_semantic_match=use_semantic_match,
         )
         cv_data = self._prepare_cv_data_for_template(
             selected_content, job_analysis, template_variant
@@ -435,6 +539,10 @@ class CVOrchestrator:
         cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
         cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
+        # duckflow: flow=cv-render status=live
+        #   state_read: customizations["skills_section_title"]
+        #   artifact: template_metadata["skills_section_title"] → cv-template.html (preview)
+        cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
 
         template_dir = Path(__file__).parent.parent.parent / 'templates'
         template_file = template_dir / 'cv-template.html'
@@ -450,6 +558,7 @@ class CVOrchestrator:
         confirmed_html: str,
         output_dir: Path,
         filename_base: str = "CV_final",
+        preferred_renderer: str = 'auto',
     ) -> Dict:
         """Write confirmed HTML to disk and regenerate the human-readable PDF.
 
@@ -462,6 +571,15 @@ class CVOrchestrator:
         Returns:
             dict with keys ``html`` and ``pdf`` (absolute path strings).
         """
+        # duckflow: {
+        #   "id": "summary_orchestrator_final_files",
+        #   "kind": "artifact",
+        #   "timestamp": "2026-03-25T21:39:48Z",
+        #   "status": "shared",
+        #   "reads": ["artifact:generation_state.preview_html"],
+        #   "writes": ["file:generated_files.final_html", "file:generated_files.final_pdf"],
+        #   "notes": "Commits the confirmed preview HTML to disk and regenerates the final PDF from that same artifact."
+        # }
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -469,11 +587,83 @@ class CVOrchestrator:
         html_path.write_text(confirmed_html, encoding="utf-8")
 
         pdf_path = output_dir / f"{filename_base}.pdf"
-        self._convert_html_to_pdf(html_path, pdf_path)
+        renderer_info = self._convert_html_to_pdf(
+            html_path,
+            pdf_path,
+            preferred_renderer=preferred_renderer,
+        )
 
         return {
             "html": str(html_path),
             "pdf":  str(pdf_path),
+            "renderer": renderer_info["renderer"],
+            "renderer_detail": renderer_info.get("detail", ""),
+        }
+
+    def generate_pdf_variants_from_html(
+        self,
+        confirmed_html: str,
+        output_dir: Path,
+        filename_base: str = "CV_preview",
+        renderers: tuple[str, ...] = ('chrome', 'weasyprint'),
+    ) -> Dict[str, Any]:
+        """Write HTML once and attempt PDF generation for each requested renderer."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        html_path = output_dir / f"{filename_base}.html"
+        html_path.write_text(confirmed_html, encoding="utf-8")
+
+        normalized_renderers = [
+            str(renderer_name).strip().lower()
+            for renderer_name in renderers
+            if str(renderer_name).strip()
+        ]
+        pdfs: Dict[str, Dict[str, Any]] = {}
+
+        def _render_variant(renderer_key: str) -> tuple[str, Dict[str, Any]]:
+            pdf_path = output_dir / f"{filename_base}_{renderer_key}.pdf"
+            try:
+                renderer_info = self._convert_html_to_pdf(
+                    html_path,
+                    pdf_path,
+                    preferred_renderer=renderer_key,
+                )
+                return renderer_key, {
+                    'ok': True,
+                    'pdf': str(pdf_path),
+                    'renderer': renderer_info['renderer'],
+                    'renderer_detail': renderer_info.get('detail', ''),
+                    'error': None,
+                }
+            except Exception as exc:
+                logger.warning(
+                    "Preview PDF generation failed for %s (%s)",
+                    renderer_key,
+                    exc,
+                )
+                return renderer_key, {
+                    'ok': False,
+                    'pdf': str(pdf_path),
+                    'renderer': renderer_key,
+                    'renderer_detail': '',
+                    'error': str(exc),
+                }
+
+        if normalized_renderers:
+            max_workers = min(len(normalized_renderers), 4)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_map = {
+                    executor.submit(_render_variant, renderer_key): renderer_key
+                    for renderer_key in normalized_renderers
+                }
+                for future in as_completed(future_map):
+                    renderer_key, result = future.result()
+                    pdfs[renderer_key] = result
+
+        return {
+            'html': str(html_path),
+            'pdfs': pdfs,
         }
 
     def _render_cv_html_pdf(
@@ -652,7 +842,12 @@ class CVOrchestrator:
         
         return '\n'.join(html_parts)
     
-    def _convert_html_to_pdf(self, html_file: Path, pdf_output: Path) -> None:
+    def _convert_html_to_pdf(
+        self,
+        html_file: Path,
+        pdf_output: Path,
+        preferred_renderer: str = 'auto',
+    ) -> Dict[str, str]:
         """Convert HTML file to PDF.
 
         Chrome/Chromium headless is the primary renderer (--headless=new mode,
@@ -663,6 +858,12 @@ class CVOrchestrator:
         environments where Chrome is unavailable (e.g. headless Linux servers),
         then to a plain-text instruction file as last resort.
         """
+        renderer_mode = (preferred_renderer or 'auto').strip().lower()
+        if renderer_mode not in {'auto', 'chrome', 'weasyprint'}:
+            raise ValueError(
+                "preferred_renderer must be one of: auto, chrome, weasyprint"
+            )
+
         # --- Chrome/Chromium headless (primary) ---
         # Try known binary locations: Linux paths first, then macOS app bundles.
         _chrome_candidates = [
@@ -673,53 +874,89 @@ class CVOrchestrator:
             '/Applications/Chromium.app/Contents/MacOS/Chromium',
         ]
         html_url = html_file.as_uri()   # file:///absolute/path/to/file.html
+        def _try_chrome() -> Dict[str, str]:
+            chrome_err_local = None
+            for _chrome_bin in _chrome_candidates:
+                try:
+                    subprocess.run(
+                        [
+                            _chrome_bin,
+                            '--headless=new',
+                            '--disable-gpu',
+                            '--no-sandbox',
+                            f'--print-to-pdf={pdf_output}',
+                            '--print-to-pdf-no-header',
+                            html_url,
+                        ],
+                        check=True,
+                        capture_output=True,
+                        timeout=60,
+                    )
+                    logger.info(
+                        "Generated PDF via Chrome (%s): %s",
+                        Path(_chrome_bin).name,
+                        pdf_output.name,
+                    )
+                    return {
+                        'renderer': 'chrome',
+                        'detail': str(_chrome_bin),
+                    }
+                except FileNotFoundError:
+                    continue
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                    chrome_err_local = str(exc)
+                    break
+
+            if chrome_err_local:
+                raise RuntimeError(chrome_err_local)
+            raise FileNotFoundError('Chrome/Chromium not found')
+
+        def _try_weasyprint() -> Dict[str, str]:
+            wp_script = (
+                "import sys, weasyprint; "
+                "weasyprint.HTML(filename=sys.argv[1]).write_pdf(sys.argv[2])"
+            )
+            wp_result = subprocess.run(
+                [sys.executable, '-c', wp_script, str(html_file), str(pdf_output)],
+                capture_output=True,
+                timeout=120,
+            )
+            if wp_result.returncode == 0:
+                logger.info("Generated PDF using WeasyPrint: %s", pdf_output.name)
+                return {
+                    'renderer': 'weasyprint',
+                    'detail': sys.executable,
+                }
+
+            wp_error_local = (
+                wp_result.stderr.decode(errors='replace').strip()
+                or f"exit {wp_result.returncode}"
+            )
+            raise RuntimeError(wp_error_local)
+
         chrome_err = None
-        for _chrome_bin in _chrome_candidates:
-            try:
-                subprocess.run(
-                    [
-                        _chrome_bin,
-                        '--headless=new',       # Modern headless; full CSS paged media support
-                        '--disable-gpu',
-                        '--no-sandbox',
-                        f'--print-to-pdf={pdf_output}',
-                        '--print-to-pdf-no-header',
-                        html_url,
-                    ],
-                    check=True,
-                    capture_output=True,
-                    timeout=60,
-                )
-                logger.info("Generated PDF via Chrome (%s): %s", Path(_chrome_bin).name, pdf_output.name)
-                return
-            except FileNotFoundError:
-                continue
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                chrome_err = str(exc)
-                break
+        wp_error = None
 
-        if chrome_err:
-            logger.warning("Chrome headless failed (%s), trying WeasyPrint...", chrome_err)
-        else:
-            logger.warning("Chrome/Chromium not found, trying WeasyPrint...")
+        if renderer_mode == 'chrome':
+            return _try_chrome()
 
-        # --- WeasyPrint in subprocess (crash-safe fallback) ---
-        # Runs in a child process so a native segfault cannot kill the Flask server.
-        wp_script = (
-            "import sys, weasyprint; "
-            "weasyprint.HTML(filename=sys.argv[1]).write_pdf(sys.argv[2])"
-        )
-        wp_result = subprocess.run(
-            [sys.executable, '-c', wp_script, str(html_file), str(pdf_output)],
-            capture_output=True,
-            timeout=120,
-        )
-        if wp_result.returncode == 0:
-            logger.info("Generated PDF using WeasyPrint: %s", pdf_output.name)
-            return
+        if renderer_mode == 'weasyprint':
+            return _try_weasyprint()
 
-        wp_error = wp_result.stderr.decode(errors='replace').strip() or f"exit {wp_result.returncode}"
-        logger.warning("WeasyPrint also failed (%s)", wp_error)
+        try:
+            return _try_chrome()
+        except (FileNotFoundError, RuntimeError) as exc:
+            chrome_err = str(exc)
+            if isinstance(exc, FileNotFoundError):
+                logger.warning("Chrome/Chromium not found, trying WeasyPrint...")
+            else:
+                logger.warning("Chrome headless failed (%s), trying WeasyPrint...", chrome_err)
+
+        try:
+            return _try_weasyprint()
+        except RuntimeError as exc:
+            wp_error = str(exc)
+            logger.warning("WeasyPrint also failed (%s)", wp_error)
 
         # --- Plain-text fallback ---
         fallback_content = f"""PDF Generation Failed
@@ -737,6 +974,10 @@ The HTML file contains your formatted CV ready for conversion.
 """
         pdf_output.write_text(fallback_content.strip(), encoding='utf-8')
         logger.warning("Created fallback instructions: %s", pdf_output.name)
+        return {
+            'renderer': 'fallback-text',
+            'detail': pdf_output.name,
+        }
 
     def _generate_human_pdf(
         self,
@@ -1371,6 +1612,10 @@ For manual generation:
         cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
         cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
+        # duckflow: flow=cv-render status=live
+        #   state_read: customizations["skills_section_title"]
+        #   artifact: template_metadata["skills_section_title"] → cv-template.html (final)
+        cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
 
         # Generate documents (Phase 10: Track progress)
         files_created = []
@@ -1382,6 +1627,10 @@ For manual generation:
             'status': 'in_progress',
             'start_time': time.time()
         }
+        # duckflow: flow=cv-render status=live
+        #   state_read: customizations["skills_section_title"]
+        #   artifact: selected_content["skills_section_title"] → _generate_human_docx → DOCX heading
+        selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         ats_file = self._generate_ats_docx(
             selected_content,
             job_analysis,
@@ -1499,19 +1748,18 @@ For manual generation:
         Returns:
             Human-readable outline showing section structure and item counts
         """
-        import re
+        from bs4 import BeautifulSoup
 
-        # Extract major sections (h1, h2)
+        soup = BeautifulSoup(html, 'html.parser')
         outline = []
 
-        # Find all major headings
-        h_tags = re.findall(r'<h[23][^>]*>([^<]+)</h[23]>', html)
-
-        # Count total items in document (simple heuristic for LLM context)
-        total_li_count = len(re.findall(r'<li[^>]*>[^<]*</li>', html))
+        h_tags = soup.find_all(['h2', 'h3'])
+        total_li_count = len(soup.find_all('li'))
 
         for i, heading in enumerate(h_tags, 1):
-            outline.append(f"{i}. {heading.strip()}")
+            heading_text = heading.get_text(' ', strip=True)
+            if heading_text:
+                outline.append(f"{i}. {heading_text}")
 
         if total_li_count > 0:
             outline.append(f"\nTotal items: {total_li_count}")
@@ -1698,30 +1946,18 @@ If you need clarification, return:
 
         # Get all content
         all_experiences  = self.master_data.get('experience', [])
-        all_achievements = self.master_data.get('selected_achievements', [])
-        all_skills_raw   = self.master_data.get('skills', [])
-        all_skills: List[Dict] = []
-
-        if isinstance(all_skills_raw, dict):
-            for category_data in all_skills_raw.values():
-                if isinstance(category_data, dict) and isinstance(category_data.get('skills'), list):
-                    for skill in category_data.get('skills', []):
-                        if isinstance(skill, dict):
-                            all_skills.append(skill)
-                        elif isinstance(skill, str):
-                            all_skills.append({'name': skill})
-                elif isinstance(category_data, list):
-                    for skill in category_data:
-                        if isinstance(skill, dict):
-                            all_skills.append(skill)
-                        elif isinstance(skill, str):
-                            all_skills.append({'name': skill})
-        elif isinstance(all_skills_raw, list):
-            for skill in all_skills_raw:
-                if isinstance(skill, dict):
-                    all_skills.append(skill)
-                elif isinstance(skill, str):
-                    all_skills.append({'name': skill})
+        session_view = SessionDataView(
+            self.master_data,
+            customizations,
+            customizations,
+        )
+        all_achievements = session_view.selected_achievements()
+        all_skills = []
+        for skill in session_view.normalized_skills():
+            if isinstance(skill, dict):
+                all_skills.append(skill)
+            elif isinstance(skill, str):
+                all_skills.append({'name': skill})
 
         # Scoring helpers
         job_keywords     = set(job_analysis.get('ats_keywords', []))
@@ -1963,12 +2199,16 @@ If you need clarification, return:
         if extra_skills:
             existing_skill_names = {s.get('name', '') for s in all_skills}
             prepend = []
-            for skill_name in extra_skills:
+            for raw_skill in extra_skills:
+                extra_skill = self._normalize_extra_skill_entry(raw_skill)
+                if not extra_skill:
+                    continue
+                skill_name = extra_skill.get('name', '')
                 if skill_name not in omitted_skill_names and skill_name not in existing_skill_names:
                     preferred_ids = match_overrides.get(skill_name, [])
                     years = _derive_years_from_matches(skill_name, preferred_ids)
-                    skill_entry: Dict[str, Any] = {'name': skill_name}
-                    if years is not None:
+                    skill_entry: Dict[str, Any] = dict(extra_skill)
+                    if years is not None and skill_entry.get('years') is None:
                         skill_entry['years'] = years
                     prepend.append(skill_entry)
             selected_skills = prepend + selected_skills
@@ -1984,13 +2224,22 @@ If you need clarification, return:
                 key=lambda s: order_map.get(s.get('name', ''), len(order_map)),
             )
 
-        # Select professional summary — session_summaries (e.g. LLM-generated
-        # "ai_recommended") overlay master data so they take precedence.
-        master_summaries  = self.master_data.get('professional_summaries', {})
-        session_summaries = customizations.get('session_summaries', {})
-        all_summaries     = {**master_summaries, **session_summaries}
-        summary_key       = customizations.get('summary_focus', 'default')
-        selected_summary  = all_summaries.get(summary_key) or all_summaries.get('default', '')
+        # Select professional summary from the resolved session/master view.
+        summary_view = SessionDataView(
+            self.master_data,
+            customizations,
+            customizations,
+        )
+        # duckflow: {
+        #   "id": "summary_orchestrator_select",
+        #   "kind": "orchestrator",
+        #   "timestamp": "2026-03-25T21:39:48Z",
+        #   "status": "shared",
+        #   "reads": ["customizations:summary_focus", "customizations:session_summaries"],
+        #   "writes": ["cv:selected_content.summary"],
+        #   "notes": "Resolves the active summary text by overlaying session variants over master variants and selecting the requested key."
+        # }
+        selected_summary = summary_view.selected_summary()
 
         # Select publications — honour user accept/reject decisions if present
         accepted_pubs = customizations.get('accepted_publications')  # list of cite_keys or None
@@ -2015,6 +2264,7 @@ If you need clarification, return:
             'experiences': selected_experiences,
             'achievements': selected_achievements,
             'skills': selected_skills,
+            'skill_category_order': customizations.get('skill_category_order', []),
             'education': self.master_data.get('education', []),
             'certifications': self.master_data.get('certifications', []),
             'publications': selected_publications,
@@ -2137,9 +2387,9 @@ If you need clarification, return:
         doc.add_paragraph(enhanced_summary)
         doc.add_paragraph()
         
-        # Core Competencies/Skills Section - ATS keyword optimization
+        # Skills section - ATS output always normalizes to a fixed heading.
         skills_heading = doc.add_paragraph()
-        skills_heading.add_run('CORE COMPETENCIES').bold = True
+        skills_heading.add_run('SKILLS').bold = True
         skills_heading.style = 'Heading 2'
         
         # Organize skills for maximum ATS impact
@@ -2790,7 +3040,9 @@ If you need clarification, return:
         # ── Skills ───────────────────────────────────────────────────────────
         skills_by_category = content.get('skills_by_category', [])
         if skills_by_category:
-            _heading('Technical Skills')
+            # duckflow: flow=cv-render status=live
+            #   artifact: content["skills_section_title"] → DOCX heading (Skills section)
+            _heading(content.get('skills_section_title', 'Skills'))
             for cat in skills_by_category:
                 p = doc.add_paragraph()
                 p.paragraph_format.space_after = Pt(2)

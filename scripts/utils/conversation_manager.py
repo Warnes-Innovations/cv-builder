@@ -24,6 +24,12 @@ import readline  # Enable line editing and history for input()
 from .llm_client import LLMClient, LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
 from .cv_orchestrator import CVOrchestrator
 from .config import get_config
+from .layout_digest import (
+    TEMPLATE_VERSION as LAYOUT_TEMPLATE_VERSION,
+    UPDATE_NOTE as LAYOUT_TEMPLATE_UPDATE_NOTE,
+    build_layout_digest,
+)
+from .session_data_view import SessionDataView
 
 
 logger = logging.getLogger(__name__)
@@ -80,6 +86,12 @@ class ConversationManager:
             'publication_decisions':   {},   # Dict — per-publication accept/reject decisions
             'summary_focus_override':  None, # str — selected professional summary key
             'extra_skills':            [],   # List[str] — LLM-suggested skills not in master CV
+            'achievement_overrides':   {},   # Dict — top-level achievement field edits for this session only
+            'removed_achievement_ids': [],   # List[str] — top-level achievements hidden for this session only
+            'skill_group_overrides':   {},   # Dict — per-skill group overrides for this session only
+            'skill_category_overrides': {},  # Dict — per-skill category overrides for this session only
+            'skill_category_order':   [],    # List[str] — category display order overrides for this session only
+            'skill_qualifier_overrides': {}, # Dict — per-skill proficiency/subskills/parenthetical overrides for this session only
             'achievement_rewrite_log': [],   # List[Dict] — AI rewrite interactions per achievement
             'generation_state':        {},   # Dict — GAP-20 staged generation phase/artifact state
             'intake':                  {},   # Dict — GAP-23 intake confirmation: company/role/date
@@ -707,6 +719,14 @@ Ask questions that are specific to this job posting, not generic career question
                 if base_font_size:
                     customizations['base_font_size'] = base_font_size
 
+                # Skills section title (set via Generation Settings panel)
+                # duckflow: flow=generation-settings status=live
+                #   state_read: session.state["skills_section_title"]
+                #   state_write: customizations["skills_section_title"]
+                skills_section_title = self.state.get('skills_section_title')
+                if skills_section_title:
+                    customizations['skills_section_title'] = skills_section_title
+
                 # Summary focus override (user-selected summary key)
                 summary_override = self.state.get('summary_focus_override')
                 if summary_override:
@@ -754,21 +774,15 @@ Ask questions that are specific to this job posting, not generic career question
                 customizations['rejected_publications'] = [
                     k.strip() for k in rejected_str.split(',') if k.strip()
                 ]
-            
+
             print("\n🔄 Generating CV files...")
-            result = self.orchestrator.generate_cv(
-                job_analysis,
-                customizations,
-                output_dir=self.session_dir,
-                approved_rewrites=self.state.get('approved_rewrites') or [],
-                rewrite_audit=self.state.get('rewrite_audit') or [],
-                spell_audit=self.state.get('spell_audit') or [],
-                max_skills=self.state.get('max_skills'),
-            )
-            self.state['generated_files'] = result
-            # Store generation progress for frontend display (Phase 10)
-            self.state['generation_progress'] = result.get('generation_progress', [])
-            self.state['phase'] = Phase.LAYOUT_REVIEW
+            try:
+                result = self.generate_cv_from_session_state(
+                    output_dir=self.session_dir,
+                    allow_llm_recommendations=True,
+                )
+            except ValueError as exc:
+                return f"❌ {exc}"
 
             files_list = "\n".join(f"  - {f}" for f in result['files'])
             return f"✓ CV generated successfully!\n\nOutput directory: {result['output_dir']}\n\nFiles created:\n{files_list}"
@@ -1322,6 +1336,9 @@ Ask questions that are specific to this job posting, not generic career question
                 'publication_decisions':   {},
                 'summary_focus_override':  None,
                 'extra_skills':            [],
+                'achievement_overrides':   {},
+                'removed_achievement_ids': [],
+                'skill_group_overrides':   {},
                 'achievement_rewrite_log': [],
             }
             print("\n✓ Conversation reset. Let's start fresh!")
@@ -1335,6 +1352,8 @@ Ask questions that are specific to this job posting, not generic career question
         user_instructions: str,
         previous_suggestions: list,
         suggested_text: str,
+        experience_index: Optional[int] = None,
+        achievement_index: Optional[int] = None,
     ) -> str:
         """Record one AI rewrite generation in the session and persist.
 
@@ -1347,6 +1366,8 @@ Ask questions that are specific to this job posting, not generic career question
             'timestamp':           datetime.now().isoformat(),
             'original_text':       original_text,
             'experience_context':  experience_context,
+            'experience_index':    experience_index,
+            'achievement_index':   achievement_index,
             'user_instructions':   user_instructions,
             'previous_suggestions': list(previous_suggestions),
             'suggested_text':      suggested_text,
@@ -1358,6 +1379,67 @@ Ask questions that are specific to this job posting, not generic career question
         self.state['achievement_rewrite_log'].append(entry)
         self._save_session()
         return log_id
+
+    def _get_experience_achievement_texts(self, experience_index: int) -> List[str]:
+        """Return plain-text achievements for one master CV experience."""
+        master_data = getattr(self.orchestrator, 'master_data', None) or {}
+        experiences = master_data.get('experience') or []
+        if not (0 <= experience_index < len(experiences)):
+            return []
+
+        experience = experiences[experience_index] or {}
+        achievements = experience.get('key_achievements') or experience.get('achievements') or []
+
+        texts: List[str] = []
+        for achievement in achievements:
+            if isinstance(achievement, str):
+                texts.append(achievement)
+                continue
+            if isinstance(achievement, dict):
+                texts.append(
+                    achievement.get('text')
+                    or achievement.get('description')
+                    or achievement.get('content')
+                    or ''
+                )
+                continue
+            texts.append('')
+        return texts
+
+    def _persist_accepted_achievement_rewrite(
+        self,
+        experience_index: int,
+        achievement_index: int,
+        accepted_text: str,
+    ) -> bool:
+        """Persist an accepted rewrite into session achievement edits immediately."""
+        if not accepted_text:
+            return False
+        if experience_index < 0 or achievement_index < 0:
+            return False
+
+        raw_edits = self.state.get('achievement_edits') or {}
+        normalized_edits: Dict[int, List[str]] = {}
+        for key, value in raw_edits.items():
+            try:
+                exp_idx = int(key)
+            except (TypeError, ValueError):
+                continue
+            normalized_edits[exp_idx] = list(value) if isinstance(value, list) else [str(value)]
+
+        edits = normalized_edits.get(experience_index)
+        if edits is None:
+            edits = self._get_experience_achievement_texts(experience_index)
+        else:
+            edits = list(edits)
+
+        while len(edits) <= achievement_index:
+            edits.append('')
+
+        edits[achievement_index] = accepted_text
+        normalized_edits[experience_index] = edits
+        self.state['achievement_edits'] = normalized_edits
+        return True
 
     def update_achievement_rewrite_outcome(
         self,
@@ -1375,6 +1457,15 @@ Ask questions that are specific to this job posting, not generic career question
                 entry['outcome'] = outcome
                 if accepted_text is not None:
                     entry['accepted_text'] = accepted_text
+                if outcome == 'accepted' and accepted_text is not None:
+                    exp_idx = entry.get('experience_index')
+                    ach_idx = entry.get('achievement_index')
+                    if isinstance(exp_idx, int) and isinstance(ach_idx, int):
+                        self._persist_accepted_achievement_rewrite(
+                            experience_index=exp_idx,
+                            achievement_index=ach_idx,
+                            accepted_text=accepted_text,
+                        )
                 self._save_session()
                 return True
         return False
@@ -1447,36 +1538,94 @@ Ask questions that are specific to this job posting, not generic career question
             self.state.get('position_name', '<none>'), title or '<none>', company or '<none>'
         )
 
-    def _rename_session_dir(self, company: str, role: str) -> None:
-        """Rename the session directory from ``pending_<ts>`` to
-        ``{Company}_{RoleSlug}_{date}`` once company and role are known.
+    def apply_confirmed_intake(
+        self,
+        role: Optional[str],
+        company: Optional[str],
+        date_applied: Optional[str],
+    ) -> None:
+        """Persist confirmed intake metadata and sync derived session state.
 
-        Safe to call multiple times; only acts when the directory name still
-        starts with ``pending_``.  If no session directory exists yet, one is
-        created first.
+        When both ``role`` and ``company`` are present, rename the session
+        directory to keep filesystem naming aligned with the confirmed target.
+        """
+        intake = {
+            'role':         role,
+            'company':      company,
+            'date_applied': date_applied,
+            'confirmed':    True,
+        }
+        self.state['intake'] = intake
+
+        if role and company:
+            self.state['position_name'] = f"{role} at {company}"
+        elif role:
+            self.state['position_name'] = role
+        elif company:
+            self.state['position_name'] = company
+
+        if role and company:
+            self._rename_session_dir(company, role)
+
+        self._save_session()
+
+    def _session_dir_date_str(self) -> str:
+        """Return the existing directory date suffix when available."""
+        if self.session_dir:
+            match = re.search(r'(\d{4}-\d{2}-\d{2})(?:_\d+)?$', self.session_dir.name)
+            if match:
+                return match.group(1)
+        return datetime.now().strftime("%Y-%m-%d")
+
+    def _rename_session_dir(self, company: str, role: str) -> None:
+        """Rename the session directory to ``{Company}_{RoleSlug}_{date}``.
+
+        Safe to call multiple times. If a non-pending directory already exists,
+        it is renamed only when the desired target name differs from the
+        current one.
         """
         if not self.session_dir:
             self._save_session()
 
-        if not (self.session_dir and self.session_dir.name.startswith('pending_')):
-            return  # Already renamed or directory not yet established
+        if not self.session_dir:
+            return
+
+        company = (company or '').strip()
+        role    = (role or '').strip()
+        if not (company or role):
+            return
 
         # Build a filesystem-safe slug from the extracted company and role
         company_slug = re.sub(r'[^\w]', '', company)[:30] or 'Unknown'
         role_slug    = re.sub(r'[^\w ]', '', role).replace(' ', '')[:20] or 'Role'
-        date_str     = datetime.now().strftime("%Y-%m-%d")
+        date_str     = self._session_dir_date_str()
         new_name     = f"{company_slug}_{role_slug}_{date_str}"
-        new_dir      = self.session_dir.parent / new_name
+        current_dir  = self.session_dir
+        new_dir      = current_dir.parent / new_name
+
+        if current_dir.name == new_name:
+            return
 
         # Avoid collision with a pre-existing directory of the same name
-        if new_dir.exists() and new_dir != self.session_dir:
+        if new_dir.exists() and new_dir != current_dir:
             counter = 1
             while new_dir.exists():
-                new_dir = self.session_dir.parent / f"{new_name}_{counter}"
+                new_dir = current_dir.parent / f"{new_name}_{counter}"
                 counter += 1
 
-        self.session_dir.rename(new_dir)
+        current_dir.rename(new_dir)
         self.session_dir = new_dir
+        generated_files = self.state.get('generated_files')
+        if isinstance(generated_files, dict) and generated_files.get('output_dir'):
+            try:
+                output_dir = Path(generated_files['output_dir'])
+                if output_dir.resolve() == current_dir.resolve():
+                    generated_files['output_dir'] = str(new_dir)
+            except Exception:
+                if str(generated_files.get('output_dir')) == str(current_dir):
+                    generated_files['output_dir'] = str(new_dir)
+
+        self.session_file = self.session_dir / "session.json"
         print(f"\u2713 Session directory renamed \u2192 {new_dir.name}")
         logger.debug(
             "_rename_session_dir: renamed to %s (company=%s, role=%s)",
@@ -1630,6 +1779,227 @@ Ask questions that are specific to this job posting, not generic career question
                 self.session_id
             )
             self._save_session()
+
+    def generate_cv_from_session_state(
+        self,
+        output_dir: Optional[Path] = None,
+        allow_llm_recommendations: bool = True,
+    ) -> Dict:
+        """Generate CV artifacts from the currently loaded session state.
+
+        This is the non-interactive equivalent of the existing ``generate_cv``
+        action flow. It reuses recorded job analysis, customizations, and review
+        decisions, optionally refusing to call the LLM when a session is missing
+        stored customizations.
+        """
+        has_customizations = bool(self.state.get('customizations'))
+        has_decisions = bool(
+            self.state.get('experience_decisions')
+            or self.state.get('skill_decisions')
+            or self.state.get('achievement_decisions')
+        )
+
+        if not has_customizations and not has_decisions:
+            raise ValueError('Please generate customizations first')
+
+        job_analysis = self.state.get('job_analysis')
+        if isinstance(job_analysis, str):
+            try:
+                job_analysis = json.loads(job_analysis)
+                self.state['job_analysis'] = job_analysis
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    'job_analysis is corrupted. Please re-analyze the job.'
+                ) from exc
+
+        exp_decisions = self.state.get('experience_decisions', {})
+        skill_decisions = self.state.get('skill_decisions', {})
+
+        if isinstance(exp_decisions, str):
+            try:
+                exp_decisions = json.loads(exp_decisions)
+                self.state['experience_decisions'] = exp_decisions
+            except json.JSONDecodeError:
+                exp_decisions = {}
+
+        if isinstance(skill_decisions, str):
+            try:
+                skill_decisions = json.loads(skill_decisions)
+                self.state['skill_decisions'] = skill_decisions
+            except json.JSONDecodeError:
+                skill_decisions = {}
+
+        if not isinstance(exp_decisions, dict):
+            exp_decisions = {}
+        if not isinstance(skill_decisions, dict):
+            skill_decisions = {}
+
+        if has_decisions and not has_customizations:
+            if not allow_llm_recommendations:
+                raise ValueError(
+                    'Session has review decisions but no recorded '
+                    'customizations.'
+                )
+            if not job_analysis:
+                raise ValueError('Please analyze job description first')
+
+            recommendations = self.llm.recommend_customizations(
+                job_analysis,
+                self.orchestrator.master_data,
+                user_preferences=self.state.get('post_analysis_answers') or {},
+                conversation_history=self.conversation_history,
+            )
+            self._normalize_recommendations(recommendations)
+            self.state['customizations'] = recommendations
+
+        customizations = self.state.get('customizations')
+        if isinstance(customizations, str):
+            try:
+                customizations = json.loads(customizations)
+                self.state['customizations'] = customizations
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    'customizations data is corrupted. '
+                    'Please re-generate customizations.'
+                ) from exc
+
+        if customizations is None:
+            raise ValueError('Please generate customizations first')
+
+        if has_decisions:
+            if exp_decisions:
+                emphasized = [
+                    key for key, value in exp_decisions.items()
+                    if value == 'emphasize'
+                ]
+                included = [
+                    key for key, value in exp_decisions.items()
+                    if value == 'include'
+                ]
+                deemphasized = [
+                    key for key, value in exp_decisions.items()
+                    if value == 'de-emphasize'
+                ]
+                omitted = [
+                    key for key, value in exp_decisions.items()
+                    if value in ('omit', 'exclude')
+                ]
+                customizations['recommended_experiences'] = (
+                    emphasized + included + deemphasized
+                )
+                customizations['omitted_experiences'] = omitted
+
+            if skill_decisions:
+                emphasized = [
+                    key for key, value in skill_decisions.items()
+                    if value == 'emphasize'
+                ]
+                included = [
+                    key for key, value in skill_decisions.items()
+                    if value == 'include'
+                ]
+                deemphasized = [
+                    key for key, value in skill_decisions.items()
+                    if value == 'de-emphasize'
+                ]
+                omitted = [
+                    key for key, value in skill_decisions.items()
+                    if value in ('omit', 'exclude')
+                ]
+                customizations['recommended_skills'] = (
+                    emphasized + included + deemphasized
+                )
+                customizations['omitted_skills'] = omitted
+
+            ach_decisions = self.state.get('achievement_decisions', {})
+            if isinstance(ach_decisions, str):
+                try:
+                    ach_decisions = json.loads(ach_decisions)
+                except Exception:
+                    ach_decisions = {}
+            if ach_decisions:
+                included_achs = [
+                    key for key, value in ach_decisions.items()
+                    if value in ('include', 'emphasize', 'de-emphasize')
+                ]
+                omitted_achs = [
+                    key for key, value in ach_decisions.items()
+                    if value in ('omit', 'exclude')
+                ]
+                customizations['recommended_achievements'] = included_achs
+                customizations['omitted_achievements'] = omitted_achs
+
+            extra_achievements = self.state.get(
+                'accepted_suggested_achievements',
+                [],
+            )
+            if extra_achievements:
+                customizations['extra_achievements'] = extra_achievements
+
+            extra_skills = self.state.get('extra_skills', [])
+            if extra_skills:
+                customizations['extra_skills'] = extra_skills
+
+            base_font_size = self.state.get('base_font_size')
+            if base_font_size:
+                customizations['base_font_size'] = base_font_size
+
+            self.state['customizations'] = customizations
+
+        summary_view = SessionDataView(
+            self.orchestrator.master_data,
+            self.state,
+            customizations,
+        )
+        customizations = summary_view.materialize_customizations()
+        self.state['customizations'] = customizations
+
+        achievement_orders = self.state.get('achievement_orders', {})
+        if achievement_orders:
+            customizations['achievement_orders'] = achievement_orders
+
+        experience_row_order = self.state.get('experience_row_order', [])
+        if experience_row_order:
+            customizations['experience_row_order'] = experience_row_order
+        skill_row_order = self.state.get('skill_row_order', [])
+        if skill_row_order:
+            customizations['skill_row_order'] = skill_row_order
+
+        pub_decisions: dict = self.state.get('publication_decisions') or {}
+        if pub_decisions:
+            customizations['accepted_publications'] = [
+                key for key, value in pub_decisions.items()
+                if value not in (False, 'reject', 0)
+            ]
+            customizations['rejected_publications'] = [
+                key for key, value in pub_decisions.items()
+                if value in (False, 'reject', 0)
+            ]
+
+        post_answers = self.state.get('post_analysis_answers') or {}
+        accepted_str = post_answers.get('publication_accepted', '')
+        rejected_str = post_answers.get('publication_rejected', '')
+        if accepted_str or rejected_str:
+            customizations['accepted_publications'] = [
+                key.strip() for key in accepted_str.split(',') if key.strip()
+            ]
+            customizations['rejected_publications'] = [
+                key.strip() for key in rejected_str.split(',') if key.strip()
+            ]
+
+        result = self.orchestrator.generate_cv(
+            job_analysis,
+            customizations,
+            output_dir=output_dir or self.session_dir,
+            approved_rewrites=self.state.get('approved_rewrites') or [],
+            rewrite_audit=self.state.get('rewrite_audit') or [],
+            spell_audit=self.state.get('spell_audit') or [],
+            max_skills=self.state.get('max_skills'),
+        )
+        self.state['generated_files'] = result
+        self.state['generation_progress'] = result.get('generation_progress', [])
+        self.state['phase'] = Phase.LAYOUT_REVIEW
+        return result
     
     def run_automated(self) -> Dict:
         """Run automated generation (non-interactive)."""
@@ -1666,6 +2036,22 @@ Ask questions that are specific to this job posting, not generic career question
             max_skills=self.state.get('max_skills'),
         )
         self.state['generated_files'] = result
+
+        try:
+            html_candidates = [
+                Path(file_path)
+                for file_path in result.get('files', [])
+                if str(file_path).endswith('.html')
+            ]
+            if html_candidates:
+                html_src = html_candidates[0].read_text(encoding='utf-8')
+                gen = self.state.setdefault('generation_state', {})
+                gen['baseline_layout_digest'] = build_layout_digest(html_src)
+                gen['baseline_exact_page_count'] = self.state.get('page_count')
+                gen['layout_template_version'] = LAYOUT_TEMPLATE_VERSION
+                gen['layout_template_update_note'] = LAYOUT_TEMPLATE_UPDATE_NOTE
+        except Exception:
+            pass
 
         return result
 

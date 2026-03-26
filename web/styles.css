@@ -80,6 +80,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .ats-score-badge.score-high .ats-score-value { color: #16a34a; }
 .ats-score-badge.score-medium .ats-score-value { color: #d97706; }
 .ats-score-badge.score-low .ats-score-value { color: #dc2626; }
+.layout-freshness-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.layout-freshness-chip:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08); }
+.layout-freshness-chip.fresh { background: #ecfdf5; border-color: #86efac; color: #166534; }
+.layout-freshness-chip.stale { background: #fffbeb; border-color: #fcd34d; color: #92400e; animation: stale-chip-pulse 1.2s ease-out 1; }
+.layout-freshness-chip.critical { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; animation: stale-chip-pulse 1.2s ease-out 1; }
+.layout-freshness-icon { font-size: 13px; line-height: 1; }
+@keyframes stale-chip-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.25); }
+  100% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+}
 @media (max-width: 900px) {
   .position-bar-row { align-items: flex-start; }
   .position-bar-actions { padding-top: 12px; }
@@ -108,6 +130,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .step.completed { background: #dcfce7; color: #166534; cursor: pointer; }
 .step.completed:hover { filter: brightness(0.93); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
 .step.upcoming { background: #f8fafc; color: #cbd5e1; }
+.step.stale { background: #fffbeb; color: #92400e; box-shadow: inset 0 0 0 1px #f59e0b; }
+.step.stale-critical { background: #fef2f2; color: #b91c1c; box-shadow: inset 0 0 0 1px #f87171; }
+.step-inline-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  font-size: 0.75em;
+  background: #fef9c3;
+  color: #92400e;
+  border-radius: 6px;
+  padding: 1px 5px;
+  vertical-align: middle;
+}
+.step-stale-badge { background: rgba(245, 158, 11, 0.16); color: inherit; }
 .arrow { color: #94a3b8; }
 
 /* ===== SESSION CONFLICT BANNER ===== */
@@ -367,6 +403,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 }
 .tab:hover { color: #334155; background: #f1f5f9; }
 .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; background: #fff; }
+.tab-stale { color: #92400e; }
+.tab-stale-critical { color: #b91c1c; }
+.tab-stale-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.75em;
+  font-weight: 700;
+  background: #fffbeb;
+  color: inherit;
+}
 
 /* ===== REVIEW SUB-TABS ===== */
 .review-subtabs {
@@ -771,6 +820,8 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .btn-primary:hover { background: #2563eb; }
 .btn-secondary { background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s; }
 .btn-secondary:hover { background: #f1f5f9; border-color: #94a3b8; }
+.btn-warning { background: #f59e0b; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+.btn-warning:hover { background: #d97706; }
 .url-help p { margin: 4px 0; }
 
 /* Field-level validation */
@@ -839,7 +890,27 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .layout-preview-iframe { width: 100%; height: 100%; border: none; }
 .layout-input-pane { width: 320px; flex: 0 0 320px; display: flex; flex-direction: column; gap: 12px; }
 .layout-input-pane h3 { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 0; }
+.preview-output-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+.preview-output-card-header { display: flex; flex-direction: column; gap: 4px; }
+.preview-output-card-header h4 { margin: 0; font-size: 13px; font-weight: 700; color: #1e293b; }
+.preview-output-card-note { font-size: 12px; color: #64748b; }
+.preview-output-status { display: flex; flex-direction: column; gap: 8px; }
+.preview-output-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; }
+.preview-output-copy { min-width: 0; flex: 1 1 auto; }
+.preview-output-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.preview-output-detail { font-size: 12px; color: #64748b; line-height: 1.4; word-break: break-word; }
+.preview-output-badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 700; }
+.preview-output-badge.is-ready { background: #ecfdf5; color: #166534; }
+.preview-output-badge.is-failed { background: #fef2f2; color: #b91c1c; }
+.preview-output-badge-link { text-decoration: none; }
+.preview-output-badge-link:hover { background: #dcfce7; color: #14532d; }
+.preview-output-badge-link:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
+.preview-output-empty { font-size: 12px; color: #64748b; line-height: 1.5; }
 .layout-scope-label { font-size: 12px; color: #64748b; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 6px 10px; margin: 0; }
+.layout-stale-callout { background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 14px 16px; color: #78350f; }
+.layout-stale-callout h4 { margin: 0 0 6px; font-size: 14px; color: #92400e; }
+.layout-stale-callout p { margin: 0; font-size: 13px; line-height: 1.5; color: #78350f; }
+.layout-stale-callout-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .layout-instruction-textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit; resize: vertical; line-height: 1.5; }
 .layout-instruction-textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
 .layout-action-btn { width: 100%; padding: 10px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.2s; }
@@ -865,6 +936,8 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
   .layout-instruction-panel { flex-direction: column; height: auto; }
   .layout-preview-pane { min-height: 60vh; }
   .layout-input-pane { width: 100%; flex-basis: auto; }
+  .preview-output-row { align-items: flex-start; flex-direction: column; }
+  .preview-output-link { width: 100%; }
 }
 
 /* ==== Master CV Management Tab ==== */

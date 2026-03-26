@@ -35,6 +35,8 @@ let userSelections = {
   experiences: {},  // exp_id -> 'emphasize'|'include'|'de-emphasize'|'exclude'
   skills: {}        // skill_name -> 'emphasize'|'include'|'de-emphasize'|'exclude'
 };
+let pageEstimateTimer = null;
+let pageEstimateRequestId = 0;
 
 function ensureTabDataState() {
   return stateManager.getAllTabData();
@@ -73,7 +75,6 @@ function switchTab(tab) {
   if (typeof getStageForTab === 'function' && typeof updateTabBarForStage === 'function') {
     const tabStage = getStageForTab(tab);
     if (tabStage) {
-      stateManager.setCurrentStage(tabStage);
       updateTabBarForStage(tabStage);
       updateActionButtons(tabStage);
     }
@@ -118,7 +119,6 @@ async function loadTabContent(tab) {
       populateQuestionsTab();
       break;
     case 'customizations':
-      // Legacy: redirect to new flat tab structure
       switchTab('exp-review');
       return;
     case 'exp-review':
@@ -185,6 +185,18 @@ async function loadTabContent(tab) {
       await populateScreeningTab();
       break;
   }
+}
+
+// ── Review tab (flat, one pane per top-level tab) ─────────────────────────
+
+async function showTableBasedReview() {
+  if (!window.pendingRecommendations) {
+    appendMessage('assistant', 'No recommendations to review. Please generate customizations first.');
+    return;
+  }
+
+  switchTab('exp-review');
+  appendMessage('assistant', '✅ Customizations generated! Please review the **Experiences** and **Skills** tabs. Select your preferences using the action buttons, then submit your decisions.');
 }
 
 // ── Analysis tab ──────────────────────────────────────────────────────────
@@ -293,21 +305,16 @@ async function handleCustomizationResponse(response) {
     }
 
     if (data && (data.recommended_experiences || data.recommended_skills)) {
-      // Store for persistence
       stateManager.setTabData('customizations', data);
       window.pendingRecommendations = data;
       saveTabData();
 
       if (!isReconnectInProgress()) {
         appendMessage('assistant', '✅ Customizations generated! Please review the **Experiences** and **Skills** in the **Customizations** tab. Select your preferences using the action buttons, then submit your decisions.');
-
-        // Switch to the experiences review tab.
         switchTab('exp-review');
       }
-    } else {
-      if (!isReconnectInProgress()) {
-        appendMessage('assistant', response);
-      }
+    } else if (!isReconnectInProgress()) {
+      appendMessage('assistant', response);
     }
   } catch (e) {
     log.error('Customization response error:', e);
@@ -317,19 +324,52 @@ async function handleCustomizationResponse(response) {
   }
 }
 
-// ── Review tab (flat, one pane per top-level tab) ─────────────────────────
+/**
+ * Sync the skills-title select/custom-input controls to a given title value,
+ * and attach change listeners so updates are saved via the API.
+ * duckflow: flow=generation-settings status=live
+ *   state_read: status.skills_section_title (from GET /api/status)
+ *   route: POST /api/generation-settings {skills_section_title}
+ *   state_write: session.state["skills_section_title"]
+ */
+function _syncSkillsTitleControls(currentTitle) {
+  const knownOptions = ['Skills', 'Technical Skills', 'Key Skills', 'Core Skills'];
+  const sel  = document.getElementById('skills-title-select');
+  const cust = document.getElementById('skills-title-custom');
+  if (!sel) return;
 
-async function showTableBasedReview() {
-  if (!window.pendingRecommendations) {
-    appendMessage('assistant', 'No recommendations to review. Please generate customizations first.');
-    return;
+  const isKnown = knownOptions.includes(currentTitle);
+  if (isKnown) {
+    sel.value = currentTitle;
+    if (cust) cust.style.display = 'none';
+  } else {
+    sel.value = '__custom__';
+    if (cust) {
+      cust.style.display = '';
+      cust.value = currentTitle;
+    }
   }
 
-  // Switch to the experiences review tab.
-  switchTab('exp-review');
+  const saveTitle = async (title) => {
+    try { await apiCall('POST', '/api/generation-settings', { skills_section_title: title }); }
+    catch (e) { log.warn('Failed to save skills_section_title setting:', e); }
+  };
 
-  // Inform user in conversation
-  appendMessage('assistant', '✅ Customizations generated! Please review the **Experiences** and **Skills** tabs. Select your preferences using the action buttons, then submit your decisions.');
+  sel.addEventListener('change', () => {
+    if (sel.value === '__custom__') {
+      if (cust) { cust.style.display = ''; cust.focus(); }
+    } else {
+      if (cust) cust.style.display = 'none';
+      saveTitle(sel.value);
+    }
+  });
+
+  if (cust) {
+    cust.addEventListener('change', () => {
+      const v = cust.value.trim();
+      if (v) saveTitle(v);
+    });
+  }
 }
 
 /**
@@ -370,6 +410,17 @@ async function populateReviewTab(pane) {
         <span id="max-skills-value" style="font-weight:600;color:#1e293b;min-width:2em;text-align:right;">20</span>
         <span style="font-size:0.85em;color:#9ca3af;">(default: 20)</span>
       </div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <label for="skills-title-select" style="font-size:0.9em;color:#4b5563;white-space:nowrap;">Skills section title:</label>
+        <select id="skills-title-select" style="font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;">
+          <option value="Skills">Skills</option>
+          <option value="Technical Skills">Technical Skills</option>
+          <option value="Key Skills">Key Skills</option>
+          <option value="Core Skills">Core Skills</option>
+          <option value="__custom__">Custom…</option>
+        </select>
+        <input type="text" id="skills-title-custom" placeholder="Enter custom title" style="display:none;font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;min-width:160px;">
+      </div>
     </details>
   ` : (cfg.title ? `<h2 style="margin:0 0 12px;">${cfg.title}</h2>` : '');
 
@@ -384,7 +435,6 @@ async function populateReviewTab(pane) {
     achievements: `<button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Summary →</button>`,
     publications: `<button class="continue-btn" onclick="submitPublicationDecisions()">Continue to Rewrite →</button>`,
   };
-  // Summary nav is rendered inside buildSummaryFocusSection
   const navHtml = pane === 'summary' ? '' : `
     <div class="nav-buttons${pane === 'experiences' ? ' nav-end' : ''}" style="margin:16px 0;">
       ${navBack[pane] || ''}
@@ -398,34 +448,51 @@ async function populateReviewTab(pane) {
     ${navHtml}
   `;
 
-  // Sync slider for experiences tab
+  // Sync slider and skills title for experiences tab
   if (pane === 'experiences') {
     (async () => {
       const status = await fetchStatus();
       const currentMax = status.max_skills || 20;
       const slider = document.getElementById('max-skills-input');
-      const label  = document.getElementById('max-skills-value');
+      const label = document.getElementById('max-skills-value');
       if (slider) {
         slider.value = currentMax;
         if (label) label.textContent = currentMax;
-        slider.addEventListener('input', () => { if (label) label.textContent = slider.value; });
+        slider.addEventListener('input', () => {
+          if (label) label.textContent = slider.value;
+        });
         slider.addEventListener('change', async () => {
           const v = parseInt(slider.value, 10);
           if (label) label.textContent = v;
-          try { await apiCall('POST', '/api/generation-settings', { max_skills: v }); }
-          catch (e) { log.warn('Failed to save max_skills setting:', e); }
+          try {
+            await apiCall('POST', '/api/generation-settings', { max_skills: v });
+          } catch (e) {
+            log.warn('Failed to save max_skills setting:', e);
+          }
         });
       }
+      _syncSkillsTitleControls(status.skills_section_title || 'Skills');
     })();
   }
 
   window._activeReviewPane = pane;
   switch (pane) {
-    case 'experiences':  await buildExperienceReviewTable(); _updatePageEstimate(); break;
-    case 'skills':       await buildSkillsReviewTable();     break;
-    case 'achievements': await buildAchievementsReviewTable(); break;
-    case 'summary':      await buildSummaryFocusSection();   break;
-    case 'publications': await buildPublicationsReviewTable(); break;
+    case 'experiences':
+      await buildExperienceReviewTable();
+      _updatePageEstimate();
+      break;
+    case 'skills':
+      await buildSkillsReviewTable();
+      break;
+    case 'achievements':
+      await buildAchievementsReviewTable();
+      break;
+    case 'summary':
+      await buildSummaryFocusSection();
+      break;
+    case 'publications':
+      await buildPublicationsReviewTable();
+      break;
   }
 }
 
@@ -455,6 +522,17 @@ async function populateCustomizationsTabWithReview(data) {
           style="flex:1;accent-color:#3b82f6;">
         <span id="max-skills-value" style="font-weight:600;color:#1e293b;min-width:2em;text-align:right;">20</span>
         <span style="font-size:0.85em;color:#9ca3af;">(default: 20)</span>
+      </div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <label for="skills-title-select" style="font-size:0.9em;color:#4b5563;white-space:nowrap;">Skills section title:</label>
+        <select id="skills-title-select" style="font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;">
+          <option value="Skills">Skills</option>
+          <option value="Technical Skills">Technical Skills</option>
+          <option value="Key Skills">Key Skills</option>
+          <option value="Core Skills">Core Skills</option>
+          <option value="__custom__">Custom…</option>
+        </select>
+        <input type="text" id="skills-title-custom" placeholder="Enter custom title" style="display:none;font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;min-width:160px;">
       </div>
     </details>
 
@@ -515,7 +593,7 @@ async function populateCustomizationsTabWithReview(data) {
 
   content.innerHTML = html;
 
-  // Sync max-skills slider with current session value
+  // Sync max-skills slider and skills title with current session value
   (async () => {
     const status = await fetchStatus();
     const currentMax = status.max_skills || 20;
@@ -537,6 +615,7 @@ async function populateCustomizationsTabWithReview(data) {
         }
       });
     }
+    _syncSkillsTitleControls(status.skills_section_title || 'Skills');
   })();
 
   // Track which panes have been loaded to avoid re-fetching
@@ -592,56 +671,99 @@ function _updatePageEstimate() {
   const widget = document.getElementById('page-estimate-widget');
   if (!widget) return;
 
-  const CHARS_PER_PAGE = 3200;
-  const CHARS_HEADER   = 300;
-  const CHARS_SUMMARY  = 500;
-  const CHARS_EXP      = { emphasize: 1200, include: 800, 'de-emphasize': 300 };
-  const CHARS_SKILL    = 25;
-  const CHARS_OVERHEAD = 200;
+  const label = document.getElementById('pe-label');
+  const fill = document.getElementById('pe-fill');
+  const icon = document.getElementById('pe-icon');
 
-  let total = CHARS_HEADER + CHARS_SUMMARY + CHARS_OVERHEAD;
+  if (label) label.textContent = 'Updating server layout estimate…';
+  if (fill) fill.style.width = '0%';
+  if (icon) icon.textContent = '⏳';
 
-  const expSels = userSelections.experiences || {};
-  for (const action of Object.values(expSels)) {
-    total += CHARS_EXP[action] || 0;
-  }
+  const payload = {
+    experience_decisions: {
+      ...((window._savedDecisions && window._savedDecisions.experience_decisions) || {}),
+      ...(userSelections.experiences || {}),
+    },
+    skill_decisions: {
+      ...((window._savedDecisions && window._savedDecisions.skill_decisions) || {}),
+      ...(userSelections.skills || {}),
+    },
+    achievement_decisions: (
+      (window._savedDecisions && window._savedDecisions.achievement_decisions)
+      || window.achievementDecisions
+      || {}
+    ),
+    publication_decisions: (
+      (window._savedDecisions && window._savedDecisions.publication_decisions)
+      || window.publicationDecisions
+      || {}
+    ),
+    summary_focus_override: window.selectedSummaryKey || null,
+  };
 
-  const skillSels = userSelections.skills || {};
-  const activeSkills = Object.values(skillSels).filter(a => a !== 'exclude').length;
-  total += activeSkills * CHARS_SKILL;
+  const requestId = ++pageEstimateRequestId;
+  clearTimeout(pageEstimateTimer);
+  pageEstimateTimer = setTimeout(async () => {
+    try {
+      const response = await apiCall('POST', '/api/cv/layout-estimate', payload);
+      if (!response.ok) throw new Error(response.error || 'estimate failed');
+      if (requestId !== pageEstimateRequestId) return;
 
-  const pages = total / CHARS_PER_PAGE;
-  const pct   = Math.min(100, (pages / 3) * 100); // bar maxes at 3 pages
+      const pages = Number(response.page_count_estimate || 0);
+      const pct = Math.min(100, (pages / 3) * 100);
+      const confidence = Number(response.page_count_confidence || 0);
 
-  const label  = document.getElementById('pe-label');
-  const fill   = document.getElementById('pe-fill');
-  const icon   = document.getElementById('pe-icon');
+      let cls = 'ok';
+      let colour = '#22c55e';
+      let iconText = response.page_count_exact != null ? '✅' : '📄';
+      if (response.page_length_warning) {
+        cls = pages > 3 ? 'over' : 'warn';
+        colour = pages > 3 ? '#ef4444' : '#f59e0b';
+        iconText = pages > 3 ? '🚨' : '⚠️';
+      }
 
-  const expCount   = Object.values(expSels).filter(a => a !== 'exclude').length;
-  const totalExp   = Object.keys(expSels).length;
+      const sourceLabel = response.page_count_exact != null
+        ? `Exact: ${response.page_count_exact} page${response.page_count_exact === 1 ? '' : 's'}`
+        : `Estimated: ${pages.toFixed(1)} pages`;
+      const confidenceLabel = response.page_count_exact != null
+        ? ''
+        : ` (${Math.round(confidence * 100)}% confidence)`;
+      const contributorText = Array.isArray(response.contributors) && response.contributors.length > 0
+        ? ` ${response.contributors[0]}.`
+        : '';
+      const recheckText = response.page_count_needs_exact_recheck && response.page_count_exact == null
+        ? ' Exact recheck recommended.'
+        : '';
 
-  let cls, colour, msg;
-  if (pages < 1.8) {
-    cls = 'ok';   colour = '#22c55e';
-    msg = `≈${pages.toFixed(1)} pages \u2014 ${expCount} of ${totalExp} experiences, ${activeSkills} skills. Looking good — may have room to add more.`;
-    icon.textContent = '📄';
-  } else if (pages <= 2.3) {
-    cls = 'ok';   colour = '#22c55e';
-    msg = `≈${pages.toFixed(1)} pages \u2014 ${expCount} of ${totalExp} experiences, ${activeSkills} skills. Ideal length.`;
-    icon.textContent = '✅';
-  } else if (pages <= 2.8) {
-    cls = 'warn'; colour = '#f59e0b';
-    msg = `⚠️ ≈${pages.toFixed(1)} pages \u2014 ${expCount} of ${totalExp} experiences, ${activeSkills} skills. Getting long \u2014 consider de-emphasising older roles.`;
-    icon.textContent = '⚠️';
-  } else {
-    cls = 'over'; colour = '#ef4444';
-    msg = `🚨 ≈${pages.toFixed(1)} pages \u2014 ${expCount} of ${totalExp} experiences, ${activeSkills} skills. Likely too long \u2014 exclude or de-emphasise some entries.`;
-    icon.textContent = '🚨';
-  }
+      widget.className = `page-estimate ${cls}`;
+      if (label) {
+        label.textContent = `${sourceLabel}${confidenceLabel}.${contributorText}${recheckText}`.trim();
+      }
+      if (fill) {
+        fill.style.width = `${pct}%`;
+        fill.style.background = colour;
+      }
+      if (icon) icon.textContent = iconText;
 
-  widget.className = `page-estimate ${cls}`;
-  if (label) label.textContent = msg;
-  if (fill)  { fill.style.width = `${pct}%`; fill.style.background = colour; }
+      stateManager.setGenerationState({
+        pageCountEstimate: response.page_count_estimate ?? null,
+        pageCountExact: response.page_count_exact ?? null,
+        pageCountConfidence: response.page_count_confidence ?? null,
+        pageCountSource: response.page_count_source || null,
+        pageNeedsExactRecheck: Boolean(response.page_count_needs_exact_recheck),
+        pageWarning: Boolean(response.page_length_warning),
+      });
+    } catch (error) {
+      if (requestId !== pageEstimateRequestId) return;
+      widget.className = 'page-estimate warn';
+      if (label) label.textContent = `Layout estimate unavailable: ${error.message}`;
+      if (fill) {
+        fill.style.width = '0%';
+        fill.style.background = '#f59e0b';
+      }
+      if (icon) icon.textContent = '⚠️';
+    }
+  }, 250);
 }
 
 // ── Shared action click handlers (experience + skills tables) ────────────
