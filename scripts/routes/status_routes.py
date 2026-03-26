@@ -390,14 +390,11 @@ def create_blueprint(deps):
             'confirmed':    True,
         }
         with entry.lock:
-            conversation.state['intake'] = intake
-            if intake.get('role') and intake.get('company'):
-                conversation.state['position_name'] = f"{intake['role']} at {intake['company']}"
-            elif intake.get('role'):
-                conversation.state['position_name'] = intake['role']
-            elif intake.get('company'):
-                conversation.state['position_name'] = intake['company']
-            conversation._save_session()
+            conversation.apply_confirmed_intake(
+                intake.get('role'),
+                intake.get('company'),
+                intake.get('date_applied'),
+            )
         session_registry.touch(sid)
         return jsonify({'ok': True, 'intake': intake})
 

@@ -490,6 +490,22 @@ class TestBackToPhase(unittest.TestCase):
         self.assertIsNotNone(self.cm.state.get('job_analysis'))
         self.assertEqual(self.cm.state.get('experience_decisions'), {'exp_001': 'emphasize'})
 
+    def test_back_to_phase_preserves_state_across_canonical_layout_nodes(self):
+        cases = [
+            ('layout_review', {'phase': 'layout_review', 'preview_html': '<html>preview</html>', 'layout_confirmed': False}),
+            ('confirmed', {'phase': 'confirmed', 'preview_html': '<html>confirmed</html>', 'layout_confirmed': True}),
+            ('final_complete', {'phase': 'final_complete', 'preview_html': '<html>final</html>', 'layout_confirmed': True, 'final_output_paths': {'html': '/tmp/CV_final.html', 'pdf': '/tmp/CV_final.pdf'}}),
+        ]
+
+        for generation_phase, generation_state in cases:
+            with self.subTest(generation_phase=generation_phase):
+                self.cm.state['phase'] = 'layout_review' if generation_phase != 'final_complete' else 'refinement'
+                self.cm.state['generation_state'] = generation_state.copy()
+
+                self.cm.back_to_phase('customizations')
+
+                self.assertEqual(self.cm.state['generation_state'], generation_state)
+
     def test_iterating_flag_set(self):
         self.cm.back_to_phase('rewrite')
         self.assertTrue(self.cm.state.get('iterating'))

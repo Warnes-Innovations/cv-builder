@@ -1521,36 +1521,94 @@ Ask questions that are specific to this job posting, not generic career question
             self.state.get('position_name', '<none>'), title or '<none>', company or '<none>'
         )
 
-    def _rename_session_dir(self, company: str, role: str) -> None:
-        """Rename the session directory from ``pending_<ts>`` to
-        ``{Company}_{RoleSlug}_{date}`` once company and role are known.
+    def apply_confirmed_intake(
+        self,
+        role: Optional[str],
+        company: Optional[str],
+        date_applied: Optional[str],
+    ) -> None:
+        """Persist confirmed intake metadata and sync derived session state.
 
-        Safe to call multiple times; only acts when the directory name still
-        starts with ``pending_``.  If no session directory exists yet, one is
-        created first.
+        When both ``role`` and ``company`` are present, rename the session
+        directory to keep filesystem naming aligned with the confirmed target.
+        """
+        intake = {
+            'role':         role,
+            'company':      company,
+            'date_applied': date_applied,
+            'confirmed':    True,
+        }
+        self.state['intake'] = intake
+
+        if role and company:
+            self.state['position_name'] = f"{role} at {company}"
+        elif role:
+            self.state['position_name'] = role
+        elif company:
+            self.state['position_name'] = company
+
+        if role and company:
+            self._rename_session_dir(company, role)
+
+        self._save_session()
+
+    def _session_dir_date_str(self) -> str:
+        """Return the existing directory date suffix when available."""
+        if self.session_dir:
+            match = re.search(r'(\d{4}-\d{2}-\d{2})(?:_\d+)?$', self.session_dir.name)
+            if match:
+                return match.group(1)
+        return datetime.now().strftime("%Y-%m-%d")
+
+    def _rename_session_dir(self, company: str, role: str) -> None:
+        """Rename the session directory to ``{Company}_{RoleSlug}_{date}``.
+
+        Safe to call multiple times. If a non-pending directory already exists,
+        it is renamed only when the desired target name differs from the
+        current one.
         """
         if not self.session_dir:
             self._save_session()
 
-        if not (self.session_dir and self.session_dir.name.startswith('pending_')):
-            return  # Already renamed or directory not yet established
+        if not self.session_dir:
+            return
+
+        company = (company or '').strip()
+        role    = (role or '').strip()
+        if not (company or role):
+            return
 
         # Build a filesystem-safe slug from the extracted company and role
         company_slug = re.sub(r'[^\w]', '', company)[:30] or 'Unknown'
         role_slug    = re.sub(r'[^\w ]', '', role).replace(' ', '')[:20] or 'Role'
-        date_str     = datetime.now().strftime("%Y-%m-%d")
+        date_str     = self._session_dir_date_str()
         new_name     = f"{company_slug}_{role_slug}_{date_str}"
-        new_dir      = self.session_dir.parent / new_name
+        current_dir  = self.session_dir
+        new_dir      = current_dir.parent / new_name
+
+        if current_dir.name == new_name:
+            return
 
         # Avoid collision with a pre-existing directory of the same name
-        if new_dir.exists() and new_dir != self.session_dir:
+        if new_dir.exists() and new_dir != current_dir:
             counter = 1
             while new_dir.exists():
-                new_dir = self.session_dir.parent / f"{new_name}_{counter}"
+                new_dir = current_dir.parent / f"{new_name}_{counter}"
                 counter += 1
 
-        self.session_dir.rename(new_dir)
+        current_dir.rename(new_dir)
         self.session_dir = new_dir
+        generated_files = self.state.get('generated_files')
+        if isinstance(generated_files, dict) and generated_files.get('output_dir'):
+            try:
+                output_dir = Path(generated_files['output_dir'])
+                if output_dir.resolve() == current_dir.resolve():
+                    generated_files['output_dir'] = str(new_dir)
+            except Exception:
+                if str(generated_files.get('output_dir')) == str(current_dir):
+                    generated_files['output_dir'] = str(new_dir)
+
+        self.session_file = self.session_dir / "session.json"
         print(f"\u2713 Session directory renamed \u2192 {new_dir.name}")
         logger.debug(
             "_rename_session_dir: renamed to %s (company=%s, role=%s)",

@@ -37,6 +37,30 @@ function normalizeLayoutInstruction(instruction = {}) {
   };
 }
 
+async function _fetchStoredLayoutPreview() {
+  const data = await apiCall('GET', '/api/layout-html');
+  if (data.ok && data.html) {
+    displayLayoutPreview(data.html);
+    setPreviewHtml(data.html);
+    return true;
+  }
+  return false;
+}
+
+async function _generateFreshLayoutPreview() {
+  const data = await apiCall('POST', '/api/cv/generate-preview', {});
+  if (data.ok && data.html) {
+    displayLayoutPreview(data.html);
+    setPreviewHtml(data.html);
+    stateManager?.setGenerationState?.({
+      phase: 'layout_review',
+      previewAvailable: true,
+    });
+    return true;
+  }
+  return false;
+}
+
 /**
  * Initialize layout instruction UI and event handlers.
  * Called when layout tab is activated.
@@ -126,8 +150,30 @@ async function initiateLayoutInstructions() {
   // Fall back to the legacy /api/layout-html endpoint if the session has no
   // customization data yet (e.g. session restored after full generation).
   const cachedHtml = getCvArtifacts()['*.html'] || '';
+  const genState = stateManager?.getGenerationState?.() || {};
   if (cachedHtml) {
     displayLayoutPreview(cachedHtml);
+  } else if (genState.phase === 'idle') {
+    _fetchStoredLayoutPreview()
+      .then((restored) => {
+        if (!restored) {
+          return _generateFreshLayoutPreview();
+        }
+        return null;
+      })
+      .catch((err) => {
+        log.warn('Could not restore idle layout preview:', err);
+        return _generateFreshLayoutPreview().catch((previewErr) => {
+          log.warn('Could not regenerate idle layout preview:', previewErr);
+        });
+      });
+  } else if (
+    genState.phase === 'confirmed'
+    || genState.phase === 'final_complete'
+  ) {
+    _fetchStoredLayoutPreview().catch((err) => {
+      log.warn('Could not load stored layout preview:', err);
+    });
   } else {
     _fetchAndDisplayLayoutPreview();
   }
@@ -304,12 +350,7 @@ async function submitLayoutInstruction(instructionText) {
 async function _fetchAndDisplayLayoutPreview() {
   // Try staged generation endpoint first
   try {
-    const data = await apiCall('POST', '/api/cv/generate-preview', {});
-    if (data.ok && data.html) {
-      displayLayoutPreview(data.html);
-      setPreviewHtml(data.html);
-      // Mark client state so completeLayoutReview() enters the staged generation path.
-      stateManager?.setGenerationState?.({ phase: 'layout_review', previewAvailable: true });
+    if (await _generateFreshLayoutPreview()) {
       return;
     }
   } catch (_e) {
@@ -318,12 +359,9 @@ async function _fetchAndDisplayLayoutPreview() {
 
   // Legacy fallback: load HTML from the output directory on disk
   try {
-    const data = await apiCall('GET', '/api/layout-html');
-    if (data.ok && data.html) {
-      displayLayoutPreview(data.html);
-      setPreviewHtml(data.html);
-    } else {
-      log.warn('Layout preview not available:', data.error || 'no HTML returned');
+    const restored = await _fetchStoredLayoutPreview();
+    if (!restored) {
+      log.warn('Layout preview not available:', 'no HTML returned');
     }
   } catch (err) {
     log.warn('Could not load layout preview:', err);

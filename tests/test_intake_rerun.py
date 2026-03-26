@@ -53,6 +53,8 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from tests.helpers.session_state_fixtures import build_canonical_session_state
+
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 from scripts.web_app import create_app
@@ -250,6 +252,25 @@ class TestReRunPhaseNewSteps(unittest.TestCase):
         self.assertTrue(self.manager.state['iterating'])
         self.assertEqual(self.manager.state['phase'], Phase.LAYOUT_REVIEW)
 
+    def test_re_run_phase_from_generation_idle_preserves_prior_outputs(self):
+        canonical_state = build_canonical_session_state('generation_idle')
+        self.manager.state.update(canonical_state)
+        prior_generated_files = canonical_state['generated_files']
+        prior_pending_rewrites = canonical_state['pending_rewrites']
+
+        result = self.manager.re_run_phase('generate')
+
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['phase'], Phase.GENERATION)
+        self.assertEqual(
+            result['prior_output']['generated_files'],
+            prior_generated_files,
+        )
+        self.assertEqual(
+            result['prior_output']['pending_rewrites'],
+            prior_pending_rewrites,
+        )
+
     def test_spell_new_output_contains_phase(self):
         result = self.manager.re_run_phase('spell')
         self.assertIn('phase', result['new_output'])
@@ -258,6 +279,51 @@ class TestReRunPhaseNewSteps(unittest.TestCase):
         result = self.manager.re_run_phase('nonexistent_step')
         self.assertFalse(result['ok'])
         self.assertIn('error', result)
+
+
+class TestConfirmedIntakeSessionRename(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp.name)
+        self.manager = _make_manager(self.tmp_path)
+        self.manager.state['job_description'] = 'Original role at Original Co\nOriginal Co\nJob body'
+        self.manager._save_session()
+        self.manager._store_job_analysis({'title': 'Original role', 'company': 'Original Co'})
+        self.manager._rename_session_dir('Original Co', 'Original role')
+        self.original_dir = self.manager.session_dir
+        self.manager.state['generated_files'] = {
+            'output_dir': str(self.original_dir),
+            'files': ['session.json'],
+        }
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_confirmed_intake_renames_existing_session_directory(self):
+        self.manager.apply_confirmed_intake('Principal Engineer', 'Beta Labs', '2025-01-01')
+
+        self.assertNotEqual(self.manager.session_dir, self.original_dir)
+        self.assertFalse(self.original_dir.exists())
+        self.assertTrue(self.manager.session_dir.exists())
+        self.assertIn('BetaLabs', self.manager.session_dir.name)
+        self.assertIn('PrincipalEngineer', self.manager.session_dir.name)
+
+    def test_confirmed_intake_updates_generated_output_dir(self):
+        self.manager.apply_confirmed_intake('Principal Engineer', 'Beta Labs', '2025-01-01')
+
+        self.assertEqual(
+            self.manager.state['generated_files']['output_dir'],
+            str(self.manager.session_dir),
+        )
+
+    def test_confirmed_intake_updates_session_position_name(self):
+        self.manager.apply_confirmed_intake('Principal Engineer', 'Beta Labs', '2025-01-01')
+
+        self.assertEqual(
+            self.manager.state['position_name'],
+            'Principal Engineer at Beta Labs',
+        )
 
 
 # ---------------------------------------------------------------------------
