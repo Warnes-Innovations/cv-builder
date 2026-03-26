@@ -403,8 +403,14 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
             self._selected(), self._job()
         )
         meta = result["template_metadata"]
-        for key in ("variant", "generated_date", "job_title", "company"):
+        for key in ("variant", "generated_date", "job_title", "company", "skills_section_title"):
             self.assertIn(key, meta, f"Missing metadata key: {key}")
+
+    def test_template_metadata_skills_section_title_default(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(), self._job()
+        )
+        self.assertEqual(result["template_metadata"]["skills_section_title"], "Skills")
 
     def test_template_metadata_job_title_populated(self):
         result = self.orc._prepare_cv_data_for_template(
@@ -590,6 +596,7 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
                 "generated_date": "2025-01-01",
                 "job_title": "Test Engineer",
                 "company": "Test Corp",
+                "skills_section_title": "Technical Skills",
             },
             # JSON-LD is injected by _build_json_ld before rendering
             "json_ld_str": (
@@ -597,6 +604,18 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
                 '"@type": "Person", "name": "Smoke Test User"}'
             ),
         }
+
+    @staticmethod
+    def _plaintext_slice(html: str) -> str:
+        marker = '<section id="plaintext"'
+        start = html.find(marker)
+        if start == -1:
+            raise AssertionError("Could not locate plaintext section in rendered HTML")
+        pre_start = html.find('<pre>', start)
+        pre_end = html.find('</pre>', pre_start)
+        if pre_start == -1 or pre_end == -1:
+            raise AssertionError("Could not locate plaintext preformatted content in rendered HTML")
+        return html[pre_start + len('<pre>'):pre_end]
 
     def test_html_file_written(self):
         out_dir = Path(self.tmp.name) / "output"
@@ -643,6 +662,69 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
         self.orc._render_cv_html_pdf(self._cv_data(), out_dir, "smoke_test")
         html = (out_dir / "smoke_test.html").read_text(encoding="utf-8")
         self.assertIn('id="plaintext"', html)
+
+    def test_html_uses_custom_skills_heading_for_human_sections_only(self):
+        out_dir = Path(self.tmp.name) / "output"
+        cv_data = self._cv_data()
+        cv_data["skills_by_category"] = [
+            {"category": "Programming", "skills": [{"name": "Python"}]}
+        ]
+        cv_data["template_metadata"]["skills_section_title"] = "Core Capabilities"
+
+        self.orc._render_cv_html_pdf(cv_data, out_dir, "smoke_test")
+        html = (out_dir / "smoke_test.html").read_text(encoding="utf-8")
+        plaintext = self._plaintext_slice(html)
+
+        self.assertIn("Core Capabilities", html)
+        self.assertNotIn("Core Capabilities", plaintext)
+        self.assertIn("SKILLS", plaintext)
+
+
+class TestGenerateHumanDocx(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _content(self):
+        return {
+            "personal_info": {
+                "name": "Jane Doe",
+                "contact": {
+                    "email": "jane@example.com",
+                    "phone": "5555551234",
+                },
+            },
+            "professional_summary": "Experienced scientist.",
+            "experiences": [],
+            "skills_by_category": [
+                {"category": "Programming", "skills": [{"name": "Python"}]}
+            ],
+            "skills_section_title": "Core Capabilities",
+            "education": [],
+            "certifications": [],
+            "publications": [],
+        }
+
+    def test_human_docx_uses_custom_skills_heading(self):
+        from docx import Document  # type: ignore
+
+        out_dir = Path(self.tmp.name) / "output"
+        out_dir.mkdir()
+
+        human_docx = self.orc._generate_human_docx(
+            self._content(),
+            {"company": "Acme Corp", "title": "Data Scientist"},
+            out_dir,
+        )
+        doc = Document(str(human_docx))
+        paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+
+        self.assertIn("CORE CAPABILITIES", paragraphs)
+        self.assertNotIn("SKILLS", paragraphs)
 
 
 class TestConvertHtmlToPdf(unittest.TestCase):
