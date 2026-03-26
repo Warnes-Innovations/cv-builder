@@ -314,17 +314,19 @@ def create_blueprint(deps):
 
     @bp.route('/api/save-achievement-edits', methods=['POST'])
     def save_achievement_edits():
-        """Save per-experience achievement edits from the achievements editor tab."""
+        """Save per-experience achievement edits from the editor tab."""
         # duckflow: {
         #   "id": "review_api_achievement_edits_live",
         #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
+        #   "timestamp": "2026-03-26T18:15:00Z",
         #   "status": "live",
         #   "handles": ["POST /api/save-achievement-edits"],
         #   "reads": ["request:POST /api/save-achievement-edits.edits"],
         #   "writes": ["state:achievement_edits"],
         #   "returns": ["response:POST /api/save-achievement-edits.success"],
-        #   "notes": "Stores raw per-experience bullet edits in session state so later generation and ATS materialization can overlay them without mutating master data."
+        #   "notes": "Stores per-experience bullet edits with hidden flags
+        #             for later generation/ATS overlays without mutating
+        #             master data."
         # }
         entry = _get_session()
         _validate_owner(entry)
@@ -334,13 +336,42 @@ def create_blueprint(deps):
         edits = data.get('edits', {})
         if not edits:
             return jsonify({"error": "No edits provided"}), 400
-        normalized = {int(k): v for k, v in edits.items() if str(k).lstrip("-").isdigit()}
+
+        def _normalize_entry(item):
+            if isinstance(item, dict):
+                text = str(
+                    item.get('text')
+                    or item.get('description')
+                    or item.get('content')
+                    or ''
+                )
+                return {
+                    'text': text,
+                    'hidden': bool(item.get('hidden')),
+                }
+            return {
+                'text': str(item or ''),
+                'hidden': False,
+            }
+
+        normalized = {
+            int(k): [
+                _normalize_entry(item)
+                for item in (v if isinstance(v, list) else [v])
+            ]
+            for k, v in edits.items()
+            if str(k).lstrip("-").isdigit()
+        }
         with entry.lock:
             conversation.state['achievement_edits'] = normalized
             conversation._save_session()
         session_registry.touch(sid)
         total = sum(len(v) for v in normalized.values())
-        return jsonify({"success": True, "message": f"Saved edits for {len(normalized)} experiences ({total} achievements)"})
+        message = (
+            f"Saved edits for {len(normalized)} experiences "
+            f"({total} achievements)"
+        )
+        return jsonify({"success": True, "message": message})
 
     @bp.post('/api/review-achievement')
     def save_review_achievement_override():

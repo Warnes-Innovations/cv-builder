@@ -17,6 +17,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('publications-review');
 
 import { stateManager } from './state-manager.js';
+import { eyeSlashIcon } from './review-icons.js';
 
 // Track publication accept/reject decisions: cite_key → true (accept) | false (reject)
 window.publicationDecisions = {};
@@ -149,10 +150,10 @@ async function buildPublicationsReviewTable() {
         <td style="text-align:center;">${confBadge}</td>
         <td>${reasoning}</td>
         <td class="action-btns">
-          <button class="icon-btn${isAccepted ? ' active' : ''}" data-action="accept" aria-label="Include publication ${escapeHtml(citeKey)}" title="Include in CV"
-              style="color:#10b981;font-size:1.3em;" id="pub-accept-${rank}">✓</button>
-          <button class="icon-btn${!isAccepted ? ' active' : ''}" data-action="reject" aria-label="Exclude publication ${escapeHtml(citeKey)}" title="Exclude from CV"
-              style="color:#ef4444;font-size:1.3em;" id="pub-reject-${rank}">✗</button>
+            <button class="icon-btn${isAccepted ? ' active' : ''}" data-action="accept" aria-label="Include publication ${escapeHtml(citeKey)}" title="Include in CV"
+              style="color:#10b981;" id="pub-accept-${rank}">✓</button>
+            <button class="icon-btn${!isAccepted ? ' active' : ''}" data-action="reject" aria-label="Exclude publication ${escapeHtml(citeKey)}" title="Exclude from CV"
+              style="color:#ef4444;" id="pub-reject-${rank}">${eyeSlashIcon()}</button>
         </td>
       </tr>
     `;

@@ -2637,13 +2637,16 @@ def test_editing_and_rewrite_fetch_routes_enforce_ownership(build_app):
             json={
                 "session_id": session_id,
                 "owner_token": "owner-a",
-                "edits": {"0": ["Edited bullet", "Second bullet"]},
+                "edits": {"0": ["Edited bullet", {"text": "Second bullet", "hidden": True}]},
             },
         )
         assert saved_edits.status_code == 200
         assert saved_edits.get_json()["success"] is True
         assert manager.state["achievement_edits"] == {
-            0: ["Edited bullet", "Second bullet"]
+            0: [
+                {"text": "Edited bullet", "hidden": False},
+                {"text": "Second bullet", "hidden": True},
+            ]
         }
 
         review_achievement = client.post(
@@ -3342,10 +3345,14 @@ def test_cv_ats_score_route_falls_back_to_achievement_edits_when_needed(
         manager.state["approved_rewrites"] = []
         manager.state["achievement_edits"] = {
             0: [
-                "Raised system reliability to 99.95%",
-                "Cut build times by 40%",
+                {"text": "Raised system reliability to 99.95%", "hidden": False},
+                {"text": "Cut build times by 40%", "hidden": True},
             ],
-            1: ["   ", 123, "Expanded platform adoption"],
+            1: [
+                {"text": "   ", "hidden": False},
+                {"text": 123, "hidden": False},
+                {"text": "Expanded platform adoption", "hidden": False},
+            ],
         }
         manager.state["session_summaries"] = {
             "ai_generated": "Should not override pinned summary"
@@ -3378,10 +3385,6 @@ def test_cv_ats_score_route_falls_back_to_achievement_edits_when_needed(
         assert customizations_arg["approved_rewrites"] == [
             {
                 "rewritten": "Raised system reliability to 99.95%",
-                "section": "experience",
-            },
-            {
-                "rewritten": "Cut build times by 40%",
                 "section": "experience",
             },
             {

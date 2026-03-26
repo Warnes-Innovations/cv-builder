@@ -256,7 +256,12 @@ class TestAchievementRewritePersistence(unittest.TestCase):
         self.assertTrue(updated)
         self.assertEqual(
             self.cm.state['achievement_edits'],
-            {0: ['Original bullet one.', 'Accepted bullet two.']},
+            {
+                0: [
+                    {'text': 'Original bullet one.', 'hidden': False},
+                    {'text': 'Accepted bullet two.', 'hidden': False},
+                ],
+            },
         )
 
     def test_rejected_rewrite_does_not_create_achievement_edits(self):

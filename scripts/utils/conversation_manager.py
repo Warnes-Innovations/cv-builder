@@ -1420,24 +1420,39 @@ Ask questions that are specific to this job posting, not generic career question
             return False
 
         raw_edits = self.state.get('achievement_edits') or {}
-        normalized_edits: Dict[int, List[str]] = {}
+        normalized_edits: Dict[int, List[Dict[str, Any]]] = {}
         for key, value in raw_edits.items():
             try:
                 exp_idx = int(key)
             except (TypeError, ValueError):
                 continue
-            normalized_edits[exp_idx] = list(value) if isinstance(value, list) else [str(value)]
+            values = value if isinstance(value, list) else [value]
+            normalized_list: List[Dict[str, Any]] = []
+            for item in values:
+                if isinstance(item, dict):
+                    normalized_list.append({
+                        'text': str(item.get('text') or item.get('description') or item.get('content') or ''),
+                        'hidden': bool(item.get('hidden')),
+                    })
+                else:
+                    normalized_list.append({'text': str(item or ''), 'hidden': False})
+            normalized_edits[exp_idx] = normalized_list
 
         edits = normalized_edits.get(experience_index)
         if edits is None:
-            edits = self._get_experience_achievement_texts(experience_index)
+            edits = [
+                {'text': text, 'hidden': False}
+                for text in self._get_experience_achievement_texts(experience_index)
+            ]
         else:
             edits = list(edits)
 
         while len(edits) <= achievement_index:
-            edits.append('')
+            edits.append({'text': '', 'hidden': False})
 
-        edits[achievement_index] = accepted_text
+        existing = edits[achievement_index] if isinstance(edits[achievement_index], dict) else {'text': str(edits[achievement_index] or ''), 'hidden': False}
+        existing['text'] = accepted_text
+        edits[achievement_index] = existing
         normalized_edits[experience_index] = edits
         self.state['achievement_edits'] = normalized_edits
         return True

@@ -43,12 +43,39 @@
  */
 
 import { stateManager } from './state-manager.js';
+import { eyeSlashIcon } from './review-icons.js';
 
 // Module-level state
 let _rewriteSuggestionHistory = [];
 let _lastRewriteLogId = null;
 // Callbacks for the active rewrite modal: { experienceIndex, onAccept }
 let _rewriteCallbacks = null;
+
+function _normalizeAchievementEditEntry(entry) {
+  if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+    return {
+      text: String(entry.text ?? entry.description ?? entry.content ?? ''),
+      hidden: Boolean(entry.hidden),
+    };
+  }
+  return {
+    text: String(entry ?? ''),
+    hidden: false,
+  };
+}
+
+function _normalizeAchievementEditList(entries) {
+  if (!Array.isArray(entries)) return [];
+  return entries.map(_normalizeAchievementEditEntry);
+}
+
+function _achievementEntryText(entry) {
+  return _normalizeAchievementEditEntry(entry).text;
+}
+
+function _achievementEntryHidden(entry) {
+  return _normalizeAchievementEditEntry(entry).hidden;
+}
 
 window.achievementDecisions = {};
 window._achievementsOrdered = null;
@@ -206,14 +233,14 @@ function _renderAchievementsReviewTable(container) {
         <td>${confidenceBadge}</td>
         <td style="max-width:200px;"><small>${escapeHtml(reasoning)}</small></td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${escapeHtml(title)}"    title="Emphasize — feature prominently"  style="color:#10b981;font-size:1.4em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${escapeHtml(title)}"      title="Include — standard treatment"      style="font-size:1.2em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${escapeHtml(title)}" title="De-emphasize — brief mention only"  style="color:#f59e0b;font-size:1.4em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${escapeHtml(title)}"      title="Exclude — omit from CV"            style="color:#ef4444;font-size:1.2em;">✗</button>
-          <button class="icon-btn" aria-label="AI rewrite ${escapeHtml(title)}" title="AI rewrite description" onclick="aiRewriteTopLevelAchievement('${escapeHtml(id)}')" style="font-size:1.2em;">✨</button>
-          <button class="icon-btn" aria-label="Move ${escapeHtml(title)} earlier" title="Move up"   ${isFirst ? 'disabled' : ''} onclick="moveAchievementRow('${escapeHtml(id)}',-1)" style="font-size:1.0em;padding:2px 5px;">↑</button>
-          <button class="icon-btn" aria-label="Move ${escapeHtml(title)} later"   title="Move down" ${isLast  ? 'disabled' : ''} onclick="moveAchievementRow('${escapeHtml(id)}',+1)" style="font-size:1.0em;padding:2px 5px;">↓</button>
-          <button class="icon-btn" aria-label="Delete ${escapeHtml(title)}" title="Delete achievement" onclick="deleteTopLevelAchievement('${escapeHtml(id)}')" style="color:#ef4444;font-size:1.0em;padding:2px 5px;">🗑</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${escapeHtml(title)}"    title="Emphasize — feature prominently"  style="color:#10b981;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${escapeHtml(title)}"      title="Include — standard treatment">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${escapeHtml(title)}" title="De-emphasize — brief mention only"  style="color:#f59e0b;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${escapeHtml(title)}"      title="Exclude — omit from CV"            style="color:#ef4444;">${eyeSlashIcon()}</button>
+          <button class="icon-btn" aria-label="AI rewrite ${escapeHtml(title)}" title="AI rewrite description" onclick="aiRewriteTopLevelAchievement('${escapeHtml(id)}')">✨</button>
+          <button class="icon-btn" aria-label="Move ${escapeHtml(title)} earlier" title="Move up"   ${isFirst ? 'disabled' : ''} onclick="moveAchievementRow('${escapeHtml(id)}',-1)">↑</button>
+          <button class="icon-btn" aria-label="Move ${escapeHtml(title)} later"   title="Move down" ${isLast  ? 'disabled' : ''} onclick="moveAchievementRow('${escapeHtml(id)}',+1)">↓</button>
+          <button class="icon-btn" aria-label="Delete ${escapeHtml(title)}" title="Delete achievement" onclick="deleteTopLevelAchievement('${escapeHtml(id)}')" style="color:#ef4444;">🗑</button>
         </td>
       </tr>
     `;
@@ -250,14 +277,14 @@ function _renderAchievementsReviewTable(container) {
         <td><span class="confidence-badge confidence-${confLevel}">${escapeHtml(confText)}</span></td>
         <td style="max-width:200px;"><small>${escapeHtml(sugg.rationale || '')}</small></td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize"    title="Emphasize — feature prominently"  style="color:#10b981;font-size:1.4em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include"      title="Include — add to CV"               style="font-size:1.2em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize" title="De-emphasize — brief mention only"  style="color:#f59e0b;font-size:1.4em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude"      title="Skip — do not add"                 style="color:#ef4444;font-size:1.2em;">✗</button>
-          <button class="icon-btn" aria-label="AI rewrite" title="AI rewrite description" onclick="aiRewriteSuggestedAchievement('${escapeHtml(suggId)}')" style="font-size:1.2em;">✨</button>
-          <button class="icon-btn" aria-label="Move earlier" title="Move up"   ${isFirst ? 'disabled' : ''} onclick="moveSuggestedAchievementRow('${escapeHtml(suggId)}',-1)" style="font-size:1.0em;padding:2px 5px;">↑</button>
-          <button class="icon-btn" aria-label="Move later"   title="Move down" ${isLast  ? 'disabled' : ''} onclick="moveSuggestedAchievementRow('${escapeHtml(suggId)}',+1)" style="font-size:1.0em;padding:2px 5px;">↓</button>
-          <button class="icon-btn" aria-label="Remove suggestion" title="Remove suggestion" onclick="deleteSuggestedAchievement('${escapeHtml(suggId)}')" style="color:#ef4444;font-size:1.0em;padding:2px 5px;">🗑</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize"    title="Emphasize — feature prominently"  style="color:#10b981;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include"      title="Include — add to CV">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize" title="De-emphasize — brief mention only"  style="color:#f59e0b;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude"      title="Skip — do not add"                 style="color:#ef4444;">${eyeSlashIcon()}</button>
+          <button class="icon-btn" aria-label="AI rewrite" title="AI rewrite description" onclick="aiRewriteSuggestedAchievement('${escapeHtml(suggId)}')">✨</button>
+          <button class="icon-btn" aria-label="Move earlier" title="Move up"   ${isFirst ? 'disabled' : ''} onclick="moveSuggestedAchievementRow('${escapeHtml(suggId)}',-1)">↑</button>
+          <button class="icon-btn" aria-label="Move later"   title="Move down" ${isLast  ? 'disabled' : ''} onclick="moveSuggestedAchievementRow('${escapeHtml(suggId)}',+1)">↓</button>
+          <button class="icon-btn" aria-label="Remove suggestion" title="Remove suggestion" onclick="deleteSuggestedAchievement('${escapeHtml(suggId)}')" style="color:#ef4444;">🗑</button>
         </td>
       </tr>
     `;
@@ -274,7 +301,7 @@ function _renderAchievementsReviewTable(container) {
     <button class="bulk-btn bulk-recommended" onclick="bulkAchievementAction('recommended')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAchievementAction('emphasize')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAchievementAction('include')">✓ Include All</button>
-    <button class="bulk-btn bulk-exclude"     onclick="bulkAchievementAction('exclude')">✗ Exclude All</button>
+    <button class="bulk-btn bulk-exclude"     onclick="bulkAchievementAction('exclude')">${eyeSlashIcon()} Exclude All</button>
   `;
   container.insertBefore(achToolbar, container.firstChild);
 
@@ -416,14 +443,17 @@ async function buildAchievementsEditor() {
     return;
   }
 
-  // Initialise edits store — keyed by experience index, value is array of achievement strings
+  // Initialise edits store — keyed by experience index, value is array of { text, hidden }
   window.achievementEdits = window.achievementEdits || {};
   experiences.forEach((exp, expIdx) => {
     if (!window.achievementEdits[expIdx]) {
-      // Normalise achievements to plain strings
       window.achievementEdits[expIdx] = (exp.key_achievements || exp.achievements || []).map(a =>
-        typeof a === 'string' ? a : (a && (a.text || a.description || a.content || '')) || ''
+        _normalizeAchievementEditEntry(
+          typeof a === 'string' ? a : (a && (a.text || a.description || a.content || '')) || ''
+        )
       );
+    } else {
+      window.achievementEdits[expIdx] = _normalizeAchievementEditList(window.achievementEdits[expIdx]);
     }
   });
 
@@ -481,40 +511,58 @@ async function buildAchievementsEditor() {
 function renderAchievementEditorRows(expIdx) {
   const listEl = document.getElementById(`ach-list-${expIdx}`);
   if (!listEl) return;
-  const achs = window.achievementEdits[expIdx] || [];
+  const achs = _normalizeAchievementEditList(window.achievementEdits[expIdx] || []);
+  window.achievementEdits[expIdx] = achs;
 
   if (achs.length === 0) {
     listEl.innerHTML = '<p style="color:#9ca3af;font-size:0.85em;padding:4px 0;">No experience bullets yet.</p>';
     return;
   }
 
-  listEl.innerHTML = achs.map((text, achIdx) => `
-    <div id="ach-row-${expIdx}-${achIdx}" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
+  listEl.innerHTML = achs.map((entry, achIdx) => {
+    const text = _achievementEntryText(entry);
+    const hidden = _achievementEntryHidden(entry);
+    return `
+    <div id="ach-row-${expIdx}-${achIdx}" class="${hidden ? 'achievement-row-hidden' : ''}" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
       <div style="display:flex;flex-direction:column;gap:2px;padding-top:4px;">
-        <button class="icon-btn" title="Move up"   onclick="moveAchievement(${expIdx},${achIdx},-1)" style="font-size:0.9em;padding:2px 6px;">▲</button>
-        <button class="icon-btn" title="Move down" onclick="moveAchievement(${expIdx},${achIdx},+1)" style="font-size:0.9em;padding:2px 6px;">▼</button>
+        <button class="icon-btn" title="Move up"   onclick="moveAchievement(${expIdx},${achIdx},-1)">▲</button>
+        <button class="icon-btn" title="Move down" onclick="moveAchievement(${expIdx},${achIdx},+1)">▼</button>
       </div>
       <textarea id="ach-text-${expIdx}-${achIdx}"
         rows="2"
-        style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:0.9em;resize:vertical;"
+        style="flex:1;padding:6px 8px;border:1px solid ${hidden ? '#f59e0b' : '#d1d5db'};border-radius:6px;font-size:0.9em;resize:vertical;${hidden ? 'background:#fffbeb;color:#92400e;' : ''}"
         onchange="updateAchievementText(${expIdx},${achIdx},this.value)"
         onblur="updateAchievementText(${expIdx},${achIdx},this.value)"
       >${escapeHtml(text)}</textarea>
       <div style="display:flex;flex-direction:column;gap:4px;padding-top:2px;">
+        <button class="icon-btn ${hidden ? 'active' : ''}" title="${hidden ? 'Show bullet in generated CV' : 'Hide bullet from generated CV'}"
+          onclick="toggleAchievementHidden(${expIdx},${achIdx})"
+          style="color:${hidden ? '#b45309' : '#64748b'};">${eyeSlashIcon()}</button>
         <button class="icon-btn" title="Ask AI to rewrite"
           onclick="rewriteAchievementWithLLM(${expIdx},${achIdx})"
-          style="font-size:0.85em;padding:3px 8px;white-space:nowrap;">✨ AI</button>
+          >✨</button>
         <button class="icon-btn" title="Delete"
           onclick="deleteAchievement(${expIdx},${achIdx})"
-          style="font-size:0.85em;padding:3px 8px;color:#ef4444;">🗑</button>
+          style="color:#ef4444;">🗑</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function updateAchievementText(expIdx, achIdx, value) {
   if (!window.achievementEdits[expIdx]) return;
-  window.achievementEdits[expIdx][achIdx] = value;
+  const existing = _normalizeAchievementEditEntry(window.achievementEdits[expIdx][achIdx]);
+  existing.text = value;
+  window.achievementEdits[expIdx][achIdx] = existing;
+}
+
+function toggleAchievementHidden(expIdx, achIdx) {
+  if (!window.achievementEdits[expIdx]) return;
+  const existing = _normalizeAchievementEditEntry(window.achievementEdits[expIdx][achIdx]);
+  existing.hidden = !existing.hidden;
+  window.achievementEdits[expIdx][achIdx] = existing;
+  renderAchievementEditorRows(expIdx);
 }
 
 function moveAchievement(expIdx, achIdx, dir) {
@@ -524,21 +572,26 @@ function moveAchievement(expIdx, achIdx, dir) {
   if (newIdx < 0 || newIdx >= achs.length) return;
   // Flush current textarea value before moving
   const ta = document.getElementById(`ach-text-${expIdx}-${achIdx}`);
-  if (ta) achs[achIdx] = ta.value;
+  if (ta) updateAchievementText(expIdx, achIdx, ta.value);
   [achs[achIdx], achs[newIdx]] = [achs[newIdx], achs[achIdx]];
   renderAchievementEditorRows(expIdx);
 }
 
-function deleteAchievement(expIdx, achIdx) {
+async function deleteAchievement(expIdx, achIdx) {
   const achs = window.achievementEdits[expIdx];
   if (!achs) return;
+  const confirmed = await confirmDialog(
+    'Delete this bullet from this session? Hidden bullets remain available for later harvest, but delete removes the edited row entirely.',
+    { confirmLabel: 'Delete', cancelLabel: 'Cancel', danger: true },
+  );
+  if (!confirmed) return;
   achs.splice(achIdx, 1);
   renderAchievementEditorRows(expIdx);
 }
 
 function addAchievementRow(expIdx) {
   if (!window.achievementEdits[expIdx]) window.achievementEdits[expIdx] = [];
-  window.achievementEdits[expIdx].push('');
+  window.achievementEdits[expIdx].push({ text: '', hidden: false });
   renderAchievementEditorRows(expIdx);
   // Focus the new textarea
   const newIdx = window.achievementEdits[expIdx].length - 1;
@@ -734,7 +787,11 @@ async function saveTopLevelAchievementField(achId, field, value) {
  * Hide a top-level achievement for this session after confirmation.
  */
 async function deleteTopLevelAchievement(achId) {
-  if (!confirm('Hide this achievement for this CV only? You can restore it by starting over or changing the session selections.')) return;
+  const confirmed = await confirmDialog(
+    'Hide this achievement for this CV only? You can restore it by starting over or changing the session selections.',
+    { confirmLabel: 'Hide', cancelLabel: 'Cancel', danger: true },
+  );
+  if (!confirmed) return;
   try {
     const res = await fetch('/api/review-achievement', {
       method: 'POST',
@@ -746,7 +803,7 @@ async function deleteTopLevelAchievement(achId) {
       window._achievementsOrdered = (window._achievementsOrdered || []).filter(a => a.id !== achId);
       delete window.achievementDecisions[achId];
       _renderAchievementsReviewTable();
-      showToast('Achievement deleted.');
+      showToast('Achievement hidden for this session.');
     } else {
       showToast(data.error || 'Delete failed.', 'error');
     }
@@ -824,7 +881,7 @@ async function saveAchievementEditsAndContinue() {
         const expIdx = parseInt(parts[2]);
         const achIdx = parseInt(parts[3]);
         if (!isNaN(expIdx) && !isNaN(achIdx) && window.achievementEdits[expIdx]) {
-          window.achievementEdits[expIdx][achIdx] = ta.value;
+          updateAchievementText(expIdx, achIdx, ta.value);
         }
       }
     });
@@ -858,6 +915,7 @@ export {
   buildAchievementsEditor,
   renderAchievementEditorRows,
   updateAchievementText,
+  toggleAchievementHidden,
   moveAchievement,
   deleteAchievement,
   addAchievementRow,
