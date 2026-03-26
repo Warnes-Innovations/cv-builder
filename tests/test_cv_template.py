@@ -8,10 +8,10 @@
 Tests for cv-template.html rendering behaviour.
 
 Covers:
-  - Selected Achievements section omitted when achievements list is empty
-  - Selected Achievements section rendered when achievements are present
-  - All experiences appear in page-two (no hard [:4] cap)
-  - Page-three right column contains no duplicate experience entries
+    - Selected Achievements section omitted when achievements list is empty
+    - Selected Achievements section rendered when achievements are present
+    - Print layout keeps a bounded first page and flowing continuation page
+    - Technical Skills render in the continuation-page sidebar
 """
 
 import sys
@@ -22,16 +22,21 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 from jinja2 import Environment, FileSystemLoader, Undefined  # noqa: E402
+from utils.template_renderer import json_script, safe_css_size, safe_url  # noqa: E402
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / 'templates'
 
 
 def _make_env() -> Environment:
     """Return a Jinja2 environment that ignores undefined variables."""
-    return Environment(
+    env = Environment(
         loader=FileSystemLoader(str(_TEMPLATES_DIR)),
         undefined=Undefined,
     )
+    env.filters['json_script'] = json_script
+    env.filters['safe_css_size'] = safe_css_size
+    env.filters['safe_url'] = safe_url
+    return env
 
 
 def _minimal_context(**overrides) -> dict:
@@ -59,9 +64,13 @@ def _minimal_context(**overrides) -> dict:
             'job_title': 'Software Engineer',
             'company': 'Acme Corp',
             'total_publications_count': 0,
+            'skills_section_title': 'Technical Skills',
             'variant': 'standard',
             'generated_date': '2026-01-01T00:00:00',
         },
+        'json_ld_str': '{}',
+        'base_font_size': '13px',
+        'page_margin': '0.5in',
     }
     ctx.update(overrides)
     return ctx
@@ -125,15 +134,88 @@ class TestAchievementsSection(unittest.TestCase):
         html = _render(achievements=None)
         self.assertNotIn('Selected Achievements', html)
 
+    def test_raw_achievement_mappings_fall_back_to_description_text(self):
+        """Raw achievement mappings should still render readable text."""
+        html = _render(
+            achievements=[
+                {
+                    'title': 'Selected publication impact',
+                    'description': 'Created widely used R packages.',
+                }
+            ]
+        )
+        self.assertIn('Created widely used R packages.', html)
+
+
+class TestOptionalSidebarFields(unittest.TestCase):
+    """Optional sidebar fields should not render empty placeholders."""
+
+    def test_linkedin_and_website_are_omitted_when_blank(self):
+        html = _render(
+            personal_info={
+                'name': 'Test User',
+                'contact': {
+                    'email': 'test@example.com',
+                    'phone': '555-0100',
+                    'linkedin': '   ',
+                    'website': '',
+                },
+                'languages': [],
+            }
+        )
+        self.assertNotIn('fab fa-linkedin', html)
+        self.assertNotIn('fas fa-globe', html)
+
+    def test_languages_section_omitted_when_empty(self):
+        html = _render(
+            personal_info={
+                'name': 'Test User',
+                'contact': {
+                    'email': 'test@example.com',
+                    'phone': '555-0100',
+                    'linkedin': 'https://linkedin.com/in/test',
+                    'website': 'https://example.com',
+                },
+                'languages': [],
+            }
+        )
+        self.assertNotIn('<div class="sidebar-title">Languages</div>', html)
+
+    def test_print_layout_uses_two_page_wrappers(self):
+        html = _render(skills_by_category=[])
+        self.assertNotIn('id="page-three"', html)
+        self.assertIn('id="page-one"', html)
+        self.assertIn('id="page-two"', html)
+
+    def test_page_margin_default_is_rendered_in_print_rule(self):
+        html = _render()
+        self.assertIn('margin: var(--page-margin);', html)
+        self.assertIn('--page-margin: 0.5in;', html)
+
+    def test_print_sidebar_background_is_painted_on_page_columns(self):
+        html = _render()
+        self.assertIn('@page {', html)
+        self.assertIn('background-color: var(--sidebar-bg) !important;', html)
+        self.assertIn(
+            'min-height: calc(11in - (2 * var(--page-margin)));',
+            html,
+        )
+        self.assertIn('box-decoration-break: clone;', html)
+        self.assertIn('background: white !important;', html)
+        self.assertIn('#page-two {', html)
+        self.assertIn('page-break-before: always;', html)
+
+    def test_base_font_size_default_is_rendered(self):
+        html = _render()
+        self.assertIn('font-size: 13px;', html)
+
+    def test_first_page_keeps_page_number_rule(self):
+        html = _render()
+        self.assertNotIn('@page :first', html)
+
 
 class TestExperiencePageFlow(unittest.TestCase):
-    """Experience entries must flow into page-two without a hard count cap.
-
-    Previously the template had a fixed [:4] / [4:] split which caused
-    overflow when the first four entries were too long.  The fix renders
-    all entries in page-two and removes the experience continuation from
-    page-three so that CSS/WeasyPrint pagination handles page breaks.
-    """
+    """Experience and skills should render in the continuation page."""
 
     def _make_experiences(self, count: int) -> list:
         return [
@@ -148,53 +230,74 @@ class TestExperiencePageFlow(unittest.TestCase):
             for i in range(count)
         ]
 
-    def test_all_experiences_appear_in_page_two(self):
-        """All experience entries (>4) must appear in the page-two section."""
+    def test_all_experiences_render_in_continuation_page(self):
         exps = self._make_experiences(6)
         html = _render(experiences=exps)
-        page_two = _page_slice(html, 'page-two', 'page-three')
+        page_two = _page_slice(html, 'page-two')
         for exp in exps:
-            self.assertIn(
-                exp['title'], page_two,
-                f"{exp['title']} missing from page-two",
-            )
+            self.assertIn(exp['title'], page_two)
 
-    def test_page_three_has_no_experience_entries(self):
-        """Page-three must not duplicate experience entries from page-two."""
-        exps = self._make_experiences(6)
-        html = _render(experiences=exps)
-        # Slice only the page-three div, stopping at the next landmark
-        # (page-publications or the hidden plaintext ATS section) so that
-        # job titles in the plaintext block don't produce false failures.
-        page_three = (
-            _page_slice(html, 'page-three', 'page-publications')
-            or _page_slice(html, 'page-three', 'plaintext')
-            or _page_slice(html, 'page-three', 'END PAGE THREE')
+    def test_experience_heading_is_not_rendered_on_first_page(self):
+        html = _render(
+            achievements=[{'text': 'Built a major platform'}],
+            experiences=self._make_experiences(1),
         )
-        self.assertTrue(
-            page_three, 'Could not locate page-three in rendered HTML'
+        page_one = _page_slice(html, 'page-one', 'page-two')
+        page_two = _page_slice(html, 'page-two')
+        achievements_heading = (
+            '<h2 class="section-title"><i class="fas fa-trophy"></i> '
+            'Selected Achievements</h2>'
         )
-        # With the old split code, jobs 4+ appeared in page-three.
-        # After the fix, none should appear there.
-        for exp in exps:
-            self.assertNotIn(
-                exp['title'], page_three,
-                f"{exp['title']} must not appear in page-three",
-            )
+        experience_heading = (
+            '<h2 class="section-title"><i class="fas fa-briefcase"></i> '
+            'Experience</h2>'
+        )
+        self.assertIn(achievements_heading, page_one)
+        self.assertNotIn(experience_heading, page_one)
+        self.assertIn(experience_heading, page_two)
+
+    def test_skills_render_in_continuation_sidebar(self):
+        html = _render(
+            skills_by_category=[
+                {
+                    'category': 'Programming',
+                    'skills': [{'name': 'Python', 'aliases': []}],
+                }
+            ]
+        )
+        page_two = _page_slice(html, 'page-two')
+        self.assertIn('Technical Skills', page_two)
+        self.assertIn('Programming', page_two)
+        self.assertIn('Python', page_two)
+
+    def test_all_skill_groups_render_in_continuation_sidebar(self):
+        html = _render(
+            skills_by_category=[
+                {'category': 'Programming', 'skills': [{'name': 'Python'}]},
+                {'category': 'Cloud', 'skills': [{'name': 'AWS'}]},
+                {'category': 'ML', 'skills': [{'name': 'PyTorch'}]},
+                {'category': 'Data', 'skills': [{'name': 'SQL'}]},
+                {'category': 'Ops', 'skills': [{'name': 'Docker'}]},
+                {'category': 'Leadership', 'skills': [{'name': 'Mentoring'}]},
+            ]
+        )
+        page_two = _page_slice(html, 'page-two')
+        for label in ('Programming', 'Cloud', 'ML', 'Data', 'Ops', 'Leadership'):
+            self.assertIn(label, page_two)
 
     def test_fewer_than_four_experiences_still_render(self):
-        """Fewer than 4 experiences must still render correctly in page-two."""
+        """Multiple experiences should still render in the continuation page."""
         exps = self._make_experiences(2)
         html = _render(experiences=exps)
-        page_two = _page_slice(html, 'page-two', 'page-three')
+        page_two = _page_slice(html, 'page-two')
         for exp in exps:
             self.assertIn(exp['title'], page_two)
 
     def test_exactly_four_experiences_render(self):
-        """Exactly 4 experiences (the old cap) must all appear in page-two."""
+        """Exactly 4 experiences should all render in the continuation page."""
         exps = self._make_experiences(4)
         html = _render(experiences=exps)
-        page_two = _page_slice(html, 'page-two', 'page-three')
+        page_two = _page_slice(html, 'page-two')
         for exp in exps:
             self.assertIn(exp['title'], page_two)
 

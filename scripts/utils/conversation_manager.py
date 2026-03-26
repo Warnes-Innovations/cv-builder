@@ -76,6 +76,7 @@ class ConversationManager:
             'approved_rewrites':  [],     # List[Dict] user-accepted or user-edited
             'rewrite_audit':      [],     # full record: proposal + outcome for metadata
             'layout_instructions': [],    # List[Dict] layout instruction history (Phase 12)
+            'layout_safety_audit': [],    # List[Dict] sanitizer findings for layout rewrites
             'cover_letter_text':   None,   # str — finalized cover letter body (Phase 14)
             'cover_letter_params': None,   # Dict — generation params (tone, hiring_manager, …)
             'cover_letter_reused_from': None,  # str session path or None
@@ -1943,6 +1944,10 @@ Ask questions that are specific to this job posting, not generic career question
             base_font_size = self.state.get('base_font_size')
             if base_font_size:
                 customizations['base_font_size'] = base_font_size
+
+            page_margin = self.state.get('page_margin')
+            if page_margin:
+                customizations['page_margin'] = page_margin
 
             self.state['customizations'] = customizations
 

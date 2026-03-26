@@ -53,10 +53,6 @@ def _sample_html(
         </div>
       </main>
     </div>
-    <div id="page-three" class="page">
-      <aside class="left-col"></aside>
-      <main class="right-col"></main>
-    </div>
     """
 
 
@@ -64,6 +60,7 @@ def test_build_layout_digest_extracts_template_regions():
     digest = build_layout_digest(_sample_html())
 
     assert digest['template_markers']['page_one'] is True
+    assert digest['template_markers']['page_three'] is False
     assert digest['page_one_right']['summary_chars'] > 0
     assert digest['page_two_plus_left']['skill_item_count'] == 2
     assert digest['page_two_plus_right']['experience_count'] == 1

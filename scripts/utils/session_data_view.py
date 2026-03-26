@@ -552,6 +552,10 @@ class SessionDataView:
         if base_font_size:
             updated["base_font_size"] = base_font_size
 
+        page_margin = state.get("page_margin")
+        if page_margin:
+            updated["page_margin"] = page_margin
+
         achievement_orders = state.get("achievement_orders") or {}
         if achievement_orders:
             updated["achievement_orders"] = dict(achievement_orders)

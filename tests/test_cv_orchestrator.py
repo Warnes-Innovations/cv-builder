@@ -529,6 +529,34 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
             "Automated QC reporting for clinical datasets.",
         )
 
+    def test_render_html_preview_preserves_normalized_selected_achievements(self):
+        selected = self._selected(
+            {
+                "achievements": [
+                    {
+                        "id": "sa_001",
+                        "title": "Selected publication impact",
+                        "description": (
+                            "Created widely used R packages with 7,000+ "
+                            "citations."
+                        ),
+                    }
+                ]
+            }
+        )
+
+        with patch.object(
+            self.orc,
+            "build_render_ready_content",
+            return_value=selected,
+        ):
+            html = self.orc.render_html_preview(self._job(), {})
+
+        self.assertIn(
+            "Created widely used R packages with 7,000+ citations.",
+            html,
+        )
+
 
 # ---------------------------------------------------------------------------
 # _render_cv_html_pdf  (smoke test; skipped if template absent)
