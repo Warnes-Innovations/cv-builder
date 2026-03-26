@@ -474,7 +474,7 @@ class TestLoadAndRenderTemplate(unittest.TestCase):
     def test_human_skills_heading_does_not_change_plaintext_heading(self):
         template = load_template(str(self._TEMPLATE_PATH))
         context = self._minimal_context()
-        context['template_metadata']['skills_section_title'] = 'Core Capabilities'
+        context['human_skills_title'] = 'Core Capabilities'
         html = render_template(template, context)
         plaintext = self._plaintext_slice(html)
         self.assertIn('Core Capabilities', html)

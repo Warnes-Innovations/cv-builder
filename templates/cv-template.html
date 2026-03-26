@@ -627,9 +627,7 @@
             <aside class="left-col">
                 {% if skills_by_category %}
                 <section class="section">
-                    {# duckflow: flow=cv-render status=live
-                       artifact: template_metadata.skills_section_title → h2.section-title (page-2) #}
-                    <h2 class="section-title"><i class="fas fa-code"></i> {{ template_metadata.skills_section_title }}</h2>
+                    <h2 class="section-title"><i class="fas fa-code"></i> {{ human_skills_title | default('Technical Skills') }}</h2>
                     <div class="skills-grid">
                         {% for cat in skills_by_category %}
                         <div class="skill-group">

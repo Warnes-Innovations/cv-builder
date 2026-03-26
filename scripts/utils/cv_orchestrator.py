@@ -169,6 +169,7 @@ class CVOrchestrator:
         job_analysis: Dict,
         template_variant: str = 'standard',
         base_font_size: str | None = None,
+        customizations: Optional[Dict] = None,
     ) -> Dict:
         """Prepare CV data in the format expected by the HTML resume template."""
 
@@ -232,6 +233,7 @@ class CVOrchestrator:
             'total_publications_count': len(self.publications) if self.publications else 0,
             'skills_section_title': 'Skills',
         }
+        human_skills_title = self._resolve_human_skills_title(customizations)
         
         cv_data = {
             'personal_info': personal_info,
@@ -245,9 +247,35 @@ class CVOrchestrator:
             'publications': publications,
             'template_metadata': template_metadata,
             'base_font_size': safe_css_size(base_font_size, default='10px'),
+            'human_skills_title': human_skills_title,
         }
 
         return cv_data
+
+    @staticmethod
+    def _resolve_human_skills_title(customizations: Optional[Dict]) -> str:
+        """Return the human-facing skills heading from session customizations."""
+        if not isinstance(customizations, dict):
+            return 'Technical Skills'
+
+        candidate_values = [
+            customizations.get('skills_section_title'),
+            customizations.get('skills_title'),
+        ]
+
+        section_titles = customizations.get('section_titles')
+        if isinstance(section_titles, dict):
+            candidate_values.extend([
+                section_titles.get('human_skills'),
+                section_titles.get('skills_human'),
+                section_titles.get('skills'),
+            ])
+
+        for candidate in candidate_values:
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+
+        return 'Technical Skills'
 
     @staticmethod
     def _extract_display_text(item: Any, preferred_fields: Optional[List[str]] = None) -> str:
@@ -595,6 +623,7 @@ class CVOrchestrator:
             job_analysis,
             template_variant,
             customizations.get('base_font_size'),
+            customizations=customizations,
         )
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
         # duckflow: flow=cv-render status=live
@@ -1680,6 +1709,7 @@ For manual generation:
             selected_content,
             job_analysis,
             base_font_size=customizations.get('base_font_size'),
+            customizations=customizations,
         )
         cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
@@ -1743,7 +1773,8 @@ For manual generation:
         human_docx = self._generate_human_docx(
             selected_content,
             job_analysis,
-            job_output_dir
+            job_output_dir,
+            skills_heading=self._resolve_human_skills_title(customizations),
         )
         progress_docx_human['status'] = 'complete'
         progress_docx_human['elapsed_ms'] = int((time.time() - progress_docx_human['start_time']) * 1000)
@@ -2688,6 +2719,7 @@ If you need clarification, return:
         doc.add_paragraph()
         
         # Skills section - ATS output always normalizes to a fixed heading.
+    # ATS output always keeps the skills heading normalized for parsers.
         skills_heading = doc.add_paragraph()
         skills_heading.add_run('SKILLS').bold = True
         skills_heading.style = 'Heading 2'
@@ -3188,7 +3220,8 @@ If you need clarification, return:
         self,
         content: Dict,
         job_analysis: Dict,
-        output_dir: Path
+        output_dir: Path,
+        skills_heading: str = 'Technical Skills',
     ) -> Path:
         """Generate human-readable DOCX using python-docx with Calibri, standard margins.
 
@@ -3340,9 +3373,7 @@ If you need clarification, return:
         # ── Skills ───────────────────────────────────────────────────────────
         skills_by_category = content.get('skills_by_category', [])
         if skills_by_category:
-            # duckflow: flow=cv-render status=live
-            #   artifact: content["skills_section_title"] → DOCX heading (Skills section)
-            _heading(content.get('skills_section_title', 'Skills'))
+            _heading(skills_heading)
             for cat in skills_by_category:
                 p = doc.add_paragraph()
                 p.paragraph_format.space_after = Pt(2)

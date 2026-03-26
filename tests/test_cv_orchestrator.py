@@ -476,6 +476,20 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
 
         self.assertEqual(result["base_font_size"], "10px")
 
+    def test_human_skills_title_defaults_to_technical_skills(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(), self._job()
+        )
+        self.assertEqual(result["human_skills_title"], "Technical Skills")
+
+    def test_human_skills_title_uses_customization_override(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            customizations={"skills_section_title": "Core Capabilities"},
+        )
+        self.assertEqual(result["human_skills_title"], "Core Capabilities")
+
     def test_selected_achievements_are_normalized_to_text_field(self):
         sel = self._selected(
             {
@@ -615,6 +629,7 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
             "experiences": [],
             "education": [],
             "skills_by_category": [],
+            "human_skills_title": "Technical Skills",
             "awards": [],
             "certifications": [],
             "publications": [],
@@ -644,6 +659,20 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
         if pre_start == -1 or pre_end == -1:
             raise AssertionError("Could not locate plaintext preformatted content in rendered HTML")
         return html[pre_start + len('<pre>'):pre_end]
+
+    def test_html_uses_human_skills_heading(self):
+        out_dir = Path(self.tmp.name) / "output"
+        cv_data = self._cv_data()
+        cv_data["skills_by_category"] = [
+            {"category": "Programming", "skills": [{"name": "Python"}]}
+        ]
+        cv_data["human_skills_title"] = "Core Capabilities"
+
+        self.orc._render_cv_html_pdf(cv_data, out_dir, "smoke_test")
+        html = (out_dir / "smoke_test.html").read_text(encoding="utf-8")
+
+        self.assertIn("Core Capabilities", html)
+        self.assertIn("SKILLS", html)
 
     def test_html_file_written(self):
         out_dir = Path(self.tmp.name) / "output"
@@ -697,7 +726,7 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
         cv_data["skills_by_category"] = [
             {"category": "Programming", "skills": [{"name": "Python"}]}
         ]
-        cv_data["template_metadata"]["skills_section_title"] = "Core Capabilities"
+        cv_data["human_skills_title"] = "Core Capabilities"
 
         self.orc._render_cv_html_pdf(cv_data, out_dir, "smoke_test")
         html = (out_dir / "smoke_test.html").read_text(encoding="utf-8")
@@ -731,7 +760,6 @@ class TestGenerateHumanDocx(unittest.TestCase):
             "skills_by_category": [
                 {"category": "Programming", "skills": [{"name": "Python"}]}
             ],
-            "skills_section_title": "Core Capabilities",
             "education": [],
             "certifications": [],
             "publications": [],
@@ -747,12 +775,13 @@ class TestGenerateHumanDocx(unittest.TestCase):
             self._content(),
             {"company": "Acme Corp", "title": "Data Scientist"},
             out_dir,
+            skills_heading="Core Capabilities",
         )
         doc = Document(str(human_docx))
         paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
 
         self.assertIn("CORE CAPABILITIES", paragraphs)
-        self.assertNotIn("SKILLS", paragraphs)
+        self.assertNotIn("TECHNICAL SKILLS", paragraphs)
 
 
 class TestConvertHtmlToPdf(unittest.TestCase):
