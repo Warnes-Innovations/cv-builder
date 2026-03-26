@@ -671,7 +671,7 @@ async function _runRewrite(originalText) {
     }
   }
 
-  if (generateBtn) { generateBtn.disabled = true; generateBtn.textContent = '⏳'; }
+  if (generateBtn) { generateBtn.disabled = true; generateBtn.innerHTML = '<span class="btn-spinner"></span>Generating\u2026'; }
   if (acceptBtn)   { acceptBtn.disabled = true; }
   if (suggestionEl) { suggestionEl.style.color = '#9ca3af'; suggestionEl.style.fontStyle = 'italic'; suggestionEl.textContent = 'Generating…'; }
 
