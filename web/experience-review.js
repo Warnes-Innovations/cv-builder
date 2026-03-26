@@ -21,6 +21,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('experience-review');
 
+import { stateManager } from './state-manager.js';
+
 // ── Experience details fetch ───────────────────────────────────────────────
 
 async function getExperienceDetails(expId) {
@@ -263,6 +265,18 @@ async function handleExperienceResponse(message) {
 // ── Submit decisions ───────────────────────────────────────────────────────
 
 async function submitExperienceDecisions() {
+  /* duckflow: {
+   *   "id": "experience_ui_submit_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:experience-review.submit"],
+   *   "calls": ["POST /api/review-decisions", "POST /api/cv/layout-estimate"],
+   *   "reads": ["window:userSelections.experiences"],
+   *   "writes": ["request:POST /api/review-decisions.decisions", "window:_savedDecisions.experience_decisions"],
+   *   "notes": "Persists per-experience inclusion decisions and triggers downstream ATS/layout refreshes that depend on the same review choices."
+  * }
+  */
   const decisions = userSelections.experiences;
   const count = Object.keys(decisions).length;
 
@@ -282,6 +296,7 @@ async function submitExperienceDecisions() {
     });
 
     if (response.ok) {
+      stateManager.markContentChanged();
       showToast(`Experience decisions saved (${count} items)`);
       scheduleAtsRefresh();
       // Persist saved decisions locally so the UI reflects them immediately

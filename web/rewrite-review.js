@@ -15,6 +15,8 @@
  *   escapeHtml, parseRewritesResponse, PHASES
  */
 
+import { stateManager } from './state-manager.js';
+
 // Module-level state
 let rewriteDecisions = {};
 let _rewritePanelCache = null;
@@ -323,6 +325,18 @@ function updateRewriteTally() {
 }
 
 async function submitRewriteDecisions() {
+  /* duckflow: {
+   *   "id": "rewrite_ui_submit_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:rewrite-review.submit"],
+   *   "calls": ["POST /api/rewrites/approve", "POST /api/cv/layout-estimate"],
+   *   "reads": ["window:rewriteDecisions"],
+   *   "writes": ["request:POST /api/rewrites/approve.decisions"],
+   *   "notes": "Submits the final per-rewrite outcomes and edited text so backend state can persist approved rewrites and the full rewrite audit before spell-check."
+  * }
+  */
   const decisions = Object.entries(rewriteDecisions).map(([id, dec]) => ({
     id,
     outcome:    dec.outcome,
@@ -348,6 +362,7 @@ async function submitRewriteDecisions() {
 
     const accepted = data.approved_count || 0;
     const rejected = data.rejected_count || 0;
+    stateManager.markContentChanged();
     appendMessage('assistant', `✅ Rewrite decisions recorded: ${accepted} accepted, ${rejected} rejected. Starting spell check…`);
     scheduleAtsRefresh('review_checkpoint');
     switchTab('spell');

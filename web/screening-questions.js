@@ -186,6 +186,18 @@ function updateExpSelection(idx) {
 // ── Generate screening response ───────────────────────────────────────────────
 
 async function generateScreeningResponse(idx) {
+  /* duckflow: {
+   *   "id": "screening_ui_generate_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:screening.generate-response"],
+   *   "calls": ["POST /api/screening/generate"],
+   *   "reads": ["dom:sc-question-block.question", "window:_screeningState.format", "window:_screeningState.priorResponse", "window:_screeningState.experienceIndices"],
+   *   "writes": ["request:POST /api/screening/generate.question", "request:POST /api/screening/generate.format", "request:POST /api/screening/generate.experience_indices", "request:POST /api/screening/generate.prior_response", "window:_screeningState.responseText", "window:_screeningState.format"],
+   *   "notes": "Generates a single screening response from the selected format, prior-response seed, and chosen experience evidence, then stores the draft back into UI state for editing."
+  * }
+  */
   const btn      = document.getElementById(`sc-gen-btn-${idx}`);
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
 
@@ -228,6 +240,18 @@ async function generateScreeningResponse(idx) {
 // ── Save responses ────────────────────────────────────────────────────────────
 
 async function saveScreeningResponses() {
+  /* duckflow: {
+   *   "id": "screening_ui_save_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:screening.save-all"],
+   *   "calls": ["POST /api/screening/save"],
+   *   "reads": ["window:_screeningState", "dom:.sc-question-block", "dom:#sc-text-*.value", "dom:#sc-topic-*.value"],
+   *   "writes": ["request:POST /api/screening/save.responses"],
+   *   "notes": "Aggregates the edited screening responses and topic tags from the UI into the structured payload that backend state, metadata, archive DOCX, and the response library all persist."
+  * }
+  */
   const btn = document.getElementById('sc-save-btn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
 

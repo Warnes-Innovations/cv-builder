@@ -19,6 +19,8 @@
  *               available on globalThis at runtime.
  */
 
+import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
+
 // ---------------------------------------------------------------------------
 // Alert modal (informational — single OK button)
 // ---------------------------------------------------------------------------
@@ -94,6 +96,38 @@ function toggleChat() {
   }
 }
 
+function refreshLayoutStatusUI() {
+  const layoutChip = document.getElementById('layout-freshness-chip');
+  const layoutBtn = document.getElementById('layout-btn');
+  const freshness = stateManager.getLayoutFreshness();
+  const generationState = stateManager.getGenerationState();
+
+  if (layoutChip) {
+    layoutChip.style.display = freshness.showChip ? '' : 'none';
+    layoutChip.className = `layout-freshness-chip ${freshness.tone}`;
+    layoutChip.setAttribute('aria-label', freshness.ariaLabel || '');
+    layoutChip.innerHTML = freshness.showChip
+      ? `<span class="layout-freshness-icon" aria-hidden="true">${freshness.isCritical ? '↻' : (freshness.isStale ? '!' : '✓')}</span><span class="layout-freshness-label">${freshness.label}</span>`
+      : '';
+  }
+
+  if (layoutBtn) {
+    if (freshness.isStale) {
+      layoutBtn.textContent = '↻ Regenerate Preview';
+    } else if (generationState.layoutConfirmed || generationState.phase === 'confirmed') {
+      layoutBtn.textContent = '⬇️ Generate Final Files';
+    } else {
+      layoutBtn.textContent = '✅ Confirm Layout';
+    }
+  }
+}
+
+function handleLayoutFreshnessChipClick() {
+  if (typeof updateTabBarForStage === 'function') updateTabBarForStage('layout');
+  if (typeof updateActionButtons === 'function') updateActionButtons('layout');
+  if (typeof switchTab === 'function') switchTab('layout');
+}
+
 // ---------------------------------------------------------------------------
 // Workflow-stage primary action buttons
 // ---------------------------------------------------------------------------
@@ -127,6 +161,11 @@ function updateActionButtons(stage) {
     const el = document.getElementById(id);
     if (el) el.style.display = (id === activeId) ? '' : 'none';
   });
+  refreshLayoutStatusUI();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(GENERATION_STATE_EVENT, refreshLayoutStatusUI);
 }
 
 // ── ES module exports ──────────────────────────────────────────────────────
@@ -135,5 +174,7 @@ export {
   showConfirmModal, closeConfirmModal,
   showToast,
   toggleChat,
+  refreshLayoutStatusUI,
+  handleLayoutFreshnessChipClick,
   updateActionButtons,
 };

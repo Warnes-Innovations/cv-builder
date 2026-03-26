@@ -18,6 +18,12 @@ import {
   _renderAwardsList,
   _renderMasterAchievementsTable,
   _renderSummariesList,
+  loadPublications,
+  setPublicationSortMode,
+  setPublicationGroupMode,
+  importPublicationsBib,
+  convertPublicationText,
+  importConvertedPublicationText,
   closeMasterAchModal,
   closeMasterSumModal,
   closePersonalInfoModal,
@@ -759,5 +765,155 @@ describe('deleteMasterSummary', () => {
       expect.stringContaining('Error'),
       expect.any(String)
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Publications import / convert / sort-group controls
+// ---------------------------------------------------------------------------
+
+describe('publications UI flows', () => {
+  function buildPublicationsDom() {
+    document.body.innerHTML = `
+      <div id="master-pub-crud-container"></div>
+      <textarea id="master-pub-textarea"></textarea>
+      <span id="master-pub-count"></span>
+      <div id="master-pub-import-modal-overlay" style="display:none"></div>
+      <textarea id="master-pub-import-textarea"></textarea>
+      <input id="master-pub-import-overwrite" type="checkbox" />
+      <div id="master-pub-import-status"></div>
+      <button id="master-pub-import-submit-btn">Import</button>
+      <div id="master-pub-convert-modal-overlay" style="display:none"></div>
+      <textarea id="master-pub-convert-input"></textarea>
+      <textarea id="master-pub-convert-output"></textarea>
+      <input id="master-pub-convert-overwrite" type="checkbox" />
+      <div id="master-pub-convert-status"></div>
+      <button id="master-pub-convert-submit-btn">Generate BibTeX</button>
+      <button id="master-pub-convert-import-btn">Import Preview</button>
+    `
+  }
+
+  const publicationsFixture = [
+    {
+      key: 'b2024',
+      type: 'book',
+      formatted_citation: 'Book citation',
+      fields: { year: '2024' },
+    },
+    {
+      key: 'a2022',
+      type: 'article',
+      formatted_citation: 'Article citation',
+      fields: { year: '2022' },
+    },
+    {
+      key: 'c2024',
+      type: 'article',
+      formatted_citation: 'Newer article citation',
+      fields: { year: '2024' },
+    },
+  ]
+
+  beforeEach(async () => {
+    buildPublicationsDom()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: true, publications: [], content: '', count: 0 }),
+    }))
+    setPublicationSortMode('year_desc')
+    await flushPromises()
+    setPublicationGroupMode('none')
+    await flushPromises()
+  })
+
+  it('renders publications sorted by newest year first by default', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: true, publications: publicationsFixture, content: '', count: 3 }),
+    }))
+
+    await loadPublications()
+
+    const text = document.getElementById('master-pub-crud-container').textContent
+    expect(text.indexOf('c2024')).toBeLessThan(text.indexOf('a2022'))
+  })
+
+  it('re-sorts publications by type when the type sort control is selected', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: true, publications: publicationsFixture, content: '', count: 3 }),
+    }))
+
+    setPublicationSortMode('type_asc')
+    await flushPromises()
+
+    const text = document.getElementById('master-pub-crud-container').textContent
+    expect(text.indexOf('a2022')).toBeLessThan(text.indexOf('b2024'))
+  })
+
+  it('groups publications by year when the year grouping control is selected', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: true, publications: publicationsFixture, content: '', count: 3 }),
+    }))
+
+    setPublicationGroupMode('year')
+    await flushPromises()
+
+    const html = document.getElementById('master-pub-crud-container').innerHTML
+    expect(html).toContain('>2024<')
+    expect(html).toContain('>2022<')
+  })
+
+  it('imports pasted BibTeX and reports the merge counts', async () => {
+    document.getElementById('master-pub-import-textarea').value = '@article{smith2025, title={X}}'
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({
+        json: async () => ({ ok: true, added: 1, updated: 0, skipped: 0 }),
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({ ok: true, publications: publicationsFixture, content: '', count: 3 }),
+      })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await importPublicationsBib()
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/master-data/publications/import',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(document.getElementById('master-pub-import-status').textContent).toContain('Imported')
+    expect(showAlertModalMock).toHaveBeenCalledWith(
+      expect.stringContaining('Imported'),
+      expect.stringContaining('1 added'),
+    )
+  })
+
+  it('converts citation text into a BibTeX preview without importing it yet', async () => {
+    document.getElementById('master-pub-convert-input').value = 'Doe, J. (2025). Example.'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: true, bibtex: '@article{doe2025, title={Example}}' }),
+    }))
+
+    await convertPublicationText()
+
+    expect(document.getElementById('master-pub-convert-output').value).toContain('@article{doe2025')
+    expect(document.getElementById('master-pub-convert-status').textContent).toContain('Review the generated BibTeX')
+  })
+
+  it('imports the reviewed converted BibTeX through the import endpoint', async () => {
+    document.getElementById('master-pub-convert-output').value = '@article{doe2025, title={Example}}'
+    document.getElementById('master-pub-convert-overwrite').checked = true
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({
+        json: async () => ({ ok: true, added: 0, updated: 1, skipped: 0 }),
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({ ok: true, publications: publicationsFixture, content: '', count: 3 }),
+      })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await importConvertedPublicationText()
+
+    const firstCallBody = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(firstCallBody.overwrite).toBe(true)
+    expect(firstCallBody.bibtex_text).toContain('@article{doe2025')
+    expect(document.getElementById('master-pub-convert-status').textContent).toContain('Imported preview')
   })
 })

@@ -16,6 +16,8 @@
 import { getLogger } from './logger.js';
 const log = getLogger('publications-review');
 
+import { stateManager } from './state-manager.js';
+
 // Track publication accept/reject decisions: cite_key → true (accept) | false (reject)
 window.publicationDecisions = {};
 
@@ -195,6 +197,18 @@ function handlePubAction(citeKey, accept) {
 // ── Submit decisions ─────────────────────────────────────────────────────────
 
 async function submitPublicationDecisions() {
+  /* duckflow: {
+   *   "id": "publications_ui_submit_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:publications-review.submit"],
+   *   "calls": ["POST /api/review-decisions", "GET /api/rewrites"],
+   *   "reads": ["window:publicationDecisions"],
+   *   "writes": ["request:POST /api/review-decisions.decisions"],
+   *   "notes": "Persists publication include/exclude decisions before the rewrite stage derives downstream content proposals from the accepted publication set."
+  * }
+  */
   const decisions = window.publicationDecisions || {};
   const count = Object.keys(decisions).length;
   if (count === 0) {
@@ -211,6 +225,7 @@ async function submitPublicationDecisions() {
     });
 
     if (response.ok) {
+      stateManager.markContentChanged();
       const accepted = Object.values(window.publicationDecisions).filter(Boolean).length;
       const rejected = count - accepted;
       showToast(`Publication selections saved: ${accepted} kept, ${rejected} excluded`);

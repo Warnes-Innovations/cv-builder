@@ -19,7 +19,7 @@
  *   - confirmDialog (ui-core.js)
  *   - showAlertModal (ui-helpers.js)
  *   - loadSessionFile (session-manager.js)
- *   - tabData, currentTab, currentStage, PHASES (window globals)
+ *   - tabData, currentTab, PHASES (window globals)
  */
 
 import { getLogger } from './logger.js';
@@ -475,6 +475,18 @@ function _validatePasteField() {
 }
 
 async function submitJobText() {
+  /* duckflow: {
+   *   "id": "job_ui_submit_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:job-input.submit-text"],
+   *   "calls": ["POST /api/job", "POST /api/action"],
+   *   "reads": ["dom:#job-text-input.value"],
+   *   "writes": ["request:POST /api/job.job_text", "tab:job", "ui:workflow.job"],
+   *   "notes": "Submits pasted job text to the backend, caches the same text in tab state, and then starts job analysis through the normal action flow."
+  * }
+  */
   const textInput = document.getElementById('job-text-input');
   const jobText = textInput.value.trim();
 
@@ -512,7 +524,6 @@ async function submitJobText() {
       appendMessage('assistant', '✅ Job description submitted successfully.');
 
       if (typeof updateTabBarForStage === 'function') {
-        stateManager.setCurrentStage('job');
         updateTabBarForStage('job');
       }
       switchTab('job');

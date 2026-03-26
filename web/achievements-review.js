@@ -42,6 +42,8 @@
  *   - CSS.escape                    (browser built-in)
  */
 
+import { stateManager } from './state-manager.js';
+
 // Module-level state
 let _rewriteSuggestionHistory = [];
 let _lastRewriteLogId = null;
@@ -72,20 +74,20 @@ async function buildAchievementsReviewTable() {
 
   container.innerHTML = '<p style="padding:20px;text-align:center;color:#6b7280;">Loading achievements…</p>';
 
-  // Fetch achievements directly from the master fields endpoint (robust fallback)
+  // Prefer session-aware status data so review-time overlays are reflected.
   let allAchievements = [];
   try {
-    const res = await fetchJsonWithTimeout('/api/master-fields', {}, 7000);
-    if (!res.ok) throw new Error('master-fields not ok');
-    const masterData = await res.json();
-    allAchievements = masterData.selected_achievements || [];
+    const res = await fetchJsonWithTimeout('/api/status', {}, 7000);
+    if (!res.ok) throw new Error('status not ok');
+    const statusData = await res.json();
+    allAchievements = statusData.all_achievements || [];
   } catch (err) {
-    // Secondary fallback: /api/status (also with timeout)
+    // Secondary fallback: raw master fields.
     try {
-      const res2 = await fetchJsonWithTimeout('/api/status', {}, 7000);
-      if (!res2.ok) throw new Error('status not ok');
-      const statusData = await res2.json();
-      allAchievements = statusData.all_achievements || [];
+      const res2 = await fetchJsonWithTimeout('/api/master-fields', {}, 7000);
+      if (!res2.ok) throw new Error('master-fields not ok');
+      const masterData = await res2.json();
+      allAchievements = masterData.selected_achievements || [];
     } catch (err2) {
       container.innerHTML = '<p style="color:#ef4444;padding:20px;">Failed to load achievements.</p>';
       return;
@@ -319,6 +321,18 @@ function handleAchievementAction(achId, action) {
 }
 
 async function submitAchievementDecisions() {
+  /* duckflow: {
+   *   "id": "achievements_ui_submit_live",
+   *   "kind": "ui",
+   *   "timestamp": "2026-03-25T21:39:48Z",
+   *   "status": "live",
+   *   "handles": ["ui:achievements-review.submit"],
+   *   "calls": ["POST /api/review-decisions", "POST /api/cv/layout-estimate"],
+   *   "reads": ["window:achievementDecisions", "window:_suggestedAchsOrdered"],
+   *   "writes": ["request:POST /api/review-decisions.decisions", "request:POST /api/review-decisions.accepted_suggestions", "window:_savedDecisions.achievement_decisions", "window:_savedDecisions.accepted_suggested_achievements"],
+   *   "notes": "Persists achievement inclusion decisions and the accepted AI-suggested achievements that should remain session-only until an explicit harvest step."
+  * }
+  */
   const allDecisions = window.achievementDecisions || {};
   // Separate existing achievements from AI-suggested ones
   const decisions = {};
@@ -344,6 +358,7 @@ async function submitAchievementDecisions() {
       body: JSON.stringify({ type: 'achievements', decisions, accepted_suggestions: acceptedSuggestions })
     });
     if (response.ok) {
+      stateManager.markContentChanged();
       showToast(`Achievement selections saved (${count} items)`);
       scheduleAtsRefresh();
       // Persist locally so the review UI immediately reflects saved choices
@@ -693,17 +708,17 @@ async function _runRewrite(originalText) {
 }
 
 /**
- * Save a single field of a top-level achievement to the master CV and update the local cache.
+ * Save a single field of a top-level achievement in session state and update the local cache.
  */
 async function saveTopLevelAchievementField(achId, field, value) {
   const ach = (window._achievementsOrdered || []).find(a => a.id === achId);
   const previous = ach ? ach[field] : undefined;
   if (ach) ach[field] = value;
   try {
-    const res = await fetch('/api/master-data/update-achievement', {
+    const res = await fetch('/api/review-achievement', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: achId, [field]: value }),
+      body: JSON.stringify({ id: achId, field, value }),
     });
     if (!res.ok) throw new Error((await res.json()).error || 'Save failed');
   } catch (err) {
@@ -716,12 +731,12 @@ async function saveTopLevelAchievementField(achId, field, value) {
 }
 
 /**
- * Delete a top-level achievement from the master CV after confirmation.
+ * Hide a top-level achievement for this session after confirmation.
  */
 async function deleteTopLevelAchievement(achId) {
-  if (!confirm('Delete this achievement? This cannot be undone.')) return;
+  if (!confirm('Hide this achievement for this CV only? You can restore it by starting over or changing the session selections.')) return;
   try {
-    const res = await fetch('/api/master-data/update-achievement', {
+    const res = await fetch('/api/review-achievement', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: achId, action: 'delete' }),
@@ -824,6 +839,7 @@ async function saveAchievementEditsAndContinue() {
       showToast(`Error saving: ${err.error || 'Unknown error'}`, 'error');
       return;
     }
+    stateManager.markContentChanged();
     showToast('Achievement edits saved.');
     switchTab('skills-review');
   } catch (e) {
