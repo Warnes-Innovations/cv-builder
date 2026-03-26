@@ -672,6 +672,14 @@ class TestGenerateFinalEndpoint(unittest.TestCase):
         ).get_json()
         self.assertEqual(gen_data['phase'], 'final_complete')
 
+        entry = self.app.session_registry.get(self.session_id)
+        self.assertEqual(entry.manager.state['generated_files']['final_html'], final_paths['html'])
+        self.assertEqual(entry.manager.state['generated_files']['final_pdf'], final_paths['pdf'])
+        self.assertEqual(
+            entry.manager.state['generated_files']['files'],
+            [final_paths['html'], final_paths['pdf']],
+        )
+
     def test_orchestrator_failure_returns_500(self):
         self._seed_confirmed_layout()
         with patch(
@@ -685,6 +693,65 @@ class TestGenerateFinalEndpoint(unittest.TestCase):
         self.assertEqual(resp.status_code, 500)
         data = resp.get_json()
         self.assertIn('error', data)
+
+
+class TestLegacyLayoutEndpoints(unittest.TestCase):
+    """Legacy layout endpoints should preserve staged history on reload/finalize."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.app, self.session_id, self._stack = _make_app_and_client(Path(self.tmp.name))
+        self.client = self.app.test_client()
+        self.addCleanup(self._stack.close)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_layout_history_falls_back_to_generation_state(self):
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['generation_state'] = {
+            'layout_instructions': [
+                {
+                    'timestamp': '12:00',
+                    'instruction_text': 'Move Publications',
+                    'change_summary': 'Moved publications section',
+                    'confirmation': True,
+                }
+            ]
+        }
+
+        resp = self.client.get(
+            '/api/layout-history',
+            query_string={'session_id': self.session_id},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data['count'], 1)
+        self.assertEqual(data['instructions'][0]['instruction_text'], 'Move Publications')
+
+    def test_layout_complete_reuses_staged_history_when_request_empty(self):
+        entry = self.app.session_registry.get(self.session_id)
+        staged_history = [
+            {
+                'timestamp': '12:00',
+                'instruction_text': 'Move Publications',
+                'change_summary': 'Moved publications section',
+                'confirmation': True,
+            }
+        ]
+        entry.manager.state['generation_state'] = {
+            'layout_instructions': staged_history,
+        }
+
+        resp = self.client.post(
+            '/api/layout-complete',
+            json={'session_id': self.session_id, 'layout_instructions': []},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json()['ok'])
+        self.assertEqual(entry.manager.state['layout_instructions'], staged_history)
 
 
 if __name__ == '__main__':

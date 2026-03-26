@@ -298,6 +298,54 @@ async function restoreSession() {
   }
 }
 
+function _hydrateStatusDerivedState(statusData) {
+  window.achievementEdits = {};
+  try {
+    if (statusData.achievement_edits && Object.keys(statusData.achievement_edits).length > 0) {
+      for (const [k, v] of Object.entries(statusData.achievement_edits)) {
+        const idx = parseInt(k, 10);
+        window.achievementEdits[idx] = Array.isArray(v) ? v : [v];
+      }
+    }
+  } catch (_e) { /* non-fatal */ }
+
+  window._savedDecisions = {
+    experience_decisions: statusData.experience_decisions || {},
+    skill_decisions:      statusData.skill_decisions      || {},
+    achievement_decisions:statusData.achievement_decisions || {},
+    publication_decisions:statusData.publication_decisions || {},
+    summary_focus_override: statusData.summary_focus_override || null,
+    extra_skills:           statusData.extra_skills || [],
+    extra_skill_matches:    statusData.extra_skill_matches || {},
+  };
+  window._allExperiences = statusData.all_experiences || [];
+  window.selectedSummaryKey = statusData.summary_focus_override || statusData.selected_summary_key || null;
+  window._newSkillsFromLLM = statusData.new_skills_from_llm || [];
+  window.postAnalysisQuestions = Array.isArray(statusData.post_analysis_questions)
+    ? statusData.post_analysis_questions
+    : [];
+  window.questionAnswers = (statusData.post_analysis_answers && typeof statusData.post_analysis_answers === 'object')
+    ? statusData.post_analysis_answers
+    : {};
+}
+
+function _hydrateStatusTabState(statusData) {
+  const hasAnalysis = statusData.job_analysis !== undefined && statusData.job_analysis !== null;
+  const hasCustomizations = statusData.customizations !== undefined && statusData.customizations !== null;
+  const hasGeneratedFiles = statusData.generated_files !== undefined && statusData.generated_files !== null;
+
+  stateManager.setTabData('analysis', hasAnalysis ? statusData.job_analysis : null);
+  stateManager.setTabData('customizations', hasCustomizations ? statusData.customizations : null);
+  stateManager.setTabData('cv', hasGeneratedFiles ? statusData.generated_files : null);
+  window.pendingRecommendations = hasCustomizations ? statusData.customizations : null;
+
+  if (hasAnalysis) {
+    refreshAtsScore('analysis');
+  }
+
+  return hasAnalysis || hasCustomizations || hasGeneratedFiles;
+}
+
 async function restoreBackendState() {
   // Returns true if the server had any live session data.
   try {
@@ -305,49 +353,17 @@ async function restoreBackendState() {
     if (!statusRes.ok) return false;
     const statusData = parseStatusResponse(await statusRes.json());
 
-    // Restore achievement edits and saved decisions into window globals
-    try {
-      if (statusData.achievement_edits && Object.keys(statusData.achievement_edits).length > 0) {
-        window.achievementEdits = {};
-        for (const [k, v] of Object.entries(statusData.achievement_edits)) {
-          const idx = parseInt(k, 10);
-          window.achievementEdits[idx] = Array.isArray(v) ? v : [v];
-        }
-      }
-    } catch (_e) { /* non-fatal */ }
+    _hydrateStatusDerivedState(statusData);
 
-    window._savedDecisions = {
-      experience_decisions: statusData.experience_decisions || {},
-      skill_decisions:      statusData.skill_decisions      || {},
-      achievement_decisions:statusData.achievement_decisions || {},
-      publication_decisions:statusData.publication_decisions || {},
-      summary_focus_override: statusData.summary_focus_override || null,
-      extra_skills:           statusData.extra_skills || [],
-      extra_skill_matches:    statusData.extra_skill_matches || {},
-    };
-    window._allExperiences = statusData.all_experiences || [];
-    window.selectedSummaryKey = statusData.selected_summary_key || null;
-    window._newSkillsFromLLM = statusData.new_skills_from_llm || [];
+    let serverHasData = _hydrateStatusTabState(statusData);
 
-    let serverHasData = false;
-
-    if (statusData.job_analysis) {
-      stateManager.setTabData('analysis', statusData.job_analysis);
-      serverHasData = true;
+    if (statusData.job_analysis !== undefined && statusData.job_analysis !== null) {
       log.info('Restored analysis data from backend memory');
     }
-    if (statusData.customizations) {
-      stateManager.setTabData('customizations', statusData.customizations);
-      window.pendingRecommendations = statusData.customizations;
-      serverHasData = true;
+    if (statusData.customizations !== undefined && statusData.customizations !== null) {
       log.info('Restored customizations data from backend memory');
     }
-    if (statusData.job_analysis) {
-      refreshAtsScore('analysis');
-    }
-    if (statusData.generated_files) {
-      stateManager.setTabData('cv', statusData.generated_files);
-      serverHasData = true;
+    if (statusData.generated_files !== undefined && statusData.generated_files !== null) {
       log.info('Restored CV data from backend memory');
     }
 
@@ -464,19 +480,9 @@ async function loadSessionFile(path) {
     if (customizationPhases.includes(sessionPhase)) {
       try {
         const s2 = await fetch('/api/status');
-        const sd = await s2.json();
-        if (sd.customizations) {
-          stateManager.setTabData('customizations', sd.customizations);
-          window.pendingRecommendations = sd.customizations;
-        }
-        if (sd.job_analysis) stateManager.setTabData('analysis', sd.job_analysis);
-        if (sd.generated_files) stateManager.setTabData('cv', sd.generated_files);
-        if (sd.achievement_edits && Object.keys(sd.achievement_edits).length > 0) {
-          window.achievementEdits = {};
-          for (const [k, v] of Object.entries(sd.achievement_edits)) {
-            window.achievementEdits[parseInt(k, 10)] = Array.isArray(v) ? v : [v];
-          }
-        }
+        const sd = parseStatusResponse(await s2.json());
+        _hydrateStatusDerivedState(sd);
+        _hydrateStatusTabState(sd);
       } catch (_) { /* non-fatal */ }
     }
 
