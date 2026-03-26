@@ -325,6 +325,54 @@ async function handleCustomizationResponse(response) {
 }
 
 /**
+ * Sync the skills-title select/custom-input controls to a given title value,
+ * and attach change listeners so updates are saved via the API.
+ * duckflow: flow=generation-settings status=live
+ *   state_read: status.skills_section_title (from GET /api/status)
+ *   route: POST /api/generation-settings {skills_section_title}
+ *   state_write: session.state["skills_section_title"]
+ */
+function _syncSkillsTitleControls(currentTitle) {
+  const knownOptions = ['Skills', 'Technical Skills', 'Key Skills', 'Core Skills'];
+  const sel  = document.getElementById('skills-title-select');
+  const cust = document.getElementById('skills-title-custom');
+  if (!sel) return;
+
+  const isKnown = knownOptions.includes(currentTitle);
+  if (isKnown) {
+    sel.value = currentTitle;
+    if (cust) cust.style.display = 'none';
+  } else {
+    sel.value = '__custom__';
+    if (cust) {
+      cust.style.display = '';
+      cust.value = currentTitle;
+    }
+  }
+
+  const saveTitle = async (title) => {
+    try { await apiCall('POST', '/api/generation-settings', { skills_section_title: title }); }
+    catch (e) { log.warn('Failed to save skills_section_title setting:', e); }
+  };
+
+  sel.addEventListener('change', () => {
+    if (sel.value === '__custom__') {
+      if (cust) { cust.style.display = ''; cust.focus(); }
+    } else {
+      if (cust) cust.style.display = 'none';
+      saveTitle(sel.value);
+    }
+  });
+
+  if (cust) {
+    cust.addEventListener('change', () => {
+      const v = cust.value.trim();
+      if (v) saveTitle(v);
+    });
+  }
+}
+
+/**
  * Renders one of the 5 review panes as a top-level tab.
  * Replaces the old sub-tab approach with a flat single-level tab structure.
  */
@@ -362,6 +410,17 @@ async function populateReviewTab(pane) {
         <span id="max-skills-value" style="font-weight:600;color:#1e293b;min-width:2em;text-align:right;">20</span>
         <span style="font-size:0.85em;color:#9ca3af;">(default: 20)</span>
       </div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <label for="skills-title-select" style="font-size:0.9em;color:#4b5563;white-space:nowrap;">Skills section title:</label>
+        <select id="skills-title-select" style="font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;">
+          <option value="Skills">Skills</option>
+          <option value="Technical Skills">Technical Skills</option>
+          <option value="Key Skills">Key Skills</option>
+          <option value="Core Skills">Core Skills</option>
+          <option value="__custom__">Custom…</option>
+        </select>
+        <input type="text" id="skills-title-custom" placeholder="Enter custom title" style="display:none;font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;min-width:160px;">
+      </div>
     </details>
   ` : (cfg.title ? `<h2 style="margin:0 0 12px;">${cfg.title}</h2>` : '');
 
@@ -389,6 +448,7 @@ async function populateReviewTab(pane) {
     ${navHtml}
   `;
 
+  // Sync slider and skills title for experiences tab
   if (pane === 'experiences') {
     (async () => {
       const status = await fetchStatus();
@@ -411,6 +471,7 @@ async function populateReviewTab(pane) {
           }
         });
       }
+      _syncSkillsTitleControls(status.skills_section_title || 'Skills');
     })();
   }
 
@@ -461,6 +522,17 @@ async function populateCustomizationsTabWithReview(data) {
           style="flex:1;accent-color:#3b82f6;">
         <span id="max-skills-value" style="font-weight:600;color:#1e293b;min-width:2em;text-align:right;">20</span>
         <span style="font-size:0.85em;color:#9ca3af;">(default: 20)</span>
+      </div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <label for="skills-title-select" style="font-size:0.9em;color:#4b5563;white-space:nowrap;">Skills section title:</label>
+        <select id="skills-title-select" style="font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;">
+          <option value="Skills">Skills</option>
+          <option value="Technical Skills">Technical Skills</option>
+          <option value="Key Skills">Key Skills</option>
+          <option value="Core Skills">Core Skills</option>
+          <option value="__custom__">Custom…</option>
+        </select>
+        <input type="text" id="skills-title-custom" placeholder="Enter custom title" style="display:none;font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;min-width:160px;">
       </div>
     </details>
 
@@ -521,7 +593,7 @@ async function populateCustomizationsTabWithReview(data) {
 
   content.innerHTML = html;
 
-  // Sync max-skills slider with current session value
+  // Sync max-skills slider and skills title with current session value
   (async () => {
     const status = await fetchStatus();
     const currentMax = status.max_skills || 20;
@@ -543,6 +615,7 @@ async function populateCustomizationsTabWithReview(data) {
         }
       });
     }
+    _syncSkillsTitleControls(status.skills_section_title || 'Skills');
   })();
 
   // Track which panes have been loaded to avoid re-fetching

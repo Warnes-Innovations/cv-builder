@@ -183,12 +183,16 @@ class CVOrchestrator:
         certifications = selected_content.get('certifications', [])
         
         # Add template metadata
+        # duckflow: flow=cv-render status=live
+        #   artifact: template_metadata["skills_section_title"] → cv-template.html
+        #   default: "Skills" (overridden per-render by customizations["skills_section_title"])
         template_metadata = {
             'variant': template_variant,
             'generated_date': datetime.now().isoformat(),
             'job_title': job_analysis.get('title', ''),
             'company': job_analysis.get('company', ''),
             'total_publications_count': len(self.publications) if self.publications else 0,
+            'skills_section_title': 'Skills',
         }
         
         cv_data = {
@@ -556,6 +560,10 @@ class CVOrchestrator:
         )
         cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
+        # duckflow: flow=cv-render status=live
+        #   state_read: customizations["skills_section_title"]
+        #   artifact: template_metadata["skills_section_title"] → cv-template.html (preview)
+        cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
 
         template_dir = Path(__file__).parent.parent.parent / 'templates'
         template_file = template_dir / 'cv-template.html'
@@ -1633,6 +1641,10 @@ For manual generation:
         )
         cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
+        # duckflow: flow=cv-render status=live
+        #   state_read: customizations["skills_section_title"]
+        #   artifact: template_metadata["skills_section_title"] → cv-template.html (final)
+        cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
 
         # Generate documents (Phase 10: Track progress)
         files_created = []
@@ -1644,6 +1656,10 @@ For manual generation:
             'status': 'in_progress',
             'start_time': time.time()
         }
+        # duckflow: flow=cv-render status=live
+        #   state_read: customizations["skills_section_title"]
+        #   artifact: selected_content["skills_section_title"] → _generate_human_docx → DOCX heading
+        selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         ats_file = self._generate_ats_docx(
             selected_content,
             job_analysis,
@@ -2400,9 +2416,9 @@ If you need clarification, return:
         doc.add_paragraph(enhanced_summary)
         doc.add_paragraph()
         
-        # Core Competencies/Skills Section - ATS keyword optimization
+        # Skills section - ATS output always normalizes to a fixed heading.
         skills_heading = doc.add_paragraph()
-        skills_heading.add_run('CORE COMPETENCIES').bold = True
+        skills_heading.add_run('SKILLS').bold = True
         skills_heading.style = 'Heading 2'
         
         # Organize skills for maximum ATS impact
@@ -3053,7 +3069,9 @@ If you need clarification, return:
         # ── Skills ───────────────────────────────────────────────────────────
         skills_by_category = content.get('skills_by_category', [])
         if skills_by_category:
-            _heading('Technical Skills')
+            # duckflow: flow=cv-render status=live
+            #   artifact: content["skills_section_title"] → DOCX heading (Skills section)
+            _heading(content.get('skills_section_title', 'Skills'))
             for cat in skills_by_category:
                 p = doc.add_paragraph()
                 p.paragraph_format.space_after = Pt(2)

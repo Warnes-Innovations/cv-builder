@@ -606,6 +606,175 @@ Ask questions that are specific to this job posting, not generic career question
             )
 
         elif action_type == 'generate_cv':
+            # Check if we have customizations OR user decisions from table review
+            has_customizations = bool(self.state.get('customizations'))
+            has_decisions = bool(self.state.get('experience_decisions') or self.state.get('skill_decisions') or self.state.get('achievement_decisions'))
+            
+            if not has_customizations and not has_decisions:
+                return "❌ Please generate customizations first (click 'Recommend Customizations')"
+            
+            # Ensure job_analysis and customizations are dicts, not strings
+            job_analysis = self.state.get('job_analysis')
+            if isinstance(job_analysis, str):
+                try:
+                    job_analysis = json.loads(job_analysis)
+                    self.state['job_analysis'] = job_analysis
+                except json.JSONDecodeError:
+                    return "❌ Error: job_analysis is corrupted. Please re-analyze the job."
+
+            # Normalize decision payloads (may be persisted as JSON strings)
+            exp_decisions = self.state.get('experience_decisions', {})
+            skill_decisions = self.state.get('skill_decisions', {})
+
+            if isinstance(exp_decisions, str):
+                try:
+                    exp_decisions = json.loads(exp_decisions)
+                    self.state['experience_decisions'] = exp_decisions
+                except json.JSONDecodeError:
+                    exp_decisions = {}
+
+            if isinstance(skill_decisions, str):
+                try:
+                    skill_decisions = json.loads(skill_decisions)
+                    self.state['skill_decisions'] = skill_decisions
+                except json.JSONDecodeError:
+                    skill_decisions = {}
+
+            if not isinstance(exp_decisions, dict):
+                exp_decisions = {}
+            if not isinstance(skill_decisions, dict):
+                skill_decisions = {}
+            
+            # If we have decisions but no customizations, generate a baseline first
+            if has_decisions and not has_customizations:
+                print("\n🔄 Applying user decisions to generate customizations...")
+                if not job_analysis:
+                    return "❌ Please analyze job description first"
+
+                recommendations = self.llm.recommend_customizations(
+                    job_analysis,
+                    self.orchestrator.master_data,
+                    user_preferences=self.state.get('post_analysis_answers') or {},
+                    conversation_history=self.conversation_history
+                )
+                self._normalize_recommendations(recommendations)
+                self.state['customizations'] = recommendations
+            
+            # Ensure customizations is a dict
+            customizations = self.state.get('customizations')
+            if isinstance(customizations, str):
+                try:
+                    customizations = json.loads(customizations)
+                    self.state['customizations'] = customizations
+                except json.JSONDecodeError:
+                    return "❌ Error: customizations data is corrupted. Please re-generate customizations."
+
+            if customizations is None:
+                return "❌ Please generate customizations first"
+
+            # Always apply collected review decisions before final generation
+            if has_decisions:
+                if exp_decisions:
+                    emphasized   = [k for k, v in exp_decisions.items() if v == 'emphasize']
+                    included     = [k for k, v in exp_decisions.items() if v == 'include']
+                    deemphasized = [k for k, v in exp_decisions.items() if v == 'de-emphasize']
+                    omitted      = [k for k, v in exp_decisions.items() if v in ('omit', 'exclude')]
+                    customizations['recommended_experiences'] = emphasized + included + deemphasized
+                    # Explicitly omitted IDs — only these are excluded from the output
+                    customizations['omitted_experiences'] = omitted
+
+                if skill_decisions:
+                    emphasized   = [k for k, v in skill_decisions.items() if v == 'emphasize']
+                    included     = [k for k, v in skill_decisions.items() if v == 'include']
+                    deemphasized = [k for k, v in skill_decisions.items() if v == 'de-emphasize']
+                    omitted      = [k for k, v in skill_decisions.items() if v in ('omit', 'exclude')]
+                    customizations['recommended_skills'] = emphasized + included + deemphasized
+                    customizations['omitted_skills'] = omitted
+
+                # Achievement decisions
+                ach_decisions = self.state.get('achievement_decisions', {})
+                if isinstance(ach_decisions, str):
+                    try:
+                        ach_decisions = json.loads(ach_decisions)
+                    except Exception:
+                        ach_decisions = {}
+                if ach_decisions:
+                    included_achs = [k for k, v in ach_decisions.items() if v in ('include', 'emphasize', 'de-emphasize')]
+                    omitted_achs  = [k for k, v in ach_decisions.items() if v in ('omit', 'exclude')]
+                    customizations['recommended_achievements'] = included_achs
+                    customizations['omitted_achievements'] = omitted_achs
+
+                # Extra achievements (LLM-suggested achievements that user approved)
+                extra_achievements = self.state.get('accepted_suggested_achievements', [])
+                if extra_achievements:
+                    customizations['extra_achievements'] = extra_achievements
+
+                # Extra skills (LLM-suggested skills not in master CV that user approved)
+                extra_skills = self.state.get('extra_skills', [])
+                if extra_skills:
+                    customizations['extra_skills'] = extra_skills
+
+                # Base font size for CV template (set via Layout panel)
+                base_font_size = self.state.get('base_font_size')
+                if base_font_size:
+                    customizations['base_font_size'] = base_font_size
+
+                # Skills section title (set via Generation Settings panel)
+                # duckflow: flow=generation-settings status=live
+                #   state_read: session.state["skills_section_title"]
+                #   state_write: customizations["skills_section_title"]
+                skills_section_title = self.state.get('skills_section_title')
+                if skills_section_title:
+                    customizations['skills_section_title'] = skills_section_title
+
+                # Summary focus override (user-selected summary key)
+                summary_override = self.state.get('summary_focus_override')
+                if summary_override:
+                    customizations['summary_focus'] = summary_override
+
+                self.state['customizations'] = customizations
+
+            # Inject LLM-generated session summaries so the orchestrator can resolve them
+            session_summaries = self.state.get('session_summaries') or {}
+            if session_summaries:
+                customizations['session_summaries'] = session_summaries
+
+            # Inject user-defined bullet ordering (Phase 9) into customizations
+            achievement_orders = self.state.get('achievement_orders', {})
+            if achievement_orders:
+                customizations['achievement_orders'] = achievement_orders
+
+            # Inject user-defined experience and skill row ordering (Phase 6)
+            experience_row_order = self.state.get('experience_row_order', [])
+            if experience_row_order:
+                customizations['experience_row_order'] = experience_row_order
+            skill_row_order = self.state.get('skill_row_order', [])
+            if skill_row_order:
+                customizations['skill_row_order'] = skill_row_order
+
+            # Apply publication accept/reject decisions.
+            # Primary source: publication_decisions dict stored via POST /api/decide
+            # (cite_key → True/False). Falls back to legacy post_analysis_answers strings.
+            pub_decisions: dict = self.state.get('publication_decisions') or {}
+            if pub_decisions:
+                customizations['accepted_publications'] = [
+                    k for k, v in pub_decisions.items() if v not in (False, 'reject', 0)
+                ]
+                customizations['rejected_publications'] = [
+                    k for k, v in pub_decisions.items() if v in (False, 'reject', 0)
+                ]
+            # Legacy path: post_analysis_answers overrides the dict if both are present
+            post_answers = self.state.get('post_analysis_answers') or {}
+            accepted_str = post_answers.get('publication_accepted', '')
+            rejected_str = post_answers.get('publication_rejected', '')
+            if accepted_str or rejected_str:
+                customizations['accepted_publications'] = [
+                    k.strip() for k in accepted_str.split(',') if k.strip()
+                ]
+                customizations['rejected_publications'] = [
+                    k.strip() for k in rejected_str.split(',') if k.strip()
+                ]
+
             print("\n🔄 Generating CV files...")
             try:
                 result = self.generate_cv_from_session_state(
