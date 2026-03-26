@@ -1629,7 +1629,7 @@ For manual generation:
         }
         # duckflow: flow=cv-render status=live
         #   state_read: customizations["skills_section_title"]
-        #   artifact: selected_content["skills_section_title"] → _generate_ats_docx → DOCX heading
+        #   artifact: selected_content["skills_section_title"] → _generate_human_docx → DOCX heading
         selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         ats_file = self._generate_ats_docx(
             selected_content,
@@ -2387,9 +2387,9 @@ If you need clarification, return:
         doc.add_paragraph(enhanced_summary)
         doc.add_paragraph()
         
-        # Core Competencies/Skills Section - ATS keyword optimization
+        # Skills section - ATS output always normalizes to a fixed heading.
         skills_heading = doc.add_paragraph()
-        skills_heading.add_run('CORE COMPETENCIES').bold = True
+        skills_heading.add_run('SKILLS').bold = True
         skills_heading.style = 'Heading 2'
         
         # Organize skills for maximum ATS impact
