@@ -157,6 +157,21 @@ def test_ats_docx_name_uses_heading1(orchestrator, selected_content, job_analysi
     )
 
 
+def test_ats_docx_uses_skills_heading(orchestrator, selected_content, job_analysis, tmp_path):
+    """ATS DOCX must normalize the skills heading to SKILLS."""
+    from docx import Document  # type: ignore
+
+    out_dir = tmp_path / "ats_out_skills_heading"
+    out_dir.mkdir()
+
+    ats_file = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
+    doc = Document(str(ats_file))
+
+    headings = [p.text.strip() for p in doc.paragraphs if p.style.name == "Heading 2"]
+    assert "SKILLS" in headings
+    assert "CORE COMPETENCIES" not in headings
+
+
 def test_ats_compatibility_score_acceptable(orchestrator, selected_content, job_analysis):
     """_validate_ats_compatibility returns a numeric score ≥ 50 for well-matched content."""
     score = orchestrator._validate_ats_compatibility(selected_content, job_analysis)
