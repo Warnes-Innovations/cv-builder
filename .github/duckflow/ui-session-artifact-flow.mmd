@@ -1,0 +1,151 @@
+flowchart TD
+  classDef live fill:#dcfce7,stroke:#166534,color:#14532d;
+  classDef planned fill:#fef3c7,stroke:#b45309,color:#78350f,stroke-dasharray: 5 3;
+  classDef shared fill:#dbeafe,stroke:#1d4ed8,color:#1e3a8a;
+  achievements_ui_submit_live["achievements_ui_submit_live<br/>ui [live]<br/>web/achievements-review.js:324"]
+  class achievements_ui_submit_live live;
+  cover_letter_api_save_live["cover_letter_api_save_live<br/>api [live]<br/>scripts/routes/master_data_routes.py:1365"]
+  class cover_letter_api_save_live live;
+  cover_letter_ui_generate_live["cover_letter_ui_generate_live<br/>ui [live]<br/>web/cover-letter.js:135"]
+  class cover_letter_ui_generate_live live;
+  cover_letter_ui_save_live["cover_letter_ui_save_live<br/>ui [live]<br/>web/cover-letter.js:196"]
+  class cover_letter_ui_save_live live;
+  experience_ui_submit_live["experience_ui_submit_live<br/>ui [live]<br/>web/experience-review.js:268"]
+  class experience_ui_submit_live live;
+  finalise_ui_submit_live["finalise_ui_submit_live<br/>ui [live]<br/>web/finalise.js:122"]
+  class finalise_ui_submit_live live;
+  generation_api_final_live["generation_api_final_live<br/>api [live]<br/>scripts/routes/generation_routes.py:1145"]
+  class generation_api_final_live live;
+  generation_api_finalise_live["generation_api_finalise_live<br/>api [live]<br/>scripts/routes/generation_routes.py:1227"]
+  class generation_api_finalise_live live;
+  generation_api_layout_refine_live["generation_api_layout_refine_live<br/>api [live]<br/>scripts/routes/generation_routes.py:948"]
+  class generation_api_layout_refine_live live;
+  generation_api_preview_live["generation_api_preview_live<br/>api [live]<br/>scripts/routes/generation_routes.py:846"]
+  class generation_api_preview_live live;
+  job_api_submit_live["job_api_submit_live<br/>api [live]<br/>scripts/routes/job_routes.py:38"]
+  class job_api_submit_live live;
+  job_ui_submit_live["job_ui_submit_live<br/>ui [live]<br/>web/job-input.js:478"]
+  class job_ui_submit_live live;
+  layout_estimate_live["layout_estimate_live<br/>api [live]<br/>scripts/routes/generation_routes.py:923"]
+  class layout_estimate_live live;
+  layout_ui_generate_final_live["layout_ui_generate_final_live<br/>ui [live]<br/>web/layout-instruction.js:758"]
+  class layout_ui_generate_final_live live;
+  layout_ui_refine_live["layout_ui_refine_live<br/>ui [live]<br/>web/layout-instruction.js:381"]
+  class layout_ui_refine_live live;
+  publications_ui_submit_live["publications_ui_submit_live<br/>ui [live]<br/>web/publications-review.js:200"]
+  class publications_ui_submit_live live;
+  questions_ui_submit_live["questions_ui_submit_live<br/>ui [live]<br/>web/questions-panel.js:324"]
+  class questions_ui_submit_live live;
+  review_api_achievement_edits_live["review_api_achievement_edits_live<br/>api [live]<br/>scripts/routes/review_routes.py:315"]
+  class review_api_achievement_edits_live live;
+  review_api_decisions_live["review_api_decisions_live<br/>api [live]<br/>scripts/routes/review_routes.py:189"]
+  class review_api_decisions_live live;
+  review_api_spell_complete_live["review_api_spell_complete_live<br/>api [live]<br/>scripts/routes/review_routes.py:1416"]
+  class review_api_spell_complete_live live;
+  rewrite_ui_submit_live["rewrite_ui_submit_live<br/>ui [live]<br/>web/rewrite-review.js:328"]
+  class rewrite_ui_submit_live live;
+  screening_api_save_live["screening_api_save_live<br/>api [live]<br/>scripts/routes/master_data_routes.py:1572"]
+  class screening_api_save_live live;
+  screening_ui_generate_live["screening_ui_generate_live<br/>ui [live]<br/>web/screening-questions.js:189"]
+  class screening_ui_generate_live live;
+  screening_ui_save_live["screening_ui_save_live<br/>ui [live]<br/>web/screening-questions.js:243"]
+  class screening_ui_save_live live;
+  skills_ui_submit_live["skills_ui_submit_live<br/>ui [live]<br/>web/skills-review.js:911"]
+  class skills_ui_submit_live live;
+  spell_ui_submit_live["spell_ui_submit_live<br/>ui [live]<br/>web/spell-check.js:321"]
+  class spell_ui_submit_live live;
+  summary_api_ats_materialize_live["summary_api_ats_materialize_live<br/>api [live]<br/>scripts/routes/generation_routes.py:1124"]
+  class summary_api_ats_materialize_live live;
+  summary_api_generate_live["summary_api_generate_live<br/>api [live]<br/>scripts/routes/master_data_routes.py:889"]
+  class summary_api_generate_live live;
+  summary_api_review_decision_live["summary_api_review_decision_live<br/>api [live]<br/>scripts/routes/review_routes.py:287"]
+  class summary_api_review_decision_live live;
+  summary_api_status_live["summary_api_status_live<br/>api [live]<br/>scripts/routes/status_routes.py:92"]
+  class summary_api_status_live live;
+  summary_orchestrator_final_files["summary_orchestrator_final_files<br/>artifact [shared]<br/>scripts/utils/cv_orchestrator.py:566"]
+  class summary_orchestrator_final_files shared;
+  summary_orchestrator_preview_html["summary_orchestrator_preview_html<br/>artifact [shared]<br/>scripts/utils/cv_orchestrator.py:515"]
+  class summary_orchestrator_preview_html shared;
+  summary_orchestrator_select["summary_orchestrator_select<br/>orchestrator [shared]<br/>scripts/utils/cv_orchestrator.py:2218"]
+  class summary_orchestrator_select shared;
+  summary_ui_build["summary_ui_build<br/>ui [shared]<br/>web/summary-review.js:21"]
+  class summary_ui_build shared;
+  summary_ui_generate["summary_ui_generate<br/>ui [shared]<br/>web/summary-review.js:162"]
+  class summary_ui_generate shared;
+  summary_ui_persist["summary_ui_persist<br/>ui [shared]<br/>web/summary-review.js:246"]
+  class summary_ui_persist shared;
+  achievements_ui_submit_live -->|call: POST /api/cv/layout-estimate| layout_estimate_live
+  achievements_ui_submit_live -->|call: POST /api/review-decisions| review_api_decisions_live
+  achievements_ui_submit_live -->|data: request:POST /api/review-decisions.accepted_suggestions| review_api_decisions_live
+  achievements_ui_submit_live -->|data: request:POST /api/review-decisions.decisions| review_api_decisions_live
+  achievements_ui_submit_live -->|call: POST /api/review-decisions| summary_api_review_decision_live
+  cover_letter_ui_generate_live -->|data: dom:#cl-letter-textarea.value| cover_letter_ui_save_live
+  cover_letter_ui_save_live -->|call: POST /api/cover-letter/save| cover_letter_api_save_live
+  cover_letter_ui_save_live -->|data: request:POST /api/cover-letter/save.text| cover_letter_api_save_live
+  experience_ui_submit_live -->|call: POST /api/cv/layout-estimate| layout_estimate_live
+  experience_ui_submit_live -->|call: POST /api/review-decisions| review_api_decisions_live
+  experience_ui_submit_live -->|data: request:POST /api/review-decisions.decisions| review_api_decisions_live
+  experience_ui_submit_live -->|call: POST /api/review-decisions| summary_api_review_decision_live
+  finalise_ui_submit_live -->|call: POST /api/finalise| generation_api_finalise_live
+  finalise_ui_submit_live -->|data: request:POST /api/finalise.notes| generation_api_finalise_live
+  finalise_ui_submit_live -->|data: request:POST /api/finalise.status| generation_api_finalise_live
+  generation_api_final_live -->|data: state:generation_state.baseline_layout_digest| layout_estimate_live
+  generation_api_final_live -->|data: state:generation_state.phase| layout_ui_generate_final_live
+  generation_api_final_live -->|data: state:generation_state.phase| layout_ui_refine_live
+  generation_api_layout_refine_live -->|data: state:generation_state.layout_confirmed| generation_api_final_live
+  generation_api_layout_refine_live -->|data: state:generation_state.preview_html| generation_api_final_live
+  generation_api_layout_refine_live -->|data: state:generation_state.baseline_layout_digest| layout_estimate_live
+  generation_api_layout_refine_live -->|data: state:generation_state.phase| layout_ui_generate_final_live
+  generation_api_layout_refine_live -->|data: state:generation_state.phase| layout_ui_refine_live
+  generation_api_preview_live -->|data: state:generation_state.layout_confirmed| generation_api_final_live
+  generation_api_preview_live -->|data: state:generation_state.preview_html| generation_api_final_live
+  generation_api_preview_live -->|data: state:generation_state.preview_html| generation_api_layout_refine_live
+  generation_api_preview_live -->|data: state:generation_state.baseline_layout_digest| layout_estimate_live
+  generation_api_preview_live -->|data: state:generation_state.phase| layout_ui_generate_final_live
+  generation_api_preview_live -->|data: state:generation_state.phase| layout_ui_refine_live
+  job_ui_submit_live -->|call: POST /api/job| job_api_submit_live
+  job_ui_submit_live -->|data: request:POST /api/job.job_text| job_api_submit_live
+  layout_ui_generate_final_live -->|call: POST /api/cv/generate-final| generation_api_final_live
+  layout_ui_refine_live -->|call: POST /api/cv/layout-refine| generation_api_layout_refine_live
+  layout_ui_refine_live -->|data: request:POST /api/cv/layout-refine.instruction| generation_api_layout_refine_live
+  publications_ui_submit_live -->|call: POST /api/review-decisions| review_api_decisions_live
+  publications_ui_submit_live -->|data: request:POST /api/review-decisions.decisions| review_api_decisions_live
+  publications_ui_submit_live -->|call: POST /api/review-decisions| summary_api_review_decision_live
+  review_api_decisions_live -->|data: state:experience_decisions| layout_estimate_live
+  review_api_decisions_live -->|data: state:skill_decisions| layout_estimate_live
+  review_api_decisions_live -->|data: state:summary_focus_override| summary_api_ats_materialize_live
+  review_api_decisions_live -->|data: state:experience_decisions| summary_api_generate_live
+  review_api_decisions_live -->|data: state:summary_focus_override| summary_api_status_live
+  review_api_spell_complete_live -->|data: state:spell_audit| generation_api_finalise_live
+  review_api_spell_complete_live -->|data: state:spell_audit| generation_api_preview_live
+  rewrite_ui_submit_live -->|call: POST /api/cv/layout-estimate| layout_estimate_live
+  screening_ui_save_live -->|call: POST /api/screening/save| screening_api_save_live
+  screening_ui_save_live -->|data: request:POST /api/screening/save.responses| screening_api_save_live
+  skills_ui_submit_live -->|call: POST /api/cv/layout-estimate| layout_estimate_live
+  skills_ui_submit_live -->|call: POST /api/review-decisions| review_api_decisions_live
+  skills_ui_submit_live -->|data: request:POST /api/review-decisions.decisions| review_api_decisions_live
+  skills_ui_submit_live -->|data: request:POST /api/review-decisions.extra_skill_matches| review_api_decisions_live
+  skills_ui_submit_live -->|data: request:POST /api/review-decisions.extra_skills| review_api_decisions_live
+  skills_ui_submit_live -->|call: POST /api/review-decisions| summary_api_review_decision_live
+  spell_ui_submit_live -->|call: POST /api/spell-check-complete| review_api_spell_complete_live
+  spell_ui_submit_live -->|data: request:POST /api/spell-check-complete.spell_audit| review_api_spell_complete_live
+  summary_api_generate_live -->|data: state:session_summaries.ai_generated| summary_api_ats_materialize_live
+  summary_api_generate_live -->|data: state:summary_focus_override| summary_api_ats_materialize_live
+  summary_api_generate_live -->|data: state:session_summaries.ai_generated| summary_api_status_live
+  summary_api_generate_live -->|data: state:summary_focus_override| summary_api_status_live
+  summary_api_generate_live -->|data: state:session_summaries.ai_generated| summary_ui_build
+  summary_api_generate_live -->|data: response:POST /api/generate-summary.summary| summary_ui_generate
+  summary_api_review_decision_live -->|data: state:summary_focus_override| summary_api_ats_materialize_live
+  summary_api_review_decision_live -->|data: state:summary_focus_override| summary_api_status_live
+  summary_api_status_live -->|data: response:GET /api/status.professional_summaries| summary_ui_build
+  summary_orchestrator_preview_html -->|data: artifact:generation_state.preview_html| summary_orchestrator_final_files
+  summary_orchestrator_select -->|data: cv:selected_content.summary| summary_orchestrator_preview_html
+  summary_ui_build -->|call: GET /api/status| summary_api_status_live
+  summary_ui_build -->|call: ui:summary-review.generate| summary_ui_generate
+  summary_ui_build -->|data: window:selectedSummaryKey| summary_ui_persist
+  summary_ui_generate -->|call: POST /api/generate-summary| summary_api_generate_live
+  summary_ui_generate -->|call: ui:summary-review.persist| summary_ui_persist
+  summary_ui_generate -->|data: window:selectedSummaryKey| summary_ui_persist
+  summary_ui_persist -->|call: POST /api/review-decisions| review_api_decisions_live
+  summary_ui_persist -->|call: POST /api/review-decisions| summary_api_review_decision_live
+  summary_ui_persist -->|data: request:POST /api/review-decisions.summary_focus| summary_api_review_decision_live

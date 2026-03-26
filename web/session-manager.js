@@ -30,7 +30,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('session-manager');
 
 import { SESSION_PHASE_LABELS_SHORT } from './utils.js';
-import { stateManager } from './state-manager.js';
+import { PHASES, stateManager } from './state-manager.js';
 
 // ---------------------------------------------------------------------------
 // Session phase labels (abbreviated form — for compact session-switcher UI)
@@ -201,7 +201,7 @@ function openActiveSessionFromLanding(sessionIdToOpen) {
 
 function showSessionsLandingPanel(message = '') {
   stateManager.setCurrentTab('job');
-  stateManager.setCurrentStage('job');
+  stateManager.setPhase(PHASES.INIT);
   updateActionButtons('job');
   updatePositionTitle({});
 
@@ -402,8 +402,15 @@ async function restoreBackendState() {
           stateManager.setGenerationState({
             phase: generationData.phase || 'idle',
             previewAvailable: Boolean(generationData.preview_available),
+            previewOutputs: generationData.preview_outputs || null,
             layoutConfirmed: Boolean(generationData.layout_confirmed),
             pageCountEstimate: generationData.page_count_estimate ?? null,
+            pageCountExact: generationData.page_count_exact ?? null,
+            pageCountConfidence: generationData.page_count_confidence ?? null,
+            pageCountSource: generationData.page_count_source || null,
+            pageNeedsExactRecheck: Boolean(
+              generationData.page_count_needs_exact_recheck,
+            ),
             pageWarning: Boolean(generationData.page_length_warning),
             layoutInstructionsCount: generationData.layout_instructions_count || 0,
             finalGeneratedAt: generationData.final_generated_at || null,

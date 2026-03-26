@@ -1488,6 +1488,39 @@ def test_spell_check_sections_route_skips_semantic_match_scoring(build_app):
     assert payload["ok"] is True
 
 
+def test_spell_check_sections_route_materializes_review_decisions(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["experience_decisions"] = {
+            "exp_001": "include",
+            "exp_999": "exclude",
+        }
+        manager.state["publication_decisions"] = {
+            "pub_a": True,
+            "pub_b": False,
+        }
+
+        with patch.object(
+            manager.orchestrator,
+            "build_render_ready_content",
+            wraps=manager.orchestrator.build_render_ready_content,
+        ) as build_content:
+            response = client.get(
+                "/api/spell-check-sections",
+                query_string={"session_id": session_id},
+            )
+
+    assert response.status_code == 200
+    customizations = build_content.call_args.args[1]
+    assert customizations["recommended_experiences"] == ["exp_001"]
+    assert customizations["omitted_experiences"] == ["exp_999"]
+    assert customizations["accepted_publications"] == ["pub_a"]
+    assert customizations["rejected_publications"] == ["pub_b"]
+
+
 def test_layout_completion_route_updates_phase_and_tracks_instructions(
     build_app,
 ):
@@ -1627,6 +1660,34 @@ def test_summary_and_master_data_routes_enforce_ownership(build_app):
             achievement.get("id") == "ach-001"
             for achievement in master_data["selected_achievements"]
         )
+
+
+def test_status_route_merges_session_summary_variants(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.orchestrator.master_data['professional_summaries'] = {
+            'default': 'Master summary',
+        }
+        manager.state['session_summaries'] = {
+            'ai_generated': 'Session summary',
+        }
+        manager.state['summary_focus_override'] = 'ai_generated'
+
+        response = client.get(
+            '/api/status',
+            query_string={'session_id': session_id},
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['professional_summaries'] == {
+            'default': 'Master summary',
+            'ai_generated': 'Session summary',
+        }
+        assert payload['summary_focus_override'] == 'ai_generated'
 
 
 def test_cover_letter_and_screening_routes_enforce_ownership(build_app):
@@ -2550,6 +2611,130 @@ def test_editing_and_rewrite_fetch_routes_enforce_ownership(build_app):
             0: ["Edited bullet", "Second bullet"]
         }
 
+        review_achievement = client.post(
+            "/api/review-achievement",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "id": "ach-1",
+                "field": "title",
+                "value": "Session title",
+            },
+        )
+        assert review_achievement.status_code == 200
+        assert manager.state["achievement_overrides"] == {
+            "ach-1": {"title": "Session title"}
+        }
+
+        remove_achievement = client.post(
+            "/api/review-achievement",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "id": "ach-1",
+                "action": "delete",
+            },
+        )
+        assert remove_achievement.status_code == 200
+        assert manager.state["removed_achievement_ids"] == ["ach-1"]
+        assert manager.state["achievement_decisions"]["ach-1"] == "exclude"
+
+        skill_group = client.post(
+            "/api/review-skill-group",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "skill": "Python",
+                "group": "scripting",
+            },
+        )
+        assert skill_group.status_code == 200
+        assert manager.state["skill_group_overrides"] == {
+            "Python": "scripting"
+        }
+
+        skill_category = client.post(
+            "/api/review-skill-category",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "skill": "Python",
+                "category": "Data Science",
+            },
+        )
+        assert skill_category.status_code == 200
+        assert manager.state["skill_category_overrides"] == {
+            "Python": "Data Science"
+        }
+
+        skill_qualifiers = client.post(
+            "/api/review-skill-qualifiers",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "skill": "Python",
+                "proficiency": "expert",
+                "subskills": ["Pandas", "NumPy"],
+                "parenthetical": "Expert, Pandas, NumPy",
+            },
+        )
+        assert skill_qualifiers.status_code == 200
+        assert manager.state["skill_qualifier_overrides"] == {
+            "Python": {
+                "proficiency": "expert",
+                "subskills": ["Pandas", "NumPy"],
+                "parenthetical": "Expert, Pandas, NumPy",
+            }
+        }
+
+        rename_categories = client.post(
+            "/api/review-skill-categories",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "action": "rename",
+                "old_category": "Data Science",
+                "new_category": "Applied AI",
+            },
+        )
+        assert rename_categories.status_code == 200
+        assert manager.state["skill_category_overrides"] == {
+            "Python": "Applied AI"
+        }
+
+        reorder_categories = client.post(
+            "/api/review-skill-categories",
+            json={
+                "session_id": session_id,
+                "owner_token": "owner-a",
+                "action": "reorder",
+                "ordered_categories": [
+                    "Applied AI",
+                    "Programming",
+                    "Applied AI",
+                ],
+            },
+        )
+        assert reorder_categories.status_code == 200
+        assert manager.state["skill_category_order"] == [
+            "Applied AI",
+            "Programming",
+        ]
+        assert manager.state["customizations"]["skill_category_order"] == [
+            "Applied AI",
+            "Programming",
+        ]
+        assert (
+            manager.state["customizations"]["skill_qualifier_overrides"]
+            == {
+                "Python": {
+                    "proficiency": "expert",
+                    "subskills": ["Pandas", "NumPy"],
+                    "parenthetical": "Expert, Pandas, NumPy",
+                }
+            }
+        )
+
         missing_text = client.post(
             "/api/rewrite-achievement",
             json={"session_id": session_id, "owner_token": "owner-a"},
@@ -2931,6 +3116,14 @@ def test_cv_ats_score_route_enriches_customizations_from_session_state(
             "targeted": "Targeted summary text",
         }
         manager.state["summary_focus_override"] = "targeted"
+        manager.state["experience_decisions"] = {
+            "exp_001": "include",
+            "exp_404": "exclude",
+        }
+        manager.state["publication_decisions"] = {
+            "pub_a": True,
+            "pub_b": False,
+        }
 
         returned_score = {
             "score": 87,
@@ -2964,12 +3157,124 @@ def test_cv_ats_score_route_enriches_customizations_from_session_state(
                 "section": "experience",
             }
         ]
+        assert customizations_arg["recommended_experiences"] == ["exp_001"]
+        assert customizations_arg["omitted_experiences"] == ["exp_404"]
+        assert customizations_arg["accepted_publications"] == ["pub_a"]
+        assert customizations_arg["rejected_publications"] == ["pub_b"]
         assert (
             customizations_arg["selected_summary"] == "Targeted summary text"
         )
         assert mock_score.call_args.kwargs == {"basis": "review_checkpoint"}
         assert manager.state["generation_state"]["ats_score"] == returned_score
         assert manager.save_calls == 1
+
+
+def test_cv_ats_score_route_accepts_rich_extra_skill_objects(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["job_analysis"] = {"ats_keywords": ["python", "leadership"]}
+        manager.state["customizations"] = {"approved_skills": [{"name": "Python"}]}
+        manager.state["skill_decisions"] = {
+            "Python": "include",
+            "Architecture": "de-emphasize",
+            "Cobol": "exclude",
+        }
+        manager.state["extra_skills"] = [
+            {
+                "name": "Architecture",
+                "category": "Leadership",
+                "group": "strategy",
+                "parenthetical": "platform roadmaps",
+                "user_created": True,
+            },
+            {"name": "Cobol", "user_created": True},
+        ]
+
+        with patch(
+            "utils.scoring.compute_ats_score",
+            return_value={"score": 91},
+        ) as mock_score:
+            response = client.post(
+                "/api/cv/ats-score",
+                json={"session_id": session_id},
+            )
+
+        assert response.status_code == 200
+        customizations_arg = mock_score.call_args.args[1]
+        assert customizations_arg["approved_skills"] == [
+            {"name": "Python"},
+            "Architecture",
+        ]
+
+
+def test_review_skill_add_route_persists_session_only_skill(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+
+        response = client.post(
+            "/api/review-skill-add",
+            json={
+                "session_id": session_id,
+                "name": "Architecture",
+                "category": "Leadership",
+                "group": "strategy",
+                "proficiency": "expert",
+                "subskills": ["Roadmaps", "Stakeholder alignment", "Roadmaps"],
+                "parenthetical": "Platform strategy",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "ok": True,
+        "skill": {
+            "name": "Architecture",
+            "category": "Leadership",
+            "group": "strategy",
+            "proficiency": "expert",
+            "subskills": ["Roadmaps", "Stakeholder alignment"],
+            "parenthetical": "Platform strategy",
+            "user_created": True,
+        },
+    }
+    assert manager.state["extra_skills"] == [
+        {
+            "name": "Architecture",
+            "category": "Leadership",
+            "group": "strategy",
+            "proficiency": "expert",
+            "subskills": ["Roadmaps", "Stakeholder alignment"],
+            "parenthetical": "Platform strategy",
+            "user_created": True,
+        }
+    ]
+    assert manager.state["skill_decisions"]["Architecture"] == "include"
+
+
+def test_review_skill_add_route_rejects_duplicate_session_skill(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.state["extra_skills"] = [{"name": "Architecture", "user_created": True}]
+
+        response = client.post(
+            "/api/review-skill-add",
+            json={
+                "session_id": session_id,
+                "name": "Architecture",
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "skill already exists in this session"}
 
 
 def test_cv_ats_score_route_falls_back_to_achievement_edits_when_needed(

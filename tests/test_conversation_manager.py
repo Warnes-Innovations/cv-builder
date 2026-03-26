@@ -329,6 +329,34 @@ class TestCompleteSpellCheck(unittest.TestCase):
         self.assertEqual(self.cm.state['spell_audit'], [])
 
 
+class TestGenerateCVSummarySelection(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm = _make_manager(self.tmp)
+        self.cm.state['job_analysis'] = {'title': 'Staff Engineer'}
+        self.cm.state['customizations'] = {'recommended_experiences': []}
+        self.cm.state['session_summaries'] = {
+            'targeted': 'Targeted summary from session.',
+        }
+        self.cm.state['summary_focus_override'] = 'targeted'
+        self.cm.orchestrator.generate_cv.return_value = {
+            'output_dir': str(self.tmp),
+            'files': [],
+            'generation_progress': [],
+        }
+
+    def test_generate_cv_materializes_summary_without_table_decisions(self):
+        self.cm._execute_action({'action': 'generate_cv'})
+
+        _, customizations_arg = self.cm.orchestrator.generate_cv.call_args.args[:2]
+        self.assertEqual(customizations_arg['summary_focus'], 'targeted')
+        self.assertEqual(
+            customizations_arg['selected_summary'],
+            'Targeted summary from session.',
+        )
+
+
 # ---------------------------------------------------------------------------
 # 3.2 _execute_action submit_rewrites delegation
 # ---------------------------------------------------------------------------

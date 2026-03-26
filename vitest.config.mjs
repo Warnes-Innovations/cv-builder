@@ -5,6 +5,9 @@
 // For commercial licensing, contact greg@warnes-innovations.com
 
 import { defineConfig } from 'vitest/config'
+import { mkdirSync } from 'node:fs'
+
+mkdirSync(new URL('./coverage/.tmp/', import.meta.url), { recursive: true })
 
 export default defineConfig({
   test: {

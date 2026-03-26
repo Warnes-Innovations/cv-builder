@@ -239,7 +239,7 @@ describe('_claimCurrentSession', () => {
     vi.stubGlobal('updatePositionTitle', vi.fn())
     vi.stubGlobal('localStorage', makeStorageMock())
     stateManager.setCurrentTab('analysis')
-    stateManager.setCurrentStage('analysis')
+    stateManager.setPhase('job_analysis')
     globalThis.fetch = vi.fn()
   })
 
@@ -339,7 +339,7 @@ describe('showSessionsLandingPanel and ensureSessionContext', () => {
     vi.stubGlobal('StorageKeys', { SESSION_ID: 'session-id-key' })
     vi.stubGlobal('localStorage', storage)
     stateManager.setCurrentTab('analysis')
-    stateManager.setCurrentStage('analysis')
+    stateManager.setPhase('job_analysis')
   })
 
   afterEach(() => {
@@ -553,6 +553,12 @@ describe('restoreBackendState', () => {
           ok: true,
           phase: 'layout_review',
           preview_available: true,
+          preview_outputs: {
+            pdfs: {
+              chrome: { ok: true, pdf: '/tmp/chrome.pdf' },
+              weasyprint: { ok: true, pdf: '/tmp/weasyprint.pdf' },
+            },
+          },
           layout_confirmed: false,
           page_count_estimate: 2,
           page_length_warning: true,
@@ -574,8 +580,18 @@ describe('restoreBackendState', () => {
     expect(stateManager.getGenerationState()).toMatchObject({
       phase: 'layout_review',
       previewAvailable: true,
+      previewOutputs: {
+        pdfs: {
+          chrome: { ok: true, pdf: '/tmp/chrome.pdf' },
+          weasyprint: { ok: true, pdf: '/tmp/weasyprint.pdf' },
+        },
+      },
       layoutConfirmed: false,
       pageCountEstimate: 2,
+      pageCountExact: null,
+      pageCountConfidence: null,
+      pageCountSource: null,
+      pageNeedsExactRecheck: false,
       pageWarning: true,
       layoutInstructionsCount: 3,
     })
@@ -635,8 +651,13 @@ describe('restoreBackendState', () => {
     expect(stateManager.getGenerationState()).toMatchObject({
       phase: 'idle',
       previewAvailable: false,
+      previewOutputs: null,
       layoutConfirmed: false,
       pageCountEstimate: null,
+      pageCountExact: null,
+      pageCountConfidence: null,
+      pageCountSource: null,
+      pageNeedsExactRecheck: false,
       pageWarning: false,
       layoutInstructionsCount: 0,
       finalGeneratedAt: null,
