@@ -29,6 +29,20 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
+_SCHEMA_ORG_CONTEXTS = {'https://schema.org', 'http://schema.org'}
+
+
+def _is_exact_schema_org_context(value: Any) -> bool:
+    """Return true when a JSON-LD @context is exactly schema.org."""
+    if isinstance(value, str):
+        return value in _SCHEMA_ORG_CONTEXTS
+    if isinstance(value, list):
+        return any(
+            isinstance(item, str) and item in _SCHEMA_ORG_CONTEXTS
+            for item in value
+        )
+    return False
+
 # Import existing utilities
 from .scoring import (
     calculate_relevance_score,
@@ -39,6 +53,7 @@ from .config import get_config
 from .llm_client import LLMClient
 from .master_data_validator import validate_master_data_file
 from .session_data_view import SessionDataView
+from .template_renderer import safe_css_size, safe_url
 
 
 class CVOrchestrator:
@@ -114,7 +129,8 @@ class CVOrchestrator:
         self,
         selected_content: Dict,
         job_analysis: Dict,
-        template_variant: str = 'standard'
+        template_variant: str = 'standard',
+        base_font_size: str | None = None,
     ) -> Dict:
         """Prepare CV data in the format expected by the HTML resume template."""
 
@@ -129,6 +145,8 @@ class CVOrchestrator:
             address_display = f"{address.get('city', '')}, {address.get('state', '')}"
             address_display = address_display.strip(', ')
             contact['address_display'] = address_display
+        contact['linkedin_href'] = safe_url(contact.get('linkedin', ''))
+        contact['website_href'] = safe_url(contact.get('website', ''))
         
         # Ensure languages key exists (template expects it)
         if 'languages' not in personal_info:
@@ -183,7 +201,8 @@ class CVOrchestrator:
             'awards': awards,
             'certifications': certifications,
             'publications': publications,
-            'template_metadata': template_metadata
+            'template_metadata': template_metadata,
+            'base_font_size': safe_css_size(base_font_size, default='10px'),
         }
 
         return cv_data
@@ -530,11 +549,13 @@ class CVOrchestrator:
             use_semantic_match=use_semantic_match,
         )
         cv_data = self._prepare_cv_data_for_template(
-            selected_content, job_analysis, template_variant
+            selected_content,
+            job_analysis,
+            template_variant,
+            customizations.get('base_font_size'),
         )
         cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
-        cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
 
         template_dir = Path(__file__).parent.parent.parent / 'templates'
         template_file = template_dir / 'cv-template.html'
@@ -1097,7 +1118,12 @@ For manual generation:
         ]
 
         same_as = [
-            v for v in (contact.get('linkedin'), contact.get('website')) if v
+            value
+            for value in (
+                contact.get('linkedin_href') or safe_url(contact.get('linkedin')),
+                contact.get('website_href') or safe_url(contact.get('website')),
+            )
+            if value
         ]
 
         json_ld: Dict[str, Any] = {
@@ -1600,10 +1626,13 @@ For manual generation:
         # Prepare template data once — shared by all format generators.
         # JSON-LD is built here and embedded directly in cv-template.html,
         # so the single HTML output is both ATS-compatible and print-ready.
-        cv_data = self._prepare_cv_data_for_template(selected_content, job_analysis)
+        cv_data = self._prepare_cv_data_for_template(
+            selected_content,
+            job_analysis,
+            base_font_size=customizations.get('base_font_size'),
+        )
         cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
-        cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
 
         # Generate documents (Phase 10: Track progress)
         files_created = []
@@ -3320,8 +3349,10 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 try:
                     jld = _json.loads(jsonld_tags[0].string or '{}')
                     # 10
-                    if (jld.get('@type') == 'Person' and
-                            str(jld.get('@context', '')).startswith('https://schema.org')):
+                    if (
+                        jld.get('@type') == 'Person'
+                        and _is_exact_schema_org_context(jld.get('@context'))
+                    ):
                         _chk('html_jsonld_valid_person', 'JSON-LD is schema.org/Person',
                              'html', 'pass', '@type: Person with schema.org context')
                     else:

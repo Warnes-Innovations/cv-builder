@@ -403,6 +403,38 @@ class TestLoadAndRenderTemplate(unittest.TestCase):
         html = render_template(template, self._minimal_context())
         self.assertIn('"Person"', html)
 
+    def test_render_escapes_untrusted_html_in_summary(self):
+        template = load_template(str(self._TEMPLATE_PATH))
+        context = self._minimal_context()
+        context['professional_summary'] = '<strong>unsafe</strong>'
+        html = render_template(template, context)
+        self.assertIn('&lt;strong&gt;unsafe&lt;/strong&gt;', html)
+        self.assertNotIn('<p class="summary-text">\n                        <strong>unsafe</strong>', html)
+
+    def test_json_ld_escapes_script_breakout_sequences(self):
+        template = load_template(str(self._TEMPLATE_PATH))
+        context = self._minimal_context()
+        context['json_ld_str'] = '{"name": "Test </script><script>alert(1)</script> User"}'
+        html = render_template(template, context)
+        self.assertIn('\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u003c/script\\u003e', html)
+        self.assertNotIn('</script><script>alert(1)</script>', html)
+
+    def test_invalid_contact_url_is_not_rendered_as_href(self):
+        template = load_template(str(self._TEMPLATE_PATH))
+        context = self._minimal_context()
+        context['personal_info']['contact']['linkedin'] = 'javascript:alert(1)'
+        html = render_template(template, context)
+        self.assertNotIn('href="javascript:alert(1)"', html)
+        self.assertIn('<span>javascript:alert(1)</span>', html)
+
+    def test_invalid_base_font_size_falls_back_to_default(self):
+        template = load_template(str(self._TEMPLATE_PATH))
+        context = self._minimal_context()
+        context['base_font_size'] = '10px; color:red;'
+        html = render_template(template, context)
+        self.assertIn('font-size: 10px;', html)
+        self.assertNotIn('font-size: 10px; color:red;', html)
+
     def test_hidden_plaintext_section_present(self):
         template = load_template(str(self._TEMPLATE_PATH))
         html = render_template(template, self._minimal_context())

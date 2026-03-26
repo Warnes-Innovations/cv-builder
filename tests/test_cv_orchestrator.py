@@ -41,6 +41,9 @@ except ModuleNotFoundError:
         "utils.cv_orchestrator"
     ).CVOrchestrator
 
+_cv_orchestrator_module = importlib.import_module(CVOrchestrator.__module__)
+_is_exact_schema_org_context = _cv_orchestrator_module._is_exact_schema_org_context
+
 ORCHESTRATOR_MODULE = CVOrchestrator.__module__
 
 # ---------------------------------------------------------------------------
@@ -432,6 +435,40 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
         self.assertEqual(
             result["personal_info"]["contact"]["address_display"], "Boston, MA"
         )
+
+    def test_contact_href_fields_are_normalized_for_rendering_only(self):
+        sel = self._selected()
+        sel["personal_info"]["contact"]["linkedin"] = "javascript:alert(1)"
+        sel["personal_info"]["contact"]["website"] = "https://example.com"
+
+        result = self.orc._prepare_cv_data_for_template(sel, self._job())
+
+        self.assertEqual(
+            result["personal_info"]["contact"]["linkedin"],
+            "javascript:alert(1)",
+        )
+        self.assertEqual(
+            result["personal_info"]["contact"]["linkedin_href"],
+            "",
+        )
+        self.assertEqual(
+            result["personal_info"]["contact"]["website_href"],
+            "https://example.com",
+        )
+        self.assertEqual(
+            sel["personal_info"]["contact"]["linkedin"],
+            "javascript:alert(1)",
+        )
+        self.assertNotIn("linkedin_href", sel["personal_info"]["contact"])
+
+    def test_base_font_size_is_sanitized_in_prepared_cv_data(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            base_font_size="10px; color:red;",
+        )
+
+        self.assertEqual(result["base_font_size"], "10px")
 
     def test_selected_achievements_are_normalized_to_text_field(self):
         sel = self._selected(
@@ -848,6 +885,7 @@ class TestBuildJsonLd(unittest.TestCase):
         self.assertEqual(d["address"]["@type"], "PostalAddress")
         self.assertEqual(d["address"]["addressLocality"], "Boston, MA")
 
+
     def test_has_occupation_matches_experiences(self):
         d = self._parse()
         self.assertEqual(len(d["hasOccupation"]), 1)
@@ -916,6 +954,24 @@ class TestBuildJsonLd(unittest.TestCase):
             self.assertNotIn(
                 key, d, f"Key '{key}' should be absent when data is empty"
             )
+
+
+class TestSchemaOrgContextHelper(unittest.TestCase):
+
+    def test_accepts_exact_https_context(self):
+        self.assertTrue(_is_exact_schema_org_context("https://schema.org"))
+
+    def test_rejects_prefixed_context(self):
+        self.assertFalse(
+            _is_exact_schema_org_context("https://schema.org.evil.example")
+        )
+
+    def test_accepts_list_with_exact_context(self):
+        self.assertTrue(
+            _is_exact_schema_org_context(
+                ["https://example.com/context", "https://schema.org"]
+            )
+        )
 
 
 # ---------------------------------------------------------------------------

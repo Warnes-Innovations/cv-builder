@@ -16,7 +16,7 @@
     <meta name="description" content="{{ personal_info.name }} – {{ template_metadata.job_title }}">
     <!-- Schema.org/Person structured data for ATS parsers -->
     <script type="application/ld+json">
-{{ json_ld_str }}
+{{ json_ld_str | json_script }}
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&display=swap" rel="stylesheet">
@@ -35,7 +35,7 @@
         /* Base font size — controls all rem-relative sizing throughout the CV.
            Override via the Layout panel (base_font_size setting). */
         html {
-            font-size: {{ base_font_size | default('10px') }};
+            font-size: {{ base_font_size | safe_css_size }};
         }
 
         * {
@@ -532,11 +532,21 @@
                     </div>
                     <div class="contact-item">
                         <i class="fab fa-linkedin"></i>
-                        <a href="{{ personal_info.contact.linkedin }}">{{ personal_info.contact.linkedin | replace('https://','') }}</a>
+                        {% set linkedin_href = personal_info.contact.linkedin_href | default('') | safe_url %}
+                        {% if linkedin_href %}
+                        <a href="{{ linkedin_href }}">{{ personal_info.contact.linkedin | replace('https://','') }}</a>
+                        {% else %}
+                        <span>{{ personal_info.contact.linkedin | replace('https://','') }}</span>
+                        {% endif %}
                     </div>
                     <div class="contact-item">
                         <i class="fas fa-globe"></i>
-                        <a href="{{ personal_info.contact.website }}">{{ personal_info.contact.website | replace('https://','') }}</a>
+                        {% set website_href = personal_info.contact.website_href | default('') | safe_url %}
+                        {% if website_href %}
+                        <a href="{{ website_href }}">{{ personal_info.contact.website | replace('https://','') }}</a>
+                        {% else %}
+                        <span>{{ personal_info.contact.website | replace('https://','') }}</span>
+                        {% endif %}
                     </div>
                 </div>
 
