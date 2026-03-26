@@ -69,10 +69,6 @@ def _sample_html() -> str:
         <div class="pub-item">Publication citation.</div>
       </main>
     </div>
-    <div id="page-three" class="page">
-      <aside class="left-col"></aside>
-      <main class="right-col"></main>
-    </div>
     '''
 
 
@@ -95,12 +91,11 @@ def test_build_run_plan_is_deterministic():
     )
 
 
-def test_mutate_preview_html_preserves_page_markers():
+def test_mutate_preview_html_preserves_primary_page_markers():
     mutated = train_layout_estimator._mutate_preview_html(_sample_html(), 42)
 
     assert 'id="page-one"' in mutated
     assert 'id="page-two"' in mutated
-    assert 'id="page-three"' in mutated
     assert mutated != _sample_html()
 
 

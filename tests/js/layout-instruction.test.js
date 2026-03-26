@@ -21,10 +21,19 @@ import {
   generateFinalOutputs,
   loadLayoutInstructionHistory,
 } from '../../web/layout-instruction.js'
+import { scheduleAtsRefresh } from '../../web/ats-refinement.js'
 import { apiCall } from '../../web/api-client.js'
+import { appendMessage } from '../../web/message-queue.js'
+import { switchTab } from '../../web/review-table-base.js'
 import { stateManager } from '../../web/state-manager.js'
 
 vi.mock('../../web/api-client.js', () => ({ apiCall: vi.fn() }))
+vi.mock('../../web/ats-refinement.js', () => ({ scheduleAtsRefresh: vi.fn() }))
+vi.mock('../../web/message-queue.js', () => ({
+  appendMessageHtml: vi.fn(),
+  appendMessage: vi.fn(),
+}))
+vi.mock('../../web/review-table-base.js', () => ({ switchTab: vi.fn() }))
 vi.mock('../../web/state-manager.js', () => ({
   GENERATION_STATE_EVENT: 'generation-state-change',
   stateManager: {
@@ -59,11 +68,9 @@ beforeEach(() => {
   buildDom()
   window.layoutInstructions = []
   vi.useFakeTimers()
-  vi.stubGlobal('htmlEscape', s => s)
-  vi.stubGlobal('appendMessage', vi.fn())
-  vi.stubGlobal('switchTab', vi.fn())
-  vi.stubGlobal('scheduleAtsRefresh', vi.fn())
   apiCall.mockReset()
+  appendMessage.mockReset()
+  scheduleAtsRefresh.mockReset()
   stateManager.getGenerationState.mockReset()
   stateManager.getGenerationState.mockReturnValue({})
   stateManager.getLayoutFreshness.mockReset()
@@ -76,6 +83,7 @@ beforeEach(() => {
   stateManager.getTabData.mockReset()
   stateManager.getTabData.mockReturnValue({})
   stateManager.setTabData.mockReset()
+  switchTab.mockReset()
 })
 
 afterEach(() => {
@@ -131,12 +139,12 @@ describe('staged layout regressions', () => {
 
     expect(apiCall).toHaveBeenCalledWith('POST', '/api/cv/generate-final', {})
     expect(apiCall).not.toHaveBeenCalledWith('POST', '/api/layout-complete', expect.anything())
-    expect(globalThis.appendMessage).toHaveBeenCalledWith(
+    expect(appendMessage).toHaveBeenCalledWith(
       'system',
       expect.stringContaining('Final generation failed')
     )
     expect(stateManager.setPhase).not.toHaveBeenCalled()
-    expect(globalThis.switchTab).not.toHaveBeenCalled()
+    expect(switchTab).not.toHaveBeenCalled()
   })
 })
 
@@ -202,14 +210,21 @@ describe('renderInstructionHistory', () => {
     expect(document.getElementById('instruction-count').textContent).toBe('2')
   })
 
-  it('uses htmlEscape on instruction text', () => {
-    const escapeSpy = vi.fn(s => s)
-    vi.stubGlobal('htmlEscape', escapeSpy)
+  it('escapes instruction text and summary before rendering HTML', () => {
     window.layoutInstructions = [
-      { timestamp: '', instruction_text: 'Test <b>bold</b>', change_summary: '' },
+      {
+        timestamp: '',
+        instruction_text: 'Test <b>bold</b>',
+        change_summary: 'Summary <i>tag</i>',
+      },
     ]
     renderInstructionHistory()
-    expect(escapeSpy).toHaveBeenCalledWith('Test <b>bold</b>')
+
+    const history = document.getElementById('instruction-history')
+    expect(history.innerHTML).toContain('&lt;b&gt;bold&lt;/b&gt;')
+    expect(history.innerHTML).toContain('&lt;i&gt;tag&lt;/i&gt;')
+    expect(history.querySelector('.instruction-text b')).toBeNull()
+    expect(history.querySelector('.instruction-summary i')).toBeNull()
   })
 
   it('does not throw when elements are absent', () => {
@@ -303,7 +318,7 @@ describe('undoInstruction', () => {
 
   it('calls appendMessage with a system message', () => {
     undoInstruction(0)
-    expect(globalThis.appendMessage).toHaveBeenCalledWith('system', expect.stringContaining('Undo'))
+    expect(appendMessage).toHaveBeenCalledWith('system', expect.stringContaining('Undo'))
   })
 
   it('does nothing for an out-of-range index', () => {

@@ -21,7 +21,7 @@ from bs4 import BeautifulSoup
 
 
 TEMPLATE_PATH = 'templates/cv-template.html'
-TEMPLATE_VERSION = 'cv-template.two-column.2026-03-24'
+TEMPLATE_VERSION = 'cv-template.two-column.2026-03-26'
 UPDATE_NOTE = (
     'Update layout_digest.py and ARCHITECTURE.md whenever '
     'templates/cv-template.html changes.'
@@ -69,9 +69,7 @@ def build_layout_digest(preview_html: str) -> Dict[str, Any]:
     achievement_nodes = soup.select('#page-one .achievement-list li')
     job_entries = soup.select('#page-two .job-entry')
     publication_nodes = soup.select('#page-two .pub-item')
-    skill_groups = soup.select(
-        '#page-two .skill-group, #page-three .skill-group'
-    )
+    skill_groups = soup.select('#page-two .skill-group')
 
     crowded_skill_groups = 0
     skill_category_count = 0

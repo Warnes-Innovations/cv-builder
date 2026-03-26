@@ -26,22 +26,25 @@ from datetime import datetime, date as _date
 import subprocess
 import weasyprint
 from collections import defaultdict
+from bs4 import BeautifulSoup, Comment
 
 logger = logging.getLogger(__name__)
 
+_LAYOUT_URL_ATTRS = ('href', 'src', 'srcset', 'poster', 'xlink:href')
+_LAYOUT_PRESERVED_HEAD_TAGS = {'link', 'script', 'meta', 'base'}
 _SCHEMA_ORG_CONTEXTS = {'https://schema.org', 'http://schema.org'}
-
-
-def _is_exact_schema_org_context(value: Any) -> bool:
-    """Return true when a JSON-LD @context is exactly schema.org."""
-    if isinstance(value, str):
-        return value in _SCHEMA_ORG_CONTEXTS
-    if isinstance(value, list):
-        return any(
-            isinstance(item, str) and item in _SCHEMA_ORG_CONTEXTS
-            for item in value
-        )
-    return False
+_LAYOUT_AGENT_INSTRUCTION_PATTERNS = (
+    'system prompt',
+    'developer prompt',
+    'developer instruction',
+    'assistant instruction',
+    'agent instruction',
+    'llm instruction',
+    'copilot instruction',
+    'you are chatgpt',
+    'you are github copilot',
+    'ignore previous instructions',
+)
 
 # Import existing utilities
 from .scoring import (
@@ -54,6 +57,41 @@ from .llm_client import LLMClient
 from .master_data_validator import validate_master_data_file
 from .session_data_view import SessionDataView
 from .template_renderer import safe_css_size, safe_url
+
+
+def _append_layout_finding(
+    findings: List[Dict[str, Any]],
+    issue: str,
+    detail: str,
+    fragment: Optional[str] = None,
+) -> None:
+    """Append a normalized layout safety finding."""
+    entry: Dict[str, Any] = {'issue': issue, 'detail': detail}
+    if fragment:
+        entry['fragment'] = fragment[:500]
+    findings.append(entry)
+
+
+def _summarize_layout_findings(
+    *finding_groups: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Flatten finding groups while preserving order."""
+    merged: List[Dict[str, Any]] = []
+    for group in finding_groups:
+        merged.extend(group or [])
+    return merged
+
+
+def _is_exact_schema_org_context(value: Any) -> bool:
+    """Return true when a JSON-LD @context is exactly schema.org."""
+    if isinstance(value, str):
+        return value in _SCHEMA_ORG_CONTEXTS
+    if isinstance(value, list):
+        return any(
+            isinstance(item, str) and item in _SCHEMA_ORG_CONTEXTS
+            for item in value
+        )
+    return False
 
 
 class CVOrchestrator:
@@ -558,12 +596,15 @@ class CVOrchestrator:
             template_variant,
             customizations.get('base_font_size'),
         )
-        cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
         # duckflow: flow=cv-render status=live
         #   state_read: customizations["skills_section_title"]
         #   artifact: template_metadata["skills_section_title"] → cv-template.html (preview)
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
+        cv_data['page_margin']    = customizations.get(
+            'page_margin',
+            get_config().get('generation.page_margin', '0.5in'),
+        )
 
         template_dir = Path(__file__).parent.parent.parent / 'templates'
         template_file = template_dir / 'cv-template.html'
@@ -907,6 +948,7 @@ class CVOrchestrator:
                             '--no-sandbox',
                             f'--print-to-pdf={pdf_output}',
                             '--print-to-pdf-no-header',
+                            '--no-pdf-header-footer',
                             html_url,
                         ],
                         check=True,
@@ -1645,6 +1687,10 @@ For manual generation:
         #   state_read: customizations["skills_section_title"]
         #   artifact: template_metadata["skills_section_title"] → cv-template.html (final)
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
+        cv_data['page_margin']    = customizations.get(
+            'page_margin',
+            get_config().get('generation.page_margin', '0.5in'),
+        )
 
         # Generate documents (Phase 10: Track progress)
         files_created = []
@@ -1795,6 +1841,183 @@ For manual generation:
 
         return '\n'.join(outline) if outline else "[No structured sections found]"
 
+    def _sanitize_layout_instruction_text(self, instruction_text: str) -> Dict[str, Any]:
+        """Strip prompt-injection phrases from layout instructions."""
+        raw_text = str(instruction_text or '')
+        sanitized_text = raw_text
+        findings: List[Dict[str, Any]] = []
+
+        for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS:
+            regex = re.compile(
+                rf'(?i)(?:^|\b){re.escape(pattern)}(?:\b|$)(?:\s*(?:and|then)\s*)?',
+            )
+            updated_text, count = regex.subn(' ', sanitized_text)
+            if count:
+                sanitized_text = updated_text
+                _append_layout_finding(
+                    findings,
+                    'unsafe_instruction_text',
+                    f'Removed prompt-like directive: {pattern}',
+                    pattern,
+                )
+
+        sanitized_text = re.sub(r'\s+', ' ', sanitized_text).strip(' ,;:-')
+        return {
+            'flagged': bool(findings),
+            'findings': findings,
+            'raw_text': raw_text,
+            'sanitized_text': sanitized_text,
+        }
+
+    def _sanitize_layout_context_html(self, html: str) -> Dict[str, Any]:
+        """Remove prompt-payload material from HTML before sending it to the LLM."""
+        raw_html = str(html or '')
+        soup = BeautifulSoup(raw_html, 'html.parser')
+        findings: List[Dict[str, Any]] = []
+
+        for comment in soup.find_all(string=lambda value: isinstance(value, Comment)):
+            text = str(comment)
+            if any(pattern in text.lower() for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+                _append_layout_finding(
+                    findings,
+                    'unsafe_context_comment',
+                    'Removed prompt-like comment from layout context HTML.',
+                    text,
+                )
+                comment.extract()
+
+        for element in list(soup.find_all(True)):
+            text = element.get_text(' ', strip=True)
+            lowered = text.lower()
+            is_hidden = (
+                element.has_attr('hidden')
+                or element.get('aria-hidden') == 'true'
+                or 'display:none' in element.get('style', '').replace(' ', '').lower()
+            )
+            if is_hidden and text and any(pattern in lowered for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+                _append_layout_finding(
+                    findings,
+                    'unsafe_context_element',
+                    'Removed prompt-like element from layout context HTML.',
+                    text,
+                )
+                element.decompose()
+
+        return {
+            'flagged': bool(findings),
+            'findings': findings,
+            'raw_html': raw_html,
+            'sanitized_html': str(soup),
+        }
+
+    def _sanitize_layout_instruction_html(
+        self,
+        current_html: str,
+        modified_html: str,
+    ) -> Dict[str, Any]:
+        """Sanitize rewritten layout HTML and preserve safe baseline resources."""
+        baseline = BeautifulSoup(str(current_html or ''), 'html.parser')
+        soup = BeautifulSoup(str(modified_html or ''), 'html.parser')
+        findings: List[Dict[str, Any]] = []
+
+        baseline_head_tags = []
+        if baseline.head:
+            for node in baseline.head.find_all(True, recursive=False):
+                if node.name not in _LAYOUT_PRESERVED_HEAD_TAGS:
+                    continue
+                if node.name == 'script' and node.get('type') == 'application/ld+json':
+                    script_text = node.string or node.get_text('', strip=True)
+                    try:
+                        parsed = json.loads(script_text) if script_text else {}
+                    except json.JSONDecodeError:
+                        parsed = {}
+                    if not _is_exact_schema_org_context(parsed.get('@context')):
+                        continue
+                baseline_head_tags.append(copy.deepcopy(node))
+
+        if soup.head:
+            for node in list(soup.head.find_all(True, recursive=False)):
+                if node.name in _LAYOUT_PRESERVED_HEAD_TAGS:
+                    _append_layout_finding(
+                        findings,
+                        'rewritten_head_replaced',
+                        'Replaced rewritten head resources with baseline-safe versions.',
+                        str(node)[:500],
+                    )
+                    node.decompose()
+            for node in baseline_head_tags:
+                soup.head.append(node)
+
+        baseline_anchor_map: Dict[str, str] = {}
+        for anchor in baseline.find_all('a', href=True):
+            label = anchor.get_text(' ', strip=True)
+            href = anchor.get('href', '').strip()
+            if label and href:
+                baseline_anchor_map[label] = href
+
+        for anchor in soup.find_all('a'):
+            label = anchor.get_text(' ', strip=True)
+            baseline_href = baseline_anchor_map.get(label)
+            if baseline_href and anchor.get('href') != baseline_href:
+                _append_layout_finding(
+                    findings,
+                    'rewritten_url_reset',
+                    'Restored baseline URL for matching anchor text.',
+                    label,
+                )
+                anchor['href'] = baseline_href
+
+        for node in list(soup.find_all('script')):
+            if node.get('type') == 'application/ld+json':
+                script_text = node.string or node.get_text('', strip=True)
+                try:
+                    parsed = json.loads(script_text) if script_text else {}
+                except json.JSONDecodeError:
+                    parsed = {}
+                if _is_exact_schema_org_context(parsed.get('@context')):
+                    continue
+            _append_layout_finding(
+                findings,
+                'unsafe_rewritten_script',
+                'Removed non-schema script from rewritten layout HTML.',
+                str(node)[:500],
+            )
+            node.decompose()
+
+        for comment in soup.find_all(string=lambda value: isinstance(value, Comment)):
+            text = str(comment)
+            if any(pattern in text.lower() for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+                _append_layout_finding(
+                    findings,
+                    'unsafe_rewritten_comment',
+                    'Removed prompt-like comment from rewritten layout HTML.',
+                    text,
+                )
+                comment.extract()
+
+        for element in list(soup.find_all(True)):
+            text = element.get_text(' ', strip=True)
+            lowered = text.lower()
+            is_hidden = (
+                element.has_attr('hidden')
+                or element.get('aria-hidden') == 'true'
+                or 'display:none' in element.get('style', '').replace(' ', '').lower()
+            )
+            if is_hidden and text and any(pattern in lowered for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+                _append_layout_finding(
+                    findings,
+                    'unsafe_rewritten_element',
+                    'Removed prompt-like element from rewritten layout HTML.',
+                    text,
+                )
+                element.decompose()
+
+        return {
+            'flagged': bool(findings),
+            'findings': findings,
+            'html': str(soup),
+        }
+
     def apply_layout_instruction(
         self,
         instruction_text: str,
@@ -1823,7 +2046,32 @@ For manual generation:
             }
         """
         # Build LLM prompt
-        cv_outline = self._serialize_html_for_context(current_html)
+        instruction_safety = self._sanitize_layout_instruction_text(
+            instruction_text
+        )
+        context_safety = self._sanitize_layout_context_html(current_html)
+
+        sanitized_instruction_text = instruction_safety['sanitized_text']
+        if not sanitized_instruction_text:
+            return {
+                'error': 'unsafe_instruction',
+                'details': (
+                    'The layout instruction only contained unsafe prompt-like '
+                    'directives after sanitization.'
+                ),
+                'safety': {
+                    'flagged': True,
+                    'findings': _summarize_layout_findings(
+                        instruction_safety['findings'],
+                        context_safety['findings'],
+                    ),
+                    'instruction_text': instruction_safety,
+                    'current_html': context_safety,
+                },
+            }
+
+        sanitized_current_html = context_safety['sanitized_html']
+        cv_outline = self._serialize_html_for_context(sanitized_current_html)
         prior_context = ""
         if prior_instructions:
             prior_list = [f"- {inst.get('instruction_text', '')}" for inst in prior_instructions]
@@ -1835,11 +2083,11 @@ CURRENT CV STRUCTURE (outline):
 {cv_outline}
 
 CURRENT HTML (modify this):
-{current_html}
+{sanitized_current_html}
 {prior_context}
 
 USER INSTRUCTION:
-"{instruction_text}"
+"{sanitized_instruction_text}"
 
 YOUR TASK:
 1. Interpret the user's intent
@@ -1912,11 +2160,34 @@ If you need clarification, return:
                     'details': 'HTML response was empty'
                 }
 
+            safety_result = self._sanitize_layout_instruction_html(
+                current_html=sanitized_current_html,
+                modified_html=modified_html,
+            )
+
+            all_findings = _summarize_layout_findings(
+                instruction_safety['findings'],
+                context_safety['findings'],
+                safety_result['findings'],
+            )
+
             return {
-                'html': modified_html,
+                'html': safety_result['html'],
                 'summary': result.get('change_summary', 'Layout updated'),
                 'confidence': confidence,
-                'requires_clarification': False
+                'requires_clarification': False,
+                'safety': {
+                    'flagged': bool(all_findings),
+                    'findings': all_findings,
+                    'instruction_text': instruction_safety,
+                    'current_html': context_safety,
+                    'rewritten_html': {
+                        'flagged': safety_result['flagged'],
+                        'findings': safety_result['findings'],
+                        'raw_html': modified_html,
+                        'sanitized_html': safety_result['html'],
+                    },
+                },
             }
 
         except json.JSONDecodeError as e:

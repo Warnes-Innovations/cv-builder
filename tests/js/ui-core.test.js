@@ -62,17 +62,21 @@ describe('setupEventListeners', () => {
 })
 
 describe('loadTabContent', () => {
-  it('renders load errors as text instead of HTML', async () => {
+  it('renders thrown error text without interpreting it as HTML', async () => {
     document.body.innerHTML = '<div id="document-content"></div>'
-    vi.stubGlobal('populateJobTab', vi.fn(() => {
-      throw new Error('<img src=x onerror=alert(1)>')
-    }))
+    vi.stubGlobal(
+      'populateJobTab',
+      vi.fn(async () => {
+        throw new Error('<img src=x onerror=alert(1)>')
+      }),
+    )
 
     await mod.loadTabContent('job')
 
     const content = document.getElementById('document-content')
-    expect(content.querySelector('img')).toBeNull()
+    expect(content.innerHTML).not.toContain('<img src=x onerror=alert(1)>')
     expect(content.textContent).toContain('Error loading content: <img src=x onerror=alert(1)>')
+    expect(content.querySelector('img')).toBeNull()
   })
 })
 
@@ -218,7 +222,6 @@ describe('openModelModal', () => {
     expect(input.getAttribute('placeholder')).toBe('bad" onfocus="alert(1)')
     expect(input.getAttribute('onfocus')).toBeNull()
   })
-
   it('escapes model notes before rendering table cells', async () => {
     buildModelFixture()
 

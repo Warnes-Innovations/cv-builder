@@ -2990,12 +2990,18 @@ def test_layout_settings_route_normalizes_font_size_and_history(build_app):
 
         updated = client.post(
             "/api/layout-settings",
-            json={"session_id": session_id, "base_font_size": "10"},
+            json={
+                "session_id": session_id,
+                "base_font_size": "10",
+                "page_margin": "0.5",
+            },
         )
         assert updated.status_code == 200
         assert updated.get_json() == {"ok": True}
         assert manager.state["base_font_size"] == "10px"
+        assert manager.state["page_margin"] == "0.5in"
         assert manager.state["customizations"]["base_font_size"] == "10px"
+        assert manager.state["customizations"]["page_margin"] == "0.5in"
         assert manager.save_calls == 1
 
         history = client.get(
@@ -3023,12 +3029,15 @@ def test_layout_settings_route_normalizes_font_size_and_history(build_app):
                 "session_id": session_id,
                 "owner_token": "owner-a",
                 "base_font_size": "11px",
+                "page_margin": "0.75in",
             },
         )
         assert owned_update.status_code == 200
         assert owned_update.get_json() == {"ok": True}
         assert manager.state["base_font_size"] == "11px"
+        assert manager.state["page_margin"] == "0.75in"
         assert manager.state["customizations"]["base_font_size"] == "11px"
+        assert manager.state["customizations"]["page_margin"] == "0.75in"
         assert manager.save_calls == 2
 
 
