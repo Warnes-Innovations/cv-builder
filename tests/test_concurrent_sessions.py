@@ -295,6 +295,26 @@ class FakeConversationManager:
             "date_applied": "2026-03-19",
         }
 
+    def apply_confirmed_intake(
+        self,
+        role: str | None,
+        company: str | None,
+        date_applied: str | None,
+    ) -> None:
+        self.state["intake"] = {
+            "role": role,
+            "company": company,
+            "date_applied": date_applied,
+            "confirmed": True,
+        }
+        if role and company:
+            self.state["position_name"] = f"{role} at {company}"
+        elif role:
+            self.state["position_name"] = role
+        elif company:
+            self.state["position_name"] = company
+        self._save_session()
+
     def _process_message(self, message: str) -> dict[str, Any]:
         self.processed_messages.append(message)
         self.conversation_history.append({"role": "user", "content": message})
