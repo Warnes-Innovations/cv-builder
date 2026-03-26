@@ -101,6 +101,25 @@ describe('initializeState', () => {
     expect(localStorage.getItem(StorageKeys.SESSION_ID)).toBe('session-fixed-uuid-1234')
   })
 
+  it('falls back to timestamp plus random suffix when Web Crypto is unavailable', () => {
+    const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(1234567890)
+    const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.123456789)
+
+    localStorage.clear()
+    vi.stubGlobal('crypto', undefined)
+
+    try {
+      initializeState()
+
+      expect(localStorage.getItem(StorageKeys.SESSION_ID)).toMatch(/^session-[a-z0-9]+-[a-z0-9]+$/)
+      expect(mathRandomSpy).toHaveBeenCalled()
+    } finally {
+      dateNowSpy.mockRestore()
+      mathRandomSpy.mockRestore()
+      vi.stubGlobal('crypto', cryptoMock)
+    }
+  })
+
   it('reuses an existing session ID from localStorage', () => {
     localStorage.setItem(StorageKeys.SESSION_ID, 'my-existing-session')
     initializeState()
