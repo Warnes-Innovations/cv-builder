@@ -2975,7 +2975,7 @@ def test_layout_instruction_route_handles_validation_and_clarification(
         }
 
 
-def test_layout_settings_route_normalizes_font_size_and_history(build_app):
+def test_layout_settings_route_normalizes_layout_settings_and_history(build_app):
     app, tracker = build_app()
 
     with app.test_client() as client:

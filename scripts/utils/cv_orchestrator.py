@@ -681,6 +681,10 @@ class CVOrchestrator:
         #   state_read: customizations["skills_section_title"]
         #   artifact: template_metadata["skills_section_title"] → cv-template.html (preview)
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
+        cv_data['base_font_size'] = customizations.get(
+            'base_font_size',
+                get_config().get('generation.base_font_size', cv_data.get('base_font_size', '13px')),
+        )
         cv_data['page_margin']    = customizations.get(
             'page_margin',
             get_config().get('generation.page_margin', '0.5in'),
@@ -1768,6 +1772,10 @@ For manual generation:
         #   state_read: customizations["skills_section_title"]
         #   artifact: template_metadata["skills_section_title"] → cv-template.html (final)
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
+        cv_data['base_font_size'] = customizations.get(
+            'base_font_size',
+            get_config().get('generation.base_font_size', cv_data.get('base_font_size', '13px')),
+        )
         cv_data['page_margin']    = customizations.get(
             'page_margin',
             get_config().get('generation.page_margin', '0.5in'),

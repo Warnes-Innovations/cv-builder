@@ -217,8 +217,8 @@ async function initiateLayoutInstructions() {
               style="width:72px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
               title="Controls the print page margins for all PDF pages."
             />
-            <button id="apply-font-size-btn" class="btn btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
-            <span id="font-size-status" style="font-size:0.8em; color:#64748b;"></span>
+            <button id="apply-layout-settings-btn" class="btn btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
+            <span id="layout-settings-status" style="font-size:0.8em; color:#64748b;"></span>
           </div>
 
           <textarea
@@ -302,12 +302,12 @@ function setupLayoutInstructionListeners() {
   const dismissCalloutBtn = document.getElementById('dismiss-layout-stale-btn');
   const instructionInput  = document.getElementById('instruction-input');
   const historyToggle     = document.querySelector('.history-toggle');
-  const applyFontSizeBtn  = document.getElementById('apply-font-size-btn');
+  const applySettingsBtn  = document.getElementById('apply-layout-settings-btn');
   const fontSizeInput     = document.getElementById('base-font-size-input');
   const pageMarginInput   = document.getElementById('page-margin-input');
 
-  if (applyFontSizeBtn && fontSizeInput && pageMarginInput) {
-    applyFontSizeBtn.addEventListener('click', () => applyLayoutSettings(fontSizeInput.value, pageMarginInput.value));
+  if (applySettingsBtn && fontSizeInput && pageMarginInput) {
+    applySettingsBtn.addEventListener('click', () => applyLayoutSettings(fontSizeInput.value, pageMarginInput.value));
     fontSizeInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') applyLayoutSettings(fontSizeInput.value, pageMarginInput.value);
     });
@@ -371,7 +371,7 @@ function setupLayoutInstructionListeners() {
  * Save layout display settings to session state, then re-render the preview.
  */
 async function applyLayoutSettings(fontSizeValue, pageMarginValue) {
-  const statusEl = document.getElementById('font-size-status');
+  const statusEl = document.getElementById('layout-settings-status');
   const parsedFontSize = parseFloat(fontSizeValue);
   const parsedPageMargin = parseFloat(pageMarginValue);
   if (isNaN(parsedFontSize) || parsedFontSize < 6 || parsedFontSize > 16) {

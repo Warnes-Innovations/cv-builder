@@ -121,7 +121,6 @@
             padding: 40px 30px;
         }
 
-
         /* --- Components & Styles --- */
 
         .contact-info {
@@ -411,7 +410,6 @@
 
             /* Hide screen-only page-break markers in print */
             .page-break-marker { display: none; }
-
             #page-one .left-col,
             #page-two .left-col {
                 width: 32%;
@@ -504,11 +502,9 @@
     </style>
 </head>
 <body>
-    
     <div class="page-container">
         <!-- PAGE ONE: Sidebar + Header, Summary, Achievements -->
         <div id="page-one" class="page">
-            <!-- Left Column (Sidebar: Contact, Education, Awards, Languages) -->
             <aside class="left-col">
                 <div class="contact-info">
                     <div class="sidebar-title">Contact</div>
@@ -594,7 +590,6 @@
                 {% endif %}
             </aside>
 
-            <!-- Right Column (Main Content: Header, Summary, Achievements) -->
             <main class="right-col">
                 <header class="header">
                     <h1 class="name">{{ personal_info.name }}</h1>
@@ -623,7 +618,6 @@
 
         <!-- PAGE TWO: Skills + Experience (Continuation) -->
         <div id="page-two" class="page">
-            <!-- Left Column (Skills) -->
             <aside class="left-col">
                 {% if skills_by_category %}
                 <section class="section">
@@ -644,7 +638,6 @@
                 {% endif %}
             </aside>
 
-            <!-- Right Column (Experience - all entries; CSS pagination flows remainder to next print page) -->
             <main class="right-col">
                 {% if experiences %}
                 <section class="section">
@@ -668,7 +661,6 @@
                     {% endfor %}
                 </section>
                 {% endif %}
-
                 {% if publications %}
                 <section class="section pub-section">
                     <h2 class="section-title"><i class="fas fa-file-alt"></i>

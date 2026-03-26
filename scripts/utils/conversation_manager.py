@@ -733,6 +733,10 @@ Ask questions that are specific to this job posting, not generic career question
                 if summary_override:
                     customizations['summary_focus'] = summary_override
 
+                page_margin = self.state.get('page_margin')
+                if page_margin:
+                    customizations['page_margin'] = page_margin
+
                 self.state['customizations'] = customizations
 
             # Inject LLM-generated session summaries so the orchestrator can resolve them

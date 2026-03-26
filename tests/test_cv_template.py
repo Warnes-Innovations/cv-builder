@@ -184,6 +184,7 @@ class TestOptionalSidebarFields(unittest.TestCase):
     def test_print_layout_uses_two_page_wrappers(self):
         html = _render(skills_by_category=[])
         self.assertNotIn('id="page-three"', html)
+        self.assertNotIn('id="cv-layout"', html)
         self.assertIn('id="page-one"', html)
         self.assertIn('id="page-two"', html)
 
@@ -213,6 +214,11 @@ class TestOptionalSidebarFields(unittest.TestCase):
         html = _render()
         self.assertNotIn('@page :first', html)
 
+    def test_column_spacing_tunings_are_rendered(self):
+        html = _render()
+        self.assertIn('#page-one .right-col {', html)
+        self.assertIn('padding: 40px 30px;', html)
+        self.assertIn('#page-two .left-col {', html)
 
 class TestExperiencePageFlow(unittest.TestCase):
     """Experience and skills should render in the continuation page."""
@@ -291,7 +297,7 @@ class TestExperiencePageFlow(unittest.TestCase):
         html = _render(experiences=exps)
         page_two = _page_slice(html, 'page-two')
         for exp in exps:
-            self.assertIn(exp['title'], page_two)
+                self.assertIn(exp['title'], page_two)
 
     def test_exactly_four_experiences_render(self):
         """Exactly 4 experiences should all render in the continuation page."""
@@ -299,7 +305,7 @@ class TestExperiencePageFlow(unittest.TestCase):
         html = _render(experiences=exps)
         page_two = _page_slice(html, 'page-two')
         for exp in exps:
-            self.assertIn(exp['title'], page_two)
+                self.assertIn(exp['title'], page_two)
 
 
 if __name__ == '__main__':
