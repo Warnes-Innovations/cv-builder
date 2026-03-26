@@ -14,7 +14,11 @@ import { getLogger } from './logger.js';
 const log = getLogger('layout-instruction');
 
 import { apiCall } from './api-client.js';
+import { scheduleAtsRefresh } from './ats-refinement.js';
+import { appendMessage, appendMessageHtml } from './message-queue.js';
+import { switchTab } from './review-table-base.js';
 import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
+import { escapeHtml } from './utils.js';
 
 let dismissedStaleCalloutRevision = null;
 
@@ -79,11 +83,26 @@ function renderPreviewOutputStatus(previewOutputs = null) {
           <div class="preview-output-title-row">
             ${badgeMarkup}
           </div>
-          <div class="preview-output-detail">${htmlEscape(detail)}</div>
+          <div class="preview-output-detail">${escapeHtml(detail)}</div>
         </div>
       </div>
     `;
   }).join('');
+}
+
+function appendLayoutSafetyAlert(safetyAlert) {
+  if (!safetyAlert?.flagged) {
+    return;
+  }
+
+  const issues = (safetyAlert.issues || [])
+    .map(issue => `<li>${escapeHtml(issue)}</li>`)
+    .join('');
+
+  appendMessageHtml(
+    'system',
+    `<strong>⚠️ Layout safety sanitization applied.</strong><br>${escapeHtml(safetyAlert.message || 'Potential prompt payloads or unsafe HTML were removed before applying the change.')}<br><ul style="margin:6px 0 0 18px">${issues}</ul>`,
+  );
 }
 
 function normalizeLayoutInstruction(instruction = {}) {
@@ -154,7 +173,7 @@ async function initiateLayoutInstructions() {
         <div class="layout-preview-pane">
           <h3>Current Layout Preview</h3>
           <div class="preview-iframe-container">
-            <iframe id="layout-preview" class="layout-preview-iframe" title="CV Layout Preview"></iframe>
+            <iframe id="layout-preview" class="layout-preview-iframe" title="CV Layout Preview" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>
           </div>
         </div>
 
@@ -185,9 +204,18 @@ async function initiateLayoutInstructions() {
               id="base-font-size-input"
               type="number"
               min="6" max="16" step="0.5"
-              value="10"
+              value="13"
               style="width:60px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
               title="Controls the root font size for the CV. All rem-based sizes scale with this value."
+            />
+            <label for="page-margin-input" style="font-size:0.85em; font-weight:600; color:#475569; white-space:nowrap; margin-left:8px;">Page margin (in):</label>
+            <input
+              id="page-margin-input"
+              type="number"
+              min="0.5" max="1.5" step="0.05"
+              value="0.5"
+              style="width:72px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
+              title="Controls the print page margins for all PDF pages."
             />
             <button id="apply-font-size-btn" class="btn btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
             <span id="font-size-status" style="font-size:0.8em; color:#64748b;"></span>
@@ -237,7 +265,12 @@ async function initiateLayoutInstructions() {
   const savedFontSize = stateManager?.getSessionState?.()?.base_font_size;
   if (savedFontSize) {
     const input = document.getElementById('base-font-size-input');
-    if (input) input.value = parseFloat(savedFontSize) || 10;
+    if (input) input.value = parseFloat(savedFontSize) || 13;
+  }
+  const savedPageMargin = stateManager?.getSessionState?.()?.page_margin;
+  if (savedPageMargin) {
+    const input = document.getElementById('page-margin-input');
+    if (input) input.value = parseFloat(savedPageMargin) || 0.5;
   }
 
   renderPreviewOutputStatus(getPreviewOutputs());
@@ -271,11 +304,15 @@ function setupLayoutInstructionListeners() {
   const historyToggle     = document.querySelector('.history-toggle');
   const applyFontSizeBtn  = document.getElementById('apply-font-size-btn');
   const fontSizeInput     = document.getElementById('base-font-size-input');
+  const pageMarginInput   = document.getElementById('page-margin-input');
 
-  if (applyFontSizeBtn && fontSizeInput) {
-    applyFontSizeBtn.addEventListener('click', () => applyBaseFontSize(fontSizeInput.value));
+  if (applyFontSizeBtn && fontSizeInput && pageMarginInput) {
+    applyFontSizeBtn.addEventListener('click', () => applyLayoutSettings(fontSizeInput.value, pageMarginInput.value));
     fontSizeInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') applyBaseFontSize(fontSizeInput.value);
+      if (e.key === 'Enter') applyLayoutSettings(fontSizeInput.value, pageMarginInput.value);
+    });
+    pageMarginInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') applyLayoutSettings(fontSizeInput.value, pageMarginInput.value);
     });
   }
 
@@ -331,18 +368,26 @@ function setupLayoutInstructionListeners() {
 }
 
 /**
- * Save a new base font size to session state, then re-render the preview.
+ * Save layout display settings to session state, then re-render the preview.
  */
-async function applyBaseFontSize(value) {
+async function applyLayoutSettings(fontSizeValue, pageMarginValue) {
   const statusEl = document.getElementById('font-size-status');
-  const parsed = parseFloat(value);
-  if (isNaN(parsed) || parsed < 6 || parsed > 16) {
-    if (statusEl) statusEl.textContent = '⚠️ Must be 6–16';
+  const parsedFontSize = parseFloat(fontSizeValue);
+  const parsedPageMargin = parseFloat(pageMarginValue);
+  if (isNaN(parsedFontSize) || parsedFontSize < 6 || parsedFontSize > 16) {
+    if (statusEl) statusEl.textContent = '⚠️ Font must be 6–16';
+    return;
+  }
+  if (isNaN(parsedPageMargin) || parsedPageMargin < 0.5 || parsedPageMargin > 1.5) {
+    if (statusEl) statusEl.textContent = '⚠️ Margin must be 0.5–1.5';
     return;
   }
   try {
     if (statusEl) statusEl.textContent = 'Saving…';
-    const saveRes = await apiCall('POST', '/api/layout-settings', { base_font_size: `${parsed}px` });
+    const saveRes = await apiCall('POST', '/api/layout-settings', {
+      base_font_size: `${parsedFontSize}px`,
+      page_margin: `${parsedPageMargin}in`,
+    });
     if (!saveRes.ok) throw new Error(saveRes.error || 'save failed');
 
     if (statusEl) statusEl.textContent = 'Re-rendering…';
@@ -417,9 +462,10 @@ async function submitLayoutInstruction(instructionText) {
       if (response.error === 'clarify') {
         showClarificationDialog(response.question, instructionText);
       } else {
-        let errorHtml = `⚠️ Error: ${htmlEscape(response.error)} — ${htmlEscape(response.details || '')}`;
+        appendLayoutSafetyAlert(response.safety_alert);
+        let errorHtml = `⚠️ Error: ${escapeHtml(response.error)} — ${escapeHtml(response.details || '')}`;
         if (response.raw_response !== undefined) {
-          errorHtml += `<br><details style="margin-top:6px"><summary style="cursor:pointer;font-size:0.85em;color:#64748b">Raw LLM response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:4px">${htmlEscape(response.raw_response || '(empty)')}</pre></details>`;
+          errorHtml += `<br><details style="margin-top:6px"><summary style="cursor:pointer;font-size:0.85em;color:#64748b">Raw LLM response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:4px">${escapeHtml(response.raw_response || '(empty)')}</pre></details>`;
         }
         appendMessageHtml('system', errorHtml);
       }
@@ -429,6 +475,8 @@ async function submitLayoutInstruction(instructionText) {
     // Update preview with new HTML
     const newHtml = response.html;
     displayLayoutPreview(newHtml);
+
+    appendLayoutSafetyAlert(response.safety_alert);
 
     // Update state
     setPreviewHtml(newHtml);
@@ -455,7 +503,7 @@ async function submitLayoutInstruction(instructionText) {
     addToInstructionHistory(instruction);
 
     // Show confirmation
-    showConfirmationMessage(`✅ ${response.summary}`);
+    showConfirmationMessage(`${response.safety_alert?.flagged ? '⚠️ ' : '✅ '}${response.summary}`);
 
     // Clear input and refresh the staged controls.
     document.getElementById('instruction-input').value = '';
@@ -525,13 +573,12 @@ function displayLayoutPreview(html) {
   if (!preview) return;
 
   preview.onload = () => fitLayoutPreviewToPane(preview);
+  preview.setAttribute('sandbox', 'allow-same-origin');
+  preview.setAttribute('referrerpolicy', 'no-referrer');
+  preview.srcdoc = html;
 
-  // Set iframe content safely
   const doc = preview.contentDocument || preview.contentWindow?.document;
-  if (doc) {
-    doc.open();
-    doc.write(html);
-    doc.close();
+  if (doc?.readyState === 'complete') {
     fitLayoutPreviewToPane(preview);
   }
 }
@@ -594,8 +641,8 @@ function renderInstructionHistory() {
     entry.className = 'instruction-history-entry';
     entry.innerHTML = `
       <div class="instruction-time">${instruction.timestamp || ''}</div>
-      <div class="instruction-text">${htmlEscape(instruction.instruction_text || '')}</div>
-      <div class="instruction-summary"><em>${htmlEscape(instruction.change_summary || '')}</em></div>
+      <div class="instruction-text">${escapeHtml(instruction.instruction_text || '')}</div>
+      <div class="instruction-summary"><em>${escapeHtml(instruction.change_summary || '')}</em></div>
       <button class="btn btn-small" onclick="undoInstruction(${index})">
         Undo
       </button>
@@ -790,9 +837,7 @@ async function generateFinalOutputs() {
       pageCountExact: finalRes.page_count_exact ?? null,
     });
 
-    if (typeof scheduleAtsRefresh === 'function') {
-      scheduleAtsRefresh('post_generation');
-    }
+    scheduleAtsRefresh('post_generation');
 
     await advanceLayoutToRefinement();
     appendMessage('assistant', '✅ Final files generated from the confirmed layout.');
@@ -830,6 +875,8 @@ export {
   handleLayoutPrimaryAction,
   loadLayoutInstructionHistory,
   renderPreviewOutputStatus,
+  displayLayoutPreview,
+  submitLayoutInstruction,
   // helpers exported for unit tests
   showProcessing,
   showConfirmationMessage,

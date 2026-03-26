@@ -17,9 +17,11 @@ llm:
 
 # CV Generation Defaults
 generation:
+  base_font_size: "13px"
   max_skills: 20
   max_achievements: 5
   max_publications: 10
+  page_margin: "0.5in"
 
   # CV Length Constraints
   page_count:

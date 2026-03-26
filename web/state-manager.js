@@ -93,6 +93,23 @@ function getLastRenderedContentRevision(state) {
   return revisions.length > 0 ? Math.max(...revisions) : null;
 }
 
+function generateSessionId() {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.randomUUID) {
+    return `session-${cryptoApi.randomUUID()}`;
+  }
+
+  if (cryptoApi?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+    const token = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+    return `session-${token}`;
+  }
+
+  log.warn('Web Crypto API unavailable; falling back to timestamp-based session id generation.');
+  return `session-${Date.now().toString(36)}`;
+}
+
 function getLayoutFreshnessFromState(state) {
   const previewAvailable = Boolean(state.previewAvailable);
   const hasFinalOutputs = Boolean(
@@ -394,7 +411,7 @@ function initializeState() {
   // Get or generate session ID
   let storedId = localStorage.getItem(StorageKeys.SESSION_ID);
   if (!storedId) {
-    storedId = 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    storedId = generateSessionId();
     localStorage.setItem(StorageKeys.SESSION_ID, storedId);
   }
   sessionId = storedId;
