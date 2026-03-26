@@ -28,7 +28,8 @@ function serveFile(req, res) {
     res.writeHead(200, { 'Content-Type': getMime(filePath) });
     stream.pipe(res);
   } catch (e) {
-    res.writeHead(500); res.end(String(e));
+    console.error('Static test server error:', e);
+    res.writeHead(500); res.end('Internal server error');
   }
 }
 

@@ -33,6 +33,10 @@ function createLocalStorageMock() {
 }
 
 const lsMock = createLocalStorageMock()
+const cryptoMock = {
+  randomUUID: vi.fn(() => 'fixed-uuid-1234'),
+  getRandomValues: vi.fn(bytes => bytes.fill(0xab)),
+}
 
 let stateManager, initializeState, loadStateFromLocalStorage, saveStateToLocalStorage, clearState
 let StorageKeys
@@ -40,6 +44,7 @@ let StorageKeys
 beforeAll(async () => {
   // Stub localStorage before any module code runs
   vi.stubGlobal('localStorage', lsMock)
+  vi.stubGlobal('crypto', cryptoMock)
 
   // 1. Load api-client exports and expose globals (mirrors browser load order)
   const apiClient = await import('../../web/api-client.js')
@@ -60,6 +65,9 @@ beforeAll(async () => {
 
 beforeEach(() => {
   lsMock._reset()
+  cryptoMock.randomUUID.mockClear()
+  cryptoMock.randomUUID.mockReturnValue('fixed-uuid-1234')
+  cryptoMock.getRandomValues.mockClear()
   initializeState()
 })
 
@@ -82,6 +90,15 @@ describe('initializeState', () => {
     localStorage.clear()
     initializeState()
     expect(localStorage.getItem(StorageKeys.SESSION_ID)).toBeTruthy()
+  })
+
+  it('uses crypto.randomUUID for new session IDs when available', () => {
+    localStorage.clear()
+
+    initializeState()
+
+    expect(cryptoMock.randomUUID).toHaveBeenCalled()
+    expect(localStorage.getItem(StorageKeys.SESSION_ID)).toBe('session-fixed-uuid-1234')
   })
 
   it('reuses an existing session ID from localStorage', () => {

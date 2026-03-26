@@ -10,14 +10,15 @@ reorder, synonyms, spell check, layout review, ATS, persuasion.
 """
 import dataclasses
 import re
-import traceback
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
+from scripts.routes import generation_routes
 from utils.session_data_view import SessionDataView
 from utils.spell_checker import SpellChecker
 
@@ -36,6 +37,10 @@ def create_blueprint(deps):
 
     # Lazy singleton — the LanguageTool JVM starts on first call.
     _spell_checker: SpellChecker = SpellChecker()
+
+    def _internal_server_error(message: str):
+        current_app.logger.exception(message)
+        return jsonify({'error': message}), 500
 
     def _prepopulate_spell_dict(orchestrator_inst) -> None:
         """Load domain terms and proper nouns from master data into the custom dictionary."""
@@ -305,9 +310,7 @@ def create_blueprint(deps):
             return jsonify({"success": True, "message": message})
 
         except Exception as e:
-            print(f"ERROR in save_review_decisions: {e}")
-            traceback.print_exc()
-            return jsonify({"error": str(e)}), 500
+            return _internal_server_error('Failed to save review decisions.')
 
     @bp.route('/api/save-achievement-edits', methods=['POST'])
     def save_achievement_edits():
@@ -770,8 +773,7 @@ def create_blueprint(deps):
             )
             return jsonify({"rewritten": rewritten, "log_id": log_id})
         except Exception as e:
-            print(f"ERROR rewriting achievement: {e}")
-            return jsonify({"error": str(e)}), 500
+            return _internal_server_error('Failed to rewrite achievement.')
 
     @bp.route('/api/rewrite-achievement-outcome', methods=['POST'])
     def rewrite_achievement_outcome():
@@ -846,9 +848,7 @@ def create_blueprint(deps):
             return jsonify(cv_data)
 
         except Exception as e:
-            print(f"ERROR in get_cv_data: {e}")
-            traceback.print_exc()
-            return jsonify({"error": str(e)}), 500
+            return _internal_server_error('Failed to load CV data.')
 
     @bp.route('/api/cv-data', methods=['POST'])
     def save_cv_data():
@@ -880,9 +880,7 @@ def create_blueprint(deps):
             return jsonify({"success": True, "message": "CV data saved successfully"})
 
         except Exception as e:
-            print(f"ERROR in save_cv_data: {e}")
-            traceback.print_exc()
-            return jsonify({"error": str(e)}), 500
+            return _internal_server_error('Failed to save CV data.')
 
     @bp.get("/api/rewrites")
     def get_rewrites():
@@ -958,8 +956,7 @@ def create_blueprint(deps):
             )))
 
         except Exception as e:
-            traceback.print_exc()
-            return jsonify({"error": str(e)}), 500
+            return _internal_server_error('Failed to load rewrite suggestions.')
 
     @bp.post("/api/rewrites/approve")
     def approve_rewrites():
@@ -987,8 +984,7 @@ def create_blueprint(deps):
             })
 
         except Exception as e:
-            traceback.print_exc()
-            return jsonify({"error": str(e)}), 500
+            return _internal_server_error('Failed to approve rewrite decisions.')
 
     @bp.get("/api/publication-recommendations")
     def publication_recommendations():
@@ -1094,8 +1090,7 @@ def create_blueprint(deps):
             return jsonify({"ok": True, "recommendations": recommendations, "source": source, "total_count": total_count})
 
         except Exception as e:
-            traceback.print_exc()
-            return jsonify({"error": str(e)}), 500
+            return _internal_server_error('Failed to load publication recommendations.')
 
     @bp.post("/api/reorder-bullets")
     def reorder_bullets():
@@ -1124,7 +1119,7 @@ def create_blueprint(deps):
             session_registry.touch(sid)
             return jsonify({"ok": True, "experience_id": exp_id, "order": order})
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return _internal_server_error('Failed to save bullet order.')
 
     @bp.get("/api/proposed-bullet-order")
     def proposed_bullet_order():
@@ -1162,7 +1157,7 @@ def create_blueprint(deps):
             proposed = sorted(range(len(achievements)), key=lambda i: ach_score(achievements[i]), reverse=True)
             return jsonify({"proposed_order": proposed, "has_job_analysis": True})
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return _internal_server_error('Failed to calculate proposed bullet order.')
 
     @bp.post("/api/reorder-rows")
     def reorder_rows():
@@ -1191,7 +1186,7 @@ def create_blueprint(deps):
             session_registry.touch(sid)
             return jsonify({"ok": True, "type": row_type, "ordered_ids": ordered_ids})
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return _internal_server_error('Failed to save row order.')
 
     @bp.get("/api/synonym-lookup")
     def synonym_lookup():
@@ -1240,9 +1235,7 @@ def create_blueprint(deps):
                 return jsonify({"experience": None, "message": f"Experience {experience_id} not found"})
 
         except Exception as e:
-            print(f"ERROR in get_experience_details: {e}")
-            traceback.print_exc()
-            return jsonify({"error": str(e)}), 500
+            return _internal_server_error('Failed to load experience details.')
 
     # ── Spell check ──────────────────────────────────────────────────────────
 
@@ -1354,7 +1347,7 @@ def create_blueprint(deps):
                     _append_section(f"exp_{exp_id}_ach_{i}", f"{label} (bullet {i + 1})", text, 'bullet')
 
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            return _internal_server_error('Failed to build spell-check sections.')
 
         aggregate_stats = _spell_checker.aggregate_stats([s['text'] for s in sections])
         return jsonify({
@@ -1385,8 +1378,8 @@ def create_blueprint(deps):
                 'stats':           result['stats'],
                 'custom_dict_size': custom_dict_size,
             })
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to complete spell check.')
 
     @bp.get("/api/custom-dictionary")
     def custom_dictionary_get():
@@ -1394,8 +1387,8 @@ def create_blueprint(deps):
         try:
             words = _spell_checker.get_custom_dict()
             return jsonify({'ok': True, 'words': words})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to load custom dictionary.')
 
     @bp.post("/api/custom-dictionary")
     def custom_dictionary_add():
@@ -1407,8 +1400,8 @@ def create_blueprint(deps):
                 return jsonify({'error': 'word is required'}), 400
             added = _spell_checker.add_word(word)
             return jsonify({'ok': True, 'added': added})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to update custom dictionary.')
 
     @bp.post("/api/spell-check-complete")
     def spell_check_complete():
@@ -1435,8 +1428,8 @@ def create_blueprint(deps):
                 result = conversation.complete_spell_check(spell_audit)
             session_registry.touch(sid)
             return jsonify({'ok': True, **result})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to complete spell check.')
 
     # ── Layout review ────────────────────────────────────────────────────────
 
@@ -1458,8 +1451,8 @@ def create_blueprint(deps):
                 return jsonify({'error': 'No HTML file found in output directory.'}), 404
             html_content = html_files[0].read_text(encoding='utf-8', errors='replace')
             return jsonify({'ok': True, 'html': html_content})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to load layout HTML.')
 
     @bp.post("/api/layout-instruction")
     def apply_layout_instruction():
@@ -1491,16 +1484,30 @@ def create_blueprint(deps):
                     'details':      result.get('details'),
                     'confidence':   result.get('confidence'),
                     'raw_response': result.get('raw_response'),
+                    'safety_alert': generation_routes._build_layout_safety_alert(result.get('safety') or {}),
                 })
+
+            safety = result.get('safety') or {}
+            safety_alert = generation_routes._build_layout_safety_alert(safety)
+            if safety_alert:
+                generation_routes._record_layout_safety_audit(conversation.state, {
+                    'timestamp': datetime.now().isoformat(),
+                    'instruction_text': safety.get('instruction_text', {}),
+                    'current_html': safety.get('current_html', {}),
+                    'rewritten_html': safety.get('rewritten_html', {}),
+                    'findings': safety.get('findings', []),
+                })
+                conversation._save_session()
 
             return jsonify({
                 'ok': True,
                 'html': result['html'],
                 'summary': result['summary'],
-                'confidence': result['confidence']
+                'confidence': result['confidence'],
+                'safety_alert': safety_alert,
             })
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to apply layout instruction.')
 
     @bp.get("/api/layout-history")
     def get_layout_history():
@@ -1517,8 +1524,8 @@ def create_blueprint(deps):
                 'instructions': instructions,
                 'count': len(instructions)
             })
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to load layout history.')
 
     @bp.post("/api/layout-complete")
     def complete_layout_review():
@@ -1539,8 +1546,8 @@ def create_blueprint(deps):
                 result = conversation.complete_layout_review(layout_instructions)
             session_registry.touch(sid)
             return jsonify({'ok': True, **result})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to complete layout review.')
 
     @bp.post("/api/layout-settings")
     def update_layout_settings():
@@ -1559,11 +1566,18 @@ def create_blueprint(deps):
                     conversation.state['base_font_size'] = raw
                     if 'customizations' in conversation.state:
                         conversation.state['customizations']['base_font_size'] = raw
+                if 'page_margin' in body:
+                    raw = str(body['page_margin']).strip()
+                    if raw and raw.replace('.', '', 1).isdigit():
+                        raw = raw + 'in'
+                    conversation.state['page_margin'] = raw
+                    if 'customizations' in conversation.state:
+                        conversation.state['customizations']['page_margin'] = raw
                 conversation._save_session()
             session_registry.touch(sid)
             return jsonify({'ok': True})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to update layout settings.')
 
     # ── ATS validation + persuasion ──────────────────────────────────────────
 
@@ -1611,8 +1625,7 @@ def create_blueprint(deps):
                 'summary':    summary,
             })
         except Exception as e:
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            return _internal_server_error('Failed to validate ATS output.')
 
     @bp.get("/api/persuasion-check")
     def persuasion_check():
@@ -1644,7 +1657,6 @@ def create_blueprint(deps):
             result = conversation.orchestrator.check_persuasion(experiences)
             return jsonify({'ok': True, **result})
         except Exception as e:
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            return _internal_server_error('Failed to run persuasion checks.')
 
     return bp

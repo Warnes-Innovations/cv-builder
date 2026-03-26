@@ -5,12 +5,11 @@ import re
 import subprocess
 import sys
 import tempfile
-import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
@@ -122,6 +121,51 @@ def _normalize_harvest_skill(skill: Any) -> Optional[Dict[str, Any]]:
         normalized.pop(field, None)
 
     return normalized
+
+
+def _internal_server_error(message: str):
+    current_app.logger.exception(message)
+    return jsonify({'error': message}), 500
+
+
+def _git_commit_error(message: str, detail: Optional[str] = None) -> str:
+    if detail:
+        current_app.logger.error('%s %s', message, detail)
+    else:
+        current_app.logger.error(message)
+    return message
+
+
+def _record_layout_safety_audit(
+    state: Dict[str, Any],
+    payload: Dict[str, Any],
+) -> None:
+    """Persist one layout safety audit entry in session state."""
+    audit = state.setdefault('layout_safety_audit', [])
+    audit.append(payload)
+
+
+def _build_layout_safety_alert(
+    safety: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Build a small UI-facing safety summary."""
+    if not isinstance(safety, dict) or not safety.get('flagged'):
+        return None
+    findings = safety.get('findings') or []
+    issues = []
+    for finding in findings[:5]:
+        detail = str(finding.get('detail') or '').strip()
+        if detail:
+            issues.append(detail)
+    return {
+        'flagged': True,
+        'count': len(findings),
+        'issues': issues,
+        'message': (
+            'Safety processing sanitized prompt-like or unsafe '
+            'material before applying the layout change.'
+        ),
+    }
 
 
 def _harvest_skill_key(skill: Any) -> str:
@@ -775,9 +819,8 @@ def create_blueprint(deps):
                 mimetype=mime_type
             )
 
-        except Exception as e:
-            traceback.print_exc()
-            return jsonify({"error": str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to download generated file.')
 
     @bp.get("/api/cv/preview-output/<renderer>")
     def download_preview_output(renderer):
@@ -934,11 +977,10 @@ def create_blueprint(deps):
         try:
             return jsonify(_apply_layout_estimate(conv, body))
         except Exception as exc:
-            import flask
-            flask.current_app.logger.error('layout estimate failed: %s', exc)
+            current_app.logger.exception('layout estimate failed')
             return jsonify({
                 'ok': False,
-                'error': f'Layout estimate failed: {exc}',
+                'error': 'Layout estimate failed.',
             }), 500
 
     @bp.post("/api/cv/layout-refine")
@@ -948,14 +990,14 @@ def create_blueprint(deps):
         # duckflow: {
         #   "id": "generation_api_layout_refine_live",
         #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
+        #   "timestamp": "2026-03-26T00:24:00Z",
         #   "status": "live",
         #   "handles": ["POST /api/cv/layout-refine"],
         #   "calls": ["orchestrator:apply_layout_instruction", "state:generation_state.baseline_layout_digest"],
         #   "reads": ["request:POST /api/cv/layout-refine.instruction", "state:generation_state.preview_html", "state:generation_state.layout_instructions"],
-        #   "writes": ["state:generation_state.preview_html", "state:generation_state.preview_request_id", "state:generation_state.preview_generated_at", "state:generation_state.preview_output_paths", "state:generation_state.layout_instructions", "state:generation_state.layout_confirmed", "state:generation_state.phase", "state:generation_state.baseline_layout_digest"],
-        #   "returns": ["response:POST /api/cv/layout-refine.html", "response:POST /api/cv/layout-refine.summary", "response:POST /api/cv/layout-refine.preview_outputs"],
-        #   "notes": "Applies a natural-language layout instruction against the staged preview, appends the instruction history in generation_state, and regenerates preview artifacts from the updated HTML."
+        #   "writes": ["state:generation_state.preview_html", "state:generation_state.preview_request_id", "state:generation_state.preview_generated_at", "state:generation_state.preview_output_paths", "state:generation_state.layout_instructions", "state:generation_state.layout_confirmed", "state:generation_state.phase", "state:generation_state.baseline_layout_digest", "state:layout_safety_audit"],
+        #   "returns": ["response:POST /api/cv/layout-refine.html", "response:POST /api/cv/layout-refine.summary", "response:POST /api/cv/layout-refine.preview_outputs", "response:POST /api/cv/layout-refine.safety_alert"],
+        #   "notes": "Applies a natural-language layout instruction against the staged preview, sanitizes prompt-like material in the baseline HTML, user instruction, and rewritten HTML, persists any safety audit records, and regenerates preview artifacts from the updated HTML."
         # }
         entry = get_session()
         conv  = entry.manager
@@ -991,6 +1033,7 @@ def create_blueprint(deps):
                 "question":     result.get("question"),
                 "details":      result.get("details"),
                 "raw_response": result.get("raw_response"),
+                "safety_alert": _build_layout_safety_alert(result.get('safety') or {}),
             })
 
         updated_html = result["html"]
@@ -1017,6 +1060,18 @@ def create_blueprint(deps):
         gen["preview_output_paths"] = preview_outputs
         gen.setdefault("layout_instructions", []).append(instruction_record)
 
+        safety = result.get('safety') or {}
+        safety_alert = _build_layout_safety_alert(safety)
+        if safety_alert:
+            _record_layout_safety_audit(conv.state, {
+                'timestamp': now,
+                'instruction_id': prev_id,
+                'instruction_text': safety.get('instruction_text', {}),
+                'current_html': safety.get('current_html', {}),
+                'rewritten_html': safety.get('rewritten_html', {}),
+                'findings': safety.get('findings', []),
+            })
+
         baseline = _persist_layout_baseline(
             conv,
             updated_html,
@@ -1036,6 +1091,7 @@ def create_blueprint(deps):
             "page_count_source":   gen.get("page_count_source"),
             "page_count_confidence": gen.get("page_count_confidence"),
             "page_length_warning": gen.get("page_length_warning", False),
+            "safety_alert":        safety_alert,
         })
 
     @bp.post("/api/cv/confirm-layout")
@@ -1176,9 +1232,7 @@ def create_blueprint(deps):
                 filename_base="CV_final",
             )
         except Exception as exc:
-            import flask
-            flask.current_app.logger.error("generate_final_from_confirmed_html failed: %s", exc)
-            return jsonify({"error": f"Final generation failed: {exc}"}), 500
+            return _internal_server_error('Final generation failed.')
 
         now = datetime.now().isoformat()
         gen = conv.state.setdefault("generation_state", {})
@@ -1312,9 +1366,15 @@ def create_blueprint(deps):
                         m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
                         commit_hash = m.group(1) if m else None
                     else:
-                        git_error = result.stderr.strip() or result.stdout.strip()
+                        git_error = _git_commit_error(
+                            'Git commit failed. See server logs for details.',
+                            result.stderr.strip() or result.stdout.strip(),
+                        )
                 except Exception as git_exc:
-                    git_error = str(git_exc)
+                    git_error = _git_commit_error(
+                        'Git commit failed. See server logs for details.',
+                        str(git_exc),
+                    )
 
                 conversation.state['phase'] = Phase.REFINEMENT
                 conversation.save_session()
@@ -1340,8 +1400,7 @@ def create_blueprint(deps):
                     'summary':     summary,
                 })
             except Exception as e:
-                traceback.print_exc()
-                return jsonify({'error': str(e)}), 500
+                return _internal_server_error('Failed to save finalisation metadata.')
 
     # ------------------------------------------------------------------
     # Harvest
@@ -1356,8 +1415,7 @@ def create_blueprint(deps):
             candidates = _compile_harvest_candidates(conversation)
             return jsonify({'ok': True, 'candidates': candidates})
         except Exception as e:
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            return _internal_server_error('Failed to load harvest candidates.')
 
     @bp.post("/api/harvest/apply")
     def harvest_apply():
@@ -1450,9 +1508,15 @@ def create_blueprint(deps):
                         m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
                         commit_hash = m.group(1) if m else None
                     else:
-                        git_error = result.stderr.strip() or result.stdout.strip()
+                        git_error = _git_commit_error(
+                            'Git commit failed. See server logs for details.',
+                            result.stderr.strip() or result.stdout.strip(),
+                        )
                 except Exception as git_exc:
-                    git_error = str(git_exc)
+                    git_error = _git_commit_error(
+                        'Git commit failed. See server logs for details.',
+                        str(git_exc),
+                    )
 
                 written_count = sum(1 for d in diff_summary if d.get('applied'))
                 session_registry.touch(sid)
@@ -1464,7 +1528,6 @@ def create_blueprint(deps):
                     'git_error':    git_error,
                 })
             except Exception as e:
-                traceback.print_exc()
-                return jsonify({'error': str(e)}), 500
+                return _internal_server_error('Failed to apply harvested updates.')
 
     return bp

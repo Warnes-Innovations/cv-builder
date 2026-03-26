@@ -121,10 +121,13 @@ function normalizePositionLabel(title, company) {
 
 /**
  * Strip HTML tags from string.
- * Removes all <tag>...</tag> patterns.
+ * Uses an inert template element, then removes executable/non-visible nodes.
  */
 function stripHtml(html) {
-  return html.replace(/<[^>]*>/g, '');
+  const template = document.createElement('template');
+  template.innerHTML = String(html ?? '');
+  template.content.querySelectorAll('script, style, noscript, template').forEach(node => node.remove());
+  return template.content.textContent || '';
 }
 
 /**

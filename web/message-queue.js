@@ -10,11 +10,12 @@
  * queue that holds messages emitted before #conversation exists.
  *
  * DEPENDENCIES:
- *   - escapeHtml, cleanJsonResponse from utils.js (on globalThis)
+ *   - cleanJsonResponse, escapeHtml from utils.js
  *   - sendMessage from message-dispatch.js (on globalThis, for inline buttons)
  */
 
 import { getLogger } from './logger.js';
+import { cleanJsonResponse, escapeHtml } from './utils.js';
 const log = getLogger('message-queue');
 
 // Buffer for messages emitted before the #conversation div exists.
@@ -74,7 +75,7 @@ function appendMessage(type, text) {
 
   // Simple markdown rendering: convert **text** to <strong> and preserve newlines
   const textStr = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
-  const html = textStr
+  const html = escapeHtml(textStr)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/\n/g, '<br>');
@@ -119,8 +120,7 @@ function appendRetryMessage(text, retryFn, retryLabel = 'Retry') {
   message.className = 'message system';
   const content = document.createElement('div');
   content.className = 'content';
-  // escapeHtml is from utils.js, available on globalThis
-  const escaped = typeof escapeHtml === 'function' ? escapeHtml(text) : text;
+  const escaped = escapeHtml(text);
   content.innerHTML = escaped
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br>');
@@ -139,8 +139,7 @@ function appendRetryMessage(text, retryFn, retryLabel = 'Retry') {
 
 function appendFormattedAnalysis(result) {
   try {
-    // cleanJsonResponse is from utils.js, available on globalThis
-    const cleanResult = typeof cleanJsonResponse === 'function' ? cleanJsonResponse(result) : result;
+    const cleanResult = cleanJsonResponse(result);
     const data = typeof cleanResult === 'string' ? JSON.parse(cleanResult) : cleanResult;
 
     if (data && typeof data === 'object' && (data.title || data.required_skills)) {

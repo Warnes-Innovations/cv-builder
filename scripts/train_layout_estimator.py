@@ -415,9 +415,7 @@ def _mutate_preview_html(preview_html: str, seed: int) -> str:
 
     _mutate_achievement_list(soup, rng)
 
-    skill_groups = soup.select(
-        '#page-two .skill-group, #page-three .skill-group'
-    )
+    skill_groups = soup.select('#page-two .skill-group')
     if len(skill_groups) >= 2 and rng.random() < 0.45:
         # Skill regrouping is a real layout driver: the same skills can
         # occupy different numbers of lines depending on how they cluster

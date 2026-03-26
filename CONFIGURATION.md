@@ -91,9 +91,11 @@ ANTHROPIC_API_KEY=sk-ant-xxxx
 
 ```yaml
 generation:
+  base_font_size: "13px"  # Default root font size for HTML/PDF CV rendering
   max_skills: 20
   max_achievements: 5
   max_publications: 10
+  page_margin: "0.5in"  # Default PDF/print page margins
   
   formats:
     ats_docx:   true   # ATS-optimized DOCX (*_ATS.docx) — plain-text, single-column

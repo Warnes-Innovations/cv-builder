@@ -451,7 +451,11 @@ async function loadTabContent(tab) {
     }
   } catch (error) {
     log.error(`Error loading tab ${tab}:`, error);
-    content.innerHTML = `<p style="padding: 20px; color: #c41e3a;">Error loading content: ${error.message}</p>`;
+    content.innerHTML = '<p style="padding: 20px; color: #c41e3a;"></p>';
+    const messageEl = content.querySelector('p');
+    if (messageEl) {
+      messageEl.textContent = `Error loading content: ${error.message}`;
+    }
   }
 }
 
@@ -998,7 +1002,11 @@ function _buildModelTable() {
           api.columns().every(function(colIdx) {
             const title = $(api.column(colIdx).header()).text().trim();
             const $th = $('<th style="padding:6px 10px; background:#f8fafc; border-top:1px solid #e2e8f0;"></th>');
-            const $input = $(`<input type="text" placeholder="${title}" style="width:100%; padding:4px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.82em;" />`);
+            const $input = $('<input>', {
+              type: 'text',
+              placeholder: title,
+              style: 'width:100%; padding:4px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.82em;',
+            });
             $th.append($input);
             $filterRow.append($th);
           });

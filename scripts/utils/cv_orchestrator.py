@@ -26,8 +26,25 @@ from datetime import datetime, date as _date
 import subprocess
 import weasyprint
 from collections import defaultdict
+from bs4 import BeautifulSoup, Comment
 
 logger = logging.getLogger(__name__)
+
+_LAYOUT_URL_ATTRS = ('href', 'src', 'srcset', 'poster', 'xlink:href')
+_LAYOUT_PRESERVED_HEAD_TAGS = {'link', 'script', 'meta', 'base'}
+_SCHEMA_ORG_CONTEXTS = {'https://schema.org', 'http://schema.org'}
+_LAYOUT_AGENT_INSTRUCTION_PATTERNS = (
+    'system prompt',
+    'developer prompt',
+    'developer instruction',
+    'assistant instruction',
+    'agent instruction',
+    'llm instruction',
+    'copilot instruction',
+    'you are chatgpt',
+    'you are github copilot',
+    'ignore previous instructions',
+)
 
 # Import existing utilities
 from .scoring import (
@@ -39,6 +56,34 @@ from .config import get_config
 from .llm_client import LLMClient
 from .master_data_validator import validate_master_data_file
 from .session_data_view import SessionDataView
+
+
+def _append_layout_finding(
+    findings: List[Dict[str, Any]],
+    issue: str,
+    detail: str,
+    fragment: Optional[str] = None,
+) -> None:
+    """Append a normalized layout safety finding."""
+    entry: Dict[str, Any] = {'issue': issue, 'detail': detail}
+    if fragment:
+        entry['fragment'] = fragment[:500]
+    findings.append(entry)
+
+
+def _summarize_layout_findings(
+    *finding_groups: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Flatten finding groups while preserving order."""
+    merged: List[Dict[str, Any]] = []
+    for group in finding_groups:
+        merged.extend(group or [])
+    return merged
+
+
+def _is_exact_schema_org_context(value: Any) -> bool:
+    """Return True only for exact schema.org context values."""
+    return str(value or '').strip() in _SCHEMA_ORG_CONTEXTS
 
 
 class CVOrchestrator:
@@ -532,9 +577,15 @@ class CVOrchestrator:
         cv_data = self._prepare_cv_data_for_template(
             selected_content, job_analysis, template_variant
         )
-        cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
-        cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
+        cv_data['base_font_size'] = customizations.get(
+            'base_font_size',
+            get_config().get('generation.base_font_size', '13px'),
+        )
+        cv_data['page_margin']    = customizations.get(
+            'page_margin',
+            get_config().get('generation.page_margin', '0.5in'),
+        )
 
         template_dir = Path(__file__).parent.parent.parent / 'templates'
         template_file = template_dir / 'cv-template.html'
@@ -878,6 +929,7 @@ class CVOrchestrator:
                             '--no-sandbox',
                             f'--print-to-pdf={pdf_output}',
                             '--print-to-pdf-no-header',
+                            '--no-pdf-header-footer',
                             html_url,
                         ],
                         check=True,
@@ -1601,9 +1653,15 @@ For manual generation:
         # JSON-LD is built here and embedded directly in cv-template.html,
         # so the single HTML output is both ATS-compatible and print-ready.
         cv_data = self._prepare_cv_data_for_template(selected_content, job_analysis)
-        cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
-        cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
+        cv_data['base_font_size'] = customizations.get(
+            'base_font_size',
+            get_config().get('generation.base_font_size', '13px'),
+        )
+        cv_data['page_margin']    = customizations.get(
+            'page_margin',
+            get_config().get('generation.page_margin', '0.5in'),
+        )
 
         # Generate documents (Phase 10: Track progress)
         files_created = []
@@ -1778,7 +1836,32 @@ For manual generation:
             }
         """
         # Build LLM prompt
-        cv_outline = self._serialize_html_for_context(current_html)
+        instruction_safety = self._sanitize_layout_instruction_text(
+            instruction_text
+        )
+        context_safety = self._sanitize_layout_context_html(current_html)
+
+        sanitized_instruction_text = instruction_safety['sanitized_text']
+        if not sanitized_instruction_text:
+            return {
+                'error': 'unsafe_instruction',
+                'details': (
+                    'The layout instruction only contained unsafe prompt-like '
+                    'directives after sanitization.'
+                ),
+                'safety': {
+                    'flagged': True,
+                    'findings': _summarize_layout_findings(
+                        instruction_safety['findings'],
+                        context_safety['findings'],
+                    ),
+                    'instruction_text': instruction_safety,
+                    'current_html': context_safety,
+                },
+            }
+
+        sanitized_current_html = context_safety['sanitized_html']
+        cv_outline = self._serialize_html_for_context(sanitized_current_html)
         prior_context = ""
         if prior_instructions:
             prior_list = [f"- {inst.get('instruction_text', '')}" for inst in prior_instructions]
@@ -1790,11 +1873,11 @@ CURRENT CV STRUCTURE (outline):
 {cv_outline}
 
 CURRENT HTML (modify this):
-{current_html}
+{sanitized_current_html}
 {prior_context}
 
 USER INSTRUCTION:
-"{instruction_text}"
+"{sanitized_instruction_text}"
 
 YOUR TASK:
 1. Interpret the user's intent
@@ -1867,11 +1950,34 @@ If you need clarification, return:
                     'details': 'HTML response was empty'
                 }
 
+            safety_result = self._sanitize_layout_instruction_html(
+                current_html=sanitized_current_html,
+                modified_html=modified_html,
+            )
+
+            all_findings = _summarize_layout_findings(
+                instruction_safety['findings'],
+                context_safety['findings'],
+                safety_result['findings'],
+            )
+
             return {
-                'html': modified_html,
+                'html': safety_result['html'],
                 'summary': result.get('change_summary', 'Layout updated'),
                 'confidence': confidence,
-                'requires_clarification': False
+                'requires_clarification': False,
+                'safety': {
+                    'flagged': bool(all_findings),
+                    'findings': all_findings,
+                    'instruction_text': instruction_safety,
+                    'current_html': context_safety,
+                    'rewritten_html': {
+                        'flagged': safety_result['flagged'],
+                        'findings': safety_result['findings'],
+                        'raw_html': modified_html,
+                        'sanitized_html': safety_result['html'],
+                    },
+                },
             }
 
         except json.JSONDecodeError as e:

@@ -145,6 +145,9 @@ describe('stripHtml', () => {
   it('handles self-closing tags', () => {
     expect(stripHtml('line1<br/>line2')).toBe('line1line2')
   })
+  it('removes script contents entirely', () => {
+    expect(stripHtml('before<script>alert(1)</script>after')).toBe('beforeafter')
+  })
 })
 
 // ── truncateText ──────────────────────────────────────────────────────────────
