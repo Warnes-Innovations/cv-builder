@@ -129,6 +129,7 @@ class StatusResponse:
     extra_skill_matches: Dict[str, List[str]]
     session_file: str
     max_skills: int
+    skills_section_title: str
     achievement_edits: Dict[str, Any]
     intake: Dict[str, Any]
 
