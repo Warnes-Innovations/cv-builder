@@ -339,6 +339,57 @@ class CVOrchestrator:
             normalized.append(entry)
         return normalized
 
+    def _apply_session_achievement_edits(
+        self,
+        selected_content: Dict,
+        achievement_edits: Dict[Any, Any],
+    ) -> Dict:
+        """Overlay session-edited bullets onto the selected experience list."""
+        if not achievement_edits:
+            return selected_content
+
+        updated = copy.deepcopy(selected_content)
+        master_experiences = self.master_data.get('experience') or []
+        selected_experiences = updated.get('experiences') or []
+        experience_by_id = {
+            str(exp.get('id') or '').strip(): exp
+            for exp in selected_experiences
+            if isinstance(exp, dict) and str(exp.get('id') or '').strip()
+        }
+
+        for raw_key, raw_items in achievement_edits.items():
+            try:
+                exp_idx = int(raw_key)
+            except (TypeError, ValueError):
+                continue
+            if not (0 <= exp_idx < len(master_experiences)):
+                continue
+
+            master_exp = master_experiences[exp_idx] or {}
+            exp_id = str(master_exp.get('id') or '').strip()
+            if not exp_id or exp_id not in experience_by_id:
+                continue
+
+            visible_achievements = []
+            items = raw_items if isinstance(raw_items, list) else [raw_items]
+            for item in items:
+                if isinstance(item, dict):
+                    text = str(item.get('text') or item.get('description') or item.get('content') or '').strip()
+                    hidden = bool(item.get('hidden'))
+                else:
+                    text = str(item or '').strip()
+                    hidden = False
+
+                if text and not hidden:
+                    visible_achievements.append({'text': text})
+
+            selected_exp = experience_by_id[exp_id]
+            selected_exp['achievements'] = visible_achievements
+            if 'ordered_achievements' in selected_exp:
+                selected_exp['ordered_achievements'] = copy.deepcopy(visible_achievements)
+
+        return updated
+
     def _normalize_language_entries(self, languages: List[Any]) -> List[str]:
         """Convert language records to simple display strings for the template."""
         normalized = []
@@ -1831,6 +1882,10 @@ For manual generation:
             customizations,
             max_skills=max_skills,
             use_semantic_match=use_semantic_match,
+        )
+        selected_content = self._apply_session_achievement_edits(
+            selected_content,
+            customizations.get('achievement_edits') or {},
         )
         selected_content = self.apply_approved_rewrites(
             selected_content,

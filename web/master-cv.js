@@ -1977,20 +1977,27 @@ async function saveMasterSkill() {
 
 async function deleteMasterSkill(skill, category, isFlat) {
   const body = isFlat ? { action: 'delete', skill } : { action: 'delete', skill, category };
-  try {
-    const res  = await fetch('/api/master-data/skill', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      _setMasterChangeNotice('Skills', data.action || 'updated');
-      await populateMasterTab();
-    } else {
-      showAlertModal('❌ Error', data.error || 'Could not remove skill');
+  const scope = isFlat ? 'Skills' : `Skills → ${category}`;
+  showConfirmModal(
+    '🗑️ Delete Skill',
+    `Delete skill "${skill}" from ${scope}? This cannot be undone.`,
+    async () => {
+      try {
+        const res  = await fetch('/api/master-data/skill', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          _setMasterChangeNotice('Skills', data.action || 'updated');
+          await populateMasterTab();
+        } else {
+          showAlertModal('❌ Error', data.error || 'Could not remove skill');
+        }
+      } catch (e) {
+        showAlertModal('❌ Error', 'Failed to remove skill');
+      }
     }
-  } catch (e) {
-    showAlertModal('❌ Error', 'Failed to remove skill');
-  }
+  );
 }
 
 // ---- Education modal handlers ----

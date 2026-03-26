@@ -324,7 +324,19 @@ function _hydrateStatusDerivedState(statusData) {
     if (statusData.achievement_edits && Object.keys(statusData.achievement_edits).length > 0) {
       for (const [k, v] of Object.entries(statusData.achievement_edits)) {
         const idx = parseInt(k, 10);
-        window.achievementEdits[idx] = Array.isArray(v) ? v : [v];
+        const rawItems = Array.isArray(v) ? v : [v];
+        window.achievementEdits[idx] = rawItems.map(item => {
+          if (item && typeof item === 'object' && !Array.isArray(item)) {
+            return {
+              text: String(item.text ?? item.description ?? item.content ?? ''),
+              hidden: Boolean(item.hidden),
+            };
+          }
+          return {
+            text: String(item ?? ''),
+            hidden: false,
+          };
+        });
       }
     }
   } catch (_e) { /* non-fatal */ }

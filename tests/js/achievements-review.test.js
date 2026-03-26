@@ -229,7 +229,7 @@ describe('top-level achievement session overrides', () => {
   })
 
   it('posts deletes to /api/review-achievement and removes the item locally', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.stubGlobal('confirmDialog', vi.fn(async () => true))
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ ok: true, action: 'deleted', id: 'ach-1' }),
@@ -237,7 +237,7 @@ describe('top-level achievement session overrides', () => {
     await deleteTopLevelAchievement('ach-1')
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-achievement', expect.objectContaining({ method: 'POST' }))
     expect(window._achievementsOrdered).toEqual([])
-    expect(globalThis.showToast).toHaveBeenCalledWith('Achievement deleted.')
+    expect(globalThis.showToast).toHaveBeenCalledWith('Achievement hidden for this session.')
   })
 })
 
@@ -280,9 +280,14 @@ describe('moveAchievementRow', () => {
 
 describe('updateAchievementText', () => {
   it('updates the stored text', () => {
-    window.achievementEdits = { 0: ['old text', 'second'] }
+    window.achievementEdits = {
+      0: [
+        { text: 'old text', hidden: false },
+        { text: 'second', hidden: false },
+      ],
+    }
     updateAchievementText(0, 0, 'new text')
-    expect(window.achievementEdits[0][0]).toBe('new text')
+    expect(window.achievementEdits[0][0]).toEqual({ text: 'new text', hidden: false })
   })
 
   it('does not throw for missing expIdx', () => {
@@ -295,7 +300,13 @@ describe('updateAchievementText', () => {
 
 describe('moveAchievement', () => {
   beforeEach(() => {
-    window.achievementEdits = { 0: ['a', 'b', 'c'] }
+    window.achievementEdits = {
+      0: [
+        { text: 'a', hidden: false },
+        { text: 'b', hidden: false },
+        { text: 'c', hidden: false },
+      ],
+    }
     document.body.innerHTML = `
       <textarea id="ach-text-0-0">a</textarea>
       <textarea id="ach-text-0-1">b</textarea>`
@@ -303,22 +314,54 @@ describe('moveAchievement', () => {
 
   it('does nothing when achIdx out of bounds', () => {
     moveAchievement(0, 2, 1)
-    expect(window.achievementEdits[0]).toEqual(['a', 'b', 'c'])
+    expect(window.achievementEdits[0]).toEqual([
+      { text: 'a', hidden: false },
+      { text: 'b', hidden: false },
+      { text: 'c', hidden: false },
+    ])
   })
 
   it('swaps adjacent items', () => {
     moveAchievement(0, 0, 1)
-    expect(window.achievementEdits[0]).toEqual(['b', 'a', 'c'])
+    expect(window.achievementEdits[0]).toEqual([
+      { text: 'b', hidden: false },
+      { text: 'a', hidden: false },
+      { text: 'c', hidden: false },
+    ])
   })
 })
 
 // ── deleteAchievement ─────────────────────────────────────────────────────
 
 describe('deleteAchievement', () => {
-  it('removes the item at achIdx', () => {
-    window.achievementEdits = { 0: ['a', 'b', 'c'] }
-    deleteAchievement(0, 1)
-    expect(window.achievementEdits[0]).toEqual(['a', 'c'])
+  it('removes the item at achIdx after confirmation', async () => {
+    window.achievementEdits = {
+      0: [
+        { text: 'a', hidden: false },
+        { text: 'b', hidden: false },
+        { text: 'c', hidden: false },
+      ],
+    }
+    await deleteAchievement(0, 1)
+    expect(window.achievementEdits[0]).toEqual([
+      { text: 'a', hidden: false },
+      { text: 'c', hidden: false },
+    ])
+  })
+
+  it('does nothing when confirmation is declined', async () => {
+    vi.stubGlobal('confirmDialog', vi.fn(async () => false))
+    window.achievementEdits = {
+      0: [
+        { text: 'a', hidden: false },
+        { text: 'b', hidden: false },
+      ],
+    }
+    await deleteAchievement(0, 1)
+    expect(window.achievementEdits[0]).toEqual([
+      { text: 'a', hidden: false },
+      { text: 'b', hidden: false },
+    ])
   })
 
   it('does not throw for missing expIdx', () => {
@@ -332,18 +375,21 @@ describe('deleteAchievement', () => {
 describe('addAchievementRow', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="ach-list-0"></div>'
-    window.achievementEdits = { 0: ['a'] }
+    window.achievementEdits = { 0: [{ text: 'a', hidden: false }] }
   })
 
-  it('appends an empty string', () => {
+  it('appends an empty editable entry', () => {
     addAchievementRow(0)
-    expect(window.achievementEdits[0]).toEqual(['a', ''])
+    expect(window.achievementEdits[0]).toEqual([
+      { text: 'a', hidden: false },
+      { text: '', hidden: false },
+    ])
   })
 
   it('initialises edits array if absent', () => {
     window.achievementEdits = {}
     addAchievementRow(0)
-    expect(window.achievementEdits[0]).toEqual([''])
+    expect(window.achievementEdits[0]).toEqual([{ text: '', hidden: false }])
   })
 })
 
@@ -415,7 +461,12 @@ describe('deleteSuggestedAchievement', () => {
 describe('saveAchievementEditsAndContinue', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
-    window.achievementEdits = { 0: ['bullet 1', 'bullet 2'] }
+    window.achievementEdits = {
+      0: [
+        { text: 'bullet 1', hidden: false },
+        { text: 'bullet 2', hidden: true },
+      ],
+    }
   })
 
   it('calls switchTab on success', async () => {
@@ -428,6 +479,14 @@ describe('saveAchievementEditsAndContinue', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
     await saveAchievementEditsAndContinue()
     expect(globalThis.showToast).toHaveBeenCalledWith('Achievement edits saved.')
+  })
+
+  it('posts structured hidden-flag edits', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveAchievementEditsAndContinue()
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(body.edits[0][0]).toEqual({ text: 'bullet 1', hidden: false })
+    expect(body.edits[0][1]).toEqual({ text: 'bullet 2', hidden: true })
   })
 
   it('shows error toast on API failure', async () => {

@@ -1156,13 +1156,28 @@ def create_blueprint(deps):
                 customizations["approved_rewrites"] = state_rewrites
 
         achievement_edits = conv.state.get("achievement_edits") or {}
+        if achievement_edits:
+            customizations["achievement_edits"] = achievement_edits
+
         if achievement_edits and not customizations.get("approved_rewrites"):
             bullet_rewrites = []
             for bullets in achievement_edits.values():
                 if isinstance(bullets, list):
                     bullet_rewrites.extend(
-                        {"rewritten": b, "section": "experience"}
-                        for b in bullets if isinstance(b, str) and b.strip()
+                        {
+                            "rewritten": item.get("text", "") if isinstance(item, dict) else str(item or ""),
+                            "section": "experience",
+                        }
+                        for item in bullets
+                        if (
+                            isinstance(item, dict)
+                            and not item.get("hidden")
+                            and isinstance(item.get("text"), str)
+                            and item.get("text", "").strip()
+                        ) or (
+                            isinstance(item, str)
+                            and item.strip()
+                        )
                     )
             if bullet_rewrites:
                 customizations.setdefault("approved_rewrites", [])
