@@ -1153,6 +1153,35 @@ describe('restoreBackendState', () => {
           expect(globalThis.isReconnecting).toBe(false)
         })
 
+        it('clears placeholder HTML even when history is empty (new session)', async () => {
+          // Reproduces the "Position set to Jackson Lab AI/ML" placeholder bug:
+          // index.html ships with hardcoded example messages in #conversation.
+          // For a brand-new session the history endpoint returns [] — the clear
+          // must happen regardless of history length.
+          document.body.innerHTML =
+            '<div id="conversation">' +
+            '<div class="message system"><div class="content">Position set to Jackson Lab AI/ML.</div></div>' +
+            '</div>'
+          getSessionIdFromURL.mockReturnValue('new-session-id')
+          fetch
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({ history: [], phase: null }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: async () => ({
+                position_name: null,
+                phase: 'init',
+                job_analysis: null,
+              }),
+            })
+
+          await restoreSession()
+
+          expect(document.getElementById('conversation').innerHTML).toBe('')
+        })
+
         it('surfaces restoration failures and clears reconnecting state', async () => {
           getSessionIdFromURL.mockReturnValue('sess-1')
           fetch.mockRejectedValue(new Error('offline'))
