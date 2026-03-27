@@ -221,9 +221,14 @@ class CVOrchestrator:
         certifications = selected_content.get('certifications', [])
         
         # Add template metadata
-        # duckflow: flow=cv-render status=live
-        #   artifact: template_metadata["skills_section_title"] → cv-template.html
-        #   default: "Skills" (overridden per-render by customizations["skills_section_title"])
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L224
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   writes:
+        #     - "artifact:template_metadata[\"skills_section_title\"]"
+        #   notes: "Seeds the render metadata with the default skills section title before preview or final-generation overrides are applied."
         template_metadata = {
             'variant': template_variant,
             'generated_date': datetime.now().isoformat(),
@@ -596,9 +601,16 @@ class CVOrchestrator:
             customizations.get('base_font_size'),
         )
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
-        # duckflow: flow=cv-render status=live
-        #   state_read: customizations["skills_section_title"]
-        #   artifact: template_metadata["skills_section_title"] → cv-template.html (preview)
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L599
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   reads:
+        #     - "customizations:skills_section_title"
+        #   writes:
+        #     - "artifact:template_metadata[\"skills_section_title\"]"
+        #   notes: "Copies the user-selected skills title into the preview HTML render metadata."
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         cv_data['page_margin']    = customizations.get(
             'page_margin',
@@ -1681,9 +1693,16 @@ For manual generation:
         )
         cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
-        # duckflow: flow=cv-render status=live
-        #   state_read: customizations["skills_section_title"]
-        #   artifact: template_metadata["skills_section_title"] → cv-template.html (final)
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L1684
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   reads:
+        #     - "customizations:skills_section_title"
+        #   writes:
+        #     - "artifact:template_metadata[\"skills_section_title\"]"
+        #   notes: "Copies the user-selected skills title into the final HTML/PDF render metadata."
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         cv_data['page_margin']    = customizations.get(
             'page_margin',
@@ -1700,9 +1719,16 @@ For manual generation:
             'status': 'in_progress',
             'start_time': time.time()
         }
-        # duckflow: flow=cv-render status=live
-        #   state_read: customizations["skills_section_title"]
-        #   artifact: selected_content["skills_section_title"] → _generate_human_docx → DOCX heading
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L1703
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   reads:
+        #     - "customizations:skills_section_title"
+        #   writes:
+        #     - "artifact:selected_content[\"skills_section_title\"]"
+        #   notes: "Carries the user-selected skills title into the ATS DOCX generation payload."
         selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         ats_file = self._generate_ats_docx(
             selected_content,
@@ -3337,8 +3363,16 @@ If you need clarification, return:
         # ── Skills ───────────────────────────────────────────────────────────
         skills_by_category = content.get('skills_by_category', [])
         if skills_by_category:
-            # duckflow: flow=cv-render status=live
-            #   artifact: content["skills_section_title"] → DOCX heading (Skills section)
+            # duckflow:
+            #   id: cv_render.scripts_utils_cv_orchestrator.L3340
+            #   kind: artifact
+            #   timestamp: "2026-03-27T02:07:47Z"
+            #   status: live
+            #   reads:
+            #     - "artifact:content[\"skills_section_title\"]"
+            #   writes:
+            #     - "artifact:human_docx.skills_heading"
+            #   notes: "Writes the resolved skills-section heading into the generated human-readable DOCX."
             _heading(content.get('skills_section_title', 'Skills'))
             for cat in skills_by_category:
                 p = doc.add_paragraph()

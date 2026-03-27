@@ -1365,17 +1365,25 @@ Close professionally with a call to action.
     @bp.post("/api/cover-letter/save")
     def cover_letter_save():
         """Save cover letter text to DOCX in the output directory and update metadata.json."""
-        # duckflow: {
-        #   "id": "cover_letter_api_save_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/cover-letter/save"],
-        #   "reads": ["request:POST /api/cover-letter/save.text", "state:generated_files.output_dir", "state:cover_letter_reused_from"],
-        #   "writes": ["state:cover_letter_text", "file:metadata.cover_letter_text", "file:metadata.cover_letter_reused_from", "file:artifact.cover_letter_docx"],
-        #   "returns": ["response:POST /api/cover-letter/save.filename"],
-        #   "notes": "Saves the finalized cover-letter body to session state, writes a DOCX artifact in the application output directory, and appends the reusable text metadata."
-        # }
+        # duckflow:
+        #   id: cover_letter_api_save_live
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/cover-letter/save"
+        #   reads:
+        #     - "request:POST /api/cover-letter/save.text"
+        #     - "state:generated_files.output_dir"
+        #     - "state:cover_letter_reused_from"
+        #   writes:
+        #     - "state:cover_letter_text"
+        #     - "file:metadata.cover_letter_text"
+        #     - "file:metadata.cover_letter_reused_from"
+        #     - "file:artifact.cover_letter_docx"
+        #   returns:
+        #     - "response:POST /api/cover-letter/save.filename"
+        #   notes: "Saves the finalized cover-letter body to session state, writes a DOCX artifact in the application output directory, and appends the reusable text metadata."
         entry = get_session()
         validate_owner(entry)
         conversation = entry.manager
@@ -1572,17 +1580,25 @@ Close professionally with a call to action.
     @bp.post("/api/screening/save")
     def screening_save():
         """Save screening responses to DOCX, update metadata.json, upsert response_library.json."""
-        # duckflow: {
-        #   "id": "screening_api_save_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/screening/save"],
-        #   "reads": ["request:POST /api/screening/save.responses", "state:job_analysis.company"],
-        #   "writes": ["state:screening_responses", "file:metadata.screening_responses", "file:artifact.screening_docx", "file:response_library.json"],
-        #   "returns": ["response:POST /api/screening/save.filename", "response:POST /api/screening/save.count"],
-        #   "notes": "Persists saved screening responses in session state, writes the archive DOCX and metadata entry, and upserts the reusable response library."
-        # }
+        # duckflow:
+        #   id: screening_api_save_live
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/screening/save"
+        #   reads:
+        #     - "request:POST /api/screening/save.responses"
+        #     - "state:job_analysis.company"
+        #   writes:
+        #     - "state:screening_responses"
+        #     - "file:metadata.screening_responses"
+        #     - "file:artifact.screening_docx"
+        #     - "file:response_library.json"
+        #   returns:
+        #     - "response:POST /api/screening/save.filename"
+        #     - "response:POST /api/screening/save.count"
+        #   notes: "Persists saved screening responses in session state, writes the archive DOCX and metadata entry, and upserts the reusable response library."
         entry = get_session()
         validate_owner(entry)
         conversation = entry.manager

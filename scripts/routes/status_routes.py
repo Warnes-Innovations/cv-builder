@@ -48,10 +48,20 @@ def create_blueprint(deps):
 
     @bp.get("/api/status")
     def status():
-        # duckflow: flow=session-status status=live
-        #   route: GET /api/status
-        #   state_read: session.state["max_skills"], session.state["skills_section_title"]
-        #   response: {max_skills: int, skills_section_title: str, ...}
+        # duckflow:
+        #   id: session_status.scripts_routes_status_routes.L50
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "GET /api/status"
+        #   reads:
+        #     - "state:max_skills"
+        #     - "state:skills_section_title"
+        #   returns:
+        #     - "response:GET /api/status.max_skills"
+        #     - "response:GET /api/status.skills_section_title"
+        #   notes: "Returns the current generation-settings values in the session status payload."
         from pathlib import Path
         entry = _get_session(required=False)
         _provider_name = _provider_name_ref['value']
@@ -203,12 +213,25 @@ def create_blueprint(deps):
 
     @bp.post("/api/generation-settings")
     def update_generation_settings():
-        # duckflow: flow=generation-settings status=live
-        #   route: POST /api/generation-settings
-        #   request: {max_skills?: int, skills_section_title?: str}
-        #   state_write: session.state["max_skills"], session.state["skills_section_title"],
-        #                customizations["max_skills"], customizations["skills_section_title"]
-        #   response: {ok: bool, max_skills: int, skills_section_title: str}
+        # duckflow:
+        #   id: generation_settings.scripts_routes_status_routes.L205
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/generation-settings"
+        #   reads:
+        #     - "request:POST /api/generation-settings.max_skills"
+        #     - "request:POST /api/generation-settings.skills_section_title"
+        #   writes:
+        #     - "state:max_skills"
+        #     - "state:skills_section_title"
+        #     - "customizations:max_skills"
+        #     - "customizations:skills_section_title"
+        #   returns:
+        #     - "response:POST /api/generation-settings.max_skills"
+        #     - "response:POST /api/generation-settings.skills_section_title"
+        #   notes: "Persists per-session generation settings into both top-level session state and the generation customizations payload."
         """Update per-session generation settings (max_skills, skills_section_title, etc.)."""
         entry = _get_session()
         _validate_owner(entry)
