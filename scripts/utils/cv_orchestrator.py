@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime, date as _date
 import subprocess
+import weasyprint  # noqa: F401  -- kept for test mock path (patch cv_orchestrator.weasyprint.HTML)
 from collections import defaultdict
 from bs4 import BeautifulSoup, Comment
 
