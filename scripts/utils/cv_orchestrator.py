@@ -24,9 +24,19 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime, date as _date
 import subprocess
-import weasyprint
 from collections import defaultdict
 from bs4 import BeautifulSoup, Comment
+
+from .scoring import (
+    calculate_relevance_score,
+    calculate_skill_score,
+)
+from .bibtex_parser import parse_bibtex_file, format_publication
+from .config import get_config
+from .llm_client import LLMClient
+from .master_data_validator import validate_master_data_file
+from .session_data_view import SessionDataView
+from .template_renderer import safe_css_size, safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -45,19 +55,6 @@ _LAYOUT_AGENT_INSTRUCTION_PATTERNS = (
     'you are github copilot',
     'ignore previous instructions',
 )
-
-# Import existing utilities
-from .scoring import (
-    calculate_relevance_score,
-    calculate_skill_score
-)
-from .bibtex_parser import parse_bibtex_file, format_publication
-from .config import get_config
-from .llm_client import LLMClient
-from .master_data_validator import validate_master_data_file
-from .session_data_view import SessionDataView
-from .template_renderer import safe_css_size, safe_url
-
 
 def _append_layout_finding(
     findings: List[Dict[str, Any]],
@@ -878,7 +875,7 @@ class CVOrchestrator:
                 '--output', str(html_output)
             ]
             
-            result = subprocess.run(
+            subprocess.run(
                 render_cmd, 
                 capture_output=True, 
                 text=True, 
@@ -1277,17 +1274,25 @@ For manual generation:
             'jobTitle':   job_analysis.get('title', ''),
             'description': cv_data.get('professional_summary', ''),
         }
-        if contact.get('email'):           json_ld['email']         = contact['email']
-        if contact.get('phone'):           json_ld['telephone']     = contact['phone']
-        if same_as:                        json_ld['sameAs']        = same_as
-        if contact.get('address_display'): json_ld['address']       = {
-                '@type':           'PostalAddress',
+        if contact.get('email'):
+            json_ld['email'] = contact['email']
+        if contact.get('phone'):
+            json_ld['telephone'] = contact['phone']
+        if same_as:
+            json_ld['sameAs'] = same_as
+        if contact.get('address_display'):
+            json_ld['address'] = {
+                '@type': 'PostalAddress',
                 'addressLocality': contact['address_display'],
             }
-        if alumni_of:                      json_ld['alumniOf']      = alumni_of
-        if has_occupation:                 json_ld['hasOccupation'] = has_occupation
-        if all_skill_names:                json_ld['knowsAbout']    = all_skill_names
-        if award_strings:                  json_ld['award']         = award_strings
+        if alumni_of:
+            json_ld['alumniOf'] = alumni_of
+        if has_occupation:
+            json_ld['hasOccupation'] = has_occupation
+        if all_skill_names:
+            json_ld['knowsAbout'] = all_skill_names
+        if award_strings:
+            json_ld['award'] = award_strings
 
         return json.dumps(json_ld, indent=2, ensure_ascii=False)
 
@@ -2753,9 +2758,8 @@ If you need clarification, return:
     ) -> Path:
         """Generate ATS-optimized DOCX with enhanced formatting and validation."""
         from docx import Document
-        from docx.shared import Pt, RGBColor
+        from docx.shared import Pt
         from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-        from docx.enum.style import WD_STYLE_TYPE
         
         doc = Document()
         
@@ -2898,7 +2902,6 @@ If you need clarification, return:
     def _setup_ats_styles(self, doc):
         """Set up ATS-optimized document styles."""
         from docx.shared import Pt, RGBColor
-        from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
         
         # Create custom styles that are ATS-friendly
         styles = doc.styles
@@ -3128,7 +3131,7 @@ If you need clarification, return:
                         'type':       'no_strong_verb',
                         'severity':   'info',
                         'suggestion': (
-                            f'Consider opening with a strong action verb '
+                            'Consider opening with a strong action verb '
                             '(e.g. Led, Built, Delivered, Reduced, Improved).'
                         ),
                     })

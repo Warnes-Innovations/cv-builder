@@ -310,7 +310,7 @@ def create_blueprint(deps):
             session_registry.touch(sid)
             return jsonify({"success": True, "message": message})
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to save review decisions.')
 
     @bp.route('/api/save-achievement-edits', methods=['POST'])
@@ -319,7 +319,7 @@ def create_blueprint(deps):
         # duckflow:
         #   id: review_api_achievement_edits_live
         #   kind: api
-    #   timestamp: "2026-03-27T02:31:32Z"
+        #   timestamp: "2026-03-27T02:31:32Z"
         #   status: live
         #   handles:
         #     - "POST /api/save-achievement-edits"
@@ -805,7 +805,7 @@ def create_blueprint(deps):
                 achievement_index=ach_idx,
             )
             return jsonify({"rewritten": rewritten, "log_id": log_id})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to rewrite achievement.')
 
     @bp.route('/api/rewrite-achievement-outcome', methods=['POST'])
@@ -880,7 +880,7 @@ def create_blueprint(deps):
 
             return jsonify(cv_data)
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to load CV data.')
 
     @bp.route('/api/cv-data', methods=['POST'])
@@ -900,7 +900,7 @@ def create_blueprint(deps):
                 conversation._save_session()
             session_registry.touch(sid)
 
-            print(f"CV data updated:")
+            print("CV data updated:")
             if 'personal_info' in data:
                 print(f"  - Personal info: {data['personal_info']}")
             if 'summary' in data:
@@ -912,7 +912,7 @@ def create_blueprint(deps):
 
             return jsonify({"success": True, "message": "CV data saved successfully"})
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to save CV data.')
 
     @bp.get("/api/rewrites")
@@ -988,7 +988,7 @@ def create_blueprint(deps):
                 phase=phase,
             )))
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to load rewrite suggestions.')
 
     @bp.post("/api/rewrites/approve")
@@ -1016,7 +1016,7 @@ def create_blueprint(deps):
                 "phase":          summary['phase'],
             })
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to approve rewrite decisions.')
 
     @bp.get("/api/publication-recommendations")
@@ -1122,7 +1122,7 @@ def create_blueprint(deps):
             total_count = len(recommendations)
             return jsonify({"ok": True, "recommendations": recommendations, "source": source, "total_count": total_count})
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to load publication recommendations.')
 
     @bp.post("/api/reorder-bullets")
@@ -1151,7 +1151,7 @@ def create_blueprint(deps):
                 conversation._save_session()
             session_registry.touch(sid)
             return jsonify({"ok": True, "experience_id": exp_id, "order": order})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to save bullet order.')
 
     @bp.get("/api/proposed-bullet-order")
@@ -1189,7 +1189,7 @@ def create_blueprint(deps):
 
             proposed = sorted(range(len(achievements)), key=lambda i: ach_score(achievements[i]), reverse=True)
             return jsonify({"proposed_order": proposed, "has_job_analysis": True})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to calculate proposed bullet order.')
 
     @bp.post("/api/reorder-rows")
@@ -1218,7 +1218,7 @@ def create_blueprint(deps):
                 conversation._save_session()
             session_registry.touch(sid)
             return jsonify({"ok": True, "type": row_type, "ordered_ids": ordered_ids})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to save row order.')
 
     @bp.get("/api/synonym-lookup")
@@ -1267,7 +1267,7 @@ def create_blueprint(deps):
                 print(f"DEBUG: Available IDs: {available_ids[:10]}")
                 return jsonify({"experience": None, "message": f"Experience {experience_id} not found"})
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to load experience details.')
 
     # ── Spell check ──────────────────────────────────────────────────────────
@@ -1379,7 +1379,7 @@ def create_blueprint(deps):
                     text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
                     _append_section(f"exp_{exp_id}_ach_{i}", f"{label} (bullet {i + 1})", text, 'bullet')
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to build spell-check sections.')
 
         aggregate_stats = _spell_checker.aggregate_stats([s['text'] for s in sections])
@@ -1661,7 +1661,7 @@ def create_blueprint(deps):
                 'page_count': page_count,
                 'summary':    summary,
             })
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to validate ATS output.')
 
     @bp.get("/api/persuasion-check")
@@ -1693,7 +1693,7 @@ def create_blueprint(deps):
 
             result = conversation.orchestrator.check_persuasion(experiences)
             return jsonify({'ok': True, **result})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to run persuasion checks.')
 
     return bp
