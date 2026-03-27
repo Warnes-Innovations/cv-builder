@@ -126,50 +126,58 @@ async function buildAchievementsReviewTable() {
     return;
   }
 
-  const data = window.pendingRecommendations || {};
-  const recommendedSet = new Set(data.recommended_achievements || []);
+  // Wrap initialisation + render so an unexpected exception replaces the
+  // spinner instead of leaving it frozen indefinitely.
+  try {
+    const data = window.pendingRecommendations || {};
+    const recommendedSet = new Set(data.recommended_achievements || []);
 
-  // Sort: recommended first, then by importance descending (only on first load)
-  if (!window._achievementsOrdered) {
-    allAchievements = [...allAchievements].sort((a, b) => {
-      const aRec = recommendedSet.has(a.id) ? 1 : 0;
-      const bRec = recommendedSet.has(b.id) ? 1 : 0;
-      if (bRec !== aRec) return bRec - aRec;
-      return (b.importance || 0) - (a.importance || 0);
+    // Sort: recommended first, then by importance descending (only on first load)
+    if (!window._achievementsOrdered) {
+      allAchievements = [...allAchievements].sort((a, b) => {
+        const aRec = recommendedSet.has(a.id) ? 1 : 0;
+        const bRec = recommendedSet.has(b.id) ? 1 : 0;
+        if (bRec !== aRec) return bRec - aRec;
+        return (b.importance || 0) - (a.importance || 0);
+      });
+      window._achievementsOrdered = allAchievements;
+    }
+
+    // Initialise decisions
+    window.achievementDecisions = {};
+    window._achievementsOrdered.forEach(ach => {
+      const rec = getAchievementRecommendation(ach.id, data);
+      let defaultAction = 'include';
+      if (rec === 'Emphasize')         defaultAction = 'emphasize';
+      else if (rec === 'Include')      defaultAction = 'include';
+      else if (rec === 'De-emphasize') defaultAction = 'de-emphasize';
+      else if (rec === 'Omit')         defaultAction = 'exclude';
+      window.achievementDecisions[ach.id] = defaultAction;
     });
-    window._achievementsOrdered = allAchievements;
-  }
+    // Apply any previously saved user decisions over the LLM defaults
+    const savedAchDecs = window._savedDecisions?.achievement_decisions || {};
+    if (Object.keys(savedAchDecs).length > 0) Object.assign(window.achievementDecisions, savedAchDecs);
 
-  // Initialise decisions
-  window.achievementDecisions = {};
-  window._achievementsOrdered.forEach(ach => {
-    const rec = getAchievementRecommendation(ach.id, data);
-    let defaultAction = 'include';
-    if (rec === 'Emphasize')         defaultAction = 'emphasize';
-    else if (rec === 'Include')      defaultAction = 'include';
-    else if (rec === 'De-emphasize') defaultAction = 'de-emphasize';
-    else if (rec === 'Omit')         defaultAction = 'exclude';
-    window.achievementDecisions[ach.id] = defaultAction;
-  });
-  // Apply any previously saved user decisions over the LLM defaults
-  const savedAchDecs = window._savedDecisions?.achievement_decisions || {};
-  if (Object.keys(savedAchDecs).length > 0) Object.assign(window.achievementDecisions, savedAchDecs);
-
-  // Also handle AI-suggested achievements — assign stable IDs once on first load
-  // so that reorder / delete operations never need to remap decision keys.
-  if (!window._suggestedAchsOrdered) {
-    let counter = 0;
-    window._suggestedAchsOrdered = (data.suggested_achievements || []).map(s => {
-      const item = Object.assign({}, s);
-      item._suggId = `sugg::${counter++}`;
-      return item;
+    // Also handle AI-suggested achievements — assign stable IDs once on first load
+    // so that reorder / delete operations never need to remap decision keys.
+    if (!window._suggestedAchsOrdered) {
+      let counter = 0;
+      window._suggestedAchsOrdered = (data.suggested_achievements || []).map(s => {
+        const item = Object.assign({}, s);
+        item._suggId = `sugg::${counter++}`;
+        return item;
+      });
+    }
+    window._suggestedAchsOrdered.forEach(s => {
+      if (!(s._suggId in window.achievementDecisions)) window.achievementDecisions[s._suggId] = 'include';
     });
-  }
-  window._suggestedAchsOrdered.forEach(s => {
-    if (!(s._suggId in window.achievementDecisions)) window.achievementDecisions[s._suggId] = 'include';
-  });
 
-  _renderAchievementsReviewTable(container);
+    _renderAchievementsReviewTable(container);
+  } catch (err) {
+    /* eslint-disable-next-line no-console */
+    console.error('buildAchievementsReviewTable: render error:', err);
+    container.innerHTML = '<p style="color:#ef4444;padding:20px;">Error rendering achievements table. Please reload and try again.</p>';
+  }
 }
 
 function _renderAchievementsReviewTable(container) {

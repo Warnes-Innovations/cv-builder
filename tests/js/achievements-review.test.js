@@ -13,6 +13,7 @@
  */
 import {
   fetchJsonWithTimeout,
+  buildAchievementsReviewTable,
   handleAchievementAction,
   bulkAchievementAction,
   submitAchievementDecisions,
@@ -502,5 +503,105 @@ describe('saveAchievementEditsAndContinue', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
     await saveAchievementEditsAndContinue()
     expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('Failed'), 'error')
+  })
+})
+
+// ── buildAchievementsReviewTable ──────────────────────────────────────────
+
+describe('buildAchievementsReviewTable', () => {
+  const MOCK_ACH = [{ id: 'a1', title: 'Led turnaround', importance: 8 }]
+
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="achievements-table-container"></div>'
+    window.pendingRecommendations = {
+      recommended_achievements:   [],
+      achievement_recommendations: [],
+    }
+    window._achievementsOrdered  = null
+    window._suggestedAchsOrdered = null
+    window._savedDecisions       = null
+
+    vi.stubGlobal('getAchievementConfidence', vi.fn(() => ({ level: 'medium', text: 'Medium' })))
+    vi.stubGlobal('getAchievementReasoning',  vi.fn(() => 'no specific reasoning'))
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+    delete window._achievementsOrdered
+    delete window._suggestedAchsOrdered
+  })
+
+  function mockStatusOk(achievements = MOCK_ACH) {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok:   true,
+      json: async () => ({ all_achievements: achievements }),
+    })
+  }
+
+  function mockStatusFailMasterOk(achievements = MOCK_ACH) {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, json: async () => ({}) })
+      .mockResolvedValueOnce({
+        ok:   true,
+        json: async () => ({ selected_achievements: achievements }),
+      })
+  }
+
+  function mockBothFail() {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) })
+  }
+
+  it('replaces spinner with table when /api/status returns achievements', async () => {
+    mockStatusOk()
+    await buildAchievementsReviewTable()
+    const html = document.getElementById('achievements-table-container').innerHTML
+    expect(html).not.toContain('Loading achievements')
+    expect(html).toContain('achievements-review-table')
+  })
+
+  it('renders using /api/master-fields fallback when /api/status fails', async () => {
+    mockStatusFailMasterOk()
+    await buildAchievementsReviewTable()
+    const html = document.getElementById('achievements-table-container').innerHTML
+    expect(html).not.toContain('Loading achievements')
+    expect(html).toContain('achievements-review-table')
+  })
+
+  it('shows empty-state message when API returns no achievements', async () => {
+    mockStatusOk([])
+    await buildAchievementsReviewTable()
+    const html = document.getElementById('achievements-table-container').innerHTML
+    expect(html).toContain('No key achievements found')
+    expect(html).not.toContain('Loading achievements')
+  })
+
+  it('shows error message when all fetches fail', async () => {
+    mockBothFail()
+    await buildAchievementsReviewTable()
+    const html = document.getElementById('achievements-table-container').innerHTML
+    expect(html).toContain('Failed to load')
+    expect(html).not.toContain('Loading achievements')
+  })
+
+  it('does nothing when container element is absent', async () => {
+    document.body.innerHTML = ''
+    mockStatusOk()
+    await expect(buildAchievementsReviewTable()).resolves.not.toThrow()
+  })
+
+  // ── Regression: spinner must never be left frozen on a render error ──────
+  it('replaces spinner with error message when render throws (regression)', async () => {
+    mockStatusOk()
+    // Force an exception inside the initialisation/render try block
+    globalThis.getAchievementRecommendation = vi.fn(() => {
+      throw new Error('render error')
+    })
+    await buildAchievementsReviewTable()
+    const html = document.getElementById('achievements-table-container').innerHTML
+    // Spinner must NOT remain
+    expect(html).not.toContain('Loading achievements')
+    // An error message must be shown instead
+    expect(html).toContain('Error rendering achievements')
   })
 })
