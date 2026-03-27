@@ -935,6 +935,88 @@ describe('restoreBackendState', () => {
     // And restoreBackendState should signal that data was found
     expect(result).toBe(true)
   })
+
+  it('does NOT redirect when SESSION_PATH belongs to a different session (race-condition guard)', async () => {
+    // Scenario: user visited `same-session-id` briefly, beforeunload set
+    // SESSION_ID=same-session-id, but SESSION_PATH was never updated so it
+    // still points to an old session's file whose embedded session_id differs.
+    // The fix should abort the disk restore rather than redirecting the browser
+    // to the old session (which is owned by another tab).
+    document.body.innerHTML = '<div id="conversation"></div>'
+    vi.stubGlobal('StorageKeys', {
+      SESSION_PATH: 'session_path',
+      SESSION_ID:   'session_id',
+    })
+    vi.stubGlobal('getSessionIdFromURL', vi.fn(() => 'same-session-id'))
+    localStorage.getItem.mockImplementation(key => {
+      if (key === 'session_path') return '/tmp/old-session/session.json'
+      if (key === 'session_id')   return 'same-session-id'
+      return null
+    })
+
+    globalThis.fetch
+      .mockResolvedValueOnce(_emptySessionFetchMocks()[0])
+      .mockResolvedValueOnce(_emptySessionFetchMocks()[1])
+      // loadSessionFile: /api/load-session responds with a DIFFERENT session_id
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok:            true,
+          session_id:    'old-different-session-id',   // <-- mismatch!
+          redirect_url:  '/?session=old-different-session-id',
+          session_file:  '/tmp/old-session/session.json',
+          position_name: 'Old Session',
+          phase:         'init',
+        }),
+      })
+
+    vi.stubGlobal('appendMessage', vi.fn())
+    vi.stubGlobal('fetchStatus', vi.fn(async () => {}))
+    vi.stubGlobal('parseRewritesResponse', vi.fn(v => v))
+    vi.stubGlobal('renderRewritePanel', vi.fn())
+    vi.stubGlobal('switchTab', vi.fn())
+    vi.stubGlobal('getScopedTabDataStorageKey', vi.fn(() => 'scoped-key'))
+    vi.stubGlobal('PHASES', {
+      INIT: 'init', JOB_ANALYSIS: 'job_analysis', CUSTOMIZATION: 'customization',
+      REWRITE_REVIEW: 'rewrite_review', SPELL_CHECK: 'spell_check',
+      GENERATION: 'generation', LAYOUT_REVIEW: 'layout_review', REFINEMENT: 'refinement',
+    })
+
+    const assignSpy = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign: assignSpy })
+
+    const result = await restoreBackendState()
+
+    // /api/load-session was called (the guard allows it since IDs matched)
+    const calledEndpoints = globalThis.fetch.mock.calls.map(([url]) => url)
+    expect(calledEndpoints).toContain('/api/load-session')
+
+    // But the browser must NOT have been redirected (redirectOnMismatch:false)
+    expect(assignSpy).not.toHaveBeenCalled()
+
+    // And restoreBackendState should report no data (aborted restore)
+    expect(result).toBe(false)
+  })
+
+  it('createNewSessionAndNavigate clears SESSION_PATH before navigating', async () => {
+    vi.stubGlobal('createSession', vi.fn().mockResolvedValue({
+      session_id:   'fresh-id',
+      redirect_url: '/?session=fresh-id',
+    }))
+    const removeItemSpy = vi.fn()
+    vi.stubGlobal('localStorage', {
+      getItem:    vi.fn(() => null),
+      setItem:    vi.fn(),
+      removeItem: removeItemSpy,
+    })
+    const assignSpy = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign: assignSpy })
+
+    await createNewSessionAndNavigate()
+
+    expect(removeItemSpy).toHaveBeenCalledWith('cv-builder-session-path')
+    expect(assignSpy).toHaveBeenCalledWith('/?session=fresh-id')
+  })
 })
 
 // ── restoreSession / loadSessionFile ─────────────────────────────────────
