@@ -880,6 +880,9 @@ def create_blueprint(deps):
                 "layout_template_update_note"
             ),
             "preview_outputs":           gen.get("preview_output_paths"),
+            "preview_generated_at":      gen.get("preview_generated_at"),
+            "preview_request_id":        gen.get("preview_request_id"),
+            "confirmed_at":              gen.get("confirmed_at"),
         })
 
     @bp.post("/api/cv/generate-preview")

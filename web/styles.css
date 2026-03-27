@@ -945,6 +945,15 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .layout-stale-callout h4 { margin: 0 0 6px; font-size: 14px; color: #92400e; }
 .layout-stale-callout p { margin: 0; font-size: 13px; line-height: 1.5; color: #78350f; }
 .layout-stale-callout-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.layout-preview-status { margin-bottom: 8px; }
+.layout-preview-status-card { padding: 10px 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc; }
+.layout-preview-status-card.fresh { background: #f0fdf4; border-color: #bbf7d0; }
+.layout-preview-status-card.stale { background: #fffbeb; border-color: #fde68a; }
+.layout-preview-status-card.critical { background: #fef2f2; border-color: #fecaca; }
+.layout-preview-status-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.layout-preview-status-stage { font-size: 12px; font-weight: 600; color: #374151; }
+.layout-preview-status-details { font-size: 11px; color: #6b7280; line-height: 1.5; }
+.layout-pane-freshness-chip { font-size: 11px; }
 .layout-instruction-textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit; resize: vertical; line-height: 1.5; }
 .layout-instruction-textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
 .layout-action-btn { width: 100%; padding: 10px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.2s; }

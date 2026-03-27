@@ -565,6 +565,9 @@ describe('restoreBackendState', () => {
           layout_instructions_count: 3,
           final_generated_at: null,
           ats_score: { overall: 88, basis: 'review_checkpoint' },
+          preview_generated_at: '2026-04-01T10:00:00Z',
+          preview_request_id: 'req-abc123',
+          confirmed_at: null,
         }),
       })
 
@@ -594,6 +597,9 @@ describe('restoreBackendState', () => {
       pageNeedsExactRecheck: false,
       pageWarning: true,
       layoutInstructionsCount: 3,
+      previewGeneratedAt: '2026-04-01T10:00:00Z',
+      previewRequestId: 'req-abc123',
+      confirmedAt: null,
     })
     expect(stateManager.getAtsScore()).toEqual({ overall: 88, basis: 'review_checkpoint' })
   })

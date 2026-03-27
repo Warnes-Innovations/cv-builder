@@ -118,6 +118,72 @@ function getCurrentContentRevision() {
   return stateManager.getGenerationState().contentRevision ?? 0;
 }
 
+function formatGenerationTimestamp(timestamp) {
+  if (!timestamp) return '';
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function buildLayoutFreshnessChipMarkup(freshness) {
+  if (!freshness?.showChip) return '';
+  const icon = freshness.isCritical ? '↻' : (freshness.isStale ? '!' : '✓');
+  return `<span class="layout-freshness-chip ${freshness.tone} layout-pane-freshness-chip"
+    aria-label="${escapeHtml(freshness.ariaLabel || '')}">
+    <span class="layout-freshness-icon" aria-hidden="true">${icon}</span>
+    <span class="layout-freshness-label">${escapeHtml(freshness.label || '')}</span>
+  </span>`;
+}
+
+function renderLayoutPreviewStatus() {
+  const container = document.getElementById('layout-preview-status');
+  if (!container) return;
+  const freshness = stateManager.getLayoutFreshness();
+  const generationState = stateManager.getGenerationState();
+  if (!generationState.previewAvailable) {
+    container.innerHTML = '';
+    container.style.display = 'none';
+    return;
+  }
+  const lastPreviewRevision = Number.isFinite(generationState.lastPreviewContentRevision)
+    ? generationState.lastPreviewContentRevision : null;
+  const currentRevision = Number.isFinite(generationState.contentRevision)
+    ? generationState.contentRevision : null;
+  const pendingRevisionCount = lastPreviewRevision !== null && currentRevision !== null
+    ? Math.max(0, currentRevision - lastPreviewRevision) : 0;
+  const timestampLabel = formatGenerationTimestamp(generationState.previewGeneratedAt);
+  const detailLines = [];
+  if (timestampLabel) detailLines.push(`Preview generated ${timestampLabel}`);
+  if (generationState.layoutConfirmed && generationState.confirmedAt) {
+    const confirmedLabel = formatGenerationTimestamp(generationState.confirmedAt);
+    if (confirmedLabel) detailLines.push(`Layout confirmed ${confirmedLabel}`);
+  }
+  if (freshness.isStale) {
+    if (pendingRevisionCount > 0) {
+      detailLines.push(`${pendingRevisionCount} content change${pendingRevisionCount === 1 ? '' : 's'} since this preview`);
+    } else {
+      detailLines.push('Content changed after this preview was generated');
+    }
+  } else if (generationState.layoutConfirmed || generationState.phase === 'confirmed') {
+    detailLines.push('Confirmed preview matches the latest approved content');
+  } else {
+    detailLines.push('Preview matches the latest approved content');
+  }
+  const stageLabel = generationState.layoutConfirmed || generationState.phase === 'confirmed'
+    ? 'Ready for final files' : 'Ready for layout review';
+  container.innerHTML = `
+    <div class="layout-preview-status-card ${freshness.tone}">
+      <div class="layout-preview-status-header">
+        ${buildLayoutFreshnessChipMarkup(freshness)}
+        <span class="layout-preview-status-stage">${escapeHtml(stageLabel)}</span>
+      </div>
+      <div class="layout-preview-status-details">
+        ${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}
+      </div>
+    </div>`;
+  container.style.display = 'block';
+}
+
 function renderLayoutStaleCallout() {
   const callout = document.getElementById('layout-stale-callout');
   if (!callout) return;
@@ -141,6 +207,7 @@ function refreshLayoutReviewState() {
   const confirmBtn = document.getElementById('confirm-layout-btn');
   const finalBtn = document.getElementById('proceed-to-finalise-btn');
 
+  renderLayoutPreviewStatus();
   renderLayoutStaleCallout();
 
   if (confirmBtn) {
@@ -172,6 +239,7 @@ async function initiateLayoutInstructions() {
       <div class="layout-instruction-panel">
         <div class="layout-preview-pane">
           <h3>Current Layout Preview</h3>
+          <div id="layout-preview-status" class="layout-preview-status" style="display:none;"></div>
           <div class="preview-iframe-container">
             <iframe id="layout-preview" class="layout-preview-iframe" title="CV Layout Preview" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>
           </div>
@@ -404,6 +472,8 @@ async function applyLayoutSettings(fontSizeValue, pageMarginValue) {
         pageCountConfidence: previewRes.page_count_confidence ?? null,
         pageCountSource: previewRes.page_count_source || null,
         pageWarning: Boolean(previewRes.page_length_warning),
+        previewGeneratedAt: previewRes.preview_generated_at || new Date().toISOString(),
+        previewRequestId: previewRes.preview_request_id || null,
       });
       renderPreviewOutputStatus(previewRes.preview_outputs || null);
       refreshLayoutReviewState();
@@ -500,6 +570,8 @@ async function submitLayoutInstruction(instructionText) {
       pageCountConfidence: response.page_count_confidence ?? null,
       pageCountSource: response.page_count_source || null,
       pageWarning: Boolean(response.page_length_warning),
+      previewGeneratedAt: response.preview_generated_at || new Date().toISOString(),
+      previewRequestId: response.preview_request_id || null,
     });
     renderPreviewOutputStatus(response.preview_outputs || null);
 
@@ -551,6 +623,8 @@ async function _fetchAndDisplayLayoutPreview() {
         pageCountConfidence: data.page_count_confidence ?? null,
         pageCountSource: data.page_count_source || null,
         pageWarning: Boolean(data.page_length_warning),
+        previewGeneratedAt: data.preview_generated_at || new Date().toISOString(),
+        previewRequestId: data.preview_request_id || null,
       });
       renderPreviewOutputStatus(data.preview_outputs || null);
       refreshLayoutReviewState();
@@ -781,7 +855,9 @@ async function confirmLayoutReview() {
       throw new Error(confirmRes?.error || 'Failed to confirm layout.');
     }
 
-    stateManager.markLayoutConfirmed();
+    stateManager.markLayoutConfirmed({
+      confirmedAt: confirmRes.confirmed_at || new Date().toISOString(),
+    });
     showConfirmationMessage('✅ Layout confirmed. Generate final files when you are ready.');
     appendMessage('assistant', '✅ Layout confirmed. Review the preview if needed, then generate the final files.');
     refreshLayoutReviewState();
@@ -893,6 +969,7 @@ export {
   handleLayoutPrimaryAction,
   loadLayoutInstructionHistory,
   renderPreviewOutputStatus,
+  renderLayoutPreviewStatus,
   displayLayoutPreview,
   submitLayoutInstruction,
   // helpers exported for unit tests
