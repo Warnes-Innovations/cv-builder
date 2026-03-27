@@ -889,16 +889,21 @@ def create_blueprint(deps):
         # duckflow:
         #   id: summary_api_generate_live
         #   kind: api
-        #   timestamp: "2026-03-25T21:39:48Z"
+        #   timestamp: "2026-03-27T01:23:28Z"
         #   status: live
-        #   handles: ["POST /api/generate-summary"]
-        #   calls: ["llm:generate_professional_summary"]
+        #   handles:
+        #     - "POST /api/generate-summary"
+        #   calls:
+        #     - "llm:generate_professional_summary"
         #   reads:
         #     - "state:job_analysis"
         #     - "state:experience_decisions"
         #     - "state:customizations.recommended_experiences"
-        #   writes: ["state:session_summaries.ai_generated", "state:summary_focus_override"]
-        #   returns: ["response:POST /api/generate-summary.summary"]
+        #   writes:
+        #     - "state:session_summaries.ai_generated"
+        #     - "state:summary_focus_override"
+        #   returns:
+        #     - "response:POST /api/generate-summary.summary"
         #   notes: "Live summary-generation route writes the generated summary into session state and sets it active."
         entry = get_session()
         validate_owner(entry)
@@ -1363,12 +1368,21 @@ Close professionally with a call to action.
         # duckflow:
         #   id: cover_letter_api_save_live
         #   kind: api
-        #   timestamp: "2026-03-25T21:39:48Z"
+        #   timestamp: "2026-03-27T02:07:47Z"
         #   status: live
-        #   handles: ["POST /api/cover-letter/save"]
-        #   reads: ["request:POST /api/cover-letter/save.text", "state:generated_files.output_dir", "state:cover_letter_reused_from"]
-        #   writes: ["state:cover_letter_text", "file:metadata.cover_letter_text", "file:metadata.cover_letter_reused_from", "file:artifact.cover_letter_docx"]
-        #   returns: ["response:POST /api/cover-letter/save.filename"]
+        #   handles:
+        #     - "POST /api/cover-letter/save"
+        #   reads:
+        #     - "request:POST /api/cover-letter/save.text"
+        #     - "state:generated_files.output_dir"
+        #     - "state:cover_letter_reused_from"
+        #   writes:
+        #     - "state:cover_letter_text"
+        #     - "file:metadata.cover_letter_text"
+        #     - "file:metadata.cover_letter_reused_from"
+        #     - "file:artifact.cover_letter_docx"
+        #   returns:
+        #     - "response:POST /api/cover-letter/save.filename"
         #   notes: "Saves the finalized cover-letter body to session state, writes a DOCX artifact in the application output directory, and appends the reusable text metadata."
         entry = get_session()
         validate_owner(entry)
@@ -1569,12 +1583,21 @@ Close professionally with a call to action.
         # duckflow:
         #   id: screening_api_save_live
         #   kind: api
-        #   timestamp: "2026-03-25T21:39:48Z"
+        #   timestamp: "2026-03-27T02:07:47Z"
         #   status: live
-        #   handles: ["POST /api/screening/save"]
-        #   reads: ["request:POST /api/screening/save.responses", "state:job_analysis.company"]
-        #   writes: ["state:screening_responses", "file:metadata.screening_responses", "file:artifact.screening_docx", "file:response_library.json"]
-        #   returns: ["response:POST /api/screening/save.filename", "response:POST /api/screening/save.count"]
+        #   handles:
+        #     - "POST /api/screening/save"
+        #   reads:
+        #     - "request:POST /api/screening/save.responses"
+        #     - "state:job_analysis.company"
+        #   writes:
+        #     - "state:screening_responses"
+        #     - "file:metadata.screening_responses"
+        #     - "file:artifact.screening_docx"
+        #     - "file:response_library.json"
+        #   returns:
+        #     - "response:POST /api/screening/save.filename"
+        #     - "response:POST /api/screening/save.count"
         #   notes: "Persists saved screening responses in session state, writes the archive DOCX and metadata entry, and upserts the reusable response library."
         entry = get_session()
         validate_owner(entry)

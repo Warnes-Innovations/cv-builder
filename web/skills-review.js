@@ -912,14 +912,26 @@ async function submitSkillDecisions() {
   /* duckflow:
    *   id: skills_ui_submit_live
    *   kind: ui
-   *   timestamp: "2026-03-25T21:39:48Z"
+   *   timestamp: '2026-03-25T21:39:48Z'
    *   status: live
-   *   handles: ["ui:skills-review.submit"]
-   *   calls: ["POST /api/review-decisions", "POST /api/cv/layout-estimate"]
-   *   reads: ["window:userSelections.skills", "window:_skillsOrdered", "dom:.skill-match-input.value"]
-   *   writes: ["request:POST /api/review-decisions.decisions", "request:POST /api/review-decisions.extra_skills", "request:POST /api/review-decisions.extra_skill_matches", "window:_savedDecisions.skill_decisions", "window:_savedDecisions.extra_skills", "window:_savedDecisions.extra_skill_matches"]
-   *   notes: "Submits skill inclusion decisions together with session-only extra skills and experience-match evidence so backend generation can materialize the same overlay state."
-  */
+   *   handles:
+   *   - ui:skills-review.submit
+   *   calls:
+   *   - POST /api/review-decisions
+   *   - POST /api/cv/layout-estimate
+   *   reads:
+   *   - window:userSelections.skills
+   *   - window:_skillsOrdered
+   *   - dom:.skill-match-input.value
+   *   writes:
+   *   - request:POST /api/review-decisions.decisions
+   *   - request:POST /api/review-decisions.extra_skills
+   *   - request:POST /api/review-decisions.extra_skill_matches
+   *   - window:_savedDecisions.skill_decisions
+   *   - window:_savedDecisions.extra_skills
+   *   - window:_savedDecisions.extra_skill_matches
+   *   notes: Submits skill inclusion decisions together with session-only extra skills and experience-match evidence so backend generation can materialize the same overlay state.
+   */
   const decisions = userSelections.skills;
   const count = Object.keys(decisions).length;
 

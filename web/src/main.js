@@ -51,6 +51,7 @@ import * as MessageDispatch from '../message-dispatch.js';
 import * as QuestionsPanel  from '../questions-panel.js';
 
 // ── Tier 4 ────────────────────────────────────────────────────────────────────
+import * as ReviewIcons    from '../review-icons.js';
 import * as ReviewTableBase from '../review-table-base.js';
 
 // ── Tier 5 ────────────────────────────────────────────────────────────────────
@@ -59,7 +60,6 @@ import * as SkillsReview       from '../skills-review.js';
 import * as AchievementsReview from '../achievements-review.js';
 import * as SummaryReview      from '../summary-review.js';
 import * as PublicationsReview from '../publications-review.js';
-import * as ReviewIcons        from '../review-icons.js';
 
 // ── Tier 6 ────────────────────────────────────────────────────────────────────
 import * as RewriteReview      from '../rewrite-review.js';

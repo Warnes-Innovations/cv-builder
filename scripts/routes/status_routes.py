@@ -49,16 +49,19 @@ def create_blueprint(deps):
     @bp.get("/api/status")
     def status():
         # duckflow:
-        #   id: session_status.scripts_routes_status_routes.L51
+        #   id: session_status.scripts_routes_status_routes.L50
         #   kind: api
-        #   timestamp: "2026-03-27T01:05:00Z"
+        #   timestamp: "2026-03-27T02:07:47Z"
         #   status: live
-        #   handles: ["GET /api/status"]
+        #   handles:
+        #     - "GET /api/status"
         #   reads:
-        #     - 'state:session.state["max_skills"]'
-        #     - 'state:session.state["skills_section_title"]'
-        #   returns: ["response:GET /api/status.max_skills", "response:GET /api/status.skills_section_title"]
-        #   notes: "Status route surfaces current generation settings for the active session."
+        #     - "state:max_skills"
+        #     - "state:skills_section_title"
+        #   returns:
+        #     - "response:GET /api/status.max_skills"
+        #     - "response:GET /api/status.skills_section_title"
+        #   notes: "Returns the current generation-settings values in the session status payload."
         from pathlib import Path
         entry = _get_session(required=False)
         _provider_name = _provider_name_ref['value']
@@ -103,12 +106,18 @@ def create_blueprint(deps):
             # duckflow:
             #   id: summary_api_status_live
             #   kind: api
-            #   timestamp: "2026-03-25T21:39:48Z"
+            #   timestamp: "2026-03-27T01:23:28Z"
             #   status: live
-            #   handles: ["GET /api/status"]
-            #   reads: ["state:session_summaries.ai_generated", "state:summary_focus_override"]
-            #   writes: ["response:GET /api/status.professional_summaries"]
-            #   returns: ["response:GET /api/status.professional_summaries", "response:GET /api/status.summary_focus_override"]
+            #   handles:
+            #     - "GET /api/status"
+            #   reads:
+            #     - "state:session_summaries.ai_generated"
+            #     - "state:summary_focus_override"
+            #   writes:
+            #     - "response:GET /api/status.professional_summaries"
+            #   returns:
+            #     - "response:GET /api/status.professional_summaries"
+            #     - "response:GET /api/status.summary_focus_override"
             #   notes: "Live status route merges master summaries with session summary overrides."
             summary_view = SessionDataView(orchestrator.master_data, conversation.state)
             professional_summaries = summary_view.professional_summaries()
@@ -205,19 +214,24 @@ def create_blueprint(deps):
     @bp.post("/api/generation-settings")
     def update_generation_settings():
         # duckflow:
-        #   id: generation_settings.scripts_routes_status_routes.L201
+        #   id: generation_settings.scripts_routes_status_routes.L205
         #   kind: api
-        #   timestamp: "2026-03-27T01:05:00Z"
+        #   timestamp: "2026-03-27T02:07:47Z"
         #   status: live
-        #   handles: ["POST /api/generation-settings"]
-        #   reads: ["request:POST /api/generation-settings.max_skills", "request:POST /api/generation-settings.skills_section_title"]
+        #   handles:
+        #     - "POST /api/generation-settings"
+        #   reads:
+        #     - "request:POST /api/generation-settings.max_skills"
+        #     - "request:POST /api/generation-settings.skills_section_title"
         #   writes:
-        #     - 'state:session.state["max_skills"]'
-        #     - 'state:session.state["skills_section_title"]'
+        #     - "state:max_skills"
+        #     - "state:skills_section_title"
         #     - "customizations:max_skills"
         #     - "customizations:skills_section_title"
-        #   returns: ["response:POST /api/generation-settings.max_skills", "response:POST /api/generation-settings.skills_section_title"]
-        #   notes: "Updates per-session generation settings and mirrors them into generation customizations."
+        #   returns:
+        #     - "response:POST /api/generation-settings.max_skills"
+        #     - "response:POST /api/generation-settings.skills_section_title"
+        #   notes: "Persists per-session generation settings into both top-level session state and the generation customizations payload."
         """Update per-session generation settings (max_skills, skills_section_title, etc.)."""
         entry = _get_session()
         _validate_owner(entry)

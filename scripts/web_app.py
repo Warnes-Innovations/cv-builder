@@ -132,10 +132,11 @@ class StatusResponse:
     # duckflow:
     #   id: session_status.scripts_web_app.L132
     #   kind: api
-    #   timestamp: "2026-03-27T01:05:00Z"
+    #   timestamp: '2026-03-27T01:23:28Z'
     #   status: live
-    #   returns: ["response:GET /api/status.skills_section_title"]
-    #   notes: "Documents the skills-section-title field surfaced by the status response schema."
+    #   returns:
+    #   - response:GET /api/status.skills_section_title
+    #   notes: Documents the skills-section-title field surfaced by the status response schema.
     skills_section_title: str
     achievement_edits: Dict[str, Any]
     intake: Dict[str, Any]

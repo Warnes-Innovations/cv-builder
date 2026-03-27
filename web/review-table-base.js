@@ -330,13 +330,17 @@ async function handleCustomizationResponse(response) {
  * duckflow:
  *   id: generation_settings.web_review_table_base.L330
  *   kind: ui
- *   timestamp: "2026-03-27T01:05:00Z"
+ *   timestamp: '2026-03-27T01:23:28Z'
  *   status: live
- *   handles: ["ui:generation-settings.sync-skills-title"]
- *   calls: ["POST /api/generation-settings"]
- *   reads: ["response:GET /api/status.skills_section_title"]
- *   writes: ["request:POST /api/generation-settings.skills_section_title"]
- *   notes: "Keeps the UI skills-title controls in sync with status data and persists title changes back to the session settings route."
+ *   handles:
+ *   - ui:generation-settings.sync-skills-title
+ *   calls:
+ *   - POST /api/generation-settings
+ *   reads:
+ *   - response:GET /api/status.skills_section_title
+ *   writes:
+ *   - request:POST /api/generation-settings.skills_section_title
+ *   notes: Keeps the UI skills-title controls in sync with status data and persists title changes back to the session settings route.
  */
 function _syncSkillsTitleControls(currentTitle) {
   const knownOptions = ['Skills', 'Technical Skills', 'Key Skills', 'Core Skills'];

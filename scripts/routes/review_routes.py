@@ -43,7 +43,7 @@ def create_blueprint(deps):
         return jsonify({'error': message}), 500
 
     def _prepopulate_spell_dict(orchestrator_inst) -> None:
-        """Load domain terms and proper nouns from master data into the custom dictionary."""
+        """Load master-data terms into the custom spell dictionary."""
         try:
             master = orchestrator_inst.master_data or {}
             skills = master.get('skills', {})
@@ -194,9 +194,10 @@ def create_blueprint(deps):
         # duckflow:
         #   id: review_api_decisions_live
         #   kind: api
-        #   timestamp: "2026-03-25T21:39:48Z"
+        #   timestamp: "2026-03-27T02:07:47Z"
         #   status: live
-        #   handles: ["POST /api/review-decisions"]
+        #   handles:
+        #     - "POST /api/review-decisions"
         #   reads:
         #     - "request:POST /api/review-decisions.type"
         #     - "request:POST /api/review-decisions.decisions"
@@ -214,8 +215,12 @@ def create_blueprint(deps):
         #     - "state:accepted_suggested_achievements"
         #     - "state:publication_decisions"
         #     - "state:summary_focus_override"
-        #   returns: ["response:POST /api/review-decisions.success"]
-        #   notes: "Persists per-surface review decisions in session state; skill decisions also update session customizations so downstream generation can materialize the same choices."
+        #   returns:
+        #     - "response:POST /api/review-decisions.success"
+        #   notes:
+        #     "Persists per-surface review decisions in session state;
+        #     skill decisions also update session customizations so
+        #     downstream generation can materialize the same choices."
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -237,22 +242,36 @@ def create_blueprint(deps):
                 message = f"Saved decisions for {len(decisions)} experiences"
             elif decision_type == 'skills':
                 conversation.state['skill_decisions'] = decisions
-                extra_skills = _normalize_extra_skills(data.get('extra_skills', []))
+                extra_skills = _normalize_extra_skills(
+                    data.get('extra_skills', []),
+                )
                 conversation.state['extra_skills'] = extra_skills
 
                 raw_matches = data.get('extra_skill_matches') or {}
                 sanitized_matches: Dict[str, List[str]] = {}
                 valid_ids = {
                     (exp.get('id') or '').strip()
-                    for exp in (conversation.orchestrator.master_data.get('experience') or [])
+                    for exp in (
+                        conversation.orchestrator.master_data.get(
+                            'experience',
+                        )
+                        or []
+                    )
                     if isinstance(exp, dict) and (exp.get('id') or '').strip()
                 }
                 if isinstance(raw_matches, dict):
                     for skill_name, exp_ids in raw_matches.items():
-                        if not isinstance(skill_name, str) or not skill_name.strip():
+                        if (
+                            not isinstance(skill_name, str)
+                            or not skill_name.strip()
+                        ):
                             continue
                         if isinstance(exp_ids, str):
-                            exp_ids = [x.strip() for x in exp_ids.split(',') if x.strip()]
+                            exp_ids = [
+                                item.strip()
+                                for item in exp_ids.split(',')
+                                if item.strip()
+                            ]
                         if not isinstance(exp_ids, list):
                             continue
                         cleaned = []
@@ -261,7 +280,11 @@ def create_blueprint(deps):
                             if not isinstance(exp_id, str):
                                 continue
                             exp_id = exp_id.strip()
-                            if not exp_id or exp_id not in valid_ids or exp_id in seen:
+                            if (
+                                not exp_id
+                                or exp_id not in valid_ids
+                                or exp_id in seen
+                            ):
                                 continue
                             cleaned.append(exp_id)
                             seen.add(exp_id)
@@ -269,8 +292,12 @@ def create_blueprint(deps):
                             sanitized_matches[skill_name.strip()] = cleaned
                 conversation.state['extra_skill_matches'] = sanitized_matches
 
-                customizations = dict(conversation.state.get('customizations') or {})
-                customizations['extra_skills'] = conversation.state.get('extra_skills') or []
+                customizations = dict(
+                    conversation.state.get('customizations') or {},
+                )
+                customizations['extra_skills'] = (
+                    conversation.state.get('extra_skills') or []
+                )
                 customizations['extra_skill_matches'] = sanitized_matches
                 conversation.state['customizations'] = customizations
                 message = f"Saved decisions for {len(decisions)} skills"
@@ -278,9 +305,17 @@ def create_blueprint(deps):
                 conversation.state['achievement_decisions'] = decisions
                 accepted_suggestions = data.get('accepted_suggestions', [])
                 if accepted_suggestions:
-                    conversation.state['accepted_suggested_achievements'] = accepted_suggestions
-                message = f"Saved decisions for {len(decisions)} achievements" + (
-                    f" (+{len(accepted_suggestions)} AI suggestions accepted)" if accepted_suggestions else ""
+                    conversation.state[
+                        'accepted_suggested_achievements'
+                    ] = accepted_suggestions
+                message = (
+                    f"Saved decisions for {len(decisions)} achievements"
+                    + (
+                        f" (+{len(accepted_suggestions)} "
+                        "AI suggestions accepted)"
+                        if accepted_suggestions
+                        else ""
+                    )
                 )
             elif decision_type == 'publications':
                 conversation.state['publication_decisions'] = decisions
@@ -289,23 +324,30 @@ def create_blueprint(deps):
                 # duckflow:
                 #   id: summary_api_review_decision_live
                 #   kind: api
-                #   timestamp: "2026-03-25T21:39:48Z"
+                #   timestamp: "2026-03-27T01:23:28Z"
                 #   status: live
-                #   handles: ["POST /api/review-decisions"]
-                #   reads: ["request:POST /api/review-decisions.summary_focus"]
-                #   writes: ["state:summary_focus_override"]
-                #   notes: "Live review-decisions route persists the selected summary key in session state."
+                #   handles:
+                #     - "POST /api/review-decisions"
+                #   reads:
+                #     - "request:POST /api/review-decisions.summary_focus"
+                #   writes:
+                #     - "state:summary_focus_override"
+                #   notes:
+                #     "Live review-decisions route persists the selected
+                #     summary key in session state."
                 conversation.state['summary_focus_override'] = decisions
                 message = "Saved summary focus preference"
             else:
-                return jsonify({"error": f"Invalid type: {decision_type}"}), 400
+                return jsonify(
+                    {"error": f"Invalid type: {decision_type}"},
+                ), 400
 
             conversation._save_session()
             print(f"Saved {decision_type} decisions: {decisions}")
             session_registry.touch(sid)
             return jsonify({"success": True, "message": message})
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to save review decisions.')
 
     @bp.route('/api/save-achievement-edits', methods=['POST'])
@@ -314,16 +356,21 @@ def create_blueprint(deps):
         # duckflow:
         #   id: review_api_achievement_edits_live
         #   kind: api
-        #   timestamp: "2026-03-26T18:15:00Z"
+        #   timestamp: "2026-03-27T02:31:32Z"
         #   status: live
-        #   handles: ["POST /api/save-achievement-edits"]
-        #   reads: ["request:POST /api/save-achievement-edits.edits"]
-        #   writes: ["state:achievement_edits"]
-        #   returns: ["response:POST /api/save-achievement-edits.success"]
-        #   notes: >-
-        #     Stores per-experience bullet edits with hidden flags
-        #     for later generation/ATS overlays without mutating
-        #     master data.
+        #   handles:
+        #     - "POST /api/save-achievement-edits"
+        #   reads:
+        #     - "request:POST /api/save-achievement-edits.edits"
+        #   writes:
+        #     - "state:achievement_edits"
+        #   returns:
+        #     - "response:POST /api/save-achievement-edits.success"
+        #   notes:
+        #     "Stores per-experience bullet edits, including hidden
+        #     flags, in session state so later generation and ATS
+        #     materialization can overlay them without mutating master
+        #     data."
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -371,7 +418,7 @@ def create_blueprint(deps):
 
     @bp.post('/api/review-achievement')
     def save_review_achievement_override():
-        """Persist a top-level achievement edit/delete in session state only."""
+        """Persist a top-level achievement edit or delete in session state."""
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -389,20 +436,30 @@ def create_blueprint(deps):
         allowed_fields = {'title', 'description', 'relevant_for', 'importance'}
         if action == 'delete':
             with entry.lock:
-                overrides = dict(conversation.state.get('achievement_overrides') or {})
+                overrides = dict(
+                    conversation.state.get('achievement_overrides') or {},
+                )
                 overrides.pop(ach_id, None)
 
                 removed_ids = [
-                    item for item in (conversation.state.get('removed_achievement_ids') or [])
+                    item
+                    for item in (
+                        conversation.state.get('removed_achievement_ids')
+                        or []
+                    )
                     if isinstance(item, str) and item.strip()
                 ]
                 if ach_id not in removed_ids:
                     removed_ids.append(ach_id)
 
-                decisions = dict(conversation.state.get('achievement_decisions') or {})
+                decisions = dict(
+                    conversation.state.get('achievement_decisions') or {},
+                )
                 decisions[ach_id] = 'exclude'
 
-                customizations = dict(conversation.state.get('customizations') or {})
+                customizations = dict(
+                    conversation.state.get('customizations') or {},
+                )
                 customizations['achievement_overrides'] = overrides
                 customizations['removed_achievement_ids'] = removed_ids
 
@@ -416,20 +473,33 @@ def create_blueprint(deps):
             return jsonify({'ok': True, 'action': 'deleted', 'id': ach_id})
 
         if field not in allowed_fields:
-            return jsonify({'error': 'field must be one of title, description, relevant_for, importance'}), 400
+            return jsonify({
+                'error': (
+                    'field must be one of title, description, '
+                    'relevant_for, importance'
+                )
+            }), 400
 
         with entry.lock:
-            overrides = dict(conversation.state.get('achievement_overrides') or {})
+            overrides = dict(
+                conversation.state.get('achievement_overrides') or {},
+            )
             existing = dict(overrides.get(ach_id) or {})
             existing[field] = value
             overrides[ach_id] = existing
 
             removed_ids = [
-                item for item in (conversation.state.get('removed_achievement_ids') or [])
+                item
+                for item in (
+                    conversation.state.get('removed_achievement_ids')
+                    or []
+                )
                 if isinstance(item, str) and item.strip() and item != ach_id
             ]
 
-            customizations = dict(conversation.state.get('customizations') or {})
+            customizations = dict(
+                conversation.state.get('customizations') or {},
+            )
             customizations['achievement_overrides'] = overrides
             if removed_ids:
                 customizations['removed_achievement_ids'] = removed_ids
@@ -442,7 +512,12 @@ def create_blueprint(deps):
             conversation._save_session()
 
         session_registry.touch(sid)
-        return jsonify({'ok': True, 'action': 'updated', 'id': ach_id, 'field': field})
+        return jsonify({
+            'ok': True,
+            'action': 'updated',
+            'id': ach_id,
+            'field': field,
+        })
 
     @bp.post('/api/review-skill-group')
     def save_review_skill_group_override():
@@ -458,13 +533,19 @@ def create_blueprint(deps):
             return jsonify({'error': 'skill is required'}), 400
 
         raw_group = data.get('group')
-        group_name = None if raw_group is None else str(raw_group).strip() or None
+        group_name = (
+            None if raw_group is None else str(raw_group).strip() or None
+        )
 
         with entry.lock:
-            overrides = dict(conversation.state.get('skill_group_overrides') or {})
+            overrides = dict(
+                conversation.state.get('skill_group_overrides') or {},
+            )
             overrides[skill_name] = group_name
 
-            customizations = dict(conversation.state.get('customizations') or {})
+            customizations = dict(
+                conversation.state.get('customizations') or {},
+            )
             customizations['skill_group_overrides'] = overrides
 
             conversation.state['skill_group_overrides'] = overrides
@@ -472,11 +553,16 @@ def create_blueprint(deps):
             conversation._save_session()
 
         session_registry.touch(sid)
-        return jsonify({'ok': True, 'action': 'updated', 'skill': skill_name, 'group': group_name})
+        return jsonify({
+            'ok': True,
+            'action': 'updated',
+            'skill': skill_name,
+            'group': group_name,
+        })
 
     @bp.post('/api/review-skill-category')
     def save_review_skill_category_override():
-        """Persist a review-time skill category override in session state only."""
+        """Persist a review-time skill category override in session state."""
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -488,16 +574,22 @@ def create_blueprint(deps):
             return jsonify({'error': 'skill is required'}), 400
 
         raw_category = data.get('category')
-        category_name = None if raw_category is None else str(raw_category).strip() or None
+        category_name = (
+            None if raw_category is None else str(raw_category).strip() or None
+        )
 
         with entry.lock:
-            overrides = dict(conversation.state.get('skill_category_overrides') or {})
+            overrides = dict(
+                conversation.state.get('skill_category_overrides') or {},
+            )
             if category_name is None:
                 overrides.pop(skill_name, None)
             else:
                 overrides[skill_name] = category_name
 
-            customizations = dict(conversation.state.get('customizations') or {})
+            customizations = dict(
+                conversation.state.get('customizations') or {},
+            )
             if overrides:
                 customizations['skill_category_overrides'] = overrides
             else:
@@ -508,11 +600,16 @@ def create_blueprint(deps):
             conversation._save_session()
 
         session_registry.touch(sid)
-        return jsonify({'ok': True, 'action': 'updated', 'skill': skill_name, 'category': category_name})
+        return jsonify({
+            'ok': True,
+            'action': 'updated',
+            'skill': skill_name,
+            'category': category_name,
+        })
 
     @bp.post('/api/review-skill-categories')
     def save_review_skill_categories():
-        """Persist review-time skill category rename/order changes in session state only."""
+        """Persist review-time skill category rename and reorder changes."""
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -521,10 +618,14 @@ def create_blueprint(deps):
         action = str(data.get('action') or '').strip().lower()
 
         if action not in {'rename', 'reorder'}:
-            return jsonify({'error': "action must be 'rename' or 'reorder'"}), 400
+            return jsonify(
+                {'error': "action must be 'rename' or 'reorder'"},
+            ), 400
 
         with entry.lock:
-            customizations = dict(conversation.state.get('customizations') or {})
+            customizations = dict(
+                conversation.state.get('customizations') or {},
+            )
 
             if action == 'rename':
                 old_category = str(data.get('old_category') or '').strip()
@@ -543,24 +644,34 @@ def create_blueprint(deps):
                     str(skill.get('name') or '').strip()
                     for skill in summary_view.normalized_skills()
                     if isinstance(skill, dict)
-                    and str(skill.get('category') or 'General').strip() == old_category
+                    and str(
+                        skill.get('category') or 'General'
+                    ).strip() == old_category
                 ]
                 if not matching_skills:
                     return jsonify({'error': 'old_category not found'}), 404
 
-                overrides = dict(conversation.state.get('skill_category_overrides') or {})
+                overrides = dict(
+                    conversation.state.get('skill_category_overrides') or {},
+                )
                 for skill_name in matching_skills:
                     overrides[skill_name] = new_category
 
                 existing_order = [
                     str(category).strip()
-                    for category in (conversation.state.get('skill_category_order') or [])
+                    for category in (
+                        conversation.state.get('skill_category_order') or []
+                    )
                     if str(category).strip()
                 ]
                 if existing_order:
                     remapped_order = []
                     for category in existing_order:
-                        category = new_category if category == old_category else category
+                        category = (
+                            new_category
+                            if category == old_category
+                            else category
+                        )
                         if category not in remapped_order:
                             remapped_order.append(category)
                     conversation.state['skill_category_order'] = remapped_order
@@ -581,7 +692,9 @@ def create_blueprint(deps):
 
             ordered_categories = data.get('ordered_categories')
             if not isinstance(ordered_categories, list):
-                return jsonify({'error': 'ordered_categories must be a list'}), 400
+                return jsonify(
+                    {'error': 'ordered_categories must be a list'},
+                ), 400
 
             cleaned_order = []
             seen = set()
@@ -605,11 +718,15 @@ def create_blueprint(deps):
             conversation._save_session()
 
         session_registry.touch(sid)
-        return jsonify({'ok': True, 'action': 'reorder', 'ordered_categories': cleaned_order})
+        return jsonify({
+            'ok': True,
+            'action': 'reorder',
+            'ordered_categories': cleaned_order,
+        })
 
     @bp.post('/api/review-skill-qualifiers')
     def save_review_skill_qualifier_overrides():
-        """Persist review-time skill qualifier overrides in session state only."""
+        """Persist review-time skill qualifier overrides in session state."""
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -638,7 +755,9 @@ def create_blueprint(deps):
                 seen_subskills.add(label)
 
         with entry.lock:
-            overrides = dict(conversation.state.get('skill_qualifier_overrides') or {})
+            overrides = dict(
+                conversation.state.get('skill_qualifier_overrides') or {},
+            )
             current = dict(overrides.get(skill_name) or {})
 
             if proficiency:
@@ -661,7 +780,9 @@ def create_blueprint(deps):
             else:
                 overrides.pop(skill_name, None)
 
-            customizations = dict(conversation.state.get('customizations') or {})
+            customizations = dict(
+                conversation.state.get('customizations') or {},
+            )
             if overrides:
                 customizations['skill_qualifier_overrides'] = overrides
             else:
@@ -681,7 +802,7 @@ def create_blueprint(deps):
 
     @bp.post('/api/review-skill-add')
     def add_review_skill():
-        """Persist a new session-only skill entry for the current review flow."""
+        """Persist a new session-only skill entry for the current flow."""
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -714,19 +835,31 @@ def create_blueprint(deps):
                 if isinstance(skill, dict)
             }
             existing_extra = {
-                item if isinstance(item, str) else str(item.get('name') or '').strip()
-                for item in _normalize_extra_skills(conversation.state.get('extra_skills', []))
+                item
+                if isinstance(item, str)
+                else str(item.get('name') or '').strip()
+                for item in _normalize_extra_skills(
+                    conversation.state.get('extra_skills', []),
+                )
             }
             if skill_name in existing_names or skill_name in existing_extra:
-                return jsonify({'error': 'skill already exists in this session'}), 409
+                return jsonify(
+                    {'error': 'skill already exists in this session'},
+                ), 409
 
-            extra_skills = _normalize_extra_skills(conversation.state.get('extra_skills', []))
+            extra_skills = _normalize_extra_skills(
+                conversation.state.get('extra_skills', []),
+            )
             extra_skills.append(normalized_skill)
 
-            skill_decisions = dict(conversation.state.get('skill_decisions') or {})
+            skill_decisions = dict(
+                conversation.state.get('skill_decisions') or {},
+            )
             skill_decisions[skill_name] = 'include'
 
-            customizations = dict(conversation.state.get('customizations') or {})
+            customizations = dict(
+                conversation.state.get('customizations') or {},
+            )
             customizations['extra_skills'] = extra_skills
 
             conversation.state['extra_skills'] = extra_skills
@@ -748,7 +881,7 @@ def create_blueprint(deps):
         data = request.json or {}
         achievement_text = data.get('achievement_text', '').strip()
         experience_index = data.get('experience_index')
-        user_instructions    = data.get('user_instructions', '').strip()
+        user_instructions = data.get('user_instructions', '').strip()
         previous_suggestions = data.get('previous_suggestions') or []
         if not isinstance(previous_suggestions, list):
             previous_suggestions = []
@@ -765,7 +898,7 @@ def create_blueprint(deps):
                 experiences = _master.get('experience', [])
                 if 0 <= exp_idx < len(experiences):
                     exp = experiences[exp_idx]
-                    title   = exp.get('title', exp.get('position', ''))
+                    title = exp.get('title', exp.get('position', ''))
                     company = exp.get('company', exp.get('organization', ''))
                     experience_context = f"{title} at {company}".strip(' at')
             except (ValueError, TypeError, OSError):
@@ -799,12 +932,12 @@ def create_blueprint(deps):
                 achievement_index=ach_idx,
             )
             return jsonify({"rewritten": rewritten, "log_id": log_id})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to rewrite achievement.')
 
     @bp.route('/api/rewrite-achievement-outcome', methods=['POST'])
     def rewrite_achievement_outcome():
-        """Record the user's accept/reject decision for an AI rewrite suggestion."""
+        """Record the user's decision for an AI rewrite suggestion."""
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -816,7 +949,9 @@ def create_blueprint(deps):
         if not log_id:
             return jsonify({"error": "log_id is required"}), 400
         if outcome not in ('accepted', 'rejected'):
-            return jsonify({"error": "outcome must be 'accepted' or 'rejected'"}), 400
+            return jsonify(
+                {"error": "outcome must be 'accepted' or 'rejected'"},
+            ), 400
 
         found = conversation.update_achievement_rewrite_outcome(
             log_id=log_id,
@@ -874,7 +1009,7 @@ def create_blueprint(deps):
 
             return jsonify(cv_data)
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to load CV data.')
 
     @bp.route('/api/cv-data', methods=['POST'])
@@ -894,7 +1029,7 @@ def create_blueprint(deps):
                 conversation._save_session()
             session_registry.touch(sid)
 
-            print(f"CV data updated:")
+            print("CV data updated:")
             if 'personal_info' in data:
                 print(f"  - Personal info: {data['personal_info']}")
             if 'summary' in data:
@@ -904,14 +1039,17 @@ def create_blueprint(deps):
             if 'skills' in data:
                 print(f"  - Skills: {len(data['skills'])} items")
 
-            return jsonify({"success": True, "message": "CV data saved successfully"})
+            return jsonify({
+                "success": True,
+                "message": "CV data saved successfully",
+            })
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to save CV data.')
 
     @bp.get("/api/rewrites")
     def get_rewrites():
-        """Propose LLM text rewrites aligned with the target job description."""
+        """Propose LLM text rewrites aligned with the target job."""
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -923,13 +1061,23 @@ def create_blueprint(deps):
                 return jsonify(dataclasses.asdict(RewritesResponse(
                     ok=True,
                     rewrites=stored_rewrites,
-                    persuasion_warnings=conversation.state.get('persuasion_warnings', []),
+                    persuasion_warnings=conversation.state.get(
+                        'persuasion_warnings',
+                        [],
+                    ),
                     phase=Phase.REWRITE_REVIEW,
                 )))
 
             job_analysis = conversation.state.get('job_analysis')
             if not job_analysis:
-                return jsonify({"error": "Job analysis not available. Analyse the job first."}), 400
+                return jsonify(
+                    {
+                        "error": (
+                            "Job analysis not available. Analyse the "
+                            "job first."
+                        ),
+                    },
+                ), 400
 
             if not orchestrator.master_data:
                 return jsonify({"error": "CV master data not loaded."}), 400
@@ -953,7 +1101,9 @@ def create_blueprint(deps):
                 content,
                 job_analysis,
                 conversation_history=conversation.conversation_history,
-                user_preferences=conversation.state.get('post_analysis_answers'),
+                user_preferences=conversation.state.get(
+                    'post_analysis_answers',
+                ),
             )
             conversation.state['pending_rewrites'] = rewrites
 
@@ -975,16 +1125,21 @@ def create_blueprint(deps):
             return jsonify(dataclasses.asdict(RewritesResponse(
                 ok=True,
                 rewrites=rewrites,
-                persuasion_warnings=conversation.state.get('persuasion_warnings', []),
+                persuasion_warnings=conversation.state.get(
+                    'persuasion_warnings',
+                    [],
+                ),
                 phase=phase,
             )))
 
-        except Exception as e:
-            return _internal_server_error('Failed to load rewrite suggestions.')
+        except Exception:
+            return _internal_server_error(
+                'Failed to load rewrite suggestions.',
+            )
 
     @bp.post("/api/rewrites/approve")
     def approve_rewrites():
-        """Submit accept / edit / reject decisions for pending rewrite proposals."""
+        """Submit decisions for pending rewrite proposals."""
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -1007,12 +1162,14 @@ def create_blueprint(deps):
                 "phase":          summary['phase'],
             })
 
-        except Exception as e:
-            return _internal_server_error('Failed to approve rewrite decisions.')
+        except Exception:
+            return _internal_server_error(
+                'Failed to approve rewrite decisions.',
+            )
 
     @bp.get("/api/publication-recommendations")
     def publication_recommendations():
-        """Return LLM-ranked publication recommendations for the current job."""
+        """Return publication recommendations for the current job."""
         entry = _get_session()
         conversation = entry.manager
         orchestrator = entry.orchestrator
@@ -1021,19 +1178,34 @@ def create_blueprint(deps):
         try:
             cached = conversation.state.get('publication_recommendations')
             if cached is not None:
-                return jsonify({"ok": True, "recommendations": cached, "source": "cache",
-                                "total_count": len(cached)})
+                return jsonify({
+                    "ok": True,
+                    "recommendations": cached,
+                    "source": "cache",
+                    "total_count": len(cached),
+                })
 
             job_analysis = conversation.state.get('job_analysis')
             if not job_analysis:
-                return jsonify({"ok": True, "recommendations": [], "source": "no_analysis"})
+                return jsonify({
+                    "ok": True,
+                    "recommendations": [],
+                    "source": "no_analysis",
+                })
 
             if not orchestrator.publications:
-                return jsonify({"ok": True, "recommendations": [], "source": "no_publications"})
+                return jsonify({
+                    "ok": True,
+                    "recommendations": [],
+                    "source": "no_publications",
+                })
 
             candidate_name = ''
             if orchestrator.master_data:
-                candidate_name = orchestrator.master_data.get('personal_info', {}).get('name', '')
+                candidate_name = orchestrator.master_data.get(
+                    'personal_info',
+                    {},
+                ).get('name', '')
 
             pubs_list = list(orchestrator.publications.values())
 
@@ -1045,24 +1217,41 @@ def create_blueprint(deps):
                     max_results=15,
                 )
                 if not recommendations:
-                    raise RuntimeError("LLM returned no publication recommendations")
+                    raise RuntimeError(
+                        "LLM returned no publication recommendations",
+                    )
                 source = "llm"
             except Exception as rank_err:
-                print(f"Publication ranking failed, using score-based fallback: {rank_err}")
-                selected = orchestrator._select_publications(job_analysis, max_count=15)
+                print(
+                    "Publication ranking failed, using score-based "
+                    f"fallback: {rank_err}",
+                )
+                selected = orchestrator._select_publications(
+                    job_analysis,
+                    max_count=15,
+                )
                 recommendations = []
                 for pub in selected:
                     recommendations.append({
                         'cite_key':          pub.get('key', ''),
                         'title':             pub.get('title', ''),
-                        'venue':             pub.get('journal') or pub.get('booktitle') or '',
+                        'venue': (
+                            pub.get('journal') or pub.get('booktitle') or ''
+                        ),
                         'year':              pub.get('year', ''),
                         'is_first_author':   False,
                         'relevance_score':   pub.get('relevance_score', 5),
                         'confidence':        'Medium',
                         'rationale':         '',
                         'authority_signals': [],
-                        'venue_warning':     '' if (pub.get('journal') or pub.get('booktitle')) else 'No venue found',
+                        'venue_warning': (
+                            ''
+                            if (
+                                pub.get('journal')
+                                or pub.get('booktitle')
+                            )
+                            else 'No venue found'
+                        ),
                         'formatted_citation': pub.get('formatted', ''),
                     })
                 source = "fallback"
@@ -1073,7 +1262,9 @@ def create_blueprint(deps):
 
             if orchestrator.publications:
                 try:
-                    from utils.bibtex_parser import format_publication as _fmt_pub
+                    from utils.bibtex_parser import (
+                        format_publication as _fmt_pub,
+                    )
                 except ImportError:
                     _fmt_pub = None
                 not_recommended = []
@@ -1088,22 +1279,37 @@ def create_blueprint(deps):
                     else:
                         formatted = ''
                     if not formatted:
-                        formatted = f"{pub.get('authors', '')} ({pub.get('year', '')}). {pub.get('title', '')}".strip('. ')
+                        formatted = (
+                            f"{pub.get('authors', '')} "
+                            f"({pub.get('year', '')}). "
+                            f"{pub.get('title', '')}"
+                        ).strip('. ')
                     not_recommended.append({
                         'cite_key':          key,
                         'title':             pub.get('title', ''),
-                        'venue':             pub.get('journal') or pub.get('booktitle') or '',
+                        'venue': (
+                            pub.get('journal') or pub.get('booktitle') or ''
+                        ),
                         'year':              pub.get('year', ''),
                         'is_first_author':   False,
                         'relevance_score':   0,
                         'confidence':        '',
                         'rationale':         '',
                         'authority_signals': [],
-                        'venue_warning':     '' if (pub.get('journal') or pub.get('booktitle')) else 'No venue found',
+                        'venue_warning': (
+                            ''
+                            if (
+                                pub.get('journal')
+                                or pub.get('booktitle')
+                            )
+                            else 'No venue found'
+                        ),
                         'formatted_citation': formatted,
                         'is_recommended':    False,
                     })
-                not_recommended.sort(key=lambda p: -int(str(p['year']).strip() or '0'))
+                not_recommended.sort(
+                    key=lambda pub: -int(str(pub['year']).strip() or '0'),
+                )
                 recommendations.extend(not_recommended)
 
             conversation.state['publication_recommendations'] = recommendations
@@ -1111,10 +1317,17 @@ def create_blueprint(deps):
             session_registry.touch(sid)
 
             total_count = len(recommendations)
-            return jsonify({"ok": True, "recommendations": recommendations, "source": source, "total_count": total_count})
+            return jsonify({
+                "ok": True,
+                "recommendations": recommendations,
+                "source": source,
+                "total_count": total_count,
+            })
 
-        except Exception as e:
-            return _internal_server_error('Failed to load publication recommendations.')
+        except Exception:
+            return _internal_server_error(
+                'Failed to load publication recommendations.',
+            )
 
     @bp.post("/api/reorder-bullets")
     def reorder_bullets():
@@ -1125,7 +1338,7 @@ def create_blueprint(deps):
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
         exp_id = data.get("experience_id")
-        order  = data.get("order")
+        order = data.get("order")
         if not exp_id:
             return jsonify({"error": "Missing experience_id"}), 400
         if order is None:
@@ -1134,20 +1347,27 @@ def create_blueprint(deps):
             return jsonify({"error": "order must be a list of integers"}), 400
         try:
             with entry.lock:
-                achievement_orders = conversation.state.setdefault("achievement_orders", {})
+                achievement_orders = conversation.state.setdefault(
+                    "achievement_orders",
+                    {},
+                )
                 if order:
                     achievement_orders[exp_id] = [int(i) for i in order]
                 else:
                     achievement_orders.pop(exp_id, None)
                 conversation._save_session()
             session_registry.touch(sid)
-            return jsonify({"ok": True, "experience_id": exp_id, "order": order})
-        except Exception as e:
+            return jsonify({
+                "ok": True,
+                "experience_id": exp_id,
+                "order": order,
+            })
+        except Exception:
             return _internal_server_error('Failed to save bullet order.')
 
     @bp.get("/api/proposed-bullet-order")
     def proposed_bullet_order():
-        """Return relevance-ranked bullet order for one experience based on job keywords."""
+        """Return keyword-ranked bullet order for one experience."""
         entry = _get_session()
         conversation = entry.manager
         exp_id = request.args.get("experience_id")
@@ -1155,17 +1375,35 @@ def create_blueprint(deps):
             return jsonify({"error": "Missing experience_id"}), 400
         try:
             master_data = conversation.orchestrator.master_data
-            experiences_list = master_data.get("experiences") or master_data.get("experience", [])
-            experience = next((e for e in experiences_list if e.get("id") == exp_id), None)
+            experiences_list = (
+                master_data.get("experiences")
+                or master_data.get("experience", [])
+            )
+            experience = next(
+                (
+                    item
+                    for item in experiences_list
+                    if item.get("id") == exp_id
+                ),
+                None,
+            )
             if not experience:
-                return jsonify({"error": f"Experience {exp_id} not found"}), 404
+                return jsonify(
+                    {"error": f"Experience {exp_id} not found"},
+                ), 404
 
             achievements = list(experience.get("achievements") or [])
             if not achievements:
-                return jsonify({"proposed_order": [], "has_job_analysis": False})
+                return jsonify({
+                    "proposed_order": [],
+                    "has_job_analysis": False,
+                })
 
             job_analysis = conversation.state.get("job_analysis") or {}
-            job_keywords = {kw.lower() for kw in job_analysis.get("ats_keywords", [])}
+            job_keywords = {
+                keyword.lower()
+                for keyword in job_analysis.get("ats_keywords", [])
+            }
 
             if not job_keywords:
                 return jsonify({
@@ -1174,14 +1412,27 @@ def create_blueprint(deps):
                 })
 
             def ach_score(ach):
-                text = (ach.get("text", "") if isinstance(ach, dict) else str(ach)).lower()
+                text = (
+                    ach.get("text", "")
+                    if isinstance(ach, dict)
+                    else str(ach)
+                ).lower()
                 tokens = set(re.findall(r'\b\w+\b', text))
                 return len(tokens & job_keywords)
 
-            proposed = sorted(range(len(achievements)), key=lambda i: ach_score(achievements[i]), reverse=True)
-            return jsonify({"proposed_order": proposed, "has_job_analysis": True})
-        except Exception as e:
-            return _internal_server_error('Failed to calculate proposed bullet order.')
+            proposed = sorted(
+                range(len(achievements)),
+                key=lambda index: ach_score(achievements[index]),
+                reverse=True,
+            )
+            return jsonify({
+                "proposed_order": proposed,
+                "has_job_analysis": True,
+            })
+        except Exception:
+            return _internal_server_error(
+                'Failed to calculate proposed bullet order.',
+            )
 
     @bp.post("/api/reorder-rows")
     def reorder_rows():
@@ -1191,37 +1442,54 @@ def create_blueprint(deps):
         conversation = entry.manager
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
-        row_type   = data.get("type")
+        row_type = data.get("type")
         ordered_ids = data.get("ordered_ids")
         if row_type not in ("experience", "skill"):
-            return jsonify({"error": "type must be 'experience' or 'skill'"}), 400
+            return jsonify(
+                {"error": "type must be 'experience' or 'skill'"},
+            ), 400
         if ordered_ids is None:
             return jsonify({"error": "Missing ordered_ids"}), 400
         if not isinstance(ordered_ids, list):
             return jsonify({"error": "ordered_ids must be a list"}), 400
-        state_key = "experience_row_order" if row_type == "experience" else "skill_row_order"
+        state_key = (
+            "experience_row_order"
+            if row_type == "experience"
+            else "skill_row_order"
+        )
         try:
             with entry.lock:
                 if ordered_ids:
-                    conversation.state[state_key] = [str(i) for i in ordered_ids]
+                    conversation.state[state_key] = [
+                        str(item)
+                        for item in ordered_ids
+                    ]
                 else:
                     conversation.state.pop(state_key, None)
                 conversation._save_session()
             session_registry.touch(sid)
-            return jsonify({"ok": True, "type": row_type, "ordered_ids": ordered_ids})
-        except Exception as e:
+            return jsonify({
+                "ok": True,
+                "type": row_type,
+                "ordered_ids": ordered_ids,
+            })
+        except Exception:
             return _internal_server_error('Failed to save row order.')
 
     @bp.get("/api/synonym-lookup")
     def synonym_lookup():
-        """Look up the canonical form of a skill or keyword via the synonym map."""
+        """Look up the canonical form of a skill or keyword."""
         entry = _get_session()
         conversation = entry.manager
         term = request.args.get("term", "").strip()
         if not term:
             return jsonify({"error": "Missing term query parameter"}), 400
         canonical = conversation.orchestrator.canonical_skill_name(term)
-        return jsonify({"term": term, "canonical": canonical, "found": canonical != term})
+        return jsonify({
+            "term": term,
+            "canonical": canonical,
+            "found": canonical != term,
+        })
 
     @bp.get("/api/synonym-map")
     def synonym_map():
@@ -1243,7 +1511,10 @@ def create_blueprint(deps):
             master_data = conversation.orchestrator.master_data
             experience = None
 
-            experiences_list = master_data.get("experiences") or master_data.get("experience", [])
+            experiences_list = (
+                master_data.get("experiences")
+                or master_data.get("experience", [])
+            )
             if experiences_list:
                 for exp in experiences_list:
                     if exp.get("id") == experience_id:
@@ -1253,25 +1524,37 @@ def create_blueprint(deps):
             if experience:
                 return jsonify({"experience": experience})
             else:
-                available_ids = [exp.get("id") for exp in experiences_list] if experiences_list else []
+                available_ids = (
+                    [exp.get("id") for exp in experiences_list]
+                    if experiences_list
+                    else []
+                )
                 print(f"DEBUG: Experience '{experience_id}' not found")
                 print(f"DEBUG: Available IDs: {available_ids[:10]}")
-                return jsonify({"experience": None, "message": f"Experience {experience_id} not found"})
+                return jsonify({
+                    "experience": None,
+                    "message": f"Experience {experience_id} not found",
+                })
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to load experience details.')
 
     # ── Spell check ──────────────────────────────────────────────────────────
 
     @bp.get("/api/spell-check-sections")
     def spell_check_sections():
-        """Return the text sections that need spell checking for the current session."""
+        """Return the text sections that need spell checking."""
         entry = _get_session()
         conversation = entry.manager
         orchestrator = entry.orchestrator
         sections = []
 
-        def _append_section(section_id: str, label: str, text: str, context: str = 'skill') -> None:
+        def _append_section(
+            section_id: str,
+            label: str,
+            text: str,
+            context: str = 'skill',
+        ) -> None:
             text = (text or '').strip()
             if not text:
                 return
@@ -1282,15 +1565,15 @@ def create_blueprint(deps):
                 'context': context,
             })
         try:
-            state             = conversation.state
-            job_analysis      = state.get('job_analysis') or {}
+            state = conversation.state
+            job_analysis = state.get('job_analysis') or {}
             customizations = SessionDataView(
                 orchestrator.master_data,
                 state,
                 state.get('customizations'),
             ).materialize_generation_customizations()
             approved_rewrites = state.get('approved_rewrites') or []
-            spell_audit       = state.get('spell_audit') or []
+            spell_audit = state.get('spell_audit') or []
 
             _prepopulate_spell_dict(orchestrator)
             selected_content = orchestrator.build_render_ready_content(
@@ -1302,31 +1585,76 @@ def create_blueprint(deps):
                 use_semantic_match=False,
             )
 
-            cv_data = orchestrator._prepare_cv_data_for_template(selected_content, job_analysis)
+            cv_data = orchestrator._prepare_cv_data_for_template(
+                selected_content,
+                job_analysis,
+            )
 
-            _append_section('summary', 'Professional Summary', cv_data.get('professional_summary', ''), 'summary')
+            _append_section(
+                'summary',
+                'Professional Summary',
+                cv_data.get('professional_summary', ''),
+                'summary',
+            )
 
-            for i, ach in enumerate(selected_content.get('achievements', []) or []):
-                text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
-                _append_section(f'selected_ach_{i}', f'Selected Achievement {i + 1}', text, 'bullet')
+            for i, ach in enumerate(
+                selected_content.get('achievements', []) or [],
+            ):
+                text = (
+                    ach.get('text', '')
+                    if isinstance(ach, dict)
+                    else str(ach)
+                )
+                _append_section(
+                    f'selected_ach_{i}',
+                    f'Selected Achievement {i + 1}',
+                    text,
+                    'bullet',
+                )
 
-            for idx, skill in enumerate(selected_content.get('skills', []) or []):
+            for idx, skill in enumerate(
+                selected_content.get('skills', []) or [],
+            ):
                 if isinstance(skill, dict):
                     rendered_skill = skill.get('name', '')
                     if skill.get('years'):
                         rendered_skill += f" ({skill['years']} yrs)"
                 else:
                     rendered_skill = str(skill)
-                _append_section(f'skill_{idx}', f'Skill {idx + 1}', rendered_skill, 'skill')
+                _append_section(
+                    f'skill_{idx}',
+                    f'Skill {idx + 1}',
+                    rendered_skill,
+                    'skill',
+                )
 
-            for idx, edu in enumerate(selected_content.get('education', []) or []):
+            for idx, edu in enumerate(
+                selected_content.get('education', []) or [],
+            ):
                 if not isinstance(edu, dict):
                     continue
-                _append_section(f'edu_{idx}_degree', f'Education {idx + 1} — Degree', edu.get('degree', ''), 'skill')
-                _append_section(f'edu_{idx}_field', f'Education {idx + 1} — Field', edu.get('field', ''), 'skill')
-                _append_section(f'edu_{idx}_institution', f'Education {idx + 1} — Institution', edu.get('institution', ''), 'skill')
+                _append_section(
+                    f'edu_{idx}_degree',
+                    f'Education {idx + 1} — Degree',
+                    edu.get('degree', ''),
+                    'skill',
+                )
+                _append_section(
+                    f'edu_{idx}_field',
+                    f'Education {idx + 1} — Field',
+                    edu.get('field', ''),
+                    'skill',
+                )
+                _append_section(
+                    f'edu_{idx}_institution',
+                    f'Education {idx + 1} — Institution',
+                    edu.get('institution', ''),
+                    'skill',
+                )
 
-            for idx, award in enumerate(selected_content.get('awards', []) or []):
+            for idx, award in enumerate(
+                selected_content.get('awards', []) or [],
+            ):
                 if not isinstance(award, dict):
                     continue
                 _append_section(
@@ -1336,44 +1664,113 @@ def create_blueprint(deps):
                     'skill',
                 )
 
-            for idx, cert in enumerate(selected_content.get('certifications', []) or []):
+            for idx, cert in enumerate(
+                selected_content.get('certifications', []) or [],
+            ):
                 if not isinstance(cert, dict):
                     continue
-                _append_section(f'cert_{idx}_name', f'Certification {idx + 1} — Name', cert.get('name', ''), 'skill')
-                _append_section(f'cert_{idx}_issuer', f'Certification {idx + 1} — Issuer', cert.get('issuer', ''), 'skill')
+                _append_section(
+                    f'cert_{idx}_name',
+                    f'Certification {idx + 1} — Name',
+                    cert.get('name', ''),
+                    'skill',
+                )
+                _append_section(
+                    f'cert_{idx}_issuer',
+                    f'Certification {idx + 1} — Issuer',
+                    cert.get('issuer', ''),
+                    'skill',
+                )
 
-            for idx, lang in enumerate(selected_content.get('personal_info', {}).get('languages', []) or []):
+            for idx, lang in enumerate(
+                selected_content.get('personal_info', {}).get('languages', [])
+                or []
+            ):
                 if isinstance(lang, dict):
-                    _append_section(f'lang_{idx}_language', f'Language {idx + 1}', lang.get('language', ''), 'skill')
-                    _append_section(f'lang_{idx}_proficiency', f'Language {idx + 1} — Proficiency', lang.get('proficiency', ''), 'skill')
+                    _append_section(
+                        f'lang_{idx}_language',
+                        f'Language {idx + 1}',
+                        lang.get('language', ''),
+                        'skill',
+                    )
+                    _append_section(
+                        f'lang_{idx}_proficiency',
+                        f'Language {idx + 1} — Proficiency',
+                        lang.get('proficiency', ''),
+                        'skill',
+                    )
                 else:
-                    _append_section(f'lang_{idx}', f'Language {idx + 1}', str(lang), 'skill')
+                    _append_section(
+                        f'lang_{idx}',
+                        f'Language {idx + 1}',
+                        str(lang),
+                        'skill',
+                    )
 
-            for idx, pub in enumerate(selected_content.get('publications', []) or []):
+            for idx, pub in enumerate(
+                selected_content.get('publications', []) or [],
+            ):
                 if not isinstance(pub, dict):
                     continue
                 if pub.get('formatted'):
-                    _append_section(f'pub_{idx}_formatted', f'Publication {idx + 1}', pub.get('formatted', ''), 'skill')
+                    _append_section(
+                        f'pub_{idx}_formatted',
+                        f'Publication {idx + 1}',
+                        pub.get('formatted', ''),
+                        'skill',
+                    )
                 else:
-                    _append_section(f'pub_{idx}_title', f'Publication {idx + 1} — Title', pub.get('title', ''), 'skill')
-                    _append_section(f'pub_{idx}_authors', f'Publication {idx + 1} — Authors', pub.get('authors', ''), 'skill')
-                    _append_section(f'pub_{idx}_journal', f'Publication {idx + 1} — Venue', pub.get('journal', '') or pub.get('booktitle', ''), 'skill')
+                    _append_section(
+                        f'pub_{idx}_title',
+                        f'Publication {idx + 1} — Title',
+                        pub.get('title', ''),
+                        'skill',
+                    )
+                    _append_section(
+                        f'pub_{idx}_authors',
+                        f'Publication {idx + 1} — Authors',
+                        pub.get('authors', ''),
+                        'skill',
+                    )
+                    _append_section(
+                        f'pub_{idx}_journal',
+                        f'Publication {idx + 1} — Venue',
+                        pub.get('journal', '') or pub.get('booktitle', ''),
+                        'skill',
+                    )
 
             for exp in cv_data.get('experiences', []) or []:
-                exp_id  = exp.get('id', '')
+                exp_id = exp.get('id', '')
                 company = exp.get('company', 'Experience')
-                role    = exp.get('title', '')
-                label   = f"{company} \u2014 {role}" if role else company
+                role = exp.get('title', '')
+                label = f"{company} \u2014 {role}" if role else company
 
-                ach_list = exp.get('ordered_achievements') or exp.get('achievements') or []
+                ach_list = (
+                    exp.get('ordered_achievements')
+                    or exp.get('achievements')
+                    or []
+                )
                 for i, ach in enumerate(ach_list):
-                    text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
-                    _append_section(f"exp_{exp_id}_ach_{i}", f"{label} (bullet {i + 1})", text, 'bullet')
+                    text = (
+                        ach.get('text', '')
+                        if isinstance(ach, dict)
+                        else str(ach)
+                    )
+                    _append_section(
+                        f"exp_{exp_id}_ach_{i}",
+                        f"{label} (bullet {i + 1})",
+                        text,
+                        'bullet',
+                    )
 
-        except Exception as e:
-            return _internal_server_error('Failed to build spell-check sections.')
+        except Exception:
+            return _internal_server_error(
+                'Failed to build spell-check sections.',
+            )
 
-        aggregate_stats = _spell_checker.aggregate_stats([s['text'] for s in sections])
+        aggregate_stats = _spell_checker.aggregate_stats(
+            [section['text'] for section in sections],
+        )
         return jsonify({
             'ok':               True,
             'sections':         sections,
@@ -1387,8 +1784,8 @@ def create_blueprint(deps):
         entry = _get_session()
         orchestrator = entry.orchestrator
         try:
-            body    = request.get_json(force=True) or {}
-            text    = body.get('text', '')
+            body = request.get_json(force=True) or {}
+            text = body.get('text', '')
             context = body.get('context', 'bullet')
             if context not in ('bullet', 'summary', 'skill'):
                 context = 'bullet'
@@ -1418,14 +1815,16 @@ def create_blueprint(deps):
     def custom_dictionary_add():
         """Add a word to the custom dictionary."""
         try:
-            body  = request.get_json(force=True) or {}
-            word  = body.get('word', '').strip()
+            body = request.get_json(force=True) or {}
+            word = body.get('word', '').strip()
             if not word:
                 return jsonify({'error': 'word is required'}), 400
             added = _spell_checker.add_word(word)
             return jsonify({'ok': True, 'added': added})
         except Exception:
-            return _internal_server_error('Failed to update custom dictionary.')
+            return _internal_server_error(
+                'Failed to update custom dictionary.',
+            )
 
     @bp.post("/api/spell-check-complete")
     def spell_check_complete():
@@ -1433,19 +1832,26 @@ def create_blueprint(deps):
         # duckflow:
         #   id: review_api_spell_complete_live
         #   kind: api
-        #   timestamp: "2026-03-25T21:39:48Z"
+        #   timestamp: "2026-03-27T02:07:47Z"
         #   status: live
-        #   handles: ["POST /api/spell-check-complete"]
-        #   reads: ["request:POST /api/spell-check-complete.spell_audit"]
-        #   writes: ["state:spell_audit", "state:phase"]
-        #   returns: ["response:POST /api/spell-check-complete.ok"]
-        #   notes: "Persists the reviewed spell audit into canonical session state and advances the workflow into generation."
+        #   handles:
+        #     - "POST /api/spell-check-complete"
+        #   reads:
+        #     - "request:POST /api/spell-check-complete.spell_audit"
+        #   writes:
+        #     - "state:spell_audit"
+        #     - "state:phase"
+        #   returns:
+        #     - "response:POST /api/spell-check-complete.ok"
+        #   notes:
+        #     "Persists the reviewed spell audit into canonical session
+        #     state and advances the workflow into generation."
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
         sid = entry.session_id
         try:
-            body        = request.get_json(force=True) or {}
+            body = request.get_json(force=True) or {}
             spell_audit = body.get('spell_audit', [])
             with entry.lock:
                 result = conversation.complete_spell_check(spell_audit)
@@ -1464,15 +1870,24 @@ def create_blueprint(deps):
         try:
             generated = conversation.state.get('generated_files')
             if not generated or not isinstance(generated, dict):
-                return jsonify({'error': 'No generated CV found — generate your CV first.'}), 404
+                return jsonify({
+                    'error': 'No generated CV found — generate your CV first.',
+                }), 404
             output_dir = Path(generated.get('output_dir', ''))
             if not output_dir.is_dir():
-                return jsonify({'error': f'Output directory not found: {output_dir}'}), 404
+                return jsonify({
+                    'error': f'Output directory not found: {output_dir}',
+                }), 404
 
             html_files = sorted(output_dir.glob('*.html'))
             if not html_files:
-                return jsonify({'error': 'No HTML file found in output directory.'}), 404
-            html_content = html_files[0].read_text(encoding='utf-8', errors='replace')
+                return jsonify({
+                    'error': 'No HTML file found in output directory.',
+                }), 404
+            html_content = html_files[0].read_text(
+                encoding='utf-8',
+                errors='replace',
+            )
             return jsonify({'ok': True, 'html': html_content})
         except Exception:
             return _internal_server_error('Failed to load layout HTML.')
@@ -1508,7 +1923,9 @@ def create_blueprint(deps):
                     'confidence':   result.get('confidence'),
                     'raw_response': result.get('raw_response'),
                 }
-                safety_alert = generation_routes._build_layout_safety_alert(result.get('safety') or {})
+                safety_alert = generation_routes._build_layout_safety_alert(
+                    result.get('safety') or {},
+                )
                 if safety_alert:
                     response_payload['safety_alert'] = safety_alert
                 return jsonify(response_payload)
@@ -1516,13 +1933,16 @@ def create_blueprint(deps):
             safety = result.get('safety') or {}
             safety_alert = generation_routes._build_layout_safety_alert(safety)
             if safety_alert:
-                generation_routes._record_layout_safety_audit(conversation.state, {
-                    'timestamp': datetime.now().isoformat(),
-                    'instruction_text': safety.get('instruction_text', {}),
-                    'current_html': safety.get('current_html', {}),
-                    'rewritten_html': safety.get('rewritten_html', {}),
-                    'findings': safety.get('findings', []),
-                })
+                generation_routes._record_layout_safety_audit(
+                    conversation.state,
+                    {
+                        'timestamp': datetime.now().isoformat(),
+                        'instruction_text': safety.get('instruction_text', {}),
+                        'current_html': safety.get('current_html', {}),
+                        'rewritten_html': safety.get('rewritten_html', {}),
+                        'findings': safety.get('findings', []),
+                    },
+                )
                 conversation._save_session()
 
             response_payload = {
@@ -1535,7 +1955,9 @@ def create_blueprint(deps):
                 response_payload['safety_alert'] = safety_alert
             return jsonify(response_payload)
         except Exception:
-            return _internal_server_error('Failed to apply layout instruction.')
+            return _internal_server_error(
+                'Failed to apply layout instruction.',
+            )
 
     @bp.get("/api/layout-history")
     def get_layout_history():
@@ -1546,7 +1968,10 @@ def create_blueprint(deps):
             instructions = conversation.state.get('layout_instructions')
             if not instructions:
                 instructions = (
-                    conversation.state.get('generation_state', {}).get('layout_instructions', [])
+                    conversation.state.get(
+                        'generation_state',
+                        {},
+                    ).get('layout_instructions', [])
                 )
             return jsonify({
                 'instructions': instructions,
@@ -1557,7 +1982,7 @@ def create_blueprint(deps):
 
     @bp.post("/api/layout-complete")
     def complete_layout_review():
-        """Record layout instruction outcomes and advance phase to refinement."""
+        """Record layout instruction outcomes and advance to refinement."""
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -1568,10 +1993,15 @@ def create_blueprint(deps):
             if not layout_instructions:
                 layout_instructions = (
                     conversation.state.get('layout_instructions')
-                    or conversation.state.get('generation_state', {}).get('layout_instructions', [])
+                    or conversation.state.get(
+                        'generation_state',
+                        {},
+                    ).get('layout_instructions', [])
                 )
             with entry.lock:
-                result = conversation.complete_layout_review(layout_instructions)
+                result = conversation.complete_layout_review(
+                    layout_instructions,
+                )
             session_registry.touch(sid)
             return jsonify({'ok': True, **result})
         except Exception:
@@ -1583,7 +2013,7 @@ def create_blueprint(deps):
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
-        sid          = entry.session_id
+        sid = entry.session_id
         try:
             body = request.get_json(force=True) or {}
             with entry.lock:
@@ -1593,14 +2023,18 @@ def create_blueprint(deps):
                         raw = raw + 'px'
                     conversation.state['base_font_size'] = raw
                     if 'customizations' in conversation.state:
-                        conversation.state['customizations']['base_font_size'] = raw
+                        conversation.state['customizations'][
+                            'base_font_size'
+                        ] = raw
                 if 'page_margin' in body:
                     raw = str(body['page_margin']).strip()
                     if raw and raw.replace('.', '', 1).isdigit():
                         raw = raw + 'in'
                     conversation.state['page_margin'] = raw
                     if 'customizations' in conversation.state:
-                        conversation.state['customizations']['page_margin'] = raw
+                        conversation.state['customizations'][
+                            'page_margin'
+                        ] = raw
                 conversation._save_session()
             session_registry.touch(sid)
             return jsonify({'ok': True})
@@ -1619,13 +2053,21 @@ def create_blueprint(deps):
         try:
             generated = conversation.state.get('generated_files')
             if not generated or not isinstance(generated, dict):
-                return jsonify({'ok': False, 'error': 'No CV files generated yet'}), 400
+                return jsonify({
+                    'ok': False,
+                    'error': 'No CV files generated yet',
+                }), 400
 
-            output_dir  = Path(generated.get('output_dir', ''))
+            output_dir = Path(generated.get('output_dir', ''))
             if not output_dir.is_dir():
-                return jsonify({'ok': False, 'error': f'Output directory not found: {output_dir}'}), 404
+                return jsonify({
+                    'ok': False,
+                    'error': f'Output directory not found: {output_dir}',
+                }), 404
 
-            job_analysis = _coerce_to_dict(conversation.state.get('job_analysis'))
+            job_analysis = _coerce_to_dict(
+                conversation.state.get('job_analysis'),
+            )
 
             checks, page_count = validate_ats_report(output_dir, job_analysis)
 
@@ -1652,7 +2094,7 @@ def create_blueprint(deps):
                 'page_count': page_count,
                 'summary':    summary,
             })
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to validate ATS output.')
 
     @bp.get("/api/persuasion-check")
@@ -1665,11 +2107,16 @@ def create_blueprint(deps):
 
             generated = conversation.state.get('generated_files')
             if generated:
-                job_analysis   = _coerce_to_dict(conversation.state.get('job_analysis'))
+                job_analysis = _coerce_to_dict(
+                    conversation.state.get('job_analysis'),
+                )
                 customizations = conversation.state.get('customizations') or {}
                 try:
-                    selected = conversation.orchestrator._select_content_hybrid(
-                        job_analysis, customizations
+                    selected = (
+                        conversation.orchestrator._select_content_hybrid(
+                            job_analysis,
+                            customizations,
+                        )
                     )
                     experiences = selected.get('experiences', [])
                 except Exception:
