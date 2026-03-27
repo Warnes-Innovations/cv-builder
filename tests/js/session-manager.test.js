@@ -768,6 +768,173 @@ describe('restoreBackendState', () => {
     expect(stateManager.getTabData('cv')).toBeNull()
     expect(window.pendingRecommendations).toBeNull()
   })
+
+  // ── Regression: new session must not auto-load a previous session from disk ──
+
+  // Helper that returns the minimal status / generation-state mock pair for
+  // an empty (brand-new) session:  no position_name, no job_analysis.
+  function _emptySessionFetchMocks() {
+    return [
+      {
+        ok: true,
+        json: async () => ({
+          job_analysis: null,
+          customizations: null,
+          generated_files: null,
+          position_name: null,
+          achievement_edits: {},
+          experience_decisions: {},
+          skill_decisions: {},
+          achievement_decisions: {},
+          publication_decisions: {},
+          summary_focus_override: null,
+          extra_skills: [],
+          extra_skill_matches: {},
+          all_experiences: [],
+          selected_summary_key: null,
+          new_skills_from_llm: [],
+        }),
+      },
+      {
+        ok: true,
+        json: async () => ({
+          ok: true,
+          phase: 'idle',
+          preview_available: false,
+          layout_confirmed: false,
+          page_count_estimate: null,
+          page_length_warning: false,
+          layout_instructions_count: 0,
+          final_generated_at: null,
+        }),
+      },
+    ]
+  }
+
+  it('does NOT auto-load session from disk for a brand-new session (IDs differ)', async () => {
+    // Simulate: localStorage has a SESSION_PATH and SESSION_ID pointing to the
+    // Genentech session, but the current URL has a freshly created session_id.
+    vi.stubGlobal('StorageKeys', {
+      SESSION_PATH: 'session_path',
+      SESSION_ID:   'session_id',
+    })
+    vi.stubGlobal('getSessionIdFromURL', vi.fn(() => 'new-session-id'))
+    localStorage.getItem.mockImplementation(key => {
+      if (key === 'session_path') return '/tmp/genentech/session.json'
+      if (key === 'session_id')   return 'old-genentech-session-id'
+      return null
+    })
+
+    globalThis.fetch
+      .mockResolvedValueOnce(_emptySessionFetchMocks()[0])
+      .mockResolvedValueOnce(_emptySessionFetchMocks()[1])
+
+    await restoreBackendState()
+
+    // /api/load-session must never have been called
+    const calledEndpoints = globalThis.fetch.mock.calls.map(([url]) => url)
+    expect(calledEndpoints).not.toContain('/api/load-session')
+  })
+
+  it('does NOT auto-load session from disk when localStorage has no stored session ID', async () => {
+    vi.stubGlobal('StorageKeys', {
+      SESSION_PATH: 'session_path',
+      SESSION_ID:   'session_id',
+    })
+    vi.stubGlobal('getSessionIdFromURL', vi.fn(() => 'new-session-id'))
+    localStorage.getItem.mockImplementation(key => {
+      if (key === 'session_path') return '/tmp/genentech/session.json'
+      // SESSION_ID returns null — no stored ID
+      return null
+    })
+
+    globalThis.fetch
+      .mockResolvedValueOnce(_emptySessionFetchMocks()[0])
+      .mockResolvedValueOnce(_emptySessionFetchMocks()[1])
+
+    await restoreBackendState()
+
+    const calledEndpoints = globalThis.fetch.mock.calls.map(([url]) => url)
+    expect(calledEndpoints).not.toContain('/api/load-session')
+  })
+
+  it('DOES auto-load session from disk when reconnecting to the SAME session', async () => {
+    // Simulate a page reload on the same session URL: stored SESSION_ID
+    // matches the current URL session_id.
+    document.body.innerHTML = '<div id="conversation"></div>'
+    vi.stubGlobal('StorageKeys', {
+      SESSION_PATH: 'session_path',
+      SESSION_ID:   'session_id',
+    })
+    vi.stubGlobal('getSessionIdFromURL', vi.fn(() => 'same-session-id'))
+    localStorage.getItem.mockImplementation(key => {
+      if (key === 'session_path') return '/tmp/genentech/session.json'
+      if (key === 'session_id')   return 'same-session-id'
+      return null
+    })
+
+    // Status response for same session also has no live data (was evicted)
+    globalThis.fetch
+      .mockResolvedValueOnce(_emptySessionFetchMocks()[0])
+      .mockResolvedValueOnce(_emptySessionFetchMocks()[1])
+      // loadSessionFile calls /api/load-session
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok:            true,
+          session_id:    'same-session-id',
+          redirect_url:  '/?session=same-session-id',
+          session_file:  '/tmp/genentech/session.json',
+          position_name: 'Genentech Sr. R Developer',
+          phase:         'customization',
+        }),
+      })
+      // loadSessionFile then calls /api/history
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ history: [] }),
+      })
+      // loadSessionFile then calls /api/status (via fetchStatus)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          position_name: 'Genentech Sr. R Developer',
+          phase: 'customization',
+          job_analysis: null, customizations: null, generated_files: null,
+          achievement_edits: {}, experience_decisions: {}, skill_decisions: {},
+          achievement_decisions: {}, publication_decisions: {},
+          summary_focus_override: null, extra_skills: [], extra_skill_matches: {},
+          all_experiences: [], selected_summary_key: null, new_skills_from_llm: [],
+          post_analysis_questions: [], post_analysis_answers: {},
+        }),
+      })
+      // restoreBackendState inside loadSessionFile: /api/cv/generation-state
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({}),
+      })
+
+    // Globals needed by loadSessionFile
+    vi.stubGlobal('appendMessage', vi.fn())
+    vi.stubGlobal('fetchStatus', vi.fn(async () => {}))
+    vi.stubGlobal('parseRewritesResponse', vi.fn(v => v))
+    vi.stubGlobal('renderRewritePanel', vi.fn())
+    vi.stubGlobal('switchTab', vi.fn())
+    vi.stubGlobal('getScopedTabDataStorageKey', vi.fn(() => 'scoped-key'))
+    vi.stubGlobal('PHASES', {
+      INIT: 'init', JOB_ANALYSIS: 'job_analysis', CUSTOMIZATION: 'customization',
+      REWRITE_REVIEW: 'rewrite_review', SPELL_CHECK: 'spell_check',
+      GENERATION: 'generation', LAYOUT_REVIEW: 'layout_review', REFINEMENT: 'refinement',
+    })
+
+    const result = await restoreBackendState()
+
+    // /api/load-session must have been called
+    const calledEndpoints = globalThis.fetch.mock.calls.map(([url]) => url)
+    expect(calledEndpoints).toContain('/api/load-session')
+    // And restoreBackendState should signal that data was found
+    expect(result).toBe(true)
+  })
 })
 
 // ── restoreSession / loadSessionFile ─────────────────────────────────────
