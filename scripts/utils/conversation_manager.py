@@ -254,8 +254,18 @@ Ask questions that are specific to this job posting, not generic career question
             {'role': 'system', 'content': system_msg}
         ] + self._strip_context_from_history(self.conversation_history)
         
-        # Get LLM response.
-        response = self.llm.chat(messages, temperature=0.7)
+        # Get LLM response; retry with a recent-only history window if the full
+        # history causes a context-length error (e.g. 413 on GitHub gpt-4o).
+        try:
+            response = self.llm.chat(messages, temperature=0.7)
+        except LLMContextLengthError:
+            # Drop all but the 8 most-recent history messages and try again.
+            trimmed = self._strip_context_from_history(
+                self.conversation_history[-8:]
+            )
+            response = self.llm.chat(
+                [messages[0]] + trimmed, temperature=0.7
+            )
         
         # Add to history
         self.conversation_history.append({

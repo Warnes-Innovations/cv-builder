@@ -86,10 +86,10 @@ def _classify_llm_error(exc: Exception, provider: str = '') -> LLMError:
         )
 
     # Context-length signals
-    if any(k in msg for k in (
+    if status == 413 or any(k in msg for k in (
         'context_length', 'context length', 'maximum context', 'token limit',
         'max_tokens', 'input is too long', 'too long', 'exceeds the limit',
-        'prompt is too long',
+        'prompt is too long', 'tokens_limit_reached', 'request body too large',
     )):
         logger.debug(
             "_classify_llm_error: %s (status=%s) -> LLMContextLengthError (provider=%s)",
