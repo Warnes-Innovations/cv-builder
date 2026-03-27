@@ -30,6 +30,7 @@ beforeEach(() => {
   vi.stubGlobal('showToast', vi.fn())
   vi.stubGlobal('switchTab', vi.fn())
   vi.stubGlobal('setLoading', vi.fn())
+  vi.stubGlobal('scheduleAtsRefresh', vi.fn())
 
   globalThis.fetch = vi.fn()
 })
@@ -199,6 +200,20 @@ describe('submitSummaryFocusDecision', () => {
     await submitSummaryFocusDecision()
     expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('ai generated'))
   })
+
+  it('schedules ATS score refresh after successful save', async () => {
+    window.selectedSummaryKey = 'default'
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await submitSummaryFocusDecision()
+    expect(globalThis.scheduleAtsRefresh).toHaveBeenCalledWith('review_checkpoint')
+  })
+
+  it('does not schedule ATS refresh when backend save fails', async () => {
+    window.selectedSummaryKey = 'default'
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false })
+    await submitSummaryFocusDecision()
+    expect(globalThis.scheduleAtsRefresh).not.toHaveBeenCalled()
+  })
 })
 
 // ── useAISummary ──────────────────────────────────────────────────────────
@@ -214,6 +229,12 @@ describe('useAISummary', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
     await useAISummary()
     expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('AI-generated'))
+  })
+
+  it('schedules ATS score refresh', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await useAISummary()
+    expect(globalThis.scheduleAtsRefresh).toHaveBeenCalledWith('review_checkpoint')
   })
 })
 
@@ -246,5 +267,22 @@ describe('regenerateAISummary', () => {
     await regenerateAISummary()
     const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
     expect(body.refinement_prompt).toBe('Make it shorter')
+  })
+
+  it('schedules ATS score refresh on successful generation', async () => {
+    document.body.innerHTML += '<textarea id="summary-refinement-input"></textarea>'
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ json: async () => ({ ok: true, summary: 'New summary' }) }) // generate
+      .mockResolvedValueOnce({ ok: true })                                                 // save
+    await regenerateAISummary()
+    expect(globalThis.scheduleAtsRefresh).toHaveBeenCalledWith('review_checkpoint')
+  })
+
+  it('does not schedule ATS refresh when generation fails', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ ok: false, error: 'LLM error' })
+    })
+    await regenerateAISummary()
+    expect(globalThis.scheduleAtsRefresh).not.toHaveBeenCalled()
   })
 })

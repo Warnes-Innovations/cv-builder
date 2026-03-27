@@ -1,7 +1,7 @@
 # UI Gap Implementation Plan
 
 **Created:** 2026-03-19  
-**Status:** Phases 1, 2, 3, 5, and 6 complete; Phase 4 regression coverage refreshed on 2026-03-27 for canonical spell-audit preview/final flow; Refactor backlog M01–M27 complete (2026-03-21)  
+**Status:** Phases 1, 2, 3, 5, and 6 complete; Phase 4 regression coverage refreshed on 2026-03-27 for canonical spell-audit preview/final flow; Refactor backlog M01–M27 complete (2026-03-21); Workstream 1 (staged generation contract) complete as of 2026-03-27 (commit 1314165); Workstream 2 (ATS score visibility) substantially complete as of 2026-03-27 — scoring model, badge, modal, tab, and all major refresh checkpoints live; summary-focus ATS refresh gap closed 2026-03-27  
 **Source basis:** `tasks/ui-review.md` and `tasks/gaps.md` refreshed on 2026-03-23
 
 ## Overview

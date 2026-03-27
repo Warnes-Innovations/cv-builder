@@ -10,7 +10,7 @@
  *
  * Dependencies (resolved through globalThis at runtime):
  *   pendingRecommendations, selectedSummaryKey, _aiGeneratedSummary,
- *   escapeHtml, showToast, switchTab, setLoading
+ *   escapeHtml, showToast, switchTab, setLoading, scheduleAtsRefresh
  */
 
 import { stateManager } from './state-manager.js';
@@ -197,6 +197,7 @@ async function _callGenerateSummary(refinementPrompt, previousSummary) {
       _showAISummary(data.summary, '✓ generated');
       window.selectedSummaryKey = 'ai_generated';
       await saveSummaryFocusToBackend('ai_generated');
+      scheduleAtsRefresh('review_checkpoint');
     } else {
       if (statusEl) statusEl.textContent = '⚠ error';
       if (textEl)   textEl.innerHTML = `<span style="color:#ef4444;">${escapeHtml(data.error || 'Generation failed.')}</span>`;
@@ -222,6 +223,7 @@ async function regenerateAISummary() {
 async function useAISummary() {
   window.selectedSummaryKey = 'ai_generated';
   await saveSummaryFocusToBackend('ai_generated');
+  scheduleAtsRefresh('review_checkpoint');
   showToast('AI-generated summary selected for your CV');
 }
 
@@ -274,6 +276,7 @@ async function submitSummaryFocusDecision() {
     return;
   }
   stateManager.markContentChanged();
+  scheduleAtsRefresh('review_checkpoint');
   showToast(`Summary selection saved: "${key.replace(/_/g, ' ')}"`);
   switchTab('publications-review');
 }
