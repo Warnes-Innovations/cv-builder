@@ -721,9 +721,16 @@ Ask questions that are specific to this job posting, not generic career question
                     customizations['base_font_size'] = base_font_size
 
                 # Skills section title (set via Generation Settings panel)
-                # duckflow: flow=generation-settings status=live
-                #   state_read: session.state["skills_section_title"]
-                #   state_write: customizations["skills_section_title"]
+                # duckflow:
+                #   id: generation_settings_skills_title_handoff
+                #   kind: state
+                #   timestamp: "2026-03-27T01:23:28Z"
+                #   status: live
+                #   reads:
+                #     - "state:skills_section_title"
+                #   writes:
+                #     - "customizations:skills_section_title"
+                #   notes: "Copies the generation settings skills section title from session state into generation customizations."
                 skills_section_title = self.state.get('skills_section_title')
                 if skills_section_title:
                     customizations['skills_section_title'] = skills_section_title
