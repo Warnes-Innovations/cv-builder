@@ -162,6 +162,18 @@ Current observed shape is categorized object with values as:
 
 - `{ "category": string, "skills": [...] }`
 
+Individual skill item fields:
+
+- `name`: string (required)
+- `category`: string — display category label
+- `years`: number — years of experience
+- `skill_type`: `"hard"` | `"soft"` (optional) — explicit hard/soft classification.
+  When omitted, a heuristic classifier infers the type from `category` and `name`.
+  Used to split ATS DOCX output into "Technical Skills" (hard) and "Core Competencies"
+  (soft) sections and to annotate `knowsAbout` entries in the HTML JSON-LD block.
+- `aliases`: string[] — alternate names for synonym matching
+- `relevant_for`: string[] — role types this skill is relevant for
+
 Current observed categories include:
 
 - `core_expertise`

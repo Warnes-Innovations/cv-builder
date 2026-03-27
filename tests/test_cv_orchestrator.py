@@ -1059,8 +1059,20 @@ class TestBuildJsonLd(unittest.TestCase):
 
     def test_knows_about_contains_skills(self):
         d = self._parse()
-        self.assertIn("Python", d["knowsAbout"])
-        self.assertIn("R", d["knowsAbout"])
+        # knowsAbout entries are now DefinedTerm dicts with name + additionalType
+        skill_names = [
+            e["name"] if isinstance(e, dict) else e
+            for e in d["knowsAbout"]
+        ]
+        self.assertIn("Python", skill_names)
+        self.assertIn("R", skill_names)
+
+    def test_knows_about_entries_have_skill_type(self):
+        d = self._parse()
+        for entry in d["knowsAbout"]:
+            self.assertIsInstance(entry, dict, "knowsAbout entry must be a dict")
+            self.assertEqual(entry.get("@type"), "DefinedTerm")
+            self.assertIn(entry.get("additionalType"), ("HardSkill", "SoftSkill"))
 
     def test_award_strings_included(self):
         d = self._parse()

@@ -141,6 +141,11 @@
             "name": { "type": "string" },
             "category": { "type": "string" },
             "years": { "type": ["integer", "number"] },
+            "skill_type": {
+              "type": "string",
+              "enum": ["hard", "soft"],
+              "description": "Optional explicit classification. Omit to use heuristic inference."
+            },
             "aliases": {
               "type": "array",
               "items": { "type": "string" }

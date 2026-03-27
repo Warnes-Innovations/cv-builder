@@ -1248,10 +1248,15 @@ For manual generation:
             for edu in cv_data.get('education', [])
         ]
 
-        all_skill_names = [
-            sk.get('name', '')
+        all_skill_entries = [
+            {
+                '@type':          'DefinedTerm',
+                'name':           sk.get('name', ''),
+                'additionalType': 'HardSkill' if self._classify_skill_type(sk) == 'hard' else 'SoftSkill',
+            }
             for cat in cv_data.get('skills_by_category', [])
             for sk in cat.get('skills', [])
+            if sk.get('name', '')
         ]
 
         award_strings = [
@@ -1290,8 +1295,8 @@ For manual generation:
             json_ld['alumniOf'] = alumni_of
         if has_occupation:
             json_ld['hasOccupation'] = has_occupation
-        if all_skill_names:
-            json_ld['knowsAbout'] = all_skill_names
+        if all_skill_entries:
+            json_ld['knowsAbout'] = all_skill_entries
         if award_strings:
             json_ld['award'] = award_strings
 
@@ -2771,37 +2776,40 @@ If you need clarification, return:
         personal = content['personal_info']
         name = personal.get('name', '')
         
-        # Name header — use Heading 1 so ATS parsers see the correct heading hierarchy.
-        name_para = doc.add_paragraph(name, style='Heading 1')
+# Candidate name — large bold run (not a Heading style so it does not
+        # compete with section Heading 1 paragraphs in the ATS heading hierarchy).
+        name_para = doc.add_paragraph()
+        name_run  = name_para.add_run(name)
+        name_run.bold      = True
+        name_run.font.size = Pt(16)
         name_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-        
-        # Contact information - single line, pipe-separated (ATS standard)
+
+        # Contact information — single line, pipe-separated (ATS standard).
+        # City/state only (no street address); phone normalized to NNN-NNN-NNNN.
         contact = personal.get('contact', {})
         contact_parts = []
-        
-        if contact.get('email'):
-            contact_parts.append(contact['email'])
-        if contact.get('phone'):
-            contact_parts.append(contact['phone'])
+
         if contact.get('address_display'):
             contact_parts.append(contact['address_display'])
         elif contact.get('address', {}).get('city'):
-            city = contact['address']['city']
+            city  = contact['address']['city']
             state = contact['address'].get('state', '')
             contact_parts.append(f"{city}, {state}".strip(', '))
+        if contact.get('phone'):
+            contact_parts.append(self._normalize_phone(contact['phone']))
+        if contact.get('email'):
+            contact_parts.append(contact['email'])
         if contact.get('linkedin'):
             contact_parts.append(contact['linkedin'])
-        
+
         contact_para = doc.add_paragraph(' | '.join(contact_parts))
         contact_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-        
+
         # Add spacing
         doc.add_paragraph()
-        
-        # Professional Summary - Critical for ATS
-        summary_heading = doc.add_paragraph()
-        summary_heading.add_run('PROFESSIONAL SUMMARY').bold = True
-        summary_heading.style = 'Heading 2'
+
+        # Professional Summary — ATS standard label, Heading 1 style.
+        summary_heading = doc.add_paragraph('Professional Summary', style='Heading 1')
         
         summary_text = content.get('summary', '')
         # Enhance summary with job-specific keywords
@@ -2809,44 +2817,48 @@ If you need clarification, return:
         doc.add_paragraph(enhanced_summary)
         doc.add_paragraph()
         
-        # Skills section - ATS output always normalizes to a fixed heading.
-    # ATS output always keeps the skills heading normalized for parsers.
-        skills_heading = doc.add_paragraph()
-        skills_heading.add_run('SKILLS').bold = True
-        skills_heading.style = 'Heading 2'
-        
-        # Organize skills for maximum ATS impact
-        ats_optimized_skills = self._optimize_skills_for_ats(content['skills'], job_analysis)
-        skills_para = doc.add_paragraph()
-        skills_para.add_run(' • '.join(ats_optimized_skills))
-        doc.add_paragraph()
-        
-        # Professional Experience - Standard ATS format
-        exp_heading = doc.add_paragraph()
-        exp_heading.add_run('PROFESSIONAL EXPERIENCE').bold = True
-        exp_heading.style = 'Heading 2'
+        # Skills — split hard/soft into "Technical Skills" and "Core Competencies".
+        # _optimize_skills_for_ats returns names in priority order; type inferred
+        # per skill via _classify_skill_type.
+        ats_skill_names = self._optimize_skills_for_ats(content['skills'], job_analysis)
+        skill_map = {s.get('name', ''): s for s in content.get('skills', [])}
+        hard_skills = [n for n in ats_skill_names
+                       if self._classify_skill_type(skill_map.get(n, {})) == 'hard']
+        soft_skills = [n for n in ats_skill_names
+                       if self._classify_skill_type(skill_map.get(n, {})) == 'soft']
+
+        if hard_skills:
+            doc.add_paragraph('Technical Skills', style='Heading 1')
+            doc.add_paragraph(' • '.join(hard_skills))
+            doc.add_paragraph()
+
+        if soft_skills:
+            doc.add_paragraph('Core Competencies', style='Heading 1')
+            doc.add_paragraph(' • '.join(soft_skills))
+            doc.add_paragraph()
+
+        # Work Experience — ATS standard label, Heading 1 style.
+        doc.add_paragraph('Work Experience', style='Heading 1')
         
         for exp in content['experiences']:
-            # Job title and company - Bold, clear format
-            title_company = f"{exp.get('title', '')} | {exp.get('company', '')}"
-            title_para = doc.add_paragraph()
-            title_run = title_para.add_run(title_company)
-            title_run.bold = True
-            title_run.font.size = Pt(11)
-            
-            # Dates and location - Standard ATS format
-            location_parts = []
+            # One-line job entry: Title | Company | Location | Date Range (US-H5).
+            loc_parts = []
             if exp.get('location', {}).get('city'):
-                location_parts.append(exp['location']['city'])
+                loc_parts.append(exp['location']['city'])
             if exp.get('location', {}).get('state'):
-                location_parts.append(exp['location']['state'])
-            location_str = ', '.join(location_parts) if location_parts else ''
-            
-            dates_location = f"{exp.get('start_date', '')} – {exp.get('end_date', 'Present')}"
+                loc_parts.append(exp['location']['state'])
+            location_str  = ', '.join(loc_parts) if loc_parts else ''
+            date_range     = f"{exp.get('start_date', '')} – {exp.get('end_date', 'Present')}"
+            entry_parts    = [exp.get('title', ''), exp.get('company', '')]
             if location_str:
-                dates_location += f" | {location_str}"
-            
-            doc.add_paragraph(dates_location)
+                entry_parts.append(location_str)
+            entry_parts.append(date_range)
+            entry_line = ' | '.join(p for p in entry_parts if p)
+
+            entry_para = doc.add_paragraph()
+            entry_run  = entry_para.add_run(entry_line)
+            entry_run.bold      = True
+            entry_run.font.size = Pt(11)
             
             # Achievements - Bullet points with quantified results
             if exp.get('achievements'):
@@ -2859,11 +2871,9 @@ If you need clarification, return:
             
             doc.add_paragraph()  # Spacing between positions
         
-        # Education - Standard format
+        # Education — ATS standard label, Heading 1 style.
         if content.get('education'):
-            edu_heading = doc.add_paragraph()
-            edu_heading.add_run('EDUCATION').bold = True
-            edu_heading.style = 'Heading 2'
+            doc.add_paragraph('Education', style='Heading 1')
             
             for edu in content['education']:
                 degree = edu.get('degree', '')
@@ -2907,21 +2917,22 @@ If you need clarification, return:
         # Create custom styles that are ATS-friendly
         styles = doc.styles
 
-        # Heading 1 — used for the candidate name at the top of the ATS DOCX
+        # Heading 1 — used for all section headings in the ATS DOCX.
+        # (Candidate name is rendered as a bold run, not a Heading style.)
         try:
             heading1 = styles['Heading 1']
-            heading1.font.size = Pt(16)
+            heading1.font.size = Pt(12)
             heading1.font.bold = True
             heading1.font.color.rgb = RGBColor(0, 0, 0)
         except KeyError:
             pass
 
-        # Clean heading style
+        # Heading 2 — available for optional sub-sections if needed.
         try:
             heading2 = styles['Heading 2']
-            heading2.font.size = Pt(12)
+            heading2.font.size = Pt(11)
             heading2.font.bold = True
-            heading2.font.color.rgb = RGBColor(0, 0, 0)  # Pure black for ATS
+            heading2.font.color.rgb = RGBColor(0, 0, 0)
         except KeyError:
             pass
             
@@ -3087,6 +3098,55 @@ If you need clarification, return:
         re.IGNORECASE,
     )
 
+    # ── ATS skill-type classification ──────────────────────────────────────────
+
+    _SOFT_SKILL_CATEGORIES: frozenset = frozenset({
+        'soft', 'soft skills', 'interpersonal', 'leadership', 'communication',
+        'core competencies', 'management', 'personal', 'professional skills',
+        'collaboration', 'people skills',
+    })
+
+    _SOFT_SKILL_NAMES: frozenset = frozenset({
+        'communication', 'leadership', 'teamwork', 'collaboration',
+        'problem solving', 'critical thinking', 'adaptability', 'creativity',
+        'time management', 'organization', 'attention to detail',
+        'emotional intelligence', 'empathy', 'conflict resolution',
+        'negotiation', 'presentation', 'mentoring', 'coaching',
+        'strategic thinking', 'decision making', 'stakeholder management',
+        'change management', 'cross-functional collaboration',
+    })
+
+    @staticmethod
+    def _normalize_phone(phone: str) -> str:
+        """Normalize phone to NNN-NNN-NNNN format (no parentheses or spaces)."""
+        if not phone:
+            return phone
+        digits = re.sub(r'\D', '', phone)
+        if len(digits) == 11 and digits.startswith('1'):
+            digits = digits[1:]
+        if len(digits) == 10:
+            return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+        return phone
+
+    @classmethod
+    def _classify_skill_type(cls, skill: Dict) -> str:
+        """Return 'soft' if skill is a soft/interpersonal skill, else 'hard'.
+
+        Checks ``skill_type`` stored field first (allowing explicit overrides),
+        then falls back to category- and name-based heuristics.
+        """
+        stored = (skill.get('skill_type') or '').lower()
+        if stored in ('hard', 'soft'):
+            return stored
+        category = (skill.get('category') or '').lower().strip()
+        name     = (skill.get('name')     or '').lower().strip()
+        for soft_cat in cls._SOFT_SKILL_CATEGORIES:
+            if soft_cat in category:
+                return 'soft'
+        if name in cls._SOFT_SKILL_NAMES:
+            return 'soft'
+        return 'hard'
+
     def check_persuasion(self, experiences: List[Dict]) -> Dict:
         """Analyse experience bullets for persuasion quality.
 
@@ -3198,11 +3258,9 @@ If you need clarification, return:
     def _add_ats_additional_sections(self, doc, content: Dict, job_analysis: Dict):
         """Add additional sections that improve ATS scoring."""
         
-        # Certifications (if present)
+        # Certifications (if present) — Heading 1, title-case ATS label.
         if content.get('certifications'):
-            cert_heading = doc.add_paragraph()
-            cert_heading.add_run('CERTIFICATIONS').bold = True
-            cert_heading.style = 'Heading 2'
+            doc.add_paragraph('Certifications', style='Heading 1')
             
             for cert in content['certifications']:
                 cert_name = cert.get('name', '')
@@ -3219,11 +3277,9 @@ If you need clarification, return:
             
             doc.add_paragraph()
         
-        # Awards (if present and relevant)
+        # Awards (if present and relevant) — Heading 1, title-case ATS label.
         if content.get('awards'):
-            awards_heading = doc.add_paragraph()
-            awards_heading.add_run('AWARDS & RECOGNITION').bold = True
-            awards_heading.style = 'Heading 2'
+            doc.add_paragraph('Awards', style='Heading 1')
             
             for award in content['awards']:
                 award_title = award.get('title', '')
@@ -3651,6 +3707,7 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 'work experience', 'professional experience', 'technical skills',
                 'professional summary', 'selected publications', 'publications', 'contact',
                 'portfolio', 'languages', 'volunteering', 'projects', 'career history',
+                'core competencies',
             })
             heading_paras = [p for p in paragraphs if p.style.name.startswith('Heading')]
             heading_texts = [p.text.strip() for p in heading_paras if p.text.strip()]
