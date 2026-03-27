@@ -449,8 +449,14 @@ async function restoreBackendState() {
     if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
 
     if (!statusData.position_name && !statusData.job_analysis) {
-      const storedPath = localStorage.getItem(StorageKeys.SESSION_PATH);
-      if (storedPath) {
+      const storedPath    = localStorage.getItem(StorageKeys.SESSION_PATH);
+      const storedSession = localStorage.getItem(StorageKeys.SESSION_ID);
+      const currentSession = getSessionIdFromURL ? getSessionIdFromURL() : null;
+      // Only auto-restore from disk when reconnecting to the SAME session
+      // (storedSession matches the current URL session_id).  A fresh new session
+      // will have a different ID, so this guard prevents the new session from
+      // silently loading the previous session's data off disk.
+      if (storedPath && storedSession && storedSession === currentSession) {
         const loaded = await loadSessionFile(storedPath);
         if (loaded) return true;
       }
