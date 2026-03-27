@@ -153,7 +153,7 @@ logging:
 
 ## Available Slash Commands
 
-Slash commands are defined in `~/src/vscode-config/.github/prompts/`. The most relevant:
+Slash commands are available from the shared prompt set in `~/src/vscode-config/.github/prompts/` and repo-local prompts in `.github/prompts/`. The most relevant:
 
 | Command | Purpose |
 |---------|---------|
@@ -162,6 +162,7 @@ Slash commands are defined in `~/src/vscode-config/.github/prompts/`. The most r
 | `/obo` | One-by-one sequential item processor with priority scoring and session persistence |
 | `/codeReview` | Systematic code review; findings presented sequentially via `/obo` |
 | `/cvUiReview` | Evaluate `web/index.html` against user story acceptance criteria → `tasks/ui-review.md` |
+| `/specstoryAudit` | Audit `.specstory/history` against current repo state → `tasks/specstory-history-audit-YYYY-MM-DD.md` |
 | `/commitMessage` | Generate thematic git commit messages |
 | `/unitTest` | Generate unit tests for Python/JS functions |
 
