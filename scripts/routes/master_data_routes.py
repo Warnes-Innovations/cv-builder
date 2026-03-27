@@ -886,22 +886,25 @@ def create_blueprint(deps):
     @bp.post("/api/generate-summary")
     def generate_professional_summary():
         """Generate (or refine) a custom LLM professional summary for this session."""
-        # duckflow: {
-        #   "id": "summary_api_generate_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/generate-summary"],
-        #   "calls": ["llm:generate_professional_summary"],
-        #   "reads": [
-        #     "state:job_analysis",
-        #     "state:experience_decisions",
-        #     "state:customizations.recommended_experiences"
-        #   ],
-        #   "writes": ["state:session_summaries.ai_generated", "state:summary_focus_override"],
-        #   "returns": ["response:POST /api/generate-summary.summary"],
-        #   "notes": "Live summary-generation route writes the generated summary into session state and sets it active."
-        # }
+        # duckflow:
+        #   id: summary_api_generate_live
+        #   kind: api
+        #   timestamp: "2026-03-27T01:23:28Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/generate-summary"
+        #   calls:
+        #     - "llm:generate_professional_summary"
+        #   reads:
+        #     - "state:job_analysis"
+        #     - "state:experience_decisions"
+        #     - "state:customizations.recommended_experiences"
+        #   writes:
+        #     - "state:session_summaries.ai_generated"
+        #     - "state:summary_focus_override"
+        #   returns:
+        #     - "response:POST /api/generate-summary.summary"
+        #   notes: "Live summary-generation route writes the generated summary into session state and sets it active."
         entry = get_session()
         validate_owner(entry)
         conversation = entry.manager

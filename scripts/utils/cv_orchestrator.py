@@ -573,15 +573,14 @@ class CVOrchestrator:
         Parameters mirror ``generate_cv`` but only the HTML rendering path is
         executed, so this is significantly faster than a full generation run.
         """
-        # duckflow: {
-        #   "id": "summary_orchestrator_preview_html",
-        #   "kind": "artifact",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "shared",
-        #   "reads": ["cv:selected_content.summary"],
-        #   "returns": ["artifact:generation_state.preview_html"],
-        #   "notes": "Renders the selected summary into preview HTML without writing files yet."
-        # }
+        # duckflow:
+        #   id: summary_orchestrator_preview_html
+        #   kind: artifact
+        #   timestamp: "2026-03-27T01:23:28Z"
+        #   status: shared
+        #   reads: ["cv:selected_content.summary"]
+        #   returns: ["artifact:generation_state.preview_html"]
+        #   notes: "Renders the selected summary into preview HTML without writing files yet."
         selected_content = self.build_render_ready_content(
             job_analysis,
             customizations,
@@ -633,15 +632,14 @@ class CVOrchestrator:
         Returns:
             dict with keys ``html`` and ``pdf`` (absolute path strings).
         """
-        # duckflow: {
-        #   "id": "summary_orchestrator_final_files",
-        #   "kind": "artifact",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "shared",
-        #   "reads": ["artifact:generation_state.preview_html"],
-        #   "writes": ["file:generated_files.final_html", "file:generated_files.final_pdf"],
-        #   "notes": "Commits the confirmed preview HTML to disk and regenerates the final PDF from that same artifact."
-        # }
+        # duckflow:
+        #   id: summary_orchestrator_final_files
+        #   kind: artifact
+        #   timestamp: "2026-03-27T01:23:28Z"
+        #   status: shared
+        #   reads: ["artifact:generation_state.preview_html"]
+        #   writes: ["file:generated_files.final_html", "file:generated_files.final_pdf"]
+        #   notes: "Commits the confirmed preview HTML to disk and regenerates the final PDF from that same artifact."
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2530,15 +2528,14 @@ If you need clarification, return:
             customizations,
             customizations,
         )
-        # duckflow: {
-        #   "id": "summary_orchestrator_select",
-        #   "kind": "orchestrator",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "shared",
-        #   "reads": ["customizations:summary_focus", "customizations:session_summaries"],
-        #   "writes": ["cv:selected_content.summary"],
-        #   "notes": "Resolves the active summary text by overlaying session variants over master variants and selecting the requested key."
-        # }
+        # duckflow:
+        #   id: summary_orchestrator_select
+        #   kind: orchestrator
+        #   timestamp: "2026-03-27T01:23:28Z"
+        #   status: shared
+        #   reads: ["customizations:summary_focus", "customizations:session_summaries"]
+        #   writes: ["cv:selected_content.summary"]
+        #   notes: "Resolves the active summary text by overlaying session variants over master variants and selecting the requested key."
         selected_summary = summary_view.selected_summary()
 
         # Select publications — honour user accept/reject decisions if present

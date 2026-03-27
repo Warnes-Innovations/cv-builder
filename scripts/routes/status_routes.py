@@ -93,17 +93,22 @@ def create_blueprint(deps):
                     'achievements': ach_text,
                 })
             all_achievements = []
-            # duckflow: {
-            #   "id": "summary_api_status_live",
-            #   "kind": "api",
-            #   "timestamp": "2026-03-25T21:39:48Z",
-            #   "status": "live",
-            #   "handles": ["GET /api/status"],
-            #   "reads": ["state:session_summaries.ai_generated", "state:summary_focus_override"],
-            #   "writes": ["response:GET /api/status.professional_summaries"],
-            #   "returns": ["response:GET /api/status.professional_summaries", "response:GET /api/status.summary_focus_override"],
-            #   "notes": "Live status route merges master summaries with session summary overrides."
-            # }
+            # duckflow:
+            #   id: summary_api_status_live
+            #   kind: api
+            #   timestamp: "2026-03-27T01:23:28Z"
+            #   status: live
+            #   handles:
+            #     - "GET /api/status"
+            #   reads:
+            #     - "state:session_summaries.ai_generated"
+            #     - "state:summary_focus_override"
+            #   writes:
+            #     - "response:GET /api/status.professional_summaries"
+            #   returns:
+            #     - "response:GET /api/status.professional_summaries"
+            #     - "response:GET /api/status.summary_focus_override"
+            #   notes: "Live status route merges master summaries with session summary overrides."
             summary_view = SessionDataView(orchestrator.master_data, conversation.state)
             professional_summaries = summary_view.professional_summaries()
             all_achievements = summary_view.selected_achievements()

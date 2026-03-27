@@ -1177,16 +1177,19 @@ def create_blueprint(deps):
         )
         customizations = summary_view.materialize_generation_customizations()
         if customizations.get("selected_summary"):
-            # duckflow: {
-            #   "id": "summary_api_ats_materialize_live",
-            #   "kind": "api",
-            #   "timestamp": "2026-03-25T21:39:48Z",
-            #   "status": "live",
-            #   "handles": ["POST /api/cv/ats-score"],
-            #   "reads": ["state:session_summaries.ai_generated", "state:summary_focus_override"],
-            #   "writes": ["customizations:selected_summary"],
-            #   "notes": "Live ATS scoring route materializes the selected summary into generation customizations."
-            # }
+            # duckflow:
+            #   id: summary_api_ats_materialize_live
+            #   kind: api
+            #   timestamp: "2026-03-27T01:23:28Z"
+            #   status: live
+            #   handles:
+            #     - "POST /api/cv/ats-score"
+            #   reads:
+            #     - "state:session_summaries.ai_generated"
+            #     - "state:summary_focus_override"
+            #   writes:
+            #     - "customizations:selected_summary"
+            #   notes: "Live ATS scoring route materializes the selected summary into generation customizations."
             pass
 
         score = _compute_ats_score(job_analysis, customizations, basis=basis)
