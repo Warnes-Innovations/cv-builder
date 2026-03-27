@@ -118,6 +118,11 @@ function formatSessionTimestamp(timestamp, { includeTime = true } = {}) {
 async function createNewSessionAndNavigate() {
   const data = await createSession();
   if (!data.session_id) throw new Error('Failed to create session');
+  // Clear any stale session path — the new session has no saved file yet.
+  // If SESSION_PATH were left pointing at a previous session's file, the
+  // disk-restore guard in restoreBackendState could load the wrong session
+  // on the next visit once SESSION_ID is updated by the beforeunload handler.
+  try { localStorage.removeItem('cv-builder-session-path'); } catch (_) {}
   window.location.assign(data.redirect_url || `/?session=${data.session_id}`);
 }
 
@@ -279,10 +284,12 @@ async function restoreSession() {
     if (historyRes.ok) {
       const historyData = await historyRes.json();
 
+      // Always clear placeholder HTML content now that we have a live session response.
+      const conversation = document.getElementById('conversation');
+      conversation.innerHTML = '';
+
       // Always restore from the server session file (authoritative history source).
       if (historyData.history && historyData.history.length > 0) {
-        const conversation = document.getElementById('conversation');
-        conversation.innerHTML = ''; // Clear any loading messages
 
         historyData.history.forEach(msg => {
           if (msg.role === 'user') {
@@ -449,9 +456,19 @@ async function restoreBackendState() {
     if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
 
     if (!statusData.position_name && !statusData.job_analysis) {
-      const storedPath = localStorage.getItem(StorageKeys.SESSION_PATH);
-      if (storedPath) {
-        const loaded = await loadSessionFile(storedPath);
+      const storedPath    = localStorage.getItem(StorageKeys.SESSION_PATH);
+      const storedSession = localStorage.getItem(StorageKeys.SESSION_ID);
+      const currentSession = getSessionIdFromURL ? getSessionIdFromURL() : null;
+      // Only auto-restore from disk when reconnecting to the SAME session
+      // (storedSession matches the current URL session_id).  A fresh new session
+      // will have a different ID, so this guard prevents the new session from
+      // silently loading the previous session's data off disk.
+      if (storedPath && storedSession && storedSession === currentSession) {
+        // Pass redirectOnMismatch:false so that if the file on disk belongs to a
+        // different session (e.g. SESSION_PATH was never updated after a new
+        // session was created), we silently skip the restore rather than
+        // navigating the browser to a session the user didn't ask for.
+        const loaded = await loadSessionFile(storedPath, { redirectOnMismatch: false });
         if (loaded) return true;
       }
     }
@@ -463,7 +480,7 @@ async function restoreBackendState() {
   }
 }
 
-async function loadSessionFile(path) {
+async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
   try {
     appendMessage('system', '🔄 Restoring session from file...');
     const res = await fetch('/api/load-session', {
@@ -479,6 +496,17 @@ async function loadSessionFile(path) {
     const data = await res.json();
 
     if (data.redirect_url && getSessionIdFromURL() !== data.session_id) {
+      if (!redirectOnMismatch) {
+        // The file on disk belongs to a different session than the one in the
+        // URL.  Silently abort rather than redirecting the browser — the caller
+        // (restoreBackendState) only wants to restore THIS session, not load a
+        // different one.
+        log.warn(
+          'loadSessionFile: session_id mismatch (url=%s, file=%s); skipping restore',
+          getSessionIdFromURL(), data.session_id,
+        );
+        return false;
+      }
       window.location.assign(data.redirect_url);
       return true;
     }
