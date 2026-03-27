@@ -426,7 +426,7 @@ async function submitLayoutInstruction(instructionText) {
   /* duckflow:
    *   id: layout_ui_refine_live
    *   kind: ui
-   *   timestamp: '2026-03-25T21:39:48Z'
+   *   timestamp: '2026-03-26T00:24:00Z'
    *   status: live
    *   handles:
    *   - ui:layout.submit-instruction
@@ -815,7 +815,7 @@ async function generateFinalOutputs() {
   /* duckflow:
    *   id: layout_ui_generate_final_live
    *   kind: ui
-   *   timestamp: '2026-03-25T21:39:48Z'
+   *   timestamp: '2026-03-26T00:24:00Z'
    *   status: live
    *   handles:
    *   - ui:layout.generate-final
