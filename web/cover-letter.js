@@ -135,14 +135,27 @@ async function generateCoverLetter() {
   /* duckflow:
    *   id: cover_letter_ui_generate_live
    *   kind: ui
-   *   timestamp: "2026-03-25T21:39:48Z"
+   *   timestamp: '2026-03-25T21:39:48Z'
    *   status: live
-   *   handles: ["ui:cover-letter.generate"]
-   *   calls: ["POST /api/cover-letter/generate"]
-   *   reads: ["dom:#cl-tone-select.value", "dom:#cl-hiring-manager.value", "dom:#cl-company-address.value", "dom:#cl-highlight.value", "dom:input[name=cl-prior].checked"]
-   *   writes: ["request:POST /api/cover-letter/generate.tone", "request:POST /api/cover-letter/generate.hiring_manager", "request:POST /api/cover-letter/generate.company_address", "request:POST /api/cover-letter/generate.highlight", "request:POST /api/cover-letter/generate.reuse_body", "dom:#cl-letter-textarea.value"]
-   *   notes: "Submits cover-letter prompt inputs and optional reuse text, then writes the generated body into the editable cover-letter textarea."
-  */
+   *   handles:
+   *   - ui:cover-letter.generate
+   *   calls:
+   *   - POST /api/cover-letter/generate
+   *   reads:
+   *   - dom:#cl-tone-select.value
+   *   - dom:#cl-hiring-manager.value
+   *   - dom:#cl-company-address.value
+   *   - dom:#cl-highlight.value
+   *   - dom:input[name=cl-prior].checked
+   *   writes:
+   *   - request:POST /api/cover-letter/generate.tone
+   *   - request:POST /api/cover-letter/generate.hiring_manager
+   *   - request:POST /api/cover-letter/generate.company_address
+   *   - request:POST /api/cover-letter/generate.highlight
+   *   - request:POST /api/cover-letter/generate.reuse_body
+   *   - dom:#cl-letter-textarea.value
+   *   notes: Submits cover-letter prompt inputs and optional reuse text, then writes the generated body into the editable cover-letter textarea.
+   */
   const btn = document.getElementById('cl-generate-btn');
   btn.disabled = true;
   btn.textContent = '⏳ Generating…';
@@ -195,14 +208,18 @@ async function saveCoverLetter() {
   /* duckflow:
    *   id: cover_letter_ui_save_live
    *   kind: ui
-   *   timestamp: "2026-03-25T21:39:48Z"
+   *   timestamp: '2026-03-25T21:39:48Z'
    *   status: live
-   *   handles: ["ui:cover-letter.save"]
-   *   calls: ["POST /api/cover-letter/save"]
-   *   reads: ["dom:#cl-letter-textarea.value"]
-   *   writes: ["request:POST /api/cover-letter/save.text"]
-   *   notes: "Submits the user-edited cover-letter body for session persistence, metadata write-through, and archive artifact generation."
-  */
+   *   handles:
+   *   - ui:cover-letter.save
+   *   calls:
+   *   - POST /api/cover-letter/save
+   *   reads:
+   *   - dom:#cl-letter-textarea.value
+   *   writes:
+   *   - request:POST /api/cover-letter/save.text
+   *   notes: Submits the user-edited cover-letter body for session persistence, metadata write-through, and archive artifact generation.
+   */
   const textarea = document.getElementById('cl-letter-textarea');
   if (!textarea) return;
   const text = textarea.value.trim();

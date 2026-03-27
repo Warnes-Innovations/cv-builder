@@ -21,7 +21,7 @@ import { stateManager } from './state-manager.js';
  * duckflow:
  *   id: summary_ui_build
  *   kind: ui
- *   timestamp: "2026-03-25T21:39:48Z"
+ *   timestamp: "2026-03-27T01:23:28Z"
  *   status: shared
  *   handles: ["ui:summary-review.build"]
  *   calls: ["GET /api/master-fields", "GET /api/status", "ui:summary-review.generate"]
@@ -160,7 +160,7 @@ function _showAISummary(text, statusLabel) {
  * duckflow:
  *   id: summary_ui_generate
  *   kind: ui
- *   timestamp: "2026-03-25T21:39:48Z"
+ *   timestamp: "2026-03-27T01:23:28Z"
  *   status: shared
  *   handles: ["ui:summary-review.generate"]
  *   calls: ["POST /api/generate-summary", "ui:summary-review.persist"]
@@ -243,7 +243,7 @@ function selectSummaryKey(key) {
  * duckflow:
  *   id: summary_ui_persist
  *   kind: ui
- *   timestamp: "2026-03-25T21:39:48Z"
+ *   timestamp: "2026-03-27T01:23:28Z"
  *   status: shared
  *   handles: ["ui:summary-review.persist"]
  *   calls: ["POST /api/review-decisions"]

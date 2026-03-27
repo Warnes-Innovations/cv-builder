@@ -722,14 +722,15 @@ Ask questions that are specific to this job posting, not generic career question
 
                 # Skills section title (set via Generation Settings panel)
                 # duckflow:
-                #   id: generation_settings.scripts_utils_conversation_manager.L724
+                #   id: generation_settings_skills_title_handoff
                 #   kind: state
-                #   timestamp: "2026-03-27T01:05:00Z"
+                #   timestamp: "2026-03-27T01:23:28Z"
                 #   status: live
                 #   reads:
-                #     - 'state:session.state["skills_section_title"]'
-                #   writes: ["customizations:skills_section_title"]
-                #   notes: "Materializes the per-session skills title into render customizations before generation." 
+                #     - "state:skills_section_title"
+                #   writes:
+                #     - "customizations:skills_section_title"
+                #   notes: "Copies the generation settings skills section title from session state into generation customizations."
                 skills_section_title = self.state.get('skills_section_title')
                 if skills_section_title:
                     customizations['skills_section_title'] = skills_section_title

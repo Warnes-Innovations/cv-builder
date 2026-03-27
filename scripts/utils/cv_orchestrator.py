@@ -24,9 +24,20 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime, date as _date
 import subprocess
-import weasyprint
+import weasyprint  # noqa: F401  -- kept for test mock path (patch cv_orchestrator.weasyprint.HTML)
 from collections import defaultdict
 from bs4 import BeautifulSoup, Comment
+
+from .scoring import (
+    calculate_relevance_score,
+    calculate_skill_score,
+)
+from .bibtex_parser import parse_bibtex_file, format_publication
+from .config import get_config
+from .llm_client import LLMClient
+from .master_data_validator import validate_master_data_file
+from .session_data_view import SessionDataView
+from .template_renderer import safe_css_size, safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -45,19 +56,6 @@ _LAYOUT_AGENT_INSTRUCTION_PATTERNS = (
     'you are github copilot',
     'ignore previous instructions',
 )
-
-# Import existing utilities
-from .scoring import (
-    calculate_relevance_score,
-    calculate_skill_score
-)
-from .bibtex_parser import parse_bibtex_file, format_publication
-from .config import get_config
-from .llm_client import LLMClient
-from .master_data_validator import validate_master_data_file
-from .session_data_view import SessionDataView
-from .template_renderer import safe_css_size, safe_url
-
 
 def _append_layout_finding(
     findings: List[Dict[str, Any]],
@@ -223,13 +221,13 @@ class CVOrchestrator:
         
         # Add template metadata
         # duckflow:
-        #   id: cv_render.scripts_utils_cv_orchestrator.L225
-        #   kind: orchestrator
-        #   timestamp: "2026-03-27T01:05:00Z"
+        #   id: cv_render.scripts_utils_cv_orchestrator.L224
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
         #   status: live
         #   writes:
-        #     - 'artifact:template_metadata["skills_section_title"]'
-        #   notes: "Seeds the default skills section title before per-render customizations override it."
+        #     - "artifact:template_metadata[\"skills_section_title\"]"
+        #   notes: "Seeds the render metadata with the default skills section title before preview or final-generation overrides are applied."
         template_metadata = {
             'variant': template_variant,
             'generated_date': datetime.now().isoformat(),
@@ -660,7 +658,7 @@ class CVOrchestrator:
         # duckflow:
         #   id: summary_orchestrator_preview_html
         #   kind: artifact
-        #   timestamp: "2026-03-25T21:39:48Z"
+        #   timestamp: "2026-03-27T01:23:28Z"
         #   status: shared
         #   reads: ["cv:selected_content.summary"]
         #   returns: ["artifact:generation_state.preview_html"]
@@ -682,14 +680,15 @@ class CVOrchestrator:
         )
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
         # duckflow:
-        #   id: cv_render.scripts_utils_cv_orchestrator.L680
-        #   kind: orchestrator
-        #   timestamp: "2026-03-27T01:05:00Z"
+        #   id: cv_render.scripts_utils_cv_orchestrator.L599
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
         #   status: live
-        #   reads: ["customizations:skills_section_title"]
+        #   reads:
+        #     - "customizations:skills_section_title"
         #   writes:
-        #     - 'artifact:template_metadata["skills_section_title"]'
-        #   notes: "Applies the current customized skills title to preview template metadata."
+        #     - "artifact:template_metadata[\"skills_section_title\"]"
+        #   notes: "Copies the user-selected skills title into the preview HTML render metadata."
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         cv_data['base_font_size'] = customizations.get(
             'base_font_size',
@@ -730,7 +729,7 @@ class CVOrchestrator:
         # duckflow:
         #   id: summary_orchestrator_final_files
         #   kind: artifact
-        #   timestamp: "2026-03-25T21:39:48Z"
+        #   timestamp: "2026-03-27T01:23:28Z"
         #   status: shared
         #   reads: ["artifact:generation_state.preview_html"]
         #   writes: ["file:generated_files.final_html", "file:generated_files.final_pdf"]
@@ -877,7 +876,7 @@ class CVOrchestrator:
                 '--output', str(html_output)
             ]
             
-            result = subprocess.run(
+            subprocess.run(
                 render_cmd, 
                 capture_output=True, 
                 text=True, 
@@ -1276,17 +1275,25 @@ For manual generation:
             'jobTitle':   job_analysis.get('title', ''),
             'description': cv_data.get('professional_summary', ''),
         }
-        if contact.get('email'):           json_ld['email']         = contact['email']
-        if contact.get('phone'):           json_ld['telephone']     = contact['phone']
-        if same_as:                        json_ld['sameAs']        = same_as
-        if contact.get('address_display'): json_ld['address']       = {
-                '@type':           'PostalAddress',
+        if contact.get('email'):
+            json_ld['email'] = contact['email']
+        if contact.get('phone'):
+            json_ld['telephone'] = contact['phone']
+        if same_as:
+            json_ld['sameAs'] = same_as
+        if contact.get('address_display'):
+            json_ld['address'] = {
+                '@type': 'PostalAddress',
                 'addressLocality': contact['address_display'],
             }
-        if alumni_of:                      json_ld['alumniOf']      = alumni_of
-        if has_occupation:                 json_ld['hasOccupation'] = has_occupation
-        if all_skill_names:                json_ld['knowsAbout']    = all_skill_names
-        if award_strings:                  json_ld['award']         = award_strings
+        if alumni_of:
+            json_ld['alumniOf'] = alumni_of
+        if has_occupation:
+            json_ld['hasOccupation'] = has_occupation
+        if all_skill_names:
+            json_ld['knowsAbout'] = all_skill_names
+        if award_strings:
+            json_ld['award'] = award_strings
 
         return json.dumps(json_ld, indent=2, ensure_ascii=False)
 
@@ -1778,14 +1785,15 @@ For manual generation:
         cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
         # duckflow:
-        #   id: cv_render.scripts_utils_cv_orchestrator.L1771
-        #   kind: orchestrator
-        #   timestamp: "2026-03-27T01:05:00Z"
+        #   id: cv_render.scripts_utils_cv_orchestrator.L1684
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
         #   status: live
-        #   reads: ["customizations:skills_section_title"]
+        #   reads:
+        #     - "customizations:skills_section_title"
         #   writes:
-        #     - 'artifact:template_metadata["skills_section_title"]'
-        #   notes: "Applies the current customized skills title to final HTML template metadata."
+        #     - "artifact:template_metadata[\"skills_section_title\"]"
+        #   notes: "Copies the user-selected skills title into the final HTML/PDF render metadata."
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         cv_data['base_font_size'] = customizations.get(
             'base_font_size',
@@ -1807,14 +1815,15 @@ For manual generation:
             'start_time': time.time()
         }
         # duckflow:
-        #   id: cv_render.scripts_utils_cv_orchestrator.L1794
-        #   kind: orchestrator
-        #   timestamp: "2026-03-27T01:05:00Z"
+        #   id: cv_render.scripts_utils_cv_orchestrator.L1703
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
         #   status: live
-        #   reads: ["customizations:skills_section_title"]
+        #   reads:
+        #     - "customizations:skills_section_title"
         #   writes:
-        #     - 'artifact:selected_content["skills_section_title"]'
-        #   notes: "Carries the customized skills title into downstream document generation inputs."
+        #     - "artifact:selected_content[\"skills_section_title\"]"
+        #   notes: "Carries the user-selected skills title into the ATS DOCX generation payload."
         selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         ats_file = self._generate_ats_docx(
             selected_content,
@@ -2648,7 +2657,7 @@ If you need clarification, return:
         # duckflow:
         #   id: summary_orchestrator_select
         #   kind: orchestrator
-        #   timestamp: "2026-03-25T21:39:48Z"
+        #   timestamp: "2026-03-27T01:23:28Z"
         #   status: shared
         #   reads: ["customizations:summary_focus", "customizations:session_summaries"]
         #   writes: ["cv:selected_content.summary"]
@@ -2750,9 +2759,8 @@ If you need clarification, return:
     ) -> Path:
         """Generate ATS-optimized DOCX with enhanced formatting and validation."""
         from docx import Document
-        from docx.shared import Pt, RGBColor
+        from docx.shared import Pt
         from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-        from docx.enum.style import WD_STYLE_TYPE
         
         doc = Document()
         
@@ -2895,7 +2903,6 @@ If you need clarification, return:
     def _setup_ats_styles(self, doc):
         """Set up ATS-optimized document styles."""
         from docx.shared import Pt, RGBColor
-        from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
         
         # Create custom styles that are ATS-friendly
         styles = doc.styles
@@ -3125,7 +3132,7 @@ If you need clarification, return:
                         'type':       'no_strong_verb',
                         'severity':   'info',
                         'suggestion': (
-                            f'Consider opening with a strong action verb '
+                            'Consider opening with a strong action verb '
                             '(e.g. Led, Built, Delivered, Reduced, Improved).'
                         ),
                     })
@@ -3456,6 +3463,16 @@ If you need clarification, return:
         # ── Skills ───────────────────────────────────────────────────────────
         skills_by_category = content.get('skills_by_category', [])
         if skills_by_category:
+            # duckflow:
+            #   id: cv_render.scripts_utils_cv_orchestrator.L3340
+            #   kind: artifact
+            #   timestamp: "2026-03-27T02:31:32Z"
+            #   status: live
+            #   reads:
+            #     - "artifact:skills_heading"
+            #   writes:
+            #     - "artifact:human_docx.skills_heading"
+            #   notes: "Writes the resolved skills-section heading into the generated human-readable DOCX."
             _heading(skills_heading)
             for cat in skills_by_category:
                 p = doc.add_paragraph()
