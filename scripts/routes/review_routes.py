@@ -1207,6 +1207,21 @@ def create_blueprint(deps):
                     {},
                 ).get('name', '')
 
+            # Precompute owner last name for is_first_author detection
+            if ',' in candidate_name:
+                _owner_last = candidate_name.split(',')[0].strip().lower()
+            else:
+                _owner_last = (
+                    candidate_name.strip().split()[-1].lower()
+                    if candidate_name.strip() else ''
+                )
+
+            def _is_first_author(raw_authors: str) -> bool:
+                if not _owner_last or not raw_authors:
+                    return False
+                first_token = raw_authors.split(',')[0].strip().lower()
+                return bool(first_token and _owner_last in first_token)
+
             pubs_list = list(orchestrator.publications.values())
 
             try:
@@ -1232,14 +1247,16 @@ def create_blueprint(deps):
                 )
                 recommendations = []
                 for pub in selected:
+                    cite_key = pub.get('key', '')
+                    raw_pub  = orchestrator.publications.get(cite_key, {})
                     recommendations.append({
-                        'cite_key':          pub.get('key', ''),
+                        'cite_key':          cite_key,
                         'title':             pub.get('title', ''),
                         'venue': (
                             pub.get('journal') or pub.get('booktitle') or ''
                         ),
                         'year':              pub.get('year', ''),
-                        'is_first_author':   False,
+                        'is_first_author':   _is_first_author(raw_pub.get('authors', '')),
                         'relevance_score':   pub.get('relevance_score', 5),
                         'confidence':        'Medium',
                         'rationale':         '',
@@ -1291,7 +1308,7 @@ def create_blueprint(deps):
                             pub.get('journal') or pub.get('booktitle') or ''
                         ),
                         'year':              pub.get('year', ''),
-                        'is_first_author':   False,
+                        'is_first_author':   _is_first_author(pub.get('authors', '')),
                         'relevance_score':   0,
                         'confidence':        '',
                         'rationale':         '',
