@@ -119,17 +119,16 @@ async function populateFinaliseTab() {
 // ── Finalise application ──────────────────────────────────────────────────────
 
 async function finaliseApplication() {
-  /* duckflow: {
-   *   "id": "finalise_ui_submit_live",
-   *   "kind": "ui",
-   *   "timestamp": "2026-03-25T21:39:48Z",
-   *   "status": "live",
-   *   "handles": ["ui:finalise.submit"],
-   *   "calls": ["POST /api/finalise"],
-   *   "reads": ["dom:#finalise-status.value", "dom:#finalise-notes.value"],
-   *   "writes": ["request:POST /api/finalise.status", "request:POST /api/finalise.notes", "dom:#finalise-result"],
-   *   "notes": "Submits final application status and notes so backend metadata, archive state, and optional git finalization can be written from the current session."
-  * }
+  /* duckflow:
+   *   id: finalise_ui_submit_live
+   *   kind: ui
+   *   timestamp: "2026-03-25T21:39:48Z"
+   *   status: live
+   *   handles: ["ui:finalise.submit"]
+   *   calls: ["POST /api/finalise"]
+   *   reads: ["dom:#finalise-status.value", "dom:#finalise-notes.value"]
+   *   writes: ["request:POST /api/finalise.status", "request:POST /api/finalise.notes", "dom:#finalise-result"]
+   *   notes: "Submits final application status and notes so backend metadata, archive state, and optional git finalization can be written from the current session."
   */
   const btn    = document.getElementById('finalise-btn');
   const result = document.getElementById('finalise-result');

@@ -222,9 +222,14 @@ class CVOrchestrator:
         certifications = selected_content.get('certifications', [])
         
         # Add template metadata
-        # duckflow: flow=cv-render status=live
-        #   artifact: template_metadata["skills_section_title"] → cv-template.html
-        #   default: "Skills" (overridden per-render by customizations["skills_section_title"])
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L225
+        #   kind: orchestrator
+        #   timestamp: "2026-03-27T01:05:00Z"
+        #   status: live
+        #   writes:
+        #     - 'artifact:template_metadata["skills_section_title"]'
+        #   notes: "Seeds the default skills section title before per-render customizations override it."
         template_metadata = {
             'variant': template_variant,
             'generated_date': datetime.now().isoformat(),
@@ -652,15 +657,14 @@ class CVOrchestrator:
         Parameters mirror ``generate_cv`` but only the HTML rendering path is
         executed, so this is significantly faster than a full generation run.
         """
-        # duckflow: {
-        #   "id": "summary_orchestrator_preview_html",
-        #   "kind": "artifact",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "shared",
-        #   "reads": ["cv:selected_content.summary"],
-        #   "returns": ["artifact:generation_state.preview_html"],
-        #   "notes": "Renders the selected summary into preview HTML without writing files yet."
-        # }
+        # duckflow:
+        #   id: summary_orchestrator_preview_html
+        #   kind: artifact
+        #   timestamp: "2026-03-25T21:39:48Z"
+        #   status: shared
+        #   reads: ["cv:selected_content.summary"]
+        #   returns: ["artifact:generation_state.preview_html"]
+        #   notes: "Renders the selected summary into preview HTML without writing files yet."
         selected_content = self.build_render_ready_content(
             job_analysis,
             customizations,
@@ -677,9 +681,15 @@ class CVOrchestrator:
             customizations=customizations,
         )
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
-        # duckflow: flow=cv-render status=live
-        #   state_read: customizations["skills_section_title"]
-        #   artifact: template_metadata["skills_section_title"] → cv-template.html (preview)
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L680
+        #   kind: orchestrator
+        #   timestamp: "2026-03-27T01:05:00Z"
+        #   status: live
+        #   reads: ["customizations:skills_section_title"]
+        #   writes:
+        #     - 'artifact:template_metadata["skills_section_title"]'
+        #   notes: "Applies the current customized skills title to preview template metadata."
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         cv_data['base_font_size'] = customizations.get(
             'base_font_size',
@@ -717,15 +727,14 @@ class CVOrchestrator:
         Returns:
             dict with keys ``html`` and ``pdf`` (absolute path strings).
         """
-        # duckflow: {
-        #   "id": "summary_orchestrator_final_files",
-        #   "kind": "artifact",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "shared",
-        #   "reads": ["artifact:generation_state.preview_html"],
-        #   "writes": ["file:generated_files.final_html", "file:generated_files.final_pdf"],
-        #   "notes": "Commits the confirmed preview HTML to disk and regenerates the final PDF from that same artifact."
-        # }
+        # duckflow:
+        #   id: summary_orchestrator_final_files
+        #   kind: artifact
+        #   timestamp: "2026-03-25T21:39:48Z"
+        #   status: shared
+        #   reads: ["artifact:generation_state.preview_html"]
+        #   writes: ["file:generated_files.final_html", "file:generated_files.final_pdf"]
+        #   notes: "Commits the confirmed preview HTML to disk and regenerates the final PDF from that same artifact."
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1768,9 +1777,15 @@ For manual generation:
         )
         cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
-        # duckflow: flow=cv-render status=live
-        #   state_read: customizations["skills_section_title"]
-        #   artifact: template_metadata["skills_section_title"] → cv-template.html (final)
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L1771
+        #   kind: orchestrator
+        #   timestamp: "2026-03-27T01:05:00Z"
+        #   status: live
+        #   reads: ["customizations:skills_section_title"]
+        #   writes:
+        #     - 'artifact:template_metadata["skills_section_title"]'
+        #   notes: "Applies the current customized skills title to final HTML template metadata."
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         cv_data['base_font_size'] = customizations.get(
             'base_font_size',
@@ -1791,9 +1806,15 @@ For manual generation:
             'status': 'in_progress',
             'start_time': time.time()
         }
-        # duckflow: flow=cv-render status=live
-        #   state_read: customizations["skills_section_title"]
-        #   artifact: selected_content["skills_section_title"] → _generate_human_docx → DOCX heading
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L1794
+        #   kind: orchestrator
+        #   timestamp: "2026-03-27T01:05:00Z"
+        #   status: live
+        #   reads: ["customizations:skills_section_title"]
+        #   writes:
+        #     - 'artifact:selected_content["skills_section_title"]'
+        #   notes: "Carries the customized skills title into downstream document generation inputs."
         selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         ats_file = self._generate_ats_docx(
             selected_content,
@@ -2624,15 +2645,14 @@ If you need clarification, return:
             customizations,
             customizations,
         )
-        # duckflow: {
-        #   "id": "summary_orchestrator_select",
-        #   "kind": "orchestrator",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "shared",
-        #   "reads": ["customizations:summary_focus", "customizations:session_summaries"],
-        #   "writes": ["cv:selected_content.summary"],
-        #   "notes": "Resolves the active summary text by overlaying session variants over master variants and selecting the requested key."
-        # }
+        # duckflow:
+        #   id: summary_orchestrator_select
+        #   kind: orchestrator
+        #   timestamp: "2026-03-25T21:39:48Z"
+        #   status: shared
+        #   reads: ["customizations:summary_focus", "customizations:session_summaries"]
+        #   writes: ["cv:selected_content.summary"]
+        #   notes: "Resolves the active summary text by overlaying session variants over master variants and selecting the requested key."
         selected_summary = summary_view.selected_summary()
 
         # Select publications — honour user accept/reject decisions if present

@@ -886,18 +886,17 @@ def create_blueprint(deps):
     def generate_cv_preview():
         """Generate an HTML preview of the CV and store it in generation_state."""
         import uuid as _u
-        # duckflow: {
-        #   "id": "generation_api_preview_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/cv/generate-preview"],
-        #   "calls": ["orchestrator:render_html_preview", "state:generation_state.baseline_layout_digest"],
-        #   "reads": ["state:job_analysis", "state:customizations", "state:approved_rewrites", "state:spell_audit", "state:generated_files.output_dir"],
-        #   "writes": ["state:generation_state.preview_html", "state:generation_state.preview_request_id", "state:generation_state.preview_generated_at", "state:generation_state.preview_output_paths", "state:generation_state.layout_confirmed", "state:generation_state.phase", "state:generation_state.baseline_layout_digest"],
-        #   "returns": ["response:POST /api/cv/generate-preview.html", "response:POST /api/cv/generate-preview.preview_outputs", "response:POST /api/cv/generate-preview.page_count_exact"],
-        #   "notes": "Builds or reloads the preview HTML from current session-backed content, stores the staged preview artifacts in generation_state, and refreshes the baseline layout digest."
-        # }
+        # duckflow:
+        #   id: generation_api_preview_live
+        #   kind: api
+        #   timestamp: "2026-03-25T21:39:48Z"
+        #   status: live
+        #   handles: ["POST /api/cv/generate-preview"]
+        #   calls: ["orchestrator:render_html_preview", "state:generation_state.baseline_layout_digest"]
+        #   reads: ["state:job_analysis", "state:customizations", "state:approved_rewrites", "state:spell_audit", "state:generated_files.output_dir"]
+        #   writes: ["state:generation_state.preview_html", "state:generation_state.preview_request_id", "state:generation_state.preview_generated_at", "state:generation_state.preview_output_paths", "state:generation_state.layout_confirmed", "state:generation_state.phase", "state:generation_state.baseline_layout_digest"]
+        #   returns: ["response:POST /api/cv/generate-preview.html", "response:POST /api/cv/generate-preview.preview_outputs", "response:POST /api/cv/generate-preview.page_count_exact"]
+        #   notes: "Builds or reloads the preview HTML from current session-backed content, stores the staged preview artifacts in generation_state, and refreshes the baseline layout digest."
         entry = get_session()
         conv  = entry.manager
         if not conv.state.get("job_analysis"):
@@ -963,17 +962,16 @@ def create_blueprint(deps):
         conv = entry.manager
         body = request.get_json(force=True) or {}
 
-        # duckflow: {
-        #   "id": "layout_estimate_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/cv/layout-estimate"],
-        #   "reads": ["state:experience_decisions", "state:skill_decisions", "state:generation_state.baseline_layout_digest"],
-        #   "writes": ["state:generation_state.page_count_estimate", "state:generation_state.page_count_confidence"],
-        #   "returns": ["response:page_count_estimate", "response:page_count_confidence", "response:page_count_exact"],
-        #   "notes": "Server-side layout estimate renders preview HTML, compares it to the stored digest baseline, and rerenders exactly when confidence is low or near a page boundary."
-        # }
+        # duckflow:
+        #   id: layout_estimate_live
+        #   kind: api
+        #   timestamp: "2026-03-25T21:39:48Z"
+        #   status: live
+        #   handles: ["POST /api/cv/layout-estimate"]
+        #   reads: ["state:experience_decisions", "state:skill_decisions", "state:generation_state.baseline_layout_digest"]
+        #   writes: ["state:generation_state.page_count_estimate", "state:generation_state.page_count_confidence"]
+        #   returns: ["response:page_count_estimate", "response:page_count_confidence", "response:page_count_exact"]
+        #   notes: "Server-side layout estimate renders preview HTML, compares it to the stored digest baseline, and rerenders exactly when confidence is low or near a page boundary."
         try:
             return jsonify(_apply_layout_estimate(conv, body))
         except Exception as exc:
@@ -987,18 +985,17 @@ def create_blueprint(deps):
     def refine_cv_layout():
         """Apply a layout instruction to the stored preview and return updated HTML."""
         import uuid as _u
-        # duckflow: {
-        #   "id": "generation_api_layout_refine_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-26T00:24:00Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/cv/layout-refine"],
-        #   "calls": ["orchestrator:apply_layout_instruction", "state:generation_state.baseline_layout_digest"],
-        #   "reads": ["request:POST /api/cv/layout-refine.instruction", "state:generation_state.preview_html", "state:generation_state.layout_instructions"],
-        #   "writes": ["state:generation_state.preview_html", "state:generation_state.preview_request_id", "state:generation_state.preview_generated_at", "state:generation_state.preview_output_paths", "state:generation_state.layout_instructions", "state:generation_state.layout_confirmed", "state:generation_state.phase", "state:generation_state.baseline_layout_digest", "state:layout_safety_audit"],
-        #   "returns": ["response:POST /api/cv/layout-refine.html", "response:POST /api/cv/layout-refine.summary", "response:POST /api/cv/layout-refine.preview_outputs", "response:POST /api/cv/layout-refine.safety_alert"],
-        #   "notes": "Applies a natural-language layout instruction against the staged preview, sanitizes prompt-like material in the baseline HTML, user instruction, and rewritten HTML, persists any safety audit records, and regenerates preview artifacts from the updated HTML."
-        # }
+        # duckflow:
+        #   id: generation_api_layout_refine_live
+        #   kind: api
+        #   timestamp: "2026-03-26T00:24:00Z"
+        #   status: live
+        #   handles: ["POST /api/cv/layout-refine"]
+        #   calls: ["orchestrator:apply_layout_instruction", "state:generation_state.baseline_layout_digest"]
+        #   reads: ["request:POST /api/cv/layout-refine.instruction", "state:generation_state.preview_html", "state:generation_state.layout_instructions"]
+        #   writes: ["state:generation_state.preview_html", "state:generation_state.preview_request_id", "state:generation_state.preview_generated_at", "state:generation_state.preview_output_paths", "state:generation_state.layout_instructions", "state:generation_state.layout_confirmed", "state:generation_state.phase", "state:generation_state.baseline_layout_digest", "state:layout_safety_audit"]
+        #   returns: ["response:POST /api/cv/layout-refine.html", "response:POST /api/cv/layout-refine.summary", "response:POST /api/cv/layout-refine.preview_outputs", "response:POST /api/cv/layout-refine.safety_alert"]
+        #   notes: "Applies a natural-language layout instruction against the staged preview, sanitizes prompt-like material in the baseline HTML, user instruction, and rewritten HTML, persists any safety audit records, and regenerates preview artifacts from the updated HTML."
         entry = get_session()
         conv  = entry.manager
         gen   = conv.state.get("generation_state") or {}
@@ -1027,14 +1024,17 @@ def create_blueprint(deps):
         )
 
         if result.get("error"):
-            return jsonify({
+            response_payload = {
                 "ok":           False,
                 "error":        result["error"],
                 "question":     result.get("question"),
                 "details":      result.get("details"),
                 "raw_response": result.get("raw_response"),
-                "safety_alert": _build_layout_safety_alert(result.get('safety') or {}),
-            })
+            }
+            safety_alert = _build_layout_safety_alert(result.get('safety') or {})
+            if safety_alert:
+                response_payload["safety_alert"] = safety_alert
+            return jsonify(response_payload)
 
         updated_html = result["html"]
         now     = datetime.now().isoformat()
@@ -1079,7 +1079,7 @@ def create_blueprint(deps):
         )
         conv._save_session()
 
-        return jsonify({
+        response_payload = {
             "ok":                 True,
             "html":               updated_html,
             "summary":            result.get("summary", ""),
@@ -1091,8 +1091,10 @@ def create_blueprint(deps):
             "page_count_source":   gen.get("page_count_source"),
             "page_count_confidence": gen.get("page_count_confidence"),
             "page_length_warning": gen.get("page_length_warning", False),
-            "safety_alert":        safety_alert,
-        })
+        }
+        if safety_alert:
+            response_payload["safety_alert"] = safety_alert
+        return jsonify(response_payload)
 
     @bp.post("/api/cv/confirm-layout")
     def confirm_cv_layout():
@@ -1192,16 +1194,15 @@ def create_blueprint(deps):
         )
         customizations = summary_view.materialize_generation_customizations()
         if customizations.get("selected_summary"):
-            # duckflow: {
-            #   "id": "summary_api_ats_materialize_live",
-            #   "kind": "api",
-            #   "timestamp": "2026-03-25T21:39:48Z",
-            #   "status": "live",
-            #   "handles": ["POST /api/cv/ats-score"],
-            #   "reads": ["state:session_summaries.ai_generated", "state:summary_focus_override"],
-            #   "writes": ["customizations:selected_summary"],
-            #   "notes": "Live ATS scoring route materializes the selected summary into generation customizations."
-            # }
+            # duckflow:
+            #   id: summary_api_ats_materialize_live
+            #   kind: api
+            #   timestamp: "2026-03-25T21:39:48Z"
+            #   status: live
+            #   handles: ["POST /api/cv/ats-score"]
+            #   reads: ["state:session_summaries.ai_generated", "state:summary_focus_override"]
+            #   writes: ["customizations:selected_summary"]
+            #   notes: "Live ATS scoring route materializes the selected summary into generation customizations."
             pass
 
         score = _compute_ats_score(job_analysis, customizations, basis=basis)
@@ -1213,18 +1214,17 @@ def create_blueprint(deps):
     @bp.post("/api/cv/generate-final")
     def generate_cv_final():
         """Regenerate human-readable HTML+PDF from the confirmed preview; mark final_complete."""
-        # duckflow: {
-        #   "id": "generation_api_final_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/cv/generate-final"],
-        #   "calls": ["orchestrator:generate_final_from_confirmed_html", "state:generation_state.baseline_layout_digest"],
-        #   "reads": ["state:generation_state.layout_confirmed", "state:generation_state.preview_html", "state:generated_files.output_dir"],
-        #   "writes": ["state:generation_state.phase", "state:generation_state.final_generated_at", "state:generation_state.final_output_paths", "state:generated_files.final_html", "state:generated_files.final_pdf", "state:generated_files.files", "state:generation_state.baseline_layout_digest"],
-        #   "returns": ["response:POST /api/cv/generate-final.outputs", "response:POST /api/cv/generate-final.generated_at", "response:POST /api/cv/generate-final.page_count_exact"],
-        #   "notes": "Converts the confirmed preview HTML into final human-readable artifacts and updates both generation_state and generated_files with the final output paths."
-        # }
+        # duckflow:
+        #   id: generation_api_final_live
+        #   kind: api
+        #   timestamp: "2026-03-25T21:39:48Z"
+        #   status: live
+        #   handles: ["POST /api/cv/generate-final"]
+        #   calls: ["orchestrator:generate_final_from_confirmed_html", "state:generation_state.baseline_layout_digest"]
+        #   reads: ["state:generation_state.layout_confirmed", "state:generation_state.preview_html", "state:generated_files.output_dir"]
+        #   writes: ["state:generation_state.phase", "state:generation_state.final_generated_at", "state:generation_state.final_output_paths", "state:generated_files.final_html", "state:generated_files.final_pdf", "state:generated_files.files", "state:generation_state.baseline_layout_digest"]
+        #   returns: ["response:POST /api/cv/generate-final.outputs", "response:POST /api/cv/generate-final.generated_at", "response:POST /api/cv/generate-final.page_count_exact"]
+        #   notes: "Converts the confirmed preview HTML into final human-readable artifacts and updates both generation_state and generated_files with the final output paths."
         entry = get_session()
         conv  = entry.manager
         gen   = conv.state.get("generation_state") or {}
@@ -1293,17 +1293,16 @@ def create_blueprint(deps):
     def finalise_application():
         """Finalise the application: update metadata, upsert response library, git commit."""
         from utils.conversation_manager import Phase
-        # duckflow: {
-        #   "id": "generation_api_finalise_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/finalise"],
-        #   "reads": ["request:POST /api/finalise.status", "request:POST /api/finalise.notes", "state:generated_files.output_dir", "state:post_analysis_answers", "state:spell_audit", "state:layout_instructions", "state:generation_state.ats_score"],
-        #   "writes": ["file:metadata.application_status", "file:metadata.notes", "file:metadata.finalised_at", "file:metadata.clarification_answers", "file:metadata.spell_audit", "file:metadata.layout_instructions", "file:metadata.validation_results", "file:metadata.ats_score", "file:response_library.json", "state:phase"],
-        #   "returns": ["response:POST /api/finalise.summary", "response:POST /api/finalise.commit_hash", "response:POST /api/finalise.git_error"],
-        #   "notes": "Finalises the application archive by writing metadata derived from session state, optionally updating the response library, and marking the workflow as refinement."
-        # }
+        # duckflow:
+        #   id: generation_api_finalise_live
+        #   kind: api
+        #   timestamp: "2026-03-25T21:39:48Z"
+        #   status: live
+        #   handles: ["POST /api/finalise"]
+        #   reads: ["request:POST /api/finalise.status", "request:POST /api/finalise.notes", "state:generated_files.output_dir", "state:post_analysis_answers", "state:spell_audit", "state:layout_instructions", "state:generation_state.ats_score"]
+        #   writes: ["file:metadata.application_status", "file:metadata.notes", "file:metadata.finalised_at", "file:metadata.clarification_answers", "file:metadata.spell_audit", "file:metadata.layout_instructions", "file:metadata.validation_results", "file:metadata.ats_score", "file:response_library.json", "state:phase"]
+        #   returns: ["response:POST /api/finalise.summary", "response:POST /api/finalise.commit_hash", "response:POST /api/finalise.git_error"]
+        #   notes: "Finalises the application archive by writing metadata derived from session state, optionally updating the response library, and marking the workflow as refinement."
         entry = get_session()
         validate_owner(entry)
         conversation = entry.manager

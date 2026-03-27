@@ -1500,15 +1500,18 @@ def create_blueprint(deps):
             )
 
             if result.get('error'):
-                return jsonify({
+                response_payload = {
                     'ok':           False,
                     'error':        result['error'],
                     'question':     result.get('question'),
                     'details':      result.get('details'),
                     'confidence':   result.get('confidence'),
                     'raw_response': result.get('raw_response'),
-                    'safety_alert': generation_routes._build_layout_safety_alert(result.get('safety') or {}),
-                })
+                }
+                safety_alert = generation_routes._build_layout_safety_alert(result.get('safety') or {})
+                if safety_alert:
+                    response_payload['safety_alert'] = safety_alert
+                return jsonify(response_payload)
 
             safety = result.get('safety') or {}
             safety_alert = generation_routes._build_layout_safety_alert(safety)
@@ -1522,13 +1525,15 @@ def create_blueprint(deps):
                 })
                 conversation._save_session()
 
-            return jsonify({
+            response_payload = {
                 'ok': True,
                 'html': result['html'],
                 'summary': result['summary'],
                 'confidence': result['confidence'],
-                'safety_alert': safety_alert,
-            })
+            }
+            if safety_alert:
+                response_payload['safety_alert'] = safety_alert
+            return jsonify(response_payload)
         except Exception:
             return _internal_server_error('Failed to apply layout instruction.')
 
@@ -1679,7 +1684,7 @@ def create_blueprint(deps):
 
             result = conversation.orchestrator.check_persuasion(experiences)
             return jsonify({'ok': True, **result})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to run persuasion checks.')
 
     return bp

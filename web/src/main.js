@@ -59,6 +59,7 @@ import * as SkillsReview       from '../skills-review.js';
 import * as AchievementsReview from '../achievements-review.js';
 import * as SummaryReview      from '../summary-review.js';
 import * as PublicationsReview from '../publications-review.js';
+import * as ReviewIcons        from '../review-icons.js';
 
 // ── Tier 6 ────────────────────────────────────────────────────────────────────
 import * as RewriteReview      from '../rewrite-review.js';
@@ -84,7 +85,7 @@ Object.assign(globalThis,
   AuthProvider, AtsRefinement, AtsModals, SessionActions, JobAnalysis,
   SessionManager, JobInput, MessageDispatch, QuestionsPanel,
   ReviewTableBase,
-  ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview,
+  ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview, ReviewIcons,
   RewriteReview, SpellCheck, DownloadTab, WorkflowSteps, MasterCv,
   CoverLetter, ScreeningQuestions, Finalise,
   SessionSwitcherUi,

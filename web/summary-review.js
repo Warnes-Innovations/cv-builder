@@ -18,22 +18,20 @@ import { stateManager } from './state-manager.js';
 // ── Build summary-focus section ─────────────────────────────────────────────
 
 /**
- * duckflow: {
- *   "id": "summary_ui_build",
- *   "kind": "ui",
- *   "timestamp": "2026-03-25T21:39:48Z",
- *   "status": "shared",
- *   "handles": ["ui:summary-review.build"],
- *   "calls": ["GET /api/master-fields", "GET /api/status", "ui:summary-review.generate"],
- *   "reads": [
- *     "window:pendingRecommendations",
- *     "response:GET /api/master-fields.professional_summaries",
- *     "response:GET /api/status.professional_summaries",
- *     "state:session_summaries.ai_generated"
- *   ],
- *   "writes": ["dom:#summary-focus-container", "window:selectedSummaryKey"],
- *   "notes": "Builds the summary review UI from master variants plus session overrides and seeds the selected key."
- * }
+ * duckflow:
+ *   id: summary_ui_build
+ *   kind: ui
+ *   timestamp: "2026-03-25T21:39:48Z"
+ *   status: shared
+ *   handles: ["ui:summary-review.build"]
+ *   calls: ["GET /api/master-fields", "GET /api/status", "ui:summary-review.generate"]
+ *   reads:
+ *     - "window:pendingRecommendations"
+ *     - "response:GET /api/master-fields.professional_summaries"
+ *     - "response:GET /api/status.professional_summaries"
+ *     - "state:session_summaries.ai_generated"
+ *   writes: ["dom:#summary-focus-container", "window:selectedSummaryKey"]
+ *   notes: "Builds the summary review UI from master variants plus session overrides and seeds the selected key."
  */
 
 async function buildSummaryFocusSection() {
@@ -159,17 +157,16 @@ function _showAISummary(text, statusLabel) {
 // ── Call generate-summary API ────────────────────────────────────────────────
 
 /**
- * duckflow: {
- *   "id": "summary_ui_generate",
- *   "kind": "ui",
- *   "timestamp": "2026-03-25T21:39:48Z",
- *   "status": "shared",
- *   "handles": ["ui:summary-review.generate"],
- *   "calls": ["POST /api/generate-summary", "ui:summary-review.persist"],
- *   "reads": ["response:POST /api/generate-summary.summary", "window:_aiGeneratedSummary"],
- *   "writes": ["dom:#ai-summary-text", "dom:#ai-summary-status", "window:_aiGeneratedSummary", "window:selectedSummaryKey"],
- *   "notes": "Requests a generated or refined summary, updates the local UI, and persists the selected summary key."
- * }
+ * duckflow:
+ *   id: summary_ui_generate
+ *   kind: ui
+ *   timestamp: "2026-03-25T21:39:48Z"
+ *   status: shared
+ *   handles: ["ui:summary-review.generate"]
+ *   calls: ["POST /api/generate-summary", "ui:summary-review.persist"]
+ *   reads: ["response:POST /api/generate-summary.summary", "window:_aiGeneratedSummary"]
+ *   writes: ["dom:#ai-summary-text", "dom:#ai-summary-status", "window:_aiGeneratedSummary", "window:selectedSummaryKey"]
+ *   notes: "Requests a generated or refined summary, updates the local UI, and persists the selected summary key."
  */
 
 async function _callGenerateSummary(refinementPrompt, previousSummary) {
@@ -243,17 +240,16 @@ function selectSummaryKey(key) {
 // ── Save / submit ────────────────────────────────────────────────────────────
 
 /**
- * duckflow: {
- *   "id": "summary_ui_persist",
- *   "kind": "ui",
- *   "timestamp": "2026-03-25T21:39:48Z",
- *   "status": "shared",
- *   "handles": ["ui:summary-review.persist"],
- *   "calls": ["POST /api/review-decisions"],
- *   "reads": ["window:selectedSummaryKey"],
- *   "writes": ["request:POST /api/review-decisions.summary_focus"],
- *   "notes": "Persists only the selected summary key so backend state can resolve the active summary variant later."
- * }
+ * duckflow:
+ *   id: summary_ui_persist
+ *   kind: ui
+ *   timestamp: "2026-03-25T21:39:48Z"
+ *   status: shared
+ *   handles: ["ui:summary-review.persist"]
+ *   calls: ["POST /api/review-decisions"]
+ *   reads: ["window:selectedSummaryKey"]
+ *   writes: ["request:POST /api/review-decisions.summary_focus"]
+ *   notes: "Persists only the selected summary key so backend state can resolve the active summary variant later."
  */
 
 async function saveSummaryFocusToBackend(key) {
