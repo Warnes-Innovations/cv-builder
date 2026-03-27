@@ -57,7 +57,7 @@ function applyLayoutFreshnessNavigationState() {
       layoutStep.classList.add('stale');
       if (freshness.isCritical) layoutStep.classList.add('stale-critical');
     }
-    layoutStep.innerHTML = `🎨 Layout${staleBadge}${refineBadge ? ` ${refineBadge}` : ''}${rerun ? ` ${rerun}` : ''}`;
+    layoutStep.innerHTML = `🎨 Layout Review${staleBadge}${refineBadge ? ` ${refineBadge}` : ''}${rerun ? ` ${rerun}` : ''}`;
   }
 
   const showDownstreamBadge = freshness.isStale && Boolean(
@@ -208,7 +208,7 @@ async function reRunPhase(step) {
     // Navigate to the step's viewer tab
     const tabMap = {
       analysis:       'analysis',
-      customizations: 'customizations',
+      customizations: 'exp-review',
       rewrite:        'rewrite',
       spell:          'spell',
       generate:       'generate',
@@ -509,7 +509,7 @@ function updateWorkflowSteps(status) {
     rewrite:        '✏️ Rewrites',
     spell:          '🔤 Spell Check',
     generate:       '📄 Generate',
-    layout:         '🎨 Layout',
+    layout:         '🎨 Layout Review',
     finalise:       '✅ Finalise',
   };
 
