@@ -51,6 +51,7 @@ import * as MessageDispatch from '../message-dispatch.js';
 import * as QuestionsPanel  from '../questions-panel.js';
 
 // ── Tier 4 ────────────────────────────────────────────────────────────────────
+import * as ReviewIcons    from '../review-icons.js';
 import * as ReviewTableBase from '../review-table-base.js';
 
 // ── Tier 5 ────────────────────────────────────────────────────────────────────

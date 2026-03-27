@@ -78,7 +78,9 @@
         }
 
         // Validate achievement edits restored
-        if (window.achievementEdits && Array.isArray(window.achievementEdits[0]) && window.achievementEdits[0][0].startsWith('Edited')){
+        // achievementEdits entries are {text, hidden} objects since the
+        // hide-bullets feature was added; check .text not the raw item
+        if (window.achievementEdits && Array.isArray(window.achievementEdits[0]) && window.achievementEdits[0][0].text.startsWith('Edited')){
           log('PASS: achievementEdits restored');
         } else {
           log('FAIL: achievementEdits not restored');
