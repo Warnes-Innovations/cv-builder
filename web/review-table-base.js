@@ -139,6 +139,9 @@ async function loadTabContent(tab) {
     case 'publications-review':
       await populateReviewTab('publications');
       break;
+    case 'ats-score':
+      if (typeof populateAtsScoreTab === 'function') await populateAtsScoreTab();
+      break;
     case 'rewrite':
       if (window._rewritePanelCache) {
         renderRewritePanel(

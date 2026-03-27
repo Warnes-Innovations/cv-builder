@@ -130,7 +130,7 @@ function restoreFocus() {
 const STAGE_TABS = {
   job:            ['job'],
   analysis:       ['analysis', 'questions'],
-  customizations: ['exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'summary-review', 'publications-review'],
+  customizations: ['exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'summary-review', 'publications-review', 'ats-score'],
   rewrite:        ['rewrite'],
   spell:          ['spell'],
   generate:       ['generate'],
