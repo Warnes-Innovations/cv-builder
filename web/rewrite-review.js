@@ -45,12 +45,6 @@ async function fetchAndReviewRewrites() {
     const rewrites = data.rewrites || [];
     const warnings = data.persuasion_warnings || [];  // Phase 10
 
-    if (rewrites.length === 0 || data.phase === PHASES.GENERATION) {
-      // No rewrites — go straight to generation
-      await sendAction('generate_cv');
-      return;
-    }
-
     // Show persuasion warnings first (Phase 10)
     persuasionWarningsAcknowledged = warnings.length === 0;  // Mark acknowledged if no warnings
     if (warnings.length > 0) {
@@ -64,7 +58,11 @@ async function fetchAndReviewRewrites() {
     renderRewritePanel(rewrites, warnings);  // Pass warnings to panel
     switchTab('rewrite');
     const n = rewrites.length;
-    appendMessage('assistant', `✏️ I found **${n}** text improvement${n > 1 ? 's' : ''} to review. Look over each suggestion in the **Rewrites** tab, then accept, edit, or reject each one before generating your CV.`);
+    if (n === 0) {
+      appendMessage('assistant', '✏️ No rewrite suggestions were needed. The **Rewrites** tab is still available so you can confirm and continue to **Spell Check** when ready.');
+    } else {
+      appendMessage('assistant', `✏️ I found **${n}** text improvement${n > 1 ? 's' : ''} to review. Look over each suggestion in the **Rewrites** tab, then accept, edit, or reject each one before continuing to spell check.`);
+    }
   } catch (err) {
     removeLoadingMessage(loadingMsg);
     setLoading(false);
@@ -76,6 +74,7 @@ function renderRewritePanel(rewrites, warnings = []) {
   _rewritePanelCache = { rewrites, warnings };
   syncRewriteGlobals();
   const content = document.getElementById('document-content');
+  const hasRewrites = rewrites.length > 0;
 
   // Build persuasion warnings section (Phase 10)
   let warningsHtml = '';
@@ -115,9 +114,11 @@ function renderRewritePanel(rewrites, warnings = []) {
     <div id="rewrite-panel">
       <h1>✏️ Review Text Improvements</h1>
       <p style="color:#6b7280;margin-bottom:20px;">
-        Review each suggested text improvement. Accept, edit, or reject all suggestions before proceeding to CV generation.
+        ${hasRewrites
+    ? 'Review each suggested text improvement. Accept, edit, or reject all suggestions before proceeding to spell check.'
+    : 'No text improvements were suggested for this CV. Continue when you are ready to move to spell check.'}
       </p>
-      <div class="rewrite-tally-bar" id="rewrite-tally">
+      <div class="rewrite-tally-bar" id="rewrite-tally" ${hasRewrites ? '' : 'style="display:none"'}>
         <span class="tally-accepted">✓ Accepted: <strong id="tally-accepted">0</strong></span>
         <span class="tally-rejected">✗ Rejected: <strong id="tally-rejected">0</strong></span>
         <span class="tally-pending">⏳ Pending: <strong id="tally-pending">${rewrites.length}</strong></span>
@@ -125,7 +126,16 @@ function renderRewritePanel(rewrites, warnings = []) {
                 onclick="submitRewriteDecisions()">Submit All Decisions</button>
       </div>
       <div id="rewrite-cards">
-        ${rewrites.map(r => renderRewriteCard(r)).join('')}
+        ${hasRewrites
+    ? rewrites.map(r => renderRewriteCard(r)).join('')
+    : `
+          <div class="empty-state" style="margin-top:24px;">
+            <div class="icon">✏️</div>
+            <h3>No Rewrite Suggestions</h3>
+            <p>This draft already passes the rewrite stage without suggested wording changes.</p>
+            <button class="submit-btn" id="submit-rewrites-btn" onclick="submitRewriteDecisions()">Continue to Spell Check</button>
+          </div>
+        `}
       </div>
     </div>
   `;
@@ -316,26 +326,29 @@ function updateRewriteTally() {
     else                                                     rejected++;
   });
 
-  document.getElementById('tally-accepted').textContent = accepted;
-  document.getElementById('tally-rejected').textContent = rejected;
-  document.getElementById('tally-pending').textContent  = pending;
+  const acceptedEl = document.getElementById('tally-accepted');
+  const rejectedEl = document.getElementById('tally-rejected');
+  const pendingEl = document.getElementById('tally-pending');
+
+  if (acceptedEl) acceptedEl.textContent = accepted;
+  if (rejectedEl) rejectedEl.textContent = rejected;
+  if (pendingEl) pendingEl.textContent  = pending;
 
   const submitBtn = document.getElementById('submit-rewrites-btn');
   if (submitBtn) submitBtn.disabled = (pending > 0);
 }
 
 async function submitRewriteDecisions() {
-  /* duckflow: {
-   *   "id": "rewrite_ui_submit_live",
-   *   "kind": "ui",
-   *   "timestamp": "2026-03-25T21:39:48Z",
-   *   "status": "live",
-   *   "handles": ["ui:rewrite-review.submit"],
-   *   "calls": ["POST /api/rewrites/approve", "POST /api/cv/layout-estimate"],
-   *   "reads": ["window:rewriteDecisions"],
-   *   "writes": ["request:POST /api/rewrites/approve.decisions"],
-   *   "notes": "Submits the final per-rewrite outcomes and edited text so backend state can persist approved rewrites and the full rewrite audit before spell-check."
-  * }
+  /* duckflow:
+   *   id: rewrite_ui_submit_live
+   *   kind: ui
+   *   timestamp: "2026-03-25T21:39:48Z"
+   *   status: live
+   *   handles: ["ui:rewrite-review.submit"]
+   *   calls: ["POST /api/rewrites/approve", "POST /api/cv/layout-estimate"]
+   *   reads: ["window:rewriteDecisions"]
+   *   writes: ["request:POST /api/rewrites/approve.decisions"]
+   *   notes: "Submits the final per-rewrite outcomes and edited text so backend state can persist approved rewrites and the full rewrite audit before spell-check."
   */
   const decisions = Object.entries(rewriteDecisions).map(([id, dec]) => ({
     id,

@@ -13,6 +13,7 @@
 import {
   computeWordDiff,
   renderDiffHtml,
+  fetchAndReviewRewrites,
   applyRewriteAction,
   saveRewriteEdit,
   updateRewriteTally,
@@ -325,6 +326,33 @@ describe('renderRewritePanel', () => {
     renderRewritePanel(rewrites, [])
 
     expect(window._rewritePanelCache).toEqual({ rewrites, warnings: [] })
+  })
+
+  it('renders an explicit zero-state continue action when there are no rewrites', () => {
+    renderRewritePanel([], [])
+
+    expect(document.getElementById('submit-rewrites-btn')).not.toBeNull()
+    expect(document.getElementById('document-content').textContent).toContain('No Rewrite Suggestions')
+    expect(document.getElementById('document-content').textContent).toContain('Continue to Spell Check')
+  })
+})
+
+describe('fetchAndReviewRewrites', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+  })
+
+  it('keeps the explicit rewrite stage when the server returns zero rewrites', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, rewrites: [], persuasion_warnings: [], phase: 'rewrite_review' }),
+    })
+
+    await fetchAndReviewRewrites()
+
+    expect(globalThis.sendAction).not.toHaveBeenCalled()
+    expect(globalThis.switchTab).toHaveBeenCalledWith('rewrite')
+    expect(document.getElementById('document-content').textContent).toContain('No Rewrite Suggestions')
   })
 })
 
