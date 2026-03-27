@@ -321,18 +321,26 @@ function handleAchievementAction(achId, action) {
 }
 
 async function submitAchievementDecisions() {
-  /* duckflow: {
-   *   "id": "achievements_ui_submit_live",
-   *   "kind": "ui",
-   *   "timestamp": "2026-03-25T21:39:48Z",
-   *   "status": "live",
-   *   "handles": ["ui:achievements-review.submit"],
-   *   "calls": ["POST /api/review-decisions", "POST /api/cv/layout-estimate"],
-   *   "reads": ["window:achievementDecisions", "window:_suggestedAchsOrdered"],
-   *   "writes": ["request:POST /api/review-decisions.decisions", "request:POST /api/review-decisions.accepted_suggestions", "window:_savedDecisions.achievement_decisions", "window:_savedDecisions.accepted_suggested_achievements"],
-   *   "notes": "Persists achievement inclusion decisions and the accepted AI-suggested achievements that should remain session-only until an explicit harvest step."
-  * }
-  */
+  /* duckflow:
+   *   id: achievements_ui_submit_live
+   *   kind: ui
+   *   timestamp: '2026-03-25T21:39:48Z'
+   *   status: live
+   *   handles:
+   *   - ui:achievements-review.submit
+   *   calls:
+   *   - POST /api/review-decisions
+   *   - POST /api/cv/layout-estimate
+   *   reads:
+   *   - window:achievementDecisions
+   *   - window:_suggestedAchsOrdered
+   *   writes:
+   *   - request:POST /api/review-decisions.decisions
+   *   - request:POST /api/review-decisions.accepted_suggestions
+   *   - window:_savedDecisions.achievement_decisions
+   *   - window:_savedDecisions.accepted_suggested_achievements
+   *   notes: Persists achievement inclusion decisions and the accepted AI-suggested achievements that should remain session-only until an explicit harvest step.
+   */
   const allDecisions = window.achievementDecisions || {};
   // Separate existing achievements from AI-suggested ones
   const decisions = {};
