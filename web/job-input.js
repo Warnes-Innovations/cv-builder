@@ -16,9 +16,7 @@
  *   - switchTab (review-table-base.js, Tier 4)
  *   - analyzeJob (job-analysis.js)
  *   - fetchStatus (api-client.js)
- *   - confirmDialog (ui-core.js)
  *   - showAlertModal (ui-helpers.js)
- *   - loadSessionFile (session-manager.js)
  *   - tabData, currentTab, PHASES (window globals)
  */
 
@@ -70,78 +68,15 @@ async function showLoadJobPanel() {
   const content = document.getElementById('document-content');
   content.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading…</p></div>';
 
-  let items = [];
-  try {
-    const res = await fetch('/api/load-items');
-    if (res.ok) ({ items } = await res.json());
-  } catch (e) { /* server offline — show empty table */ }
-
   const stepJob = document.getElementById('step-job');
   if (stepJob) {
     stepJob.classList.remove('completed');
     stepJob.classList.add('active');
   }
 
-  function fmtDate(ts) {
-    if (!ts) return '—';
-    try { return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
-    catch { return ts.slice(0, 10); }
-  }
-
-  function phaseLabel(phase) {
-    const map = {
-      [PHASES.INIT]: '📋 Init', [PHASES.JOB_ANALYSIS]: '🔍 Analysis',
-      [PHASES.CUSTOMIZATION]: '⚙️ Custom.', [PHASES.GENERATION]: '📄 Generate',
-      [PHASES.REFINEMENT]: '✅ Done',
-    };
-    return map[phase] || (phase || '—');
-  }
-
-  const rows = items.map(item => {
-    const typeBadge = item.kind === 'session'
-      ? '<span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">💾 Session</span>'
-      : '<span style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">📄 File</span>';
-    const escapedItem = JSON.stringify(item).replace(/"/g, '&quot;');
-
-    const deleteButton = item.kind === 'session'
-      ? `<button data-delete-session="${escapeHtml(item.path)}" style="background:#ef4444;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;" title="Delete session">🗑️</button>`
-      : '<span style="color:#9ca3af;">—</span>';
-
-    return `<tr class="load-item-row" data-item="${escapedItem}" onclick="loadItemFromRow(this)" style="cursor:pointer;">
-      <td style="padding:10px 12px;">${typeBadge}</td>
-      <td style="padding:10px 12px;font-weight:500;">${item.label}</td>
-      <td style="padding:10px 12px;font-size:13px;color:#64748b;">${fmtDate(item.timestamp)}</td>
-      <td style="padding:10px 12px;font-size:13px;color:#64748b;">${item.kind === 'session' ? phaseLabel(item.phase) : '—'}</td>
-      <td style="padding:10px 12px;text-align:center;" onclick="event.stopPropagation()">${deleteButton}</td>
-    </tr>`;
-  }).join('');
-
-  const tableBody = rows ||
-    '<tr><td colspan="5" style="padding:20px;text-align:center;color:#64748b;font-style:italic;">No saved sessions or job files found.</td></tr>';
-
   content.innerHTML = `
     <div style="max-width:820px;margin:0 auto;padding:24px;">
-      <h1 style="font-size:22px;font-weight:700;color:#1e293b;margin-bottom:6px;">📥 Load Job</h1>
-      <p style="color:#64748b;margin-bottom:20px;">Resume a session, open a server-side file, or add a new job description below.</p>
-
-      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:24px;">
-        <div style="background:#f8fafc;padding:10px 16px;border-bottom:1px solid #e2e8f0;font-weight:600;font-size:13px;color:#475569;display:flex;align-items:center;justify-content:space-between;">
-          <span>Saved Sessions &amp; Job Files</span>
-          <button onclick="showLoadJobPanel()" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:12px;" title="Refresh list">↻ Refresh</button>
-        </div>
-        <table style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr style="border-bottom:2px solid #e2e8f0;background:#fafafa;">
-              <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:#64748b;width:100px;">Type</th>
-              <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:#64748b;">Name</th>
-              <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:#64748b;width:120px;">Date</th>
-              <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:#64748b;width:120px;">Progress</th>
-              <th style="text-align:center;padding:8px 12px;font-size:12px;font-weight:600;color:#64748b;width:80px;">Actions</th>
-            </tr>
-          </thead>
-          <tbody>${tableBody}</tbody>
-        </table>
-      </div>
+      <h1 style="font-size:22px;font-weight:700;color:#1e293b;margin-bottom:6px;">📥 Add Job Description</h1>
 
       <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:visible;">
         <div style="background:#f8fafc;padding:10px 16px;border-bottom:1px solid #e2e8f0;font-weight:600;font-size:13px;color:#475569;">Add New Job Description</div>
@@ -224,91 +159,10 @@ async function showLoadJobPanel() {
       </div>
     </div>
   `;
-  // Wire up session delete buttons via event delegation
-  content.querySelector('tbody')?.addEventListener('click', e => {
-    const btn = e.target.closest('[data-delete-session]');
-    if (!btn) return;
-    e.stopPropagation();
-    deleteSession(btn.dataset.deleteSession, e);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Load item from row / server file
-// ---------------------------------------------------------------------------
-
-function loadItemFromRow(row) {
-  document.querySelectorAll('.load-item-row').forEach(r => r.style.background = '');
-  row.style.background = '#eff6ff';
-  const item = JSON.parse(row.dataset.item.replace(/&quot;/g, '"'));
-  if (item.kind === 'session') {
-    loadSessionFile(item.path);
-  } else {
-    _loadServerJobFile(item.filename, item.label);
-  }
-}
-
-async function _loadServerJobFile(filename, label) {
-  appendMessage('system', `📄 Loading job file: ${label || filename}…`);
-  setLoading(true, `Loading job file…`);
-  try {
-    const res = await fetch('/api/load-job-file', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename })
-    });
-    const data = await res.json();
-    if (data.error) {
-      appendRetryMessage(`❌ ${data.error}`, () => _loadServerJobFile(filename, label));
-    } else {
-      stateManager.setTabData('job', data.job_text);
-      saveTabData();
-      appendMessage('assistant', `✅ Job description loaded from "${label || filename}". You can now analyze it.`);
-      await populateJobTab();
-      await fetchStatus();
-    }
-  } catch (e) {
-    appendRetryMessage(`❌ Network error: ${e.message}`, () => _loadServerJobFile(filename, label));
-  } finally {
-    setLoading(false);
-  }
 }
 
 // backward-compat shim
 function showJobInput() { showLoadJobPanel(); }
-
-// ---------------------------------------------------------------------------
-// Session delete from load panel
-// ---------------------------------------------------------------------------
-
-async function deleteSession(sessionId, event) {
-  event.stopPropagation();
-
-  const confirmed = await confirmDialog(
-    'Are you sure you want to delete this session?\n\nThis action cannot be undone.',
-    { confirmLabel: 'Delete', cancelLabel: 'Cancel', danger: true }
-  );
-  if (!confirmed) return;
-
-  try {
-    const res = await fetch('/api/delete-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: sessionId })
-    });
-
-    const data = await res.json();
-    if (data.success) {
-      showLoadJobPanel();
-      log.info('Session deleted successfully');
-    } else {
-      alert(`Failed to delete session: ${data.error || 'Unknown error'}`);
-    }
-  } catch (error) {
-    log.error('Error deleting session:', error);
-    alert('Failed to delete session. Please try again.');
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Input method switching
@@ -699,10 +553,7 @@ function _clearFieldError(inputId, errorId) {
 export {
   populateJobTab,
   showLoadJobPanel,
-  loadItemFromRow,
-  _loadServerJobFile,
   showJobInput,
-  deleteSession,
   switchInputMethod,
   _pendingUploadFile,
   handleFileDrop,
