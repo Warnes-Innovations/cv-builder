@@ -284,10 +284,12 @@ async function restoreSession() {
     if (historyRes.ok) {
       const historyData = await historyRes.json();
 
+      // Always clear placeholder HTML content now that we have a live session response.
+      const conversation = document.getElementById('conversation');
+      conversation.innerHTML = '';
+
       // Always restore from the server session file (authoritative history source).
       if (historyData.history && historyData.history.length > 0) {
-        const conversation = document.getElementById('conversation');
-        conversation.innerHTML = ''; // Clear any loading messages
 
         historyData.history.forEach(msg => {
           if (msg.role === 'user') {
