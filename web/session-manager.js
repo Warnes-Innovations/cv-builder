@@ -426,6 +426,9 @@ async function restoreBackendState() {
             pageWarning: Boolean(generationData.page_length_warning),
             layoutInstructionsCount: generationData.layout_instructions_count || 0,
             finalGeneratedAt: generationData.final_generated_at || null,
+            previewGeneratedAt: generationData.preview_generated_at || null,
+            previewRequestId: generationData.preview_request_id || null,
+            confirmedAt: generationData.confirmed_at || null,
           });
 
           if (hasCachedAtsScore) {

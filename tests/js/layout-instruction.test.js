@@ -15,6 +15,7 @@ import {
   showConfirmationMessage,
   renderInstructionHistory,
   renderPreviewOutputStatus,
+  renderLayoutPreviewStatus,
   addToInstructionHistory,
   undoInstruction,
   completeLayoutReview,
@@ -57,6 +58,7 @@ function buildDom() {
     <div id="processing-indicator" style="display:none"></div>
     <div id="confirmation-message" style="display:none"></div>
     <div id="layout-stale-callout" style="display:none"></div>
+    <div id="layout-preview-status" style="display:none"></div>
     <div id="instruction-history"></div>
     <div id="preview-output-status"></div>
     <span id="instruction-count">0</span>
@@ -334,5 +336,104 @@ describe('undoInstruction', () => {
   it('updates the DOM count after removal', () => {
     undoInstruction(1)
     expect(document.getElementById('instruction-count').textContent).toBe('1')
+  })
+})
+
+// ── renderLayoutPreviewStatus ─────────────────────────────────────────────
+
+describe('renderLayoutPreviewStatus', () => {
+  it('hides the container when no preview is available', () => {
+    stateManager.getGenerationState.mockReturnValue({
+      previewAvailable: false,
+      contentRevision: 0,
+      lastPreviewContentRevision: null,
+    })
+    stateManager.getLayoutFreshness.mockReturnValue({ isStale: false, showChip: false })
+
+    renderLayoutPreviewStatus()
+
+    const container = document.getElementById('layout-preview-status')
+    expect(container.style.display).toBe('none')
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('renders a fresh status card when preview is current', () => {
+    stateManager.getGenerationState.mockReturnValue({
+      previewAvailable: true,
+      contentRevision: 2,
+      lastPreviewContentRevision: 2,
+      layoutConfirmed: false,
+      phase: 'layout_review',
+      previewGeneratedAt: '2026-04-01T10:00:00Z',
+      confirmedAt: null,
+    })
+    stateManager.getLayoutFreshness.mockReturnValue({
+      isStale: false,
+      showChip: true,
+      tone: 'fresh',
+      label: 'Current',
+      ariaLabel: 'Preview is current',
+    })
+
+    renderLayoutPreviewStatus()
+
+    const container = document.getElementById('layout-preview-status')
+    expect(container.style.display).toBe('block')
+    expect(container.querySelector('.layout-preview-status-card').classList).toContain('fresh')
+    expect(container.textContent).toContain('Ready for layout review')
+    expect(container.textContent).toContain('Preview matches the latest approved content')
+  })
+
+  it('renders stale details with pending revision count', () => {
+    stateManager.getGenerationState.mockReturnValue({
+      previewAvailable: true,
+      contentRevision: 5,
+      lastPreviewContentRevision: 3,
+      layoutConfirmed: false,
+      phase: 'layout_review',
+      previewGeneratedAt: null,
+      confirmedAt: null,
+    })
+    stateManager.getLayoutFreshness.mockReturnValue({
+      isStale: true,
+      isCritical: false,
+      showChip: true,
+      tone: 'stale',
+      label: 'Stale',
+      ariaLabel: 'Preview is stale',
+    })
+
+    renderLayoutPreviewStatus()
+
+    const container = document.getElementById('layout-preview-status')
+    expect(container.style.display).toBe('block')
+    expect(container.querySelector('.layout-preview-status-card').classList).toContain('stale')
+    expect(container.textContent).toContain('2 content changes since this preview')
+  })
+
+  it('renders confirmed-at timestamp when layout is confirmed', () => {
+    stateManager.getGenerationState.mockReturnValue({
+      previewAvailable: true,
+      contentRevision: 3,
+      lastPreviewContentRevision: 3,
+      layoutConfirmed: true,
+      phase: 'confirmed',
+      previewGeneratedAt: '2026-04-01T10:00:00Z',
+      confirmedAt: '2026-04-01T10:05:00Z',
+    })
+    stateManager.getLayoutFreshness.mockReturnValue({
+      isStale: false,
+      showChip: true,
+      tone: 'fresh',
+      label: 'Confirmed',
+      ariaLabel: 'Layout confirmed',
+    })
+
+    renderLayoutPreviewStatus()
+
+    const container = document.getElementById('layout-preview-status')
+    expect(container.style.display).toBe('block')
+    expect(container.textContent).toContain('Ready for final files')
+    expect(container.textContent).toContain('Confirmed preview matches the latest approved content')
   })
 })
