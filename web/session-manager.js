@@ -535,10 +535,8 @@ async function loadSessionFile(path) {
           const rd = parseRewritesResponse(await rr.json());
           const rewrites = rd.rewrites || [];
           const warnings = rd.persuasion_warnings || [];
-          if (rewrites.length > 0) {
-            rewriteDecisions = {};
-            renderRewritePanel(rewrites, warnings);
-          }
+          rewriteDecisions = {};
+          renderRewritePanel(rewrites, warnings);
         }
       } catch (_) { /* non-fatal */ }
     }
