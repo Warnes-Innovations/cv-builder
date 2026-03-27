@@ -35,17 +35,16 @@ def create_blueprint(deps):
 
     @bp.post("/api/job")
     def submit_job():
-        # duckflow: {
-        #   "id": "job_api_submit_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/job"],
-        #   "reads": ["request:POST /api/job.job_text"],
-        #   "writes": ["state:job_description", "state:position_name", "history:user.job_text"],
-        #   "returns": ["response:POST /api/job.ok"],
-        #   "notes": "Stores the submitted job text in session state, infers the position name, and appends the raw text to conversation history."
-        # }
+        # duckflow:
+        #   id: job_api_submit_live
+        #   kind: api
+        #   timestamp: "2026-03-25T21:39:48Z"
+        #   status: live
+        #   handles: ["POST /api/job"]
+        #   reads: ["request:POST /api/job.job_text"]
+        #   writes: ["state:job_description", "state:position_name", "history:user.job_text"]
+        #   returns: ["response:POST /api/job.ok"]
+        #   notes: "Stores the submitted job text in session state, infers the position name, and appends the raw text to conversation history."
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager

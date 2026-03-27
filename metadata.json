@@ -1,5 +1,5 @@
 {
-  "generation_date": "2026-03-25T15:39:38.041536",
+  "generation_date": "2026-03-26T22:22:06.598903",
   "company": "Genentech",
   "role": "Senior R Package Developer",
   "job_analysis": {
@@ -201,19 +201,21 @@
       "HDF5",
       "Technical Debt Management",
       "System Refactoring",
-      "R",
-      "CI/CD",
       "Algorithmic Architecture",
       "Analytic Software Development",
       "Genomics (NGS, GWAS)",
       "RNA-Seq, scRNA-Seq",
       "Multi-omics Integration",
       "Pipeline Development",
+      "R",
       "Python",
       "C/C++",
       "AWS",
       "Google Cloud",
-      "Data Architecture"
+      "CI/CD",
+      "Data Architecture",
+      "Bash",
+      "Docker"
     ],
     "achievement_recommendations": [
       {
@@ -250,7 +252,6 @@
     "recommended_achievements": [
       "sa_001",
       "sa_002",
-      "sa_003",
       "sa_005",
       "sa_004"
     ],
@@ -269,6 +270,7 @@
     "omitted_experiences": [
       "exp_001",
       "exp_003",
+      "exp_007a",
       "exp_010",
       "exp_014",
       "exp_013",
@@ -299,14 +301,15 @@
       "Java",
       "JavaScript",
       "SQL",
-      "Bash",
-      "Docker",
       "Linux",
       "ETL/ELT",
       "Tableau",
       "Spotfire"
     ],
-    "omitted_achievements": [],
+    "omitted_achievements": [
+      "sa_003",
+      "sa_006"
+    ],
     "extra_skills": [
       "S4 Classes",
       "Bioconductor",
@@ -324,7 +327,41 @@
       "ai_recommended": "Position as a 'Hands-on Systems Architect' and 'Master of the R Ecosystem'. Emphasize a deep fulfillment in refactoring, modernizing complex codebases, and managing technical debt. Highlight specific expertise in OAuth2/JWT, Cloud Object Storage, and S4/Bioconductor. Focus on the 'sustained impact' of ensuring core tools remain robust, high-performance industry standards.",
       "ai_generated": "Senior Bioinformatics Software Engineer with over 25 years of experience specializing in high-performance R Package Development and robust Software Architecture for complex Genomics research. Currently provides expert consulting on experimental design and RNA-Seq analysis while maintaining a portfolio of enterprise-grade R tools and Bioconductor-aligned workflows. Previously created the MiDAS Genomic Workflow System at Pfizer, automating RNA microarray analysis from raw data QC to final biological interpretation, and led the conversion of legacy clinical trial data into CDISC standards. Reduces Technical Debt across large-scale projects by implementing rigorous CI/CD practices and the S4 object system to ensure codebase scalability. Seeking to leverage deep expertise in R package development and statistical computing to advance Genentech\u2019s bioinformatics ecosystem and accelerate biological discovery."
     },
-    "selected_summary": "Senior Bioinformatics Software Engineer with over 25 years of experience specializing in high-performance R Package Development and robust Software Architecture for complex Genomics research. Currently provides expert consulting on experimental design and RNA-Seq analysis while maintaining a portfolio of enterprise-grade R tools and Bioconductor-aligned workflows. Previously created the MiDAS Genomic Workflow System at Pfizer, automating RNA microarray analysis from raw data QC to final biological interpretation, and led the conversion of legacy clinical trial data into CDISC standards. Reduces Technical Debt across large-scale projects by implementing rigorous CI/CD practices and the S4 object system to ensure codebase scalability. Seeking to leverage deep expertise in R package development and statistical computing to advance Genentech\u2019s bioinformatics ecosystem and accelerate biological discovery.",
+    "skill_category_overrides": {
+      "S4 Classes": "Programming & ML Frameworks",
+      "Bioconductor": "Programming & ML Frameworks",
+      "OAuth2": "Programming & ML Frameworks",
+      "JWT": "Programming & ML Frameworks",
+      "Cloud Object Storage": "Programming & ML Frameworks",
+      "REST API": "Programming & ML Frameworks",
+      "Rcpp": "Programming & ML Frameworks",
+      "GitLab": "Programming & ML Frameworks",
+      "HDF5": "Programming & ML Frameworks",
+      "Technical Debt Management": "Programming & ML Frameworks",
+      "System Refactoring": "Programming & ML Frameworks"
+    },
+    "skill_group_overrides": {
+      "S4 Classes": "R",
+      "Bioconductor": "R",
+      "Rcpp": "R",
+      "OAuth2": "API",
+      "JWT": "API",
+      "Cloud Object Storage": "API",
+      "REST API": "API",
+      "GitLab": "CI/CL",
+      "HDF5": "API",
+      "Technical Debt Management": "Design",
+      "System Refactoring": "Design",
+      "Algorithmic Architecture": null,
+      "Analytic Software Development": null,
+      "Genomics (NGS, GWAS)": "Genomics",
+      "RNA-Seq, scRNA-Seq": "Genomics",
+      "Multi-omics Integration": "Genomics",
+      "R": "R",
+      "Python": "Lang",
+      "C/C++": "Lang"
+    },
+    "extra_skill_matches": {},
     "accepted_publications": [
       "warnes2007geneticsdesign",
       "warnes2005geneticsbase",
@@ -376,22 +413,23 @@
       "warnes2000hydra",
       "warnes2000thesis",
       "warnes1999clusternfs"
-    ]
+    ],
+    "selected_summary": "Senior Bioinformatics Software Engineer with over 25 years of experience specializing in high-performance R Package Development and robust Software Architecture for complex Genomics research. Currently provides expert consulting on experimental design and RNA-Seq analysis while maintaining a portfolio of enterprise-grade R tools and Bioconductor-aligned workflows. Previously created the MiDAS Genomic Workflow System at Pfizer, automating RNA microarray analysis from raw data QC to final biological interpretation, and led the conversion of legacy clinical trial data into CDISC standards. Reduces Technical Debt across large-scale projects by implementing rigorous CI/CD practices and the S4 object system to ensure codebase scalability. Seeking to leverage deep expertise in R package development and statistical computing to advance Genentech\u2019s bioinformatics ecosystem and accelerate biological discovery."
   },
   "approved_rewrites": [],
   "rewrite_audit": [],
   "spell_audit": [],
   "selected_content_summary": {
     "experiences_count": 8,
-    "skills_count": 24,
-    "achievements_count": 5
+    "skills_count": 26,
+    "achievements_count": 4
   },
   "files_generated": [
-    "CV_Genentech_SeniorRPackageDevelo_2026-03-25_ATS.docx",
-    "CV_Genentech_SeniorRPackageDevelo_2026-03-25.html",
-    "CV_Genentech_SeniorRPackageDevelo_2026-03-25.pdf",
-    "CV_Genentech_SeniorRPackageDevelo_2026-03-25.docx"
+    "CV_Genentech_SeniorRPackageDevelo_2026-03-26_ATS.docx",
+    "CV_Genentech_SeniorRPackageDevelo_2026-03-26.html",
+    "CV_Genentech_SeniorRPackageDevelo_2026-03-26.pdf",
+    "CV_Genentech_SeniorRPackageDevelo_2026-03-26.docx"
   ],
-  "cover_letter_text": "March 25, 2026\n\nDear Hiring Manager,\n\nI am writing to express interest in the Senior R Package Developer opportunity at Genentech. This locally rendered cover letter is intended for layout and content-debugging workflows, while still drawing from the current CV source data.\n\nMy background is summarized as follows: Senior Machine Learning Scientist and Analytic Architect with over 25 years of experience architecting scalable analytic pipelines, developing advanced statistical models, and productionizing software solutions. Ph.D. in Biostatistics with deep expertise in Genomics (RNA-Seq, scRNA-Seq, Multi-omics), Systems Biology, and Clinical Data Integration (CDISC). Proven track record of bridging scientific discovery and software engineering\u2014from co-founding Revolution Analytics (acquired by Microsoft) to building award-winning genomic workflow systems at Pfizer and Medidata. Expert in interpreting complex multi-omics datasets, automating QC/normalization processes, and translating customer scientific needs into robust production features. Key strengths represented in the attached materials include Data Science, Biostatistics, Statistical Modeling, Algorithmic Architecture, Analytic Software Development, High Performance Computing.\n\nPlease treat this draft as a deterministic rendering artifact for Gregory R. Warnes, Ph.D.. It can be replaced by a session-saved or LLM-generated letter whenever a finalized version is available.\n\nThank you for your consideration.\n\nSincerely,\nGregory R. Warnes, Ph.D.",
-  "cover_letter_reused_from": "/Users/warnes/Library/CloudStorage/GoogleDrive-greg@warnes.net/My Drive/CV/cv-builder/sessions/Genentech_SeniorRPackageDevelo_2026-03-18/session.json"
+  "cover_letter_text": "March 26, 2026\n\nDear Hiring Manager,\n\nI am writing to express interest in the Senior R Package Developer opportunity at Genentech. This locally rendered cover letter is intended for layout and content-debugging workflows, while still drawing from the current CV source data.\n\nMy background is summarized as follows: Senior Machine Learning Scientist and Analytic Architect with over 25 years of experience architecting scalable analytic pipelines, developing advanced statistical models, and productionizing software solutions. Ph.D. in Biostatistics with deep expertise in Genomics (RNA-Seq, scRNA-Seq, Multi-omics), Systems Biology, and Clinical Data Integration (CDISC). Proven track record of bridging scientific discovery and software engineering\u2014from co-founding Revolution Analytics (acquired by Microsoft) to building award-winning genomic workflow systems at Pfizer and Medidata. Expert in interpreting complex multi-omics datasets, automating QC/normalization processes, and translating customer scientific needs into robust production features. Key strengths represented in the attached materials include Data Science, Biostatistics, Statistical Modeling, Algorithmic Architecture, Analytic Software Development, High Performance Computing.\n\nPlease treat this draft as a deterministic rendering artifact for Gregory R. Warnes, Ph.D.. It can be replaced by a session-saved or LLM-generated letter whenever a finalized version is available.\n\nThank you for your consideration.\n\nSincerely,\nGregory R. Warnes, Ph.D.",
+  "cover_letter_reused_from": "/Users/warnes/Library/CloudStorage/GoogleDrive-greg@warnes.net/My Drive/CV/cv-builder/sessions/Genentech_SeniorRPackageDevelo_2026-03-26/session.json"
 }

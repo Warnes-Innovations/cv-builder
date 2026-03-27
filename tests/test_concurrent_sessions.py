@@ -3499,7 +3499,7 @@ def test_persuasion_check_route_falls_back_to_master_data_on_selection_error(
         )
 
 
-def test_persuasion_check_route_returns_500_on_orchestrator_error(build_app):
+def test_persuasion_check_route_returns_generic_500_on_orchestrator_error(build_app):
     app, tracker = build_app()
 
     with app.test_client() as client:
@@ -3515,7 +3515,7 @@ def test_persuasion_check_route_returns_500_on_orchestrator_error(build_app):
         )
 
         assert response.status_code == 500
-        assert response.get_json() == {"error": "persuasion failed"}
+        assert response.get_json() == {"error": "Failed to run persuasion checks."}
 
 
 def test_fetch_job_url_route_enforces_ownership_and_validates_input(build_app):

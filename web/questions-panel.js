@@ -321,17 +321,16 @@ function updateQProgress() {
 }
 
 async function submitAllAnswers() {
-  /* duckflow: {
-   *   "id": "questions_ui_submit_live",
-   *   "kind": "ui",
-   *   "timestamp": "2026-03-25T21:39:48Z",
-   *   "status": "live",
-   *   "handles": ["ui:questions.submit-all"],
-   *   "calls": ["POST /api/post-analysis-responses", "POST /api/action"],
-   *   "reads": ["window:postAnalysisQuestions", "dom:q-input-*.value"],
-   *   "writes": ["window:questionAnswers", "request:POST /api/post-analysis-responses.answers"],
-   *   "notes": "Collects the clarifying-question answers from the UI, persists them to session state, and then advances into customization recommendation generation."
-  * }
+  /* duckflow:
+   *   id: questions_ui_submit_live
+   *   kind: ui
+   *   timestamp: "2026-03-25T21:39:48Z"
+   *   status: live
+   *   handles: ["ui:questions.submit-all"]
+   *   calls: ["POST /api/post-analysis-responses", "POST /api/action"]
+   *   reads: ["window:postAnalysisQuestions", "dom:q-input-*.value"]
+   *   writes: ["window:questionAnswers", "request:POST /api/post-analysis-responses.answers"]
+   *   notes: "Collects the clarifying-question answers from the UI, persists them to session state, and then advances into customization recommendation generation."
   */
   const qs = window.postAnalysisQuestions || [];
   qs.forEach((q, idx) => {

@@ -621,6 +621,12 @@
             <aside class="left-col">
                 {% if skills_by_category %}
                 <section class="section">
+                          {# duckflow:
+                              id: cv_render.templates_cv_template.L624
+                              kind: artifact
+                              timestamp: "2026-03-27T00:17:36Z"
+                              status: live
+                              reads: ['artifact:template_metadata["skills_section_title"]'] #}
                     <h2 class="section-title"><i class="fas fa-code"></i> {{ human_skills_title | default('Technical Skills') }}</h2>
                     <div class="skills-grid">
                         {% for cat in skills_by_category %}
@@ -734,8 +740,12 @@ EDUCATION
 {% endfor %}{% endif %}
 {% if skills_by_category %}
 --------------------------------------------------------------------------------
-{# duckflow: flow=cv-render status=live
-    artifact: "SKILLS" → ATS plain-text heading #}
+{# duckflow:
+    id: cv_render.templates_cv_template.L739
+    kind: artifact
+    timestamp: "2026-03-27T00:17:36Z"
+    status: live
+    reads: ['artifact:"SKILLS"'] #}
 SKILLS
 --------------------------------------------------------------------------------
 {% for cat in skills_by_category %}{{ cat.category }}: {% for skill in cat.skills %}{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
