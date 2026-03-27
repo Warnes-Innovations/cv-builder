@@ -1001,7 +1001,7 @@ def create_blueprint(deps):
         #   notes: "Server-side layout estimate renders preview HTML, compares it to the stored digest baseline, and rerenders exactly when confidence is low or near a page boundary."
         try:
             return jsonify(_apply_layout_estimate(conv, body))
-        except Exception as exc:
+        except Exception:
             current_app.logger.exception('layout estimate failed')
             return jsonify({
                 'ok': False,
@@ -1292,7 +1292,7 @@ def create_blueprint(deps):
                 output_dir=output_dir,
                 filename_base="CV_final",
             )
-        except Exception as exc:
+        except Exception:
             return _internal_server_error('Final generation failed.')
 
         now = datetime.now().isoformat()
@@ -1480,7 +1480,7 @@ def create_blueprint(deps):
                     'git_error':   git_error,
                     'summary':     summary,
                 })
-            except Exception as e:
+            except Exception:
                 return _internal_server_error('Failed to save finalisation metadata.')
 
     # ------------------------------------------------------------------
@@ -1495,7 +1495,7 @@ def create_blueprint(deps):
         try:
             candidates = _compile_harvest_candidates(conversation)
             return jsonify({'ok': True, 'candidates': candidates})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to load harvest candidates.')
 
     @bp.post("/api/harvest/apply")
@@ -1608,7 +1608,7 @@ def create_blueprint(deps):
                     'commit_hash':  commit_hash,
                     'git_error':    git_error,
                 })
-            except Exception as e:
+            except Exception:
                 return _internal_server_error('Failed to apply harvested updates.')
 
     return bp
