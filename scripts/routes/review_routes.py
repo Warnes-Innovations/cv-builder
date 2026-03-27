@@ -191,34 +191,33 @@ def create_blueprint(deps):
     @bp.route('/api/review-decisions', methods=['POST'])
     def save_review_decisions():
         """Save user's review decisions for experiences/skills."""
-        # duckflow: {
-        #   "id": "review_api_decisions_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/review-decisions"],
-        #   "reads": [
-        #     "request:POST /api/review-decisions.type",
-        #     "request:POST /api/review-decisions.decisions",
-        #     "request:POST /api/review-decisions.extra_skills",
-        #     "request:POST /api/review-decisions.extra_skill_matches",
-        #     "request:POST /api/review-decisions.accepted_suggestions"
-        #   ],
-        #   "writes": [
-        #     "state:experience_decisions",
-        #     "state:skill_decisions",
-        #     "state:extra_skills",
-        #     "state:extra_skill_matches",
-        #     "state:customizations.extra_skills",
-        #     "state:customizations.extra_skill_matches",
-        #     "state:achievement_decisions",
-        #     "state:accepted_suggested_achievements",
-        #     "state:publication_decisions",
-        #     "state:summary_focus_override"
-        #   ],
-        #   "returns": ["response:POST /api/review-decisions.success"],
-        #   "notes": "Persists per-surface review decisions in session state; skill decisions also update session customizations so downstream generation can materialize the same choices."
-        # }
+        # duckflow:
+        #   id: review_api_decisions_live
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/review-decisions"
+        #   reads:
+        #     - "request:POST /api/review-decisions.type"
+        #     - "request:POST /api/review-decisions.decisions"
+        #     - "request:POST /api/review-decisions.extra_skills"
+        #     - "request:POST /api/review-decisions.extra_skill_matches"
+        #     - "request:POST /api/review-decisions.accepted_suggestions"
+        #   writes:
+        #     - "state:experience_decisions"
+        #     - "state:skill_decisions"
+        #     - "state:extra_skills"
+        #     - "state:extra_skill_matches"
+        #     - "state:customizations.extra_skills"
+        #     - "state:customizations.extra_skill_matches"
+        #     - "state:achievement_decisions"
+        #     - "state:accepted_suggested_achievements"
+        #     - "state:publication_decisions"
+        #     - "state:summary_focus_override"
+        #   returns:
+        #     - "response:POST /api/review-decisions.success"
+        #   notes: "Persists per-surface review decisions in session state; skill decisions also update session customizations so downstream generation can materialize the same choices."
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -289,16 +288,18 @@ def create_blueprint(deps):
                 conversation.state['publication_decisions'] = decisions
                 message = f"Saved decisions for {len(decisions)} publications"
             elif decision_type == 'summary_focus':
-                # duckflow: {
-                #   "id": "summary_api_review_decision_live",
-                #   "kind": "api",
-                #   "timestamp": "2026-03-25T21:39:48Z",
-                #   "status": "live",
-                #   "handles": ["POST /api/review-decisions"],
-                #   "reads": ["request:POST /api/review-decisions.summary_focus"],
-                #   "writes": ["state:summary_focus_override"],
-                #   "notes": "Live review-decisions route persists the selected summary key in session state."
-                # }
+                # duckflow:
+                #   id: summary_api_review_decision_live
+                #   kind: api
+                #   timestamp: "2026-03-27T01:23:28Z"
+                #   status: live
+                #   handles:
+                #     - "POST /api/review-decisions"
+                #   reads:
+                #     - "request:POST /api/review-decisions.summary_focus"
+                #   writes:
+                #     - "state:summary_focus_override"
+                #   notes: "Live review-decisions route persists the selected summary key in session state."
                 conversation.state['summary_focus_override'] = decisions
                 message = "Saved summary focus preference"
             else:
@@ -309,25 +310,26 @@ def create_blueprint(deps):
             session_registry.touch(sid)
             return jsonify({"success": True, "message": message})
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to save review decisions.')
 
     @bp.route('/api/save-achievement-edits', methods=['POST'])
     def save_achievement_edits():
-        """Save per-experience achievement edits from the editor tab."""
-        # duckflow: {
-        #   "id": "review_api_achievement_edits_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-26T18:15:00Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/save-achievement-edits"],
-        #   "reads": ["request:POST /api/save-achievement-edits.edits"],
-        #   "writes": ["state:achievement_edits"],
-        #   "returns": ["response:POST /api/save-achievement-edits.success"],
-        #   "notes": "Stores per-experience bullet edits with hidden flags
-        #             for later generation/ATS overlays without mutating
-        #             master data."
-        # }
+        """Save per-experience achievement edits from the achievements editor tab."""
+        # duckflow:
+        #   id: review_api_achievement_edits_live
+        #   kind: api
+        #   timestamp: "2026-03-27T02:31:32Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/save-achievement-edits"
+        #   reads:
+        #     - "request:POST /api/save-achievement-edits.edits"
+        #   writes:
+        #     - "state:achievement_edits"
+        #   returns:
+        #     - "response:POST /api/save-achievement-edits.success"
+        #   notes: "Stores per-experience bullet edits, including hidden flags, in session state so later generation and ATS materialization can overlay them without mutating master data."
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -803,7 +805,7 @@ def create_blueprint(deps):
                 achievement_index=ach_idx,
             )
             return jsonify({"rewritten": rewritten, "log_id": log_id})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to rewrite achievement.')
 
     @bp.route('/api/rewrite-achievement-outcome', methods=['POST'])
@@ -878,7 +880,7 @@ def create_blueprint(deps):
 
             return jsonify(cv_data)
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to load CV data.')
 
     @bp.route('/api/cv-data', methods=['POST'])
@@ -898,7 +900,7 @@ def create_blueprint(deps):
                 conversation._save_session()
             session_registry.touch(sid)
 
-            print(f"CV data updated:")
+            print("CV data updated:")
             if 'personal_info' in data:
                 print(f"  - Personal info: {data['personal_info']}")
             if 'summary' in data:
@@ -910,7 +912,7 @@ def create_blueprint(deps):
 
             return jsonify({"success": True, "message": "CV data saved successfully"})
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to save CV data.')
 
     @bp.get("/api/rewrites")
@@ -986,7 +988,7 @@ def create_blueprint(deps):
                 phase=phase,
             )))
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to load rewrite suggestions.')
 
     @bp.post("/api/rewrites/approve")
@@ -1014,7 +1016,7 @@ def create_blueprint(deps):
                 "phase":          summary['phase'],
             })
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to approve rewrite decisions.')
 
     @bp.get("/api/publication-recommendations")
@@ -1120,7 +1122,7 @@ def create_blueprint(deps):
             total_count = len(recommendations)
             return jsonify({"ok": True, "recommendations": recommendations, "source": source, "total_count": total_count})
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to load publication recommendations.')
 
     @bp.post("/api/reorder-bullets")
@@ -1149,7 +1151,7 @@ def create_blueprint(deps):
                 conversation._save_session()
             session_registry.touch(sid)
             return jsonify({"ok": True, "experience_id": exp_id, "order": order})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to save bullet order.')
 
     @bp.get("/api/proposed-bullet-order")
@@ -1187,7 +1189,7 @@ def create_blueprint(deps):
 
             proposed = sorted(range(len(achievements)), key=lambda i: ach_score(achievements[i]), reverse=True)
             return jsonify({"proposed_order": proposed, "has_job_analysis": True})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to calculate proposed bullet order.')
 
     @bp.post("/api/reorder-rows")
@@ -1216,7 +1218,7 @@ def create_blueprint(deps):
                 conversation._save_session()
             session_registry.touch(sid)
             return jsonify({"ok": True, "type": row_type, "ordered_ids": ordered_ids})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to save row order.')
 
     @bp.get("/api/synonym-lookup")
@@ -1265,7 +1267,7 @@ def create_blueprint(deps):
                 print(f"DEBUG: Available IDs: {available_ids[:10]}")
                 return jsonify({"experience": None, "message": f"Experience {experience_id} not found"})
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to load experience details.')
 
     # ── Spell check ──────────────────────────────────────────────────────────
@@ -1377,7 +1379,7 @@ def create_blueprint(deps):
                     text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
                     _append_section(f"exp_{exp_id}_ach_{i}", f"{label} (bullet {i + 1})", text, 'bullet')
 
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to build spell-check sections.')
 
         aggregate_stats = _spell_checker.aggregate_stats([s['text'] for s in sections])
@@ -1437,17 +1439,21 @@ def create_blueprint(deps):
     @bp.post("/api/spell-check-complete")
     def spell_check_complete():
         """Record spell-check audit and advance phase to generation."""
-        # duckflow: {
-        #   "id": "review_api_spell_complete_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/spell-check-complete"],
-        #   "reads": ["request:POST /api/spell-check-complete.spell_audit"],
-        #   "writes": ["state:spell_audit", "state:phase"],
-        #   "returns": ["response:POST /api/spell-check-complete.ok"],
-        #   "notes": "Persists the reviewed spell audit into canonical session state and advances the workflow into generation."
-        # }
+        # duckflow:
+        #   id: review_api_spell_complete_live
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/spell-check-complete"
+        #   reads:
+        #     - "request:POST /api/spell-check-complete.spell_audit"
+        #   writes:
+        #     - "state:spell_audit"
+        #     - "state:phase"
+        #   returns:
+        #     - "response:POST /api/spell-check-complete.ok"
+        #   notes: "Persists the reviewed spell audit into canonical session state and advances the workflow into generation."
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -1655,7 +1661,7 @@ def create_blueprint(deps):
                 'page_count': page_count,
                 'summary':    summary,
             })
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to validate ATS output.')
 
     @bp.get("/api/persuasion-check")
@@ -1687,7 +1693,7 @@ def create_blueprint(deps):
 
             result = conversation.orchestrator.check_persuasion(experiences)
             return jsonify({'ok': True, **result})
-        except Exception as e:
+        except Exception:
             return _internal_server_error('Failed to run persuasion checks.')
 
     return bp
