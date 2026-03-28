@@ -50,13 +50,14 @@ Current observed top-level keys in live data:
 - `skills` (object)
 - `education` (array)
 - `awards` (array)
+- `certifications` (array)
 - `publications_file` (string)
 - `patents_file` (string)
 
 Top-level structural constraints currently enforced before most writes:
 
 - `personal_info` must be object (if present)
-- `experience`, `education`, `awards`, `selected_achievements` must be arrays (if present)
+- `experience`, `education`, `awards`, `certifications`, `selected_achievements` must be arrays (if present)
 - `skills` must be array or object (if present)
 - `professional_summaries` must be object or array (if present)
 
@@ -203,7 +204,15 @@ Observed item fields:
 - `description`: string
 - `relevant_for`: array
 
-### 4.8 Additional top-level file references
+### 4.8 `certifications` (array of objects)
+
+Observed item fields:
+
+- `name`: string (required)
+- `issuer`: string
+- `year`: number
+
+### 4.9 Additional top-level file references
 
 - `publications_file`: string
 - `patents_file`: string

@@ -52,25 +52,39 @@ async function populateMasterTab() {
   }
 
   const personalInfo = fullData.personal_info || {};
-  const experiences  = fullData.experience || [];
+  const experiences     = fullData.experience || [];
   window._masterExperienceOptions = experiences
     .map((exp) => ({
       id: exp.id || '',
       label: `${exp.title || 'Role'} @ ${exp.company || 'Company'}`,
     }))
     .filter((x) => x.id);
-  const skills       = fullData.skills || [];
-  const education    = fullData.education || [];
-  const awards       = fullData.awards || [];
-  const achievements = fullData.selected_achievements || [];
-  const summaries    = fullData.professional_summaries || {};
+  const skills          = fullData.skills || [];
+  const education       = fullData.education || [];
+  const awards          = fullData.awards || [];
+  const certifications  = fullData.certifications || [];
+  const achievements    = fullData.selected_achievements || [];
+  const summaries       = fullData.professional_summaries || {};
 
   content.innerHTML = `
-    <h1>📚 Master CV Profile</h1>
-    <p style="color:#6b7280;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
+      <h1 style="margin:0;">📚 Master CV Profile</h1>
+      <button class="action-btn secondary" onclick="exportMasterCV()" aria-label="Download Master_CV_Data.json">
+        ⬇️ Export JSON
+      </button>
+    </div>
+    <p style="color:#6b7280;margin-bottom:12px;">
       This is your persistent master CV profile. Changes here update
       <code>Master_CV_Data.json</code> directly and persist across all sessions.
     </p>
+
+    <!-- Governance banner -->
+    <div class="master-governance-note" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:0.88em;color:#78350f;">
+      <strong>⚠️ Persistent storage:</strong> Edits on this tab write directly to
+      <code>Master_CV_Data.json</code> and are not scoped to any session.
+      Job-specific customisations (skills, experience picks, summaries) are stored
+      exclusively in the active session and never written here automatically.
+    </div>
 
     ${_renderMasterChangeNotice()}
 
@@ -214,6 +228,19 @@ async function populateMasterTab() {
       </div>
       <div id="master-awards-container">
         ${_renderAwardsList(awards)}
+      </div>
+    </div>
+
+    <!-- Certifications section -->
+    <div class="master-section">
+      <div class="master-section-header">
+        <h2>🎓 Certifications</h2>
+        <button class="action-btn" onclick="showAddCertificationModal()" aria-label="Add certification">
+          + Add Certification
+        </button>
+      </div>
+      <div id="master-certifications-container">
+        ${_renderCertificationsList(certifications)}
       </div>
     </div>
 
@@ -658,6 +685,41 @@ async function populateMasterTab() {
         <div class="modal-footer">
           <button class="action-btn" onclick="closeAwardModal()">Cancel</button>
           <button class="action-btn primary" onclick="saveMasterAward()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Certification modal -->
+    <div id="master-cert-modal-overlay" style="display:none;" role="dialog" aria-modal="true"
+        aria-labelledby="master-cert-modal-title" class="modal-overlay"
+        onclick="if(event.target===this)closeCertificationModal()">
+      <div class="modal" style="max-width:500px;">
+        <div class="modal-header">
+          <h2 id="master-cert-modal-title">Certification</h2>
+          <button onclick="closeCertificationModal()" aria-label="Close certification editor"
+              style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:20px;">
+          <input type="hidden" id="cert-modal-idx" value="-1" />
+          <div style="margin-bottom:14px;">
+            <label for="cert-name-input" style="display:block;font-weight:600;margin-bottom:4px;">Name <span aria-hidden="true">*</span></label>
+            <input type="text" id="cert-name-input" class="edit-input" style="width:100%;" aria-required="true"
+                placeholder="e.g. AWS Certified Solutions Architect" />
+          </div>
+          <div style="margin-bottom:14px;">
+            <label for="cert-issuer-input" style="display:block;font-weight:600;margin-bottom:4px;">Issuer</label>
+            <input type="text" id="cert-issuer-input" class="edit-input" style="width:100%;"
+                placeholder="e.g. Amazon Web Services" />
+          </div>
+          <div style="margin-bottom:14px;">
+            <label for="cert-year-input" style="display:block;font-weight:600;margin-bottom:4px;">Year</label>
+            <input type="number" id="cert-year-input" class="edit-input" style="width:100px;"
+                min="1950" max="2099" placeholder="2023" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="action-btn" onclick="closeCertificationModal()">Cancel</button>
+          <button class="action-btn primary" onclick="saveMasterCertification()">Save</button>
         </div>
       </div>
     </div>
@@ -1523,6 +1585,45 @@ function _renderAwardsList(awards) {
 }
 
 
+function _renderCertificationsList(certs) {
+  if (!certs.length) {
+    return '<p style="color:#6b7280;padding:12px 0;">No certifications on file. Click "+ Add Certification" above.</p>';
+  }
+  const rows = certs.map((cert, idx) => {
+    const name   = escapeHtml(cert.name || '');
+    const issuer = escapeHtml(cert.issuer || '—');
+    const year   = cert.year ? String(cert.year) : '—';
+    const certJson = escapeHtml(JSON.stringify({
+      name: cert.name || '', issuer: cert.issuer || '', year: cert.year || '',
+    }));
+    return `
+      <tr>
+        <td><strong>${name}</strong></td>
+        <td style="color:#475569;">${issuer}</td>
+        <td style="text-align:center;color:#475569;">${year}</td>
+        <td class="action-btns">
+          <button class="icon-btn" onclick="editMasterCertification(${certJson}, ${idx})"
+              aria-label="Edit certification: ${name}" title="Edit">✏️</button>
+          <button class="icon-btn" onclick="deleteMasterCertification(${idx}, '${name}')"
+              aria-label="Delete certification: ${name}" title="Delete">🗑️</button>
+        </td>
+      </tr>`;
+  }).join('');
+  return `
+    <table class="review-table" style="width:100%;">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Issuer</th>
+          <th style="width:70px;text-align:center;">Year</th>
+          <th style="width:80px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+
 function _renderMasterAchievementsTable(achievements) {
   if (!achievements.length) {
     return '<p style="color:#6b7280;padding:12px 0;">No selected achievements yet. Use the Harvest feature to add achievements from a completed session, or click "+ Add Achievement" above.</p>';
@@ -2195,6 +2296,114 @@ async function deleteMasterAward(idx, title) {
   );
 }
 
+// ---- Certification CRUD handlers ----
+
+function showAddCertificationModal() {
+  document.getElementById('cert-modal-idx').value    = '-1';
+  document.getElementById('cert-name-input').value   = '';
+  document.getElementById('cert-issuer-input').value = '';
+  document.getElementById('cert-year-input').value   = '';
+  document.getElementById('master-cert-modal-title').textContent = 'Add Certification';
+  document.getElementById('master-cert-modal-overlay').style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('master-cert-modal-overlay');
+  trapFocus('master-cert-modal-overlay');
+}
+
+function editMasterCertification(cert, idx) {
+  document.getElementById('cert-modal-idx').value    = idx;
+  document.getElementById('cert-name-input').value   = cert.name || '';
+  document.getElementById('cert-issuer-input').value = cert.issuer || '';
+  document.getElementById('cert-year-input').value   = cert.year || '';
+  document.getElementById('master-cert-modal-title').textContent = 'Edit Certification';
+  document.getElementById('master-cert-modal-overlay').style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('master-cert-modal-overlay');
+  trapFocus('master-cert-modal-overlay');
+}
+
+function closeCertificationModal() {
+  document.getElementById('master-cert-modal-overlay').style.display = 'none';
+  restoreFocus();
+}
+
+async function saveMasterCertification() {
+  const idx  = parseInt(document.getElementById('cert-modal-idx').value, 10);
+  const name = document.getElementById('cert-name-input').value.trim();
+  if (!name) {
+    showAlertModal('⚠️ Validation', 'Certification name is required.');
+    return;
+  }
+  const action = idx >= 0 ? 'update' : 'add';
+  const body = {
+    action, name,
+    issuer: document.getElementById('cert-issuer-input').value.trim(),
+    year:   parseInt(document.getElementById('cert-year-input').value, 10) || null,
+    ...(action === 'update' ? { idx } : {}),
+  };
+  try {
+    const res  = await fetch('/api/master-data/certification', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeCertificationModal();
+      _setMasterChangeNotice('Certifications', data.action || 'updated');
+      showAlertModal('✅ Saved', `Certification "${name}" ${data.action}.`);
+      await populateMasterTab();
+    } else {
+      showAlertModal('❌ Error', data.error || 'Save failed');
+    }
+  } catch (e) {
+    showAlertModal('❌ Error', 'Failed to save certification');
+  }
+}
+
+async function deleteMasterCertification(idx, name) {
+  showConfirmModal(
+    '🗑️ Delete Certification',
+    `Delete "${name}"? This cannot be undone.`,
+    async () => {
+      try {
+        const res  = await fetch('/api/master-data/certification', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', idx }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          _setMasterChangeNotice('Certifications', data.action || 'deleted');
+          showAlertModal('✅ Deleted', `Certification removed.`);
+          await populateMasterTab();
+        } else {
+          showAlertModal('❌ Error', data.error || 'Delete failed');
+        }
+      } catch (e) {
+        showAlertModal('❌ Error', 'Failed to delete certification');
+      }
+    }
+  );
+}
+
+async function exportMasterCV() {
+  try {
+    const sessionId = window._currentSessionId;
+    const url = `/api/master-data/export${sessionId ? `?session_id=${sessionId}` : ''}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      showAlertModal('❌ Error', 'Export failed');
+      return;
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'Master_CV_Data.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    showAlertModal('❌ Error', 'Failed to export master CV');
+  }
+}
+
 // ---- Achievement/Summary delete handlers ----
 
 async function deleteMasterAchievement(id, title) {
@@ -2254,6 +2463,7 @@ export {
   _renderSkillsSection,
   _renderEducationList,
   _renderAwardsList,
+  _renderCertificationsList,
   _renderMasterAchievementsTable,
   _renderSummariesList,
   showAddAchievementModal,
@@ -2287,6 +2497,12 @@ export {
   closeAwardModal,
   saveMasterAward,
   deleteMasterAward,
+  showAddCertificationModal,
+  editMasterCertification,
+  closeCertificationModal,
+  saveMasterCertification,
+  deleteMasterCertification,
+  exportMasterCV,
   deleteMasterAchievement,
   deleteMasterSummary,
   loadPublications,
