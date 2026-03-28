@@ -63,7 +63,7 @@ def _validate_top_level_structure(master: Any) -> list[str]:
     ):
         errors.append("personal_info must be an object")
 
-    for key in ("experience", "education", "awards", "selected_achievements"):
+    for key in ("experience", "education", "awards", "certifications", "selected_achievements"):
         if key in master and not isinstance(master.get(key), list):
             errors.append(f"{key} must be a list")
 
