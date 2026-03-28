@@ -8,10 +8,64 @@
 Template rendering utilities using Jinja2.
 """
 
-from jinja2 import Environment, FileSystemLoader, Template
-from pathlib import Path
-from typing import Dict, Any, Optional
+import json
 import os
+import re
+from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
+
+from jinja2 import Environment, FileSystemLoader, Template, select_autoescape
+from markupsafe import Markup
+
+
+_SAFE_CSS_SIZE_RE = re.compile(r'^\d+(?:\.\d+)?(?:px|pt|rem|em|%)$')
+
+
+def json_script(value: Any) -> Markup:
+    """Serialize JSON for safe embedding inside a script tag."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            pass
+
+    if isinstance(value, str):
+        serialized = value
+    else:
+        serialized = json.dumps(value, indent=2, ensure_ascii=False)
+
+    serialized = (
+        serialized
+        .replace('<', '\\u003c')
+        .replace('>', '\\u003e')
+        .replace('&', '\\u0026')
+        .replace("'", '\\u0027')
+    )
+    return Markup(serialized)
+
+
+def safe_url(value: Any) -> str:
+    """Allow only http/https URLs in rendered href attributes."""
+    url = str(value or '').strip()
+    if not url:
+        return ''
+
+    parsed = urlsplit(url)
+    if parsed.scheme not in {'http', 'https'}:
+        return ''
+    if not parsed.netloc:
+        return ''
+    return url
+
+
+def safe_css_size(value: Any, default: str = '10px') -> str:
+    """Return a conservative CSS size token for inline style usage."""
+    text = str(value or '').strip().lower()
+    if text.isdigit():
+        return f'{text}px'
+    if _SAFE_CSS_SIZE_RE.fullmatch(text):
+        return text
+    return default
 
 
 def load_template(template_path: str) -> Template:
@@ -30,14 +84,21 @@ def load_template(template_path: str) -> Template:
     env = Environment(
         loader=FileSystemLoader(template_dir if template_dir else '.'),
         trim_blocks=True,
-        lstrip_blocks=True
+        lstrip_blocks=True,
+        autoescape=select_autoescape(
+            enabled_extensions=('html', 'htm', 'xml'),
+            default_for_string=False,
+        ),
     )
-    
+
     # Add custom filters
     env.filters['format_date'] = format_date
     env.filters['format_phone'] = format_phone
     env.filters['escape_latex'] = escape_latex
-    
+    env.filters['json_script'] = json_script
+    env.filters['safe_url'] = safe_url
+    env.filters['safe_css_size'] = safe_css_size
+
     return env.get_template(template_name)
 
 

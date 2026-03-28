@@ -9,7 +9,7 @@
  * Unit tests for web/utils.js — pure utility functions.
  */
 import {
-  normalizeText, fmtDate, cleanJsonResponse, escapeHtml,
+  normalizeText, fmtDate, cleanJsonResponse, extractFirstJsonObject, escapeHtml,
   extractTitleAndCompanyFromJobText, normalizePositionLabel,
   stripHtml, truncateText, capitalizeWords, pluralize,
   formatDuration, ordinal,
@@ -68,6 +68,31 @@ describe('cleanJsonResponse', () => {
   })
   it('trims surrounding whitespace', () => {
     expect(cleanJsonResponse('  {"a":1}  ')).toBe('{"a":1}')
+  })
+})
+
+// ── extractFirstJsonObject ───────────────────────────────────────────────────
+
+describe('extractFirstJsonObject', () => {
+  it('parses a plain JSON object', () => {
+    expect(extractFirstJsonObject('{"a":1}')).toEqual({ a: 1 })
+  })
+
+  it('extracts JSON embedded in assistant text', () => {
+    expect(extractFirstJsonObject('Here are recommendations:\n{"recommended_skills":["Python"]}\nPlease review.')).toEqual({
+      recommended_skills: ['Python'],
+    })
+  })
+
+  it('handles braces inside JSON strings', () => {
+    expect(extractFirstJsonObject('{"message":"use {braces} safely","ok":true} trailing text')).toEqual({
+      message: 'use {braces} safely',
+      ok: true,
+    })
+  })
+
+  it('returns null when no valid JSON object exists', () => {
+    expect(extractFirstJsonObject('no json here')).toBeNull()
   })
 })
 
@@ -144,6 +169,9 @@ describe('stripHtml', () => {
   })
   it('handles self-closing tags', () => {
     expect(stripHtml('line1<br/>line2')).toBe('line1line2')
+  })
+  it('removes script contents entirely', () => {
+    expect(stripHtml('before<script>alert(1)</script>after')).toBe('beforeafter')
   })
 })
 

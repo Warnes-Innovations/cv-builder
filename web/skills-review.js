@@ -22,6 +22,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('skills-review');
 
 import { stateManager } from './state-manager.js';
+import { eyeSlashIcon } from './review-icons.js';
 
 // ── Years-from-experience helpers ─────────────────────────────────────────
 
@@ -699,12 +700,12 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
           /><span class="derived-years-hint" data-skill="${skillNameEsc}" title="Estimated years derived from matched experience entries" style="display:inline-block;margin-top:4px;font-size:0.8em;color:#6b7280;">${escapeHtml(yearsHint)}</span>` : '<span style="color:#9ca3af;">—</span>'}
         </td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${skillNameEsc}"    title="Emphasize — feature prominently" style="color:#10b981;font-size:1.5em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${skillNameEsc}"      title="Include — standard listing"      style="font-size:1.3em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${skillNameEsc}" title="De-emphasize — brief mention"    style="color:#f59e0b;font-size:1.5em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${skillNameEsc}"      title="Exclude — omit from CV"          style="color:#ef4444;font-size:1.3em;">✗</button>
-          <button class="icon-btn" data-action="row-up"   aria-label="Move ${skillNameEsc} earlier" title="Move up"   ${isFirst ? 'disabled' : ''} style="font-size:1.0em;padding:2px 5px;">↑</button>
-          <button class="icon-btn" data-action="row-down" aria-label="Move ${skillNameEsc} later"   title="Move down" ${isLast  ? 'disabled' : ''} style="font-size:1.0em;padding:2px 5px;">↓</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${skillNameEsc}"    title="Emphasize — feature prominently" style="color:#10b981;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${skillNameEsc}"      title="Include — standard listing">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${skillNameEsc}" title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${skillNameEsc}"      title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
+          <button class="icon-btn" data-action="row-up"   aria-label="Move ${skillNameEsc} earlier" title="Move up"   ${isFirst ? 'disabled' : ''}>↑</button>
+          <button class="icon-btn" data-action="row-down" aria-label="Move ${skillNameEsc} later"   title="Move down" ${isLast  ? 'disabled' : ''}>↓</button>
         </td>
       </tr>
     `;
@@ -857,7 +858,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     <button class="bulk-btn bulk-recommended" onclick="bulkAction('recommended','skill')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAction('emphasize','skill')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAction('include','skill')">✓ Include All</button>
-    <button class="bulk-btn bulk-exclude"     onclick="bulkAction('exclude','skill')">✗ Exclude All</button>
+    <button class="bulk-btn bulk-exclude"     onclick="bulkAction('exclude','skill')">${eyeSlashIcon()} Exclude All</button>
   `;
   container.insertBefore(skillToolbar, container.firstChild);
 
@@ -908,18 +909,29 @@ async function handleSkillsResponse(message) {
 // ── Submit decisions ───────────────────────────────────────────────────────
 
 async function submitSkillDecisions() {
-  /* duckflow: {
-   *   "id": "skills_ui_submit_live",
-   *   "kind": "ui",
-   *   "timestamp": "2026-03-25T21:39:48Z",
-   *   "status": "live",
-   *   "handles": ["ui:skills-review.submit"],
-   *   "calls": ["POST /api/review-decisions", "POST /api/cv/layout-estimate"],
-   *   "reads": ["window:userSelections.skills", "window:_skillsOrdered", "dom:.skill-match-input.value"],
-   *   "writes": ["request:POST /api/review-decisions.decisions", "request:POST /api/review-decisions.extra_skills", "request:POST /api/review-decisions.extra_skill_matches", "window:_savedDecisions.skill_decisions", "window:_savedDecisions.extra_skills", "window:_savedDecisions.extra_skill_matches"],
-   *   "notes": "Submits skill inclusion decisions together with session-only extra skills and experience-match evidence so backend generation can materialize the same overlay state."
-  * }
-  */
+  /* duckflow:
+   *   id: skills_ui_submit_live
+   *   kind: ui
+   *   timestamp: '2026-03-25T21:39:48Z'
+   *   status: live
+   *   handles:
+   *   - ui:skills-review.submit
+   *   calls:
+   *   - POST /api/review-decisions
+   *   - POST /api/cv/layout-estimate
+   *   reads:
+   *   - window:userSelections.skills
+   *   - window:_skillsOrdered
+   *   - dom:.skill-match-input.value
+   *   writes:
+   *   - request:POST /api/review-decisions.decisions
+   *   - request:POST /api/review-decisions.extra_skills
+   *   - request:POST /api/review-decisions.extra_skill_matches
+   *   - window:_savedDecisions.skill_decisions
+   *   - window:_savedDecisions.extra_skills
+   *   - window:_savedDecisions.extra_skill_matches
+   *   notes: Submits skill inclusion decisions together with session-only extra skills and experience-match evidence so backend generation can materialize the same overlay state.
+   */
   const decisions = userSelections.skills;
   const count = Object.keys(decisions).length;
 

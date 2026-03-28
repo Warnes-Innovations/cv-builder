@@ -8,8 +8,8 @@
 Unit tests for Phase 4 additions: GET /api/rewrites and POST /api/rewrites/approve.
 
 Covers:
-  - GET /api/rewrites: normal path (proposals returned, phase → rewrite_review)
-  - GET /api/rewrites: empty proposals (no LLM / nothing to rewrite → phase unchanged)
+    - GET /api/rewrites: normal path (proposals returned, phase → rewrite_review)
+    - GET /api/rewrites: empty proposals (no LLM / nothing to rewrite → explicit rewrite_review stage)
   - GET /api/rewrites: missing job_analysis returns 400
   - GET /api/rewrites: missing master_data returns 400
   - GET /api/rewrites: pending_rewrites stored and saved
@@ -150,8 +150,8 @@ class TestGetRewrites(unittest.TestCase):
 
         self.conv._save_session.assert_called()
 
-    def test_empty_proposals_phase_unchanged(self):
-        """When orchestrator returns [], phase is 'generation' (graceful skip)."""
+    def test_empty_proposals_still_return_rewrite_review_phase(self):
+        """When orchestrator returns [], the explicit rewrite_review stage is preserved."""
         self.orch.propose_rewrites.return_value = []
         self.conv.state['phase'] = 'customization'
 
@@ -161,7 +161,16 @@ class TestGetRewrites(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(data['ok'])
         self.assertEqual(data['rewrites'], [])
-        self.assertEqual(data['phase'], 'generation')
+        self.assertEqual(data['phase'], 'rewrite_review')
+
+    def test_empty_proposals_set_rewrite_review_in_state(self):
+        """State['phase'] is updated to rewrite_review even when there are no proposals."""
+        self.orch.propose_rewrites.return_value = []
+        self.conv.state['phase'] = 'customization'
+
+        self.client.get('/api/rewrites', query_string={'session_id': self.session_id})
+
+        self.assertEqual(self.conv.state['phase'], 'rewrite_review')
 
     def test_missing_job_analysis_returns_400(self):
         """Returns 400 when job_analysis has not been run yet."""

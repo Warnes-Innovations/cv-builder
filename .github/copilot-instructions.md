@@ -153,7 +153,7 @@ logging:
 
 ## Available Slash Commands
 
-Slash commands are defined in `~/src/vscode-config/.github/prompts/`. The most relevant:
+Slash commands are available from the shared prompt set in `~/src/vscode-config/.github/prompts/` and repo-local prompts in `.github/prompts/`. The most relevant:
 
 | Command | Purpose |
 |---------|---------|
@@ -162,6 +162,7 @@ Slash commands are defined in `~/src/vscode-config/.github/prompts/`. The most r
 | `/obo` | One-by-one sequential item processor with priority scoring and session persistence |
 | `/codeReview` | Systematic code review; findings presented sequentially via `/obo` |
 | `/cvUiReview` | Evaluate `web/index.html` against user story acceptance criteria → `tasks/ui-review.md` |
+| `/specstoryAudit` | Audit `.specstory/history` against current repo state → `tasks/specstory-history-audit-YYYY-MM-DD.md` |
 | `/commitMessage` | Generate thematic git commit messages |
 | `/unitTest` | Generate unit tests for Python/JS functions |
 
@@ -174,6 +175,7 @@ Slash commands are defined in `~/src/vscode-config/.github/prompts/`. The most r
 ## When modifying code
 - Prefer minimal, surgical changes and preserve existing API routes/state keys.
 - Keep generated artifacts under configured output dirs; avoid hardcoding alternate storage paths.
+- Treat `web/bundle.js` as a generated file built from `web/src/main.js` via `npm run build` / `scripts/build.mjs`; regenerate it instead of editing it manually.
 - Never add copyright/SPDX headers to generated or vendor artifacts (for example: `web/bundle.js`, `htmlcov/`, `test_output/`, caches). Headers apply to maintained source/docs files only.
 - Validate changes by running targeted tests first (category or file-level), then broader test runs as needed.
 

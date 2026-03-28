@@ -5,12 +5,11 @@ import re
 import subprocess
 import sys
 import tempfile
-import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
@@ -122,6 +121,51 @@ def _normalize_harvest_skill(skill: Any) -> Optional[Dict[str, Any]]:
         normalized.pop(field, None)
 
     return normalized
+
+
+def _internal_server_error(message: str):
+    current_app.logger.exception(message)
+    return jsonify({'error': message}), 500
+
+
+def _git_commit_error(message: str, detail: Optional[str] = None) -> str:
+    if detail:
+        current_app.logger.error('%s %s', message, detail)
+    else:
+        current_app.logger.error(message)
+    return message
+
+
+def _record_layout_safety_audit(
+    state: Dict[str, Any],
+    payload: Dict[str, Any],
+) -> None:
+    """Persist one layout safety audit entry in session state."""
+    audit = state.setdefault('layout_safety_audit', [])
+    audit.append(payload)
+
+
+def _build_layout_safety_alert(
+    safety: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Build a small UI-facing safety summary."""
+    if not isinstance(safety, dict) or not safety.get('flagged'):
+        return None
+    findings = safety.get('findings') or []
+    issues = []
+    for finding in findings[:5]:
+        detail = str(finding.get('detail') or '').strip()
+        if detail:
+            issues.append(detail)
+    return {
+        'flagged': True,
+        'count': len(findings),
+        'issues': issues,
+        'message': (
+            'Safety processing sanitized prompt-like or unsafe '
+            'material before applying the layout change.'
+        ),
+    }
 
 
 def _harvest_skill_key(skill: Any) -> str:
@@ -775,9 +819,8 @@ def create_blueprint(deps):
                 mimetype=mime_type
             )
 
-        except Exception as e:
-            traceback.print_exc()
-            return jsonify({"error": str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to download generated file.')
 
     @bp.get("/api/cv/preview-output/<renderer>")
     def download_preview_output(renderer):
@@ -837,24 +880,44 @@ def create_blueprint(deps):
                 "layout_template_update_note"
             ),
             "preview_outputs":           gen.get("preview_output_paths"),
+            "preview_generated_at":      gen.get("preview_generated_at"),
+            "preview_request_id":        gen.get("preview_request_id"),
+            "confirmed_at":              gen.get("confirmed_at"),
         })
 
     @bp.post("/api/cv/generate-preview")
     def generate_cv_preview():
         """Generate an HTML preview of the CV and store it in generation_state."""
         import uuid as _u
-        # duckflow: {
-        #   "id": "generation_api_preview_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/cv/generate-preview"],
-        #   "calls": ["orchestrator:render_html_preview", "state:generation_state.baseline_layout_digest"],
-        #   "reads": ["state:job_analysis", "state:customizations", "state:approved_rewrites", "state:spell_audit", "state:generated_files.output_dir"],
-        #   "writes": ["state:generation_state.preview_html", "state:generation_state.preview_request_id", "state:generation_state.preview_generated_at", "state:generation_state.preview_output_paths", "state:generation_state.layout_confirmed", "state:generation_state.phase", "state:generation_state.baseline_layout_digest"],
-        #   "returns": ["response:POST /api/cv/generate-preview.html", "response:POST /api/cv/generate-preview.preview_outputs", "response:POST /api/cv/generate-preview.page_count_exact"],
-        #   "notes": "Builds or reloads the preview HTML from current session-backed content, stores the staged preview artifacts in generation_state, and refreshes the baseline layout digest."
-        # }
+        # duckflow:
+        #   id: generation_api_preview_live
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/cv/generate-preview"
+        #   calls:
+        #     - "orchestrator:render_html_preview"
+        #     - "state:generation_state.baseline_layout_digest"
+        #   reads:
+        #     - "state:job_analysis"
+        #     - "state:customizations"
+        #     - "state:approved_rewrites"
+        #     - "state:spell_audit"
+        #     - "state:generated_files.output_dir"
+        #   writes:
+        #     - "state:generation_state.preview_html"
+        #     - "state:generation_state.preview_request_id"
+        #     - "state:generation_state.preview_generated_at"
+        #     - "state:generation_state.preview_output_paths"
+        #     - "state:generation_state.layout_confirmed"
+        #     - "state:generation_state.phase"
+        #     - "state:generation_state.baseline_layout_digest"
+        #   returns:
+        #     - "response:POST /api/cv/generate-preview.html"
+        #     - "response:POST /api/cv/generate-preview.preview_outputs"
+        #     - "response:POST /api/cv/generate-preview.page_count_exact"
+        #   notes: "Builds or reloads the preview HTML from current session-backed content, stores the staged preview artifacts in generation_state, and refreshes the baseline layout digest."
         entry = get_session()
         conv  = entry.manager
         if not conv.state.get("job_analysis"):
@@ -920,43 +983,68 @@ def create_blueprint(deps):
         conv = entry.manager
         body = request.get_json(force=True) or {}
 
-        # duckflow: {
-        #   "id": "layout_estimate_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/cv/layout-estimate"],
-        #   "reads": ["state:experience_decisions", "state:skill_decisions", "state:generation_state.baseline_layout_digest"],
-        #   "writes": ["state:generation_state.page_count_estimate", "state:generation_state.page_count_confidence"],
-        #   "returns": ["response:page_count_estimate", "response:page_count_confidence", "response:page_count_exact"],
-        #   "notes": "Server-side layout estimate renders preview HTML, compares it to the stored digest baseline, and rerenders exactly when confidence is low or near a page boundary."
-        # }
+        # duckflow:
+        #   id: layout_estimate_live
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/cv/layout-estimate"
+        #   reads:
+        #     - "state:experience_decisions"
+        #     - "state:skill_decisions"
+        #     - "state:generation_state.baseline_layout_digest"
+        #   writes:
+        #     - "state:generation_state.page_count_estimate"
+        #     - "state:generation_state.page_count_confidence"
+        #   returns:
+        #     - "response:page_count_estimate"
+        #     - "response:page_count_confidence"
+        #     - "response:page_count_exact"
+        #   notes: "Server-side layout estimate renders preview HTML, compares it to the stored digest baseline, and rerenders exactly when confidence is low or near a page boundary."
         try:
             return jsonify(_apply_layout_estimate(conv, body))
-        except Exception as exc:
-            import flask
-            flask.current_app.logger.error('layout estimate failed: %s', exc)
+        except Exception:
+            current_app.logger.exception('layout estimate failed')
             return jsonify({
                 'ok': False,
-                'error': f'Layout estimate failed: {exc}',
+                'error': 'Layout estimate failed.',
             }), 500
 
     @bp.post("/api/cv/layout-refine")
     def refine_cv_layout():
         """Apply a layout instruction to the stored preview and return updated HTML."""
         import uuid as _u
-        # duckflow: {
-        #   "id": "generation_api_layout_refine_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/cv/layout-refine"],
-        #   "calls": ["orchestrator:apply_layout_instruction", "state:generation_state.baseline_layout_digest"],
-        #   "reads": ["request:POST /api/cv/layout-refine.instruction", "state:generation_state.preview_html", "state:generation_state.layout_instructions"],
-        #   "writes": ["state:generation_state.preview_html", "state:generation_state.preview_request_id", "state:generation_state.preview_generated_at", "state:generation_state.preview_output_paths", "state:generation_state.layout_instructions", "state:generation_state.layout_confirmed", "state:generation_state.phase", "state:generation_state.baseline_layout_digest"],
-        #   "returns": ["response:POST /api/cv/layout-refine.html", "response:POST /api/cv/layout-refine.summary", "response:POST /api/cv/layout-refine.preview_outputs"],
-        #   "notes": "Applies a natural-language layout instruction against the staged preview, appends the instruction history in generation_state, and regenerates preview artifacts from the updated HTML."
-        # }
+        # duckflow:
+        #   id: generation_api_layout_refine_live
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/cv/layout-refine"
+        #   calls:
+        #     - "orchestrator:apply_layout_instruction"
+        #     - "state:generation_state.baseline_layout_digest"
+        #   reads:
+        #     - "request:POST /api/cv/layout-refine.instruction"
+        #     - "state:generation_state.preview_html"
+        #     - "state:generation_state.layout_instructions"
+        #   writes:
+        #     - "state:generation_state.preview_html"
+        #     - "state:generation_state.preview_request_id"
+        #     - "state:generation_state.preview_generated_at"
+        #     - "state:generation_state.preview_output_paths"
+        #     - "state:generation_state.layout_instructions"
+        #     - "state:generation_state.layout_confirmed"
+        #     - "state:generation_state.phase"
+        #     - "state:generation_state.baseline_layout_digest"
+        #     - "state:layout_safety_audit"
+        #   returns:
+        #     - "response:POST /api/cv/layout-refine.html"
+        #     - "response:POST /api/cv/layout-refine.summary"
+        #     - "response:POST /api/cv/layout-refine.preview_outputs"
+        #     - "response:POST /api/cv/layout-refine.safety_alert"
+        #   notes: "Applies a natural-language layout instruction against the staged preview, sanitizes prompt-like material in the baseline HTML, user instruction, and rewritten HTML, persists any safety audit records, and regenerates preview artifacts from the updated HTML."
         entry = get_session()
         conv  = entry.manager
         gen   = conv.state.get("generation_state") or {}
@@ -985,13 +1073,17 @@ def create_blueprint(deps):
         )
 
         if result.get("error"):
-            return jsonify({
+            response_payload = {
                 "ok":           False,
                 "error":        result["error"],
                 "question":     result.get("question"),
                 "details":      result.get("details"),
                 "raw_response": result.get("raw_response"),
-            })
+            }
+            safety_alert = _build_layout_safety_alert(result.get('safety') or {})
+            if safety_alert:
+                response_payload["safety_alert"] = safety_alert
+            return jsonify(response_payload)
 
         updated_html = result["html"]
         now     = datetime.now().isoformat()
@@ -1017,6 +1109,18 @@ def create_blueprint(deps):
         gen["preview_output_paths"] = preview_outputs
         gen.setdefault("layout_instructions", []).append(instruction_record)
 
+        safety = result.get('safety') or {}
+        safety_alert = _build_layout_safety_alert(safety)
+        if safety_alert:
+            _record_layout_safety_audit(conv.state, {
+                'timestamp': now,
+                'instruction_id': prev_id,
+                'instruction_text': safety.get('instruction_text', {}),
+                'current_html': safety.get('current_html', {}),
+                'rewritten_html': safety.get('rewritten_html', {}),
+                'findings': safety.get('findings', []),
+            })
+
         baseline = _persist_layout_baseline(
             conv,
             updated_html,
@@ -1024,7 +1128,7 @@ def create_blueprint(deps):
         )
         conv._save_session()
 
-        return jsonify({
+        response_payload = {
             "ok":                 True,
             "html":               updated_html,
             "summary":            result.get("summary", ""),
@@ -1036,7 +1140,10 @@ def create_blueprint(deps):
             "page_count_source":   gen.get("page_count_source"),
             "page_count_confidence": gen.get("page_count_confidence"),
             "page_length_warning": gen.get("page_length_warning", False),
-        })
+        }
+        if safety_alert:
+            response_payload["safety_alert"] = safety_alert
+        return jsonify(response_payload)
 
     @bp.post("/api/cv/confirm-layout")
     def confirm_cv_layout():
@@ -1100,13 +1207,28 @@ def create_blueprint(deps):
                 customizations["approved_rewrites"] = state_rewrites
 
         achievement_edits = conv.state.get("achievement_edits") or {}
+        if achievement_edits:
+            customizations["achievement_edits"] = achievement_edits
+
         if achievement_edits and not customizations.get("approved_rewrites"):
             bullet_rewrites = []
             for bullets in achievement_edits.values():
                 if isinstance(bullets, list):
                     bullet_rewrites.extend(
-                        {"rewritten": b, "section": "experience"}
-                        for b in bullets if isinstance(b, str) and b.strip()
+                        {
+                            "rewritten": item.get("text", "") if isinstance(item, dict) else str(item or ""),
+                            "section": "experience",
+                        }
+                        for item in bullets
+                        if (
+                            isinstance(item, dict)
+                            and not item.get("hidden")
+                            and isinstance(item.get("text"), str)
+                            and item.get("text", "").strip()
+                        ) or (
+                            isinstance(item, str)
+                            and item.strip()
+                        )
                     )
             if bullet_rewrites:
                 customizations.setdefault("approved_rewrites", [])
@@ -1121,16 +1243,19 @@ def create_blueprint(deps):
         )
         customizations = summary_view.materialize_generation_customizations()
         if customizations.get("selected_summary"):
-            # duckflow: {
-            #   "id": "summary_api_ats_materialize_live",
-            #   "kind": "api",
-            #   "timestamp": "2026-03-25T21:39:48Z",
-            #   "status": "live",
-            #   "handles": ["POST /api/cv/ats-score"],
-            #   "reads": ["state:session_summaries.ai_generated", "state:summary_focus_override"],
-            #   "writes": ["customizations:selected_summary"],
-            #   "notes": "Live ATS scoring route materializes the selected summary into generation customizations."
-            # }
+            # duckflow:
+            #   id: summary_api_ats_materialize_live
+            #   kind: api
+            #   timestamp: "2026-03-27T01:23:28Z"
+            #   status: live
+            #   handles:
+            #     - "POST /api/cv/ats-score"
+            #   reads:
+            #     - "state:session_summaries.ai_generated"
+            #     - "state:summary_focus_override"
+            #   writes:
+            #     - "customizations:selected_summary"
+            #   notes: "Live ATS scoring route materializes the selected summary into generation customizations."
             pass
 
         score = _compute_ats_score(job_analysis, customizations, basis=basis)
@@ -1142,18 +1267,33 @@ def create_blueprint(deps):
     @bp.post("/api/cv/generate-final")
     def generate_cv_final():
         """Regenerate human-readable HTML+PDF from the confirmed preview; mark final_complete."""
-        # duckflow: {
-        #   "id": "generation_api_final_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/cv/generate-final"],
-        #   "calls": ["orchestrator:generate_final_from_confirmed_html", "state:generation_state.baseline_layout_digest"],
-        #   "reads": ["state:generation_state.layout_confirmed", "state:generation_state.preview_html", "state:generated_files.output_dir"],
-        #   "writes": ["state:generation_state.phase", "state:generation_state.final_generated_at", "state:generation_state.final_output_paths", "state:generated_files.final_html", "state:generated_files.final_pdf", "state:generated_files.files", "state:generation_state.baseline_layout_digest"],
-        #   "returns": ["response:POST /api/cv/generate-final.outputs", "response:POST /api/cv/generate-final.generated_at", "response:POST /api/cv/generate-final.page_count_exact"],
-        #   "notes": "Converts the confirmed preview HTML into final human-readable artifacts and updates both generation_state and generated_files with the final output paths."
-        # }
+        # duckflow:
+        #   id: generation_api_final_live
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/cv/generate-final"
+        #   calls:
+        #     - "orchestrator:generate_final_from_confirmed_html"
+        #     - "state:generation_state.baseline_layout_digest"
+        #   reads:
+        #     - "state:generation_state.layout_confirmed"
+        #     - "state:generation_state.preview_html"
+        #     - "state:generated_files.output_dir"
+        #   writes:
+        #     - "state:generation_state.phase"
+        #     - "state:generation_state.final_generated_at"
+        #     - "state:generation_state.final_output_paths"
+        #     - "state:generated_files.final_html"
+        #     - "state:generated_files.final_pdf"
+        #     - "state:generated_files.files"
+        #     - "state:generation_state.baseline_layout_digest"
+        #   returns:
+        #     - "response:POST /api/cv/generate-final.outputs"
+        #     - "response:POST /api/cv/generate-final.generated_at"
+        #     - "response:POST /api/cv/generate-final.page_count_exact"
+        #   notes: "Converts the confirmed preview HTML into final human-readable artifacts and updates both generation_state and generated_files with the final output paths."
         entry = get_session()
         conv  = entry.manager
         gen   = conv.state.get("generation_state") or {}
@@ -1175,10 +1315,8 @@ def create_blueprint(deps):
                 output_dir=output_dir,
                 filename_base="CV_final",
             )
-        except Exception as exc:
-            import flask
-            flask.current_app.logger.error("generate_final_from_confirmed_html failed: %s", exc)
-            return jsonify({"error": f"Final generation failed: {exc}"}), 500
+        except Exception:
+            return _internal_server_error('Final generation failed.')
 
         now = datetime.now().isoformat()
         gen = conv.state.setdefault("generation_state", {})
@@ -1224,17 +1362,37 @@ def create_blueprint(deps):
     def finalise_application():
         """Finalise the application: update metadata, upsert response library, git commit."""
         from utils.conversation_manager import Phase
-        # duckflow: {
-        #   "id": "generation_api_finalise_live",
-        #   "kind": "api",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "live",
-        #   "handles": ["POST /api/finalise"],
-        #   "reads": ["request:POST /api/finalise.status", "request:POST /api/finalise.notes", "state:generated_files.output_dir", "state:post_analysis_answers", "state:spell_audit", "state:layout_instructions", "state:generation_state.ats_score"],
-        #   "writes": ["file:metadata.application_status", "file:metadata.notes", "file:metadata.finalised_at", "file:metadata.clarification_answers", "file:metadata.spell_audit", "file:metadata.layout_instructions", "file:metadata.validation_results", "file:metadata.ats_score", "file:response_library.json", "state:phase"],
-        #   "returns": ["response:POST /api/finalise.summary", "response:POST /api/finalise.commit_hash", "response:POST /api/finalise.git_error"],
-        #   "notes": "Finalises the application archive by writing metadata derived from session state, optionally updating the response library, and marking the workflow as refinement."
-        # }
+        # duckflow:
+        #   id: generation_api_finalise_live
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/finalise"
+        #   reads:
+        #     - "request:POST /api/finalise.status"
+        #     - "request:POST /api/finalise.notes"
+        #     - "state:generated_files.output_dir"
+        #     - "state:post_analysis_answers"
+        #     - "state:spell_audit"
+        #     - "state:layout_instructions"
+        #     - "state:generation_state.ats_score"
+        #   writes:
+        #     - "file:metadata.application_status"
+        #     - "file:metadata.notes"
+        #     - "file:metadata.finalised_at"
+        #     - "file:metadata.clarification_answers"
+        #     - "file:metadata.spell_audit"
+        #     - "file:metadata.layout_instructions"
+        #     - "file:metadata.validation_results"
+        #     - "file:metadata.ats_score"
+        #     - "file:response_library.json"
+        #     - "state:phase"
+        #   returns:
+        #     - "response:POST /api/finalise.summary"
+        #     - "response:POST /api/finalise.commit_hash"
+        #     - "response:POST /api/finalise.git_error"
+        #   notes: "Finalises the application archive by writing metadata derived from session state, optionally updating the response library, and marking the workflow as refinement."
         entry = get_session()
         validate_owner(entry)
         conversation = entry.manager
@@ -1312,9 +1470,15 @@ def create_blueprint(deps):
                         m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
                         commit_hash = m.group(1) if m else None
                     else:
-                        git_error = result.stderr.strip() or result.stdout.strip()
+                        git_error = _git_commit_error(
+                            'Git commit failed. See server logs for details.',
+                            result.stderr.strip() or result.stdout.strip(),
+                        )
                 except Exception as git_exc:
-                    git_error = str(git_exc)
+                    git_error = _git_commit_error(
+                        'Git commit failed. See server logs for details.',
+                        str(git_exc),
+                    )
 
                 conversation.state['phase'] = Phase.REFINEMENT
                 conversation.save_session()
@@ -1339,9 +1503,8 @@ def create_blueprint(deps):
                     'git_error':   git_error,
                     'summary':     summary,
                 })
-            except Exception as e:
-                traceback.print_exc()
-                return jsonify({'error': str(e)}), 500
+            except Exception:
+                return _internal_server_error('Failed to save finalisation metadata.')
 
     # ------------------------------------------------------------------
     # Harvest
@@ -1355,9 +1518,8 @@ def create_blueprint(deps):
         try:
             candidates = _compile_harvest_candidates(conversation)
             return jsonify({'ok': True, 'candidates': candidates})
-        except Exception as e:
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            return _internal_server_error('Failed to load harvest candidates.')
 
     @bp.post("/api/harvest/apply")
     def harvest_apply():
@@ -1450,9 +1612,15 @@ def create_blueprint(deps):
                         m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
                         commit_hash = m.group(1) if m else None
                     else:
-                        git_error = result.stderr.strip() or result.stdout.strip()
+                        git_error = _git_commit_error(
+                            'Git commit failed. See server logs for details.',
+                            result.stderr.strip() or result.stdout.strip(),
+                        )
                 except Exception as git_exc:
-                    git_error = str(git_exc)
+                    git_error = _git_commit_error(
+                        'Git commit failed. See server logs for details.',
+                        str(git_exc),
+                    )
 
                 written_count = sum(1 for d in diff_summary if d.get('applied'))
                 session_registry.touch(sid)
@@ -1463,8 +1631,7 @@ def create_blueprint(deps):
                     'commit_hash':  commit_hash,
                     'git_error':    git_error,
                 })
-            except Exception as e:
-                traceback.print_exc()
-                return jsonify({'error': str(e)}), 500
+            except Exception:
+                return _internal_server_error('Failed to apply harvested updates.')
 
     return bp

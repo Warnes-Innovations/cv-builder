@@ -14,7 +14,11 @@ import { getLogger } from './logger.js';
 const log = getLogger('layout-instruction');
 
 import { apiCall } from './api-client.js';
+import { scheduleAtsRefresh } from './ats-refinement.js';
+import { appendMessage, appendMessageHtml } from './message-queue.js';
+import { switchTab } from './review-table-base.js';
 import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
+import { escapeHtml } from './utils.js';
 
 let dismissedStaleCalloutRevision = null;
 
@@ -79,11 +83,26 @@ function renderPreviewOutputStatus(previewOutputs = null) {
           <div class="preview-output-title-row">
             ${badgeMarkup}
           </div>
-          <div class="preview-output-detail">${htmlEscape(detail)}</div>
+          <div class="preview-output-detail">${escapeHtml(detail)}</div>
         </div>
       </div>
     `;
   }).join('');
+}
+
+function appendLayoutSafetyAlert(safetyAlert) {
+  if (!safetyAlert?.flagged) {
+    return;
+  }
+
+  const issues = (safetyAlert.issues || [])
+    .map(issue => `<li>${escapeHtml(issue)}</li>`)
+    .join('');
+
+  appendMessageHtml(
+    'system',
+    `<strong>⚠️ Layout safety sanitization applied.</strong><br>${escapeHtml(safetyAlert.message || 'Potential prompt payloads or unsafe HTML were removed before applying the change.')}<br><ul style="margin:6px 0 0 18px">${issues}</ul>`,
+  );
 }
 
 function normalizeLayoutInstruction(instruction = {}) {
@@ -97,6 +116,72 @@ function normalizeLayoutInstruction(instruction = {}) {
 
 function getCurrentContentRevision() {
   return stateManager.getGenerationState().contentRevision ?? 0;
+}
+
+function formatGenerationTimestamp(timestamp) {
+  if (!timestamp) return '';
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function buildLayoutFreshnessChipMarkup(freshness) {
+  if (!freshness?.showChip) return '';
+  const icon = freshness.isCritical ? '↻' : (freshness.isStale ? '!' : '✓');
+  return `<span class="layout-freshness-chip ${freshness.tone} layout-pane-freshness-chip"
+    aria-label="${escapeHtml(freshness.ariaLabel || '')}">
+    <span class="layout-freshness-icon" aria-hidden="true">${icon}</span>
+    <span class="layout-freshness-label">${escapeHtml(freshness.label || '')}</span>
+  </span>`;
+}
+
+function renderLayoutPreviewStatus() {
+  const container = document.getElementById('layout-preview-status');
+  if (!container) return;
+  const freshness = stateManager.getLayoutFreshness();
+  const generationState = stateManager.getGenerationState();
+  if (!generationState.previewAvailable) {
+    container.innerHTML = '';
+    container.style.display = 'none';
+    return;
+  }
+  const lastPreviewRevision = Number.isFinite(generationState.lastPreviewContentRevision)
+    ? generationState.lastPreviewContentRevision : null;
+  const currentRevision = Number.isFinite(generationState.contentRevision)
+    ? generationState.contentRevision : null;
+  const pendingRevisionCount = lastPreviewRevision !== null && currentRevision !== null
+    ? Math.max(0, currentRevision - lastPreviewRevision) : 0;
+  const timestampLabel = formatGenerationTimestamp(generationState.previewGeneratedAt);
+  const detailLines = [];
+  if (timestampLabel) detailLines.push(`Preview generated ${timestampLabel}`);
+  if (generationState.layoutConfirmed && generationState.confirmedAt) {
+    const confirmedLabel = formatGenerationTimestamp(generationState.confirmedAt);
+    if (confirmedLabel) detailLines.push(`Layout confirmed ${confirmedLabel}`);
+  }
+  if (freshness.isStale) {
+    if (pendingRevisionCount > 0) {
+      detailLines.push(`${pendingRevisionCount} content change${pendingRevisionCount === 1 ? '' : 's'} since this preview`);
+    } else {
+      detailLines.push('Content changed after this preview was generated');
+    }
+  } else if (generationState.layoutConfirmed || generationState.phase === 'confirmed') {
+    detailLines.push('Confirmed preview matches the latest approved content');
+  } else {
+    detailLines.push('Preview matches the latest approved content');
+  }
+  const stageLabel = generationState.layoutConfirmed || generationState.phase === 'confirmed'
+    ? 'Ready for final files' : 'Ready for layout review';
+  container.innerHTML = `
+    <div class="layout-preview-status-card ${freshness.tone}">
+      <div class="layout-preview-status-header">
+        ${buildLayoutFreshnessChipMarkup(freshness)}
+        <span class="layout-preview-status-stage">${escapeHtml(stageLabel)}</span>
+      </div>
+      <div class="layout-preview-status-details">
+        ${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}
+      </div>
+    </div>`;
+  container.style.display = 'block';
 }
 
 function renderLayoutStaleCallout() {
@@ -122,6 +207,7 @@ function refreshLayoutReviewState() {
   const confirmBtn = document.getElementById('confirm-layout-btn');
   const finalBtn = document.getElementById('proceed-to-finalise-btn');
 
+  renderLayoutPreviewStatus();
   renderLayoutStaleCallout();
 
   if (confirmBtn) {
@@ -153,8 +239,9 @@ async function initiateLayoutInstructions() {
       <div class="layout-instruction-panel">
         <div class="layout-preview-pane">
           <h3>Current Layout Preview</h3>
+          <div id="layout-preview-status" class="layout-preview-status" style="display:none;"></div>
           <div class="preview-iframe-container">
-            <iframe id="layout-preview" class="layout-preview-iframe" title="CV Layout Preview"></iframe>
+            <iframe id="layout-preview" class="layout-preview-iframe" title="CV Layout Preview" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>
           </div>
         </div>
 
@@ -185,12 +272,21 @@ async function initiateLayoutInstructions() {
               id="base-font-size-input"
               type="number"
               min="6" max="16" step="0.5"
-              value="10"
+              value="13"
               style="width:60px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
               title="Controls the root font size for the CV. All rem-based sizes scale with this value."
             />
-            <button id="apply-font-size-btn" class="btn btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
-            <span id="font-size-status" style="font-size:0.8em; color:#64748b;"></span>
+            <label for="page-margin-input" style="font-size:0.85em; font-weight:600; color:#475569; white-space:nowrap; margin-left:8px;">Page margin (in):</label>
+            <input
+              id="page-margin-input"
+              type="number"
+              min="0.5" max="1.5" step="0.05"
+              value="0.5"
+              style="width:72px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
+              title="Controls the print page margins for all PDF pages."
+            />
+            <button id="apply-layout-settings-btn" class="btn btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
+            <span id="layout-settings-status" style="font-size:0.8em; color:#64748b;"></span>
           </div>
 
           <textarea
@@ -237,7 +333,12 @@ async function initiateLayoutInstructions() {
   const savedFontSize = stateManager?.getSessionState?.()?.base_font_size;
   if (savedFontSize) {
     const input = document.getElementById('base-font-size-input');
-    if (input) input.value = parseFloat(savedFontSize) || 10;
+    if (input) input.value = parseFloat(savedFontSize) || 13;
+  }
+  const savedPageMargin = stateManager?.getSessionState?.()?.page_margin;
+  if (savedPageMargin) {
+    const input = document.getElementById('page-margin-input');
+    if (input) input.value = parseFloat(savedPageMargin) || 0.5;
   }
 
   renderPreviewOutputStatus(getPreviewOutputs());
@@ -269,13 +370,17 @@ function setupLayoutInstructionListeners() {
   const dismissCalloutBtn = document.getElementById('dismiss-layout-stale-btn');
   const instructionInput  = document.getElementById('instruction-input');
   const historyToggle     = document.querySelector('.history-toggle');
-  const applyFontSizeBtn  = document.getElementById('apply-font-size-btn');
+  const applySettingsBtn  = document.getElementById('apply-layout-settings-btn');
   const fontSizeInput     = document.getElementById('base-font-size-input');
+  const pageMarginInput   = document.getElementById('page-margin-input');
 
-  if (applyFontSizeBtn && fontSizeInput) {
-    applyFontSizeBtn.addEventListener('click', () => applyBaseFontSize(fontSizeInput.value));
+  if (applySettingsBtn && fontSizeInput && pageMarginInput) {
+    applySettingsBtn.addEventListener('click', () => applyLayoutSettings(fontSizeInput.value, pageMarginInput.value));
     fontSizeInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') applyBaseFontSize(fontSizeInput.value);
+      if (e.key === 'Enter') applyLayoutSettings(fontSizeInput.value, pageMarginInput.value);
+    });
+    pageMarginInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') applyLayoutSettings(fontSizeInput.value, pageMarginInput.value);
     });
   }
 
@@ -331,18 +436,26 @@ function setupLayoutInstructionListeners() {
 }
 
 /**
- * Save a new base font size to session state, then re-render the preview.
+ * Save layout display settings to session state, then re-render the preview.
  */
-async function applyBaseFontSize(value) {
-  const statusEl = document.getElementById('font-size-status');
-  const parsed = parseFloat(value);
-  if (isNaN(parsed) || parsed < 6 || parsed > 16) {
-    if (statusEl) statusEl.textContent = '⚠️ Must be 6–16';
+async function applyLayoutSettings(fontSizeValue, pageMarginValue) {
+  const statusEl = document.getElementById('layout-settings-status');
+  const parsedFontSize = parseFloat(fontSizeValue);
+  const parsedPageMargin = parseFloat(pageMarginValue);
+  if (isNaN(parsedFontSize) || parsedFontSize < 6 || parsedFontSize > 16) {
+    if (statusEl) statusEl.textContent = '⚠️ Font must be 6–16';
+    return;
+  }
+  if (isNaN(parsedPageMargin) || parsedPageMargin < 0.5 || parsedPageMargin > 1.5) {
+    if (statusEl) statusEl.textContent = '⚠️ Margin must be 0.5–1.5';
     return;
   }
   try {
     if (statusEl) statusEl.textContent = 'Saving…';
-    const saveRes = await apiCall('POST', '/api/layout-settings', { base_font_size: `${parsed}px` });
+    const saveRes = await apiCall('POST', '/api/layout-settings', {
+      base_font_size: `${parsedFontSize}px`,
+      page_margin: `${parsedPageMargin}in`,
+    });
     if (!saveRes.ok) throw new Error(saveRes.error || 'save failed');
 
     if (statusEl) statusEl.textContent = 'Re-rendering…';
@@ -359,6 +472,8 @@ async function applyBaseFontSize(value) {
         pageCountConfidence: previewRes.page_count_confidence ?? null,
         pageCountSource: previewRes.page_count_source || null,
         pageWarning: Boolean(previewRes.page_length_warning),
+        previewGeneratedAt: previewRes.preview_generated_at || new Date().toISOString(),
+        previewRequestId: previewRes.preview_request_id || null,
       });
       renderPreviewOutputStatus(previewRes.preview_outputs || null);
       refreshLayoutReviewState();
@@ -378,18 +493,28 @@ async function applyBaseFontSize(value) {
  * request body) when no session preview exists.
  */
 async function submitLayoutInstruction(instructionText) {
-  /* duckflow: {
-   *   "id": "layout_ui_refine_live",
-   *   "kind": "ui",
-   *   "timestamp": "2026-03-25T21:39:48Z",
-   *   "status": "live",
-   *   "handles": ["ui:layout.submit-instruction"],
-   *   "calls": ["POST /api/cv/layout-refine", "POST /api/layout-instruction"],
-   *   "reads": ["dom:#instruction-input.value", "state:generation_state.previewAvailable", "state:generation_state.phase", "window:layoutInstructions"],
-   *   "writes": ["request:POST /api/cv/layout-refine.instruction", "dom:#layout-preview", "window:layoutInstructions", "state:generation_state.preview_outputs"],
-   *   "notes": "Submits a natural-language layout instruction against the staged preview when available, then refreshes the preview and local instruction history from the returned HTML."
-  * }
-  */
+  /* duckflow:
+   *   id: layout_ui_refine_live
+   *   kind: ui
+   *   timestamp: '2026-03-26T00:24:00Z'
+   *   status: live
+   *   handles:
+   *   - ui:layout.submit-instruction
+   *   calls:
+   *   - POST /api/cv/layout-refine
+   *   - POST /api/layout-instruction
+   *   reads:
+   *   - dom:#instruction-input.value
+   *   - state:generation_state.previewAvailable
+   *   - state:generation_state.phase
+   *   - window:layoutInstructions
+   *   writes:
+   *   - request:POST /api/cv/layout-refine.instruction
+   *   - dom:#layout-preview
+   *   - window:layoutInstructions
+   *   - state:generation_state.preview_outputs
+   *   notes: Submits a natural-language layout instruction against the staged preview when available, then refreshes the preview and local instruction history from the returned HTML.
+   */
   const currentHtml = getCvArtifacts()['*.html'] || '';
   const priorInstructions = window.layoutInstructions || [];
 
@@ -417,9 +542,10 @@ async function submitLayoutInstruction(instructionText) {
       if (response.error === 'clarify') {
         showClarificationDialog(response.question, instructionText);
       } else {
-        let errorHtml = `⚠️ Error: ${htmlEscape(response.error)} — ${htmlEscape(response.details || '')}`;
+        appendLayoutSafetyAlert(response.safety_alert);
+        let errorHtml = `⚠️ Error: ${escapeHtml(response.error)} — ${escapeHtml(response.details || '')}`;
         if (response.raw_response !== undefined) {
-          errorHtml += `<br><details style="margin-top:6px"><summary style="cursor:pointer;font-size:0.85em;color:#64748b">Raw LLM response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:4px">${htmlEscape(response.raw_response || '(empty)')}</pre></details>`;
+          errorHtml += `<br><details style="margin-top:6px"><summary style="cursor:pointer;font-size:0.85em;color:#64748b">Raw LLM response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:4px">${escapeHtml(response.raw_response || '(empty)')}</pre></details>`;
         }
         appendMessageHtml('system', errorHtml);
       }
@@ -429,6 +555,8 @@ async function submitLayoutInstruction(instructionText) {
     // Update preview with new HTML
     const newHtml = response.html;
     displayLayoutPreview(newHtml);
+
+    appendLayoutSafetyAlert(response.safety_alert);
 
     // Update state
     setPreviewHtml(newHtml);
@@ -442,6 +570,8 @@ async function submitLayoutInstruction(instructionText) {
       pageCountConfidence: response.page_count_confidence ?? null,
       pageCountSource: response.page_count_source || null,
       pageWarning: Boolean(response.page_length_warning),
+      previewGeneratedAt: response.preview_generated_at || new Date().toISOString(),
+      previewRequestId: response.preview_request_id || null,
     });
     renderPreviewOutputStatus(response.preview_outputs || null);
 
@@ -455,7 +585,7 @@ async function submitLayoutInstruction(instructionText) {
     addToInstructionHistory(instruction);
 
     // Show confirmation
-    showConfirmationMessage(`✅ ${response.summary}`);
+    showConfirmationMessage(`${response.safety_alert?.flagged ? '⚠️ ' : '✅ '}${response.summary}`);
 
     // Clear input and refresh the staged controls.
     document.getElementById('instruction-input').value = '';
@@ -493,6 +623,8 @@ async function _fetchAndDisplayLayoutPreview() {
         pageCountConfidence: data.page_count_confidence ?? null,
         pageCountSource: data.page_count_source || null,
         pageWarning: Boolean(data.page_length_warning),
+        previewGeneratedAt: data.preview_generated_at || new Date().toISOString(),
+        previewRequestId: data.preview_request_id || null,
       });
       renderPreviewOutputStatus(data.preview_outputs || null);
       refreshLayoutReviewState();
@@ -525,13 +657,12 @@ function displayLayoutPreview(html) {
   if (!preview) return;
 
   preview.onload = () => fitLayoutPreviewToPane(preview);
+  preview.setAttribute('sandbox', 'allow-same-origin');
+  preview.setAttribute('referrerpolicy', 'no-referrer');
+  preview.srcdoc = html;
 
-  // Set iframe content safely
   const doc = preview.contentDocument || preview.contentWindow?.document;
-  if (doc) {
-    doc.open();
-    doc.write(html);
-    doc.close();
+  if (doc?.readyState === 'complete') {
     fitLayoutPreviewToPane(preview);
   }
 }
@@ -594,8 +725,8 @@ function renderInstructionHistory() {
     entry.className = 'instruction-history-entry';
     entry.innerHTML = `
       <div class="instruction-time">${instruction.timestamp || ''}</div>
-      <div class="instruction-text">${htmlEscape(instruction.instruction_text || '')}</div>
-      <div class="instruction-summary"><em>${htmlEscape(instruction.change_summary || '')}</em></div>
+      <div class="instruction-text">${escapeHtml(instruction.instruction_text || '')}</div>
+      <div class="instruction-summary"><em>${escapeHtml(instruction.change_summary || '')}</em></div>
       <button class="btn btn-small" onclick="undoInstruction(${index})">
         Undo
       </button>
@@ -724,7 +855,9 @@ async function confirmLayoutReview() {
       throw new Error(confirmRes?.error || 'Failed to confirm layout.');
     }
 
-    stateManager.markLayoutConfirmed();
+    stateManager.markLayoutConfirmed({
+      confirmedAt: confirmRes.confirmed_at || new Date().toISOString(),
+    });
     showConfirmationMessage('✅ Layout confirmed. Generate final files when you are ready.');
     appendMessage('assistant', '✅ Layout confirmed. Review the preview if needed, then generate the final files.');
     refreshLayoutReviewState();
@@ -755,18 +888,26 @@ async function advanceLayoutToRefinement() {
 }
 
 async function generateFinalOutputs() {
-  /* duckflow: {
-   *   "id": "layout_ui_generate_final_live",
-   *   "kind": "ui",
-   *   "timestamp": "2026-03-25T21:39:48Z",
-   *   "status": "live",
-   *   "handles": ["ui:layout.generate-final"],
-   *   "calls": ["POST /api/cv/generate-final", "POST /api/layout-complete"],
-   *   "reads": ["state:generation_state.layoutConfirmed", "state:generation_state.phase", "state:layout_freshness"],
-   *   "writes": ["tab:cvArtifacts", "state:generation_state.final_generated_at", "ui:workflow.refinement"],
-   *   "notes": "Generates the final human-readable outputs from the confirmed preview and advances the UI into file review/finalise with the new artifact set."
-  * }
-  */
+  /* duckflow:
+   *   id: layout_ui_generate_final_live
+   *   kind: ui
+   *   timestamp: '2026-03-26T00:24:00Z'
+   *   status: live
+   *   handles:
+   *   - ui:layout.generate-final
+   *   calls:
+   *   - POST /api/cv/generate-final
+   *   - POST /api/layout-complete
+   *   reads:
+   *   - state:generation_state.layoutConfirmed
+   *   - state:generation_state.phase
+   *   - state:layout_freshness
+   *   writes:
+   *   - tab:cvArtifacts
+   *   - state:generation_state.final_generated_at
+   *   - ui:workflow.refinement
+   *   notes: Generates the final human-readable outputs from the confirmed preview and advances the UI into file review/finalise with the new artifact set.
+   */
   try {
     showProcessing(true);
 
@@ -790,9 +931,7 @@ async function generateFinalOutputs() {
       pageCountExact: finalRes.page_count_exact ?? null,
     });
 
-    if (typeof scheduleAtsRefresh === 'function') {
-      scheduleAtsRefresh('post_generation');
-    }
+    scheduleAtsRefresh('post_generation');
 
     await advanceLayoutToRefinement();
     appendMessage('assistant', '✅ Final files generated from the confirmed layout.');
@@ -830,6 +969,9 @@ export {
   handleLayoutPrimaryAction,
   loadLayoutInstructionHistory,
   renderPreviewOutputStatus,
+  renderLayoutPreviewStatus,
+  displayLayoutPreview,
+  submitLayoutInstruction,
   // helpers exported for unit tests
   showProcessing,
   showConfirmationMessage,

@@ -76,6 +76,7 @@ class ConversationManager:
             'approved_rewrites':  [],     # List[Dict] user-accepted or user-edited
             'rewrite_audit':      [],     # full record: proposal + outcome for metadata
             'layout_instructions': [],    # List[Dict] layout instruction history (Phase 12)
+            'layout_safety_audit': [],    # List[Dict] sanitizer findings for layout rewrites
             'cover_letter_text':   None,   # str — finalized cover letter body (Phase 14)
             'cover_letter_params': None,   # Dict — generation params (tone, hiring_manager, …)
             'cover_letter_reused_from': None,  # str session path or None
@@ -253,8 +254,18 @@ Ask questions that are specific to this job posting, not generic career question
             {'role': 'system', 'content': system_msg}
         ] + self._strip_context_from_history(self.conversation_history)
         
-        # Get LLM response.
-        response = self.llm.chat(messages, temperature=0.7)
+        # Get LLM response; retry with a recent-only history window if the full
+        # history causes a context-length error (e.g. 413 on GitHub gpt-4o).
+        try:
+            response = self.llm.chat(messages, temperature=0.7)
+        except LLMContextLengthError:
+            # Drop all but the 8 most-recent history messages and try again.
+            trimmed = self._strip_context_from_history(
+                self.conversation_history[-8:]
+            )
+            response = self.llm.chat(
+                [messages[0]] + trimmed, temperature=0.7
+            )
         
         # Add to history
         self.conversation_history.append({
@@ -720,9 +731,16 @@ Ask questions that are specific to this job posting, not generic career question
                     customizations['base_font_size'] = base_font_size
 
                 # Skills section title (set via Generation Settings panel)
-                # duckflow: flow=generation-settings status=live
-                #   state_read: session.state["skills_section_title"]
-                #   state_write: customizations["skills_section_title"]
+                # duckflow:
+                #   id: generation_settings_skills_title_handoff
+                #   kind: state
+                #   timestamp: "2026-03-27T01:23:28Z"
+                #   status: live
+                #   reads:
+                #     - "state:skills_section_title"
+                #   writes:
+                #     - "customizations:skills_section_title"
+                #   notes: "Copies the generation settings skills section title from session state into generation customizations."
                 skills_section_title = self.state.get('skills_section_title')
                 if skills_section_title:
                     customizations['skills_section_title'] = skills_section_title
@@ -731,6 +749,10 @@ Ask questions that are specific to this job posting, not generic career question
                 summary_override = self.state.get('summary_focus_override')
                 if summary_override:
                     customizations['summary_focus'] = summary_override
+
+                page_margin = self.state.get('page_margin')
+                if page_margin:
+                    customizations['page_margin'] = page_margin
 
                 self.state['customizations'] = customizations
 
@@ -1419,24 +1441,39 @@ Ask questions that are specific to this job posting, not generic career question
             return False
 
         raw_edits = self.state.get('achievement_edits') or {}
-        normalized_edits: Dict[int, List[str]] = {}
+        normalized_edits: Dict[int, List[Dict[str, Any]]] = {}
         for key, value in raw_edits.items():
             try:
                 exp_idx = int(key)
             except (TypeError, ValueError):
                 continue
-            normalized_edits[exp_idx] = list(value) if isinstance(value, list) else [str(value)]
+            values = value if isinstance(value, list) else [value]
+            normalized_list: List[Dict[str, Any]] = []
+            for item in values:
+                if isinstance(item, dict):
+                    normalized_list.append({
+                        'text': str(item.get('text') or item.get('description') or item.get('content') or ''),
+                        'hidden': bool(item.get('hidden')),
+                    })
+                else:
+                    normalized_list.append({'text': str(item or ''), 'hidden': False})
+            normalized_edits[exp_idx] = normalized_list
 
         edits = normalized_edits.get(experience_index)
         if edits is None:
-            edits = self._get_experience_achievement_texts(experience_index)
+            edits = [
+                {'text': text, 'hidden': False}
+                for text in self._get_experience_achievement_texts(experience_index)
+            ]
         else:
             edits = list(edits)
 
         while len(edits) <= achievement_index:
-            edits.append('')
+            edits.append({'text': '', 'hidden': False})
 
-        edits[achievement_index] = accepted_text
+        existing = edits[achievement_index] if isinstance(edits[achievement_index], dict) else {'text': str(edits[achievement_index] or ''), 'hidden': False}
+        existing['text'] = accepted_text
+        edits[achievement_index] = existing
         normalized_edits[experience_index] = edits
         self.state['achievement_edits'] = normalized_edits
         return True
@@ -1943,6 +1980,10 @@ Ask questions that are specific to this job posting, not generic career question
             base_font_size = self.state.get('base_font_size')
             if base_font_size:
                 customizations['base_font_size'] = base_font_size
+
+            page_margin = self.state.get('page_margin')
+            if page_margin:
+                customizations['page_margin'] = page_margin
 
             self.state['customizations'] = customizations
 

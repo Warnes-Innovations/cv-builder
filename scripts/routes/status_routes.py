@@ -48,10 +48,20 @@ def create_blueprint(deps):
 
     @bp.get("/api/status")
     def status():
-        # duckflow: flow=session-status status=live
-        #   route: GET /api/status
-        #   state_read: session.state["max_skills"], session.state["skills_section_title"]
-        #   response: {max_skills: int, skills_section_title: str, ...}
+        # duckflow:
+        #   id: session_status.scripts_routes_status_routes.L50
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "GET /api/status"
+        #   reads:
+        #     - "state:max_skills"
+        #     - "state:skills_section_title"
+        #   returns:
+        #     - "response:GET /api/status.max_skills"
+        #     - "response:GET /api/status.skills_section_title"
+        #   notes: "Returns the current generation-settings values in the session status payload."
         from pathlib import Path
         entry = _get_session(required=False)
         _provider_name = _provider_name_ref['value']
@@ -93,17 +103,22 @@ def create_blueprint(deps):
                     'achievements': ach_text,
                 })
             all_achievements = []
-            # duckflow: {
-            #   "id": "summary_api_status_live",
-            #   "kind": "api",
-            #   "timestamp": "2026-03-25T21:39:48Z",
-            #   "status": "live",
-            #   "handles": ["GET /api/status"],
-            #   "reads": ["state:session_summaries.ai_generated", "state:summary_focus_override"],
-            #   "writes": ["response:GET /api/status.professional_summaries"],
-            #   "returns": ["response:GET /api/status.professional_summaries", "response:GET /api/status.summary_focus_override"],
-            #   "notes": "Live status route merges master summaries with session summary overrides."
-            # }
+            # duckflow:
+            #   id: summary_api_status_live
+            #   kind: api
+            #   timestamp: "2026-03-27T01:23:28Z"
+            #   status: live
+            #   handles:
+            #     - "GET /api/status"
+            #   reads:
+            #     - "state:session_summaries.ai_generated"
+            #     - "state:summary_focus_override"
+            #   writes:
+            #     - "response:GET /api/status.professional_summaries"
+            #   returns:
+            #     - "response:GET /api/status.professional_summaries"
+            #     - "response:GET /api/status.summary_focus_override"
+            #   notes: "Live status route merges master summaries with session summary overrides."
             summary_view = SessionDataView(orchestrator.master_data, conversation.state)
             professional_summaries = summary_view.professional_summaries()
             all_achievements = summary_view.selected_achievements()
@@ -196,14 +211,36 @@ def create_blueprint(deps):
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+    @bp.get("/api/settings")
+    def get_settings():
+        """Return user-configurable settings exposed to the frontend."""
+        cfg = get_config()
+        return jsonify({
+            "ok": True,
+            "llm_request_timeout": cfg.llm_request_timeout,
+        })
+
     @bp.post("/api/generation-settings")
     def update_generation_settings():
-        # duckflow: flow=generation-settings status=live
-        #   route: POST /api/generation-settings
-        #   request: {max_skills?: int, skills_section_title?: str}
-        #   state_write: session.state["max_skills"], session.state["skills_section_title"],
-        #                customizations["max_skills"], customizations["skills_section_title"]
-        #   response: {ok: bool, max_skills: int, skills_section_title: str}
+        # duckflow:
+        #   id: generation_settings.scripts_routes_status_routes.L205
+        #   kind: api
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/generation-settings"
+        #   reads:
+        #     - "request:POST /api/generation-settings.max_skills"
+        #     - "request:POST /api/generation-settings.skills_section_title"
+        #   writes:
+        #     - "state:max_skills"
+        #     - "state:skills_section_title"
+        #     - "customizations:max_skills"
+        #     - "customizations:skills_section_title"
+        #   returns:
+        #     - "response:POST /api/generation-settings.max_skills"
+        #     - "response:POST /api/generation-settings.skills_section_title"
+        #   notes: "Persists per-session generation settings into both top-level session state and the generation customizations payload."
         """Update per-session generation settings (max_skills, skills_section_title, etc.)."""
         entry = _get_session()
         _validate_owner(entry)
@@ -211,20 +248,23 @@ def create_blueprint(deps):
         sid = entry.session_id
         data = request.get_json(silent=True) or {}
         with entry.lock:
+            customizations = conversation.state.get("customizations")
+            if customizations is None:
+                customizations = {}
+                conversation.state["customizations"] = customizations
+
             if "max_skills" in data:
                 v = data["max_skills"]
                 if not isinstance(v, int) or not (1 <= v <= 100):
                     return jsonify({"error": "max_skills must be an integer between 1 and 100"}), 400
                 conversation.state["max_skills"] = v
-                if "customizations" in conversation.state:
-                    conversation.state["customizations"]["max_skills"] = v
+                customizations["max_skills"] = v
             if "skills_section_title" in data:
                 raw = str(data["skills_section_title"]).strip()
                 if not raw:
                     return jsonify({"error": "skills_section_title must not be empty"}), 400
                 conversation.state["skills_section_title"] = raw
-                if "customizations" in conversation.state:
-                    conversation.state["customizations"]["skills_section_title"] = raw
+                customizations["skills_section_title"] = raw
             conversation._save_session()
         session_registry.touch(sid)
         cfg_default = get_config().get("generation.max_skills", 20)

@@ -14,12 +14,15 @@ llm:
   default_model: "gemini-flash-latest"  # Model name; null uses provider default
   temperature: 0.7
   max_tokens: null  # null uses provider default
+  request_timeout_seconds: 300  # Max seconds to wait for a single LLM reply (null = no limit)
 
 # CV Generation Defaults
 generation:
+  base_font_size: "13px"
   max_skills: 20
   max_achievements: 5
   max_publications: 10
+  page_margin: "0.5in"
 
   # CV Length Constraints
   page_count:

@@ -207,6 +207,7 @@ def test_materialize_generation_customizations_applies_review_decisions() -> Non
             "experience_row_order": ["exp-1"],
             "skill_row_order": ["Python"],
             "base_font_size": "11pt",
+            "page_margin": "0.75in",
         },
         customizations={"approved_skills": ["SQL"]},
     )
@@ -227,6 +228,7 @@ def test_materialize_generation_customizations_applies_review_decisions() -> Non
     assert materialized["experience_row_order"] == ["exp-1"]
     assert materialized["skill_row_order"] == ["Python"]
     assert materialized["base_font_size"] == "11pt"
+    assert materialized["page_margin"] == "0.75in"
 
 
 def test_materialize_generation_customizations_preserves_rich_extra_skills() -> None:

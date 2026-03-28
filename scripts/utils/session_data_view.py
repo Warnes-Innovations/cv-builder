@@ -86,6 +86,32 @@ def _coerce_string_list(raw: Any) -> List[str]:
     return cleaned
 
 
+def _coerce_achievement_edits(raw: Any) -> Dict[int, List[Dict[str, Any]]]:
+    """Return per-experience bullet edits as text-plus-hidden entries."""
+    if not isinstance(raw, dict):
+        return {}
+
+    cleaned: Dict[int, List[Dict[str, Any]]] = {}
+    for key, value in raw.items():
+        try:
+            exp_idx = int(key)
+        except (TypeError, ValueError):
+            continue
+
+        items = value if isinstance(value, list) else [value]
+        cleaned[exp_idx] = []
+        for item in items:
+            if isinstance(item, dict):
+                cleaned[exp_idx].append({
+                    "text": str(item.get("text") or item.get("description") or item.get("content") or ""),
+                    "hidden": bool(item.get("hidden")),
+                })
+            else:
+                cleaned[exp_idx].append({"text": str(item or ""), "hidden": False})
+
+    return cleaned
+
+
 def _coerce_skill_group_overrides(raw: Any) -> Dict[str, Optional[str]]:
     """Return a stable mapping of skill name to optional session-only group."""
     if not isinstance(raw, dict):
@@ -552,6 +578,10 @@ class SessionDataView:
         if base_font_size:
             updated["base_font_size"] = base_font_size
 
+        page_margin = state.get("page_margin")
+        if page_margin:
+            updated["page_margin"] = page_margin
+
         achievement_orders = state.get("achievement_orders") or {}
         if achievement_orders:
             updated["achievement_orders"] = dict(achievement_orders)
@@ -571,6 +601,10 @@ class SessionDataView:
         skill_qualifier_overrides = self._skill_qualifier_overrides()
         if skill_qualifier_overrides:
             updated["skill_qualifier_overrides"] = skill_qualifier_overrides
+
+        achievement_edits = _coerce_achievement_edits(state.get("achievement_edits"))
+        if achievement_edits:
+            updated["achievement_edits"] = achievement_edits
 
         publication_decisions = _coerce_decision_mapping(state.get("publication_decisions"))
         if publication_decisions:

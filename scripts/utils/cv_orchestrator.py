@@ -24,21 +24,72 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime, date as _date
 import subprocess
-import weasyprint
+import weasyprint  # noqa: F401  -- kept for test mock path (patch cv_orchestrator.weasyprint.HTML)
 from collections import defaultdict
+from bs4 import BeautifulSoup, Comment
 
-logger = logging.getLogger(__name__)
-
-# Import existing utilities
 from .scoring import (
     calculate_relevance_score,
-    calculate_skill_score
+    calculate_skill_score,
 )
 from .bibtex_parser import parse_bibtex_file, format_publication
 from .config import get_config
 from .llm_client import LLMClient
 from .master_data_validator import validate_master_data_file
 from .session_data_view import SessionDataView
+from .template_renderer import safe_css_size, safe_url
+
+logger = logging.getLogger(__name__)
+
+_LAYOUT_URL_ATTRS = ('href', 'src', 'srcset', 'poster', 'xlink:href')
+_LAYOUT_PRESERVED_HEAD_TAGS = {'link', 'script', 'meta', 'base'}
+_SCHEMA_ORG_CONTEXTS = {'https://schema.org', 'http://schema.org'}
+_LAYOUT_AGENT_INSTRUCTION_PATTERNS = (
+    'system prompt',
+    'developer prompt',
+    'developer instruction',
+    'assistant instruction',
+    'agent instruction',
+    'llm instruction',
+    'copilot instruction',
+    'you are chatgpt',
+    'you are github copilot',
+    'ignore previous instructions',
+)
+
+def _append_layout_finding(
+    findings: List[Dict[str, Any]],
+    issue: str,
+    detail: str,
+    fragment: Optional[str] = None,
+) -> None:
+    """Append a normalized layout safety finding."""
+    entry: Dict[str, Any] = {'issue': issue, 'detail': detail}
+    if fragment:
+        entry['fragment'] = fragment[:500]
+    findings.append(entry)
+
+
+def _summarize_layout_findings(
+    *finding_groups: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Flatten finding groups while preserving order."""
+    merged: List[Dict[str, Any]] = []
+    for group in finding_groups:
+        merged.extend(group or [])
+    return merged
+
+
+def _is_exact_schema_org_context(value: Any) -> bool:
+    """Return true when a JSON-LD @context is exactly schema.org."""
+    if isinstance(value, str):
+        return value in _SCHEMA_ORG_CONTEXTS
+    if isinstance(value, list):
+        return any(
+            isinstance(item, str) and item in _SCHEMA_ORG_CONTEXTS
+            for item in value
+        )
+    return False
 
 
 class CVOrchestrator:
@@ -114,7 +165,9 @@ class CVOrchestrator:
         self,
         selected_content: Dict,
         job_analysis: Dict,
-        template_variant: str = 'standard'
+        template_variant: str = 'standard',
+        base_font_size: str | None = None,
+        customizations: Optional[Dict] = None,
     ) -> Dict:
         """Prepare CV data in the format expected by the HTML resume template."""
 
@@ -129,6 +182,8 @@ class CVOrchestrator:
             address_display = f"{address.get('city', '')}, {address.get('state', '')}"
             address_display = address_display.strip(', ')
             contact['address_display'] = address_display
+        contact['linkedin_href'] = safe_url(contact.get('linkedin', ''))
+        contact['website_href'] = safe_url(contact.get('website', ''))
         
         # Ensure languages key exists (template expects it)
         if 'languages' not in personal_info:
@@ -165,9 +220,14 @@ class CVOrchestrator:
         certifications = selected_content.get('certifications', [])
         
         # Add template metadata
-        # duckflow: flow=cv-render status=live
-        #   artifact: template_metadata["skills_section_title"] → cv-template.html
-        #   default: "Skills" (overridden per-render by customizations["skills_section_title"])
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L224
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   writes:
+        #     - "artifact:template_metadata[\"skills_section_title\"]"
+        #   notes: "Seeds the render metadata with the default skills section title before preview or final-generation overrides are applied."
         template_metadata = {
             'variant': template_variant,
             'generated_date': datetime.now().isoformat(),
@@ -176,6 +236,7 @@ class CVOrchestrator:
             'total_publications_count': len(self.publications) if self.publications else 0,
             'skills_section_title': 'Skills',
         }
+        human_skills_title = self._resolve_human_skills_title(customizations)
         
         cv_data = {
             'personal_info': personal_info,
@@ -187,10 +248,37 @@ class CVOrchestrator:
             'awards': awards,
             'certifications': certifications,
             'publications': publications,
-            'template_metadata': template_metadata
+            'template_metadata': template_metadata,
+            'base_font_size': safe_css_size(base_font_size, default='10px'),
+            'human_skills_title': human_skills_title,
         }
 
         return cv_data
+
+    @staticmethod
+    def _resolve_human_skills_title(customizations: Optional[Dict]) -> str:
+        """Return the human-facing skills heading from session customizations."""
+        if not isinstance(customizations, dict):
+            return 'Technical Skills'
+
+        candidate_values = [
+            customizations.get('skills_section_title'),
+            customizations.get('skills_title'),
+        ]
+
+        section_titles = customizations.get('section_titles')
+        if isinstance(section_titles, dict):
+            candidate_values.extend([
+                section_titles.get('human_skills'),
+                section_titles.get('skills_human'),
+                section_titles.get('skills'),
+            ])
+
+        for candidate in candidate_values:
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+
+        return 'Technical Skills'
 
     @staticmethod
     def _extract_display_text(item: Any, preferred_fields: Optional[List[str]] = None) -> str:
@@ -253,6 +341,57 @@ class CVOrchestrator:
                     entry[key] = self._normalize_achievement_entries(entry.get(key, []))
             normalized.append(entry)
         return normalized
+
+    def _apply_session_achievement_edits(
+        self,
+        selected_content: Dict,
+        achievement_edits: Dict[Any, Any],
+    ) -> Dict:
+        """Overlay session-edited bullets onto the selected experience list."""
+        if not achievement_edits:
+            return selected_content
+
+        updated = copy.deepcopy(selected_content)
+        master_experiences = self.master_data.get('experience') or []
+        selected_experiences = updated.get('experiences') or []
+        experience_by_id = {
+            str(exp.get('id') or '').strip(): exp
+            for exp in selected_experiences
+            if isinstance(exp, dict) and str(exp.get('id') or '').strip()
+        }
+
+        for raw_key, raw_items in achievement_edits.items():
+            try:
+                exp_idx = int(raw_key)
+            except (TypeError, ValueError):
+                continue
+            if not (0 <= exp_idx < len(master_experiences)):
+                continue
+
+            master_exp = master_experiences[exp_idx] or {}
+            exp_id = str(master_exp.get('id') or '').strip()
+            if not exp_id or exp_id not in experience_by_id:
+                continue
+
+            visible_achievements = []
+            items = raw_items if isinstance(raw_items, list) else [raw_items]
+            for item in items:
+                if isinstance(item, dict):
+                    text = str(item.get('text') or item.get('description') or item.get('content') or '').strip()
+                    hidden = bool(item.get('hidden'))
+                else:
+                    text = str(item or '').strip()
+                    hidden = False
+
+                if text and not hidden:
+                    visible_achievements.append({'text': text})
+
+            selected_exp = experience_by_id[exp_id]
+            selected_exp['achievements'] = visible_achievements
+            if 'ordered_achievements' in selected_exp:
+                selected_exp['ordered_achievements'] = copy.deepcopy(visible_achievements)
+
+        return updated
 
     def _normalize_language_entries(self, languages: List[Any]) -> List[str]:
         """Convert language records to simple display strings for the template."""
@@ -516,15 +655,14 @@ class CVOrchestrator:
         Parameters mirror ``generate_cv`` but only the HTML rendering path is
         executed, so this is significantly faster than a full generation run.
         """
-        # duckflow: {
-        #   "id": "summary_orchestrator_preview_html",
-        #   "kind": "artifact",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "shared",
-        #   "reads": ["cv:selected_content.summary"],
-        #   "returns": ["artifact:generation_state.preview_html"],
-        #   "notes": "Renders the selected summary into preview HTML without writing files yet."
-        # }
+        # duckflow:
+        #   id: summary_orchestrator_preview_html
+        #   kind: artifact
+        #   timestamp: "2026-03-27T01:23:28Z"
+        #   status: shared
+        #   reads: ["cv:selected_content.summary"]
+        #   returns: ["artifact:generation_state.preview_html"]
+        #   notes: "Renders the selected summary into preview HTML without writing files yet."
         selected_content = self.build_render_ready_content(
             job_analysis,
             customizations,
@@ -534,15 +672,32 @@ class CVOrchestrator:
             use_semantic_match=use_semantic_match,
         )
         cv_data = self._prepare_cv_data_for_template(
-            selected_content, job_analysis, template_variant
+            selected_content,
+            job_analysis,
+            template_variant,
+            customizations.get('base_font_size'),
+            customizations=customizations,
         )
-        cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
-        cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
-        # duckflow: flow=cv-render status=live
-        #   state_read: customizations["skills_section_title"]
-        #   artifact: template_metadata["skills_section_title"] → cv-template.html (preview)
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L599
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   reads:
+        #     - "customizations:skills_section_title"
+        #   writes:
+        #     - "artifact:template_metadata[\"skills_section_title\"]"
+        #   notes: "Copies the user-selected skills title into the preview HTML render metadata."
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
+        cv_data['base_font_size'] = customizations.get(
+            'base_font_size',
+                get_config().get('generation.base_font_size', cv_data.get('base_font_size', '13px')),
+        )
+        cv_data['page_margin']    = customizations.get(
+            'page_margin',
+            get_config().get('generation.page_margin', '0.5in'),
+        )
 
         template_dir = Path(__file__).parent.parent.parent / 'templates'
         template_file = template_dir / 'cv-template.html'
@@ -571,15 +726,14 @@ class CVOrchestrator:
         Returns:
             dict with keys ``html`` and ``pdf`` (absolute path strings).
         """
-        # duckflow: {
-        #   "id": "summary_orchestrator_final_files",
-        #   "kind": "artifact",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "shared",
-        #   "reads": ["artifact:generation_state.preview_html"],
-        #   "writes": ["file:generated_files.final_html", "file:generated_files.final_pdf"],
-        #   "notes": "Commits the confirmed preview HTML to disk and regenerates the final PDF from that same artifact."
-        # }
+        # duckflow:
+        #   id: summary_orchestrator_final_files
+        #   kind: artifact
+        #   timestamp: "2026-03-27T01:23:28Z"
+        #   status: shared
+        #   reads: ["artifact:generation_state.preview_html"]
+        #   writes: ["file:generated_files.final_html", "file:generated_files.final_pdf"]
+        #   notes: "Commits the confirmed preview HTML to disk and regenerates the final PDF from that same artifact."
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -722,7 +876,7 @@ class CVOrchestrator:
                 '--output', str(html_output)
             ]
             
-            result = subprocess.run(
+            subprocess.run(
                 render_cmd, 
                 capture_output=True, 
                 text=True, 
@@ -886,6 +1040,7 @@ class CVOrchestrator:
                             '--no-sandbox',
                             f'--print-to-pdf={pdf_output}',
                             '--print-to-pdf-no-header',
+                            '--no-pdf-header-footer',
                             html_url,
                         ],
                         check=True,
@@ -1093,10 +1248,15 @@ For manual generation:
             for edu in cv_data.get('education', [])
         ]
 
-        all_skill_names = [
-            sk.get('name', '')
+        all_skill_entries = [
+            {
+                '@type':          'DefinedTerm',
+                'name':           sk.get('name', ''),
+                'additionalType': 'HardSkill' if self._classify_skill_type(sk) == 'hard' else 'SoftSkill',
+            }
             for cat in cv_data.get('skills_by_category', [])
             for sk in cat.get('skills', [])
+            if sk.get('name', '')
         ]
 
         award_strings = [
@@ -1105,7 +1265,12 @@ For manual generation:
         ]
 
         same_as = [
-            v for v in (contact.get('linkedin'), contact.get('website')) if v
+            value
+            for value in (
+                contact.get('linkedin_href') or safe_url(contact.get('linkedin')),
+                contact.get('website_href') or safe_url(contact.get('website')),
+            )
+            if value
         ]
 
         json_ld: Dict[str, Any] = {
@@ -1115,17 +1280,25 @@ For manual generation:
             'jobTitle':   job_analysis.get('title', ''),
             'description': cv_data.get('professional_summary', ''),
         }
-        if contact.get('email'):           json_ld['email']         = contact['email']
-        if contact.get('phone'):           json_ld['telephone']     = contact['phone']
-        if same_as:                        json_ld['sameAs']        = same_as
-        if contact.get('address_display'): json_ld['address']       = {
-                '@type':           'PostalAddress',
+        if contact.get('email'):
+            json_ld['email'] = contact['email']
+        if contact.get('phone'):
+            json_ld['telephone'] = contact['phone']
+        if same_as:
+            json_ld['sameAs'] = same_as
+        if contact.get('address_display'):
+            json_ld['address'] = {
+                '@type': 'PostalAddress',
                 'addressLocality': contact['address_display'],
             }
-        if alumni_of:                      json_ld['alumniOf']      = alumni_of
-        if has_occupation:                 json_ld['hasOccupation'] = has_occupation
-        if all_skill_names:                json_ld['knowsAbout']    = all_skill_names
-        if award_strings:                  json_ld['award']         = award_strings
+        if alumni_of:
+            json_ld['alumniOf'] = alumni_of
+        if has_occupation:
+            json_ld['hasOccupation'] = has_occupation
+        if all_skill_entries:
+            json_ld['knowsAbout'] = all_skill_entries
+        if award_strings:
+            json_ld['award'] = award_strings
 
         return json.dumps(json_ld, indent=2, ensure_ascii=False)
 
@@ -1608,14 +1781,33 @@ For manual generation:
         # Prepare template data once — shared by all format generators.
         # JSON-LD is built here and embedded directly in cv-template.html,
         # so the single HTML output is both ATS-compatible and print-ready.
-        cv_data = self._prepare_cv_data_for_template(selected_content, job_analysis)
+        cv_data = self._prepare_cv_data_for_template(
+            selected_content,
+            job_analysis,
+            base_font_size=customizations.get('base_font_size'),
+            customizations=customizations,
+        )
         cv_data['achievements']   = selected_content.get('achievements', [])
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
-        cv_data['base_font_size'] = customizations.get('base_font_size', '10px')
-        # duckflow: flow=cv-render status=live
-        #   state_read: customizations["skills_section_title"]
-        #   artifact: template_metadata["skills_section_title"] → cv-template.html (final)
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L1684
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   reads:
+        #     - "customizations:skills_section_title"
+        #   writes:
+        #     - "artifact:template_metadata[\"skills_section_title\"]"
+        #   notes: "Copies the user-selected skills title into the final HTML/PDF render metadata."
         cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
+        cv_data['base_font_size'] = customizations.get(
+            'base_font_size',
+            get_config().get('generation.base_font_size', cv_data.get('base_font_size', '13px')),
+        )
+        cv_data['page_margin']    = customizations.get(
+            'page_margin',
+            get_config().get('generation.page_margin', '0.5in'),
+        )
 
         # Generate documents (Phase 10: Track progress)
         files_created = []
@@ -1627,9 +1819,16 @@ For manual generation:
             'status': 'in_progress',
             'start_time': time.time()
         }
-        # duckflow: flow=cv-render status=live
-        #   state_read: customizations["skills_section_title"]
-        #   artifact: selected_content["skills_section_title"] → _generate_human_docx → DOCX heading
+        # duckflow:
+        #   id: cv_render.scripts_utils_cv_orchestrator.L1703
+        #   kind: artifact
+        #   timestamp: "2026-03-27T02:07:47Z"
+        #   status: live
+        #   reads:
+        #     - "customizations:skills_section_title"
+        #   writes:
+        #     - "artifact:selected_content[\"skills_section_title\"]"
+        #   notes: "Carries the user-selected skills title into the ATS DOCX generation payload."
         selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         ats_file = self._generate_ats_docx(
             selected_content,
@@ -1668,7 +1867,8 @@ For manual generation:
         human_docx = self._generate_human_docx(
             selected_content,
             job_analysis,
-            job_output_dir
+            job_output_dir,
+            skills_heading=self._resolve_human_skills_title(customizations),
         )
         progress_docx_human['status'] = 'complete'
         progress_docx_human['elapsed_ms'] = int((time.time() - progress_docx_human['start_time']) * 1000)
@@ -1726,6 +1926,10 @@ For manual generation:
             max_skills=max_skills,
             use_semantic_match=use_semantic_match,
         )
+        selected_content = self._apply_session_achievement_edits(
+            selected_content,
+            customizations.get('achievement_edits') or {},
+        )
         selected_content = self.apply_approved_rewrites(
             selected_content,
             approved_rewrites or [],
@@ -1766,6 +1970,183 @@ For manual generation:
 
         return '\n'.join(outline) if outline else "[No structured sections found]"
 
+    def _sanitize_layout_instruction_text(self, instruction_text: str) -> Dict[str, Any]:
+        """Strip prompt-injection phrases from layout instructions."""
+        raw_text = str(instruction_text or '')
+        sanitized_text = raw_text
+        findings: List[Dict[str, Any]] = []
+
+        for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS:
+            regex = re.compile(
+                rf'(?i)(?:^|\b){re.escape(pattern)}(?:\b|$)(?:\s*(?:and|then)\s*)?',
+            )
+            updated_text, count = regex.subn(' ', sanitized_text)
+            if count:
+                sanitized_text = updated_text
+                _append_layout_finding(
+                    findings,
+                    'unsafe_instruction_text',
+                    f'Removed prompt-like directive: {pattern}',
+                    pattern,
+                )
+
+        sanitized_text = re.sub(r'\s+', ' ', sanitized_text).strip(' ,;:-')
+        return {
+            'flagged': bool(findings),
+            'findings': findings,
+            'raw_text': raw_text,
+            'sanitized_text': sanitized_text,
+        }
+
+    def _sanitize_layout_context_html(self, html: str) -> Dict[str, Any]:
+        """Remove prompt-payload material from HTML before sending it to the LLM."""
+        raw_html = str(html or '')
+        soup = BeautifulSoup(raw_html, 'html.parser')
+        findings: List[Dict[str, Any]] = []
+
+        for comment in soup.find_all(string=lambda value: isinstance(value, Comment)):
+            text = str(comment)
+            if any(pattern in text.lower() for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+                _append_layout_finding(
+                    findings,
+                    'unsafe_context_comment',
+                    'Removed prompt-like comment from layout context HTML.',
+                    text,
+                )
+                comment.extract()
+
+        for element in list(soup.find_all(True)):
+            text = element.get_text(' ', strip=True)
+            lowered = text.lower()
+            is_hidden = (
+                element.has_attr('hidden')
+                or element.get('aria-hidden') == 'true'
+                or 'display:none' in element.get('style', '').replace(' ', '').lower()
+            )
+            if is_hidden and text and any(pattern in lowered for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+                _append_layout_finding(
+                    findings,
+                    'unsafe_context_element',
+                    'Removed prompt-like element from layout context HTML.',
+                    text,
+                )
+                element.decompose()
+
+        return {
+            'flagged': bool(findings),
+            'findings': findings,
+            'raw_html': raw_html,
+            'sanitized_html': str(soup),
+        }
+
+    def _sanitize_layout_instruction_html(
+        self,
+        current_html: str,
+        modified_html: str,
+    ) -> Dict[str, Any]:
+        """Sanitize rewritten layout HTML and preserve safe baseline resources."""
+        baseline = BeautifulSoup(str(current_html or ''), 'html.parser')
+        soup = BeautifulSoup(str(modified_html or ''), 'html.parser')
+        findings: List[Dict[str, Any]] = []
+
+        baseline_head_tags = []
+        if baseline.head:
+            for node in baseline.head.find_all(True, recursive=False):
+                if node.name not in _LAYOUT_PRESERVED_HEAD_TAGS:
+                    continue
+                if node.name == 'script' and node.get('type') == 'application/ld+json':
+                    script_text = node.string or node.get_text('', strip=True)
+                    try:
+                        parsed = json.loads(script_text) if script_text else {}
+                    except json.JSONDecodeError:
+                        parsed = {}
+                    if not _is_exact_schema_org_context(parsed.get('@context')):
+                        continue
+                baseline_head_tags.append(copy.deepcopy(node))
+
+        if soup.head:
+            for node in list(soup.head.find_all(True, recursive=False)):
+                if node.name in _LAYOUT_PRESERVED_HEAD_TAGS:
+                    _append_layout_finding(
+                        findings,
+                        'rewritten_head_replaced',
+                        'Replaced rewritten head resources with baseline-safe versions.',
+                        str(node)[:500],
+                    )
+                    node.decompose()
+            for node in baseline_head_tags:
+                soup.head.append(node)
+
+        baseline_anchor_map: Dict[str, str] = {}
+        for anchor in baseline.find_all('a', href=True):
+            label = anchor.get_text(' ', strip=True)
+            href = anchor.get('href', '').strip()
+            if label and href:
+                baseline_anchor_map[label] = href
+
+        for anchor in soup.find_all('a'):
+            label = anchor.get_text(' ', strip=True)
+            baseline_href = baseline_anchor_map.get(label)
+            if baseline_href and anchor.get('href') != baseline_href:
+                _append_layout_finding(
+                    findings,
+                    'rewritten_url_reset',
+                    'Restored baseline URL for matching anchor text.',
+                    label,
+                )
+                anchor['href'] = baseline_href
+
+        for node in list(soup.find_all('script')):
+            if node.get('type') == 'application/ld+json':
+                script_text = node.string or node.get_text('', strip=True)
+                try:
+                    parsed = json.loads(script_text) if script_text else {}
+                except json.JSONDecodeError:
+                    parsed = {}
+                if _is_exact_schema_org_context(parsed.get('@context')):
+                    continue
+            _append_layout_finding(
+                findings,
+                'unsafe_rewritten_script',
+                'Removed non-schema script from rewritten layout HTML.',
+                str(node)[:500],
+            )
+            node.decompose()
+
+        for comment in soup.find_all(string=lambda value: isinstance(value, Comment)):
+            text = str(comment)
+            if any(pattern in text.lower() for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+                _append_layout_finding(
+                    findings,
+                    'unsafe_rewritten_comment',
+                    'Removed prompt-like comment from rewritten layout HTML.',
+                    text,
+                )
+                comment.extract()
+
+        for element in list(soup.find_all(True)):
+            text = element.get_text(' ', strip=True)
+            lowered = text.lower()
+            is_hidden = (
+                element.has_attr('hidden')
+                or element.get('aria-hidden') == 'true'
+                or 'display:none' in element.get('style', '').replace(' ', '').lower()
+            )
+            if is_hidden and text and any(pattern in lowered for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+                _append_layout_finding(
+                    findings,
+                    'unsafe_rewritten_element',
+                    'Removed prompt-like element from rewritten layout HTML.',
+                    text,
+                )
+                element.decompose()
+
+        return {
+            'flagged': bool(findings),
+            'findings': findings,
+            'html': str(soup),
+        }
+
     def apply_layout_instruction(
         self,
         instruction_text: str,
@@ -1794,7 +2175,32 @@ For manual generation:
             }
         """
         # Build LLM prompt
-        cv_outline = self._serialize_html_for_context(current_html)
+        instruction_safety = self._sanitize_layout_instruction_text(
+            instruction_text
+        )
+        context_safety = self._sanitize_layout_context_html(current_html)
+
+        sanitized_instruction_text = instruction_safety['sanitized_text']
+        if not sanitized_instruction_text:
+            return {
+                'error': 'unsafe_instruction',
+                'details': (
+                    'The layout instruction only contained unsafe prompt-like '
+                    'directives after sanitization.'
+                ),
+                'safety': {
+                    'flagged': True,
+                    'findings': _summarize_layout_findings(
+                        instruction_safety['findings'],
+                        context_safety['findings'],
+                    ),
+                    'instruction_text': instruction_safety,
+                    'current_html': context_safety,
+                },
+            }
+
+        sanitized_current_html = context_safety['sanitized_html']
+        cv_outline = self._serialize_html_for_context(sanitized_current_html)
         prior_context = ""
         if prior_instructions:
             prior_list = [f"- {inst.get('instruction_text', '')}" for inst in prior_instructions]
@@ -1806,11 +2212,11 @@ CURRENT CV STRUCTURE (outline):
 {cv_outline}
 
 CURRENT HTML (modify this):
-{current_html}
+{sanitized_current_html}
 {prior_context}
 
 USER INSTRUCTION:
-"{instruction_text}"
+"{sanitized_instruction_text}"
 
 YOUR TASK:
 1. Interpret the user's intent
@@ -1883,11 +2289,34 @@ If you need clarification, return:
                     'details': 'HTML response was empty'
                 }
 
+            safety_result = self._sanitize_layout_instruction_html(
+                current_html=sanitized_current_html,
+                modified_html=modified_html,
+            )
+
+            all_findings = _summarize_layout_findings(
+                instruction_safety['findings'],
+                context_safety['findings'],
+                safety_result['findings'],
+            )
+
             return {
-                'html': modified_html,
+                'html': safety_result['html'],
                 'summary': result.get('change_summary', 'Layout updated'),
                 'confidence': confidence,
-                'requires_clarification': False
+                'requires_clarification': False,
+                'safety': {
+                    'flagged': bool(all_findings),
+                    'findings': all_findings,
+                    'instruction_text': instruction_safety,
+                    'current_html': context_safety,
+                    'rewritten_html': {
+                        'flagged': safety_result['flagged'],
+                        'findings': safety_result['findings'],
+                        'raw_html': modified_html,
+                        'sanitized_html': safety_result['html'],
+                    },
+                },
             }
 
         except json.JSONDecodeError as e:
@@ -2230,15 +2659,14 @@ If you need clarification, return:
             customizations,
             customizations,
         )
-        # duckflow: {
-        #   "id": "summary_orchestrator_select",
-        #   "kind": "orchestrator",
-        #   "timestamp": "2026-03-25T21:39:48Z",
-        #   "status": "shared",
-        #   "reads": ["customizations:summary_focus", "customizations:session_summaries"],
-        #   "writes": ["cv:selected_content.summary"],
-        #   "notes": "Resolves the active summary text by overlaying session variants over master variants and selecting the requested key."
-        # }
+        # duckflow:
+        #   id: summary_orchestrator_select
+        #   kind: orchestrator
+        #   timestamp: "2026-03-27T01:23:28Z"
+        #   status: shared
+        #   reads: ["customizations:summary_focus", "customizations:session_summaries"]
+        #   writes: ["cv:selected_content.summary"]
+        #   notes: "Resolves the active summary text by overlaying session variants over master variants and selecting the requested key."
         selected_summary = summary_view.selected_summary()
 
         # Select publications — honour user accept/reject decisions if present
@@ -2336,9 +2764,8 @@ If you need clarification, return:
     ) -> Path:
         """Generate ATS-optimized DOCX with enhanced formatting and validation."""
         from docx import Document
-        from docx.shared import Pt, RGBColor
+        from docx.shared import Pt
         from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-        from docx.enum.style import WD_STYLE_TYPE
         
         doc = Document()
         
@@ -2349,37 +2776,40 @@ If you need clarification, return:
         personal = content['personal_info']
         name = personal.get('name', '')
         
-        # Name header — use Heading 1 so ATS parsers see the correct heading hierarchy.
-        name_para = doc.add_paragraph(name, style='Heading 1')
+# Candidate name — large bold run (not a Heading style so it does not
+        # compete with section Heading 1 paragraphs in the ATS heading hierarchy).
+        name_para = doc.add_paragraph()
+        name_run  = name_para.add_run(name)
+        name_run.bold      = True
+        name_run.font.size = Pt(16)
         name_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-        
-        # Contact information - single line, pipe-separated (ATS standard)
+
+        # Contact information — single line, pipe-separated (ATS standard).
+        # City/state only (no street address); phone normalized to NNN-NNN-NNNN.
         contact = personal.get('contact', {})
         contact_parts = []
-        
-        if contact.get('email'):
-            contact_parts.append(contact['email'])
-        if contact.get('phone'):
-            contact_parts.append(contact['phone'])
+
         if contact.get('address_display'):
             contact_parts.append(contact['address_display'])
         elif contact.get('address', {}).get('city'):
-            city = contact['address']['city']
+            city  = contact['address']['city']
             state = contact['address'].get('state', '')
             contact_parts.append(f"{city}, {state}".strip(', '))
+        if contact.get('phone'):
+            contact_parts.append(self._normalize_phone(contact['phone']))
+        if contact.get('email'):
+            contact_parts.append(contact['email'])
         if contact.get('linkedin'):
             contact_parts.append(contact['linkedin'])
-        
+
         contact_para = doc.add_paragraph(' | '.join(contact_parts))
         contact_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-        
+
         # Add spacing
         doc.add_paragraph()
-        
-        # Professional Summary - Critical for ATS
-        summary_heading = doc.add_paragraph()
-        summary_heading.add_run('PROFESSIONAL SUMMARY').bold = True
-        summary_heading.style = 'Heading 2'
+
+        # Professional Summary — ATS standard label, Heading 1 style.
+        summary_heading = doc.add_paragraph('Professional Summary', style='Heading 1')
         
         summary_text = content.get('summary', '')
         # Enhance summary with job-specific keywords
@@ -2387,43 +2817,48 @@ If you need clarification, return:
         doc.add_paragraph(enhanced_summary)
         doc.add_paragraph()
         
-        # Skills section - ATS output always normalizes to a fixed heading.
-        skills_heading = doc.add_paragraph()
-        skills_heading.add_run('SKILLS').bold = True
-        skills_heading.style = 'Heading 2'
-        
-        # Organize skills for maximum ATS impact
-        ats_optimized_skills = self._optimize_skills_for_ats(content['skills'], job_analysis)
-        skills_para = doc.add_paragraph()
-        skills_para.add_run(' • '.join(ats_optimized_skills))
-        doc.add_paragraph()
-        
-        # Professional Experience - Standard ATS format
-        exp_heading = doc.add_paragraph()
-        exp_heading.add_run('PROFESSIONAL EXPERIENCE').bold = True
-        exp_heading.style = 'Heading 2'
+        # Skills — split hard/soft into "Technical Skills" and "Core Competencies".
+        # _optimize_skills_for_ats returns names in priority order; type inferred
+        # per skill via _classify_skill_type.
+        ats_skill_names = self._optimize_skills_for_ats(content['skills'], job_analysis)
+        skill_map = {s.get('name', ''): s for s in content.get('skills', [])}
+        hard_skills = [n for n in ats_skill_names
+                       if self._classify_skill_type(skill_map.get(n, {})) == 'hard']
+        soft_skills = [n for n in ats_skill_names
+                       if self._classify_skill_type(skill_map.get(n, {})) == 'soft']
+
+        if hard_skills:
+            doc.add_paragraph('Technical Skills', style='Heading 1')
+            doc.add_paragraph(' • '.join(hard_skills))
+            doc.add_paragraph()
+
+        if soft_skills:
+            doc.add_paragraph('Core Competencies', style='Heading 1')
+            doc.add_paragraph(' • '.join(soft_skills))
+            doc.add_paragraph()
+
+        # Work Experience — ATS standard label, Heading 1 style.
+        doc.add_paragraph('Work Experience', style='Heading 1')
         
         for exp in content['experiences']:
-            # Job title and company - Bold, clear format
-            title_company = f"{exp.get('title', '')} | {exp.get('company', '')}"
-            title_para = doc.add_paragraph()
-            title_run = title_para.add_run(title_company)
-            title_run.bold = True
-            title_run.font.size = Pt(11)
-            
-            # Dates and location - Standard ATS format
-            location_parts = []
+            # One-line job entry: Title | Company | Location | Date Range (US-H5).
+            loc_parts = []
             if exp.get('location', {}).get('city'):
-                location_parts.append(exp['location']['city'])
+                loc_parts.append(exp['location']['city'])
             if exp.get('location', {}).get('state'):
-                location_parts.append(exp['location']['state'])
-            location_str = ', '.join(location_parts) if location_parts else ''
-            
-            dates_location = f"{exp.get('start_date', '')} – {exp.get('end_date', 'Present')}"
+                loc_parts.append(exp['location']['state'])
+            location_str  = ', '.join(loc_parts) if loc_parts else ''
+            date_range     = f"{exp.get('start_date', '')} – {exp.get('end_date', 'Present')}"
+            entry_parts    = [exp.get('title', ''), exp.get('company', '')]
             if location_str:
-                dates_location += f" | {location_str}"
-            
-            doc.add_paragraph(dates_location)
+                entry_parts.append(location_str)
+            entry_parts.append(date_range)
+            entry_line = ' | '.join(p for p in entry_parts if p)
+
+            entry_para = doc.add_paragraph()
+            entry_run  = entry_para.add_run(entry_line)
+            entry_run.bold      = True
+            entry_run.font.size = Pt(11)
             
             # Achievements - Bullet points with quantified results
             if exp.get('achievements'):
@@ -2436,11 +2871,9 @@ If you need clarification, return:
             
             doc.add_paragraph()  # Spacing between positions
         
-        # Education - Standard format
+        # Education — ATS standard label, Heading 1 style.
         if content.get('education'):
-            edu_heading = doc.add_paragraph()
-            edu_heading.add_run('EDUCATION').bold = True
-            edu_heading.style = 'Heading 2'
+            doc.add_paragraph('Education', style='Heading 1')
             
             for edu in content['education']:
                 degree = edu.get('degree', '')
@@ -2480,26 +2913,26 @@ If you need clarification, return:
     def _setup_ats_styles(self, doc):
         """Set up ATS-optimized document styles."""
         from docx.shared import Pt, RGBColor
-        from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
         
         # Create custom styles that are ATS-friendly
         styles = doc.styles
 
-        # Heading 1 — used for the candidate name at the top of the ATS DOCX
+        # Heading 1 — used for all section headings in the ATS DOCX.
+        # (Candidate name is rendered as a bold run, not a Heading style.)
         try:
             heading1 = styles['Heading 1']
-            heading1.font.size = Pt(16)
+            heading1.font.size = Pt(12)
             heading1.font.bold = True
             heading1.font.color.rgb = RGBColor(0, 0, 0)
         except KeyError:
             pass
 
-        # Clean heading style
+        # Heading 2 — available for optional sub-sections if needed.
         try:
             heading2 = styles['Heading 2']
-            heading2.font.size = Pt(12)
+            heading2.font.size = Pt(11)
             heading2.font.bold = True
-            heading2.font.color.rgb = RGBColor(0, 0, 0)  # Pure black for ATS
+            heading2.font.color.rgb = RGBColor(0, 0, 0)
         except KeyError:
             pass
             
@@ -2665,6 +3098,55 @@ If you need clarification, return:
         re.IGNORECASE,
     )
 
+    # ── ATS skill-type classification ──────────────────────────────────────────
+
+    _SOFT_SKILL_CATEGORIES: frozenset = frozenset({
+        'soft', 'soft skills', 'interpersonal', 'leadership', 'communication',
+        'core competencies', 'management', 'personal', 'professional skills',
+        'collaboration', 'people skills',
+    })
+
+    _SOFT_SKILL_NAMES: frozenset = frozenset({
+        'communication', 'leadership', 'teamwork', 'collaboration',
+        'problem solving', 'critical thinking', 'adaptability', 'creativity',
+        'time management', 'organization', 'attention to detail',
+        'emotional intelligence', 'empathy', 'conflict resolution',
+        'negotiation', 'presentation', 'mentoring', 'coaching',
+        'strategic thinking', 'decision making', 'stakeholder management',
+        'change management', 'cross-functional collaboration',
+    })
+
+    @staticmethod
+    def _normalize_phone(phone: str) -> str:
+        """Normalize phone to NNN-NNN-NNNN format (no parentheses or spaces)."""
+        if not phone:
+            return phone
+        digits = re.sub(r'\D', '', phone)
+        if len(digits) == 11 and digits.startswith('1'):
+            digits = digits[1:]
+        if len(digits) == 10:
+            return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+        return phone
+
+    @classmethod
+    def _classify_skill_type(cls, skill: Dict) -> str:
+        """Return 'soft' if skill is a soft/interpersonal skill, else 'hard'.
+
+        Checks ``skill_type`` stored field first (allowing explicit overrides),
+        then falls back to category- and name-based heuristics.
+        """
+        stored = (skill.get('skill_type') or '').lower()
+        if stored in ('hard', 'soft'):
+            return stored
+        category = (skill.get('category') or '').lower().strip()
+        name     = (skill.get('name')     or '').lower().strip()
+        for soft_cat in cls._SOFT_SKILL_CATEGORIES:
+            if soft_cat in category:
+                return 'soft'
+        if name in cls._SOFT_SKILL_NAMES:
+            return 'soft'
+        return 'hard'
+
     def check_persuasion(self, experiences: List[Dict]) -> Dict:
         """Analyse experience bullets for persuasion quality.
 
@@ -2710,7 +3192,7 @@ If you need clarification, return:
                         'type':       'no_strong_verb',
                         'severity':   'info',
                         'suggestion': (
-                            f'Consider opening with a strong action verb '
+                            'Consider opening with a strong action verb '
                             '(e.g. Led, Built, Delivered, Reduced, Improved).'
                         ),
                     })
@@ -2776,11 +3258,9 @@ If you need clarification, return:
     def _add_ats_additional_sections(self, doc, content: Dict, job_analysis: Dict):
         """Add additional sections that improve ATS scoring."""
         
-        # Certifications (if present)
+        # Certifications (if present) — Heading 1, title-case ATS label.
         if content.get('certifications'):
-            cert_heading = doc.add_paragraph()
-            cert_heading.add_run('CERTIFICATIONS').bold = True
-            cert_heading.style = 'Heading 2'
+            doc.add_paragraph('Certifications', style='Heading 1')
             
             for cert in content['certifications']:
                 cert_name = cert.get('name', '')
@@ -2797,11 +3277,9 @@ If you need clarification, return:
             
             doc.add_paragraph()
         
-        # Awards (if present and relevant)
+        # Awards (if present and relevant) — Heading 1, title-case ATS label.
         if content.get('awards'):
-            awards_heading = doc.add_paragraph()
-            awards_heading.add_run('AWARDS & RECOGNITION').bold = True
-            awards_heading.style = 'Heading 2'
+            doc.add_paragraph('Awards', style='Heading 1')
             
             for award in content['awards']:
                 award_title = award.get('title', '')
@@ -2888,7 +3366,8 @@ If you need clarification, return:
         self,
         content: Dict,
         job_analysis: Dict,
-        output_dir: Path
+        output_dir: Path,
+        skills_heading: str = 'Technical Skills',
     ) -> Path:
         """Generate human-readable DOCX using python-docx with Calibri, standard margins.
 
@@ -3040,9 +3519,17 @@ If you need clarification, return:
         # ── Skills ───────────────────────────────────────────────────────────
         skills_by_category = content.get('skills_by_category', [])
         if skills_by_category:
-            # duckflow: flow=cv-render status=live
-            #   artifact: content["skills_section_title"] → DOCX heading (Skills section)
-            _heading(content.get('skills_section_title', 'Skills'))
+            # duckflow:
+            #   id: cv_render.scripts_utils_cv_orchestrator.L3340
+            #   kind: artifact
+            #   timestamp: "2026-03-27T02:31:32Z"
+            #   status: live
+            #   reads:
+            #     - "artifact:skills_heading"
+            #   writes:
+            #     - "artifact:human_docx.skills_heading"
+            #   notes: "Writes the resolved skills-section heading into the generated human-readable DOCX."
+            _heading(skills_heading)
             for cat in skills_by_category:
                 p = doc.add_paragraph()
                 p.paragraph_format.space_after = Pt(2)
@@ -3220,6 +3707,7 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 'work experience', 'professional experience', 'technical skills',
                 'professional summary', 'selected publications', 'publications', 'contact',
                 'portfolio', 'languages', 'volunteering', 'projects', 'career history',
+                'core competencies',
             })
             heading_paras = [p for p in paragraphs if p.style.name.startswith('Heading')]
             heading_texts = [p.text.strip() for p in heading_paras if p.text.strip()]
@@ -3338,8 +3826,10 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 try:
                     jld = _json.loads(jsonld_tags[0].string or '{}')
                     # 10
-                    if (jld.get('@type') == 'Person' and
-                            str(jld.get('@context', '')).startswith('https://schema.org')):
+                    if (
+                        jld.get('@type') == 'Person'
+                        and _is_exact_schema_org_context(jld.get('@context'))
+                    ):
                         _chk('html_jsonld_valid_person', 'JSON-LD is schema.org/Person',
                              'html', 'pass', '@type: Person with schema.org context')
                     else:

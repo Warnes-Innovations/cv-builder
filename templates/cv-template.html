@@ -16,7 +16,7 @@
     <meta name="description" content="{{ personal_info.name }} – {{ template_metadata.job_title }}">
     <!-- Schema.org/Person structured data for ATS parsers -->
     <script type="application/ld+json">
-{{ json_ld_str }}
+{{ json_ld_str | json_script }}
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&display=swap" rel="stylesheet">
@@ -30,12 +30,13 @@
             --text-main: #333;
             --text-muted: #666;
             --border-color: #d1d8dd;
+            --page-margin: {{ page_margin | default('0.5in') }};
         }
 
         /* Base font size — controls all rem-relative sizing throughout the CV.
            Override via the Layout panel (base_font_size setting). */
         html {
-            font-size: {{ base_font_size | default('10px') }};
+            font-size: {{ base_font_size | safe_css_size }};
         }
 
         * {
@@ -74,33 +75,30 @@
             align-items: stretch;
             flex-direction: row;
             width: 215.9mm; /* US Letter Width */
-            min-height: 279.4mm; /* Set min-height to visually suggest a page size */
             background: white;
-            /* Separate pages visually in browser */
-            margin-bottom: 20px; 
-            /* Removed height/overflow to allow content to flow vertically */
+            height: auto;
+            overflow: visible;
+            min-height: 279.4mm;
+            margin-bottom: 20px;
         }
 
-        /* Page 1 MUST remain fixed for correct layout */
         #page-one {
             height: 279.4mm;
             overflow: hidden;
         }
-        
-        /* Page 2 onwards can flow */
-        #page-two, #page-three {
+
+        #page-two {
             min-height: 279.4mm;
             height: auto;
             overflow: visible;
         }
 
-        /* Page 1: Sidebar on left, Main content on right */
         #page-one .left-col {
             width: 32%;
-            background-color: var(--sidebar-bg);
             padding: 30px 20px;
             border-right: 1px solid var(--border-color);
             flex-shrink: 0;
+            background-color: var(--sidebar-bg);
         }
 
         #page-one .right-col {
@@ -108,36 +106,20 @@
             padding: 40px 30px;
         }
 
-        /* Page 2: Skills on left, Experience continuation on right */
         #page-two .left-col {
             width: 32%;
-            background-color: var(--sidebar-bg);
             padding: 40px 20px;
             border-right: 1px solid var(--border-color);
             flex-shrink: 0;
+            background-color: var(--sidebar-bg);
+            min-height: 100%;
+            align-self: stretch;
         }
-        
+
         #page-two .right-col {
             width: 68%;
             padding: 40px 30px;
         }
-
-        /* Page 3: Skills continuation on left, Experience continuation on right */
-        #page-three .left-col {
-            width: 32%;
-            background-color: var(--sidebar-bg);
-            padding: 40px 20px; /* Matched padding with page-two skills sidebar */
-            border-right: 1px solid var(--border-color);
-            flex-shrink: 0;
-            min-height: 100%;
-            align-self: stretch;
-        }
-        
-        #page-three .right-col {
-            width: 68%;
-            padding: 40px 30px;
-        }
-
 
         /* --- Components & Styles --- */
 
@@ -216,6 +198,8 @@
 
         .skill-group {
             margin-bottom: 5px;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
 
         .skill-group h4 {
@@ -370,6 +354,7 @@
             body {
                 background-color: white;
             }
+
             .page-container {
                 box-shadow: none;
                 margin: 0;
@@ -379,79 +364,81 @@
             }
             
             .page {
-                display: flex; /* Maintain flex for columns on the page */
-                align-items: stretch;
+                display: block;
                 width: 100%;
                 height: auto;
                 margin: 0;
+                background: white !important;
             }
-            /* Force page break between pages, but NOT after the last one */
+
+            .page::after {
+                content: "";
+                display: block;
+                clear: both;
+            }
+
             .page:not(:last-child) {
                 page-break-after: always;
             }
+
             .page:last-child {
                 page-break-after: avoid;
             }
 
-            /* 1. Force Page 1 to fill exactly one US Letter page */
             #page-one {
-                height: 279.4mm; /* US Letter Height */
-                overflow: hidden; /* Important: Prevents content from spilling over */
+                height: calc(11in - (2 * var(--page-margin)));
+                min-height: calc(11in - (2 * var(--page-margin)));
+                overflow: hidden;
             }
 
-            /* 2. Page 2: auto-height so experience flows across physical print pages */
             #page-two {
-                height: auto;
-                min-height: 279.4mm;
+                min-height: calc(11in - (2 * var(--page-margin)));
                 page-break-before: always;
-            }
-
-            /* 3. Page 3 (skills overflow): starts on a fresh print page */
-            #page-three {
-                height: auto;
-                min-height: 279.4mm;
-                page-break-before: always;
+                overflow: visible;
+                background: linear-gradient(
+                    to right,
+                    var(--sidebar-bg) 0,
+                    var(--sidebar-bg) 32%,
+                    white 32%,
+                    white 100%
+                ) !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                -webkit-box-decoration-break: clone;
+                box-decoration-break: clone;
             }
 
             /* Hide screen-only page-break markers in print */
             .page-break-marker { display: none; }
-
-            /* Columns for Page 1 */
-            #page-one .left-col {
-                width: 32%;
-                flex-shrink: 0;
-                background-color: var(--sidebar-bg) !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-            #page-one .right-col {
-                width: 68%;
-            }
-
-            /* Columns for Page 2 */
+            #page-one .left-col,
             #page-two .left-col {
                 width: 32%;
-                flex-shrink: 0;
+                float: left;
                 background-color: var(--sidebar-bg) !important;
+                min-height: calc(11in - (2 * var(--page-margin)));
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+                -webkit-box-decoration-break: clone;
+                box-decoration-break: clone;
             }
+
+            #page-two .left-col {
+                background-color: transparent !important;
+                min-height: 0;
+            }
+
+            #page-one .right-col,
             #page-two .right-col {
-                width: 68%;
-                overflow: visible; 
-            }
-            
-            /* Columns for Page 3 - maintains structure for print */
-            #page-three .left-col {
-                width: 32%;
-                flex-shrink: 0;
-                background-color: var(--sidebar-bg) !important;
+                width: auto;
+                margin-left: 32%;
+                overflow: visible;
+                background: white !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
-            #page-three .right-col {
-                width: 68%;
-                overflow: visible;
+
+            #page-one .right-col {
+                padding-top: 40px;
             }
 
             a {
@@ -462,17 +449,18 @@
             /* Set print size to US Letter */
             @page {
                 size: letter;
-                margin: 0 0 14pt 0;    /* Bottom margin hosts the page-number counter */
+                margin: var(--page-margin);
                 @bottom-right {
                     content: counter(page) " / " counter(pages);
                     font-family: var(--font-body, Arial, sans-serif);
                     font-size: 7.5pt;
                     color: #aaa;
-                    padding-right: 12pt;
+                    padding-right: 2pt;
+                    padding-bottom: 2pt;
                 }
-            }
-            @page :first {
-                @bottom-right { content: none; }   /* No counter on page 1 (header CV already identifies the document) */
+                @top-left { content: none; }
+                @top-center { content: none; }
+                @top-right { content: none; }
             }
         }
 
@@ -500,9 +488,9 @@
 
         /* Publications section */
         .pub-list { list-style: decimal; padding-left: 1.4em; margin: 0; }
-        .pub-item { margin-bottom: 0.7em; font-size: 0.88em; line-height: 1.5; }
+        .pub-item { margin-bottom: 0.7em; font-size: 0.88em; line-height: 1.5; break-inside: avoid; page-break-inside: avoid; }
         .pub-citation { color: var(--text-main); }
-        .pub-section { page-break-inside: avoid; break-inside: avoid; }
+        .pub-section { page-break-inside: auto; break-inside: auto; }
         .pub-count { font-size: 0.75em; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
         .pub-venue-warn { color: #dc7900; font-size: 0.85em; margin-left: 4px; cursor: help; }
         .pub-first-author { color: #1d4ed8; font-size: 0.8em; margin-left: 4px; cursor: help; }
@@ -514,30 +502,46 @@
     </style>
 </head>
 <body>
-    
     <div class="page-container">
         <!-- PAGE ONE: Sidebar + Header, Summary, Achievements -->
         <div id="page-one" class="page">
-            <!-- Left Column (Sidebar: Contact, Education, Awards, Languages) -->
             <aside class="left-col">
                 <div class="contact-info">
                     <div class="sidebar-title">Contact</div>
+                    {% if personal_info.contact.email | default('') | trim %}
                     <div class="contact-item">
                         <i class="fas fa-envelope"></i>
                         <a href="mailto:{{ personal_info.contact.email }}">{{ personal_info.contact.email }}</a>
                     </div>
+                    {% endif %}
+                    {% if personal_info.contact.phone | default('') | trim %}
                     <div class="contact-item">
                         <i class="fas fa-phone"></i>
                         <span>{{ personal_info.contact.phone }}</span>
                     </div>
+                    {% endif %}
+                    {% if personal_info.contact.linkedin | default('') | trim %}
                     <div class="contact-item">
                         <i class="fab fa-linkedin"></i>
-                        <a href="{{ personal_info.contact.linkedin }}">{{ personal_info.contact.linkedin | replace('https://','') }}</a>
+                        {% set linkedin_href = personal_info.contact.linkedin_href | default('') | safe_url %}
+                        {% if linkedin_href %}
+                        <a href="{{ linkedin_href }}">{{ personal_info.contact.linkedin | replace('https://','') }}</a>
+                        {% else %}
+                        <span>{{ personal_info.contact.linkedin | replace('https://','') }}</span>
+                        {% endif %}
                     </div>
+                    {% endif %}
+                    {% if personal_info.contact.website | default('') | trim %}
                     <div class="contact-item">
                         <i class="fas fa-globe"></i>
-                        <a href="{{ personal_info.contact.website }}">{{ personal_info.contact.website | replace('https://','') }}</a>
+                        {% set website_href = personal_info.contact.website_href | default('') | safe_url %}
+                        {% if website_href %}
+                        <a href="{{ website_href }}">{{ personal_info.contact.website | replace('https://','') }}</a>
+                        {% else %}
+                        <span>{{ personal_info.contact.website | replace('https://','') }}</span>
+                        {% endif %}
                     </div>
+                    {% endif %}
                 </div>
 
                 <div class="sidebar-section">
@@ -574,6 +578,7 @@
                 </div>
                 {% endif %}
 
+                {% if personal_info.languages %}
                 <div class="sidebar-section">
                     <div class="sidebar-title">Languages</div>
                     <ul class="skill-list">
@@ -582,9 +587,9 @@
                         {% endfor %}
                     </ul>
                 </div>
+                {% endif %}
             </aside>
 
-            <!-- Right Column (Main Content: Header, Summary, Achievements) -->
             <main class="right-col">
                 <header class="header">
                     <h1 class="name">{{ personal_info.name }}</h1>
@@ -603,7 +608,7 @@
                     <h2 class="section-title"><i class="fas fa-trophy"></i> Selected Achievements</h2>
                     <ul class="achievement-list">
                         {% for ach in achievements %}
-                        <li>{{ ach.text if ach is mapping else ach }}</li>
+                        <li>{{ (ach.text or ach.description or ach.summary or ach.title or ach.name) if ach is mapping else ach }}</li>
                         {% endfor %}
                     </ul>
                 </section>
@@ -613,14 +618,22 @@
 
         <!-- PAGE TWO: Skills + Experience (Continuation) -->
         <div id="page-two" class="page">
-            <!-- Left Column (Skills) -->
             <aside class="left-col">
+                {% if skills_by_category %}
                 <section class="section">
-                    {# duckflow: flow=cv-render status=live
-                       artifact: template_metadata.skills_section_title → h2.section-title (page-2) #}
-                    <h2 class="section-title"><i class="fas fa-code"></i> {{ template_metadata.skills_section_title }}</h2>
+                          {# duckflow:
+                              id: cv_render.templates_cv_template.L630
+                              kind: artifact
+                              timestamp: "2026-03-27T02:31:32Z"
+                              status: live
+                              reads:
+                              - "artifact:human_skills_title"
+                              writes:
+                              - artifact:page_two.skills_heading
+                              notes: Uses the resolved skills title for the visual skills heading in the rendered HTML template. #}
+                    <h2 class="section-title"><i class="fas fa-code"></i> {{ human_skills_title | default('Technical Skills') }}</h2>
                     <div class="skills-grid">
-                        {% for cat in skills_by_category[:5] %}
+                        {% for cat in skills_by_category %}
                         <div class="skill-group">
                             <h4>{{ cat.category }}</h4>
                             <ul class="skill-list">
@@ -632,10 +645,11 @@
                         {% endfor %}
                     </div>
                 </section>
+                {% endif %}
             </aside>
 
-            <!-- Right Column (Experience - all entries; CSS pagination flows remainder to next print page) -->
             <main class="right-col">
+                {% if experiences %}
                 <section class="section">
                     <h2 class="section-title"><i class="fas fa-briefcase"></i> Experience</h2>
                     {% for exp in experiences %}
@@ -656,7 +670,7 @@
                     </div>
                     {% endfor %}
                 </section>
-
+                {% endif %}
                 {% if publications %}
                 <section class="section pub-section">
                     <h2 class="section-title"><i class="fas fa-file-alt"></i>
@@ -683,34 +697,6 @@
                 {% endif %}
             </main>
         </div>
-
-        <!-- PAGE THREE: Skills Continuation + Experience Continuation -->
-        <div id="page-three" class="page">
-             <!-- Left Column (Skills Continuation) -->
-             <aside class="left-col">
-                <section class="section">
-                    {# duckflow: flow=cv-render status=live
-                       artifact: template_metadata.skills_section_title → h2.section-title (page-3) #}
-                    <h2 class="section-title"><i class="fas fa-code"></i> {{ template_metadata.skills_section_title }}</h2>
-                    <div class="skills-grid">
-                        {% for cat in skills_by_category[5:] %}
-                        <div class="skill-group">
-                            <h4>{{ cat.category }}</h4>
-                            <ul class="skill-list">
-                                {% for skill in cat.skills %}
-                                <li>{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}{% endif %}{% if not skill.group_display_names and skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}</li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </section>
-             </aside>
-
-             <!-- Right Column (reserved for layout instructions; experience flows from page 2 via CSS pagination) -->
-             <main class="right-col"></main>
-        </div>
-        <!-- END PAGE THREE -->
     </div>
 
     <!-- ================================================================
@@ -737,7 +723,7 @@ PROFESSIONAL SUMMARY
 --------------------------------------------------------------------------------
 SELECTED ACHIEVEMENTS
 --------------------------------------------------------------------------------
-{% for ach in achievements %}* {{ ach.text if ach is mapping else ach }}
+{% for ach in achievements %}* {{ (ach.text or ach.description or ach.summary or ach.title or ach.name) if ach is mapping else ach }}
 {% endfor %}{% endif %}
 {% if experiences %}
 --------------------------------------------------------------------------------
@@ -758,8 +744,14 @@ EDUCATION
 {% endfor %}{% endif %}
 {% if skills_by_category %}
 --------------------------------------------------------------------------------
-{# duckflow: flow=cv-render status=live
-    artifact: "SKILLS" → ATS plain-text heading #}
+{# duckflow:
+    id: cv_render.templates_cv_template.L747
+    kind: artifact
+    timestamp: "2026-03-27T02:07:47Z"
+    status: live
+    writes:
+    - artifact:plaintext.skills_heading
+    notes: Emits the fixed ATS plain-text skills heading inside the hidden plaintext resume block. #}
 SKILLS
 --------------------------------------------------------------------------------
 {% for cat in skills_by_category %}{{ cat.category }}: {% for skill in cat.skills %}{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
@@ -799,9 +791,8 @@ SELECTED PUBLICATIONS
     }
 
     function run() {
-        document.querySelectorAll('.page').forEach(function (p) {
-            if (p.id !== 'page-one') addMarkers(p);
-        });
+        var flowPage = document.getElementById('page-two');
+        if (flowPage) addMarkers(flowPage);
     }
 
     if (document.readyState === 'loading') {

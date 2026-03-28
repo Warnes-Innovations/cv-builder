@@ -17,6 +17,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('publications-review');
 
 import { stateManager } from './state-manager.js';
+import { eyeSlashIcon } from './review-icons.js';
 
 // Track publication accept/reject decisions: cite_key → true (accept) | false (reject)
 window.publicationDecisions = {};
@@ -149,10 +150,10 @@ async function buildPublicationsReviewTable() {
         <td style="text-align:center;">${confBadge}</td>
         <td>${reasoning}</td>
         <td class="action-btns">
-          <button class="icon-btn${isAccepted ? ' active' : ''}" data-action="accept" aria-label="Include publication ${escapeHtml(citeKey)}" title="Include in CV"
-              style="color:#10b981;font-size:1.3em;" id="pub-accept-${rank}">✓</button>
-          <button class="icon-btn${!isAccepted ? ' active' : ''}" data-action="reject" aria-label="Exclude publication ${escapeHtml(citeKey)}" title="Exclude from CV"
-              style="color:#ef4444;font-size:1.3em;" id="pub-reject-${rank}">✗</button>
+            <button class="icon-btn${isAccepted ? ' active' : ''}" data-action="accept" aria-label="Include publication ${escapeHtml(citeKey)}" title="Include in CV"
+              style="color:#10b981;" id="pub-accept-${rank}">✓</button>
+            <button class="icon-btn${!isAccepted ? ' active' : ''}" data-action="reject" aria-label="Exclude publication ${escapeHtml(citeKey)}" title="Exclude from CV"
+              style="color:#ef4444;" id="pub-reject-${rank}">${eyeSlashIcon()}</button>
         </td>
       </tr>
     `;
@@ -197,18 +198,22 @@ function handlePubAction(citeKey, accept) {
 // ── Submit decisions ─────────────────────────────────────────────────────────
 
 async function submitPublicationDecisions() {
-  /* duckflow: {
-   *   "id": "publications_ui_submit_live",
-   *   "kind": "ui",
-   *   "timestamp": "2026-03-25T21:39:48Z",
-   *   "status": "live",
-   *   "handles": ["ui:publications-review.submit"],
-   *   "calls": ["POST /api/review-decisions", "GET /api/rewrites"],
-   *   "reads": ["window:publicationDecisions"],
-   *   "writes": ["request:POST /api/review-decisions.decisions"],
-   *   "notes": "Persists publication include/exclude decisions before the rewrite stage derives downstream content proposals from the accepted publication set."
-  * }
-  */
+  /* duckflow:
+   *   id: publications_ui_submit_live
+   *   kind: ui
+   *   timestamp: '2026-03-25T21:39:48Z'
+   *   status: live
+   *   handles:
+   *   - ui:publications-review.submit
+   *   calls:
+   *   - POST /api/review-decisions
+   *   - GET /api/rewrites
+   *   reads:
+   *   - window:publicationDecisions
+   *   writes:
+   *   - request:POST /api/review-decisions.decisions
+   *   notes: Persists publication include/exclude decisions before the rewrite stage derives downstream content proposals from the accepted publication set.
+   */
   const decisions = window.publicationDecisions || {};
   const count = Object.keys(decisions).length;
   if (count === 0) {
