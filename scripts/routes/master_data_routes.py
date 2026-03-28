@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
+from werkzeug.utils import safe_join
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
@@ -53,13 +54,10 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
 
 def _resolve_backup_path(backup_dir: Path, filename: str) -> Path | None:
     """Return a validated backup path constrained to ``backup_dir``."""
-    resolved_backup_dir = backup_dir.resolve(strict=False)
-    resolved_candidate = (backup_dir / filename).resolve(strict=False)
-    try:
-        resolved_candidate.relative_to(resolved_backup_dir)
-    except ValueError:
+    safe_path = safe_join(str(backup_dir), filename)
+    if safe_path is None:
         return None
-    return resolved_candidate
+    return Path(safe_path)
 
 
 # ---------------------------------------------------------------------------
@@ -195,10 +193,11 @@ def create_blueprint(deps):
                 "education_count":   len(data.get('education', [])),
                 "publication_count": len(data.get('publications', [])),
             })
-        except Exception as e:
+        except Exception:
+            logger.exception("Failed to load master data overview")
             return jsonify({
                 "ok": False,
-                "error": str(e),
+                "error": "Failed to load master data overview.",
             }), 500
 
     @bp.post("/api/master-data/update-achievement")
