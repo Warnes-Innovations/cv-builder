@@ -34,6 +34,7 @@ _MEANINGFUL_STATE_KEYS = (
     "approved_rewrites",
     "rewrite_audit",
     "layout_instructions",
+    "layout_safety_audit",
     "cover_letter_text",
     "cover_letter_params",
     "cover_letter_reused_from",

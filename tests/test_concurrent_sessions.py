@@ -2637,13 +2637,16 @@ def test_editing_and_rewrite_fetch_routes_enforce_ownership(build_app):
             json={
                 "session_id": session_id,
                 "owner_token": "owner-a",
-                "edits": {"0": ["Edited bullet", "Second bullet"]},
+                "edits": {"0": ["Edited bullet", {"text": "Second bullet", "hidden": True}]},
             },
         )
         assert saved_edits.status_code == 200
         assert saved_edits.get_json()["success"] is True
         assert manager.state["achievement_edits"] == {
-            0: ["Edited bullet", "Second bullet"]
+            0: [
+                {"text": "Edited bullet", "hidden": False},
+                {"text": "Second bullet", "hidden": True},
+            ]
         }
 
         review_achievement = client.post(
@@ -2972,7 +2975,7 @@ def test_layout_instruction_route_handles_validation_and_clarification(
         }
 
 
-def test_layout_settings_route_normalizes_font_size_and_history(build_app):
+def test_layout_settings_route_normalizes_layout_settings_and_history(build_app):
     app, tracker = build_app()
 
     with app.test_client() as client:
@@ -2990,12 +2993,18 @@ def test_layout_settings_route_normalizes_font_size_and_history(build_app):
 
         updated = client.post(
             "/api/layout-settings",
-            json={"session_id": session_id, "base_font_size": "10"},
+            json={
+                "session_id": session_id,
+                "base_font_size": "10",
+                "page_margin": "0.5",
+            },
         )
         assert updated.status_code == 200
         assert updated.get_json() == {"ok": True}
         assert manager.state["base_font_size"] == "10px"
+        assert manager.state["page_margin"] == "0.5in"
         assert manager.state["customizations"]["base_font_size"] == "10px"
+        assert manager.state["customizations"]["page_margin"] == "0.5in"
         assert manager.save_calls == 1
 
         history = client.get(
@@ -3023,12 +3032,15 @@ def test_layout_settings_route_normalizes_font_size_and_history(build_app):
                 "session_id": session_id,
                 "owner_token": "owner-a",
                 "base_font_size": "11px",
+                "page_margin": "0.75in",
             },
         )
         assert owned_update.status_code == 200
         assert owned_update.get_json() == {"ok": True}
         assert manager.state["base_font_size"] == "11px"
+        assert manager.state["page_margin"] == "0.75in"
         assert manager.state["customizations"]["base_font_size"] == "11px"
+        assert manager.state["customizations"]["page_margin"] == "0.75in"
         assert manager.save_calls == 2
 
 
@@ -3333,10 +3345,14 @@ def test_cv_ats_score_route_falls_back_to_achievement_edits_when_needed(
         manager.state["approved_rewrites"] = []
         manager.state["achievement_edits"] = {
             0: [
-                "Raised system reliability to 99.95%",
-                "Cut build times by 40%",
+                {"text": "Raised system reliability to 99.95%", "hidden": False},
+                {"text": "Cut build times by 40%", "hidden": True},
             ],
-            1: ["   ", 123, "Expanded platform adoption"],
+            1: [
+                {"text": "   ", "hidden": False},
+                {"text": 123, "hidden": False},
+                {"text": "Expanded platform adoption", "hidden": False},
+            ],
         }
         manager.state["session_summaries"] = {
             "ai_generated": "Should not override pinned summary"
@@ -3369,10 +3385,6 @@ def test_cv_ats_score_route_falls_back_to_achievement_edits_when_needed(
         assert customizations_arg["approved_rewrites"] == [
             {
                 "rewritten": "Raised system reliability to 99.95%",
-                "section": "experience",
-            },
-            {
-                "rewritten": "Cut build times by 40%",
                 "section": "experience",
             },
             {
@@ -3487,7 +3499,7 @@ def test_persuasion_check_route_falls_back_to_master_data_on_selection_error(
         )
 
 
-def test_persuasion_check_route_returns_500_on_orchestrator_error(build_app):
+def test_persuasion_check_route_returns_generic_500_on_orchestrator_error(build_app):
     app, tracker = build_app()
 
     with app.test_client() as client:
@@ -3503,7 +3515,7 @@ def test_persuasion_check_route_returns_500_on_orchestrator_error(build_app):
         )
 
         assert response.status_code == 500
-        assert response.get_json() == {"error": "persuasion failed"}
+        assert response.get_json() == {"error": "Failed to run persuasion checks."}
 
 
 def test_fetch_job_url_route_enforces_ownership_and_validates_input(build_app):

@@ -34,6 +34,7 @@ import {
   saveMasterAchievement,
   deleteMasterExperience,
   saveMasterSkill,
+  deleteMasterSkill,
   deleteMasterSummary,
 } from '../../web/master-cv.js'
 
@@ -677,6 +678,63 @@ describe('saveMasterSkill', () => {
     const body = JSON.parse(mockFetch.mock.calls[0][1].body)
     expect(body.category).toBe('ml')
     expect(body.skill).toBe('TensorFlow')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// deleteMasterSkill — uses showConfirmModal callback pattern
+// ---------------------------------------------------------------------------
+
+describe('deleteMasterSkill', () => {
+  function buildSkillDeleteDom() {
+    document.body.innerHTML = '<div id="document-content"></div>'
+  }
+
+  function makeDeleteSkillFetchMock(deleteResponse) {
+    return vi.fn().mockImplementation(url => {
+      if (url === '/api/master-data/overview') return Promise.resolve({ json: async () => ({}) })
+      if (url === '/api/master-data/full') return Promise.resolve({
+        json: async () => ({
+          personal_info: {}, experience: [], skills: [],
+          education: [], awards: [], selected_achievements: [],
+          professional_summaries: {},
+        }),
+      })
+      return Promise.resolve({ json: async () => deleteResponse })
+    })
+  }
+
+  it('calls showConfirmModal before proceeding', async () => {
+    await deleteMasterSkill('Python', '', true)
+    expect(showConfirmModalMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining('Python'),
+      expect.any(Function)
+    )
+  })
+
+  it('does not fetch when confirmation is declined', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    await deleteMasterSkill('Python', '', true)
+
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('posts delete to /api/master-data/skill when confirmed', async () => {
+    buildSkillDeleteDom()
+    const mockFetch = makeDeleteSkillFetchMock({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+    showConfirmModalMock = vi.fn((_title, _msg, cb) => cb())
+
+    await deleteMasterSkill('Python', 'Programming', false)
+    await flushPromises()
+
+    const skillCalls = mockFetch.mock.calls.filter(([url]) => url === '/api/master-data/skill')
+    expect(skillCalls.length).toBeGreaterThan(0)
+    const body = JSON.parse(skillCalls[0][1].body)
+    expect(body).toEqual({ action: 'delete', skill: 'Python', category: 'Programming' })
   })
 })
 

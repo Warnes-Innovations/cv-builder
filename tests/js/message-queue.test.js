@@ -30,9 +30,6 @@ beforeEach(() => {
   document.body.innerHTML = ''
   // Clear the module-level queue between tests
   _messageQueue.length = 0
-  // Provide globalThis stubs
-  vi.stubGlobal('escapeHtml', (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;'))
-  vi.stubGlobal('cleanJsonResponse', (s) => s.trim())
   vi.stubGlobal('sendMessage', vi.fn())
 })
 
@@ -122,6 +119,15 @@ describe('appendMessage', () => {
     buildConversation()
     appendMessage('assistant', '*italic*')
     expect(conv().querySelector('.content').innerHTML).toContain('<em>italic</em>')
+  })
+
+  it('escapes html while preserving markdown formatting', () => {
+    buildConversation()
+    appendMessage('assistant', '**safe** <img src=x onerror=alert(1)>')
+    const content = conv().querySelector('.content')
+    expect(content.innerHTML).toContain('<strong>safe</strong>')
+    expect(content.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;')
+    expect(content.querySelector('img')).toBeNull()
   })
 
   it('converts newlines to <br>', () => {

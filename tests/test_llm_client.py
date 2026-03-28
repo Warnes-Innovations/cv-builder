@@ -724,7 +724,8 @@ class TestCopilotSdkClient(unittest.TestCase):
         )
 
         messages = [{'role': 'user', 'content': 'Hi'}]
-        result = client.chat(messages, temperature=0.5, max_tokens=20)
+        with patch('utils.config.get_config', return_value=SimpleNamespace(llm_request_timeout=300.0)):
+            result = client.chat(messages, temperature=0.5, max_tokens=20)
 
         self.assertEqual(result, 'Hello')
         client._anyllm_completion.assert_called_once_with(
@@ -734,6 +735,7 @@ class TestCopilotSdkClient(unittest.TestCase):
             messages=messages,
             temperature=0.5,
             max_tokens=20,
+            timeout=300.0,
         )
 
     def test_chat_omits_api_key_when_none(self):
@@ -748,7 +750,8 @@ class TestCopilotSdkClient(unittest.TestCase):
         )
 
         messages = [{'role': 'user', 'content': 'Hi'}]
-        result = client.chat(messages, temperature=0.7)
+        with patch('utils.config.get_config', return_value=SimpleNamespace(llm_request_timeout=300.0)):
+            result = client.chat(messages, temperature=0.7)
 
         self.assertEqual(result, 'Hello')
         call_kwargs = client._anyllm_completion.call_args.kwargs

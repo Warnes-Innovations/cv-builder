@@ -41,6 +41,9 @@ except ModuleNotFoundError:
         "utils.cv_orchestrator"
     ).CVOrchestrator
 
+_cv_orchestrator_module = importlib.import_module(CVOrchestrator.__module__)
+_is_exact_schema_org_context = _cv_orchestrator_module._is_exact_schema_org_context
+
 ORCHESTRATOR_MODULE = CVOrchestrator.__module__
 
 # ---------------------------------------------------------------------------
@@ -439,6 +442,54 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
             result["personal_info"]["contact"]["address_display"], "Boston, MA"
         )
 
+    def test_contact_href_fields_are_normalized_for_rendering_only(self):
+        sel = self._selected()
+        sel["personal_info"]["contact"]["linkedin"] = "javascript:alert(1)"
+        sel["personal_info"]["contact"]["website"] = "https://example.com"
+
+        result = self.orc._prepare_cv_data_for_template(sel, self._job())
+
+        self.assertEqual(
+            result["personal_info"]["contact"]["linkedin"],
+            "javascript:alert(1)",
+        )
+        self.assertEqual(
+            result["personal_info"]["contact"]["linkedin_href"],
+            "",
+        )
+        self.assertEqual(
+            result["personal_info"]["contact"]["website_href"],
+            "https://example.com",
+        )
+        self.assertEqual(
+            sel["personal_info"]["contact"]["linkedin"],
+            "javascript:alert(1)",
+        )
+        self.assertNotIn("linkedin_href", sel["personal_info"]["contact"])
+
+    def test_base_font_size_is_sanitized_in_prepared_cv_data(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            base_font_size="10px; color:red;",
+        )
+
+        self.assertEqual(result["base_font_size"], "10px")
+
+    def test_human_skills_title_defaults_to_technical_skills(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(), self._job()
+        )
+        self.assertEqual(result["human_skills_title"], "Technical Skills")
+
+    def test_human_skills_title_uses_customization_override(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            customizations={"skills_section_title": "Core Capabilities"},
+        )
+        self.assertEqual(result["human_skills_title"], "Core Capabilities")
+
     def test_selected_achievements_are_normalized_to_text_field(self):
         sel = self._selected(
             {
@@ -490,6 +541,34 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
         self.assertEqual(
             result["experiences"][0]["achievements"][0]["text"],
             "Automated QC reporting for clinical datasets.",
+        )
+
+    def test_render_html_preview_preserves_normalized_selected_achievements(self):
+        selected = self._selected(
+            {
+                "achievements": [
+                    {
+                        "id": "sa_001",
+                        "title": "Selected publication impact",
+                        "description": (
+                            "Created widely used R packages with 7,000+ "
+                            "citations."
+                        ),
+                    }
+                ]
+            }
+        )
+
+        with patch.object(
+            self.orc,
+            "build_render_ready_content",
+            return_value=selected,
+        ):
+            html = self.orc.render_html_preview(self._job(), {})
+
+        self.assertIn(
+            "Created widely used R packages with 7,000+ citations.",
+            html,
         )
 
 
@@ -550,6 +629,7 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
             "experiences": [],
             "education": [],
             "skills_by_category": [],
+            "human_skills_title": "Technical Skills",
             "awards": [],
             "certifications": [],
             "publications": [],
@@ -579,6 +659,20 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
         if pre_start == -1 or pre_end == -1:
             raise AssertionError("Could not locate plaintext preformatted content in rendered HTML")
         return html[pre_start + len('<pre>'):pre_end]
+
+    def test_html_uses_human_skills_heading(self):
+        out_dir = Path(self.tmp.name) / "output"
+        cv_data = self._cv_data()
+        cv_data["skills_by_category"] = [
+            {"category": "Programming", "skills": [{"name": "Python"}]}
+        ]
+        cv_data["human_skills_title"] = "Core Capabilities"
+
+        self.orc._render_cv_html_pdf(cv_data, out_dir, "smoke_test")
+        html = (out_dir / "smoke_test.html").read_text(encoding="utf-8")
+
+        self.assertIn("Core Capabilities", html)
+        self.assertIn("SKILLS", html)
 
     def test_html_file_written(self):
         out_dir = Path(self.tmp.name) / "output"
@@ -632,7 +726,7 @@ class TestRenderCvHtmlPdf(unittest.TestCase):
         cv_data["skills_by_category"] = [
             {"category": "Programming", "skills": [{"name": "Python"}]}
         ]
-        cv_data["template_metadata"]["skills_section_title"] = "Core Capabilities"
+        cv_data["human_skills_title"] = "Core Capabilities"
 
         self.orc._render_cv_html_pdf(cv_data, out_dir, "smoke_test")
         html = (out_dir / "smoke_test.html").read_text(encoding="utf-8")
@@ -666,7 +760,6 @@ class TestGenerateHumanDocx(unittest.TestCase):
             "skills_by_category": [
                 {"category": "Programming", "skills": [{"name": "Python"}]}
             ],
-            "skills_section_title": "Core Capabilities",
             "education": [],
             "certifications": [],
             "publications": [],
@@ -682,12 +775,13 @@ class TestGenerateHumanDocx(unittest.TestCase):
             self._content(),
             {"company": "Acme Corp", "title": "Data Scientist"},
             out_dir,
+            skills_heading="Core Capabilities",
         )
         doc = Document(str(human_docx))
         paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
 
         self.assertIn("CORE CAPABILITIES", paragraphs)
-        self.assertNotIn("SKILLS", paragraphs)
+        self.assertNotIn("TECHNICAL SKILLS", paragraphs)
 
 
 class TestConvertHtmlToPdf(unittest.TestCase):
@@ -930,6 +1024,7 @@ class TestBuildJsonLd(unittest.TestCase):
         self.assertEqual(d["address"]["@type"], "PostalAddress")
         self.assertEqual(d["address"]["addressLocality"], "Boston, MA")
 
+
     def test_has_occupation_matches_experiences(self):
         d = self._parse()
         self.assertEqual(len(d["hasOccupation"]), 1)
@@ -964,8 +1059,20 @@ class TestBuildJsonLd(unittest.TestCase):
 
     def test_knows_about_contains_skills(self):
         d = self._parse()
-        self.assertIn("Python", d["knowsAbout"])
-        self.assertIn("R", d["knowsAbout"])
+        # knowsAbout entries are now DefinedTerm dicts with name + additionalType
+        skill_names = [
+            e["name"] if isinstance(e, dict) else e
+            for e in d["knowsAbout"]
+        ]
+        self.assertIn("Python", skill_names)
+        self.assertIn("R", skill_names)
+
+    def test_knows_about_entries_have_skill_type(self):
+        d = self._parse()
+        for entry in d["knowsAbout"]:
+            self.assertIsInstance(entry, dict, "knowsAbout entry must be a dict")
+            self.assertEqual(entry.get("@type"), "DefinedTerm")
+            self.assertIn(entry.get("additionalType"), ("HardSkill", "SoftSkill"))
 
     def test_award_strings_included(self):
         d = self._parse()
@@ -998,6 +1105,24 @@ class TestBuildJsonLd(unittest.TestCase):
             self.assertNotIn(
                 key, d, f"Key '{key}' should be absent when data is empty"
             )
+
+
+class TestSchemaOrgContextHelper(unittest.TestCase):
+
+    def test_accepts_exact_https_context(self):
+        self.assertTrue(_is_exact_schema_org_context("https://schema.org"))
+
+    def test_rejects_prefixed_context(self):
+        self.assertFalse(
+            _is_exact_schema_org_context("https://schema.org.evil.example")
+        )
+
+    def test_accepts_list_with_exact_context(self):
+        self.assertTrue(
+            _is_exact_schema_org_context(
+                ["https://example.com/context", "https://schema.org"]
+            )
+        )
 
 
 # ---------------------------------------------------------------------------

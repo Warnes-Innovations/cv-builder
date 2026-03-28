@@ -49,6 +49,67 @@ function cleanJsonResponse(text) {
 }
 
 /**
+ * Extract and parse the first valid JSON object embedded in free-form text.
+ * Returns null when no complete parseable object is found.
+ */
+function extractFirstJsonObject(text) {
+  if (text == null || typeof text !== 'string') return null;
+
+  const cleaned = cleanJsonResponse(text);
+
+  for (let start = 0; start < cleaned.length; start += 1) {
+    if (cleaned[start] !== '{') continue;
+
+    let depth = 0;
+    let inString = false;
+    let isEscaped = false;
+
+    for (let index = start; index < cleaned.length; index += 1) {
+      const char = cleaned[index];
+
+      if (inString) {
+        if (isEscaped) {
+          isEscaped = false;
+          continue;
+        }
+        if (char === '\\') {
+          isEscaped = true;
+          continue;
+        }
+        if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char === '{') {
+        depth += 1;
+        continue;
+      }
+
+      if (char !== '}') continue;
+
+      depth -= 1;
+      if (depth !== 0) continue;
+
+      const candidate = cleaned.slice(start, index + 1);
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        break;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Escape HTML special characters to prevent injection.
  * Converts: & < > " '
  */
@@ -121,10 +182,13 @@ function normalizePositionLabel(title, company) {
 
 /**
  * Strip HTML tags from string.
- * Removes all <tag>...</tag> patterns.
+ * Uses an inert template element, then removes executable/non-visible nodes.
  */
 function stripHtml(html) {
-  return html.replace(/<[^>]*>/g, '');
+  const template = document.createElement('template');
+  template.innerHTML = String(html ?? '');
+  template.content.querySelectorAll('script, style, noscript, template').forEach(node => node.remove());
+  return template.content.textContent || '';
 }
 
 /**
@@ -304,7 +368,7 @@ if (typeof globalThis !== 'undefined') {
 }
 
 export {
-  normalizeText, fmtDate, cleanJsonResponse, escapeHtml,
+  normalizeText, fmtDate, cleanJsonResponse, extractFirstJsonObject, escapeHtml,
   extractTitleAndCompanyFromJobText, normalizePositionLabel,
   stripHtml, truncateText, capitalizeWords, pluralize,
   formatDuration, ordinal,

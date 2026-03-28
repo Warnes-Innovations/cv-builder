@@ -158,8 +158,8 @@ class TestMasterDataOverview(unittest.TestCase):
         self.assertEqual(res.status_code, 500)
         self.assertFalse(data['ok'])
 
-    def test_overview_returns_500_when_preload_validation_fails(self):
-        """Endpoint surfaces pre-load validation failures from _load_master."""
+    def test_overview_returns_generic_500_when_preload_validation_fails(self):
+        """Pre-load validation failures should not leak internal details."""
         app, _, sid, stack = _make_app()
         with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=json.dumps({}))) as mock_file, \
@@ -175,7 +175,7 @@ class TestMasterDataOverview(unittest.TestCase):
 
         self.assertEqual(res.status_code, 500)
         self.assertFalse(data['ok'])
-        self.assertIn('validation failed', data['error'])
+        self.assertEqual(data['error'], 'Failed to load master data overview.')
         mock_file.assert_not_called()
 
 
@@ -1127,6 +1127,446 @@ class TestValidateMasterData(unittest.TestCase):
         # Missing schema should add a warning, not an error
         self.assertTrue(result.valid)
         self.assertTrue(any('not found' in w for w in result.warnings))
+
+
+# ---------------------------------------------------------------------------
+# POST /api/master-data/certification
+# ---------------------------------------------------------------------------
+
+class TestMasterDataCertification(unittest.TestCase):
+
+    _BASE_MASTER = {'certifications': [
+        {'name': 'AWS CSA', 'issuer': 'Amazon', 'year': 2022},
+    ]}
+
+    def test_add_certification(self):
+        """Adding a new certification appends it to the list."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'certifications': []}))), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+
+            res  = client.post('/api/master-data/certification', json={
+                'action': 'add', 'name': 'GCP PE', 'issuer': 'Google', 'year': 2023,
+                'session_id': sid,
+            })
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['action'], 'added')
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(len(dumped['certifications']), 1)
+        self.assertEqual(dumped['certifications'][0]['name'],   'GCP PE')
+        self.assertEqual(dumped['certifications'][0]['issuer'], 'Google')
+        self.assertEqual(dumped['certifications'][0]['year'],   2023)
+
+    def test_add_certification_missing_name_returns_400(self):
+        """Name is required for add; missing name returns 400."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'certifications': []}))):
+            res = client.post('/api/master-data/certification', json={
+                'action': 'add', 'issuer': 'Google', 'session_id': sid,
+            })
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('name', res.get_json()['error'])
+
+    def test_update_certification(self):
+        """Updating an existing certification patches only supplied fields."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._BASE_MASTER))), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+
+            res  = client.post('/api/master-data/certification', json={
+                'action': 'update', 'idx': 0, 'name': 'AWS CSA Pro', 'year': 2024,
+                'session_id': sid,
+            })
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['action'], 'updated')
+        dumped = mock_dump.call_args[0][0]
+        cert = dumped['certifications'][0]
+        self.assertEqual(cert['name'],   'AWS CSA Pro')
+        self.assertEqual(cert['year'],   2024)
+        self.assertEqual(cert['issuer'], 'Amazon')  # unchanged
+
+    def test_delete_certification(self):
+        """Deleting a certification removes it by index."""
+        app, _, sid, stack = _make_app()
+        master = {'certifications': [
+            {'name': 'A', 'issuer': 'X'},
+            {'name': 'B', 'issuer': 'Y'},
+        ]}
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+
+            res  = client.post('/api/master-data/certification', json={
+                'action': 'delete', 'idx': 0, 'session_id': sid,
+            })
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(len(dumped['certifications']), 1)
+        self.assertEqual(dumped['certifications'][0]['name'], 'B')
+
+    def test_delete_out_of_range_returns_404(self):
+        """Deleting an out-of-range index returns 404."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'certifications': []}))):
+            res = client.post('/api/master-data/certification', json={
+                'action': 'delete', 'idx': 99, 'session_id': sid,
+            })
+        self.assertEqual(res.status_code, 404)
+
+    def test_year_out_of_range_returns_400(self):
+        """Year outside 1900–2100 returns 400."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = client.post('/api/master-data/certification', json={
+                'action': 'add', 'name': 'Cert', 'year': 1800, 'session_id': sid,
+            })
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('year', res.get_json()['error'])
+
+    def test_invalid_action_returns_400(self):
+        """Unknown action returns 400."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = client.post('/api/master-data/certification', json={
+                'action': 'upsert', 'name': 'Cert', 'session_id': sid,
+            })
+        self.assertEqual(res.status_code, 400)
+
+    def test_phase_guard_blocks_customization(self):
+        """Route rejects writes during the customization phase."""
+        app, _, sid, stack = _make_app()
+        app.session_registry.get(sid).manager.state['phase'] = 'customization'
+        with stack, app.test_client() as client:
+            res = client.post('/api/master-data/certification', json={
+                'action': 'add', 'name': 'Cert', 'session_id': sid,
+            })
+        self.assertEqual(res.status_code, 409)
+        self.assertIn('Master data can only be modified', res.get_json()['error'])
+
+    def test_certification_internal_error_returns_generic_message(self):
+        """Server errors are logged but not exposed to the client."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', side_effect=IOError('disk exploded')):
+            res = client.post('/api/master-data/certification', json={
+                'action': 'add', 'name': 'Cert', 'session_id': sid,
+            })
+
+        self.assertEqual(res.status_code, 500)
+        self.assertEqual(
+            res.get_json()['error'],
+            'Failed to update certifications.',
+        )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/master-data/history
+# ---------------------------------------------------------------------------
+
+class TestMasterDataHistory(unittest.TestCase):
+
+    def test_history_returns_snapshots_newest_first(self):
+        """Existing backup files are listed sorted newest-first."""
+        import os
+        app, mock_orch, sid, stack = _make_app()
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            master_path.write_text('{}', encoding='utf-8')
+            backup_dir = Path(td) / 'backups'
+            backup_dir.mkdir()
+            # Create two backups in web_app format
+            b1 = backup_dir / 'Master_CV_Data.20260101_120000_000000.bak.json'
+            b2 = backup_dir / 'Master_CV_Data.20260301_090000_000000.bak.json'
+            b1.write_text('{}', encoding='utf-8')
+            b2.write_text('{}', encoding='utf-8')
+            mock_orch.master_data_path = str(master_path)
+
+            with stack, app.test_client() as client:
+                res  = client.get('/api/master-data/history', query_string={'session_id': sid})
+                data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        self.assertEqual(len(data['snapshots']), 2)
+        # Sorted descending: March backup first
+        self.assertEqual(data['snapshots'][0]['filename'],
+                         'Master_CV_Data.20260301_090000_000000.bak.json')
+        self.assertEqual(data['snapshots'][1]['filename'],
+                         'Master_CV_Data.20260101_120000_000000.bak.json')
+
+    def test_history_empty_when_backup_dir_absent(self):
+        """No backup directory → empty snapshots list."""
+        app, mock_orch, sid, stack = _make_app()
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            master_path.write_text('{}', encoding='utf-8')
+            mock_orch.master_data_path = str(master_path)
+
+            with stack, app.test_client() as client:
+                res  = client.get('/api/master-data/history', query_string={'session_id': sid})
+                data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(data['snapshots'], [])
+
+    def test_history_snapshot_has_required_fields(self):
+        """Each snapshot entry contains filename, size, and mtime."""
+        app, mock_orch, sid, stack = _make_app()
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            master_path.write_text('{}', encoding='utf-8')
+            backup_dir = Path(td) / 'backups'
+            backup_dir.mkdir()
+            b = backup_dir / 'Master_CV_Data.20260327_200000_000000.bak.json'
+            b.write_text('{"test": 1}', encoding='utf-8')
+            mock_orch.master_data_path = str(master_path)
+
+            with stack, app.test_client() as client:
+                res  = client.get('/api/master-data/history', query_string={'session_id': sid})
+                snap = res.get_json()['snapshots'][0]
+
+        self.assertIn('filename', snap)
+        self.assertIn('size',     snap)
+        self.assertIn('mtime',    snap)
+        self.assertGreater(snap['size'], 0)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/master-data/restore
+# ---------------------------------------------------------------------------
+
+class TestMasterDataRestore(unittest.TestCase):
+
+    _BACKUP_CONTENT = {'personal_info': {'name': 'Restored Name'}, 'skills': []}
+
+    def test_restore_from_web_app_format_backup(self):
+        """Restoring a web_app-format backup replaces master and reloads orchestrator."""
+        app, mock_orch, sid, stack = _make_app()
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            master_path.write_text(json.dumps({'personal_info': {'name': 'Old'}}),
+                                   encoding='utf-8')
+            backup_dir = Path(td) / 'backups'
+            backup_dir.mkdir()
+            backup_name = 'Master_CV_Data.20260101_120000_000000.bak.json'
+            (backup_dir / backup_name).write_text(
+                json.dumps(self._BACKUP_CONTENT), encoding='utf-8'
+            )
+            mock_orch.master_data_path = str(master_path)
+
+            with stack, app.test_client() as client, \
+                 patch('subprocess.run'), \
+                 patch('scripts.web_app.validate_master_data_file',
+                       return_value=ValidationResult(valid=True)):
+                res  = client.post('/api/master-data/restore', json={
+                    'filename': backup_name, 'session_id': sid,
+                })
+                data = res.get_json()
+
+            # Filesystem assertions must be inside the tmpdir context
+            self.assertEqual(res.status_code, 200)
+            self.assertTrue(data['ok'])
+            self.assertEqual(data['restored_from'], backup_name)
+            self.assertIn('safety_backup', data)
+            # Orchestrator in-memory data was updated
+            self.assertEqual(mock_orch.master_data['personal_info']['name'], 'Restored Name')
+            # Master file on disk was replaced
+            on_disk = json.loads(master_path.read_text(encoding='utf-8'))
+            self.assertEqual(on_disk['personal_info']['name'], 'Restored Name')
+
+    def test_restore_from_routes_format_backup(self):
+        """Restoring a routes-format backup (Master_CV_{ts}Z.json) is also accepted."""
+        app, mock_orch, sid, stack = _make_app()
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            master_path.write_text('{}', encoding='utf-8')
+            backup_dir = Path(td) / 'backups'
+            backup_dir.mkdir()
+            backup_name = 'Master_CV_20260327T200000Z.json'
+            (backup_dir / backup_name).write_text(
+                json.dumps(self._BACKUP_CONTENT), encoding='utf-8'
+            )
+            mock_orch.master_data_path = str(master_path)
+
+            with stack, app.test_client() as client, \
+                 patch('subprocess.run'), \
+                 patch('scripts.web_app.validate_master_data_file',
+                       return_value=ValidationResult(valid=True)):
+                res  = client.post('/api/master-data/restore', json={
+                    'filename': backup_name, 'session_id': sid,
+                })
+                data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+
+    def test_restore_missing_backup_returns_404(self):
+        """Non-existent backup filename returns 404."""
+        app, mock_orch, sid, stack = _make_app()
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            master_path.write_text('{}', encoding='utf-8')
+            (Path(td) / 'backups').mkdir()
+            mock_orch.master_data_path = str(master_path)
+
+            with stack, app.test_client() as client:
+                res = client.post('/api/master-data/restore', json={
+                    'filename': 'Master_CV_Data.20260101_120000_000000.bak.json',
+                    'session_id': sid,
+                })
+        self.assertEqual(res.status_code, 404)
+
+    def test_restore_invalid_filename_returns_400(self):
+        """Filename that does not match either backup pattern is rejected."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            for bad in ['../evil.json', 'arbitrary.json', 'Master_CV_Data.json']:
+                with self.subTest(filename=bad):
+                    res = client.post('/api/master-data/restore', json={
+                        'filename': bad, 'session_id': sid,
+                    })
+                    self.assertEqual(res.status_code, 400)
+                    self.assertIn('Invalid backup filename', res.get_json()['error'])
+
+    def test_restore_missing_filename_returns_400(self):
+        """Empty or absent filename returns 400."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = client.post('/api/master-data/restore', json={'session_id': sid})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('filename', res.get_json()['error'])
+
+    def test_restore_phase_guard_blocks_customization(self):
+        """Restore is blocked during the customization phase."""
+        app, _, sid, stack = _make_app()
+        app.session_registry.get(sid).manager.state['phase'] = 'customization'
+        with stack, app.test_client() as client:
+            res = client.post('/api/master-data/restore', json={
+                'filename': 'Master_CV_Data.20260101_120000_000000.bak.json',
+                'session_id': sid,
+            })
+        self.assertEqual(res.status_code, 409)
+        self.assertIn('Master data can only be modified', res.get_json()['error'])
+
+    def test_restore_creates_safety_backup_before_overwrite(self):
+        """A safety backup of the current master is created before restoring."""
+        app, mock_orch, sid, stack = _make_app()
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            original = {'personal_info': {'name': 'Before Restore'}}
+            master_path.write_text(json.dumps(original), encoding='utf-8')
+            backup_dir = Path(td) / 'backups'
+            backup_dir.mkdir()
+            backup_name = 'Master_CV_Data.20260101_120000_000000.bak.json'
+            (backup_dir / backup_name).write_text(
+                json.dumps(self._BACKUP_CONTENT), encoding='utf-8'
+            )
+            mock_orch.master_data_path = str(master_path)
+
+            with stack, app.test_client() as client, \
+                 patch('subprocess.run'), \
+                 patch('scripts.web_app.validate_master_data_file',
+                       return_value=ValidationResult(valid=True)):
+                res  = client.post('/api/master-data/restore', json={
+                    'filename': backup_name, 'session_id': sid,
+                })
+                safety_name = res.get_json()['safety_backup']
+
+            # Filesystem assertions must be inside the tmpdir context
+            safety_path = backup_dir / safety_name
+            self.assertTrue(safety_path.exists())
+            safety_data = json.loads(safety_path.read_text(encoding='utf-8'))
+            self.assertEqual(safety_data['personal_info']['name'], 'Before Restore')
+
+    def test_restore_failure_returns_generic_message(self):
+        """Restore errors do not leak internal exception details."""
+        app, mock_orch, sid, stack = _make_app()
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            master_path.write_text('{}', encoding='utf-8')
+            backup_dir = Path(td) / 'backups'
+            backup_dir.mkdir()
+            backup_name = 'Master_CV_Data.20260101_120000_000000.bak.json'
+            (backup_dir / backup_name).write_text(
+                json.dumps(self._BACKUP_CONTENT), encoding='utf-8'
+            )
+            mock_orch.master_data_path = str(master_path)
+
+            with stack, app.test_client() as client, \
+                 patch('shutil.copy2', side_effect=OSError('copy failed')):
+                res = client.post('/api/master-data/restore', json={
+                    'filename': backup_name,
+                    'session_id': sid,
+                })
+
+        self.assertEqual(res.status_code, 500)
+        self.assertEqual(
+            res.get_json()['error'],
+            'Failed to restore the selected backup.',
+        )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/master-data/export
+# ---------------------------------------------------------------------------
+
+class TestMasterDataExport(unittest.TestCase):
+
+    _MASTER = {'personal_info': {'name': 'Export Test'}, 'skills': ['Python']}
+
+    def test_export_returns_json_attachment(self):
+        """Export endpoint returns JSON with Content-Disposition attachment header."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER))):
+            res = client.get('/api/master-data/export', query_string={'session_id': sid})
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.content_type, 'application/json')
+        cd = res.headers.get('Content-Disposition', '')
+        self.assertIn('attachment', cd)
+        self.assertIn('Master_CV_Data.json', cd)
+
+    def test_export_body_is_valid_json_of_master(self):
+        """Response body is the full master data as valid JSON."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(self._MASTER))):
+            res = client.get('/api/master-data/export', query_string={'session_id': sid})
+
+        body = json.loads(res.data)
+        self.assertEqual(body['personal_info']['name'], 'Export Test')
+        self.assertEqual(body['skills'], ['Python'])
+
+    def test_export_io_error_returns_500(self):
+        """File read failure returns 500."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', side_effect=IOError('disk error')):
+            res = client.get('/api/master-data/export', query_string={'session_id': sid})
+
+        self.assertEqual(res.status_code, 500)
+        self.assertFalse(res.get_json()['ok'])
+        self.assertEqual(
+            res.get_json()['error'],
+            'Failed to export master data.',
+        )
 
 
 if __name__ == '__main__':

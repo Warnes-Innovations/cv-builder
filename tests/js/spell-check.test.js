@@ -11,6 +11,9 @@
  *  chains and are covered by integration tests.)
  */
 import {
+  populateSpellCheckTab,
+  renderSpellCheckZeroState,
+  submitEmptySpellCheck,
   buildSpellStatsSummary,
   dismissSpellSuggestion,
   addSpellWord,
@@ -40,6 +43,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   delete window._spellSugMap
+  document.body.innerHTML = ''
 })
 
 // ── buildSpellStatsSummary ────────────────────────────────────────────────
@@ -237,5 +241,76 @@ describe('submitSpellCheckDecisions', () => {
     const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
     const ignoredItem = body.spell_audit.find(e => e.final === 'teh')
     expect(ignoredItem.outcome).toBe('ignore')
+  })
+})
+
+describe('renderSpellCheckZeroState', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+  })
+
+  it('renders an explicit continue button instead of auto-generating', () => {
+    renderSpellCheckZeroState('Spell check passed — no issues found.')
+
+    expect(document.getElementById('document-content').textContent).toContain('Continue to Generate CV')
+    expect(globalThis.sendAction).not.toHaveBeenCalled()
+  })
+})
+
+describe('submitEmptySpellCheck', () => {
+  it('persists an empty audit and then generates', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+    })
+
+    await submitEmptySpellCheck()
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/spell-check-complete', expect.objectContaining({
+      method: 'POST',
+    }))
+    expect(globalThis.sendAction).toHaveBeenCalledWith('generate_cv')
+  })
+})
+
+describe('populateSpellCheckTab', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+  })
+
+  it('renders a zero-state review panel when there are no sections', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: true, sections: [] }),
+    })
+
+    await populateSpellCheckTab()
+
+    expect(globalThis.sendAction).not.toHaveBeenCalled()
+    expect(document.getElementById('document-content').textContent).toContain('No CV sections are available to check.')
+    expect(document.getElementById('document-content').textContent).toContain('Continue to Generate CV')
+  })
+
+  it('renders a zero-state review panel when checks find no issues', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          sections: [{ id: 'summary', label: 'Summary', text: 'Clean text', context: 'summary' }],
+          aggregate_stats: { word_count: 2, unique_words: 2, custom_dict_words: 0 },
+          custom_dict_size: 0,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, suggestions: [], stats: { unknown_word_count: 0, grammar_issue_count: 0 } }),
+      })
+
+    await populateSpellCheckTab()
+
+    expect(globalThis.sendAction).not.toHaveBeenCalled()
+    expect(document.getElementById('document-content').textContent).toContain('Spell check passed — no issues found.')
+    expect(document.getElementById('document-content').textContent).toContain('Continue to Generate CV')
   })
 })

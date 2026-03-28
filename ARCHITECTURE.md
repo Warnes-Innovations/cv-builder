@@ -1119,11 +1119,11 @@ Current assumptions:
 2. If either column overflows, the resume requires an additional page, so both column lengths must be tracked.
 3. The current design always produces at least two pages.
 4. The left column on page one is unlikely to overflow under the current sidebar design.
-5. Skills occupy the left column of page two and any following skills-continuation page.
+5. Skills occupy the left column of page two, and that continuation page can span additional printed pages.
 6. The main narrative sections occupy the right column: name, job title, summary, achievements, experience, publications, and related content.
 7. The ideal layout keeps name, job title, summary, and achievements on page one.
 8. Experience may begin on page one and continue onto following pages, but individual experience entries should remain whole units with no mid-entry page breaks.
-9. The current estimator therefore tracks first-page right-column pressure separately from the following-page left and right columns.
+9. The current estimator therefore tracks first-page right-column pressure separately from the continuation-page left and right columns.
 
 ### 5.2 Layout Model Refresh
 

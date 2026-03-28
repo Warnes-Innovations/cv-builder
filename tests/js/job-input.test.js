@@ -21,6 +21,9 @@ import {
   clearURLInput,
   handleFileSelected,
   clearSelectedFile,
+  showIntakeConfirmation,
+  confirmIntakeAndAnalyze,
+  skipIntakeConfirmation,
 } from '../../web/job-input.js'
 
 // ── DOM helpers ───────────────────────────────────────────────────────────
@@ -264,5 +267,160 @@ describe('clearSelectedFile', () => {
     expect(document.getElementById('file-selected-info').style.display).toBe('none')
     expect(document.getElementById('file-upload-btn').style.display).toBe('none')
     expect(document.getElementById('file-upload-error').style.display).toBe('none')
+  })
+})
+
+// ── showIntakeConfirmation ────────────────────────────────────────────────
+
+describe('showIntakeConfirmation', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+    vi.stubGlobal('escapeHtml', s => String(s ?? ''))
+    vi.stubGlobal('analyzeJob', vi.fn().mockResolvedValue(undefined))
+    vi.stubGlobal('setLoading', vi.fn())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('renders role/company/date fields from extracted metadata', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url) => {
+      if (url.includes('intake-metadata')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ role: 'Data Scientist', company: 'Acme', date_applied: '2026-03-27' }) })
+      }
+      // prior-clarifications
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ found: false, matches: [] }) })
+    }))
+
+    await showIntakeConfirmation()
+
+    expect(document.getElementById('intake-role').value).toBe('Data Scientist')
+    expect(document.getElementById('intake-company').value).toBe('Acme')
+    expect(document.getElementById('intake-date').value).toBe('2026-03-27')
+  })
+
+  it('shows prior-session note when a match is found', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url) => {
+      if (url.includes('intake-metadata')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ role: 'Engineer', company: 'Corp', date_applied: '2026-03-27' }) })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ found: true, matches: [{ role: 'Engineer', position_name: 'Engineer at Corp', answers: { q1: 'a1' } }] }),
+      })
+    }))
+
+    await showIntakeConfirmation()
+
+    const content = document.getElementById('document-content').innerHTML
+    expect(content).toContain('Prior session found')
+  })
+
+  it('omits prior-session note when no matches', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url) => {
+      if (url.includes('intake-metadata')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ role: 'PM', company: 'Co', date_applied: '2026-03-27' }) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ found: false, matches: [] }) })
+    }))
+
+    await showIntakeConfirmation()
+
+    expect(document.getElementById('document-content').innerHTML).not.toContain('Prior session found')
+  })
+
+  it('falls back to analyzeJob() when document-content is absent', async () => {
+    document.body.innerHTML = ''
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ role: null, company: null, date_applied: null }) }))
+
+    await showIntakeConfirmation()
+
+    expect(window.analyzeJob).toHaveBeenCalledOnce()
+  })
+
+  it('renders the Confirm and Skip buttons', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ role: 'Dev', company: 'Co', date_applied: '2026-03-27', found: false, matches: [] }) })
+    ))
+
+    await showIntakeConfirmation()
+
+    const content = document.getElementById('document-content').innerHTML
+    expect(content).toContain('intake-confirm-btn')
+    expect(content).toContain('Skip')
+  })
+})
+
+// ── confirmIntakeAndAnalyze ───────────────────────────────────────────────
+
+describe('confirmIntakeAndAnalyze', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <button id="intake-confirm-btn">Confirm</button>
+      <input id="intake-role" value="Data Scientist">
+      <input id="intake-company" value="Acme">
+      <input id="intake-date" value="2026-03-27">`
+    vi.stubGlobal('analyzeJob', vi.fn().mockResolvedValue(undefined))
+    vi.stubGlobal('setLoading', vi.fn())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('posts confirm-intake and then calls analyzeJob', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true }) }))
+
+    await confirmIntakeAndAnalyze()
+
+    const calls = window.fetch.mock.calls
+    const confirmCall = calls.find(([url]) => url.includes('confirm-intake'))
+    expect(confirmCall).toBeDefined()
+    const body = JSON.parse(confirmCall[1].body)
+    expect(body.role).toBe('Data Scientist')
+    expect(body.company).toBe('Acme')
+    expect(body.date_applied).toBe('2026-03-27')
+    expect(window.analyzeJob).toHaveBeenCalledOnce()
+  })
+
+  it('disables the confirm button immediately', async () => {
+    const btn = document.getElementById('intake-confirm-btn')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true }) }))
+
+    confirmIntakeAndAnalyze()  // do not await — check synchronously
+
+    expect(btn.disabled).toBe(true)
+  })
+
+  it('still calls analyzeJob even when confirm-intake request fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network')))
+
+    await confirmIntakeAndAnalyze()
+
+    expect(window.analyzeJob).toHaveBeenCalledOnce()
+  })
+})
+
+// ── skipIntakeConfirmation ────────────────────────────────────────────────
+
+describe('skipIntakeConfirmation', () => {
+  beforeEach(() => {
+    vi.stubGlobal('analyzeJob', vi.fn().mockResolvedValue(undefined))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('calls analyzeJob directly without any fetch', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+
+    await skipIntakeConfirmation()
+
+    expect(window.analyzeJob).toHaveBeenCalledOnce()
+    expect(window.fetch).not.toHaveBeenCalled()
   })
 })

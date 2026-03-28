@@ -50,8 +50,7 @@ async function populateSpellCheckTab() {
 
     const sections = sectionsData.sections || [];
     if (sections.length === 0) {
-      // Fast-path: no sections to check — advance phase immediately
-      await completeSpellCheckFastPath('No CV sections available to check.');
+      renderSpellCheckZeroState('No CV sections are available to check.');
       return;
     }
 
@@ -81,8 +80,7 @@ async function populateSpellCheckTab() {
     document.getElementById('spell-loading').style.display = 'none';
 
     if (flaggedSections.length === 0) {
-      // Zero-flag fast-path
-      await completeSpellCheckFastPath(
+      renderSpellCheckZeroState(
         'Spell check passed — no issues found.',
         buildSpellStatsSummary({
           total_sections: sections.length,
@@ -113,16 +111,9 @@ async function populateSpellCheckTab() {
   }
 }
 
-// ── Fast-path (no issues) ─────────────────────────────────────────────────────
+// ── Zero-state spell stage ────────────────────────────────────────────────────
 
-async function completeSpellCheckFastPath(message, statsLine = '', customDictSize = 0) {
-  // Save empty audit and advance to generation
-  const res  = await fetch('/api/spell-check-complete', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ spell_audit: [] })
-  });
-  const data = await res.json();
+function renderSpellCheckZeroState(message, statsLine = '', customDictSize = 0) {
   const content = document.getElementById('document-content');
   const statsParts = [];
   if (statsLine) statsParts.push(`<p style="color:#6b7280;font-size:0.95em;margin:8px 0 0;">${escapeHtml(statsLine)}</p>`);
@@ -132,10 +123,26 @@ async function completeSpellCheckFastPath(message, statsLine = '', customDictSiz
       <div style="font-size:3em;margin-bottom:16px;">✅</div>
       <h2 style="color:#166534;">${escapeHtml(message)}</h2>
       ${statsParts.join('\n')}
-      <p style="color:#6b7280;margin:16px 0 24px;">Advancing to CV generation…</p>
+      <p style="color:#6b7280;margin:16px 0 24px;">Continue when you are ready to generate your CV.</p>
+      <button class="submit-btn" onclick="submitEmptySpellCheck()">Continue to Generate CV</button>
     </div>
   `;
-  // Refresh status then navigate to CV tab and generate
+}
+
+async function submitEmptySpellCheck() {
+  const res  = await fetch('/api/spell-check-complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spell_audit: [] })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    showAlertModal('❌ Error', `Failed to save spell check: ${data.error || 'Unknown error'}`);
+    return;
+  }
+  stateManager.markContentChanged();
+  appendMessage('assistant', '✅ Spell check complete — no issues required changes. Generating your CV…');
+  scheduleAtsRefresh('review_checkpoint');
   await fetchStatus();
   await sendAction('generate_cv');
 }
@@ -318,18 +325,23 @@ async function addSpellWord(word, sugId) {
 // ── Submit audit ──────────────────────────────────────────────────────────────
 
 async function submitSpellCheckDecisions() {
-  /* duckflow: {
-   *   "id": "spell_ui_submit_live",
-   *   "kind": "ui",
-   *   "timestamp": "2026-03-25T21:39:48Z",
-   *   "status": "live",
-   *   "handles": ["ui:spell-check.submit"],
-   *   "calls": ["POST /api/spell-check-complete", "POST /api/action"],
-   *   "reads": ["window:_spellSugMap"],
-   *   "writes": ["request:POST /api/spell-check-complete.spell_audit", "window:spellAudit"],
-   *   "notes": "Collapses reviewed spell suggestions into the canonical spell audit, persists that audit in session state, and then triggers generation using the corrected content."
-  * }
-  */
+  /* duckflow:
+   *   id: spell_ui_submit_live
+   *   kind: ui
+   *   timestamp: '2026-03-25T21:39:48Z'
+   *   status: live
+   *   handles:
+   *   - ui:spell-check.submit
+   *   calls:
+   *   - POST /api/spell-check-complete
+   *   - POST /api/action
+   *   reads:
+   *   - window:_spellSugMap
+   *   writes:
+   *   - request:POST /api/spell-check-complete.spell_audit
+   *   - window:spellAudit
+   *   notes: Collapses reviewed spell suggestions into the canonical spell audit, persists that audit in session state, and then triggers generation using the corrected content.
+   */
   // Count items still marked 'pending' (not explicitly reviewed)
   const pendingEntries = Object.values(window._spellSugMap || {}).filter(e => e.outcome === 'pending');
   if (pendingEntries.length > 0) {
@@ -382,7 +394,8 @@ async function submitSpellCheckDecisions() {
 export {
   spellAudit,
   populateSpellCheckTab,
-  completeSpellCheckFastPath,
+  renderSpellCheckZeroState,
+  submitEmptySpellCheck,
   buildSpellStatsSummary,
   renderSpellSuggestions,
   applyCustomSpellCorrection,

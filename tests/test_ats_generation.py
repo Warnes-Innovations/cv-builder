@@ -138,8 +138,13 @@ def test_ats_docx_is_generated(orchestrator, selected_content, job_analysis, tmp
     assert ats_file.stat().st_size > 0, "ATS DOCX is empty"
 
 
-def test_ats_docx_name_uses_heading1(orchestrator, selected_content, job_analysis, tmp_path):
-    """ATS DOCX must have the candidate name as a Heading 1 paragraph (fixes docx_heading1_present)."""
+def test_ats_docx_sections_use_heading1(orchestrator, selected_content, job_analysis, tmp_path):
+    """ATS DOCX section headings must use Heading 1 style (US-H2).
+
+    The candidate name is now a bold run (not a Heading style), so that the
+    Heading 1 hierarchy is reserved exclusively for section headings as
+    required by US-H2 acceptance criteria.
+    """
     from docx import Document  # type: ignore
 
     out_dir = tmp_path / "ats_out_h1"
@@ -148,17 +153,27 @@ def test_ats_docx_name_uses_heading1(orchestrator, selected_content, job_analysi
     ats_file = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
     doc = Document(str(ats_file))
 
-    heading1_paragraphs = [p for p in doc.paragraphs if p.style.name == "Heading 1"]
-    assert heading1_paragraphs, "No Heading 1 paragraph found in ATS DOCX"
+    heading1_texts = [p.text.strip() for p in doc.paragraphs if p.style.name == "Heading 1"]
+    # At least one standard section heading must be Heading 1
+    assert any(h in heading1_texts for h in (
+        "Professional Summary", "Work Experience", "Technical Skills",
+        "Core Competencies", "Education", "Certifications",
+    )), f"No standard Heading 1 section found; Heading 1 paragraphs: {heading1_texts}"
 
+    # Candidate name must NOT be a Heading 1 — it is rendered as a bold run
     name = selected_content["personal_info"]["name"]
-    assert any(name in p.text for p in heading1_paragraphs), (
-        f"Expected name '{name}' in a Heading 1 paragraph; found: {[p.text for p in heading1_paragraphs]}"
+    assert name not in heading1_texts, (
+        f"Candidate name '{name}' should not be a Heading 1 paragraph"
     )
 
 
 def test_ats_docx_uses_skills_heading(orchestrator, selected_content, job_analysis, tmp_path):
-    """ATS DOCX must normalize the skills heading to SKILLS."""
+    """ATS DOCX uses standard skill section headings on Heading 1 (US-H2, US-H8).
+
+    Hard skills render under 'Technical Skills'; soft skills (when present)
+    render under 'Core Competencies'.  With the default fixture (no soft
+    skills), only 'Technical Skills' is expected.
+    """
     from docx import Document  # type: ignore
 
     out_dir = tmp_path / "ats_out_skills_heading"
@@ -167,9 +182,89 @@ def test_ats_docx_uses_skills_heading(orchestrator, selected_content, job_analys
     ats_file = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
     doc = Document(str(ats_file))
 
-    headings = [p.text.strip() for p in doc.paragraphs if p.style.name == "Heading 2"]
-    assert "SKILLS" in headings
-    assert "CORE COMPETENCIES" not in headings
+    heading1_texts = [p.text.strip() for p in doc.paragraphs if p.style.name == "Heading 1"]
+    assert "Technical Skills" in heading1_texts, (
+        f"'Technical Skills' not found in Heading 1 paragraphs: {heading1_texts}"
+    )
+    # With all-hard skills fixture, the old flat 'SKILLS' label must be gone
+    assert "SKILLS" not in heading1_texts
+
+
+def test_ats_docx_soft_skill_section(orchestrator, job_analysis, tmp_path):
+    """When soft skills are present they appear under 'Core Competencies' (US-H8)."""
+    from docx import Document  # type: ignore
+
+    out_dir = tmp_path / "ats_out_soft"
+    out_dir.mkdir()
+
+    content_with_soft = {
+        "personal_info": {"name": "Test User", "contact": {}},
+        "summary": "Test summary.",
+        "experiences": [],
+        "skills": [
+            {"name": "Python",         "category": "Programming",    "years": 10},
+            {"name": "Leadership",     "category": "Soft Skills",    "years": 5},
+            {"name": "Communication",  "category": "Soft Skills",    "years": 5},
+        ],
+        "education": [], "certifications": [], "awards": [],
+        "achievements": [], "publications": [],
+    }
+
+    ats_file = orchestrator._generate_ats_docx(content_with_soft, job_analysis, out_dir)
+    doc = Document(str(ats_file))
+
+    heading1_texts = [p.text.strip() for p in doc.paragraphs if p.style.name == "Heading 1"]
+    assert "Technical Skills" in heading1_texts
+    assert "Core Competencies" in heading1_texts
+
+
+def test_ats_docx_phone_normalized(orchestrator, job_analysis, tmp_path):
+    """Phone number in ATS DOCX contact line is normalized to NNN-NNN-NNNN (US-H3)."""
+    from docx import Document  # type: ignore
+
+    out_dir = tmp_path / "ats_out_phone"
+    out_dir.mkdir()
+
+    content_parentheses_phone = {
+        "personal_info": {
+            "name": "Test User",
+            "contact": {
+                "email": "test@example.com",
+                "phone": "(585) 678-6661",
+                "address": {"city": "Rochester", "state": "NY"},
+            },
+        },
+        "summary": "Test.",
+        "experiences": [], "skills": [], "education": [],
+        "certifications": [], "awards": [], "achievements": [], "publications": [],
+    }
+    ats_file = orchestrator._generate_ats_docx(content_parentheses_phone, job_analysis, out_dir)
+    doc = Document(str(ats_file))
+    full_text = "\n".join(p.text for p in doc.paragraphs)
+    assert "585-678-6661" in full_text, "Normalized phone not found in ATS DOCX"
+    assert "(585)" not in full_text, "Phone parentheses not stripped in ATS DOCX"
+
+
+def test_ats_docx_job_entry_one_line(orchestrator, selected_content, job_analysis, tmp_path):
+    """Job entries use one-line format: Title | Company | Location | DateRange (US-H5)."""
+    from docx import Document  # type: ignore
+
+    out_dir = tmp_path / "ats_out_entry"
+    out_dir.mkdir()
+
+    ats_file = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
+    doc = Document(str(ats_file))
+    full_text = "\n".join(p.text for p in doc.paragraphs)
+    # First experience: Chief Scientific Officer | TNT³ | Remote | 2024-01 – Present
+    assert "Chief Scientific Officer" in full_text
+    assert "2024-01" in full_text  # date appears
+    # Key check: title and company appear on same line as the date range
+    for para in doc.paragraphs:
+        if "Chief Scientific Officer" in para.text and "2024-01" in para.text:
+            assert "TNT³" in para.text, "Company must be on the same line as title and dates"
+            break
+    else:
+        assert False, "No single paragraph contains title, company, and date range together"
 
 
 def test_ats_compatibility_score_acceptable(orchestrator, selected_content, job_analysis):
@@ -342,6 +437,49 @@ def test_proposed_order_case_insensitive():
     job_keywords = {"Python"}
     proposed = _compute_proposed_order(achievements, job_keywords)
     assert proposed[0] == 0  # PYTHON matches 'python' keyword
+
+
+def test_build_json_ld_knows_about_has_skill_types(orchestrator, selected_content, job_analysis):
+    """JSON-LD knowsAbout entries include additionalType HardSkill or SoftSkill (US-H8)."""
+    import json as _json
+
+    # Prepare cv_data as the orchestrator's prepare_cv_data would produce,
+    # but use a direct call to _build_json_ld with a minimal skills_by_category.
+    cv_data = {
+        "personal_info": selected_content["personal_info"],
+        "professional_summary": selected_content["summary"],
+        "experiences": selected_content["experiences"],
+        "education":   selected_content["education"],
+        "awards":      selected_content.get("awards", []),
+        "skills_by_category": [
+            {
+                "category": "Programming",
+                "skills": [
+                    {"name": "Python",       "category": "Programming", "years": 15},
+                    {"name": "Leadership",   "category": "Soft Skills", "years": 5},
+                ],
+            }
+        ],
+    }
+
+    json_ld_str = orchestrator._build_json_ld(cv_data, job_analysis)
+    ld = _json.loads(json_ld_str)
+
+    knows_about = ld.get("knowsAbout", [])
+    assert len(knows_about) == 2, f"Expected 2 skill entries, got {len(knows_about)}"
+
+    # All entries must be DefinedTerm objects with additionalType
+    for entry in knows_about:
+        assert isinstance(entry, dict), f"knowsAbout entry should be a dict: {entry}"
+        assert entry.get("@type") == "DefinedTerm", f"Missing @type DefinedTerm: {entry}"
+        assert entry.get("additionalType") in ("HardSkill", "SoftSkill"), (
+            f"additionalType must be HardSkill or SoftSkill: {entry}"
+        )
+
+    # Python → HardSkill, Leadership (soft category) → SoftSkill
+    by_name = {e["name"]: e["additionalType"] for e in knows_about}
+    assert by_name.get("Python")    == "HardSkill"
+    assert by_name.get("Leadership") == "SoftSkill"
 
 
 if __name__ == '__main__':

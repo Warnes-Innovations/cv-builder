@@ -22,6 +22,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('experience-review');
 
 import { stateManager } from './state-manager.js';
+import { eyeSlashIcon } from './review-icons.js';
 
 // ── Experience details fetch ───────────────────────────────────────────────
 
@@ -163,13 +164,13 @@ function _renderExperienceTable(container, recommendedSet, data) {
         <td>${confidenceBadge}</td>
         <td style="max-width:300px;"><small>${escapeHtml(reasoningText)}</small></td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${titleEsc}"       title="Emphasize — feature prominently" style="color:#10b981;font-size:1.5em;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${titleEsc}"         title="Include — standard treatment"    style="font-size:1.3em;">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${titleEsc}"    title="De-emphasize — brief mention"    style="color:#f59e0b;font-size:1.5em;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${titleEsc}"         title="Exclude — omit from CV"          style="color:#ef4444;font-size:1.3em;">✗</button>
-          <button class="icon-btn" data-action="reorder" aria-label="Reorder bullets for ${titleEsc}" title="Reorder bullet points" style="color:#6366f1;font-size:1.1em;">↕</button>
-          <button class="icon-btn" data-action="row-up"   aria-label="Move ${titleEsc} earlier in CV" title="Move up in CV"   ${isFirst ? 'disabled' : ''} style="font-size:1.0em;padding:2px 5px;">↑</button>
-          <button class="icon-btn" data-action="row-down" aria-label="Move ${titleEsc} later in CV"   title="Move down in CV" ${isLast  ? 'disabled' : ''} style="font-size:1.0em;padding:2px 5px;">↓</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${titleEsc}"       title="Emphasize — feature prominently" style="color:#10b981;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${titleEsc}"         title="Include — standard treatment">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${titleEsc}"    title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${titleEsc}"         title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
+          <button class="icon-btn" data-action="reorder" aria-label="Reorder bullets for ${titleEsc}" title="Reorder bullet points" style="color:#6366f1;">↕</button>
+          <button class="icon-btn" data-action="row-up"   aria-label="Move ${titleEsc} earlier in CV" title="Move up in CV"   ${isFirst ? 'disabled' : ''}>↑</button>
+          <button class="icon-btn" data-action="row-down" aria-label="Move ${titleEsc} later in CV"   title="Move down in CV" ${isLast  ? 'disabled' : ''}>↓</button>
         </td>
       </tr>
     `;
@@ -209,7 +210,7 @@ function _renderExperienceTable(container, recommendedSet, data) {
     <button class="bulk-btn bulk-recommended" onclick="bulkAction('recommended','experience')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAction('emphasize','experience')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAction('include','experience')">✓ Include All</button>
-    <button class="bulk-btn bulk-exclude"     onclick="bulkAction('exclude','experience')">✗ Exclude All</button>
+    <button class="bulk-btn bulk-exclude"     onclick="bulkAction('exclude','experience')">${eyeSlashIcon()} Exclude All</button>
   `;
   container.insertBefore(expToolbar, container.firstChild);
 
@@ -265,18 +266,23 @@ async function handleExperienceResponse(message) {
 // ── Submit decisions ───────────────────────────────────────────────────────
 
 async function submitExperienceDecisions() {
-  /* duckflow: {
-   *   "id": "experience_ui_submit_live",
-   *   "kind": "ui",
-   *   "timestamp": "2026-03-25T21:39:48Z",
-   *   "status": "live",
-   *   "handles": ["ui:experience-review.submit"],
-   *   "calls": ["POST /api/review-decisions", "POST /api/cv/layout-estimate"],
-   *   "reads": ["window:userSelections.experiences"],
-   *   "writes": ["request:POST /api/review-decisions.decisions", "window:_savedDecisions.experience_decisions"],
-   *   "notes": "Persists per-experience inclusion decisions and triggers downstream ATS/layout refreshes that depend on the same review choices."
-  * }
-  */
+  /* duckflow:
+   *   id: experience_ui_submit_live
+   *   kind: ui
+   *   timestamp: '2026-03-25T21:39:48Z'
+   *   status: live
+   *   handles:
+   *   - ui:experience-review.submit
+   *   calls:
+   *   - POST /api/review-decisions
+   *   - POST /api/cv/layout-estimate
+   *   reads:
+   *   - window:userSelections.experiences
+   *   writes:
+   *   - request:POST /api/review-decisions.decisions
+   *   - window:_savedDecisions.experience_decisions
+   *   notes: Persists per-experience inclusion decisions and triggers downstream ATS/layout refreshes that depend on the same review choices.
+   */
   const decisions = userSelections.experiences;
   const count = Object.keys(decisions).length;
 

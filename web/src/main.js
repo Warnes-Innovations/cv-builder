@@ -51,6 +51,7 @@ import * as MessageDispatch from '../message-dispatch.js';
 import * as QuestionsPanel  from '../questions-panel.js';
 
 // ── Tier 4 ────────────────────────────────────────────────────────────────────
+import * as ReviewIcons    from '../review-icons.js';
 import * as ReviewTableBase from '../review-table-base.js';
 
 // ── Tier 5 ────────────────────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ Object.assign(globalThis,
   AuthProvider, AtsRefinement, AtsModals, SessionActions, JobAnalysis,
   SessionManager, JobInput, MessageDispatch, QuestionsPanel,
   ReviewTableBase,
-  ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview,
+  ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview, ReviewIcons,
   RewriteReview, SpellCheck, DownloadTab, WorkflowSteps, MasterCv,
   CoverLetter, ScreeningQuestions, Finalise,
   SessionSwitcherUi,

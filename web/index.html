@@ -120,7 +120,7 @@
       <div class="arrow">→</div>
       <div class="step" id="step-generate" title="Generate CV files" onclick="handleStepClick('generate')">📄 Generate</div>
       <div class="arrow">→</div>
-      <div class="step" id="step-layout" title="Layout review" onclick="handleStepClick('layout')">🎨 Layout</div>
+      <div class="step" id="step-layout" title="Layout Review" onclick="handleStepClick('layout')">🎨 Layout Review</div>
       <div class="arrow">→</div>
       <div class="step" id="step-finalise" title="Finalise &amp; archive" onclick="handleStepClick('finalise')">✅ Finalise</div>
     </div>
@@ -143,12 +143,6 @@
       </div>
 
       <div class="conversation" id="conversation">
-        <div class="message system">
-          <div class="content">Position set to Jackson Lab AI/ML.</div>
-        </div>
-        <div class="message system">
-          <div class="content">Job description loaded: Associate Computational Scientist - AI/ML at The Jackson Laboratory</div>
-        </div>
       </div>
       
       <div class="input-area">
@@ -355,8 +349,8 @@
   <script src="bundle.js"></script>
 
   <!-- jQuery and DataTables (needed by DataTables usage) -->
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha384-1H217gwSVyLSIfaLxHbE7dRb3v4mYCKbpQvzx0cegeju1MVsGrX5xXxAvs/HgeFs" crossorigin="anonymous"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js" integrity="sha384-cjmdOgDzOE22dUheI5E6Gzd3upfmReW8N1y/4jwKQE50KYcvFKZJA9JxWgQOzqwQ" crossorigin="anonymous"></script>
 
   <!-- Orchestrator: init() + event-wiring; loads after bundle so globals are available -->
   <script src="app.js"></script>

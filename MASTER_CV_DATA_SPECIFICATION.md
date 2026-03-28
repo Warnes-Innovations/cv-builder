@@ -50,13 +50,14 @@ Current observed top-level keys in live data:
 - `skills` (object)
 - `education` (array)
 - `awards` (array)
+- `certifications` (array)
 - `publications_file` (string)
 - `patents_file` (string)
 
 Top-level structural constraints currently enforced before most writes:
 
 - `personal_info` must be object (if present)
-- `experience`, `education`, `awards`, `selected_achievements` must be arrays (if present)
+- `experience`, `education`, `awards`, `certifications`, `selected_achievements` must be arrays (if present)
 - `skills` must be array or object (if present)
 - `professional_summaries` must be object or array (if present)
 
@@ -162,6 +163,18 @@ Current observed shape is categorized object with values as:
 
 - `{ "category": string, "skills": [...] }`
 
+Individual skill item fields:
+
+- `name`: string (required)
+- `category`: string — display category label
+- `years`: number — years of experience
+- `skill_type`: `"hard"` | `"soft"` (optional) — explicit hard/soft classification.
+  When omitted, a heuristic classifier infers the type from `category` and `name`.
+  Used to split ATS DOCX output into "Technical Skills" (hard) and "Core Competencies"
+  (soft) sections and to annotate `knowsAbout` entries in the HTML JSON-LD block.
+- `aliases`: string[] — alternate names for synonym matching
+- `relevant_for`: string[] — role types this skill is relevant for
+
 Current observed categories include:
 
 - `core_expertise`
@@ -191,7 +204,15 @@ Observed item fields:
 - `description`: string
 - `relevant_for`: array
 
-### 4.8 Additional top-level file references
+### 4.8 `certifications` (array of objects)
+
+Observed item fields:
+
+- `name`: string (required)
+- `issuer`: string
+- `year`: number
+
+### 4.9 Additional top-level file references
 
 - `publications_file`: string
 - `patents_file`: string

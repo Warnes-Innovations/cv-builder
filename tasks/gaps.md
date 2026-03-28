@@ -191,9 +191,9 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 **Severity:** HIGH
 **Affected stories:** US-H4, US-H7, US-A9
 **See also:** [tasks/ui-review.md](ui-review.md#top-gaps)
-**Status:** OPEN - discovered 2026-03-19 11:36 ET; HR/ATS and applicant reviews found no overall ATS match score, no live score updates as review decisions change, and no per-keyword matched/missing/bonus or section/match-type visibility.
-**Description:** The app surfaces keywords, missing requirements, and ATS validation warnings, but it does not provide the candidate with the unified ATS-fit scoring and keyword-level visibility the stories require. That makes it hard to judge whether customization choices improved or weakened ATS alignment.
-**Recommended resolution:** Add an ATS scoring model with hard-skill weighting, live recalculation during customization, per-keyword status labels, and persisted score details in generation metadata and final summaries.
+**Status:** PARTIAL - re-verified 2026-03-27; the app now has a real backend scoring model (`compute_ats_score` via `POST /api/cv/ats-score`), an ATS badge (overall %) in the position bar row, per-keyword matched/partial/missing + section provenance in the ATS Report modal and ATS Score tab, debounced score refresh after all major review checkpoints (analysis, skills, rewrites, spell-check, experience, achievements, layout confirmation, post-generation), and ATS score persisted to `generation_state` and `metadata.json`. The remaining gap is that score refresh was not triggered after summary focus selection in `summary-review.js`; that is fixed as of 2026-03-27/commit tbd.
+**Description:** Earlier wording that treated this gap as fully absent is no longer accurate. The scoring infrastructure, badge display, and live-refresh wiring are all real. The last-mile issue was that selecting a summary variant (which contributes to ATS keyword matching via the `selected_summary` field) did not schedule a refresh; that is corrected.
+**Recommended resolution:** Persisted score details in generation metadata and final summaries are present. Hard-vs-soft skill typing in generated ATS DOCX output remains open under GAP-22.
 
 ## GAP-22: ATS Document Structure and Skill-Type Semantics
 

@@ -13,6 +13,7 @@
  */
 import {
   fetchJsonWithTimeout,
+  buildAchievementsReviewTable,
   handleAchievementAction,
   bulkAchievementAction,
   submitAchievementDecisions,
@@ -229,7 +230,7 @@ describe('top-level achievement session overrides', () => {
   })
 
   it('posts deletes to /api/review-achievement and removes the item locally', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.stubGlobal('confirmDialog', vi.fn(async () => true))
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ ok: true, action: 'deleted', id: 'ach-1' }),
@@ -237,7 +238,7 @@ describe('top-level achievement session overrides', () => {
     await deleteTopLevelAchievement('ach-1')
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-achievement', expect.objectContaining({ method: 'POST' }))
     expect(window._achievementsOrdered).toEqual([])
-    expect(globalThis.showToast).toHaveBeenCalledWith('Achievement deleted.')
+    expect(globalThis.showToast).toHaveBeenCalledWith('Achievement hidden for this session.')
   })
 })
 
@@ -280,9 +281,14 @@ describe('moveAchievementRow', () => {
 
 describe('updateAchievementText', () => {
   it('updates the stored text', () => {
-    window.achievementEdits = { 0: ['old text', 'second'] }
+    window.achievementEdits = {
+      0: [
+        { text: 'old text', hidden: false },
+        { text: 'second', hidden: false },
+      ],
+    }
     updateAchievementText(0, 0, 'new text')
-    expect(window.achievementEdits[0][0]).toBe('new text')
+    expect(window.achievementEdits[0][0]).toEqual({ text: 'new text', hidden: false })
   })
 
   it('does not throw for missing expIdx', () => {
@@ -295,7 +301,13 @@ describe('updateAchievementText', () => {
 
 describe('moveAchievement', () => {
   beforeEach(() => {
-    window.achievementEdits = { 0: ['a', 'b', 'c'] }
+    window.achievementEdits = {
+      0: [
+        { text: 'a', hidden: false },
+        { text: 'b', hidden: false },
+        { text: 'c', hidden: false },
+      ],
+    }
     document.body.innerHTML = `
       <textarea id="ach-text-0-0">a</textarea>
       <textarea id="ach-text-0-1">b</textarea>`
@@ -303,22 +315,54 @@ describe('moveAchievement', () => {
 
   it('does nothing when achIdx out of bounds', () => {
     moveAchievement(0, 2, 1)
-    expect(window.achievementEdits[0]).toEqual(['a', 'b', 'c'])
+    expect(window.achievementEdits[0]).toEqual([
+      { text: 'a', hidden: false },
+      { text: 'b', hidden: false },
+      { text: 'c', hidden: false },
+    ])
   })
 
   it('swaps adjacent items', () => {
     moveAchievement(0, 0, 1)
-    expect(window.achievementEdits[0]).toEqual(['b', 'a', 'c'])
+    expect(window.achievementEdits[0]).toEqual([
+      { text: 'b', hidden: false },
+      { text: 'a', hidden: false },
+      { text: 'c', hidden: false },
+    ])
   })
 })
 
 // ── deleteAchievement ─────────────────────────────────────────────────────
 
 describe('deleteAchievement', () => {
-  it('removes the item at achIdx', () => {
-    window.achievementEdits = { 0: ['a', 'b', 'c'] }
-    deleteAchievement(0, 1)
-    expect(window.achievementEdits[0]).toEqual(['a', 'c'])
+  it('removes the item at achIdx after confirmation', async () => {
+    window.achievementEdits = {
+      0: [
+        { text: 'a', hidden: false },
+        { text: 'b', hidden: false },
+        { text: 'c', hidden: false },
+      ],
+    }
+    await deleteAchievement(0, 1)
+    expect(window.achievementEdits[0]).toEqual([
+      { text: 'a', hidden: false },
+      { text: 'c', hidden: false },
+    ])
+  })
+
+  it('does nothing when confirmation is declined', async () => {
+    vi.stubGlobal('confirmDialog', vi.fn(async () => false))
+    window.achievementEdits = {
+      0: [
+        { text: 'a', hidden: false },
+        { text: 'b', hidden: false },
+      ],
+    }
+    await deleteAchievement(0, 1)
+    expect(window.achievementEdits[0]).toEqual([
+      { text: 'a', hidden: false },
+      { text: 'b', hidden: false },
+    ])
   })
 
   it('does not throw for missing expIdx', () => {
@@ -332,18 +376,21 @@ describe('deleteAchievement', () => {
 describe('addAchievementRow', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="ach-list-0"></div>'
-    window.achievementEdits = { 0: ['a'] }
+    window.achievementEdits = { 0: [{ text: 'a', hidden: false }] }
   })
 
-  it('appends an empty string', () => {
+  it('appends an empty editable entry', () => {
     addAchievementRow(0)
-    expect(window.achievementEdits[0]).toEqual(['a', ''])
+    expect(window.achievementEdits[0]).toEqual([
+      { text: 'a', hidden: false },
+      { text: '', hidden: false },
+    ])
   })
 
   it('initialises edits array if absent', () => {
     window.achievementEdits = {}
     addAchievementRow(0)
-    expect(window.achievementEdits[0]).toEqual([''])
+    expect(window.achievementEdits[0]).toEqual([{ text: '', hidden: false }])
   })
 })
 
@@ -415,7 +462,12 @@ describe('deleteSuggestedAchievement', () => {
 describe('saveAchievementEditsAndContinue', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
-    window.achievementEdits = { 0: ['bullet 1', 'bullet 2'] }
+    window.achievementEdits = {
+      0: [
+        { text: 'bullet 1', hidden: false },
+        { text: 'bullet 2', hidden: true },
+      ],
+    }
   })
 
   it('calls switchTab on success', async () => {
@@ -428,6 +480,14 @@ describe('saveAchievementEditsAndContinue', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
     await saveAchievementEditsAndContinue()
     expect(globalThis.showToast).toHaveBeenCalledWith('Achievement edits saved.')
+  })
+
+  it('posts structured hidden-flag edits', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    await saveAchievementEditsAndContinue()
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(body.edits[0][0]).toEqual({ text: 'bullet 1', hidden: false })
+    expect(body.edits[0][1]).toEqual({ text: 'bullet 2', hidden: true })
   })
 
   it('shows error toast on API failure', async () => {
@@ -443,5 +503,105 @@ describe('saveAchievementEditsAndContinue', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
     await saveAchievementEditsAndContinue()
     expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('Failed'), 'error')
+  })
+})
+
+// ── buildAchievementsReviewTable ──────────────────────────────────────────
+
+describe('buildAchievementsReviewTable', () => {
+  const MOCK_ACH = [{ id: 'a1', title: 'Led turnaround', importance: 8 }]
+
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="achievements-table-container"></div>'
+    window.pendingRecommendations = {
+      recommended_achievements:   [],
+      achievement_recommendations: [],
+    }
+    window._achievementsOrdered  = null
+    window._suggestedAchsOrdered = null
+    window._savedDecisions       = null
+
+    vi.stubGlobal('getAchievementConfidence', vi.fn(() => ({ level: 'medium', text: 'Medium' })))
+    vi.stubGlobal('getAchievementReasoning',  vi.fn(() => 'no specific reasoning'))
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+    delete window._achievementsOrdered
+    delete window._suggestedAchsOrdered
+  })
+
+  function mockStatusOk(achievements = MOCK_ACH) {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok:   true,
+      json: async () => ({ all_achievements: achievements }),
+    })
+  }
+
+  function mockStatusFailMasterOk(achievements = MOCK_ACH) {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, json: async () => ({}) })
+      .mockResolvedValueOnce({
+        ok:   true,
+        json: async () => ({ selected_achievements: achievements }),
+      })
+  }
+
+  function mockBothFail() {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) })
+  }
+
+  it('replaces spinner with table when /api/status returns achievements', async () => {
+    mockStatusOk()
+    await buildAchievementsReviewTable()
+    const html = document.getElementById('achievements-table-container').innerHTML
+    expect(html).not.toContain('Loading achievements')
+    expect(html).toContain('achievements-review-table')
+  })
+
+  it('renders using /api/master-fields fallback when /api/status fails', async () => {
+    mockStatusFailMasterOk()
+    await buildAchievementsReviewTable()
+    const html = document.getElementById('achievements-table-container').innerHTML
+    expect(html).not.toContain('Loading achievements')
+    expect(html).toContain('achievements-review-table')
+  })
+
+  it('shows empty-state message when API returns no achievements', async () => {
+    mockStatusOk([])
+    await buildAchievementsReviewTable()
+    const html = document.getElementById('achievements-table-container').innerHTML
+    expect(html).toContain('No key achievements found')
+    expect(html).not.toContain('Loading achievements')
+  })
+
+  it('shows error message when all fetches fail', async () => {
+    mockBothFail()
+    await buildAchievementsReviewTable()
+    const html = document.getElementById('achievements-table-container').innerHTML
+    expect(html).toContain('Failed to load')
+    expect(html).not.toContain('Loading achievements')
+  })
+
+  it('does nothing when container element is absent', async () => {
+    document.body.innerHTML = ''
+    mockStatusOk()
+    await expect(buildAchievementsReviewTable()).resolves.not.toThrow()
+  })
+
+  // ── Regression: spinner must never be left frozen on a render error ──────
+  it('replaces spinner with error message when render throws (regression)', async () => {
+    mockStatusOk()
+    // Force an exception inside the initialisation/render try block
+    globalThis.getAchievementRecommendation = vi.fn(() => {
+      throw new Error('render error')
+    })
+    await buildAchievementsReviewTable()
+    const html = document.getElementById('achievements-table-container').innerHTML
+    // Spinner must NOT remain
+    expect(html).not.toContain('Loading achievements')
+    // An error message must be shown instead
+    expect(html).toContain('Error rendering achievements')
   })
 })

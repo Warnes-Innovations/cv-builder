@@ -111,13 +111,17 @@
       <button class="toggle-chat" id="toggle-chat" onclick="toggleChat()">◀</button>
       <div class="conversation-header">
         <h2>Conversation</h2>
-      </div>
-      
-      <!-- LLM status bar: thinking indicator / token count / stop button -->
-      <div id="llm-status-bar">
-        <div id="llm-thinking"><span class="llm-dot">●</span> <span id="llm-step-label">Reasoning…</span><span id="llm-elapsed"></span></div>
         <span id="llm-token-count" title="Estimated tokens used vs context window"></span>
-        <button id="llm-abort-btn" onclick="abortCurrentRequest()" title="Stop the current request">■ Stop</button>
+      </div>
+
+      <!-- LLM busy overlay: shown over the chat panel during active LLM calls -->
+      <div id="llm-busy-overlay" aria-live="polite" aria-label="LLM processing">
+        <div id="llm-busy-card">
+          <div class="llm-busy-spinner"></div>
+          <div id="llm-busy-label">Reasoning…</div>
+          <div id="llm-busy-elapsed">0:00</div>
+          <button id="llm-busy-stop" onclick="abortCurrentRequest()">■ Stop</button>
+        </div>
       </div>
 
       <div class="conversation" id="conversation">
@@ -304,8 +308,8 @@
   <script src="web/bundle.js"></script>
 
   <!-- jQuery and DataTables (needed by app.js) -->
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha384-1H217gwSVyLSIfaLxHbE7dRb3v4mYCKbpQvzx0cegeju1MVsGrX5xXxAvs/HgeFs" crossorigin="anonymous"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js" integrity="sha384-cjmdOgDzOE22dUheI5E6Gzd3upfmReW8N1y/4jwKQE50KYcvFKZJA9JxWgQOzqwQ" crossorigin="anonymous"></script>
 
   <!-- Application logic (Phase 3: will be folded into the bundle) -->
   <script src="web/app.js"></script>

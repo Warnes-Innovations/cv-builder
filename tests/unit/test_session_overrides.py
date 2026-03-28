@@ -75,3 +75,48 @@ def test_accepted_publications_and_rejections(tmp_path):
     pubs = selected.get('publications', [])
     keys = [p.get('key') for p in pubs]
     assert keys == ['p2', 'p1']
+
+
+def test_achievement_edits_hide_bullets_but_preserve_visible_output(tmp_path):
+    master = {
+        "personal_info": {"name": "Tester"},
+        "experience": [
+            {
+                "id": "exp_1",
+                "company": "Example Co",
+                "title": "Engineer",
+                "achievements": [
+                    {"text": "Original bullet one"},
+                    {"text": "Original bullet two"},
+                ],
+            }
+        ],
+        "skills": [],
+    }
+
+    master_path = tmp_path / "Master_CV_Data.json"
+    master_path.write_text(json.dumps(master))
+
+    orch = CVOrchestrator(
+        str(master_path),
+        publications_path=str(tmp_path / "pubs.bib"),
+        output_dir=str(tmp_path / "out"),
+        llm_client=None,
+    )
+
+    selected = orch.build_render_ready_content(
+        job_analysis={},
+        customizations={
+            "approved_skills": [],
+            "achievement_edits": {
+                0: [
+                    {"text": "Edited visible bullet", "hidden": False},
+                    {"text": "Edited hidden bullet", "hidden": True},
+                ]
+            },
+        },
+    )
+
+    experiences = selected.get("experiences", [])
+    assert len(experiences) == 1
+    assert experiences[0].get("achievements") == [{"text": "Edited visible bullet"}]

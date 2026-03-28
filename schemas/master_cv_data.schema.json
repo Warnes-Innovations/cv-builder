@@ -118,6 +118,10 @@
       "type": "array",
       "items": { "$ref": "#/$defs/awardEntry" }
     },
+    "certifications": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/certificationEntry" }
+    },
     "publications_file": { "type": "string" },
     "patents_file": { "type": "string" }
   },
@@ -141,6 +145,11 @@
             "name": { "type": "string" },
             "category": { "type": "string" },
             "years": { "type": ["integer", "number"] },
+            "skill_type": {
+              "type": "string",
+              "enum": ["hard", "soft"],
+              "description": "Optional explicit classification. Omit to use heuristic inference."
+            },
             "aliases": {
               "type": "array",
               "items": { "type": "string" }
@@ -295,6 +304,15 @@
           "type": "array",
           "items": { "type": "string" }
         }
+      }
+    },
+    "certificationEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name":   { "type": "string" },
+        "issuer": { "type": "string" },
+        "year":   { "type": ["integer", "number"] }
       }
     }
   }
