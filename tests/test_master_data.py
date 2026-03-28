@@ -158,8 +158,8 @@ class TestMasterDataOverview(unittest.TestCase):
         self.assertEqual(res.status_code, 500)
         self.assertFalse(data['ok'])
 
-    def test_overview_returns_500_when_preload_validation_fails(self):
-        """Endpoint surfaces pre-load validation failures from _load_master."""
+    def test_overview_returns_generic_500_when_preload_validation_fails(self):
+        """Pre-load validation failures should not leak internal details."""
         app, _, sid, stack = _make_app()
         with stack, app.test_client() as client, \
              patch('builtins.open', mock_open(read_data=json.dumps({}))) as mock_file, \
@@ -175,7 +175,7 @@ class TestMasterDataOverview(unittest.TestCase):
 
         self.assertEqual(res.status_code, 500)
         self.assertFalse(data['ok'])
-        self.assertIn('validation failed', data['error'])
+        self.assertEqual(data['error'], 'Failed to load master data overview.')
         mock_file.assert_not_called()
 
 
