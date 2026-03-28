@@ -32,7 +32,13 @@ def _load_master(master_data_path: str) -> "tuple[dict, Path]":
 
 
 def _save_master(master: Dict[str, Any], master_path: Path) -> None:
-    """Write master CV data to disk and stage the file in git."""
+    """Write master CV data to disk, create a timestamped backup, and stage in git."""
+    backup_dir = master_path.parent / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    backup_path = backup_dir / f"Master_CV_{ts}.json"
+    if master_path.exists():
+        shutil.copy2(master_path, backup_path)
     with open(master_path, 'w', encoding='utf-8') as f:
         json.dump(master, f, indent=2)
     subprocess.run(
@@ -876,6 +882,145 @@ def create_blueprint(deps):
             awards[idx].update(award_data)
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "updated", "idx": idx})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    # ------------------------------------------------------------------
+    # Certifications CRUD
+    # ------------------------------------------------------------------
+
+    @bp.post("/api/master-data/certification")
+    def master_data_update_certification():
+        """Add, update, or delete a certification entry in the master CV."""
+        entry = get_session()
+        validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
+        orchestrator = entry.orchestrator
+        req    = request.get_json() or {}
+        action = (req.get('action') or '').strip()
+        if action not in ('add', 'update', 'delete'):
+            return jsonify({"error": "action must be add, update, or delete"}), 400
+
+        parsed_year = None
+        if action in ('add', 'update') and req.get('year') not in (None, ''):
+            try:
+                parsed_year = int(req.get('year'))
+            except (TypeError, ValueError):
+                return jsonify({"error": "year must be an integer"}), 400
+            if parsed_year < 1900 or parsed_year > 2100:
+                return jsonify({"error": "year must be between 1900 and 2100"}), 400
+
+        try:
+            master, master_path = load_master(orchestrator.master_data_path)
+            certs = master.setdefault('certifications', [])
+            if action == 'delete':
+                idx = req.get('idx')
+                if not isinstance(idx, int):
+                    return jsonify({"error": "idx (int) is required for delete"}), 400
+                if idx < 0 or idx >= len(certs):
+                    return jsonify({"ok": False, "error": "Index out of range"}), 404
+                certs.pop(idx)
+                save_master(master, master_path)
+                return jsonify({"ok": True, "action": "deleted"})
+            cert_data: Dict[str, Any] = {}
+            for field in ('name', 'issuer'):
+                if field in req:
+                    cert_data[field] = req[field]
+            if parsed_year is not None:
+                cert_data['year'] = parsed_year
+            if action == 'add':
+                if not cert_data.get('name'):
+                    return jsonify({"error": "name is required"}), 400
+                certs.append(cert_data)
+                save_master(master, master_path)
+                return jsonify({"ok": True, "action": "added", "idx": len(certs) - 1})
+            idx = req.get('idx')
+            if not isinstance(idx, int):
+                return jsonify({"error": "idx (int) is required for update"}), 400
+            if idx < 0 or idx >= len(certs):
+                return jsonify({"ok": False, "error": "Index out of range"}), 404
+            certs[idx].update(cert_data)
+            save_master(master, master_path)
+            return jsonify({"ok": True, "action": "updated", "idx": idx})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    # ------------------------------------------------------------------
+    # Master-data history, restore, and export
+    # ------------------------------------------------------------------
+
+    @bp.get("/api/master-data/history")
+    def master_data_history():
+        """List timestamped backup snapshots of Master_CV_Data.json."""
+        entry = get_session()
+        orchestrator = entry.orchestrator
+        master_path = Path(orchestrator.master_data_path)
+        backup_dir = master_path.parent / "backups"
+        snapshots: List[Dict[str, Any]] = []
+        if backup_dir.exists():
+            for p in sorted(backup_dir.glob("Master_CV_*.json"), reverse=True):
+                stat = p.stat()
+                snapshots.append({
+                    "filename": p.name,
+                    "size":     stat.st_size,
+                    "mtime":    stat.st_mtime,
+                })
+        return jsonify({"ok": True, "snapshots": snapshots})
+
+    @bp.post("/api/master-data/restore")
+    def master_data_restore():
+        """Restore master CV from a named backup snapshot."""
+        entry = get_session()
+        validate_owner(entry)
+        orchestrator = entry.orchestrator
+        req = request.get_json() or {}
+        filename = (req.get('filename') or '').strip()
+        if not filename:
+            return jsonify({"ok": False, "error": "filename is required"}), 400
+        # Validate filename format to avoid path traversal
+        import re as _re
+        if not _re.fullmatch(r'Master_CV_\d{8}T\d{6}Z\.json', filename):
+            return jsonify({"ok": False, "error": "Invalid backup filename format"}), 400
+        master_path = Path(orchestrator.master_data_path)
+        backup_dir = master_path.parent / "backups"
+        source = backup_dir / filename
+        if not source.exists():
+            return jsonify({"ok": False, "error": "Backup not found"}), 404
+        try:
+            # Create a safety backup of the current master before overwriting
+            ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+            safety_path = backup_dir / f"Master_CV_{ts}.json"
+            if master_path.exists():
+                shutil.copy2(master_path, safety_path)
+            shutil.copy2(source, master_path)
+            subprocess.run(
+                ['git', '-C', str(master_path.parent), 'add', master_path.name],
+                capture_output=True, check=False,
+            )
+            # Reload orchestrator master data
+            orchestrator.load_master_cv()
+            return jsonify({"ok": True, "restored_from": filename, "safety_backup": safety_path.name})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @bp.get("/api/master-data/export")
+    def master_data_export():
+        """Download the current Master_CV_Data.json as a file attachment."""
+        entry = get_session()
+        orchestrator = entry.orchestrator
+        try:
+            master, _ = load_master(orchestrator.master_data_path)
+            payload = json.dumps(master, indent=2)
+            from flask import Response
+            return Response(
+                payload,
+                mimetype='application/json',
+                headers={
+                    'Content-Disposition': 'attachment; filename="Master_CV_Data.json"',
+                },
+            )
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
