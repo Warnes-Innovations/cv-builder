@@ -211,6 +211,15 @@ def create_blueprint(deps):
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+    @bp.get("/api/settings")
+    def get_settings():
+        """Return user-configurable settings exposed to the frontend."""
+        cfg = get_config()
+        return jsonify({
+            "ok": True,
+            "llm_request_timeout": cfg.llm_request_timeout,
+        })
+
     @bp.post("/api/generation-settings")
     def update_generation_settings():
         # duckflow:

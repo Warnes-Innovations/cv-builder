@@ -16,6 +16,7 @@ Supports:
 - GitHub Copilot (if available)
 """
 
+import asyncio
 import logging
 import os
 import json
@@ -49,6 +50,10 @@ class LLMContextLengthError(LLMError):
 
 class LLMProviderError(LLMError):
     """Generic provider-side error (server error, model unavailable, etc.)."""
+
+
+class LLMTimeoutError(LLMError):
+    """LLM call exceeded the provider time limit; retrying is usually safe."""
 
 
 def _classify_llm_error(exc: Exception, provider: str = '') -> LLMError:
@@ -98,6 +103,21 @@ def _classify_llm_error(exc: Exception, provider: str = '') -> LLMError:
         return LLMContextLengthError(
             f"Input exceeds {provider or 'LLM provider'} context limit. "
             "Try a shorter job description or reduce the number of experience items.",
+            provider=provider, original=exc,
+        )
+
+    # Timeout signals
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)) or any(k in msg for k in (
+        'timeout after', 'timed out', 'request timed out', 'read timeout',
+        'connect timeout', 'waiting for session.idle',
+    )):
+        logger.debug(
+            "_classify_llm_error: %s (status=%s) -> LLMTimeoutError (provider=%s)",
+            type(exc).__name__, status, provider
+        )
+        return LLMTimeoutError(
+            f"{provider or 'The LLM provider'} took too long to respond. "
+            "You can try again, or stop the request and switch to a faster model.",
             provider=provider, original=exc,
         )
 
@@ -1833,6 +1853,10 @@ class CopilotSdkClient(LLMClient):
             kwargs["api_key"] = self.api_key
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
+        from utils.config import get_config as _get_config  # noqa: PLC0415
+        timeout_secs = _get_config().llm_request_timeout
+        if timeout_secs is not None:
+            kwargs["timeout"] = timeout_secs
 
         try:
             response = self._anyllm_completion(**kwargs)
