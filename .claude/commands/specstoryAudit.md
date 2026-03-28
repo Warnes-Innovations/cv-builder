@@ -1,0 +1,1 @@
+/Users/warnes/src/cv-builder/.github/prompts/specstoryAudit.prompt.md
