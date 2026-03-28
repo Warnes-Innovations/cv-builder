@@ -118,6 +118,10 @@
       "type": "array",
       "items": { "$ref": "#/$defs/awardEntry" }
     },
+    "certifications": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/certificationEntry" }
+    },
     "publications_file": { "type": "string" },
     "patents_file": { "type": "string" }
   },
@@ -300,6 +304,15 @@
           "type": "array",
           "items": { "type": "string" }
         }
+      }
+    },
+    "certificationEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name":   { "type": "string" },
+        "issuer": { "type": "string" },
+        "year":   { "type": ["integer", "number"] }
       }
     }
   }
