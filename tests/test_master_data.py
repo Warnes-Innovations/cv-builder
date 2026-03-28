@@ -1259,6 +1259,21 @@ class TestMasterDataCertification(unittest.TestCase):
         self.assertEqual(res.status_code, 409)
         self.assertIn('Master data can only be modified', res.get_json()['error'])
 
+    def test_certification_internal_error_returns_generic_message(self):
+        """Server errors are logged but not exposed to the client."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', side_effect=IOError('disk exploded')):
+            res = client.post('/api/master-data/certification', json={
+                'action': 'add', 'name': 'Cert', 'session_id': sid,
+            })
+
+        self.assertEqual(res.status_code, 500)
+        self.assertEqual(
+            res.get_json()['error'],
+            'Failed to update certifications.',
+        )
+
 
 # ---------------------------------------------------------------------------
 # GET /api/master-data/history
@@ -1479,6 +1494,33 @@ class TestMasterDataRestore(unittest.TestCase):
             safety_data = json.loads(safety_path.read_text(encoding='utf-8'))
             self.assertEqual(safety_data['personal_info']['name'], 'Before Restore')
 
+    def test_restore_failure_returns_generic_message(self):
+        """Restore errors do not leak internal exception details."""
+        app, mock_orch, sid, stack = _make_app()
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            master_path.write_text('{}', encoding='utf-8')
+            backup_dir = Path(td) / 'backups'
+            backup_dir.mkdir()
+            backup_name = 'Master_CV_Data.20260101_120000_000000.bak.json'
+            (backup_dir / backup_name).write_text(
+                json.dumps(self._BACKUP_CONTENT), encoding='utf-8'
+            )
+            mock_orch.master_data_path = str(master_path)
+
+            with stack, app.test_client() as client, \
+                 patch('shutil.copy2', side_effect=OSError('copy failed')):
+                res = client.post('/api/master-data/restore', json={
+                    'filename': backup_name,
+                    'session_id': sid,
+                })
+
+        self.assertEqual(res.status_code, 500)
+        self.assertEqual(
+            res.get_json()['error'],
+            'Failed to restore the selected backup.',
+        )
+
 
 # ---------------------------------------------------------------------------
 # GET /api/master-data/export
@@ -1521,6 +1563,10 @@ class TestMasterDataExport(unittest.TestCase):
 
         self.assertEqual(res.status_code, 500)
         self.assertFalse(res.get_json()['ok'])
+        self.assertEqual(
+            res.get_json()['error'],
+            'Failed to export master data.',
+        )
 
 
 if __name__ == '__main__':
