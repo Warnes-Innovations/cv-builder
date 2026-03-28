@@ -3,7 +3,7 @@ import json
 import re
 import shutil
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -35,7 +35,7 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
     """Write master CV data to disk, create a timestamped backup, and stage in git."""
     backup_dir = master_path.parent / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_path = backup_dir / f"Master_CV_{ts}.json"
     if master_path.exists():
         shutil.copy2(master_path, backup_path)
@@ -982,8 +982,15 @@ def create_blueprint(deps):
         filename = (req.get('filename') or '').strip()
         if not filename:
             return jsonify({"ok": False, "error": "filename is required"}), 400
-        # Validate filename format to avoid path traversal
-        if not re.fullmatch(r'Master_CV_\d{8}T\d{6}Z\.json', filename):
+        # Validate filename format to avoid path traversal.
+        # Accepts both backup formats:
+        #   web_app._save_master  → Master_CV_Data.YYYYMMDD_HHMMSS_ffffff.bak.json
+        #   routes._save_master   → Master_CV_YYYYMMDDTHHMMSSZ.json
+        _BACKUP_NAME_RE = (
+            r'Master_CV_Data\.\d{8}_\d{6}_\d+\.bak\.json'
+            r'|Master_CV_\d{8}T\d{6}Z\.json'
+        )
+        if not re.fullmatch(_BACKUP_NAME_RE, filename):
             return jsonify({"ok": False, "error": "Invalid backup filename format"}), 400
         master_path = Path(orchestrator.master_data_path)
         backup_dir = master_path.parent / "backups"
@@ -992,7 +999,7 @@ def create_blueprint(deps):
             return jsonify({"ok": False, "error": "Backup not found"}), 404
         try:
             # Create a safety backup of the current master before overwriting
-            ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             safety_path = backup_dir / f"Master_CV_{ts}.json"
             if master_path.exists():
                 shutil.copy2(master_path, safety_path)
