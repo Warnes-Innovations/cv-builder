@@ -152,7 +152,13 @@ async function analyzeJob() {
   }
 
   setLoading(false);
-  await fetchStatus();
+  // Update the position-title bar with the latest session name after analysis.
+  try {
+    const latestStatus = await fetchStatus();
+    if (latestStatus && typeof updatePositionTitle === 'function') {
+      updatePositionTitle(latestStatus);
+    }
+  } catch (_e) { /* non-fatal */ }
 }
 
 // ── ES module exports ──────────────────────────────────────────────────────

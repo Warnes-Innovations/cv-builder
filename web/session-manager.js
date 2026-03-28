@@ -453,6 +453,9 @@ async function restoreBackendState() {
 
     _restoreTabForPhase(statusData.phase || PHASES.INIT);
 
+    // Keep the position-title element in sync whenever we restore status data.
+    if (typeof updatePositionTitle === 'function') updatePositionTitle(statusData);
+
     if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
 
     if (!statusData.position_name && !statusData.job_analysis) {

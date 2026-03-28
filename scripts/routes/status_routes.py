@@ -416,7 +416,14 @@ def create_blueprint(deps):
 
     @bp.get("/api/intake-metadata")
     def intake_metadata():
-        """Return extracted or confirmed intake metadata for the current session."""
+        """Return extracted or confirmed intake metadata for the current session.
+
+        Preference order for unconfirmed sessions:
+          1. LLM ``job_analysis`` fields (``job_title`` / ``company_name``) — most
+             accurate because the LLM already parsed the full posting.
+          2. Heuristic ``extract_intake_metadata()`` — first/second text lines,
+             used only when no analysis is available yet.
+        """
         entry = _get_session()
         conversation = entry.manager
         intake = conversation.state.get('intake') or {}
@@ -427,10 +434,20 @@ def create_blueprint(deps):
                 'date_applied': intake.get('date_applied'),
                 'confirmed':    True,
             })
+
+        # Prefer LLM-extracted values when job_analysis is already available
+        job_analysis = conversation.state.get('job_analysis')
+        if job_analysis and isinstance(job_analysis, dict):
+            llm_role    = (job_analysis.get('job_title') or job_analysis.get('title') or '').strip() or None
+            llm_company = (job_analysis.get('company_name') or job_analysis.get('company') or '').strip() or None
+        else:
+            llm_role    = None
+            llm_company = None
+
         extracted = conversation.extract_intake_metadata()
         return jsonify({
-            'role':         extracted.get('role'),
-            'company':      extracted.get('company'),
+            'role':         llm_role    or extracted.get('role'),
+            'company':      llm_company or extracted.get('company'),
             'date_applied': extracted.get('date_applied'),
             'confirmed':    False,
         })
