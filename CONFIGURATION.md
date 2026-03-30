@@ -115,9 +115,12 @@ generation:
 
   formats:
     ats_docx:   true   # ATS-optimised DOCX (*_ATS.docx) — plain-text, single-column
+    human_html: true   # Human-readable HTML (*.html) — Jinja2 + CSS + Schema.org JSON-LD
     human_pdf:  true   # Human-readable PDF (*.pdf)  — rendered from HTML via WeasyPrint
     human_docx: true   # Human-readable DOCX (*.docx) — styled Word document
 ```
+
+> **Note:** `human_html` and `human_pdf` share the same rendering pass — the HTML is always produced when `human_pdf` is enabled, because WeasyPrint converts it to PDF. Both output files are saved to the output directory.
 
 ### Session Management
 
