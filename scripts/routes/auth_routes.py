@@ -59,8 +59,8 @@ def create_blueprint(deps):
                 "expires_in":       flow.get("expires_in", 900),
             })
         except Exception:
-            logger.exception("Failed to start Copilot OAuth device flow")
-            return jsonify({"error": "Failed to start authentication."}), 500
+            logger.exception("Failed to start Copilot authentication")
+            return jsonify({"error": "Failed to start Copilot authentication."}), 500
 
     @bp.post("/api/copilot-auth/poll")
     def copilot_auth_poll():
@@ -260,8 +260,18 @@ def create_blueprint(deps):
     def set_model():
         """Switch the active model and optionally the provider."""
         def _format_probe_error(provider_name: str, probe_error: Optional[str]) -> str:
+            _friendly_names: Dict[str, str] = {
+                "github":       "GitHub Models",
+                "openai":       "OpenAI",
+                "anthropic":    "Anthropic",
+                "copilot":      "Copilot",
+                "copilot-oauth":"Copilot",
+                "gemini":       "Gemini",
+                "groq":         "Groq",
+            }
+            display = _friendly_names.get(provider_name, provider_name)
             if not probe_error:
-                return "Model probe failed."
+                return f"{display} was unable to complete the model probe."
 
             friendly = probe_error.strip()
             if provider_name == "github":
@@ -279,7 +289,8 @@ def create_blueprint(deps):
                 )
                 return True, None
             except Exception as exc:
-                return False, str(exc)
+                logger.warning("Model probe failed: %s", exc)
+                return False, None
 
         data     = request.get_json(silent=True) or {}
         model    = data.get("model", "").strip()
@@ -321,8 +332,9 @@ def create_blueprint(deps):
                     pass
 
             return jsonify({"ok": True, "provider": provider, "model": model})
-        except Exception as exc:
-            return jsonify({"error": str(exc)}), 500
+        except Exception:
+            logger.exception("Failed to set model")
+            return jsonify({"error": "Failed to set model."}), 500
 
     @bp.post("/api/model/test")
     def test_model():
@@ -343,10 +355,11 @@ def create_blueprint(deps):
                 "model":      _current_model,
                 "latency_ms": latency_ms,
             })
-        except Exception as exc:
+        except Exception:
+            logger.exception("Model test failed")
             return jsonify({
                 "ok":       False,
-                "error":    str(exc),
+                "error":    "Model test failed.",
                 "provider": _provider_name,
                 "model":    _current_model,
             }), 200

@@ -10,7 +10,10 @@ intake metadata, prior clarifications.
 """
 import dataclasses
 import json
+import logging
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from flask import Blueprint, jsonify, request
 
@@ -209,8 +212,8 @@ def create_blueprint(deps):
                 "history_messages": len(conversation.conversation_history),
             })
         except Exception:
-            logger.exception("Failed to estimate tokens")
-            return jsonify({"ok": False, "error": "Failed to estimate tokens."}), 500
+            logger.exception("Failed to get context stats")
+            return jsonify({"ok": False, "error": "Failed to retrieve context stats."}), 500
 
     @bp.post("/api/generation-settings")
     def update_generation_settings():
@@ -405,17 +408,17 @@ def create_blueprint(deps):
                     ],
                     temperature=0.7,
                 )
-            except Exception as e:
-                logger.exception("Failed to generate draft answer")
-                err_str = str(e)
-                if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str or 'quota' in err_str.lower() or 'rate' in err_str.lower():
+            except Exception as exc:
+                exc_str = str(exc)
+                if '429' in exc_str or 'RESOURCE_EXHAUSTED' in exc_str or 'quota' in exc_str.lower() or 'rate' in exc_str.lower():
                     return jsonify({'ok': False, 'error': 'Rate limit reached — please wait a moment and try again.', 'rate_limited': True}), 429
-                return jsonify({'ok': False, 'error': 'Failed to generate draft answer.'}), 500
+                logger.exception("LLM draft generation failed")
+                return jsonify({'ok': False, 'error': 'Failed to generate draft response.'}), 500
 
             return jsonify({'ok': True, 'text': draft.strip()})
         except Exception:
-            logger.exception("Failed to draft response")
-            return jsonify({'ok': False, 'error': 'Failed to draft response.'}), 500
+            logger.exception("Unexpected error in post_analysis_draft_response")
+            return jsonify({'ok': False, 'error': 'Failed to generate draft response.'}), 500
 
     @bp.get("/api/intake-metadata")
     def intake_metadata():
@@ -516,8 +519,8 @@ def create_blueprint(deps):
                 except Exception:
                     pass
             return jsonify({'found': len(matches) > 0, 'matches': matches})
-        except Exception as e:
-            logger.exception("Failed to search jobs")
-            return jsonify({'found': False, 'matches': [], 'error': "Failed to search jobs."})
+        except Exception:
+            logger.exception("Error searching for prior clarifications")
+            return jsonify({'found': False, 'matches': []})
 
     return bp

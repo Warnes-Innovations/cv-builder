@@ -42,10 +42,25 @@ def create_blueprint(deps):
 
     def _resolve_session_path(session_root: Path, path_param: str) -> Path | None:
         """Return a validated session path constrained to ``session_root``.
-        
-        Uses werkzeug.utils.safe_join to prevent path traversal attacks.
-        Returns None if the path would escape the safe root.
+
+        Accepts both absolute and relative ``path_param`` values.  In either
+        case the resolved path must fall within ``session_root``; anything that
+        escapes the root (path traversal or out-of-tree absolute paths) returns
+        None.
+
+        For absolute inputs the *original* (unresolved) path is returned so
+        that callers can compare it against paths stored before symlinks are
+        followed (e.g. /var vs /private/var on macOS).
         """
+        candidate = Path(path_param)
+        if candidate.is_absolute():
+            # Resolve symlinks for containment check only; return original path.
+            try:
+                candidate.resolve().relative_to(session_root.resolve())
+                return candidate
+            except ValueError:
+                return None
+        # Relative path: delegate to safe_join so traversal sequences are caught.
         safe_path = safe_join(str(session_root), path_param)
         if safe_path is None:
             return None

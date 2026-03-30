@@ -10,7 +10,6 @@ send message, do action, back-to-phase, re-run-phase.
 """
 import dataclasses
 import logging
-import traceback
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -281,19 +280,19 @@ def create_blueprint(deps):
                 "message": "Unable to connect to the website. Please check the URL or your internet connection.",
                 "instructions": ["Verify the URL is correct and accessible in your browser"]
             }), 500
-        except _requests.RequestException as e:
-            logger.exception("Failed to fetch URL")
+        except _requests.RequestException:
+            logger.exception("Network error fetching URL: %s", url)
             return jsonify({
-                "error": "Network Error",
-                "message": "Failed to fetch the URL. Please try again or use manual text input.",
-                "instructions": ["Try copying the job description manually and use the 'Paste Text' tab"]
+                "error":        "Network Error",
+                "message":      "Failed to fetch URL. Please check the URL or try manual text input.",
+                "instructions": ["Try copying the job description manually and use the 'Paste Text' tab"],
             }), 500
-        except Exception as e:
-            logger.exception(f"Error processing URL {url}")
+        except Exception:
+            logger.exception("Error processing URL: %s", url)
             return jsonify({
-                "error": "Processing Error",
-                "message": "Error processing the content. Please try copying the job description manually.",
-                "instructions": ["Try copying the job description manually and use the 'Paste Text' tab"]
+                "error":        "Processing Error",
+                "message":      "Error processing URL content.",
+                "instructions": ["Try copying the job description manually and use the 'Paste Text' tab"],
             }), 500
 
     @bp.post("/api/upload-file")
@@ -381,9 +380,9 @@ def create_blueprint(deps):
                 "content_length": len(text),
             })
 
-        except Exception as e:
-            logger.exception("Failed to read uploaded file")
-            return jsonify({"error": "Failed to read the uploaded file. Please try again."}), 500
+        except Exception:
+            logger.exception("Error reading uploaded file")
+            return jsonify({"error": "Error reading file."}), 500
 
     @bp.post("/api/load-job-file")
     def load_job_file():
@@ -397,12 +396,19 @@ def create_blueprint(deps):
         if not filename:
             return jsonify({"error": "Missing filename"}), 400
 
-        job_file_path = Path(__file__).parent.parent.parent / "sample_jobs" / filename
+        sample_jobs_root = Path(__file__).parent.parent.parent / "sample_jobs"
+        safe_name = safe_join(str(sample_jobs_root), filename)
+        if safe_name is None:
+            return jsonify({"error": "Invalid filename."}), 400
+        job_file_path = Path(safe_name)
 
         if not job_file_path.exists():
-            cv_path = Path.home() / "CV" / "files" / filename
-            if cv_path.exists():
-                job_file_path = cv_path
+            cv_files_root = Path.home() / "CV" / "files"
+            safe_cv_name  = safe_join(str(cv_files_root), filename)
+            if safe_cv_name is not None:
+                cv_path = Path(safe_cv_name)
+                if cv_path.exists():
+                    job_file_path = cv_path
 
         if not job_file_path.exists():
             return jsonify({"error": f"File not found: {filename}"}), 404
@@ -421,9 +427,9 @@ def create_blueprint(deps):
                 "job_text": job_text,
                 "message": f"Loaded job description from {filename}"
             })
-        except Exception as e:
-            logger.exception(f"Failed to load job file {filename}")
-            return jsonify({"error": "Failed to load the job file. Please try again."}), 500
+        except Exception:
+            logger.exception("Failed to load job file: %s", filename)
+            return jsonify({"error": "Failed to load file."}), 500
 
     @bp.post("/api/message")
     def send_message():
@@ -444,21 +450,21 @@ def create_blueprint(deps):
                 response=response,
                 phase=conversation.state.get("phase"),
             )))
-        except LLMAuthError as e:
-            logger.exception("LLM authentication error")
-            return jsonify({"error": "Authentication failed. Please check your LLM provider credentials.", "error_type": "auth"}), 401
-        except LLMRateLimitError as e:
-            logger.warning("LLM rate limit exceeded")
-            return jsonify({"error": "Rate limit exceeded. Please wait a moment and try again.", "error_type": "rate_limit"}), 429
-        except LLMContextLengthError as e:
-            logger.warning("LLM context length exceeded")
-            return jsonify({"error": "Context too long. Please reduce the message length and try again.", "error_type": "context_length"}), 400
-        except LLMError as e:
-            logger.exception("LLM provider error")
-            return jsonify({"error": "LLM service error. Please try again.", "error_type": "provider"}), 502
-        except Exception as e:
+        except LLMAuthError:
+            logger.exception("LLM auth error in /api/message")
+            return jsonify({"error": "Authentication failed. Please check your API key.", "error_type": "auth"}), 401
+        except LLMRateLimitError:
+            logger.exception("LLM rate limit in /api/message")
+            return jsonify({"error": "Rate limit reached. Please wait and try again.", "error_type": "rate_limit"}), 429
+        except LLMContextLengthError:
+            logger.exception("LLM context length exceeded in /api/message")
+            return jsonify({"error": "Message too long for this model.", "error_type": "context_length"}), 400
+        except LLMError:
+            logger.exception("LLM provider error in /api/message")
+            return jsonify({"error": "An AI provider error occurred. Please try again.", "error_type": "provider"}), 502
+        except Exception:
             logger.exception("Unexpected error in /api/message")
-            return jsonify({"error": "Failed to process message. Please try again."}), 500
+            return jsonify({"error": "Failed to process message."}), 500
 
     @bp.post("/api/action")
     def do_action():
@@ -488,21 +494,21 @@ def create_blueprint(deps):
                 result=result,
                 phase=conversation.state.get("phase"),
             )))
-        except LLMAuthError as e:
-            logger.exception("LLM authentication error in action")
-            return jsonify({"error": "Authentication failed. Please check your LLM provider credentials.", "error_type": "auth"}), 401
-        except LLMRateLimitError as e:
-            logger.warning("LLM rate limit exceeded in action")
-            return jsonify({"error": "Rate limit exceeded. Please wait a moment and try again.", "error_type": "rate_limit"}), 429
-        except LLMContextLengthError as e:
-            logger.warning("LLM context length exceeded in action")
-            return jsonify({"error": "Context too long. Please reduce the input and try again.", "error_type": "context_length"}), 400
-        except LLMError as e:
-            logger.exception("LLM provider error in action")
-            return jsonify({"error": "LLM service error. Please try again.", "error_type": "provider"}), 502
-        except Exception as e:
+        except LLMAuthError:
+            logger.exception("LLM auth error in /api/action")
+            return jsonify({"error": "Authentication failed. Please check your API key.", "error_type": "auth"}), 401
+        except LLMRateLimitError:
+            logger.exception("LLM rate limit in /api/action")
+            return jsonify({"error": "Rate limit reached. Please wait and try again.", "error_type": "rate_limit"}), 429
+        except LLMContextLengthError:
+            logger.exception("LLM context length exceeded in /api/action")
+            return jsonify({"error": "Message too long for this model.", "error_type": "context_length"}), 400
+        except LLMError:
+            logger.exception("LLM provider error in /api/action")
+            return jsonify({"error": "An AI provider error occurred. Please try again.", "error_type": "provider"}), 502
+        except Exception:
             logger.exception("Unexpected error in /api/action")
-            return jsonify({"error": "Failed to execute action. Please try again."}), 500
+            return jsonify({"error": "Action execution failed."}), 500
 
     @bp.post("/api/back-to-phase")
     def back_to_phase():
@@ -526,9 +532,9 @@ def create_blueprint(deps):
                     })
             session_registry.touch(sid)
             return jsonify(result)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to navigate back to phase")
-            return jsonify({"error": "Failed to navigate back. Please try again."}), 500
+            return jsonify({"error": "Failed to navigate back to phase."}), 500
 
     @bp.post("/api/re-run-phase")
     def re_run_phase():
@@ -548,8 +554,8 @@ def create_blueprint(deps):
                 return jsonify(result), 400
             session_registry.touch(sid)
             return jsonify(result)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to re-run phase")
-            return jsonify({"error": "Failed to re-run phase. Please try again."}), 500
+            return jsonify({"error": "Failed to re-run phase."}), 500
 
     return bp
