@@ -1457,14 +1457,13 @@ def create_blueprint(deps):
                 commit_hash = None
                 git_error   = None
                 try:
-                    repo_root = Path(__file__).parent.parent.parent
                     subprocess.run(
-                        ['git', 'add', str(output_dir)],
-                        cwd=str(repo_root), check=True, capture_output=True
+                        ['git', '-C', str(output_dir.parent), 'add', output_dir.name],
+                        check=True, capture_output=True
                     )
                     result = subprocess.run(
-                        ['git', 'commit', '-m', commit_msg],
-                        cwd=str(repo_root), capture_output=True, text=True
+                        ['git', '-C', str(output_dir.parent), 'commit', '-m', commit_msg],
+                        capture_output=True, text=True
                     )
                     if result.returncode == 0:
                         m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
@@ -1599,14 +1598,13 @@ def create_blueprint(deps):
                 commit_hash = None
                 git_error   = None
                 try:
-                    repo_root = Path(__file__).parent.parent.parent
                     subprocess.run(
-                        ['git', 'add', str(master_path)],
-                        cwd=str(repo_root), check=True, capture_output=True
+                        ['git', '-C', str(master_path.parent), 'add', master_path.name],
+                        check=True, capture_output=True
                     )
                     result = subprocess.run(
-                        ['git', 'commit', '-m', commit_msg],
-                        cwd=str(repo_root), capture_output=True, text=True
+                        ['git', '-C', str(master_path.parent), 'commit', '-m', commit_msg],
+                        capture_output=True, text=True
                     )
                     if result.returncode == 0:
                         m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
