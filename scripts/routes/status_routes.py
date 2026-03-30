@@ -208,8 +208,9 @@ def create_blueprint(deps):
                 "model":            model_name,
                 "history_messages": len(conversation.conversation_history),
             })
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+        except Exception:
+            logger.exception("Failed to estimate tokens")
+            return jsonify({"ok": False, "error": "Failed to estimate tokens."}), 500
 
     @bp.post("/api/generation-settings")
     def update_generation_settings():
@@ -405,14 +406,16 @@ def create_blueprint(deps):
                     temperature=0.7,
                 )
             except Exception as e:
+                logger.exception("Failed to generate draft answer")
                 err_str = str(e)
                 if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str or 'quota' in err_str.lower() or 'rate' in err_str.lower():
                     return jsonify({'ok': False, 'error': 'Rate limit reached — please wait a moment and try again.', 'rate_limited': True}), 429
-                return jsonify({'ok': False, 'error': f'LLM error: {e}'}), 500
+                return jsonify({'ok': False, 'error': 'Failed to generate draft answer.'}), 500
 
             return jsonify({'ok': True, 'text': draft.strip()})
-        except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)}), 500
+        except Exception:
+            logger.exception("Failed to draft response")
+            return jsonify({'ok': False, 'error': 'Failed to draft response.'}), 500
 
     @bp.get("/api/intake-metadata")
     def intake_metadata():
@@ -514,6 +517,7 @@ def create_blueprint(deps):
                     pass
             return jsonify({'found': len(matches) > 0, 'matches': matches})
         except Exception as e:
-            return jsonify({'found': False, 'matches': [], 'error': str(e)})
+            logger.exception("Failed to search jobs")
+            return jsonify({'found': False, 'matches': [], 'error': "Failed to search jobs."})
 
     return bp
