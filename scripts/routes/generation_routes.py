@@ -136,6 +136,34 @@ def _git_commit_error(message: str, detail: Optional[str] = None) -> str:
     return message
 
 
+def _git_push_if_remote(git_dir: str) -> Optional[str]:
+    """Push the current branch if the repo has any configured remotes.
+
+    Returns None on success (or when there is no remote), or an error
+    string if the push fails.  Never raises.
+    """
+    try:
+        remote_check = subprocess.run(
+            ['git', '-C', git_dir, 'remote'],
+            capture_output=True, text=True,
+        )
+        if not remote_check.stdout.strip():
+            return None  # no remotes configured
+
+        push_result = subprocess.run(
+            ['git', '-C', git_dir, 'push'],
+            capture_output=True, text=True,
+        )
+        if push_result.returncode != 0:
+            detail = push_result.stderr.strip() or push_result.stdout.strip()
+            current_app.logger.error('Git push failed. %s', detail)
+            return 'Git push failed. See server logs for details.'
+        return None
+    except Exception as exc:
+        current_app.logger.error('Git push failed. %s', exc)
+        return 'Git push failed. See server logs for details.'
+
+
 def _record_layout_safety_audit(
     state: Dict[str, Any],
     payload: Dict[str, Any],
@@ -1456,6 +1484,7 @@ def create_blueprint(deps):
 
                 commit_hash = None
                 git_error   = None
+                push_error  = None
                 try:
                     subprocess.run(
                         ['git', '-C', str(output_dir.parent), 'add', output_dir.name],
@@ -1468,6 +1497,7 @@ def create_blueprint(deps):
                     if result.returncode == 0:
                         m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
                         commit_hash = m.group(1) if m else None
+                        push_error = _git_push_if_remote(str(output_dir.parent))
                     else:
                         git_error = _git_commit_error(
                             'Git commit failed. See server logs for details.',
@@ -1500,6 +1530,7 @@ def create_blueprint(deps):
                     'ok':          True,
                     'commit_hash': commit_hash,
                     'git_error':   git_error,
+                    'push_error':  push_error,
                     'summary':     summary,
                 })
             except Exception:
@@ -1597,6 +1628,7 @@ def create_blueprint(deps):
 
                 commit_hash = None
                 git_error   = None
+                push_error  = None
                 try:
                     subprocess.run(
                         ['git', '-C', str(master_path.parent), 'add', master_path.name],
@@ -1609,6 +1641,7 @@ def create_blueprint(deps):
                     if result.returncode == 0:
                         m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
                         commit_hash = m.group(1) if m else None
+                        push_error = _git_push_if_remote(str(master_path.parent))
                     else:
                         git_error = _git_commit_error(
                             'Git commit failed. See server logs for details.',
@@ -1628,6 +1661,7 @@ def create_blueprint(deps):
                     'diff_summary': diff_summary,
                     'commit_hash':  commit_hash,
                     'git_error':    git_error,
+                    'push_error':   push_error,
                 })
             except Exception:
                 return _internal_server_error('Failed to apply harvested updates.')

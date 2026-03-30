@@ -23,7 +23,6 @@ Covered scenarios:
 
 import argparse
 import json
-import shutil
 import subprocess
 import sys
 import unittest
@@ -350,3 +349,180 @@ def test_save_master_does_not_raise_outside_repo(tmp_path):
     assert master_path.exists()
     saved = json.loads(master_path.read_text())
     assert saved == master_data
+
+
+# ---------------------------------------------------------------------------
+# Push-after-commit tests (_git_push_if_remote)
+# ---------------------------------------------------------------------------
+
+def _init_bare_remote_and_clone(tmp_path: Path) -> tuple[Path, Path]:
+    """Create a bare remote repo and a clone of it.
+
+    Returns (remote_dir, clone_dir).  The clone has the remote configured
+    as 'origin' and its HEAD tracked, so git push will work without arguments.
+    """
+    remote_dir = tmp_path / 'remote.git'
+    remote_dir.mkdir()
+    subprocess.run(['git', 'init', '--bare'], cwd=str(remote_dir), check=True, capture_output=True)
+
+    clone_dir = tmp_path / 'clone'
+    subprocess.run(
+        ['git', 'clone', str(remote_dir), str(clone_dir)],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ['git', '-C', str(clone_dir), 'config', 'user.email', 'test@example.com'],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ['git', '-C', str(clone_dir), 'config', 'user.name', 'Test User'],
+        check=True, capture_output=True,
+    )
+    # Initial commit so the branch exists on the remote
+    marker = clone_dir / '.gitkeep'
+    marker.write_text('')
+    subprocess.run(['git', '-C', str(clone_dir), 'add', '.gitkeep'], check=True, capture_output=True)
+    subprocess.run(
+        ['git', '-C', str(clone_dir), 'commit', '-m', 'chore: initial'],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ['git', '-C', str(clone_dir), 'push', '-u', 'origin', 'HEAD'],
+        check=True, capture_output=True,
+    )
+    return remote_dir, clone_dir
+
+
+def test_finalise_push_succeeds_when_remote_configured(tmp_path):
+    """POST /api/finalise pushes after commit and returns push_error=None."""
+    _remote_dir, clone_dir = _init_bare_remote_and_clone(tmp_path)
+
+    output_dir = clone_dir / 'Acme_Engineer_2026-01-01'
+    output_dir.mkdir()
+    (output_dir / 'cv.pdf').write_bytes(b'%PDF-1.4')
+
+    metadata_content = json.dumps({'company': 'Acme', 'role': 'Engineer'})
+    master_path = tmp_path / 'Master_CV_Data.json'
+
+    app, conv, orch, sid, stack = _make_app_with_paths(output_dir, master_path)
+
+    with stack, app.test_client() as client, \
+         patch('pathlib.Path.exists', return_value=True), \
+         patch('builtins.open', unittest.mock.mock_open(read_data=metadata_content)), \
+         patch('json.dump'):
+
+        res  = client.post('/api/finalise', json={'status': 'ready', 'session_id': sid})
+        data = res.get_json()
+
+    assert res.status_code == 200
+    assert data['ok'] is True
+    assert data['git_error'] is None
+    assert data['push_error'] is None
+    assert data['commit_hash'] is not None
+
+
+def test_finalise_push_error_when_push_fails(tmp_path):
+    """POST /api/finalise sets push_error when remote exists but push fails."""
+    repo_dir = tmp_path / 'cv_repo'
+    _init_git_repo(repo_dir)
+    # Add a remote pointing at a non-existent path so push will fail
+    subprocess.run(
+        ['git', '-C', str(repo_dir), 'remote', 'add', 'origin', '/nonexistent/remote.git'],
+        check=True, capture_output=True,
+    )
+
+    output_dir = repo_dir / 'Acme_Engineer_2026-01-01'
+    output_dir.mkdir()
+    (output_dir / 'cv.pdf').write_bytes(b'%PDF-1.4')
+
+    metadata_content = json.dumps({'company': 'Acme', 'role': 'Engineer'})
+    master_path = tmp_path / 'Master_CV_Data.json'
+
+    app, conv, orch, sid, stack = _make_app_with_paths(output_dir, master_path)
+
+    with stack, app.test_client() as client, \
+         patch('pathlib.Path.exists', return_value=True), \
+         patch('builtins.open', unittest.mock.mock_open(read_data=metadata_content)), \
+         patch('json.dump'):
+
+        res  = client.post('/api/finalise', json={'status': 'ready', 'session_id': sid})
+        data = res.get_json()
+
+    assert res.status_code == 200
+    assert data['ok'] is True
+    assert data['git_error'] is None       # commit succeeded
+    assert data['commit_hash'] is not None
+    assert data['push_error'] is not None  # push failed
+
+
+def test_finalise_no_push_when_no_remote(tmp_path):
+    """POST /api/finalise skips push and returns push_error=None when no remote exists."""
+    repo_dir = tmp_path / 'cv_repo'
+    _init_git_repo(repo_dir)
+
+    output_dir = repo_dir / 'Acme_Engineer_2026-01-01'
+    output_dir.mkdir()
+    (output_dir / 'cv.pdf').write_bytes(b'%PDF-1.4')
+
+    metadata_content = json.dumps({'company': 'Acme', 'role': 'Engineer'})
+    master_path = tmp_path / 'Master_CV_Data.json'
+
+    app, conv, orch, sid, stack = _make_app_with_paths(output_dir, master_path)
+
+    with stack, app.test_client() as client, \
+         patch('pathlib.Path.exists', return_value=True), \
+         patch('builtins.open', unittest.mock.mock_open(read_data=metadata_content)), \
+         patch('json.dump'):
+
+        res  = client.post('/api/finalise', json={'status': 'ready', 'session_id': sid})
+        data = res.get_json()
+
+    assert res.status_code == 200
+    assert data['ok'] is True
+    assert data['git_error'] is None
+    assert data['push_error'] is None
+
+
+def test_harvest_apply_push_succeeds_when_remote_configured(tmp_path):
+    """POST /api/harvest/apply pushes after commit and returns push_error=None."""
+    _remote_dir, clone_dir = _init_bare_remote_and_clone(tmp_path)
+
+    master_path = clone_dir / 'Master_CV_Data.json'
+    master_data = {'experience': [], 'skills': ['Python'], 'summary_variants': []}
+    master_path.write_text(json.dumps(master_data, indent=2))
+
+    output_dir = tmp_path / 'some_output'
+    output_dir.mkdir()
+
+    app, conv, orch, sid, stack = _make_app_with_paths(output_dir, master_path)
+    orch.master_data      = master_data
+    orch.master_data_path = str(master_path)
+
+    candidate_id = 'skill_MachineLearning'
+    conv.state['phase'] = 'refinement'
+    candidate = {
+        'id':            candidate_id,
+        'type':          'new_skill',
+        'proposed_skill': {'name': 'MachineLearning'},
+        'proposed':      'MachineLearning',
+        'original':      '(not in master data)',
+        'label':         'New skill \u2014 MachineLearning',
+        'rationale':     'Test candidate',
+    }
+
+    with stack, app.test_client() as client:
+        with patch(
+            'scripts.routes.generation_routes._compile_harvest_candidates',
+            return_value=[candidate],
+        ):
+            res  = client.post(
+                '/api/harvest/apply',
+                json={'selected_ids': [candidate_id], 'session_id': sid},
+            )
+            data = res.get_json()
+
+    assert res.status_code == 200
+    assert data['ok'] is True
+    assert data['git_error'] is None
+    assert data['push_error'] is None
+    assert data['commit_hash'] is not None
