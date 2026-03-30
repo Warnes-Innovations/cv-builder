@@ -147,7 +147,7 @@ def create_blueprint(deps):
                 'Sec-Fetch-User': '?1'
             }
 
-            print(f"Fetching URL: {url}")
+            logger.debug("Fetching URL: %s", url)
             response = _requests.get(url, timeout=30, headers=headers, allow_redirects=True)
 
             if response.status_code != 200:
@@ -172,7 +172,7 @@ def create_blueprint(deps):
                     response.raise_for_status()
 
             content_type = response.headers.get('content-type', '').lower()
-            print(f"Content type: {content_type}")
+            logger.debug("Content type: %s", content_type)
 
             if 'text/plain' in content_type:
                 job_text = response.text
@@ -187,7 +187,7 @@ def create_blueprint(deps):
                         desc = ld_data.get('description') if isinstance(ld_data, dict) else None
                         if desc and len(desc) > 100:
                             json_ld_text = desc
-                            print(f"Found JSON-LD job description ({len(json_ld_text)} chars)")
+                            logger.debug("Found JSON-LD job description (%d chars)", len(json_ld_text))
                             break
                     except Exception:
                         pass
@@ -199,7 +199,7 @@ def create_blueprint(deps):
                         content = meta.get('content', '')
                         if len(content) > 100:
                             meta_desc_text = content
-                            print(f"Found meta description ({len(meta_desc_text)} chars)")
+                            logger.debug("Found meta description (%d chars)", len(meta_desc_text))
                             break
 
                 for script in soup(["script", "style", "nav", "header", "footer"]):
@@ -232,10 +232,10 @@ def create_blueprint(deps):
                 if len(job_text.strip()) < 200:
                     if json_ld_text:
                         job_text = json_ld_text
-                        print("Using JSON-LD structured data (body text was too short)")
+                        logger.debug("Using JSON-LD structured data (body text was too short)")
                     elif meta_desc_text:
                         job_text = meta_desc_text
-                        print("Using meta description (body text was too short)")
+                        logger.debug("Using meta description (body text was too short)")
 
                 if len(job_text.strip()) < 100:
                     return jsonify({
@@ -258,7 +258,7 @@ def create_blueprint(deps):
                 conversation.add_job_description(job_text)
                 conversation.state["position_name"] = _infer_position_name(job_text)
             session_registry.touch(sid)
-            print(f"Successfully fetched {len(job_text)} characters from {domain}")
+            logger.info("Fetched %d chars from %s", len(job_text), domain)
 
             return jsonify({
                 "ok": True,
@@ -372,7 +372,7 @@ def create_blueprint(deps):
                     "content_length": len(text)
                 }), 400
 
-            print(f"Uploaded file '{f.filename}': extracted {len(text)} characters")
+            logger.info("Uploaded file '%s': extracted %d characters", f.filename, len(text))
             return jsonify({
                 "ok":             True,
                 "text":           text,
