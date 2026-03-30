@@ -372,6 +372,15 @@ def setup_logging(config: Optional[Config] = None) -> None:
         if log_dir:
             Path(log_dir).mkdir(parents=True, exist_ok=True)
             log_file = str(Path(log_dir) / "cv_builder.log")
+    elif not Path(log_file).is_absolute():
+        # Bare filename or relative path — resolve against log_dir so the
+        # file lands in the configured directory rather than cwd.
+        log_dir = cfg.log_dir
+        if log_dir:
+            Path(log_dir).mkdir(parents=True, exist_ok=True)
+            log_file = str(Path(log_dir) / log_file)
+        else:
+            log_file = str(Path(log_file).expanduser())
 
     if log_file:
         try:

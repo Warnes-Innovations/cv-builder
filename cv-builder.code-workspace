@@ -20,6 +20,9 @@
 		},
 		{
 			"path": "../duckflow"
+		},
+		{
+			"path": "../any-llm"
 		}
 	],
 	"settings": {
