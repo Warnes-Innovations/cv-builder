@@ -355,8 +355,8 @@ def create_blueprint(deps):
             )
             if questions:
                 source = "llm"
-        except Exception as e:
-            print(f"Question generation failed, using fallback: {e}")
+        except Exception:
+            logger.warning("LLM question generation failed; using fallback questions")
 
         if not questions:
             questions = _fallback_post_analysis_questions(analysis)
