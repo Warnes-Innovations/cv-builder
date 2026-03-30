@@ -161,7 +161,16 @@ class Config:
         if tokens:
             return int(tokens)
         return self.get('llm.max_tokens')
-    
+
+    @property
+    def llm_request_timeout(self) -> Optional[float]:
+        """Max seconds to wait for a single LLM reply. None means no limit."""
+        raw = os.getenv('CV_LLM_REQUEST_TIMEOUT')
+        if raw:
+            return float(raw)
+        val = self.get('llm.request_timeout_seconds')
+        return float(val) if val is not None else None
+
     # API Keys
     @property
     def github_token(self) -> Optional[str]:

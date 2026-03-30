@@ -215,6 +215,15 @@ def create_blueprint(deps):
             logger.exception("Failed to get context stats")
             return jsonify({"ok": False, "error": "Failed to retrieve context stats."}), 500
 
+    @bp.get("/api/settings")
+    def get_settings():
+        """Return user-configurable settings exposed to the frontend."""
+        cfg = get_config()
+        return jsonify({
+            "ok": True,
+            "llm_request_timeout": cfg.llm_request_timeout,
+        })
+
     @bp.post("/api/generation-settings")
     def update_generation_settings():
         # duckflow:
