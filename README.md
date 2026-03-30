@@ -48,26 +48,51 @@ python scripts/llm_cv_generator.py --llm-provider github
 
 ## Setup
 
-### 1. Install Conda Environment
+### 1. Install Dependencies
 
-The system uses conda to manage spaCy/blis dependencies (avoids compilation issues on macOS):
+Two requirements files serve different purposes:
+
+| File | Purpose |
+|------|---------|
+| `scripts/requirements-conda.txt` | **Local development (conda) on Linux/MacOS X.** Pip packages installed *after* conda sets up spaCy/blis. Excludes those compiled packages and adds LLM API clients (`openai`, `anthropic`, `sentence-transformers`). |
+| `scripts/requirements.txt` | **CI / pure-pip.** Complete dependency set including spaCy and blis, compiled from source. No conda needed. |
+
+#### macOS and Linux — conda (recommended)
+
+conda handles spaCy/blis compilation, avoiding common macOS/Linux toolchain issues.
 
 ```bash
-# Create environment with spaCy from conda-forge
+# Create environment — conda-forge builds spaCy and blis natively
 conda create -n cvgen python=3.9 spacy -c conda-forge --override-channels -y
-
-# Activate environment
 conda activate cvgen
-
-# Install remaining dependencies via pip
 pip install -r scripts/requirements-conda.txt
 ```
 
-For CI or pure-pip environments (no conda):
+#### Windows — conda (recommended)
+
+Run the following in **Anaconda Prompt** or a PowerShell session with conda initialized:
+
+```powershell
+conda create -n cvgen python=3.9 spacy -c conda-forge --override-channels -y
+conda activate cvgen
+pip install -r scripts/requirements-conda.txt
+```
+
+> **PDF generation on Windows:** WeasyPrint requires the GTK3 runtime.
+> Download and install it from the
+> [GTK for Windows Runtime installer](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases)
+> before starting the app.
+
+#### CI / pure-pip (no conda)
 
 ```bash
 pip install -r scripts/requirements.txt
 ```
+
+> On **macOS**, spaCy and blis compile from source — install Xcode Command Line Tools first:
+> `xcode-select --install`
+>
+> On **Ubuntu/Debian**: `sudo apt-get install -y build-essential python3-dev`
 
 ### 2. Prepare Your Master CV Data
 
