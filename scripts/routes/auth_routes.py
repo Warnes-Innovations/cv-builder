@@ -7,10 +7,13 @@
 """
 Authentication routes — Copilot OAuth, model catalog, model get/set/test, pricing.
 """
+import logging
 import threading
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
+
+logger = logging.getLogger(__name__)
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
@@ -55,8 +58,9 @@ def create_blueprint(deps):
                 "interval":         flow.get("interval", 5),
                 "expires_in":       flow.get("expires_in", 900),
             })
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
+        except Exception:
+            logger.exception("Failed to start Copilot OAuth device flow")
+            return jsonify({"error": "Failed to start authentication."}), 500
 
     @bp.post("/api/copilot-auth/poll")
     def copilot_auth_poll():
