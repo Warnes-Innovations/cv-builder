@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from flask import Blueprint, current_app, jsonify, request, send_file
+from flask import Blueprint, current_app, has_app_context, jsonify, request, send_file
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
@@ -27,6 +27,8 @@ from utils.session_data_view import SessionDataView
 _CURRENT_MODULE = sys.modules[__name__]
 sys.modules.setdefault('routes.generation_routes', _CURRENT_MODULE)
 sys.modules.setdefault('scripts.routes.generation_routes', _CURRENT_MODULE)
+
+_PREVIEW_ARTIFACT_REQUEST_RETENTION = 6
 
 
 # ---------------------------------------------------------------------------
@@ -361,17 +363,79 @@ def _resolve_preview_artifact_dir(conversation) -> Path:
     return preview_dir
 
 
+def _preview_request_id_from_artifact(path: Path) -> Optional[str]:
+    stem = path.stem
+    if not stem.startswith('preview_'):
+        return None
+
+    suffix = stem[len('preview_'):]
+    if path.suffix.lower() == '.pdf' and '_' in suffix:
+        suffix = suffix.rsplit('_', 1)[0]
+
+    return suffix or None
+
+
+def _prune_preview_artifacts(
+    preview_dir: Path,
+    keep_latest_requests: int = _PREVIEW_ARTIFACT_REQUEST_RETENTION,
+) -> None:
+    if keep_latest_requests < 1:
+        return
+
+    request_files: Dict[str, List[Path]] = {}
+    request_mtime: Dict[str, float] = {}
+
+    for artifact in preview_dir.glob('preview_*'):
+        if not artifact.is_file() or artifact.suffix.lower() not in {'.html', '.pdf'}:
+            continue
+
+        request_id = _preview_request_id_from_artifact(artifact)
+        if not request_id:
+            continue
+
+        request_files.setdefault(request_id, []).append(artifact)
+        mtime = artifact.stat().st_mtime
+        request_mtime[request_id] = max(request_mtime.get(request_id, 0.0), mtime)
+
+    if len(request_files) <= keep_latest_requests:
+        return
+
+    keep_ids = {
+        request_id
+        for request_id, _ in sorted(
+            request_mtime.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )[:keep_latest_requests]
+    }
+
+    for request_id, paths in request_files.items():
+        if request_id in keep_ids:
+            continue
+
+        for path in paths:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                if has_app_context():
+                    current_app.logger.warning(
+                        'Could not remove stale preview artifact %s: %s', path, exc
+                    )
+
+
 def _generate_preview_outputs(
     conversation,
     preview_html: str,
     preview_request_id: str,
 ) -> Dict[str, Any]:
     preview_dir = _resolve_preview_artifact_dir(conversation)
-    return conversation.orchestrator.generate_pdf_variants_from_html(
+    outputs = conversation.orchestrator.generate_pdf_variants_from_html(
         confirmed_html=preview_html,
         output_dir=preview_dir,
         filename_base=f'preview_{preview_request_id}',
     )
+    _prune_preview_artifacts(preview_dir)
+    return outputs
 
 
 def _read_pdf_page_count(pdf_path: Path) -> Optional[int]:
