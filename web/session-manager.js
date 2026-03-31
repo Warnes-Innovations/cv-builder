@@ -360,6 +360,9 @@ function _hydrateStatusDerivedState(statusData) {
   window._allExperiences = statusData.all_experiences || [];
   window.selectedSummaryKey = statusData.summary_focus_override || statusData.selected_summary_key || null;
   window._newSkillsFromLLM = statusData.new_skills_from_llm || [];
+  window._statusIntake = statusData.intake && typeof statusData.intake === 'object'
+    ? statusData.intake
+    : {};
   window.postAnalysisQuestions = Array.isArray(statusData.post_analysis_questions)
     ? statusData.post_analysis_questions
     : [];
