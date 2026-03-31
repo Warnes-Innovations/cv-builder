@@ -20,6 +20,7 @@ Tests:
 
 import argparse
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -439,6 +440,45 @@ class TestGenerationStateEndpoint(unittest.TestCase):
         self.assertEqual(data['preview_generated_at'], ts)
         self.assertEqual(data['preview_request_id'], 'req-test-001')
         self.assertIsNone(data['confirmed_at'])
+
+
+class TestPreviewArtifactRetention(unittest.TestCase):
+    def test_prune_preview_artifacts_keeps_latest_requests(self):
+        tmp = tempfile.TemporaryDirectory()
+        preview_dir = Path(tmp.name)
+
+        try:
+            base = 1_700_000_000
+            requests = ['req-a', 'req-b', 'req-c']
+
+            for index, request_id in enumerate(requests, start=1):
+                files = [
+                    preview_dir / f'preview_{request_id}.html',
+                    preview_dir / f'preview_{request_id}_chrome.pdf',
+                    preview_dir / f'preview_{request_id}_weasyprint.pdf',
+                ]
+                for file_path in files:
+                    file_path.write_text('x', encoding='utf-8')
+                    os.utime(file_path, (base + index, base + index))
+
+            generation_routes_module._prune_preview_artifacts(
+                preview_dir,
+                keep_latest_requests=2,
+            )
+
+            self.assertFalse((preview_dir / 'preview_req-a.html').exists())
+            self.assertFalse((preview_dir / 'preview_req-a_chrome.pdf').exists())
+            self.assertFalse((preview_dir / 'preview_req-a_weasyprint.pdf').exists())
+
+            self.assertTrue((preview_dir / 'preview_req-b.html').exists())
+            self.assertTrue((preview_dir / 'preview_req-b_chrome.pdf').exists())
+            self.assertTrue((preview_dir / 'preview_req-b_weasyprint.pdf').exists())
+
+            self.assertTrue((preview_dir / 'preview_req-c.html').exists())
+            self.assertTrue((preview_dir / 'preview_req-c_chrome.pdf').exists())
+            self.assertTrue((preview_dir / 'preview_req-c_weasyprint.pdf').exists())
+        finally:
+            tmp.cleanup()
 
 
 class TestGeneratePreviewEndpoint(unittest.TestCase):
