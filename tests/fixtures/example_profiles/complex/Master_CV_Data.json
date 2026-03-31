@@ -267,23 +267,43 @@
   "skills": {
     "relativity": {
       "category": "Relativity and Gravitation",
-      "skills": ["Special relativity", "General relativity", "Tensor calculus", "Cosmology"]
+      "skills": ["Special relativity", "General relativity", "Tensor calculus", "Cosmology", "Field equations", "Curved spacetime", "Gravitational lensing", "Geodesic analysis"]
     },
     "statistical_mechanics": {
       "category": "Statistical Mechanics",
-      "skills": ["Brownian motion", "Fluctuation theory", "Thermodynamics", "Molecular theory"]
+      "skills": ["Brownian motion", "Fluctuation theory", "Thermodynamics", "Molecular theory", "Partition functions", "Ensemble methods", "Kinetic theory", "Entropy modeling"]
     },
     "quantum_theory": {
       "category": "Quantum Theory",
-      "skills": ["Photon theory", "Specific heats", "Bose-Einstein statistics", "Quantum foundations"]
+      "skills": ["Photon theory", "Specific heats", "Bose-Einstein statistics", "Quantum foundations", "Photoelectric effect", "Wave-particle duality", "Quantized energy states", "Quantum inference"]
     },
     "scientific_communication": {
       "category": "Scientific Communication",
-      "skills": ["Research writing", "Public lectures", "Thought experiments", "Scholarly correspondence"]
+      "skills": ["Research writing", "Public lectures", "Thought experiments", "Scholarly correspondence", "Peer review leadership", "Editorial framing", "Cross-disciplinary translation", "Scientific storytelling"]
     },
     "leadership": {
       "category": "Institutional Leadership",
-      "skills": ["Research institute leadership", "Academic advising", "International collaboration", "Science policy advocacy"]
+      "skills": ["Research institute leadership", "Academic advising", "International collaboration", "Science policy advocacy", "Program direction", "Mentoring junior scientists", "Curriculum design", "Public policy testimony"]
+    },
+    "mathematical_methods": {
+      "category": "Mathematical Methods",
+      "skills": ["Differential equations", "Non-Euclidean geometry", "Variational principles", "Complex analysis", "Series approximations", "Coordinate transformations", "Invariant derivations", "Perturbation methods"]
+    },
+    "computational_modeling": {
+      "category": "Computational Modeling",
+      "skills": ["Symbolic algebra workflows", "Numerical simulation design", "Data sanity checks", "Model validation", "Sensitivity analysis", "Error propagation analysis", "Parameter sweeps", "Reproducible notebooks"]
+    },
+    "experimental_interpretation": {
+      "category": "Experimental Interpretation",
+      "skills": ["Signal interpretation", "Uncertainty quantification", "Measurement reliability", "Hypothesis stress-testing", "Instrument constraints analysis", "Experimental design review", "Control-condition reasoning", "Result triangulation"]
+    },
+    "teaching_and_mentoring": {
+      "category": "Teaching and Mentoring",
+      "skills": ["Graduate supervision", "Lecture development", "Curriculum sequencing", "Assessment design", "Research apprenticeship", "Concept scaffolding", "Exam calibration", "Seminar facilitation"]
+    },
+    "policy_and_public_engagement": {
+      "category": "Policy and Public Engagement",
+      "skills": ["Ethics communication", "Public science outreach", "Advisory committee service", "Media explanation", "Civic education talks", "Diplomatic scientific liaison", "Funding narrative design", "Stakeholder communication"]
     }
   },
   "education": [
