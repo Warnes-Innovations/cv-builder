@@ -196,6 +196,54 @@ function _skillInlineLabel(skill) {
   return name;
 }
 
+function _findSkillRecommendationRecord(skillName, data) {
+  if (!data || !Array.isArray(data.skill_recommendations)) return null;
+  return data.skill_recommendations.find((rec) => {
+    const recName = String(rec?.skill || rec?.name || '').trim().toLowerCase();
+    return recName === String(skillName || '').trim().toLowerCase();
+  }) || null;
+}
+
+function _buildSkillGroupingSuggestion(rec, skill) {
+  const grouping = rec && typeof rec.grouping === 'object' ? rec.grouping : null;
+  if (!grouping) return null;
+
+  const currentCategory = typeof skill === 'object' ? String(skill.category || '').trim() : '';
+  const currentGroup = typeof skill === 'object' ? String(skill.group || '').trim() : '';
+  const suggestedCategory = String(grouping.category || '').trim();
+  const suggestedGroup = String(grouping.group || '').trim();
+  const categoryChanged = Boolean(suggestedCategory && suggestedCategory !== currentCategory);
+  const groupChanged = Boolean(suggestedGroup && suggestedGroup !== currentGroup);
+
+  if (!categoryChanged && !groupChanged) return null;
+
+  const changeParts = [];
+  if (categoryChanged) {
+    changeParts.push(`Category: ${currentCategory || 'Uncategorized'} -> ${suggestedCategory}`);
+  }
+  if (groupChanged) {
+    changeParts.push(`Group: ${currentGroup || 'None'} -> ${suggestedGroup}`);
+  }
+
+  return {
+    category: suggestedCategory,
+    group: suggestedGroup,
+    categoryChanged,
+    groupChanged,
+    changeText: changeParts.join(' | '),
+    reasoning: String(grouping.reasoning || '').trim(),
+    atsImpact: String(grouping.ats_impact || '').trim(),
+    pageLengthImpact: String(grouping.page_length_impact || '').trim(),
+  };
+}
+
+function _cssEscape(value) {
+  if (globalThis.CSS && typeof globalThis.CSS.escape === 'function') {
+    return globalThis.CSS.escape(String(value));
+  }
+  return String(value);
+}
+
 function _buildGroupWarnings(skills) {
   const warningMap = new Map();
   const groups = new Map();
@@ -593,6 +641,8 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     const recommendation = getSkillRecommendation(skillName, data);
     const confidence     = getSkillConfidence(skillName, data);
     const reasoning      = getSkillReasoning(skillName, data);
+    const skillRec       = _findSkillRecommendationRecord(skillName, data);
+    const groupingSuggestion = _buildSkillGroupingSuggestion(skillRec, skill);
     const defaultAction  = userSelections.skills[skillName] || 'include';
     const isFirst        = rowIdx === 0;
     const isLast         = rowIdx === skills.length - 1;
@@ -629,6 +679,16 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
       : (isNew
         ? 'Recommended by AI based on job requirements but not currently in your master CV.'
         : 'This skill was not specifically mentioned in the job requirements.'));
+    const groupingChangeText = groupingSuggestion?.changeText || '';
+    const groupingReasonText = groupingSuggestion?.reasoning || '';
+    const groupingAtsImpact = groupingSuggestion?.atsImpact || '';
+    const groupingPageImpact = groupingSuggestion?.pageLengthImpact || '';
+    const reasoningSegments = [reasoningText];
+    if (groupingChangeText) reasoningSegments.push(`Change: ${groupingChangeText}`);
+    if (groupingReasonText) reasoningSegments.push(groupingReasonText);
+    if (groupingAtsImpact) reasoningSegments.push(`ATS impact: ${groupingAtsImpact}`);
+    if (groupingPageImpact) reasoningSegments.push(`Page length impact: ${groupingPageImpact}`);
+    const fullReasoningText = reasoningSegments.filter(Boolean).join(' ');
     const rowStyle           = isNew ? 'background:#fffbeb;' : '';
     const defaultMatches = isNew ? (savedMatches[skillName] || deriveMatches(skillName)) : [];
     const matchValue = defaultMatches.join(', ');
@@ -650,6 +710,10 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
             placeholder="e.g. Programming"
             title="Session-only category label used when grouping skills in the generated CV"
             style="width:100%;font-size:0.8em;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;"/>
+          ${groupingSuggestion?.categoryChanged ? `<div class="skill-ai-hint" style="margin-top:4px;font-size:0.75em;color:#4338ca;">
+            AI suggestion: ${escapeHtml(groupingSuggestion.category)}
+            <button class="skill-apply-ai" data-skill="${skillNameEsc}" data-ai-field="category" data-ai-value="${escapeHtml(groupingSuggestion.category)}" style="margin-left:6px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:4px;padding:1px 6px;cursor:pointer;">Apply</button>
+          </div>` : ''}
         </td>
         <td style="min-width:100px;">
           <input type="text" class="skill-group-input" data-skill="${skillNameEsc}"
@@ -657,6 +721,10 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
             placeholder="e.g. c_family"
             title="Skills with the same group key render as one comma-separated bullet"
             style="width:100%;font-size:0.8em;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;"/>
+          ${groupingSuggestion?.groupChanged ? `<div class="skill-ai-hint" style="margin-top:4px;font-size:0.75em;color:#4338ca;">
+            AI suggestion: ${escapeHtml(groupingSuggestion.group)}
+            <button class="skill-apply-ai" data-skill="${skillNameEsc}" data-ai-field="group" data-ai-value="${escapeHtml(groupingSuggestion.group)}" style="margin-left:6px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:4px;padding:1px 6px;cursor:pointer;">Apply</button>
+          </div>` : ''}
           ${groupWarning ? `<div class="skill-group-warning" title="${escapeHtml(groupWarning.preview)}" style="margin-top:4px;font-size:0.75em;color:#b45309;">⚠ ${escapeHtml(groupWarning.message)}</div>` : ''}
         </td>
         <td style="min-width:120px;">
@@ -687,7 +755,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
         </td>
         <td><strong>${escapeHtml(recommendationText)}</strong></td>
         <td>${confidenceBadge}</td>
-        <td style="max-width:300px;"><small>${escapeHtml(reasoningText)}</small></td>
+        <td style="max-width:300px;"><small>${escapeHtml(fullReasoningText)}</small></td>
         <td style="min-width:260px;">
           ${isNew ? `<input
             type="text"
@@ -819,6 +887,28 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   });
 
   container.querySelector('#skills-review-table tbody')?.addEventListener('click', e => {
+    const aiBtn = e.target.closest('.skill-apply-ai');
+    if (aiBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const skillName = aiBtn.dataset.skill;
+      const field = aiBtn.dataset.aiField;
+      const value = aiBtn.dataset.aiValue || '';
+      if (field === 'category') {
+        const input = container.querySelector(`.skill-category-input[data-skill="${_cssEscape(skillName)}"]`);
+        if (input) input.value = value;
+        saveSkillCategoryOverride(skillName, value)
+          .then(() => _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet))
+          .catch(() => showToast('Failed to apply AI category suggestion.', 'error'));
+      } else if (field === 'group') {
+        const input = container.querySelector(`.skill-group-input[data-skill="${_cssEscape(skillName)}"]`);
+        if (input) input.value = value;
+        saveSkillGroupOverride(skillName, value)
+          .then(() => _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet))
+          .catch(() => showToast('Failed to apply AI group suggestion.', 'error'));
+      }
+      return;
+    }
     const btn = e.target.closest('.icon-btn');
     if (!btn) return;
     const tr = btn.closest('tr[data-skill]');

@@ -83,11 +83,14 @@ def _read_dotenv_values(path: Path) -> Dict[str, str]:
     return values
 
 
-def _deep_get(container: Dict[str, Any], dotted_key: str) -> Any:
+_MISSING: Any = object()
+
+
+def _deep_get(container: Dict[str, Any], dotted_key: str, default: Any = _MISSING) -> Any:
     current: Any = container
     for token in dotted_key.split('.'):
         if not isinstance(current, dict) or token not in current:
-            return None
+            return default
         current = current[token]
     return current
 
@@ -216,7 +219,7 @@ def _setting_source(
         return {'source': 'env', 'env_key': env_match}
     if dotenv_match:
         return {'source': 'dotenv', 'env_key': dotenv_match}
-    if _deep_get(config_doc, dotted_key) is not None:
+    if _deep_get(config_doc, dotted_key) is not _MISSING:
         return {'source': 'config', 'env_key': None}
     return {'source': 'default', 'env_key': None}
 
@@ -364,7 +367,7 @@ def create_blueprint(deps):
             validated_updates = _validate_settings_update(normalized_updates)
         except Exception as exc:
             logger.exception("Settings validation failed")
-            return jsonify({'ok': False, 'error': 'Settings validation failed'}), 400
+            return jsonify({'ok': False, 'error': str(exc)}), 400
 
         config_path = _resolve_config_yaml_path()
         config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -374,7 +377,7 @@ def create_blueprint(deps):
             if config_path.exists():
                 try:
                     original_doc = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
-                except Exception as exc:
+                except Exception:
                     logger.exception("Failed to parse config.yaml")
                     return jsonify({'ok': False, 'error': 'Failed to read configuration — please check file format and try again'}), 500
 
@@ -392,7 +395,7 @@ def create_blueprint(deps):
                 if config_path.exists():
                     config_path.replace(backup_path)
                 tmp_path.replace(config_path)
-            except Exception as exc:
+            except Exception:
                 if tmp_path.exists():
                     tmp_path.unlink(missing_ok=True)
                 if backup_path.exists() and not config_path.exists():

@@ -538,6 +538,47 @@ describe('_renderSkillsTable qualifier inputs', () => {
     expect(document.querySelector('.skill-group-warning').textContent).toContain('Inline bullet may be hard to scan')
   })
 
+  it('renders AI grouping suggestions and applies them', async () => {
+    document.body.innerHTML = '<div id="skills-table-container"></div>'
+    window.pendingRecommendations = {
+      recommended_skills: ['Python'],
+      skill_recommendations: [{
+        skill: 'Python',
+        recommendation: 'Emphasize',
+        confidence: 'High',
+        reasoning: 'Core requirement',
+        grouping: {
+          category: 'Data Science',
+          group: 'ml_stack',
+          reasoning: 'Keeps ATS keywords together.',
+          ats_impact: 'Improves keyword clustering.',
+          page_length_impact: 'low',
+        },
+      }],
+    }
+    window._skillsOrdered = [
+      { name: 'Python', category: 'Programming', group: 'scripting' },
+    ]
+    stateManager.setTabData('analysis', { required_skills: [], nice_to_have_skills: [] })
+
+    const dataTableMock = vi.fn().mockReturnValue({ destroy: vi.fn() })
+    globalThis.$ = vi.fn(() => ({ DataTable: dataTableMock }))
+    globalThis.$.fn = { DataTable: { isDataTable: vi.fn().mockReturnValue(false) } }
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+
+    _renderSkillsTable(document.getElementById('skills-table-container'), new Set(['Python']), window.pendingRecommendations, new Set(), new Set())
+
+    expect(document.body.textContent).toContain('Category: Programming -> Data Science')
+    expect(document.body.textContent).toContain('Group: scripting -> ml_stack')
+
+    document.querySelector('.skill-apply-ai[data-ai-field="category"]').click()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const payload = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(payload).toEqual({ skill: 'Python', category: 'Data Science' })
+  })
+
   it('submits user-created skills as rich extra_skills objects', async () => {
     window._skillsOrdered = [
       {
