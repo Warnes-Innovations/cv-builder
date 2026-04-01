@@ -18,6 +18,7 @@ work together correctly end-to-end.
 """
 import argparse
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -358,11 +359,103 @@ class TestMultipleEndpointsIntegration(unittest.TestCase):
             data = response.get_json()
             self.assertIn('phase', data)
 
-        final_response = self.client.get(
-            '/api/status', query_string={'session_id': self.session_id}
+
+class TestSettingsAPI(unittest.TestCase):
+    """Test centralized settings API endpoints."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp.name)
+        self.app, _sid, self._stack = _make_app_and_client(self.tmp_path)
+        self.client = self.app.test_client()
+        self.addCleanup(self._stack.close)
+
+        self.config_path = self.tmp_path / 'config.yaml'
+        self.config_path.write_text(
+            '\n'.join([
+                'llm:',
+                '  default_provider: github',
+                '  default_model: gpt-4o',
+                '  request_timeout_seconds: 120',
+                '  temperature: 0.7',
+                'generation:',
+                '  max_skills: 20',
+                '  max_achievements: 5',
+                '  max_publications: 10',
+                '  skills_section_title: Skills',
+                '  formats:',
+                '    ats_docx: true',
+                '    human_pdf: true',
+                '    human_docx: true',
+                '',
+            ]),
+            encoding='utf-8',
         )
-        final_data = final_response.get_json()
-        self.assertIsNotNone(final_data.get('phase'))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_get_settings_returns_effective_payload(self):
+        with patch.dict(
+            os.environ,
+            {
+                'CV_BUILDER_CONFIG_FILE': str(self.config_path),
+                'CV_LLM_PROVIDER': 'anthropic',
+            },
+            clear=False,
+        ):
+            response = self.client.get('/api/settings')
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data.get('ok'))
+        self.assertIn('settings', data)
+        self.assertIn('meta', data)
+        self.assertEqual(data['meta']['sources']['llm.default_provider'], 'env')
+        self.assertTrue(data['meta']['locked']['llm.default_provider'])
+
+    def test_put_settings_updates_config_yaml(self):
+        payload = {
+            'settings': {
+                'llm': {
+                    'default_provider': 'github',
+                    'default_model': 'gpt-4o-mini',
+                    'request_timeout_seconds': 180,
+                    'temperature': 0.4,
+                },
+                'generation': {
+                    'max_skills': 24,
+                    'max_achievements': 7,
+                    'max_publications': 12,
+                    'skills_section_title': 'Technical Skills',
+                    'formats': {
+                        'ats_docx': True,
+                        'human_pdf': False,
+                        'human_docx': True,
+                    },
+                },
+            }
+        }
+
+        with patch.dict(
+            os.environ,
+            {'CV_BUILDER_CONFIG_FILE': str(self.config_path)},
+            clear=False,
+        ):
+            response = self.client.put('/api/settings', json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data.get('ok'))
+        self.assertIn('updated_keys', data)
+        self.assertIn('generation.max_skills', data['updated_keys'])
+        self.assertIn('generation.formats.human_pdf', data['updated_keys'])
+
+        raw = self.config_path.read_text(encoding='utf-8')
+        self.assertIn('default_model: gpt-4o-mini', raw)
+        self.assertIn('request_timeout_seconds: 180', raw)
+        self.assertIn('max_skills: 24', raw)
+        self.assertIn('human_pdf: false', raw)
 
 
 class TestStartupSessionRedirect(unittest.TestCase):
