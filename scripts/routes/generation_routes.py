@@ -1,10 +1,13 @@
 """CV generation, download, finalise, and harvest routes."""
 import copy
+import hashlib
 import json
 import re
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -29,6 +32,22 @@ sys.modules.setdefault('routes.generation_routes', _CURRENT_MODULE)
 sys.modules.setdefault('scripts.routes.generation_routes', _CURRENT_MODULE)
 
 _PREVIEW_ARTIFACT_REQUEST_RETENTION = 6
+_RENDER_SNAPSHOT_DEBOUNCE_SECONDS = 1.5
+_RENDER_SNAPSHOT_LOCKS: Dict[str, threading.Lock] = {}
+_RENDER_SNAPSHOT_LOCKS_GUARD = threading.Lock()
+
+_LAYOUT_ESTIMATE_OVERRIDE_KEYS = (
+    'experience_decisions',
+    'skill_decisions',
+    'achievement_decisions',
+    'publication_decisions',
+    'summary_focus_override',
+    'selected_summary_key',
+    'approved_rewrites',
+    'achievement_edits',
+    'extra_skills',
+    'base_font_size',
+)
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +359,219 @@ def _materialize_preview_html(
     )
 
 
+def _get_render_snapshot_lock(session_key: str) -> threading.Lock:
+    with _RENDER_SNAPSHOT_LOCKS_GUARD:
+        lock = _RENDER_SNAPSHOT_LOCKS.get(session_key)
+        if lock is None:
+            lock = threading.Lock()
+            _RENDER_SNAPSHOT_LOCKS[session_key] = lock
+        return lock
+
+
+def _collect_render_snapshot_inputs(
+    conversation,
+    state_override: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    state = state_override or conversation.state
+    job_analysis = state.get('job_analysis')
+    if not job_analysis:
+        return None
+
+    customizations = state.get('customizations')
+    summary_view = SessionDataView(
+        conversation.orchestrator.master_data,
+        state,
+        customizations,
+    )
+    materialized = summary_view.materialize_generation_customizations()
+    if not materialized:
+        return None
+
+    return {
+        'job_analysis': job_analysis,
+        'materialized_customizations': materialized,
+        'approved_rewrites': state.get('approved_rewrites') or [],
+        'spell_audit': _get_spell_audit_from_state(state),
+        'max_skills': state.get('max_skills'),
+    }
+
+
+def _render_snapshot_signature(snapshot_inputs: Dict[str, Any]) -> str:
+    payload = {
+        'job_analysis': snapshot_inputs['job_analysis'],
+        'customizations': snapshot_inputs['materialized_customizations'],
+        'approved_rewrites': snapshot_inputs['approved_rewrites'],
+        'spell_audit': snapshot_inputs['spell_audit'],
+        'max_skills': snapshot_inputs['max_skills'],
+    }
+    normalized = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+
+def _persist_render_snapshot(
+    conversation,
+    snapshot_inputs: Dict[str, Any],
+    *,
+    source: str,
+) -> Dict[str, Any]:
+    html = conversation.orchestrator.render_html_preview(
+        job_analysis=snapshot_inputs['job_analysis'],
+        customizations=snapshot_inputs['materialized_customizations'],
+        approved_rewrites=snapshot_inputs['approved_rewrites'],
+        spell_audit=snapshot_inputs['spell_audit'],
+        max_skills=snapshot_inputs['max_skills'],
+        use_semantic_match=False,
+    )
+
+    signature = _render_snapshot_signature(snapshot_inputs)
+    now = datetime.now().isoformat()
+    gen = conversation.state.setdefault('generation_state', {})
+    gen.update({
+        'render_snapshot_html': html,
+        'render_snapshot_signature': signature,
+        'render_snapshot_generated_at': now,
+        'render_snapshot_source': source,
+        'render_snapshot_stale': False,
+        'render_snapshot_stale_reason': None,
+        'render_snapshot_regenerating': False,
+    })
+    conversation._save_session()
+
+    return {
+        'html': html,
+        'signature': signature,
+        'generated_at': now,
+        'source': source,
+    }
+
+
+def _ensure_render_snapshot(
+    conversation,
+    *,
+    source: str,
+    force: bool = False,
+    state_override: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    snapshot_inputs = _collect_render_snapshot_inputs(
+        conversation,
+        state_override=state_override,
+    )
+    if snapshot_inputs is None:
+        return None
+
+    gen = conversation.state.setdefault('generation_state', {})
+    expected_signature = _render_snapshot_signature(snapshot_inputs)
+    has_cached_snapshot = bool(gen.get('render_snapshot_html'))
+    cached_signature = gen.get('render_snapshot_signature')
+    is_stale = bool(gen.get('render_snapshot_stale'))
+
+    if (
+        not force
+        and has_cached_snapshot
+        and not is_stale
+        and cached_signature == expected_signature
+    ):
+        return {
+            'html': gen.get('render_snapshot_html'),
+            'signature': cached_signature,
+            'generated_at': gen.get('render_snapshot_generated_at'),
+            'source': gen.get('render_snapshot_source') or 'cache',
+            'reused': True,
+        }
+
+    persisted = _persist_render_snapshot(
+        conversation,
+        snapshot_inputs,
+        source=source,
+    )
+    persisted['reused'] = False
+    return persisted
+
+
+def _has_layout_estimate_overrides(body: Dict[str, Any]) -> bool:
+    for key in _LAYOUT_ESTIMATE_OVERRIDE_KEYS:
+        if key not in body:
+            continue
+        value = body.get(key)
+        if value is None:
+            continue
+        if isinstance(value, (list, dict)) and len(value) == 0:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        return True
+    return False
+
+
+def schedule_render_snapshot_refresh(
+    conversation,
+    *,
+    reason: str,
+    debounce_seconds: float = _RENDER_SNAPSHOT_DEBOUNCE_SECONDS,
+) -> Dict[str, Any]:
+    """Mark render snapshot stale and schedule a throttled async refresh."""
+    snapshot_inputs = _collect_render_snapshot_inputs(conversation)
+    if snapshot_inputs is None:
+        return {'scheduled': False, 'reason': 'missing_inputs'}
+
+    gen = conversation.state.setdefault('generation_state', {})
+    expected_signature = _render_snapshot_signature(snapshot_inputs)
+    if (
+        gen.get('render_snapshot_signature') == expected_signature
+        and gen.get('render_snapshot_html')
+        and not gen.get('render_snapshot_stale')
+    ):
+        return {'scheduled': False, 'reason': 'up_to_date'}
+
+    now_ts = time.time()
+    now_iso = datetime.now().isoformat()
+    gen['render_snapshot_stale'] = True
+    gen['render_snapshot_stale_reason'] = reason
+    last_requested = float(gen.get('render_snapshot_last_requested_ts') or 0.0)
+    if now_ts - last_requested < debounce_seconds:
+        conversation._save_session()
+        return {'scheduled': False, 'reason': 'debounced'}
+
+    session_key = str(getattr(conversation, 'session_id', '') or id(conversation))
+    lock = _get_render_snapshot_lock(session_key)
+    if not lock.acquire(blocking=False):
+        conversation._save_session()
+        return {'scheduled': False, 'reason': 'in_progress'}
+
+    gen['render_snapshot_regenerating'] = True
+    gen['render_snapshot_last_requested_at'] = now_iso
+    gen['render_snapshot_last_requested_ts'] = now_ts
+    conversation._save_session()
+
+    def _worker() -> None:
+        try:
+            _ensure_render_snapshot(
+                conversation,
+                source=f'async:{reason}',
+                force=False,
+            )
+        except Exception as exc:  # pragma: no cover - best effort logging
+            gen_local = conversation.state.setdefault('generation_state', {})
+            gen_local['render_snapshot_regenerating'] = False
+            if has_app_context():
+                current_app.logger.warning(
+                    'Render snapshot refresh failed (%s): %s',
+                    reason,
+                    exc,
+                )
+            conversation._save_session()
+        finally:
+            lock.release()
+
+    worker = threading.Thread(
+        target=_worker,
+        name=f'render-snapshot-{session_key}',
+        daemon=True,
+    )
+    worker.start()
+    return {'scheduled': True, 'reason': 'started'}
+
+
 def _resolve_preview_artifact_dir(conversation) -> Path:
     generated = conversation.state.get('generated_files') or {}
     output_dir_str = generated.get('output_dir')
@@ -542,12 +774,23 @@ def _overlay_layout_estimate_state(
 
 
 def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]:
-    overlay_state = _overlay_layout_estimate_state(conversation.state, body)
-    current_html = _materialize_preview_html(
-        conversation,
-        state_override=overlay_state,
-        use_semantic_match=False,
-    )
+    current_html = None
+    if not _has_layout_estimate_overrides(body):
+        snapshot = _ensure_render_snapshot(
+            conversation,
+            source='layout_estimate',
+            force=False,
+        )
+        if snapshot:
+            current_html = snapshot.get('html')
+
+    if not current_html:
+        overlay_state = _overlay_layout_estimate_state(conversation.state, body)
+        current_html = _materialize_preview_html(
+            conversation,
+            state_override=overlay_state,
+            use_semantic_match=False,
+        )
     if not current_html:
         raise RuntimeError('Unable to render preview HTML for layout estimate.')
 
@@ -947,6 +1190,9 @@ def create_blueprint(deps):
             "preview_generated_at":      gen.get("preview_generated_at"),
             "preview_request_id":        gen.get("preview_request_id"),
             "confirmed_at":              gen.get("confirmed_at"),
+            "render_snapshot_generated_at": gen.get("render_snapshot_generated_at"),
+            "render_snapshot_stale":     bool(gen.get("render_snapshot_stale", False)),
+            "render_snapshot_regenerating": bool(gen.get("render_snapshot_regenerating", False)),
         })
 
     @bp.post("/api/cv/generate-preview")
@@ -956,7 +1202,7 @@ def create_blueprint(deps):
         # duckflow:
         #   id: generation_api_preview_live
         #   kind: api
-        #   timestamp: "2026-03-27T02:07:47Z"
+        #   timestamp: "2026-03-31T23:48:00Z"
         #   status: live
         #   handles:
         #     - "POST /api/cv/generate-preview"
@@ -990,10 +1236,32 @@ def create_blueprint(deps):
         html_str = None
 
         try:
-            html_str = _materialize_preview_html(conv)
+            snapshot = _ensure_render_snapshot(
+                conv,
+                source='generate_preview',
+                force=False,
+            )
+            if snapshot:
+                html_str = snapshot.get('html')
         except Exception as _exc:
-            import flask
-            flask.current_app.logger.warning("render_html_preview failed: %s", _exc)
+            if has_app_context():
+                current_app.logger.warning(
+                    'render snapshot generation failed: %s',
+                    _exc,
+                )
+
+        if not html_str:
+            try:
+                html_str = _materialize_preview_html(
+                    conv,
+                    use_semantic_match=False,
+                )
+            except Exception as _exc:
+                if has_app_context():
+                    current_app.logger.warning(
+                        'render_html_preview fallback failed: %s',
+                        _exc,
+                    )
 
         if not html_str:
             generated      = conv.state.get("generated_files") or {}
@@ -1050,7 +1318,7 @@ def create_blueprint(deps):
         # duckflow:
         #   id: layout_estimate_live
         #   kind: api
-        #   timestamp: "2026-03-27T02:07:47Z"
+        #   timestamp: "2026-03-31T23:48:00Z"
         #   status: live
         #   handles:
         #     - "POST /api/cv/layout-estimate"
@@ -1219,9 +1487,8 @@ def create_blueprint(deps):
             return jsonify({"error": "No preview — call /api/cv/generate-preview first."}), 400
         if gen.get("layout_confirmed"):
             return jsonify({"error": "Layout is already confirmed."}), 400
-        import hashlib as _hl
         now   = datetime.now().isoformat()
-        chash = _hl.sha256(gen["preview_html"].encode()).hexdigest()[:16]
+        chash = hashlib.sha256(gen["preview_html"].encode()).hexdigest()[:16]
         gen   = conv.state.setdefault("generation_state", {})
         gen.update({
             "phase": "confirmed", "layout_confirmed": True,
