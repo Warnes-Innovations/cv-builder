@@ -87,6 +87,25 @@ describe('apiCall', () => {
     )
   })
 
+  it('updates the auth badge and current provider when fetching status', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        llm_provider: 'copilot-sdk',
+        copilot_auth: { authenticated: true },
+      }),
+    })
+    const updateAuthBadge = vi.fn()
+    vi.stubGlobal('updateAuthBadge', updateAuthBadge)
+
+    const status = await apiClient.fetchStatus()
+
+    expect(status.llm_provider).toBe('copilot-sdk')
+    expect(globalThis.currentProvider).toBe('copilot-sdk')
+    expect(updateAuthBadge).toHaveBeenCalledWith({ authenticated: true }, 'copilot-sdk')
+  })
+
   it('sends Content-Type application/json header', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) })
     await apiClient.apiCall('GET', '/api/status')

@@ -64,6 +64,9 @@ beforeAll(async () => {
 })
 
 beforeEach(() => {
+  // Re-assert this file's own localStorage mock after setup.js's beforeEach
+  // has replaced it with its own global stub.
+  vi.stubGlobal('localStorage', lsMock)
   lsMock._reset()
   cryptoMock.randomUUID.mockClear()
   cryptoMock.randomUUID.mockReturnValue('fixed-uuid-1234')

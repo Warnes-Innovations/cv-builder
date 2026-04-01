@@ -288,6 +288,24 @@ class TestModelAPI(unittest.TestCase):
         self.assertIn('GitHub Models', data['error'])
         self.assertNotIn('with OpenAI', data['error'])
 
+    def test_model_switch_auth_failure_not_reported_as_model_unavailable(self):
+        """Auth probe failures should be reported as authentication errors."""
+        fake_client = MagicMock()
+        fake_client.chat.side_effect = RuntimeError(
+            'Authentication failed with OpenAI. Check that your API key is valid and has not expired.'
+        )
+
+        with patch('routes.auth_routes.get_llm_provider', return_value=fake_client):
+            response = self.client.post('/api/model', json={
+                'provider': 'github',
+                'model': 'gpt-4o',
+            })
+
+        self.assertEqual(response.status_code, 400)
+        data = response.get_json()
+        self.assertIn('Authentication failed for provider', data['error'])
+        self.assertNotIn('not currently available', data['error'])
+
 
 class TestErrorHandlingAPI(unittest.TestCase):
     """Test error handling across API layer."""

@@ -48,26 +48,144 @@ python scripts/llm_cv_generator.py --llm-provider github
 
 ## Setup
 
-### 1. Install Conda Environment
+### 1. Install Dependencies
 
-The system uses conda to manage spaCy/blis dependencies (avoids compilation issues on macOS):
+#### System Prerequisites
+
+Install these system-level packages **before** creating the Python environment. They are
+required by WeasyPrint (PDF rendering), Chrome/Chromium (primary PDF renderer),
+language-tool-python (spell checking), and pypandoc (document conversion).
+
+##### macOS (Homebrew)
 
 ```bash
-# Create environment with spaCy from conda-forge
+# Xcode Command Line Tools (compiler toolchain)
+xcode-select --install
+
+# WeasyPrint PDF rendering libraries
+brew install pango libffi gdk-pixbuf
+
+# Primary PDF renderer — falls back to WeasyPrint if absent
+brew install --cask google-chrome       # or: brew install --cask chromium
+
+# Java — required by LanguageTool for spell checking
+brew install openjdk
+sudo ln -sfn "$(brew --prefix openjdk)/libexec/openjdk.jdk" \
+    /Library/Java/JavaVirtualMachines/openjdk.jdk
+
+# Document format conversion (pypandoc)
+brew install pandoc
+
+# Frontend bundle and JavaScript tests
+brew install node
+```
+
+##### Ubuntu / Debian
+
+```bash
+# Build tools (required for spaCy/blis in pure-pip mode)
+sudo apt-get install -y build-essential python3-dev
+
+# WeasyPrint PDF rendering libraries
+sudo apt-get install -y libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 libffi-dev
+
+# Primary PDF renderer — falls back to WeasyPrint if absent
+# Ubuntu 20.04: apt-get installs directly; Ubuntu 22.04+: redirects to snap
+sudo apt-get install -y chromium-browser
+# Alternatively via snap (Ubuntu 22.04+):  sudo snap install chromium
+# For Google Chrome instead:
+#   wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+#   echo "deb [arch=amd64] https://dl.google.com/linux/chrome/deb/ stable main" | \
+#       sudo tee /etc/apt/sources.list.d/google-chrome.list
+#   sudo apt-get update && sudo apt-get install -y google-chrome-stable
+
+# Java — required by LanguageTool for spell checking
+sudo apt-get install -y default-jre
+
+# Document format conversion (pypandoc)
+sudo apt-get install -y pandoc
+
+# Frontend bundle and JavaScript tests
+sudo apt-get install -y nodejs npm
+```
+
+##### Fedora / RHEL / CentOS
+
+```bash
+# WeasyPrint PDF rendering libraries
+sudo dnf install -y pango cairo gdk-pixbuf2 libffi-devel
+
+# Primary PDF renderer — falls back to WeasyPrint if absent
+sudo dnf install -y chromium
+
+# Java — required by LanguageTool for spell checking
+sudo dnf install -y java-latest-openjdk
+
+# Document format conversion (pypandoc)
+sudo dnf install -y pandoc
+
+# Frontend bundle and JavaScript tests
+sudo dnf install -y nodejs npm
+```
+
+##### Windows
+
+> **WeasyPrint (PDF rendering):** Install the GTK3 runtime from the
+> [GTK for Windows Runtime installer](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases).
+>
+> **Chrome/Chromium (primary PDF renderer):** Install [Google Chrome](https://www.google.com/chrome/)
+> or [Chromium](https://www.chromium.org/getting-involved/download-chromium/).
+>
+> **Java (spell checking):** Install [Java 17+ JRE](https://java.com/download) —
+> required by LanguageTool.
+>
+> **Pandoc (document conversion):** Install from [pandoc.org](https://pandoc.org/installing.html)
+> or run `winget install JohnMacFarlane.Pandoc`.
+>
+> **Node.js (frontend bundle / JS tests):** Install from [nodejs.org](https://nodejs.org/)
+> or run `winget install OpenJS.NodeJS`.
+
+#### Python Environment
+
+Two requirements files serve different purposes:
+
+| File | Purpose |
+|------|---------|
+| `scripts/requirements-conda.txt` | **Local development (conda) on Linux/MacOS X.** Pip packages installed *after* conda sets up spaCy/blis. Excludes those compiled packages and adds LLM API clients (`openai`, `anthropic`, `sentence-transformers`). |
+| `scripts/requirements.txt` | **CI / pure-pip.** Complete dependency set including spaCy and blis, compiled from source. No conda needed. |
+
+#### macOS and Linux — conda (recommended)
+
+conda handles spaCy/blis compilation, avoiding common macOS/Linux toolchain issues.
+
+```bash
+# Create environment — conda-forge builds spaCy and blis natively
 conda create -n cvgen python=3.9 spacy -c conda-forge --override-channels -y
-
-# Activate environment
 conda activate cvgen
-
-# Install remaining dependencies via pip
 pip install -r scripts/requirements-conda.txt
 ```
 
-For CI or pure-pip environments (no conda):
+#### Windows — conda (recommended)
+
+Run the following in **Anaconda Prompt** or a PowerShell session with conda initialized:
+
+```powershell
+conda create -n cvgen python=3.9 spacy -c conda-forge --override-channels -y
+conda activate cvgen
+pip install -r scripts/requirements-conda.txt
+```
+
+#### CI / pure-pip (no conda)
 
 ```bash
 pip install -r scripts/requirements.txt
 ```
+
+> On **macOS**, spaCy and blis compile from source — ensure Xcode Command Line Tools
+> are installed (`xcode-select --install`).
+>
+> On **Ubuntu/Debian**: ensure `build-essential python3-dev` are installed (see System
+> Prerequisites above).
 
 ### 2. Prepare Your Master CV Data
 
@@ -327,7 +445,7 @@ The Flask app uses a `SessionRegistry` singleton that manages independent `Sessi
 ### Document Generation Pipeline
 
 1. **HTML** — Jinja2 renders `templates/cv-template.html` → self-contained HTML with embedded CSS and Schema.org JSON-LD
-2. **PDF** — WeasyPrint (primary) or Chrome headless (fallback) converts HTML → PDF
+2. **PDF** — Chrome/Chromium headless (primary) or WeasyPrint (fallback) converts HTML → PDF
 3. **ATS DOCX** — python-docx generates a plain-text, single-column DOCX for ATS parsing
 4. **Human DOCX** — docxtpl (Jinja2) renders a styled Word document
 
@@ -432,6 +550,18 @@ pip install -r scripts/requirements-conda.txt
 ```bash
 npm run build
 ```
+
+**PDF not generated / blank PDF:**
+- Chrome/Chromium is the primary renderer. Verify it is installed and on your `PATH`:
+  `google-chrome --version` or `chromium --version`
+- If Chrome is absent, WeasyPrint is used as a fallback. Ensure its system libraries are
+  installed (see [System Prerequisites](#system-prerequisites) above).
+- On Ubuntu in a headless environment, Chrome may need a virtual display:
+  `sudo apt-get install -y xvfb` and prefix with `xvfb-run`.
+
+**Spell check not working / LanguageTool error:**
+- Verify Java is installed: `java -version`
+- See [System Prerequisites](#system-prerequisites) for per-platform install instructions.
 
 ## Documentation
 
