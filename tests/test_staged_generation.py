@@ -404,7 +404,9 @@ class TestGenerationStateEndpoint(unittest.TestCase):
                     'ats_score', 'layout_instructions_count',
                     'final_generated_at', 'layout_template_version',
                 'layout_template_update_note', 'preview_outputs',
-                'preview_generated_at', 'preview_request_id', 'confirmed_at'):
+                'preview_generated_at', 'preview_request_id', 'confirmed_at',
+                'render_snapshot_generated_at', 'render_snapshot_stale',
+                'render_snapshot_regenerating'):
             self.assertIn(key, data, f"Missing key: {key}")
 
     def test_returns_cached_ats_score_when_present(self):
@@ -613,6 +615,9 @@ class TestGeneratePreviewEndpoint(unittest.TestCase):
             set((data['preview_outputs'] or {}).get('pdfs', {}).keys()),
             {'chrome', 'weasyprint'},
         )
+        self.assertFalse(data['render_snapshot_stale'])
+        self.assertFalse(data['render_snapshot_regenerating'])
+        self.assertIsNotNone(data['render_snapshot_generated_at'])
 
     def test_preview_output_download_serves_renderer_pdf(self):
         self._seed_job_analysis()
