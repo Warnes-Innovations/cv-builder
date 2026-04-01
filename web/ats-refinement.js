@@ -9,7 +9,7 @@
  * ATS score badge display and debounced refresh scheduling.
  *
  * DEPENDENCIES:
- *   - stateManager from state-manager.js (on globalThis)
+ *   - globalThis.stateManager from state-manager.js (accessed via globalThis throughout)
  */
 
 function _dispatchAtsScoreUpdated() {
@@ -41,7 +41,7 @@ function _formatDateLabel(value) {
 }
 
 function _getPageLengthLabel() {
-  const generationState = _coerceObject(stateManager?.getGenerationState?.());
+  const generationState = _coerceObject(globalThis.stateManager?.getGenerationState?.());
   const exact = Number(generationState.pageCountExact);
   if (Number.isFinite(exact) && exact > 0) {
     return `Length ${exact} page${exact === 1 ? '' : 's'}`;
@@ -57,7 +57,7 @@ function _getPageLengthLabel() {
 
 function _getJobSummaryLabel() {
   const intake = _coerceObject(window._statusIntake);
-  const analysis = _coerceObject(stateManager?.getTabData?.('analysis'));
+  const analysis = _coerceObject(globalThis.stateManager?.getTabData?.('analysis'));
   const positionFallback = _safeText(document.getElementById('position-title')?.textContent || '');
 
   const role = _safeText(
@@ -237,7 +237,7 @@ function updateAtsBadge(score) {
  * @param {string} [basis]  "analysis" | "review_checkpoint" | "post_generation"
  */
 async function refreshAtsScore(basis = 'review_checkpoint') {
-  const sessionId = stateManager.getSessionId();
+  const sessionId = globalThis.stateManager?.getSessionId();
   if (!sessionId) return;
   try {
     const res = await fetch('/api/cv/ats-score', {
@@ -248,7 +248,7 @@ async function refreshAtsScore(basis = 'review_checkpoint') {
     if (!res.ok) return;
     const data = await res.json();
     if (data.ok && data.ats_score) {
-      stateManager.setAtsScore(data.ats_score);
+      globalThis.stateManager?.setAtsScore(data.ats_score);
       updateAtsBadge(data.ats_score);
     }
   } catch (_e) {
@@ -264,7 +264,7 @@ function scheduleAtsRefresh(basis = 'review_checkpoint') {
 }
 
 function _refreshSummaryFromState() {
-  const score = stateManager?.getAtsScore?.();
+  const score = globalThis.stateManager?.getAtsScore?.();
   if (score && typeof score.overall === 'number') {
     _updateAtsSummary(score);
   }
