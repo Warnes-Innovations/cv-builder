@@ -363,7 +363,8 @@ def create_blueprint(deps):
         try:
             validated_updates = _validate_settings_update(normalized_updates)
         except Exception as exc:
-            return jsonify({'ok': False, 'error': str(exc)}), 400
+            logger.exception("Settings validation failed")
+            return jsonify({'ok': False, 'error': 'Settings validation failed'}), 400
 
         config_path = _resolve_config_yaml_path()
         config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -374,7 +375,8 @@ def create_blueprint(deps):
                 try:
                     original_doc = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
                 except Exception as exc:
-                    return jsonify({'ok': False, 'error': f'Failed to parse config.yaml: {exc}'}), 500
+                    logger.exception("Failed to parse config.yaml")
+                    return jsonify({'ok': False, 'error': 'Failed to read configuration — please check file format and try again'}), 500
 
             updated_doc = dict(original_doc)
             for dotted_key, value in validated_updates.items():
@@ -395,7 +397,8 @@ def create_blueprint(deps):
                     tmp_path.unlink(missing_ok=True)
                 if backup_path.exists() and not config_path.exists():
                     backup_path.replace(config_path)
-                return jsonify({'ok': False, 'error': f'Failed to persist settings: {exc}'}), 500
+                logger.exception("Failed to persist settings to config.yaml")
+                return jsonify({'ok': False, 'error': 'Failed to save settings — please try again'}), 500
 
         response = _build_settings_response(updated_doc, config_path)
         response['ok'] = True
