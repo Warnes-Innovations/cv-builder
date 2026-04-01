@@ -165,7 +165,7 @@ function updateAtsBadge(score) {
  * @param {string} [basis]  "analysis" | "review_checkpoint" | "post_generation"
  */
 async function refreshAtsScore(basis = 'review_checkpoint') {
-  const sessionId = stateManager.getSessionId();
+  const sessionId = globalThis.stateManager?.getSessionId?.();
   if (!sessionId) return;
   try {
     const res = await fetch('/api/cv/ats-score', {
@@ -176,7 +176,7 @@ async function refreshAtsScore(basis = 'review_checkpoint') {
     if (!res.ok) return;
     const data = await res.json();
     if (data.ok && data.ats_score) {
-      stateManager.setAtsScore(data.ats_score);
+      globalThis.stateManager?.setAtsScore?.(data.ats_score);
       updateAtsBadge(data.ats_score);
     }
   } catch (_e) {
