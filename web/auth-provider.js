@@ -20,7 +20,10 @@ function formatProviderLabel(provider) {
   if (!provider || typeof provider !== 'string') return 'Provider';
   const aliases = {
     openai: 'OpenAI',
-    'copilot-oauth': 'Copilot OAuth',
+    'copilot-oauth': 'Copilot OAuth (deprecated)',
+    copilot: 'Copilot (deprecated)',
+    github: 'GitHub Models (deprecated)',
+    'copilot-sdk': 'Copilot SDK (recommended)',
   };
   if (aliases[provider]) return aliases[provider];
   return provider

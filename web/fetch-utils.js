@@ -6,11 +6,11 @@
 
 /**
  * web/fetch-utils.js
- * Global fetch interceptor, 409-conflict retry queue, LLM status bar, and
+ * Global fetch interceptor, 409-conflict retry queue, LLM busy overlay, and
  * the setLoading helper that drives buttons/progress bar/abort controller.
  *
  * DEPENDENCIES: ui-core.js exports (trapFocus etc.) available on globalThis.
- *               setLoading calls _updateLLMStatusBar (defined here) and
+ *               setLoading calls _updateLLMOverlay (defined here) and
  *               appendMessage (defined in message-queue.js, on globalThis).
  */
 
@@ -104,48 +104,74 @@ function abortCurrentRequest() {
 }
 
 // ---------------------------------------------------------------------------
-// LLM status bar
+// LLM busy overlay
 // ---------------------------------------------------------------------------
 
 let _llmElapsedTimer = null;
 let _llmStartTime    = null;
 
-function _updateLLMStatusBar(loading, label) {
-  const bar       = document.getElementById('llm-status-bar');
-  const thinking  = document.getElementById('llm-thinking');
-  const abortBtn  = document.getElementById('llm-abort-btn');
-  const stepLabel = document.getElementById('llm-step-label');
-  const elapsedEl = document.getElementById('llm-elapsed');
-  if (!bar) return;
+function _updateLLMOverlay(loading, label) {
+  const overlay  = document.getElementById('llm-busy-overlay');
+  const labelEl  = document.getElementById('llm-busy-label');
+  const elapsed  = document.getElementById('llm-busy-elapsed');
+  if (!overlay) return;
+
   if (loading) {
-    bar.style.display = 'flex';
-    if (thinking)  thinking.style.display  = 'flex';
-    if (abortBtn)  abortBtn.style.display  = '';
-    if (stepLabel) stepLabel.textContent   = label || 'Reasoning…';
-    if (elapsedEl) elapsedEl.textContent   = '';
+    overlay.classList.add('visible');
+    overlay.classList.remove('slow');
+    if (labelEl) labelEl.textContent = label || 'Reasoning…';
+    if (elapsed)  elapsed.textContent = '0:00';
+
     _llmStartTime = Date.now();
     clearInterval(_llmElapsedTimer);
     _llmElapsedTimer = setInterval(() => {
-      if (!elapsedEl) return;
       const secs = Math.floor((Date.now() - _llmStartTime) / 1000);
-      if (secs >= 3) elapsedEl.textContent = ` · ${secs}s`;
+      const mm = String(Math.floor(secs / 60)).padStart(2, '0');
+      const ss = String(secs % 60).padStart(2, '0');
+      if (elapsed) elapsed.textContent = `${mm}:${ss}`;
+      if (secs >= 30 && !overlay.classList.contains('slow')) {
+        overlay.classList.add('slow');
+      }
     }, 1000);
   } else {
     clearInterval(_llmElapsedTimer);
     _llmElapsedTimer = null;
     _llmStartTime    = null;
-    if (thinking)  thinking.style.display  = 'none';
-    if (abortBtn)  abortBtn.style.display  = 'none';
-    if (stepLabel) stepLabel.textContent   = 'Reasoning…';
-    if (elapsedEl) elapsedEl.textContent   = '';
+    overlay.classList.remove('visible', 'slow');
+    if (labelEl) labelEl.textContent = 'Reasoning…';
+    if (elapsed)  elapsed.textContent = '0:00';
     _refreshContextStats();
   }
 }
 
+// Backward compatibility for tests/imports that still reference the old name.
+function _updateLLMStatusBar(loading, label) {
+  _updateLLMOverlay(loading, label);
+
+  const bar = document.getElementById('llm-status-bar');
+  const thinking = document.getElementById('llm-thinking');
+  const stepLabel = document.getElementById('llm-step-label');
+  const abortBtn = document.getElementById('llm-abort-btn');
+  if (!bar) return;
+
+  if (loading) {
+    bar.style.display = 'flex';
+    if (thinking) thinking.style.display = 'flex';
+    if (stepLabel) stepLabel.textContent = label || 'Reasoning…';
+    if (abortBtn) {
+      abortBtn.style.display = '';
+      abortBtn.disabled = false;
+    }
+  } else {
+    if (thinking) thinking.style.display = 'none';
+    if (abortBtn) abortBtn.style.display = 'none';
+    bar.style.display = 'none';
+  }
+}
+
 async function _refreshContextStats() {
-  const bar     = document.getElementById('llm-status-bar');
   const tokenEl = document.getElementById('llm-token-count');
-  if (!bar || !tokenEl) return;
+  if (!tokenEl) return;
   try {
     const res  = await fetch('/api/context-stats');
     if (!res.ok) return;
@@ -158,7 +184,6 @@ async function _refreshContextStats() {
     const estStr = est >= 1000 ? `${(est / 1000).toFixed(1)}K` : `${est}`;
     const winStr = win >= 1000 ? `${Math.round(win / 1000)}K`  : `${win}`;
     tokenEl.textContent = `${exact ? '' : '~'}${estStr} / ${winStr} (${pct}%)`;
-    bar.style.display   = 'flex';
   } catch (_) { /* silently ignore */ }
 }
 
@@ -175,6 +200,15 @@ function setLoading(loading, label) {
 
   if (loading) {
     window._currentAbortController = new AbortController();
+    // Expand chat panel if collapsed
+    const chatArea = document.getElementById('chat-area');
+    const viewerArea = document.getElementById('viewer-area');
+    const toggleBtn = document.getElementById('toggle-chat');
+    if (chatArea?.classList.contains('collapsed')) {
+      chatArea.classList.remove('collapsed');
+      viewerArea?.classList.remove('expanded');
+      if (toggleBtn) toggleBtn.textContent = '◀';
+    }
   } else {
     window._currentAbortController = null;
   }
@@ -183,6 +217,8 @@ function setLoading(loading, label) {
 
   const buttons = document.querySelectorAll('button');
   buttons.forEach(btn => btn.disabled = loading);
+  const stopBtn = document.getElementById('llm-busy-stop');
+  if (stopBtn) stopBtn.disabled = false;
 
   let bar = document.getElementById('loading-progress-bar');
   if (loading) {
@@ -209,6 +245,7 @@ function setLoading(loading, label) {
 export {
   showSessionConflictBanner, conflictRetryNow, conflictDismiss,
   llmFetch, abortCurrentRequest,
-  _updateLLMStatusBar, _refreshContextStats,
+  _updateLLMStatusBar,
+  _updateLLMOverlay, _refreshContextStats,
   setLoading,
 };

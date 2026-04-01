@@ -252,6 +252,18 @@ function _restoreTabForPhase(sessionPhase) {
   }
 }
 
+function _resolveRestoredPhase(statusData) {
+  const phase = statusData?.phase || PHASES.INIT;
+
+  // Guard against stale persisted phase values that moved past analysis while
+  // analysis data was never produced for this session.
+  if (!statusData?.job_analysis) {
+    return PHASES.INIT;
+  }
+
+  return phase;
+}
+
 // ---------------------------------------------------------------------------
 // Session context / restore
 // ---------------------------------------------------------------------------
@@ -395,6 +407,10 @@ async function restoreBackendState() {
     if (!statusRes.ok) return false;
     const statusData = parseStatusResponse(await statusRes.json());
 
+    if (typeof updateAuthBadge === 'function') {
+      updateAuthBadge(statusData.copilot_auth || {}, statusData.llm_provider || null);
+    }
+
     _hydrateStatusDerivedState(statusData);
 
     let serverHasData = _hydrateStatusTabState(statusData);
@@ -454,7 +470,9 @@ async function restoreBackendState() {
       }
     } catch (_e) { /* non-fatal */ }
 
-    _restoreTabForPhase(statusData.phase || PHASES.INIT);
+    const restoredPhase = _resolveRestoredPhase(statusData);
+    stateManager.setPhase(restoredPhase);
+    _restoreTabForPhase(restoredPhase);
 
     // Keep the position-title element in sync whenever we restore status data.
     if (typeof updatePositionTitle === 'function') updatePositionTitle(statusData);

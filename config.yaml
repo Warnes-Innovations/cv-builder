@@ -14,6 +14,7 @@ llm:
   default_model: "gemini-flash-latest"  # Model name; null uses provider default
   temperature: 0.7
   max_tokens: null  # null uses provider default
+  request_timeout_seconds: 300  # Max seconds to wait for a single LLM reply (null = no limit)
 
 # CV Generation Defaults
 generation:
@@ -50,6 +51,6 @@ web:
 
 # Logging
 logging:
-  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
-  file: null     # null logs to console only
+  level: "DEBUG"                   # Options: DEBUG, INFO, WARNING, ERROR
+  file: "cv-builder.log"           # null logs to console only
   log_dir: "~/CV/cv-builder/logs"  # Directory for log files

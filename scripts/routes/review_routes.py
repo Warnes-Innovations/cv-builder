@@ -357,7 +357,7 @@ def create_blueprint(deps):
                 ), 400
 
             conversation._save_session()
-            print(f"Saved {decision_type} decisions: {decisions}")
+            current_app.logger.debug("Saved %s decisions", decision_type)
             _trigger_render_snapshot_refresh(
                 conversation,
                 reason=f'review_decisions:{decision_type}',
@@ -1094,15 +1094,13 @@ def create_blueprint(deps):
             )
             session_registry.touch(sid)
 
-            print("CV data updated:")
-            if 'personal_info' in data:
-                print(f"  - Personal info: {data['personal_info']}")
-            if 'summary' in data:
-                print(f"  - Summary: {len(data.get('summary', ''))} chars")
-            if 'experiences' in data:
-                print(f"  - Experiences: {len(data['experiences'])} items")
-            if 'skills' in data:
-                print(f"  - Skills: {len(data['skills'])} items")
+            current_app.logger.debug(
+                "CV data updated: personal_info=%s summary_len=%d experiences=%d skills=%d",
+                bool(data.get('personal_info')),
+                len(data.get('summary', '')),
+                len(data.get('experiences', [])),
+                len(data.get('skills', [])),
+            )
 
             return jsonify({
                 "success": True,
@@ -1305,10 +1303,10 @@ def create_blueprint(deps):
                         "LLM returned no publication recommendations",
                     )
                 source = "llm"
-            except Exception as rank_err:
-                print(
-                    "Publication ranking failed, using score-based "
-                    f"fallback: {rank_err}",
+            except Exception:
+                current_app.logger.warning(
+                    "Publication ranking failed; using score-based fallback",
+                    exc_info=True,
                 )
                 selected = orchestrator._select_publications(
                     job_analysis,
@@ -1623,8 +1621,11 @@ def create_blueprint(deps):
                     if experiences_list
                     else []
                 )
-                print(f"DEBUG: Experience '{experience_id}' not found")
-                print(f"DEBUG: Available IDs: {available_ids[:10]}")
+                current_app.logger.debug(
+                    "Experience '%s' not found; available IDs: %s",
+                    experience_id,
+                    available_ids[:10],
+                )
                 return jsonify({
                     "experience": None,
                     "message": f"Experience {experience_id} not found",

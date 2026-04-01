@@ -60,8 +60,8 @@ describe('formatProviderLabel', () => {
     expect(formatProviderLabel('openai')).toBe('OpenAI')
   })
 
-  it('returns known alias for "copilot-oauth"', () => {
-    expect(formatProviderLabel('copilot-oauth')).toBe('Copilot OAuth')
+  it('returns deprecation alias for "copilot-oauth"', () => {
+    expect(formatProviderLabel('copilot-oauth')).toBe('Copilot OAuth (deprecated)')
   })
 
   it('title-cases hyphen-separated words', () => {
@@ -70,6 +70,10 @@ describe('formatProviderLabel', () => {
 
   it('title-cases underscore-separated words', () => {
     expect(formatProviderLabel('anthropic_claude')).toBe('Anthropic Claude')
+  })
+
+  it('returns recommended alias for "copilot-sdk"', () => {
+    expect(formatProviderLabel('copilot-sdk')).toBe('Copilot SDK (recommended)')
   })
 
   it('handles a single word', () => {

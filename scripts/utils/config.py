@@ -161,7 +161,16 @@ class Config:
         if tokens:
             return int(tokens)
         return self.get('llm.max_tokens')
-    
+
+    @property
+    def llm_request_timeout(self) -> Optional[float]:
+        """Max seconds to wait for a single LLM reply. None means no limit."""
+        raw = os.getenv('CV_LLM_REQUEST_TIMEOUT')
+        if raw:
+            return float(raw)
+        val = self.get('llm.request_timeout_seconds')
+        return float(val) if val is not None else None
+
     # API Keys
     @property
     def github_token(self) -> Optional[str]:
@@ -363,6 +372,15 @@ def setup_logging(config: Optional[Config] = None) -> None:
         if log_dir:
             Path(log_dir).mkdir(parents=True, exist_ok=True)
             log_file = str(Path(log_dir) / "cv_builder.log")
+    elif not Path(log_file).is_absolute():
+        # Bare filename or relative path — resolve against log_dir so the
+        # file lands in the configured directory rather than cwd.
+        log_dir = cfg.log_dir
+        if log_dir:
+            Path(log_dir).mkdir(parents=True, exist_ok=True)
+            log_file = str(Path(log_dir) / log_file)
+        else:
+            log_file = str(Path(log_file).expanduser())
 
     if log_file:
         try:

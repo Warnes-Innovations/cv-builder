@@ -111,13 +111,17 @@
       <button class="toggle-chat" id="toggle-chat" onclick="toggleChat()">◀</button>
       <div class="conversation-header">
         <h2>Conversation</h2>
-      </div>
-      
-      <!-- LLM status bar: thinking indicator / token count / stop button -->
-      <div id="llm-status-bar">
-        <div id="llm-thinking"><span class="llm-dot">●</span> <span id="llm-step-label">Reasoning…</span><span id="llm-elapsed"></span></div>
         <span id="llm-token-count" title="Estimated tokens used vs context window"></span>
-        <button id="llm-abort-btn" onclick="abortCurrentRequest()" title="Stop the current request">■ Stop</button>
+      </div>
+
+      <!-- LLM busy overlay: shown over the chat panel during active LLM calls -->
+      <div id="llm-busy-overlay" aria-live="polite" aria-label="LLM processing">
+        <div id="llm-busy-card">
+          <div class="llm-busy-spinner"></div>
+          <div id="llm-busy-label">Reasoning…</div>
+          <div id="llm-busy-elapsed">0:00</div>
+          <button id="llm-busy-stop" onclick="abortCurrentRequest()">■ Stop</button>
+        </div>
       </div>
 
       <div class="conversation" id="conversation">
