@@ -59,8 +59,26 @@ function _renderSavedSessionRows(savedSessions, { includeManagement = false } = 
     return '<p class="session-switcher-empty">No saved sessions found.</p>';
   }
 
+  function _createdIsoFromSessionPath(sessionPath) {
+    if (!sessionPath) return '';
+    const pathText = String(sessionPath);
+    const parts = pathText.split(/[\\/]/).filter(Boolean);
+    if (parts.length < 2) return '';
+
+    const dirName = parts[parts.length - 2];
+    const match = dirName.match(/(\d{4})(\d{2})(\d{2})[_-]?(\d{2})(\d{2})(\d{2})/);
+    if (!match) return '';
+
+    const [, year, month, day, hour, minute, second] = match;
+    return `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
+  }
+
   return `<div class="session-switcher-list">${savedSessions.map((session, index) => {
     const escapedPath = escapeHtml(session.path || '');
+    const createdIso = _createdIsoFromSessionPath(session.path);
+    const createdLabel = createdIso ? formatSessionTimestamp(createdIso) : '—';
+    const savedLabel = formatSessionTimestamp(session.timestamp);
+    const savedMeta = savedLabel === '—' ? '' : ` · Saved ${escapeHtml(savedLabel)}`;
     const managementHtml = includeManagement
       ? `
         <button data-sm-action="rename" data-sm-path="${escapedPath}" data-sm-idx="${index}" class="session-switcher-btn" title="Rename session">Rename</button>
@@ -80,7 +98,7 @@ function _renderSavedSessionRows(savedSessions, { includeManagement = false } = 
             <button data-sm-action="cancel-rename" data-sm-idx="${index}" class="session-switcher-btn">Cancel</button>
           </div>
           <div class="session-switcher-row-meta">
-            ${escapeHtml(formatSessionPhaseLabel(session.phase))} · Saved ${escapeHtml(formatSessionTimestamp(session.timestamp))}
+            ${escapeHtml(formatSessionPhaseLabel(session.phase))} · Created ${escapeHtml(createdLabel)}${savedMeta}
           </div>
         </div>
         <div class="session-switcher-actions">
