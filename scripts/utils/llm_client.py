@@ -1815,7 +1815,7 @@ class GeminiClient(LLMClient):
 
 
 class CopilotSdkClient(LLMClient):
-    """GitHub Copilot client via the any-llm copilot_sdk provider."""
+    """GitHub Copilot client via the any-llm copilotsdk provider."""
 
     def __init__(self, model: str = "gpt-4o", api_key: Optional[str] = None):
         self.model = model
@@ -1842,9 +1842,10 @@ class CopilotSdkClient(LLMClient):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
     ) -> str:
-        """Send chat messages to GitHub Copilot via any-llm copilot_sdk provider."""
+        """Send chat messages to GitHub Copilot via any-llm copilotsdk provider."""
         kwargs: Dict[str, Any] = dict(
-            provider="copilot_sdk",
+            # any-llm expects the provider key without an underscore.
+            provider="copilotsdk",
             model=self.model,
             messages=messages,
             temperature=temperature,
@@ -2132,12 +2133,21 @@ class CopilotOAuthClient(LLMClient):
     start_device_flow() / complete_device_flow() via the web UI first.
     """
 
-    # Models known to work on api.githubcopilot.com
+    # Static allowlist for Copilot OAuth model picker.
+    # Keep this aligned with current Copilot-visible model families used elsewhere
+    # in this repository; probe-on-switch still validates runtime availability.
     SUPPORTED_MODELS = [
         "gpt-4o",
         "gpt-4o-mini",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-5-mini",
+        "claude-sonnet-4-6",
         "claude-3.5-sonnet",
         "claude-3-7-sonnet",
+        "claude-3-haiku",
+        "claude-3-opus",
+        "gemini-2.5-pro",
         "o1-preview",
         "o1-mini",
     ]

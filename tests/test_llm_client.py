@@ -628,7 +628,7 @@ class TestGeminiClientAnyLLM(unittest.TestCase):
 
 
 class TestCopilotSdkClient(unittest.TestCase):
-    """Validate CopilotSdkClient behavior when routed through any-llm copilot_sdk provider."""
+    """Validate CopilotSdkClient behavior when routed through any-llm copilotsdk provider."""
 
     def test_init_prefers_explicit_api_key(self):
         """Explicit api_key argument wins over environment variables."""
@@ -729,7 +729,7 @@ class TestCopilotSdkClient(unittest.TestCase):
 
         self.assertEqual(result, 'Hello')
         client._anyllm_completion.assert_called_once_with(
-            provider='copilot_sdk',
+            provider='copilotsdk',
             model='gpt-4o',
             api_key='test-token',
             messages=messages,
