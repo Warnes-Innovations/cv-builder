@@ -8,9 +8,9 @@
     "build:prod": "node scripts/build.mjs --prod",
     "build:watch": "node scripts/build.mjs --watch",
     "build:sourcemap": "node scripts/build.mjs --sourcemap",
-    "test:js": "vitest run tests/js",
-    "test:js:watch": "vitest tests/js",
-    "test:js:cover": "vitest run tests/js --coverage",
+    "test:js": "NODE_NO_WARNINGS=1 vitest run tests/js",
+    "test:js:watch": "NODE_NO_WARNINGS=1 vitest tests/js",
+    "test:js:cover": "NODE_NO_WARNINGS=1 vitest run tests/js --coverage",
     "test:integration:headless": "node web/tests/integration/run_integration.js"
   },
   "devDependencies": {
