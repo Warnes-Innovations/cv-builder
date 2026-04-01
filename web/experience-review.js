@@ -24,6 +24,16 @@ const log = getLogger('experience-review');
 import { stateManager } from './state-manager.js';
 import { eyeSlashIcon } from './review-icons.js';
 
+function _findExperienceRecommendationRecord(expId, data) {
+  if (!data || !Array.isArray(data.experience_recommendations)) return null;
+  return data.experience_recommendations.find((rec) => String(rec?.id || rec?.experience_id || '') === String(expId)) || null;
+}
+
+function _formatSuggestedOrderSummary(order) {
+  if (!Array.isArray(order) || order.length < 2) return '';
+  return order.map((idx) => String(Number(idx) + 1)).join(' -> ');
+}
+
 // ── Experience details fetch ───────────────────────────────────────────────
 
 async function getExperienceDetails(expId) {
@@ -140,6 +150,9 @@ function _renderExperienceTable(container, recommendedSet, data) {
     const recommendation    = getExperienceRecommendation(expId, data);
     const confidence        = getConfidenceLevel(expId, data);
     const reasoning         = getExperienceReasoning(expId, data);
+    const recRecord         = _findExperienceRecommendationRecord(expId, data);
+    const bulletOrder       = recRecord && typeof recRecord.bullet_order === 'object' ? recRecord.bullet_order : null;
+    const bulletOrderSummary = _formatSuggestedOrderSummary(bulletOrder?.order);
     const title             = details ? details.title   : expId;
     const company           = details ? details.company : '';
     const startDate         = details?.start_date || '';
@@ -148,7 +161,12 @@ function _renderExperienceTable(container, recommendedSet, data) {
     const defaultAction     = userSelections.experiences[expId] || 'include';
     const recommendationText = recommendation || 'Include';
     const confidenceBadge   = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
-    const reasoningText     = reasoning || 'This experience was selected based on its relevance to the position requirements.';
+    const reasoningSegments = [reasoning || 'This experience was selected based on its relevance to the position requirements.'];
+    if (bulletOrderSummary) reasoningSegments.push(`Suggested bullet order: ${bulletOrderSummary}.`);
+    if (bulletOrder?.reasoning) reasoningSegments.push(String(bulletOrder.reasoning));
+    if (bulletOrder?.ats_impact) reasoningSegments.push(`ATS impact: ${bulletOrder.ats_impact}`);
+    if (bulletOrder?.page_length_impact) reasoningSegments.push(`Page length impact: ${bulletOrder.page_length_impact}`);
+    const reasoningText     = reasoningSegments.join(' ');
     const isFirst           = rowIdx === 0;
     const isLast            = rowIdx === exps.length - 1;
     const titleEsc          = escapeHtml(title);
@@ -168,7 +186,7 @@ function _renderExperienceTable(container, recommendedSet, data) {
           <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${titleEsc}"         title="Include — standard treatment">✓</button>
           <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${titleEsc}"    title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
           <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${titleEsc}"         title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
-          <button class="icon-btn" data-action="reorder" aria-label="Reorder bullets for ${titleEsc}" title="Reorder bullet points" style="color:#6366f1;">↕</button>
+          <button class="icon-btn" data-action="reorder" aria-label="Reorder bullets for ${titleEsc}" title="${bulletOrderSummary ? `Reorder bullet points (AI suggested order ${bulletOrderSummary})` : 'Reorder bullet points'}" style="color:#6366f1;">↕</button>
           <button class="icon-btn" data-action="row-up"   aria-label="Move ${titleEsc} earlier in CV" title="Move up in CV"   ${isFirst ? 'disabled' : ''}>↑</button>
           <button class="icon-btn" data-action="row-down" aria-label="Move ${titleEsc} later in CV"   title="Move down in CV" ${isLast  ? 'disabled' : ''}>↓</button>
         </td>

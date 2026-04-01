@@ -31,7 +31,6 @@ let _focusedElementBeforeModal = null;
 
 /** Stores the current keydown listener for focus trap (to enable cleanup). */
 let _currentFocusTrapListener = null;
-let _settingsData = null;
 
 function _settingsSourceLabel(meta, key) {
   const source = meta?.sources?.[key] || 'default';
@@ -150,7 +149,6 @@ async function reloadSettingsModal() {
   try {
     _setSettingsStatus('Loading settings...', 'info');
     const result = await fetchSettings();
-    _settingsData = result;
     _renderSettingsToForm(result);
     _setSettingsStatus('Settings loaded.', 'success');
   } catch (error) {
@@ -168,7 +166,6 @@ async function saveSettingsModal() {
     _setSettingsStatus('Saving settings...', 'info');
     const payload = _collectSettingsPayloadFromForm();
     const result = await updateSettings(payload);
-    _settingsData = result;
     _renderSettingsToForm(result);
     _setSettingsStatus('Settings saved successfully.', 'success');
   } catch (error) {

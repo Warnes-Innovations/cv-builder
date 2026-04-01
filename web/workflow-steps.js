@@ -22,6 +22,12 @@ const log = getLogger('workflow-steps');
 
 import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
 
+function _findExperienceRecommendationRecord(expId) {
+  const data = globalThis.window?.pendingRecommendations;
+  if (!data || !Array.isArray(data.experience_recommendations)) return null;
+  return data.experience_recommendations.find((rec) => String(rec?.id || rec?.experience_id || '') === String(expId)) || null;
+}
+
 // ── Step-order constants ─────────────────────────────────────────────────────
 
 const _STEP_ORDER = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise'];
@@ -302,6 +308,9 @@ async function showBulletReorder(expId, expTitle) {
   let achievements = [];
   let proposedOrder = null;
   let hasJobAnalysis = false;
+  let proposedReasoning = '';
+  let proposedAtsImpact = '';
+  let proposedPageImpact = '';
   try {
     const detailsRes = await fetch('/api/experience-details', {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -319,18 +328,32 @@ async function showBulletReorder(expId, expTitle) {
     const detailsData = await detailsRes.json();
     achievements  = (detailsData.experience && detailsData.experience.achievements) || [];
 
+    const recRecord = _findExperienceRecommendationRecord(expId);
+    const llmBulletOrder = recRecord && typeof recRecord.bullet_order === 'object'
+      ? recRecord.bullet_order
+      : null;
+    if (Array.isArray(llmBulletOrder?.order) && llmBulletOrder.order.length > 1) {
+      proposedOrder = llmBulletOrder.order;
+      hasJobAnalysis = true;
+      proposedReasoning = String(llmBulletOrder.reasoning || '').trim();
+      proposedAtsImpact = String(llmBulletOrder.ats_impact || '').trim();
+      proposedPageImpact = String(llmBulletOrder.page_length_impact || '').trim();
+    }
+
     // Suggested order is optional; failures should not block opening the modal.
-    try {
-      const proposedRes = await fetch(`/api/proposed-bullet-order?experience_id=${encodeURIComponent(expId)}`);
-      if (proposedRes.ok) {
-        const proposedData = await proposedRes.json();
-        proposedOrder = proposedData.proposed_order || null;
-        hasJobAnalysis = proposedData.has_job_analysis || false;
-      } else {
-        log.warn('Could not load suggested bullet order:', proposedRes.status);
+    if (!proposedOrder) {
+      try {
+        const proposedRes = await fetch(`/api/proposed-bullet-order?experience_id=${encodeURIComponent(expId)}`);
+        if (proposedRes.ok) {
+          const proposedData = await proposedRes.json();
+          proposedOrder = proposedData.proposed_order || null;
+          hasJobAnalysis = proposedData.has_job_analysis || false;
+        } else {
+          log.warn('Could not load suggested bullet order:', proposedRes.status);
+        }
+      } catch (e) {
+        log.warn('Could not load suggested bullet order:', e);
       }
-    } catch (e) {
-      log.warn('Could not load suggested bullet order:', e);
     }
   } catch (e) {
     const errorText = e.message === 'Failed to fetch'
@@ -355,6 +378,13 @@ async function showBulletReorder(expId, expTitle) {
     ? `<button class="btn-secondary" id="use-llm-order-btn" title="Apply job-relevance ranking from your job analysis"
          style="color:#6366f1;border-color:#6366f1;">✨ Use Suggested Order</button>`
     : '';
+  const suggestionMeta = proposedReasoning || proposedAtsImpact || proposedPageImpact
+    ? `<div id="bullet-order-ai-note" style="font-size:0.82em;color:#4338ca;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;padding:10px 12px;margin-bottom:12px;">
+        ${proposedReasoning ? `<div><strong>AI rationale:</strong> ${escapeHtml(proposedReasoning)}</div>` : ''}
+        ${proposedAtsImpact ? `<div><strong>ATS impact:</strong> ${escapeHtml(proposedAtsImpact)}</div>` : ''}
+        ${proposedPageImpact ? `<div><strong>Page length impact:</strong> ${escapeHtml(proposedPageImpact)}</div>` : ''}
+      </div>`
+    : '';
 
   modal.innerHTML = `
     <div style="background:#fff;border-radius:8px;padding:24px;max-width:640px;width:92%;
@@ -371,6 +401,7 @@ async function showBulletReorder(expId, expTitle) {
         Use ↑ ↓ to reorder. Bullets higher in the list appear first on your CV.
         The most relevant bullet will be auto-ranked highest if you reset.
       </div>
+      ${suggestionMeta}
       <ol id="bullet-reorder-list" style="padding:0;margin:0;list-style:none;">
       </ol>
       <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">

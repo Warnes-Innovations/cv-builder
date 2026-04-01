@@ -377,6 +377,12 @@ class TestMultipleEndpointsIntegration(unittest.TestCase):
             data = response.get_json()
             self.assertIn('phase', data)
 
+        final_response = self.client.get(
+            '/api/status', query_string={'session_id': self.session_id}
+        )
+        final_data = final_response.get_json()
+        self.assertIsNotNone(final_data.get('phase'))
+
 
 class TestSettingsAPI(unittest.TestCase):
     """Test centralized settings API endpoints."""
