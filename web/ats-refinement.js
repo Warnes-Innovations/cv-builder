@@ -9,11 +9,78 @@
  * ATS score badge display and debounced refresh scheduling.
  *
  * DEPENDENCIES:
- *   - stateManager from state-manager.js (on globalThis)
+ *   - globalThis.stateManager from state-manager.js (accessed via globalThis throughout)
  */
 
 function _dispatchAtsScoreUpdated() {
   document.dispatchEvent(new CustomEvent('ats-score-updated'));
+}
+
+function _safeText(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function _coerceObject(value) {
+  return value && typeof value === 'object' ? value : {};
+}
+
+function _formatDateLabel(value) {
+  const text = _safeText(value);
+  if (!text) return '';
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const [year, month, day] = text.split('-');
+    return `${month}/${day}/${year}`;
+  }
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+  return text;
+}
+
+function _getPageLengthLabel() {
+  const generationState = _coerceObject(globalThis.stateManager?.getGenerationState?.());
+  const exact = Number(generationState.pageCountExact);
+  if (Number.isFinite(exact) && exact > 0) {
+    return `Length ${exact} page${exact === 1 ? '' : 's'}`;
+  }
+
+  const estimate = Number(generationState.pageCountEstimate);
+  if (Number.isFinite(estimate) && estimate > 0) {
+    return `Length ${estimate.toFixed(1)} pages est`;
+  }
+
+  return '';
+}
+
+function _getJobSummaryLabel() {
+  const intake = _coerceObject(window._statusIntake);
+  const analysis = _coerceObject(globalThis.stateManager?.getTabData?.('analysis'));
+  const positionFallback = _safeText(document.getElementById('position-title')?.textContent || '');
+
+  const role = _safeText(
+    intake.role
+      || analysis.job_title
+      || analysis.title
+      || analysis.position_name
+      || ''
+  );
+  const company = _safeText(intake.company || analysis.company_name || analysis.company || '');
+  const dateApplied = _formatDateLabel(
+    intake.date_applied
+      || analysis.date_applied
+      || analysis.application_date
+      || ''
+  );
+
+  const primary = role && company
+    ? `${role} @ ${company}`
+    : (role || company || positionFallback);
+  if (!primary) return '';
+  if (!dateApplied) return primary;
+  return `${primary} (${dateApplied})`;
 }
 
 function _keywordCount(keywords, type, statuses = ['matched', 'partial']) {
@@ -101,6 +168,8 @@ function _updateAtsSummary(score) {
 
   const keywords = Array.isArray(score?.keyword_status) ? score.keyword_status : [];
   const hasScore = score && typeof score.overall === 'number';
+  const pageLengthLabel = _getPageLengthLabel();
+  const jobSummaryLabel = _getJobSummaryLabel();
 
   if (!hasScore) {
     header.style.display = 'none';
@@ -112,16 +181,19 @@ function _updateAtsSummary(score) {
 
   header.style.display = 'flex';
 
-  if (keywords.length === 0) {
+  const summaryContent = formatAtsScoreSummary(score);
+  const lineParts = [summaryContent.line, pageLengthLabel].filter(Boolean);
+  const detailParts = [jobSummaryLabel, summaryContent.detail].filter(Boolean);
+
+  if (lineParts.length === 0 && detailParts.length === 0 && keywords.length === 0) {
     summary.style.display = 'none';
     summaryLine.textContent = '';
     summaryDetail.textContent = '';
     return;
   }
 
-  const summaryContent = formatAtsScoreSummary(score);
-  summaryLine.textContent = summaryContent.line;
-  summaryDetail.textContent = summaryContent.detail;
+  summaryLine.textContent = lineParts.join(' • ');
+  summaryDetail.textContent = detailParts.join(' • ');
   summary.style.display = 'flex';
 }
 
@@ -189,6 +261,33 @@ let _atsRefreshTimer = null;
 function scheduleAtsRefresh(basis = 'review_checkpoint') {
   clearTimeout(_atsRefreshTimer);
   _atsRefreshTimer = setTimeout(() => refreshAtsScore(basis), 600);
+}
+
+function _refreshSummaryFromState() {
+  const score = globalThis.stateManager?.getAtsScore?.();
+  if (score && typeof score.overall === 'number') {
+    _updateAtsSummary(score);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('cvbuilder:generation-state-changed', () => {
+    _refreshSummaryFromState();
+  });
+}
+
+if (typeof document !== 'undefined') {
+  const positionTitleEl = document.getElementById('position-title');
+  if (positionTitleEl && typeof MutationObserver !== 'undefined') {
+    const titleObserver = new MutationObserver(() => {
+      _refreshSummaryFromState();
+    });
+    titleObserver.observe(positionTitleEl, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  }
 }
 
 // ── ES module exports ──────────────────────────────────────────────────────

@@ -20,12 +20,8 @@
  *   - tabData, currentTab, PHASES (window globals)
  *
  * GAP-23 intake confirmation:
- *   showIntakeConfirmation() — called after any job-text submission.  Fetches
- *   /api/intake-metadata, renders an editable company/role/date form, and on
- *   confirm calls /api/confirm-intake (which saves the session) before
- *   triggering analyzeJob().
- *   Prior-session clarification defaults are fetched from
- *   /api/prior-clarifications and noted in the confirmation panel.
+ *   All job-text submissions (paste, URL, file) route directly to analyzeJob()
+ *   so every source follows the same post-analysis intake path.
  */
 
 import { getLogger } from './logger.js';
@@ -291,7 +287,7 @@ async function uploadJobFile() {
       stateManager.setTabData('job', data.text);
       saveTabData();
       appendMessage('assistant', `✅ Job description loaded from "${data.filename}" (${data.content_length.toLocaleString()} chars).`);
-      await showIntakeConfirmation();
+      await analyzeJob();
     }
   } catch (err) {
     errEl.textContent   = err.message;
@@ -339,20 +335,20 @@ async function submitJobText() {
   /* duckflow:
    *   id: job_ui_submit_live
    *   kind: ui
-   *   timestamp: '2026-03-27T18:03:00Z'
+   *   timestamp: '2026-03-31T12:49:47Z'
    *   status: live
    *   handles:
    *   - ui:job-input.submit-text
    *   calls:
    *   - POST /api/job
-   *   - showIntakeConfirmation
+   *   - analyzeJob
    *   reads:
    *   - dom:#job-text-input.value
    *   writes:
    *   - request:POST /api/job.job_text
    *   - tab:job
    *   - ui:workflow.job
-   *   notes: Submits pasted job text to the backend, caches the same text in tab state, then shows the GAP-23 intake confirmation form instead of triggering analysis immediately.
+   *   notes: Submits pasted job text to the backend, caches the same text in tab state, then runs analyzeJob() so all job sources share the same analysis and intake flow.
    */
   const textInput = document.getElementById('job-text-input');
   const jobText = textInput.value.trim();
@@ -395,7 +391,7 @@ async function submitJobText() {
       }
       switchTab('job');
       setLoading(false);
-      await showIntakeConfirmation();
+      await analyzeJob();
       return;
     }
   } catch (error) {
@@ -479,7 +475,9 @@ async function fetchJobFromURL() {
       stateManager.setTabData('job', data.job_text);
       saveTabData();
       appendMessage('assistant', `✅ ${data.message}! Fetched ${data.content_length || 'content'} characters.`);
-      await showIntakeConfirmation();
+      setLoading(false);
+      await analyzeJob();
+      return;
     }
   } catch (error) {
     log.error('Error fetching URL:', error);
@@ -553,150 +551,6 @@ function _clearFieldError(inputId, errorId) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Intake confirmation (GAP-23)
-// ---------------------------------------------------------------------------
-
-/**
- * Show an editable intake-confirmation form after job text is stored.
- *
- * Fetches /api/intake-metadata (regex-extracted company/role/date) and
- * optionally /api/prior-clarifications to note prior session defaults.
- * The user may correct the extracted values then click "Confirm & Start
- * Analysis" (→ confirmIntakeAndAnalyze) or "Skip" (→ skipIntakeConfirmation).
- *
- * duckflow:
- *   id: intake_confirm_show_live
- *   kind: ui
- *   timestamp: '2026-03-27T18:03:00Z'
- *   status: live
- *   calls:
- *   - GET /api/intake-metadata
- *   - GET /api/prior-clarifications
- *   writes:
- *   - dom:#document-content
- *   notes: Renders editable confirmation form; confirm path calls confirmIntakeAndAnalyze().
- */
-async function showIntakeConfirmation() {
-  let meta = { role: null, company: null, date_applied: null };
-  try {
-    const res = await fetch('/api/intake-metadata');
-    if (res.ok) meta = await res.json();
-  } catch (err) {
-    log.warn('intake-metadata fetch failed:', err);
-  }
-
-  let priorHtml = '';
-  try {
-    const priorRes = await fetch('/api/prior-clarifications');
-    if (priorRes.ok) {
-      const priorData = await priorRes.json();
-      if (priorData.found && priorData.matches && priorData.matches.length > 0) {
-        const m     = priorData.matches[0];
-        const label = escapeHtml(m.role || m.position_name || '');
-        priorHtml = `<div style="background:#f0f9ff;border:1px solid #0ea5e9;border-radius:6px;padding:12px;margin-top:12px;font-size:13px;">
-          <strong>💡 Prior session found</strong> for a similar role ("${label}") — your previous clarification answers will be pre-loaded when analysis runs.
-        </div>`;
-      }
-    }
-  } catch (_) {}
-
-  const today      = new Date().toISOString().slice(0, 10);
-  const roleVal    = escapeHtml(meta.role         || '');
-  const companyVal = escapeHtml(meta.company      || '');
-  const dateVal    = escapeHtml(meta.date_applied || today);
-
-  const content = document.getElementById('document-content');
-  if (!content) { await analyzeJob(); return; }
-
-  content.innerHTML = `
-    <div style="max-width:600px;margin:0 auto;padding:24px;">
-      <h2 style="font-size:20px;font-weight:700;color:#1e293b;margin-bottom:4px;">✅ Job Description Received</h2>
-      <p style="color:#64748b;margin-bottom:20px;">Confirm or correct the extracted details before analysis begins.</p>
-      <div style="border:1px solid #e2e8f0;border-radius:8px;padding:20px;background:#f8fafc;">
-        <div style="margin-bottom:14px;">
-          <label style="display:block;font-weight:600;font-size:13px;color:#374151;margin-bottom:4px;" for="intake-role">Role Title</label>
-          <input type="text" id="intake-role" value="${roleVal}"
-            placeholder="e.g. Senior Software Engineer"
-            style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;">
-        </div>
-        <div style="margin-bottom:14px;">
-          <label style="display:block;font-weight:600;font-size:13px;color:#374151;margin-bottom:4px;" for="intake-company">Company</label>
-          <input type="text" id="intake-company" value="${companyVal}"
-            placeholder="e.g. Acme Corp"
-            style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;">
-        </div>
-        <div style="margin-bottom:14px;">
-          <label style="display:block;font-weight:600;font-size:13px;color:#374151;margin-bottom:4px;" for="intake-date">Date Applied</label>
-          <input type="date" id="intake-date" value="${dateVal}"
-            style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;">
-        </div>
-        ${priorHtml}
-        <div style="display:flex;gap:12px;margin-top:18px;">
-          <button id="intake-confirm-btn" class="btn-primary" onclick="confirmIntakeAndAnalyze()">Confirm &amp; Start Analysis</button>
-          <button class="btn-secondary" onclick="skipIntakeConfirmation()">Skip</button>
-        </div>
-      </div>
-    </div>`;
-}
-
-/**
- * Called when the user clicks "Confirm & Start Analysis".
- *
- * duckflow:
- *   id: intake_confirm_submit_live
- *   kind: ui
- *   timestamp: '2026-03-27T18:03:00Z'
- *   status: live
- *   handles:
- *   - ui:intake-confirm.click
- *   calls:
- *   - POST /api/confirm-intake
- *   - analyzeJob
- *   reads:
- *   - dom:#intake-role.value
- *   - dom:#intake-company.value
- *   - dom:#intake-date.value
- *   writes:
- *   - state:intake
- *   - state:position_name
- *   - session:saved
- */
-async function confirmIntakeAndAnalyze() {
-  const btn = document.getElementById('intake-confirm-btn');
-  if (btn) btn.disabled = true;
-
-  const role        = (document.getElementById('intake-role')?.value    || '').trim();
-  const company     = (document.getElementById('intake-company')?.value || '').trim();
-  const dateApplied = (document.getElementById('intake-date')?.value    || '').trim();
-
-  try {
-    setLoading(true, 'Saving intake details…');
-    const res = await fetch('/api/confirm-intake', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ role, company, date_applied: dateApplied }),
-    });
-    const data = await res.json();
-    if (!res.ok || data.error) {
-      log.warn('confirm-intake error (continuing):', data.error);
-    }
-  } catch (err) {
-    log.warn('confirm-intake failed (continuing):', err);
-  }
-
-  setLoading(false);
-  await analyzeJob();
-}
-
-/**
- * Called when the user clicks "Skip" on the intake confirmation form.
- * Proceeds directly to analysis without persisting intake metadata.
- */
-async function skipIntakeConfirmation() {
-  await analyzeJob();
-}
-
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
   populateJobTab,
@@ -719,7 +573,4 @@ export {
   clearURLInput,
   _showFieldError,
   _clearFieldError,
-  showIntakeConfirmation,
-  confirmIntakeAndAnalyze,
-  skipIntakeConfirmation,
 };

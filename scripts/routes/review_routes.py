@@ -42,6 +42,20 @@ def create_blueprint(deps):
         current_app.logger.exception(message)
         return jsonify({'error': message}), 500
 
+    def _trigger_render_snapshot_refresh(conversation, reason: str) -> None:
+        """Best-effort async render snapshot refresh after submitted changes."""
+        try:
+            generation_routes.schedule_render_snapshot_refresh(
+                conversation,
+                reason=reason,
+            )
+        except Exception as exc:
+            current_app.logger.warning(
+                'Render snapshot refresh trigger failed (%s): %s',
+                reason,
+                exc,
+            )
+
     def _prepopulate_spell_dict(orchestrator_inst) -> None:
         """Load master-data terms into the custom spell dictionary."""
         try:
@@ -343,7 +357,11 @@ def create_blueprint(deps):
                 ), 400
 
             conversation._save_session()
-            print(f"Saved {decision_type} decisions: {decisions}")
+            current_app.logger.debug("Saved %s decisions", decision_type)
+            _trigger_render_snapshot_refresh(
+                conversation,
+                reason=f'review_decisions:{decision_type}',
+            )
             session_registry.touch(sid)
             return jsonify({"success": True, "message": message})
 
@@ -408,6 +426,10 @@ def create_blueprint(deps):
         with entry.lock:
             conversation.state['achievement_edits'] = normalized
             conversation._save_session()
+        _trigger_render_snapshot_refresh(
+            conversation,
+            reason='achievement_edits',
+        )
         session_registry.touch(sid)
         total = sum(len(v) for v in normalized.values())
         message = (
@@ -469,6 +491,11 @@ def create_blueprint(deps):
                 conversation.state['customizations'] = customizations
                 conversation._save_session()
 
+            _trigger_render_snapshot_refresh(
+                conversation,
+                reason='achievement_override_delete',
+            )
+
             session_registry.touch(sid)
             return jsonify({'ok': True, 'action': 'deleted', 'id': ach_id})
 
@@ -511,6 +538,11 @@ def create_blueprint(deps):
             conversation.state['customizations'] = customizations
             conversation._save_session()
 
+        _trigger_render_snapshot_refresh(
+            conversation,
+            reason='achievement_override_update',
+        )
+
         session_registry.touch(sid)
         return jsonify({
             'ok': True,
@@ -551,6 +583,11 @@ def create_blueprint(deps):
             conversation.state['skill_group_overrides'] = overrides
             conversation.state['customizations'] = customizations
             conversation._save_session()
+
+        _trigger_render_snapshot_refresh(
+            conversation,
+            reason='skill_group_override',
+        )
 
         session_registry.touch(sid)
         return jsonify({
@@ -598,6 +635,11 @@ def create_blueprint(deps):
             conversation.state['skill_category_overrides'] = overrides
             conversation.state['customizations'] = customizations
             conversation._save_session()
+
+        _trigger_render_snapshot_refresh(
+            conversation,
+            reason='skill_category_override',
+        )
 
         session_registry.touch(sid)
         return jsonify({
@@ -681,6 +723,10 @@ def create_blueprint(deps):
                 customizations['skill_category_overrides'] = overrides
                 conversation.state['customizations'] = customizations
                 conversation._save_session()
+                _trigger_render_snapshot_refresh(
+                    conversation,
+                    reason='skill_category_rename',
+                )
                 session_registry.touch(sid)
                 return jsonify({
                     'ok': True,
@@ -716,6 +762,11 @@ def create_blueprint(deps):
 
             conversation.state['customizations'] = customizations
             conversation._save_session()
+
+        _trigger_render_snapshot_refresh(
+            conversation,
+            reason='skill_category_reorder',
+        )
 
         session_registry.touch(sid)
         return jsonify({
@@ -792,6 +843,11 @@ def create_blueprint(deps):
             conversation.state['customizations'] = customizations
             conversation._save_session()
 
+        _trigger_render_snapshot_refresh(
+            conversation,
+            reason='skill_qualifier_overrides',
+        )
+
         session_registry.touch(sid)
         return jsonify({
             'ok': True,
@@ -866,6 +922,11 @@ def create_blueprint(deps):
             conversation.state['skill_decisions'] = skill_decisions
             conversation.state['customizations'] = customizations
             conversation._save_session()
+
+        _trigger_render_snapshot_refresh(
+            conversation,
+            reason='add_review_skill',
+        )
 
         session_registry.touch(sid)
         return jsonify({'ok': True, 'skill': normalized_skill})
@@ -1027,17 +1088,19 @@ def create_blueprint(deps):
             with entry.lock:
                 conversation.state['edited_cv_data'] = data
                 conversation._save_session()
+            _trigger_render_snapshot_refresh(
+                conversation,
+                reason='save_cv_data',
+            )
             session_registry.touch(sid)
 
-            print("CV data updated:")
-            if 'personal_info' in data:
-                print(f"  - Personal info: {data['personal_info']}")
-            if 'summary' in data:
-                print(f"  - Summary: {len(data.get('summary', ''))} chars")
-            if 'experiences' in data:
-                print(f"  - Experiences: {len(data['experiences'])} items")
-            if 'skills' in data:
-                print(f"  - Skills: {len(data['skills'])} items")
+            current_app.logger.debug(
+                "CV data updated: personal_info=%s summary_len=%d experiences=%d skills=%d",
+                bool(data.get('personal_info')),
+                len(data.get('summary', '')),
+                len(data.get('experiences', [])),
+                len(data.get('skills', [])),
+            )
 
             return jsonify({
                 "success": True,
@@ -1154,6 +1217,10 @@ def create_blueprint(deps):
         try:
             with entry.lock:
                 summary = conversation.submit_rewrite_decisions(decisions)
+            _trigger_render_snapshot_refresh(
+                conversation,
+                reason='approve_rewrites',
+            )
             session_registry.touch(sid)
             return jsonify({
                 "ok":             True,
@@ -1236,10 +1303,10 @@ def create_blueprint(deps):
                         "LLM returned no publication recommendations",
                     )
                 source = "llm"
-            except Exception as rank_err:
-                print(
-                    "Publication ranking failed, using score-based "
-                    f"fallback: {rank_err}",
+            except Exception:
+                current_app.logger.warning(
+                    "Publication ranking failed; using score-based fallback",
+                    exc_info=True,
                 )
                 selected = orchestrator._select_publications(
                     job_analysis,
@@ -1373,6 +1440,10 @@ def create_blueprint(deps):
                 else:
                     achievement_orders.pop(exp_id, None)
                 conversation._save_session()
+            _trigger_render_snapshot_refresh(
+                conversation,
+                reason='reorder_bullets',
+            )
             session_registry.touch(sid)
             return jsonify({
                 "ok": True,
@@ -1484,6 +1555,10 @@ def create_blueprint(deps):
                 else:
                     conversation.state.pop(state_key, None)
                 conversation._save_session()
+            _trigger_render_snapshot_refresh(
+                conversation,
+                reason=f'reorder_rows:{row_type}',
+            )
             session_registry.touch(sid)
             return jsonify({
                 "ok": True,
@@ -1546,8 +1621,11 @@ def create_blueprint(deps):
                     if experiences_list
                     else []
                 )
-                print(f"DEBUG: Experience '{experience_id}' not found")
-                print(f"DEBUG: Available IDs: {available_ids[:10]}")
+                current_app.logger.debug(
+                    "Experience '%s' not found; available IDs: %s",
+                    experience_id,
+                    available_ids[:10],
+                )
                 return jsonify({
                     "experience": None,
                     "message": f"Experience {experience_id} not found",
@@ -1872,6 +1950,10 @@ def create_blueprint(deps):
             spell_audit = body.get('spell_audit', [])
             with entry.lock:
                 result = conversation.complete_spell_check(spell_audit)
+            _trigger_render_snapshot_refresh(
+                conversation,
+                reason='spell_check_complete',
+            )
             session_registry.touch(sid)
             return jsonify({'ok': True, **result})
         except Exception:
@@ -2053,6 +2135,10 @@ def create_blueprint(deps):
                             'page_margin'
                         ] = raw
                 conversation._save_session()
+            _trigger_render_snapshot_refresh(
+                conversation,
+                reason='layout_settings',
+            )
             session_registry.touch(sid)
             return jsonify({'ok': True})
         except Exception:

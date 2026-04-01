@@ -252,6 +252,18 @@ function _restoreTabForPhase(sessionPhase) {
   }
 }
 
+function _resolveRestoredPhase(statusData) {
+  const phase = statusData?.phase || PHASES.INIT;
+
+  // Guard against stale persisted phase values that moved past analysis while
+  // analysis data was never produced for this session.
+  if (!statusData?.job_analysis) {
+    return PHASES.INIT;
+  }
+
+  return phase;
+}
+
 // ---------------------------------------------------------------------------
 // Session context / restore
 // ---------------------------------------------------------------------------
@@ -360,6 +372,9 @@ function _hydrateStatusDerivedState(statusData) {
   window._allExperiences = statusData.all_experiences || [];
   window.selectedSummaryKey = statusData.summary_focus_override || statusData.selected_summary_key || null;
   window._newSkillsFromLLM = statusData.new_skills_from_llm || [];
+  window._statusIntake = statusData.intake && typeof statusData.intake === 'object'
+    ? statusData.intake
+    : {};
   window.postAnalysisQuestions = Array.isArray(statusData.post_analysis_questions)
     ? statusData.post_analysis_questions
     : [];
@@ -391,6 +406,10 @@ async function restoreBackendState() {
     const statusRes = await fetch('/api/status');
     if (!statusRes.ok) return false;
     const statusData = parseStatusResponse(await statusRes.json());
+
+    if (typeof updateAuthBadge === 'function') {
+      updateAuthBadge(statusData.copilot_auth || {}, statusData.llm_provider || null);
+    }
 
     _hydrateStatusDerivedState(statusData);
 
@@ -451,7 +470,12 @@ async function restoreBackendState() {
       }
     } catch (_e) { /* non-fatal */ }
 
-    _restoreTabForPhase(statusData.phase || PHASES.INIT);
+    const restoredPhase = _resolveRestoredPhase(statusData);
+    stateManager.setPhase(restoredPhase);
+    _restoreTabForPhase(restoredPhase);
+
+    // Keep the position-title element in sync whenever we restore status data.
+    if (typeof updatePositionTitle === 'function') updatePositionTitle(statusData);
 
     if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
 

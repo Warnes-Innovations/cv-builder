@@ -2326,6 +2326,24 @@ If you need clarification, return:
                 'raw_response': response
             }
         except Exception as e:
+            error_type = type(e).__name__.lower()
+            error_text = str(e).lower()
+            if (
+                isinstance(e, TimeoutError)
+                or 'timeout' in error_type
+                or 'time out' in error_text
+                or 'timed out' in error_text
+                or 'readtimeout' in error_type
+                or 'apitimeouterror' in error_type
+            ):
+                return {
+                    'error': 'timeout',
+                    'details': (
+                        'Layout instruction request timed out before the model '
+                        'returned a rewrite. Retry, or use a narrower layout '
+                        'instruction targeting one section at a time.'
+                    ),
+                }
             return {
                 'error': 'processing_error',
                 'details': f'Failed to apply layout instruction: {str(e)}'

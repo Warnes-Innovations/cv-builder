@@ -198,6 +198,13 @@ class TestCopilotOAuthClient(unittest.TestCase):
         client = get_llm_provider(provider="copilot-oauth", model=None, api_key=None, auth_manager=mgr)
         self.assertEqual(client.model, "gpt-4o")
 
+    def test_supported_models_contains_current_families(self):
+        """Copilot OAuth allowlist includes modern GPT/Claude/Gemini entries."""
+        self.assertIn("gpt-4.1", CopilotOAuthClient.SUPPORTED_MODELS)
+        self.assertIn("gpt-5-mini", CopilotOAuthClient.SUPPORTED_MODELS)
+        self.assertIn("claude-sonnet-4-6", CopilotOAuthClient.SUPPORTED_MODELS)
+        self.assertIn("gemini-2.5-pro", CopilotOAuthClient.SUPPORTED_MODELS)
+
 
 # ---------------------------------------------------------------------------
 # get_llm_provider
