@@ -450,7 +450,8 @@ def create_blueprint(deps):
                 "message": "Session not found.",
             })
         except SessionOwnedError as e:
-            return jsonify({"error": "session_owned", "message": str(e)}), 409
+            logger.exception("Session ownership check failed")
+            return jsonify({"error": "session_owned", "message": "Session access denied"}), 409
 
     @bp.post("/api/sessions/takeover")
     def sessions_takeover():
