@@ -197,8 +197,16 @@ class ActionResponse:
 # Model-catalog helpers (module-level for testability)
 # ---------------------------------------------------------------------------
 
-_CATALOG_LIST_MODELS_CAPABLE: set[str] = {"openai", "anthropic", "gemini", "groq"}
+_CATALOG_LIST_MODELS_CAPABLE: set[str] = {"openai", "anthropic", "gemini", "groq", "copilot-sdk"}
 _CATALOG_STATIC_ONLY: set[str] = {"copilot-oauth", "copilot", "github", "local"}
+
+
+def _catalog_anyllm_provider(provider: str) -> str:
+    """Map cv-builder provider keys to any-llm provider keys."""
+    aliases = {
+        "copilot-sdk": "copilotsdk",
+    }
+    return aliases.get(provider, provider)
 
 
 def _frontend_project_root() -> Path:
@@ -359,6 +367,12 @@ def _catalog_provider_api_key(provider: str) -> Optional[str]:
         return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if provider == "groq":
         return os.getenv("GROQ_API_KEY")
+    if provider == "copilot-sdk":
+        return (
+            os.getenv("COPILOT_GITHUB_TOKEN")
+            or os.getenv("GITHUB_TOKEN")
+            or os.getenv("GH_TOKEN")
+        )
     return None
 
 
@@ -371,6 +385,8 @@ def _catalog_provider_api_base(provider: str) -> Optional[str]:
         return os.getenv("GOOGLE_GEMINI_BASE_URL")
     if provider == "groq":
         return os.getenv("GROQ_BASE_URL")
+    if provider == "copilot-sdk":
+        return os.getenv("COPILOT_CLI_URL")
     return None
 
 
@@ -387,7 +403,7 @@ def _catalog_discover_provider_models(provider: str) -> Optional[List[str]]:
         return None
 
     api_key = _catalog_provider_api_key(provider)
-    if not api_key:
+    if provider != "copilot-sdk" and not api_key:
         return None
 
     try:
@@ -397,9 +413,10 @@ def _catalog_discover_provider_models(provider: str) -> Optional[List[str]]:
 
     try:
         kwargs: Dict[str, Any] = {
-            "provider": provider,
-            "api_key":  api_key,
+            "provider": _catalog_anyllm_provider(provider),
         }
+        if api_key:
+            kwargs["api_key"] = api_key
         api_base = _catalog_provider_api_base(provider)
         if api_base:
             kwargs["api_base"] = api_base

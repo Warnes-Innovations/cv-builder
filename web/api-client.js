@@ -215,7 +215,18 @@ async function deleteSession(sessionId) {
 }
 
 async function fetchStatus() {
-  return apiCall('GET', '/api/status');
+  const status = await apiCall('GET', '/api/status');
+
+  // Keep provider/auth UI in sync whenever status is fetched.
+  const provider = status?.llm_provider || null;
+  if (provider) {
+    globalThis.currentProvider = provider;
+  }
+  if (typeof globalThis.updateAuthBadge === 'function') {
+    globalThis.updateAuthBadge(status?.copilot_auth || {}, provider);
+  }
+
+  return status;
 }
 
 async function fetchHistory() {

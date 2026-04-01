@@ -1,4 +1,5 @@
 """Master data management, summary, cover letter, and screening routes."""
+import logging
 import json
 import re
 import shutil
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
+from werkzeug.utils import safe_join
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
@@ -18,6 +20,9 @@ from utils.bibtex_parser import (
     serialize_publications_to_bibtex,
 )
 from utils.llm_client import LLMError
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +50,14 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
         ['git', '-C', str(master_path.parent), 'add', master_path.name],
         capture_output=True, check=False,
     )
+
+
+def _resolve_backup_path(backup_dir: Path, filename: str) -> Path | None:
+    """Return a validated backup path constrained to ``backup_dir``."""
+    safe_path = safe_join(str(backup_dir), filename)
+    if safe_path is None:
+        return None
+    return Path(safe_path)
 
 
 # ---------------------------------------------------------------------------
@@ -180,8 +193,12 @@ def create_blueprint(deps):
                 "education_count":   len(data.get('education', [])),
                 "publication_count": len(data.get('publications', [])),
             })
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+        except Exception:
+            logger.exception("Failed to load master data overview")
+            return jsonify({
+                "ok": False,
+                "error": "Failed to load master data overview.",
+            }), 500
 
     @bp.post("/api/master-data/update-achievement")
     def master_data_update_achievement():
@@ -944,8 +961,12 @@ def create_blueprint(deps):
             certs[idx].update(cert_data)
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "updated", "idx": idx})
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+        except Exception:
+            logger.exception("Failed to update certifications")
+            return jsonify({
+                "ok": False,
+                "error": "Failed to update certifications.",
+            }), 500
 
     # ------------------------------------------------------------------
     # Master-data history, restore, and export
@@ -994,7 +1015,9 @@ def create_blueprint(deps):
             return jsonify({"ok": False, "error": "Invalid backup filename format"}), 400
         master_path = Path(orchestrator.master_data_path)
         backup_dir = master_path.parent / "backups"
-        source = backup_dir / filename
+        source = _resolve_backup_path(backup_dir, filename)
+        if source is None:
+            return jsonify({"ok": False, "error": "Invalid backup filename format"}), 400
         if not source.exists():
             return jsonify({"ok": False, "error": "Backup not found"}), 404
         try:
@@ -1012,8 +1035,12 @@ def create_blueprint(deps):
             restored_data, _ = load_master(str(master_path))
             orchestrator.master_data = restored_data
             return jsonify({"ok": True, "restored_from": filename, "safety_backup": safety_path.name})
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+        except Exception:
+            logger.exception("Failed to restore master data backup")
+            return jsonify({
+                "ok": False,
+                "error": "Failed to restore the selected backup.",
+            }), 500
 
     @bp.get("/api/master-data/export")
     def master_data_export():
@@ -1031,8 +1058,12 @@ def create_blueprint(deps):
                     'Content-Disposition': 'attachment; filename="Master_CV_Data.json"',
                 },
             )
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+        except Exception:
+            logger.exception("Failed to export master data")
+            return jsonify({
+                "ok": False,
+                "error": "Failed to export master data.",
+            }), 500
 
     # ------------------------------------------------------------------
     # Generate professional summary
