@@ -14,7 +14,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('ui-core');
 
 import { escapeHtml } from './utils.js';
-import { StorageKeys, apiCall, fetchStatus, askPostAnalysisQuestions, sendMessage } from './api-client.js';
+import { StorageKeys, apiCall, fetchStatus, askPostAnalysisQuestions, sendMessage, fetchSettings, updateSettings } from './api-client.js';
 import {
   getWorkflowStepForPhase,
   initializeState,
@@ -31,6 +31,171 @@ let _focusedElementBeforeModal = null;
 
 /** Stores the current keydown listener for focus trap (to enable cleanup). */
 let _currentFocusTrapListener = null;
+let _settingsData = null;
+
+function _settingsSourceLabel(meta, key) {
+  const source = meta?.sources?.[key] || 'default';
+  const envKey = meta?.env_keys?.[key] || null;
+  if (source === 'env') return `Source: environment variable (${envKey || 'locked'})`;
+  if (source === 'dotenv') return `Source: .env (${envKey || 'locked'})`;
+  if (source === 'config') return 'Source: config.yaml';
+  return 'Source: built-in default';
+}
+
+function _renderSettingsSources(meta) {
+  const sourceTargets = [
+    'llm.default_provider',
+    'llm.default_model',
+    'llm.request_timeout_seconds',
+    'llm.temperature',
+    'generation.max_skills',
+    'generation.max_achievements',
+    'generation.max_publications',
+    'generation.skills_section_title',
+    'generation.formats.ats_docx',
+    'generation.formats.human_pdf',
+    'generation.formats.human_docx',
+  ];
+  sourceTargets.forEach((key) => {
+    const el = document.getElementById(`source-${key}`);
+    if (!el) return;
+    el.textContent = _settingsSourceLabel(meta, key);
+    const isLocked = Boolean(meta?.locked?.[key]);
+    el.style.color = isLocked ? '#b45309' : '#64748b';
+  });
+}
+
+function _setSettingsStatus(message, kind = 'info') {
+  const el = document.getElementById('settings-status-msg');
+  if (!el) return;
+  el.style.display = '';
+  if (kind === 'success') {
+    el.style.background = '#ecfdf5';
+    el.style.border = '1px solid #86efac';
+    el.style.color = '#166534';
+  } else if (kind === 'error') {
+    el.style.background = '#fef2f2';
+    el.style.border = '1px solid #fecaca';
+    el.style.color = '#991b1b';
+  } else {
+    el.style.background = '#eff6ff';
+    el.style.border = '1px solid #bfdbfe';
+    el.style.color = '#1e40af';
+  }
+  el.textContent = message;
+}
+
+function _collectSettingsPayloadFromForm() {
+  return {
+    llm: {
+      default_provider: document.getElementById('settings-llm-default-provider')?.value?.trim() || null,
+      default_model: document.getElementById('settings-llm-default-model')?.value?.trim() || null,
+      request_timeout_seconds: Number(document.getElementById('settings-llm-request-timeout')?.value || 120),
+      temperature: Number(document.getElementById('settings-llm-temperature')?.value || 0.7),
+    },
+    generation: {
+      max_skills: Number(document.getElementById('settings-gen-max-skills')?.value || 20),
+      max_achievements: Number(document.getElementById('settings-gen-max-achievements')?.value || 5),
+      max_publications: Number(document.getElementById('settings-gen-max-publications')?.value || 10),
+      skills_section_title: document.getElementById('settings-gen-skills-title')?.value?.trim() || 'Skills',
+      formats: {
+        ats_docx: Boolean(document.getElementById('settings-format-ats-docx')?.checked),
+        human_pdf: Boolean(document.getElementById('settings-format-human-pdf')?.checked),
+        human_docx: Boolean(document.getElementById('settings-format-human-docx')?.checked),
+      },
+    },
+  };
+}
+
+function _renderSettingsToForm(payload) {
+  const settings = payload?.settings || {};
+  const llm = settings.llm || {};
+  const generation = settings.generation || {};
+  const formats = generation.formats || {};
+
+  const setValue = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.value = value ?? '';
+  };
+  const setChecked = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = Boolean(value);
+  };
+
+  setValue('settings-llm-default-provider', llm.default_provider || '');
+  setValue('settings-llm-default-model', llm.default_model || '');
+  setValue('settings-llm-request-timeout', llm.request_timeout_seconds ?? 120);
+  setValue('settings-llm-temperature', llm.temperature ?? 0.7);
+
+  setValue('settings-gen-max-skills', generation.max_skills ?? 20);
+  setValue('settings-gen-max-achievements', generation.max_achievements ?? 5);
+  setValue('settings-gen-max-publications', generation.max_publications ?? 10);
+  setValue('settings-gen-skills-title', generation.skills_section_title || 'Skills');
+
+  setChecked('settings-format-ats-docx', formats.ats_docx);
+  setChecked('settings-format-human-pdf', formats.human_pdf);
+  setChecked('settings-format-human-docx', formats.human_docx);
+
+  _renderSettingsSources(payload.meta || {});
+
+  const pathEl = document.getElementById('settings-config-path');
+  if (pathEl) {
+    pathEl.textContent = payload?.meta?.config_path
+      ? `Config file: ${payload.meta.config_path}`
+      : '';
+  }
+}
+
+async function reloadSettingsModal() {
+  try {
+    _setSettingsStatus('Loading settings...', 'info');
+    const result = await fetchSettings();
+    _settingsData = result;
+    _renderSettingsToForm(result);
+    _setSettingsStatus('Settings loaded.', 'success');
+  } catch (error) {
+    _setSettingsStatus(`Failed to load settings: ${error.message || error}`, 'error');
+  }
+}
+
+async function saveSettingsModal() {
+  const saveBtn = document.getElementById('settings-save-btn');
+  try {
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+    _setSettingsStatus('Saving settings...', 'info');
+    const payload = _collectSettingsPayloadFromForm();
+    const result = await updateSettings(payload);
+    _settingsData = result;
+    _renderSettingsToForm(result);
+    _setSettingsStatus('Settings saved successfully.', 'success');
+  } catch (error) {
+    _setSettingsStatus(`Failed to save settings: ${error.message || error}`, 'error');
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Settings';
+    }
+  }
+}
+
+async function openSettingsModal() {
+  const overlay = document.getElementById('settings-modal-overlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  _focusedElementBeforeModal = document.activeElement;
+  setInitialFocus('settings-modal-overlay');
+  trapFocus('settings-modal-overlay');
+  await reloadSettingsModal();
+}
+
+function closeSettingsModal() {
+  const overlay = document.getElementById('settings-modal-overlay');
+  if (overlay) overlay.style.display = 'none';
+  restoreFocus();
+}
 
 /**
  * Get all focusable elements within a container.
@@ -1204,4 +1369,6 @@ export {
   initialize, displayMessage, updatePhaseIndicator, setControlsEnabled,
   // Model selector
   loadModelSelector, openModelModal, closeModelModal, setModel, testCurrentModel, refreshModelPricing,
+  // Settings modal
+  openSettingsModal, closeSettingsModal, saveSettingsModal, reloadSettingsModal,
 };

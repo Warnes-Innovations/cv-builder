@@ -328,6 +328,18 @@ async function approveRewrites(decisions) {
 }
 
 // ====================
+// Settings
+// ====================
+
+async function fetchSettings() {
+  return apiCall('GET', '/api/settings');
+}
+
+async function updateSettings(settings) {
+  return apiCall('PUT', '/api/settings', { settings });
+}
+
+// ====================
 // Generation & Download
 // ====================
 
@@ -382,5 +394,6 @@ export {
   fetchCVData, updateCVData, updateExperience, fetchExperienceDetails,
   fetchPublicationRecommendations, submitReviewDecisions,
   fetchRewrites, approveRewrites,
+  fetchSettings, updateSettings,
   generateCV, downloadFile, setLoading,
 };

@@ -15,9 +15,11 @@ vi.mock('../../web/api-client.js', () => ({
   fetchStatus: vi.fn(),
   askPostAnalysisQuestions: vi.fn(),
   sendMessage: vi.fn(),
+  fetchSettings: vi.fn(),
+  updateSettings: vi.fn(),
 }))
 
-import { apiCall } from '../../web/api-client.js'
+import { apiCall, fetchSettings, updateSettings } from '../../web/api-client.js'
 
 let mod
 
@@ -39,6 +41,8 @@ beforeEach(async () => {
   document.body.innerHTML = ''
   vi.stubGlobal('sendMessage', vi.fn())
   apiCall.mockReset()
+  fetchSettings.mockReset()
+  updateSettings.mockReset()
   await loadModule()
 })
 
@@ -316,5 +320,109 @@ describe('openModelModal', () => {
     expect(notesCell).not.toBeNull()
     expect(notesCell.querySelector('img')).toBeNull()
     expect(notesCell.textContent).toBe('<img src=x onerror=alert(1)>')
+  })
+})
+
+describe('settings modal', () => {
+  function buildSettingsFixture() {
+    document.body.innerHTML = `
+      <div id="settings-modal-overlay" style="display:none">
+        <div id="settings-status-msg" style="display:none"></div>
+        <input id="settings-llm-default-provider" />
+        <input id="settings-llm-default-model" />
+        <input id="settings-llm-request-timeout" />
+        <input id="settings-llm-temperature" />
+        <input id="settings-gen-max-skills" />
+        <input id="settings-gen-max-achievements" />
+        <input id="settings-gen-max-publications" />
+        <input id="settings-gen-skills-title" />
+        <input id="settings-format-ats-docx" type="checkbox" />
+        <input id="settings-format-human-pdf" type="checkbox" />
+        <input id="settings-format-human-docx" type="checkbox" />
+        <span id="settings-config-path"></span>
+        <span id="source-llm.default_provider"></span>
+        <span id="source-llm.default_model"></span>
+        <span id="source-llm.request_timeout_seconds"></span>
+        <span id="source-llm.temperature"></span>
+        <span id="source-generation.max_skills"></span>
+        <span id="source-generation.max_achievements"></span>
+        <span id="source-generation.max_publications"></span>
+        <span id="source-generation.skills_section_title"></span>
+        <span id="source-generation.formats.ats_docx"></span>
+        <span id="source-generation.formats.human_pdf"></span>
+        <span id="source-generation.formats.human_docx"></span>
+        <button id="settings-save-btn">Save Settings</button>
+      </div>`
+  }
+
+  it('loads settings into the modal fields', async () => {
+    buildSettingsFixture()
+    fetchSettings.mockResolvedValue({
+      ok: true,
+      settings: {
+        llm: {
+          default_provider: 'github',
+          default_model: 'gpt-4o',
+          request_timeout_seconds: 180,
+          temperature: 0.5,
+        },
+        generation: {
+          max_skills: 25,
+          max_achievements: 6,
+          max_publications: 11,
+          skills_section_title: 'Skills',
+          formats: { ats_docx: true, human_pdf: false, human_docx: true },
+        },
+      },
+      meta: {
+        sources: { 'llm.default_provider': 'config' },
+        locked: { 'llm.default_provider': false },
+        config_path: '/tmp/config.yaml',
+      },
+    })
+
+    await mod.openSettingsModal()
+
+    expect(document.getElementById('settings-llm-default-provider').value).toBe('github')
+    expect(document.getElementById('settings-llm-request-timeout').value).toBe('180')
+    expect(document.getElementById('settings-format-human-pdf').checked).toBe(false)
+    expect(document.getElementById('settings-config-path').textContent).toContain('/tmp/config.yaml')
+  })
+
+  it('submits updated settings payload', async () => {
+    buildSettingsFixture()
+    fetchSettings.mockResolvedValue({
+      ok: true,
+      settings: {
+        llm: {
+          default_provider: 'github',
+          default_model: '',
+          request_timeout_seconds: 120,
+          temperature: 0.7,
+        },
+        generation: {
+          max_skills: 20,
+          max_achievements: 5,
+          max_publications: 10,
+          skills_section_title: 'Skills',
+          formats: { ats_docx: true, human_pdf: true, human_docx: true },
+        },
+      },
+      meta: { sources: {}, locked: {} },
+    })
+    updateSettings.mockResolvedValue({ ok: true, settings: { llm: {}, generation: { formats: {} } }, meta: { sources: {}, locked: {} } })
+
+    await mod.openSettingsModal()
+
+    document.getElementById('settings-llm-default-provider').value = 'anthropic'
+    document.getElementById('settings-llm-request-timeout').value = '240'
+    document.getElementById('settings-format-human-pdf').checked = false
+
+    await mod.saveSettingsModal()
+
+    expect(updateSettings).toHaveBeenCalledTimes(1)
+    expect(updateSettings.mock.calls[0][0].llm.default_provider).toBe('anthropic')
+    expect(updateSettings.mock.calls[0][0].llm.request_timeout_seconds).toBe(240)
+    expect(updateSettings.mock.calls[0][0].generation.formats.human_pdf).toBe(false)
   })
 })
