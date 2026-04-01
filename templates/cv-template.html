@@ -263,6 +263,18 @@
             margin-bottom: 15px;
             display: flex;
             align-items: center;
+            break-after: avoid-page;
+            page-break-after: avoid;
+        }
+
+        /* Keep section headings with the first content block to reduce
+           orphaned titles at page boundaries in PDF renderers. */
+        .section-title + .summary-text,
+        .section-title + .achievement-list,
+        .section-title + .job-entry,
+        .section-title + .pub-list {
+            break-before: avoid-page;
+            page-break-before: avoid;
         }
 
         .section-title i {

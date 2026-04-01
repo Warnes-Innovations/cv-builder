@@ -25,7 +25,13 @@ function buildAtsBadge() {
     </div>`
 }
 
-const mockStateManager = { getSessionId: vi.fn(), setAtsScore: vi.fn() }
+const mockStateManager = {
+  getSessionId: vi.fn(),
+  setAtsScore: vi.fn(),
+  getAtsScore: vi.fn(),
+  getGenerationState: vi.fn(),
+  getTabData: vi.fn(),
+}
 
 beforeEach(() => {
   document.body.innerHTML = ''
@@ -34,6 +40,16 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn())
   mockStateManager.getSessionId.mockReturnValue('sess-123')
   mockStateManager.setAtsScore.mockReset()
+  mockStateManager.getAtsScore.mockReset()
+  mockStateManager.getAtsScore.mockReturnValue(null)
+  mockStateManager.getGenerationState.mockReset()
+  mockStateManager.getGenerationState.mockReturnValue({
+    pageCountEstimate: null,
+    pageCountExact: null,
+  })
+  mockStateManager.getTabData.mockReset()
+  mockStateManager.getTabData.mockReturnValue({})
+  window._statusIntake = {}
 })
 
 afterEach(() => {
@@ -94,6 +110,48 @@ describe('updateAtsBadge', () => {
 
     expect(document.getElementById('ats-score-summary-detail').textContent)
       .toBe('Top sections: skills 80% • experience 55%')
+  })
+
+  it('shows page length estimate and job details in the summary row', () => {
+    mockStateManager.getGenerationState.mockReturnValue({ pageCountEstimate: 2.3 })
+    window._statusIntake = {
+      role: 'Senior R Package Developer',
+      company: 'Genentech',
+      date_applied: '2026-03-31',
+    }
+
+    updateAtsBadge({
+      overall: 82,
+      keyword_status: [
+        { keyword: 'Python', type: 'hard', status: 'matched', match_type: 'exact' },
+        { keyword: 'SQL', type: 'hard', status: 'missing' },
+      ],
+    })
+
+    expect(document.getElementById('ats-score-summary-line').textContent)
+      .toBe('Hard 1/2 • Length 2.3 pages est')
+    expect(document.getElementById('ats-score-summary-detail').textContent)
+      .toBe('Senior R Package Developer @ Genentech (03/31/2026) • Missing hard: SQL')
+  })
+
+  it('refreshes summary context when generation state changes', () => {
+    mockStateManager.getAtsScore.mockReturnValue({
+      overall: 74,
+      keyword_status: [
+        { keyword: 'Python', type: 'hard', status: 'matched', match_type: 'exact' },
+      ],
+    })
+    mockStateManager.getGenerationState.mockReturnValue({ pageCountEstimate: null })
+
+    updateAtsBadge(mockStateManager.getAtsScore())
+    expect(document.getElementById('ats-score-summary-line').textContent)
+      .toBe('Hard 1/1')
+
+    mockStateManager.getGenerationState.mockReturnValue({ pageCountExact: 3 })
+    window.dispatchEvent(new CustomEvent('cvbuilder:generation-state-changed'))
+
+    expect(document.getElementById('ats-score-summary-line').textContent)
+      .toBe('Hard 1/1 • Length 3 pages')
   })
 
   it('adds score-high class for score >= 75', () => {

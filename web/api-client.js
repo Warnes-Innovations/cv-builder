@@ -282,10 +282,6 @@ async function loadExistingItems() {
 // Analysis
 // ====================
 
-async function analyzeJob() {
-  return apiCall('POST', '/api/action', { action: 'analyze_job' });
-}
-
 async function askPostAnalysisQuestions(analysisData) {
   return apiCall('POST', '/api/post-analysis-questions', { analysis: analysisData });
 }
@@ -300,10 +296,6 @@ async function submitPostAnalysisAnswers(answers) {
 
 async function sendMessage(message) {
   return apiCall('POST', '/api/message', { message });
-}
-
-async function sendAction(action, data = {}) {
-  return apiCall('POST', '/api/action', { action, ...data });
 }
 
 // ====================
@@ -396,8 +388,8 @@ export {
   createSession,
   saveSession,
   uploadJobFile, submitJobText, fetchJobFromUrl, loadJobFile, loadExistingItems,
-  analyzeJob, askPostAnalysisQuestions, submitPostAnalysisAnswers,
-  sendMessage, sendAction,
+  askPostAnalysisQuestions, submitPostAnalysisAnswers,
+  sendMessage,
   fetchCVData, updateCVData, updateExperience, fetchExperienceDetails,
   fetchPublicationRecommendations, submitReviewDecisions,
   fetchRewrites, approveRewrites,

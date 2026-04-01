@@ -25,6 +25,10 @@ node_modules/
 # Execution artifacts
 *.log
 
+# Local backup snapshots
+*.backup
+index.html.1
+
 # Coverage artifacts
 coverage/
 htmlcov/

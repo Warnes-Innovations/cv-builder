@@ -20,6 +20,7 @@ Tests:
 
 import argparse
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -403,7 +404,9 @@ class TestGenerationStateEndpoint(unittest.TestCase):
                     'ats_score', 'layout_instructions_count',
                     'final_generated_at', 'layout_template_version',
                 'layout_template_update_note', 'preview_outputs',
-                'preview_generated_at', 'preview_request_id', 'confirmed_at'):
+                'preview_generated_at', 'preview_request_id', 'confirmed_at',
+                'render_snapshot_generated_at', 'render_snapshot_stale',
+                'render_snapshot_regenerating'):
             self.assertIn(key, data, f"Missing key: {key}")
 
     def test_returns_cached_ats_score_when_present(self):
@@ -439,6 +442,45 @@ class TestGenerationStateEndpoint(unittest.TestCase):
         self.assertEqual(data['preview_generated_at'], ts)
         self.assertEqual(data['preview_request_id'], 'req-test-001')
         self.assertIsNone(data['confirmed_at'])
+
+
+class TestPreviewArtifactRetention(unittest.TestCase):
+    def test_prune_preview_artifacts_keeps_latest_requests(self):
+        tmp = tempfile.TemporaryDirectory()
+        preview_dir = Path(tmp.name)
+
+        try:
+            base = 1_700_000_000
+            requests = ['req-a', 'req-b', 'req-c']
+
+            for index, request_id in enumerate(requests, start=1):
+                files = [
+                    preview_dir / f'preview_{request_id}.html',
+                    preview_dir / f'preview_{request_id}_chrome.pdf',
+                    preview_dir / f'preview_{request_id}_weasyprint.pdf',
+                ]
+                for file_path in files:
+                    file_path.write_text('x', encoding='utf-8')
+                    os.utime(file_path, (base + index, base + index))
+
+            generation_routes_module._prune_preview_artifacts(
+                preview_dir,
+                keep_latest_requests=2,
+            )
+
+            self.assertFalse((preview_dir / 'preview_req-a.html').exists())
+            self.assertFalse((preview_dir / 'preview_req-a_chrome.pdf').exists())
+            self.assertFalse((preview_dir / 'preview_req-a_weasyprint.pdf').exists())
+
+            self.assertTrue((preview_dir / 'preview_req-b.html').exists())
+            self.assertTrue((preview_dir / 'preview_req-b_chrome.pdf').exists())
+            self.assertTrue((preview_dir / 'preview_req-b_weasyprint.pdf').exists())
+
+            self.assertTrue((preview_dir / 'preview_req-c.html').exists())
+            self.assertTrue((preview_dir / 'preview_req-c_chrome.pdf').exists())
+            self.assertTrue((preview_dir / 'preview_req-c_weasyprint.pdf').exists())
+        finally:
+            tmp.cleanup()
 
 
 class TestGeneratePreviewEndpoint(unittest.TestCase):
@@ -573,6 +615,9 @@ class TestGeneratePreviewEndpoint(unittest.TestCase):
             set((data['preview_outputs'] or {}).get('pdfs', {}).keys()),
             {'chrome', 'weasyprint'},
         )
+        self.assertFalse(data['render_snapshot_stale'])
+        self.assertFalse(data['render_snapshot_regenerating'])
+        self.assertIsNotNone(data['render_snapshot_generated_at'])
 
     def test_preview_output_download_serves_renderer_pdf(self):
         self._seed_job_analysis()
