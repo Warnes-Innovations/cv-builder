@@ -16,7 +16,6 @@ Settings are loaded in this order (highest to lowest priority):
 ### 1. Copy the example environment file:
 
 ```bash
-cd /Users/warnes/src/cv-builder
 cp .env.example .env
 ```
 
@@ -68,11 +67,26 @@ data:
 
 ```yaml
 llm:
-  default_provider: "github"     # Options: github, openai, anthropic, local
+  default_provider: "github"
   default_model: null            # null uses provider default
   temperature: 0.7               # 0.0 = deterministic, 1.0 = creative
   max_tokens: null               # null uses provider default
+  request_timeout_seconds: 300  # Max seconds to wait per LLM reply; increase for slow
+                                 # providers or complex queries, null = no limit
 ```
+
+**Supported providers:**
+
+| CLI value | Credentials |
+|-----------|-------------|
+| `copilot-oauth` | Browser OAuth flow (no token needed) |
+| `copilot` | `GITHUB_TOKEN` |
+| `github` | `GITHUB_MODELS_TOKEN` |
+| `openai` | `OPENAI_API_KEY` |
+| `anthropic` | `ANTHROPIC_API_KEY` |
+| `gemini` | `GEMINI_API_KEY` |
+| `groq` | `GROQ_API_KEY` |
+| `local` | None (HuggingFace local model) |
 
 **Environment variable overrides:**
 - `CV_LLM_PROVIDER`
@@ -85,6 +99,8 @@ llm:
 GITHUB_MODELS_TOKEN=ghp_xxxx
 OPENAI_API_KEY=sk-xxxx
 ANTHROPIC_API_KEY=sk-ant-xxxx
+GEMINI_API_KEY=xxxx
+GROQ_API_KEY=xxxx
 ```
 
 ### Generation Defaults
@@ -96,20 +112,23 @@ generation:
   max_achievements: 5
   max_publications: 10
   page_margin: "0.5in"  # Default PDF/print page margins
-  
+
   formats:
-    ats_docx:   true   # ATS-optimized DOCX (*_ATS.docx) — plain-text, single-column
+    ats_docx:   true   # ATS-optimised DOCX (*_ATS.docx) — plain-text, single-column
     human_html: true   # Human-readable HTML (*.html) — Jinja2 + CSS + Schema.org JSON-LD
     human_pdf:  true   # Human-readable PDF (*.pdf)  — rendered from HTML via WeasyPrint
+    human_docx: true   # Human-readable DOCX (*.docx) — styled Word document
 ```
+
+> **Note:** `human_html` and `human_pdf` share the same rendering pass — the HTML is always produced when `human_pdf` is enabled, because WeasyPrint converts it to PDF. Both output files are saved to the output directory.
 
 ### Session Management
 
 ```yaml
 session:
   auto_save: true
-  session_dir: "./files/sessions"
-  history_file: "./files/.input_history"
+  session_dir: "~/CV/cv-builder/sessions"
+  history_file: "~/CV/cv-builder/input_history"
 ```
 
 ### Web UI
@@ -117,7 +136,7 @@ session:
 ```yaml
 web:
   host: "127.0.0.1"
-  port: 5000
+  port: 5001
   debug: false
 ```
 
@@ -132,6 +151,7 @@ web:
 logging:
   level: "INFO"          # DEBUG, INFO, WARNING, ERROR
   file: null             # null = console only
+  log_dir: "~/CV/cv-builder/logs"
 ```
 
 **Environment variable overrides:**

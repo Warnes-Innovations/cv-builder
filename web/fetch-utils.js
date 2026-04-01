@@ -151,14 +151,21 @@ function _updateLLMStatusBar(loading, label) {
   const bar = document.getElementById('llm-status-bar');
   const thinking = document.getElementById('llm-thinking');
   const stepLabel = document.getElementById('llm-step-label');
+  const abortBtn = document.getElementById('llm-abort-btn');
   if (!bar) return;
 
   if (loading) {
     bar.style.display = 'flex';
     if (thinking) thinking.style.display = 'flex';
     if (stepLabel) stepLabel.textContent = label || 'Reasoning…';
+    if (abortBtn) {
+      abortBtn.style.display = '';
+      abortBtn.disabled = false;
+    }
   } else {
     if (thinking) thinking.style.display = 'none';
+    if (abortBtn) abortBtn.style.display = 'none';
+    bar.style.display = 'none';
   }
 }
 
@@ -206,7 +213,7 @@ function setLoading(loading, label) {
     window._currentAbortController = null;
   }
 
-  _updateLLMOverlay(loading, label);
+  _updateLLMStatusBar(loading, label);
 
   const buttons = document.querySelectorAll('button');
   buttons.forEach(btn => btn.disabled = loading);

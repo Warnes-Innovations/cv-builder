@@ -215,7 +215,18 @@ async function deleteSession(sessionId) {
 }
 
 async function fetchStatus() {
-  return apiCall('GET', '/api/status');
+  const status = await apiCall('GET', '/api/status');
+
+  // Keep provider/auth UI in sync whenever status is fetched.
+  const provider = status?.llm_provider || null;
+  if (provider) {
+    globalThis.currentProvider = provider;
+  }
+  if (typeof globalThis.updateAuthBadge === 'function') {
+    globalThis.updateAuthBadge(status?.copilot_auth || {}, provider);
+  }
+
+  return status;
 }
 
 async function fetchHistory() {
@@ -271,10 +282,6 @@ async function loadExistingItems() {
 // Analysis
 // ====================
 
-async function analyzeJob() {
-  return apiCall('POST', '/api/action', { action: 'analyze_job' });
-}
-
 async function askPostAnalysisQuestions(analysisData) {
   return apiCall('POST', '/api/post-analysis-questions', { analysis: analysisData });
 }
@@ -289,10 +296,6 @@ async function submitPostAnalysisAnswers(answers) {
 
 async function sendMessage(message) {
   return apiCall('POST', '/api/message', { message });
-}
-
-async function sendAction(action, data = {}) {
-  return apiCall('POST', '/api/action', { action, ...data });
 }
 
 // ====================
@@ -385,8 +388,8 @@ export {
   createSession,
   saveSession,
   uploadJobFile, submitJobText, fetchJobFromUrl, loadJobFile, loadExistingItems,
-  analyzeJob, askPostAnalysisQuestions, submitPostAnalysisAnswers,
-  sendMessage, sendAction,
+  askPostAnalysisQuestions, submitPostAnalysisAnswers,
+  sendMessage,
   fetchCVData, updateCVData, updateExperience, fetchExperienceDetails,
   fetchPublicationRecommendations, submitReviewDecisions,
   fetchRewrites, approveRewrites,

@@ -7,10 +7,13 @@
 """
 Authentication routes — Copilot OAuth, model catalog, model get/set/test, pricing.
 """
+import logging
 import threading
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
+
+logger = logging.getLogger(__name__)
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
@@ -55,8 +58,9 @@ def create_blueprint(deps):
                 "interval":         flow.get("interval", 5),
                 "expires_in":       flow.get("expires_in", 900),
             })
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
+        except Exception:
+            logger.exception("Failed to start Copilot authentication")
+            return jsonify({"error": "Failed to start Copilot authentication."}), 500
 
     @bp.post("/api/copilot-auth/poll")
     def copilot_auth_poll():
@@ -151,7 +155,7 @@ def create_blueprint(deps):
         return jsonify({
             "provider":           provider_for_view,
             "providers":          sorted(PROVIDER_MODELS.keys()),
-            "list_models_capable": ["openai", "anthropic", "gemini", "groq"],
+            "list_models_capable": sorted(list(_CATALOG_LIST_MODELS_CAPABLE)),
             "billing_type":       billing["type"],
             "billing_note":       billing["note"],
             "model":              current,
@@ -256,14 +260,30 @@ def create_blueprint(deps):
     def set_model():
         """Switch the active model and optionally the provider."""
         def _format_probe_error(provider_name: str, probe_error: Optional[str]) -> str:
+            _friendly_names: Dict[str, str] = {
+                "github":       "GitHub Models",
+                "openai":       "OpenAI",
+                "anthropic":    "Anthropic",
+                "copilot":      "Copilot",
+                "copilot-oauth":"Copilot",
+                "copilot-sdk":  "Copilot SDK",
+                "gemini":       "Gemini",
+                "groq":         "Groq",
+            }
+            display = _friendly_names.get(provider_name, provider_name)
             if not probe_error:
-                return "Model probe failed."
+                return f"{display} was unable to complete the model probe."
 
             friendly = probe_error.strip()
-            if provider_name == "github":
+            if provider_name in {"github", "copilot"}:
                 friendly = friendly.replace("with OpenAI", "with GitHub Models")
                 friendly = friendly.replace("by OpenAI", "by GitHub Models")
                 friendly = friendly.replace("(openai)", "(github)")
+                if "authentication failed" in friendly.lower():
+                    friendly += (
+                        " Use a GitHub Models PAT in GITHUB_MODELS_TOKEN "
+                        "(or GITHUB_TOKEN). Copilot OAuth sign-in is only for the copilot-oauth provider."
+                    )
             return friendly
 
         def _probe_client(candidate_client):
@@ -275,6 +295,7 @@ def create_blueprint(deps):
                 )
                 return True, None
             except Exception as exc:
+                logger.warning("Model probe failed: %s", exc)
                 return False, str(exc)
 
         data     = request.get_json(silent=True) or {}
@@ -291,6 +312,13 @@ def create_blueprint(deps):
             ok, probe_error = _probe_client(candidate_client)
             if not ok:
                 formatted_error = _format_probe_error(provider, probe_error)
+                probe_lower = (probe_error or "").lower()
+                if any(k in probe_lower for k in ("auth", "unauthorized", "forbidden", "token", "api key")):
+                    return jsonify({
+                        "error": f"Authentication failed for provider '{provider}'. {formatted_error}",
+                        "provider": provider,
+                        "model": model,
+                    }), 400
                 return jsonify({
                     "error": f"Model '{model}' is not currently available for provider '{provider}'. {formatted_error}",
                     "provider": provider,
@@ -317,8 +345,9 @@ def create_blueprint(deps):
                     pass
 
             return jsonify({"ok": True, "provider": provider, "model": model})
-        except Exception as exc:
-            return jsonify({"error": str(exc)}), 500
+        except Exception:
+            logger.exception("Failed to set model")
+            return jsonify({"error": "Failed to set model."}), 500
 
     @bp.post("/api/model/test")
     def test_model():
@@ -339,10 +368,11 @@ def create_blueprint(deps):
                 "model":      _current_model,
                 "latency_ms": latency_ms,
             })
-        except Exception as exc:
+        except Exception:
+            logger.exception("Model test failed")
             return jsonify({
                 "ok":       False,
-                "error":    str(exc),
+                "error":    "Model test failed.",
                 "provider": _provider_name,
                 "model":    _current_model,
             }), 200

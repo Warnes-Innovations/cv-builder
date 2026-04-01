@@ -207,8 +207,16 @@ async function showTableBasedReview() {
 function populateAnalysisTab(result) {
   const content = document.getElementById('document-content');
   try {
-    const cleanResult = cleanJsonResponse(result);
-    const data = typeof cleanResult === 'string' ? JSON.parse(cleanResult) : cleanResult;
+    // result may already be a parsed object (e.g. coming from stateManager) or a
+    // raw JSON string.  cleanJsonResponse only handles strings, so skip it when
+    // the value is already an object to avoid "cleaned.replace is not a function".
+    let data;
+    if (result !== null && typeof result === 'object') {
+      data = result;
+    } else {
+      const cleanResult = cleanJsonResponse(result);
+      data = typeof cleanResult === 'string' ? JSON.parse(cleanResult) : cleanResult;
+    }
 
     // Persist only after the analysis payload has been validated.
     stateManager.setTabData('analysis', result);

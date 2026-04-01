@@ -205,6 +205,9 @@ class TestOptionalSidebarFields(unittest.TestCase):
         self.assertIn('background: white !important;', html)
         self.assertIn('#page-two {', html)
         self.assertIn('page-break-before: always;', html)
+        self.assertIn('break-after: avoid-page;', html)
+        self.assertIn('.section-title + .pub-list {', html)
+        self.assertIn('break-before: avoid-page;', html)
 
     def test_base_font_size_default_is_rendered(self):
         html = _render()

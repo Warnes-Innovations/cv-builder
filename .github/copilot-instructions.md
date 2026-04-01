@@ -176,6 +176,7 @@ Slash commands are available from the shared prompt set in `~/src/vscode-config/
 - Prefer minimal, surgical changes and preserve existing API routes/state keys.
 - Keep generated artifacts under configured output dirs; avoid hardcoding alternate storage paths.
 - Treat `web/bundle.js` as a generated file built from `web/src/main.js` via `npm run build` / `scripts/build.mjs`; regenerate it instead of editing it manually.
+- **Always run `npm run build` before committing** when `web/src/` files have changed, so `web/bundle.js` is up-to-date and included in the commit.
 - Never add copyright/SPDX headers to generated or vendor artifacts (for example: `web/bundle.js`, `htmlcov/`, `test_output/`, caches). Headers apply to maintained source/docs files only.
 - Validate changes by running targeted tests first (category or file-level), then broader test runs as needed.
 
