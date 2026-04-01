@@ -552,6 +552,16 @@ class TestApplyLayoutInstructionErrorHandling(unittest.TestCase):
         self.assertIn('raw_response', result)
         self.assertEqual(result['raw_response'], raw)
 
+    def test_timeout_error_returns_retryable_timeout_response(self):
+        """Timeouts should surface as explicit timeout errors with retry guidance."""
+        self.mock_llm.call_llm.side_effect = TimeoutError('request timed out')
+        result = self.orchestrator.apply_layout_instruction(
+            instruction_text='Move Skills section',
+            current_html='<html>Test</html>',
+        )
+        self.assertEqual(result.get('error'), 'timeout')
+        self.assertIn('timed out', result.get('details', '').lower())
+
 
 if __name__ == '__main__':
     unittest.main()
