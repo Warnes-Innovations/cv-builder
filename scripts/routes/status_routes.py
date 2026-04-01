@@ -10,7 +10,10 @@ intake metadata, prior clarifications.
 """
 import dataclasses
 import json
+import logging
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from flask import Blueprint, jsonify, request
 
@@ -208,8 +211,9 @@ def create_blueprint(deps):
                 "model":            model_name,
                 "history_messages": len(conversation.conversation_history),
             })
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+        except Exception:
+            logger.exception("Failed to get context stats")
+            return jsonify({"ok": False, "error": "Failed to retrieve context stats."}), 500
 
     @bp.get("/api/settings")
     def get_settings():
@@ -351,8 +355,8 @@ def create_blueprint(deps):
             )
             if questions:
                 source = "llm"
-        except Exception as e:
-            print(f"Question generation failed, using fallback: {e}")
+        except Exception:
+            logger.warning("LLM question generation failed; using fallback questions")
 
         if not questions:
             questions = _fallback_post_analysis_questions(analysis)
@@ -413,19 +417,28 @@ def create_blueprint(deps):
                     ],
                     temperature=0.7,
                 )
-            except Exception as e:
-                err_str = str(e)
-                if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str or 'quota' in err_str.lower() or 'rate' in err_str.lower():
+            except Exception as exc:
+                exc_str = str(exc)
+                if '429' in exc_str or 'RESOURCE_EXHAUSTED' in exc_str or 'quota' in exc_str.lower() or 'rate' in exc_str.lower():
                     return jsonify({'ok': False, 'error': 'Rate limit reached — please wait a moment and try again.', 'rate_limited': True}), 429
-                return jsonify({'ok': False, 'error': f'LLM error: {e}'}), 500
+                logger.exception("LLM draft generation failed")
+                return jsonify({'ok': False, 'error': 'Failed to generate draft response.'}), 500
 
             return jsonify({'ok': True, 'text': draft.strip()})
-        except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)}), 500
+        except Exception:
+            logger.exception("Unexpected error in post_analysis_draft_response")
+            return jsonify({'ok': False, 'error': 'Failed to generate draft response.'}), 500
 
     @bp.get("/api/intake-metadata")
     def intake_metadata():
-        """Return extracted or confirmed intake metadata for the current session."""
+        """Return extracted or confirmed intake metadata for the current session.
+
+        Preference order for unconfirmed sessions:
+          1. LLM ``job_analysis`` fields (``job_title`` / ``company_name``) — most
+             accurate because the LLM already parsed the full posting.
+          2. Heuristic ``extract_intake_metadata()`` — first/second text lines,
+             used only when no analysis is available yet.
+        """
         entry = _get_session()
         conversation = entry.manager
         intake = conversation.state.get('intake') or {}
@@ -436,10 +449,20 @@ def create_blueprint(deps):
                 'date_applied': intake.get('date_applied'),
                 'confirmed':    True,
             })
+
+        # Prefer LLM-extracted values when job_analysis is already available
+        job_analysis = conversation.state.get('job_analysis')
+        if job_analysis and isinstance(job_analysis, dict):
+            llm_role    = (job_analysis.get('job_title') or job_analysis.get('title') or '').strip() or None
+            llm_company = (job_analysis.get('company_name') or job_analysis.get('company') or '').strip() or None
+        else:
+            llm_role    = None
+            llm_company = None
+
         extracted = conversation.extract_intake_metadata()
         return jsonify({
-            'role':         extracted.get('role'),
-            'company':      extracted.get('company'),
+            'role':         llm_role    or extracted.get('role'),
+            'company':      llm_company or extracted.get('company'),
             'date_applied': extracted.get('date_applied'),
             'confirmed':    False,
         })
@@ -522,7 +545,8 @@ def create_blueprint(deps):
                 except Exception:
                     pass
             return jsonify({'found': len(matches) > 0, 'matches': matches})
-        except Exception as e:
-            return jsonify({'found': False, 'matches': [], 'error': str(e)})
+        except Exception:
+            logger.exception("Error searching for prior clarifications")
+            return jsonify({'found': False, 'matches': []})
 
     return bp

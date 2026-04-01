@@ -197,6 +197,7 @@ describe('_updateLLMStatusBar', () => {
     mod._updateLLMStatusBar(true, 'Analyzing…')
     expect(document.getElementById('llm-status-bar').style.display).toBe('flex')
     expect(document.getElementById('llm-thinking').style.display).toBe('flex')
+    expect(document.getElementById('llm-abort-btn').style.display).toBe('')
   })
 
   it('sets the step label', () => {
@@ -209,7 +210,9 @@ describe('_updateLLMStatusBar', () => {
     fetchMock.mockRejectedValue(new Error('no server'))
     mod._updateLLMStatusBar(true)
     mod._updateLLMStatusBar(false)
+    expect(document.getElementById('llm-status-bar').style.display).toBe('none')
     expect(document.getElementById('llm-thinking').style.display).toBe('none')
+    expect(document.getElementById('llm-abort-btn').style.display).toBe('none')
   })
 
   it('does not throw when bar element is absent', () => {

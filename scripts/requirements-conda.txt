@@ -2,7 +2,8 @@
 #
 # PURPOSE: Pip packages to install AFTER conda has set up the base environment.
 #          Excludes spacy, blis, and language-tool-python (managed by conda-forge
-#          to avoid macOS compilation issues). Adds LLM API clients not needed in CI.
+#          to avoid macOS compilation issues). Adds additional LLM API clients not
+#          needed in CI.
 #
 # EXECUTION ORDER (local conda setup):
 #   1. conda create -n cvgen python=3.9 spacy -c conda-forge --override-channels -y
@@ -51,6 +52,3 @@ beautifulsoup4>=4.12.0
 
 # Standard Libraries
 requests>=2.31.0
-
-# Web UI
-flask>=2.3.0

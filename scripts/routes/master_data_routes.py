@@ -239,7 +239,8 @@ def create_blueprint(deps):
             save_master(master, master_path)
             return jsonify({"ok": True, "action": action, "id": ach_id})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Failed to update achievement")
+            return jsonify({"ok": False, "error": "Failed to update achievement"}), 500
 
     @bp.post("/api/master-data/update-summary")
     def master_data_update_summary():
@@ -277,7 +278,8 @@ def create_blueprint(deps):
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "added" if is_new else "updated", "key": key})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Failed to update summary")
+            return jsonify({"ok": False, "error": "Failed to update summary"}), 500
 
     @bp.get("/api/master-data/full")
     def master_data_full():
@@ -297,7 +299,8 @@ def create_blueprint(deps):
                 "professional_summaries": master.get('professional_summaries', {}),
             })
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Failed to update achievement"}), 500
 
     @bp.get("/api/master-data/validate")
     def master_data_validate():
@@ -419,7 +422,8 @@ def create_blueprint(deps):
 
             return jsonify({'ok': True, 'section': section, 'changed': bool(changes), 'changes': changes})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Failed to update skill"}), 500
 
     @bp.post("/api/master-data/personal-info")
     def master_data_update_personal_info():
@@ -460,7 +464,8 @@ def create_blueprint(deps):
             save_master(master, master_path)
             return jsonify({"ok": True})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Operation failed"}), 500
 
     @bp.post("/api/master-data/experience")
     def master_data_update_experience():
@@ -564,7 +569,8 @@ def create_blueprint(deps):
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "updated", "id": exp_id})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Failed to update experience"}), 500
 
     @bp.post("/api/master-data/skill")
     def master_data_update_skill():
@@ -762,7 +768,8 @@ def create_blueprint(deps):
 
             return jsonify({"ok": False, "error": "Unexpected skills format"}), 400
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Failed to update skill"}), 500
 
     @bp.post("/api/master-data/education")
     def master_data_update_education():
@@ -840,7 +847,8 @@ def create_blueprint(deps):
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "updated", "idx": idx})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Failed to update education"}), 500
 
     @bp.post("/api/master-data/award")
     def master_data_update_award():
@@ -900,7 +908,8 @@ def create_blueprint(deps):
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "updated", "idx": idx})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Failed to update award"}), 500
 
     # ------------------------------------------------------------------
     # Certifications CRUD
@@ -1145,7 +1154,8 @@ def create_blueprint(deps):
         except Exception as exc:
             import traceback
             traceback.print_exc()
-            return jsonify({"ok": False, "error": str(exc)}), 500
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Failed to update summary"}), 500
 
     # ------------------------------------------------------------------
     # Publication CRUD  (master-data / publications.bib)
@@ -1217,7 +1227,8 @@ def create_blueprint(deps):
                 backup_path = backup_dir / f"{bib_path.stem}.{ts}{bib_path.suffix}"
                 shutil.copy2(bib_path, backup_path)
         except Exception as e:
-            return jsonify({"ok": False, "error": f"Backup failed: {e}"}), 500
+            logger.exception("Failed to backup publications")
+            return jsonify({"ok": False, "error": "Failed to backup publications"}), 500
 
         try:
             bib_path.write_text(content, encoding="utf-8")
@@ -1229,7 +1240,8 @@ def create_blueprint(deps):
                     shutil.copy2(backup_path, bib_path)
                 except Exception:
                     pass
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Failed to write publications file")
+            return jsonify({"ok": False, "error": "Failed to save publications"}), 500
 
     @bp.post("/api/master-data/publications/validate")
     def master_data_validate_publications():
@@ -1245,7 +1257,8 @@ def create_blueprint(deps):
         try:
             parsed = bibtex_text_to_publications(bibtex_text)
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Failed to parse BibTeX text"}), 400
 
         if not parsed:
             return jsonify({
@@ -1318,7 +1331,8 @@ def create_blueprint(deps):
             )
             return jsonify({"ok": True, "action": action, "key": key})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Failed to update publication"}), 500
 
     @bp.post("/api/master-data/publications/import")
     def master_data_import_publications():
@@ -1367,7 +1381,8 @@ def create_blueprint(deps):
                 str(orchestrator.publications_path)
             )
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Failed to update publication"}), 500
 
         return jsonify({
             "ok": True,
@@ -1395,9 +1410,11 @@ def create_blueprint(deps):
         try:
             bibtex = orchestrator.llm.convert_text_to_bibtex(text)
         except LLMError as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("LLM error during BibTeX conversion")
+            return jsonify({"ok": False, "error": "Failed to convert text to BibTeX"}), 500
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({"ok": False, "error": "Failed to load master data"}), 500
 
         return jsonify({"ok": True, "bibtex": bibtex})
 
@@ -1437,7 +1454,8 @@ def create_blueprint(deps):
                         pass
             return jsonify({'ok': True, 'sessions': results})
         except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({'ok': False, 'error': 'Failed to search cover letters'}), 500
 
     @bp.post("/api/cover-letter/generate")
     def cover_letter_generate():
@@ -1617,7 +1635,8 @@ Close professionally with a call to action.
                 session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename})
             except Exception as e:
-                return jsonify({'ok': False, 'error': str(e)}), 500
+                logger.exception("Operation failed")
+                return jsonify({'ok': False, 'error': "Operation failed"}), 500
 
     # ------------------------------------------------------------------
     # Screening responses
@@ -1689,7 +1708,8 @@ Close professionally with a call to action.
                 ],
             })
         except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({'ok': False, 'error': 'Failed to search screening library'}), 500
 
     @bp.post("/api/screening/generate")
     def screening_generate():
@@ -1761,7 +1781,8 @@ Close professionally with a call to action.
 
             return jsonify({'ok': True, 'text': response_text.strip()})
         except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({'ok': False, 'error': 'Failed to generate screening response'}), 500
 
     @bp.post("/api/screening/save")
     def screening_save():
@@ -1856,6 +1877,7 @@ Close professionally with a call to action.
                 session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename, 'count': len(responses_in)})
         except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)}), 500
+            logger.exception("Operation failed")
+            return jsonify({'ok': False, 'error': "Failed with screening"}), 500
 
     return bp

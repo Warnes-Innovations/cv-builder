@@ -691,6 +691,7 @@ let _modelDataTable = null;
 let _selectedModelProviders = new Set();
 let _modelSelectorLoading = false;   // guard: loadModelSelector() in flight
 let _catalogRefreshing = false;      // guard: _refreshModelCatalogForSelection() in flight
+let _catalogRefreshPending = false;  // queue one rerun when toggles happen mid-refresh
 
 async function loadModelSelector() {
   if (_modelSelectorLoading) return;
@@ -735,6 +736,17 @@ function _providerStageLabel(provider, capableSet) {
   return isCapable ? 'list_models' : 'fallback';
 }
 
+function _providerDisplayLabel(provider) {
+  const deprecated = {
+    'copilot-oauth': 'Copilot OAuth (deprecated)',
+    copilot: 'Copilot (deprecated)',
+    github: 'GitHub Models (deprecated)',
+    'copilot-sdk': 'Copilot SDK (recommended)',
+  };
+  if (deprecated[provider]) return deprecated[provider];
+  return provider;
+}
+
 function _renderProviderSelector() {
   const listEl = document.getElementById('model-provider-list');
   if (!listEl || !_modelData) return;
@@ -757,7 +769,7 @@ function _renderProviderSelector() {
     label.style.cssText = 'display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:0.82em; background:#fff; cursor:pointer;';
     label.innerHTML =
       `<input type="checkbox" value="${escapeHtml(provider)}" ${checked ? 'checked' : ''} style="margin:0;" />` +
-      `<span>${escapeHtml(provider)}</span>` +
+      `<span>${escapeHtml(_providerDisplayLabel(provider))}</span>` +
       `<span style="color:#64748b; font-size:0.8em;">(${escapeHtml(sourceLabel)})</span>`;
 
     const checkbox = label.querySelector('input');
@@ -779,7 +791,11 @@ function _renderProviderSelector() {
 }
 
 async function _refreshModelCatalogForSelection() {
-  if (_catalogRefreshing || !_modelData) return;
+  if (!_modelData) return;
+  if (_catalogRefreshing) {
+    _catalogRefreshPending = true;
+    return;
+  }
   _catalogRefreshing = true;
 
   try {
@@ -805,7 +821,13 @@ async function _refreshModelCatalogForSelection() {
     _catalogRefreshing = false;
   }
 
+  _renderProviderSelector();
   _buildModelTable();
+
+  if (_catalogRefreshPending) {
+    _catalogRefreshPending = false;
+    await _refreshModelCatalogForSelection();
+  }
 }
 
 async function openModelModal() {
@@ -945,7 +967,7 @@ function _buildModelTable() {
     });
 
     tr.innerHTML =
-      `<td style="${tdBase} color:#64748b; white-space:nowrap;">${escapeHtml(provider)}</td>` +
+      `<td style="${tdBase} color:#64748b; white-space:nowrap;">${escapeHtml(_providerDisplayLabel(provider))}</td>` +
       `<td style="${tdBase}">${escapeHtml(m)}</td>` +
       `<td style="${tdBase} white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums;">${ctx}</td>` +
       `<td style="${tdBase} text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtCost(item.cost_input)}${fmtPriceHint(priceSource)}</td>` +
