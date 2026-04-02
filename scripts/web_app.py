@@ -1012,6 +1012,18 @@ Job Description (excerpt):
     app.register_blueprint(create_master_data_blueprint(deps))
     app.register_blueprint(create_static_blueprint(deps))
 
+    # Return JSON (not HTML) for all HTTP errors on /api/ routes.
+    # Without this, flask.abort(400/403/404) sends an HTML error page, which
+    # causes the frontend's res.json() to throw a SyntaxError.
+    from flask import jsonify as _jsonify
+    from werkzeug.exceptions import HTTPException
+
+    @app.errorhandler(HTTPException)
+    def _api_error_handler(exc: HTTPException):  # type: ignore[misc]
+        if request.path.startswith('/api/'):
+            return _jsonify(error=exc.description, status=exc.code), exc.code
+        return exc
+
     return app
 
 # ---------------------------------------------------------------------------

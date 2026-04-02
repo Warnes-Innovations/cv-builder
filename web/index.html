@@ -119,15 +119,25 @@
     <!-- Interaction Area -->
     <div class="interaction-area" id="chat-area">
       <button class="toggle-chat" id="toggle-chat" onclick="toggleChat()">◀</button>
+
+      <!-- LLM busy overlay — covers the chat panel while an LLM call is in flight -->
+      <div id="llm-busy-overlay">
+        <div id="llm-busy-card">
+          <div class="llm-busy-spinner"></div>
+          <div id="llm-busy-label">Reasoning…</div>
+          <div id="llm-busy-elapsed">0:00</div>
+          <button id="llm-busy-stop" onclick="abortCurrentRequest()">■ Stop</button>
+        </div>
+      </div>
       <div class="conversation-header">
         <h2>Conversation</h2>
+        <span id="llm-token-count" title="Estimated tokens used vs context window"></span>
       </div>
       
-      <!-- LLM status bar: thinking indicator / token count / stop button -->
-      <div id="llm-status-bar">
-        <div id="llm-thinking"><span class="llm-dot">●</span> <span id="llm-step-label">Reasoning…</span><span id="llm-elapsed"></span></div>
-        <span id="llm-token-count" title="Estimated tokens used vs context window"></span>
-        <button id="llm-abort-btn" onclick="abortCurrentRequest()" title="Stop the current request">■ Stop</button>
+      <!-- LLM status bar: thinking indicator / stop button -->
+      <div id="llm-status-bar" style="display:none">
+        <div id="llm-thinking" style="display:none"><span class="llm-dot">●</span> <span id="llm-step-label">Reasoning…</span><span id="llm-elapsed"></span></div>
+        <button id="llm-abort-btn" onclick="abortCurrentRequest()" title="Stop the current request" style="display:none">■ Stop</button>
       </div>
 
       <div class="conversation" id="conversation">
