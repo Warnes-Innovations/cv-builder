@@ -92,7 +92,13 @@ function _calculateRetryDelayMs(kind, error) {
 function _scheduleRetry(text, derived, error) {
   _clearRetryTimers();
   const policy = _getRetryPolicy();
-  const canAutoRetry = policy.autoRetry && _retryAttemptCount < policy.maxAttempts;
+
+  // Client errors (4xx) and auth failures are not transient; do not auto-retry.
+  const NON_RETRYABLE = new Set(['client-error', 'auth-required']);
+  const canAutoRetry = policy.autoRetry
+    && _retryAttemptCount < policy.maxAttempts
+    && !NON_RETRYABLE.has(derived.kind);
+
   const delayMs = _calculateRetryDelayMs(derived.kind, error);
   const totalSeconds = Math.max(1, Math.ceil(delayMs / 1000));
 
@@ -102,14 +108,21 @@ function _scheduleRetry(text, derived, error) {
     sendMessage();
   };
 
-  const retryMessage = appendRetryMessage(
+  let retryMessage;
+  const cancelFn = canAutoRetry ? () => {
+    _clearRetryTimers();
+    if (retryMessage) retryMessage.remove();
+  } : null;
+
+  retryMessage = appendRetryMessage(
     `⚠️ ${error.message}`,
     () => {
       _clearRetryTimers();
       _retryAttemptCount += 1;
       retryAction();
     },
-    canAutoRetry ? `Retry in ${totalSeconds}s` : 'Retry Request',
+    canAutoRetry ? `Retry in ${totalSeconds}s` : 'Retry',
+    cancelFn,
   );
 
   if (!canAutoRetry) return;
@@ -238,6 +251,16 @@ function _deriveErrorState(error) {
     };
   }
 
+  // 4xx client errors are not transient — retrying will not fix them.
+  if (status >= 400 && status < 500) {
+    return {
+      kind: 'client-error',
+      text: 'Request error',
+      icon: '⚠',
+      tooltip: message,
+    };
+  }
+
   return {
     kind: 'error',
     text: 'Connection failed',
@@ -300,25 +323,15 @@ async function _handleLLMMessage(text) {
     }
   } catch (error) {
     log.error('=== MESSAGE ERROR ===', error.name, error.message, error.stack);
+    if (error.name === 'AbortError') {
+      // User clicked Stop — message already shown by abortCurrentRequest().
+      setLoading(false);
+      return;
+    }
     const derived = _deriveErrorState(error);
     _setLiveLlmState(derived.kind, derived.text, derived.icon, derived.tooltip);
     _scheduleRetry(text, derived, error);
     terminalState = derived;
-    if (error.name === 'AbortError') {
-      // user clicked Stop — message already shown in abortCurrentRequest()
-    } else if (error instanceof TypeError) {
-      appendRetryMessage(`⚠️ Cannot reach the server — is it still running? (${error.message})`, () => {
-        document.getElementById('message-input').value = text; sendMessage();
-      });
-    } else if (error instanceof SyntaxError) {
-      appendRetryMessage(`⚠️ The server returned an unexpected response: ${error.message}`, () => {
-        document.getElementById('message-input').value = text; sendMessage();
-      });
-    } else {
-      appendRetryMessage('⚠️ ' + error.message, () => {
-        document.getElementById('message-input').value = text; sendMessage();
-      });
-    }
   }
   setLoading(false);
   await fetchStatus();
