@@ -241,7 +241,7 @@ function _cssEscape(value) {
   if (globalThis.CSS && typeof globalThis.CSS.escape === 'function') {
     return globalThis.CSS.escape(String(value));
   }
-  return String(value);
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 function _buildGroupWarnings(skills) {
