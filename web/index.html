@@ -41,36 +41,21 @@
         title="Create a new session in a new tab">＋ New Session</button>
       <button id="model-selector-btn" onclick="openModelModal()"
         class="header-pill-btn">
-        <span style="opacity:0.7;">Model:</span>
+        <span style="opacity:0.7;">LLM:</span>
         <span id="model-current-label">Loading…</span>
+        <span id="llm-status-pill" class="auth-badge unauthenticated" style="padding:2px 8px; font-size:0.75em; border-radius:999px;">
+          <span id="llm-status-icon">&#x26A0;</span>
+          <span id="llm-status-label">Not ready</span>
+        </span>
         <span id="model-test-badge" title="Connection test result" style="display:none; font-size:0.85em;"></span>
         <span class="pill-chevron">&#9660;</span>
       </button>
       <button id="settings-btn" onclick="openSettingsModal()"
         class="header-pill-btn"
         title="Configure provider and generation defaults">⚙️ Settings</button>
-      <div id="copilot-auth-badge" class="auth-badge unauthenticated" onclick="openCopilotAuthModal()" title="Click to authenticate with GitHub Copilot">
-        <span id="auth-badge-icon">&#x26A0;</span>
-        <span id="auth-badge-label">Not authenticated</span>
-      </div>
     </div>
   </div>
 
-  <!-- Copilot Auth Modal -->
-  <div class="auth-modal-overlay" id="auth-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" aria-describedby="auth-modal-desc">
-    <div class="auth-modal">
-      <h2 id="auth-modal-title">&#x1F512; Authenticate with GitHub Copilot</h2>
-      <p id="auth-modal-desc">Sign in to use GitHub Copilot for LLM-powered CV generation.</p>
-      <div class="auth-code" id="auth-user-code">&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;</div>
-      <p style="text-align:center; font-size:13px; color:#64748b;">Enter this code at:</p>
-      <p style="text-align:center;"><a id="auth-verify-link" href="https://github.com/login/device" target="_blank" style="color:#3b82f6; font-weight:600;">github.com/login/device</a></p>
-      <div class="auth-status-msg" id="auth-status-msg">Ready to start &mdash; click "Open GitHub" to begin.</div>
-      <div class="auth-modal-actions">
-        <button class="auth-btn-primary" id="auth-open-btn" onclick="openAuthGitHub()">Open GitHub</button>
-        <button class="auth-btn-secondary" onclick="closeCopilotAuthModal()">Cancel</button>
-      </div>
-    </div>
-  </div>
 
   <!-- Position Bar (GAP-21: ATS score badge lives on this row) -->
   <div class="position-bar-row">
@@ -267,42 +252,94 @@
     </div>
   </div>
 
-  <!-- Model Selection Modal -->
+  <!-- LLM Configuration Wizard -->
   <div class="modal-overlay" id="model-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="model-modal-title" onclick="if(event.target===this)closeModelModal()">
     <div class="modal" style="max-width: 1020px; width: 95%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 id="model-modal-title" style="margin:0;">Select Model</h2>
+        <h2 id="model-modal-title" style="margin:0;">LLM Configuration Wizard</h2>
         <button onclick="closeModelModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
       </div>
       <div class="modal-body" style="padding: 0;">
-        <div style="padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
-          <div style="font-size:0.85em; color:#334155; margin-bottom:6px;">
-            Step 1: Select provider(s)
+        <div id="model-step-provider" style="padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
+          <div style="font-size:0.85em; color:#334155; margin-bottom:6px; font-weight:600;">
+            Step 1: Choose provider
           </div>
           <div id="model-provider-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+          <div style="margin-top:8px; font-size:0.82em; color:#64748b;">
+            Model availability is refreshed after provider selection and before model choices are shown.
+          </div>
         </div>
-        <table id="model-table" style="width:100%; border-collapse: collapse; font-size: 0.9em;">
-          <thead id="model-table-head">
-            <tr style="background: #f1f5f9; text-align: left;">
-              <th style="padding: 10px 14px; white-space: nowrap;">Provider</th>
-              <th style="padding: 10px 14px;">Model</th>
-              <th style="padding: 10px 14px; white-space: nowrap;">Context</th>
-              <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M in</th>
-              <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M out</th>
-              <th style="padding: 10px 14px; white-space: nowrap; text-align: right;" title="GitHub Copilot premium-request multiplier (0 = free for paid subscribers)">Copilot</th>
-              <th style="padding: 10px 14px; white-space: nowrap;">Source</th>
-              <th style="padding: 10px 14px;">Notes</th>
-            </tr>
-          </thead>
-          <tbody id="model-table-body"></tbody>
-        </table>
+
+        <div id="model-step-models" style="display:none;">
+          <div style="padding:10px 14px; border-bottom:1px solid #e2e8f0;">
+            <div style="font-size:0.85em; color:#334155; margin-bottom:6px; font-weight:600;">
+              Step 2: Choose model
+            </div>
+            <div id="model-models-loading" style="display:none; margin-bottom:8px; font-size:0.82em; color:#475569;"></div>
+            <div id="model-quick-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+              <button id="model-show-all-btn" onclick="toggleModelCatalogVisibility()"
+                style="padding:5px 10px; font-size:0.85em; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
+                Show Full Catalog
+              </button>
+              <input id="model-global-search" type="text" placeholder="Search all models…"
+                style="display:none; flex:1; min-width:240px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.85em;">
+            </div>
+          </div>
+
+          <div id="model-auth-panel" style="display:none; padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
+            <div style="font-size:0.85em; color:#334155; margin-bottom:6px; font-weight:600;">
+              GitHub Copilot authorization
+            </div>
+            <div id="model-auth-status" style="font-size:0.85em; color:#475569; margin-bottom:8px;">Status unknown.</div>
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+              <button id="model-auth-start-btn" onclick="startCopilotAuthFromWizard()"
+                style="padding:5px 10px; font-size:0.85em; background:#3b82f6; color:#fff; border:1px solid #2563eb; border-radius:4px; cursor:pointer;">
+                Start Sign-In
+              </button>
+              <button id="model-auth-logout-btn" onclick="logoutCopilotAuthFromWizard()"
+                style="display:none; padding:5px 10px; font-size:0.85em; background:#fff; color:#475569; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer;">
+                Log Out
+              </button>
+              <span id="model-auth-code" style="font-family:monospace; font-weight:700; letter-spacing:2px;"></span>
+              <a id="model-auth-link" href="https://github.com/login/device" target="_blank" style="display:none; color:#2563eb; text-decoration:underline;">Open GitHub device login</a>
+            </div>
+          </div>
+
+          <div id="model-full-table-wrap" style="display:none;">
+            <table id="model-table" style="width:100%; border-collapse: collapse; font-size: 0.9em;">
+              <thead id="model-table-head">
+                <tr style="background: #f1f5f9; text-align: left;">
+                  <th style="padding: 10px 14px; white-space: nowrap;">Provider</th>
+                  <th style="padding: 10px 14px;">Model</th>
+                  <th style="padding: 10px 14px; white-space: nowrap;">Context</th>
+                  <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M in</th>
+                  <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M out</th>
+                  <th style="padding: 10px 14px; white-space: nowrap; text-align: right;" title="GitHub Copilot premium-request multiplier (0 = free for paid subscribers)">Copilot</th>
+                  <th style="padding: 10px 14px; white-space: nowrap;">Source</th>
+                  <th style="padding: 10px 14px;">Notes</th>
+                </tr>
+              </thead>
+              <tbody id="model-table-body"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
       <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-top:1px solid #e2e8f0; background:#f8fafc; font-size:0.8em; color:#64748b;">
         <div style="display:flex; align-items:center; gap:10px;">
+          <span id="model-wizard-step-label">Step 1 of 2: Choose provider</span>
           <span id="pricing-updated-label">Loading pricing info…</span>
           <span id="model-test-status" style="display:none;"></span>
         </div>
         <div style="display:flex; gap:6px;">
+          <button id="model-wizard-back-btn" onclick="previousWizardStep()"
+            style="padding:3px 10px; font-size:0.85em; background:#fff; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
+            Back
+          </button>
+          <button id="model-wizard-next-btn" onclick="nextWizardStep()"
+            style="padding:3px 10px; font-size:0.85em; background:#3b82f6; color:#fff; border:1px solid #2563eb; border-radius:4px; cursor:pointer;">
+            Next
+          </button>
           <button id="model-test-btn" onclick="testCurrentModel()"
             style="padding:3px 10px; font-size:0.85em; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
             &#10003; Test connection
@@ -385,6 +422,35 @@
             <span id="source-generation.formats.ats_docx"></span>
             <span id="source-generation.formats.human_pdf"></span>
             <span id="source-generation.formats.human_docx"></span>
+          </div>
+        </div>
+
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin:0 10px 12px; background:#f8fafc;">
+          <h3 style="margin:0 0 10px; font-size:1em; color:#334155;">LLM Retry Policy (Browser)</h3>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Base Delay (ms)</span>
+              <input id="settings-retry-base-ms" type="number" min="200" max="10000" step="100" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span style="font-size:0.78em; color:#64748b;">Source: browser preference</span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Maximum Delay (ms)</span>
+              <input id="settings-retry-cap-ms" type="number" min="1000" max="300000" step="500" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span style="font-size:0.78em; color:#64748b;">Source: browser preference</span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Auto Retry Attempts</span>
+              <input id="settings-retry-max-attempts" type="number" min="1" max="20" step="1" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span style="font-size:0.78em; color:#64748b;">Source: browser preference</span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px; justify-content:center;">
+              <span style="font-size:0.85em; color:#475569;">Automatic Backoff Retry</span>
+              <label style="display:flex; align-items:center; gap:8px;">
+                <input id="settings-retry-auto" type="checkbox">
+                <span style="font-size:0.9em; color:#334155;">Enable exponential auto-retry</span>
+              </label>
+              <span style="font-size:0.78em; color:#64748b;">Source: browser preference</span>
+            </label>
           </div>
         </div>
       </div>

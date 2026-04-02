@@ -28,7 +28,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
-from scripts.web_app import create_app
+from scripts.web_app import create_app, PROVIDER_MODELS
 
 
 # ---------------------------------------------------------------------------
@@ -435,8 +435,24 @@ class TestSettingsAPI(unittest.TestCase):
         self.assertTrue(data.get('ok'))
         self.assertIn('settings', data)
         self.assertIn('meta', data)
+        self.assertIn('runtime', data)
         self.assertEqual(data['meta']['sources']['llm.default_provider'], 'env')
         self.assertTrue(data['meta']['locked']['llm.default_provider'])
+
+    def test_get_settings_includes_runtime_model_selection(self):
+        with patch.dict(
+            os.environ,
+            {
+                'CV_BUILDER_CONFIG_FILE': str(self.config_path),
+            },
+            clear=False,
+        ):
+            response = self.client.get('/api/settings')
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data['runtime']['llm']['provider'], 'local')
+        self.assertIsNone(data['runtime']['llm']['model'])
 
     def test_put_settings_updates_config_yaml(self):
         payload = {
@@ -480,6 +496,43 @@ class TestSettingsAPI(unittest.TestCase):
         self.assertIn('request_timeout_seconds: 180', raw)
         self.assertIn('max_skills: 24', raw)
         self.assertIn('human_pdf: false', raw)
+
+
+class TestStartupModelNormalization(unittest.TestCase):
+    """Test startup model normalization for static providers."""
+
+    def test_create_app_normalizes_invalid_static_provider_model(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        tmp_path = Path(tmp.name)
+
+        master_path = tmp_path / 'Master_CV_Data.json'
+        master_path.write_text(json.dumps(SAMPLE_MASTER_DATA), encoding='utf-8')
+        pubs_path = tmp_path / 'publications.bib'
+        pubs_path.touch()
+
+        args = argparse.Namespace(
+            llm_provider='github',
+            model='gemini-flash-latest',
+            master_data=str(master_path),
+            publications=str(pubs_path),
+            output_dir=str(tmp_path / 'output'),
+            job_file=None,
+        )
+
+        mock_llm = MagicMock()
+        mock_llm.model = 'gpt-4o'
+
+        with patch('scripts.web_app.get_llm_provider', return_value=mock_llm) as provider_mock, \
+             patch('scripts.web_app.get_cached_pricing', return_value={}), \
+             patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01'), \
+             patch('scripts.web_app.get_pricing_source', return_value='static'):
+            create_app(args)
+
+        first_call = provider_mock.call_args_list[0]
+        self.assertEqual(first_call.kwargs['provider'], 'github')
+        self.assertEqual(first_call.kwargs['model'], PROVIDER_MODELS['github'][0])
+        self.assertNotEqual(first_call.kwargs['model'], 'gemini-flash-latest')
 
 
 class TestStartupSessionRedirect(unittest.TestCase):

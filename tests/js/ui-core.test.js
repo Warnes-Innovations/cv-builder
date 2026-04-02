@@ -88,7 +88,23 @@ describe('openModelModal', () => {
   function buildModelFixture() {
     document.body.innerHTML = `
       <div id="model-modal-overlay" style="display:none">
+        <div id="model-step-provider"></div>
+        <div id="model-step-models"></div>
+        <div id="model-models-loading"></div>
         <div id="model-provider-list"></div>
+        <div id="model-quick-list"></div>
+        <span id="model-wizard-step-label"></span>
+        <button id="model-wizard-back-btn"></button>
+        <button id="model-wizard-next-btn"></button>
+        <button id="model-show-all-btn"></button>
+        <input id="model-global-search" />
+        <div id="model-auth-panel"></div>
+        <div id="model-auth-status"></div>
+        <button id="model-auth-start-btn"></button>
+        <button id="model-auth-logout-btn"></button>
+        <span id="model-auth-code"></span>
+        <a id="model-auth-link" href="#"></a>
+        <div id="model-full-table-wrap"></div>
         <table id="model-table">
           <thead id="model-table-head"></thead>
           <tbody id="model-table-body"></tbody>
@@ -220,6 +236,7 @@ describe('openModelModal', () => {
     })
 
     await mod.openModelModal()
+    await mod.nextWizardStep()
 
     const input = document.querySelector('tr.model-filter-row input')
     expect(input).not.toBeNull()
@@ -315,11 +332,102 @@ describe('openModelModal', () => {
     })
 
     await mod.openModelModal()
+    await mod.nextWizardStep()
 
     const notesCell = document.querySelector('#model-table-body tr td:last-child')
     expect(notesCell).not.toBeNull()
     expect(notesCell.querySelector('img')).toBeNull()
     expect(notesCell.textContent).toBe('<img src=x onerror=alert(1)>')
+  })
+
+  it('toggles full catalog visibility in wizard mode', async () => {
+    buildModelFixture()
+
+    const headers = ['Provider', 'Model', 'Context', '$/1M in', '$/1M out', 'Copilot', 'Source', 'Notes']
+      .map(text => {
+        const th = document.createElement('th')
+        th.textContent = text
+        return th
+      })
+
+    dataTableApi = {
+      columns() {
+        return {
+          every(callback) {
+            headers.forEach((_, index) => callback.call({}, index))
+          },
+        }
+      },
+      column(index) {
+        return {
+          header() {
+            return headers[index]
+          },
+          search(value) {
+            if (value === undefined) return ''
+            return { draw() {} }
+          },
+        }
+      },
+      search() {
+        return { draw() {} }
+      },
+    }
+
+    const dollar = vi.fn((selector, attrs) => {
+      if (selector instanceof HTMLElement) {
+        return makeWrapper(selector)
+      }
+      if (typeof selector === 'string' && selector.startsWith('<')) {
+        const tagMatch = selector.match(/^<([a-z0-9-]+)/i)
+        const element = document.createElement(tagMatch[1])
+        if (attrs && typeof attrs === 'object') {
+          Object.entries(attrs).forEach(([key, value]) => {
+            if (key === 'text') {
+              element.textContent = value
+            } else {
+              element.setAttribute(key, value)
+            }
+          })
+        } else {
+          const template = document.createElement('template')
+          template.innerHTML = selector.trim()
+          return makeWrapper(template.content.firstElementChild)
+        }
+        return makeWrapper(element)
+      }
+      return makeWrapper(Array.from(document.querySelectorAll(selector)))
+    })
+    dollar.fn = { DataTable: { isDataTable: vi.fn(() => false) } }
+
+    vi.stubGlobal('$', dollar)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({ authenticated: false }) }))
+    apiCall.mockImplementation(async (_method, url) => {
+      if (url === '/api/model') {
+        return {
+          provider: 'github',
+          model: 'gpt-5.4',
+          providers: ['github'],
+          all_models: [{ provider: 'github', model: 'gpt-5.4', source: 'list_models' }],
+          list_models_capable: ['github'],
+        }
+      }
+      if (url.startsWith('/api/model-catalog')) {
+        return {
+          providers: ['github'],
+          all_models: [{ provider: 'github', model: 'gpt-5.4', source: 'list_models' }],
+          list_models_capable: ['github'],
+        }
+      }
+      throw new Error(`Unexpected URL: ${url}`)
+    })
+
+    await mod.openModelModal()
+    await mod.nextWizardStep()
+    expect(document.getElementById('model-full-table-wrap').style.display).toBe('none')
+
+    mod.toggleModelCatalogVisibility()
+    expect(document.getElementById('model-full-table-wrap').style.display).toBe('')
   })
 })
 

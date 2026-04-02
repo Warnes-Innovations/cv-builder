@@ -576,11 +576,27 @@ def create_app(args) -> Flask:
     # ── Provider / model state ───────────────────────────────────────────────
     _provider_name: str = args.llm_provider
     _current_model: Optional[str] = args.model  # short form; updated by set_model()
+    static_only_providers = {"copilot-oauth", "copilot", "github", "local"}
+    provider_models = PROVIDER_MODELS.get(_provider_name, [])
+    if (
+        _provider_name in static_only_providers
+        and _current_model
+        and provider_models
+        and _current_model not in provider_models
+    ):
+        fallback_model = provider_models[0]
+        logger.warning(
+            "Model '%s' is not valid for provider '%s'; using '%s' instead.",
+            _current_model,
+            _provider_name,
+            fallback_model,
+        )
+        _current_model = fallback_model
 
     # One shared LLM client used by model-catalog / test endpoints.
     # Per-session LLM clients are created inside each SessionEntry.
     llm_client = get_llm_provider(
-        provider=_provider_name, model=args.model, auth_manager=auth_manager
+        provider=_provider_name, model=_current_model, auth_manager=auth_manager
     )
     provider_name_ref = {"value": _provider_name}
     current_model_ref = {"value": _current_model}
