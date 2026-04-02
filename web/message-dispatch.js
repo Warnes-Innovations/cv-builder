@@ -29,6 +29,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('message-dispatch');
 
 import { stateManager } from './state-manager.js';
+import { getSessionIdFromURL } from './api-client.js';
 
 let _pendingPostIntakeContinuation = null;
 const RETRY_POLICY_STORAGE_KEY = 'cv-builder-retry-policy';
@@ -399,6 +400,11 @@ async function sendMessage() {
   const input = document.getElementById('message-input');
   const text = normalizeText(input.value);
   if (!text || stateManager.isLoading()) return;
+
+  if (!getSessionIdFromURL()) {
+    appendMessage('system', '⚠️ No active session. Create or load a session before sending messages.');
+    return;
+  }
 
   appendMessage('user', text);
   input.value = '';

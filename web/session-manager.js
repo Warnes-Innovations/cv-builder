@@ -159,7 +159,7 @@ async function _claimCurrentSession(sessionIdToClaim) {
     }
     if (action !== 'takeover') {
       showSessionsLandingPanel('Select a different session or create a new one.');
-      openSessionsModal();
+      openSessionsModal({ required: true });
       return false;
     }
 
@@ -180,7 +180,7 @@ async function _claimCurrentSession(sessionIdToClaim) {
 
   if (res.status === 404 || data.error === 'session_not_found') {
     showSessionsLandingPanel('That session is no longer active. Load it from disk or create a new one.');
-    openSessionsModal();
+    openSessionsModal({ required: true });
     return false;
   }
 
@@ -272,7 +272,7 @@ async function ensureSessionContext() {
   const urlSessionId = getSessionIdFromURL();
   if (!urlSessionId) {
     showSessionsLandingPanel();
-    openSessionsModal();
+    openSessionsModal({ required: true });
     return false;
   }
 

@@ -115,12 +115,43 @@ describe('_messageHandlers', () => {
 // ── sendMessage ───────────────────────────────────────────────────────────
 
 describe('sendMessage', () => {
-  beforeEach(buildChatDom)
+  beforeEach(() => {
+    buildChatDom()
+    // Simulate a URL with a session ID so getSessionIdFromURL() returns a value.
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: '?session=test-session-id' },
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: '' },
+      writable: true,
+      configurable: true,
+    })
+  })
 
   it('does nothing when input is empty', async () => {
     document.getElementById('message-input').value = ''
     await sendMessage()
     expect(globalThis.appendMessage).not.toHaveBeenCalled()
+  })
+
+  it('shows system error and returns when no session ID in URL', async () => {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: '' },
+      writable: true,
+      configurable: true,
+    })
+    document.getElementById('message-input').value = 'hello'
+    await sendMessage()
+    expect(globalThis.appendMessage).toHaveBeenCalledWith(
+      'system',
+      '⚠️ No active session. Create or load a session before sending messages.',
+    )
+    expect(globalThis.appendMessage).toHaveBeenCalledTimes(1)
   })
 
   it('does nothing when isLoading is true', async () => {
