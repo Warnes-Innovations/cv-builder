@@ -39,6 +39,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .auth-badge.authenticated { color: #86efac; border-color: #86efac; }
 .auth-badge.unauthenticated { color: #fca5a5; border-color: #fca5a5; }
 .auth-badge.polling { color: #fde68a; border-color: #fde68a; }
+.auth-badge.unconfigured { color: #cbd5e1; border-color: #cbd5e1; }
+.auth-badge.configured { color: #bfdbfe; border-color: #93c5fd; }
+.auth-badge.connecting { color: #fde68a; border-color: #fde68a; }
+.auth-badge.connected { color: #86efac; border-color: #86efac; }
+.auth-badge.auth-required { color: #fdba74; border-color: #fdba74; }
+.auth-badge.rate-limited { color: #fcd34d; border-color: #fcd34d; }
+.auth-badge.unavailable { color: #c4b5fd; border-color: #c4b5fd; }
+.auth-badge.error { color: #fca5a5; border-color: #fca5a5; }
 
 /* ===== HEADER PILL BUTTONS (Sessions, Model) ===== */
 .header-pill-btn { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap; color: #fff; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.3); transition: background 0.2s; }

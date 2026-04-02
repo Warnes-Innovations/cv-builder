@@ -12,6 +12,32 @@ const _appLog = (typeof loglevel !== 'undefined') ? loglevel.getLogger('app') : 
 
 let _listenersRegistered = false;
 
+function _setConnectionMessage(messageNode, text, kind = 'info') {
+  if (!messageNode) return;
+  const content = messageNode.querySelector('.content');
+  if (!content) return;
+  content.textContent = text;
+  content.style.display = 'inline-block';
+  content.style.padding = '6px 10px';
+  content.style.borderRadius = '999px';
+  content.style.fontWeight = '600';
+  content.style.fontSize = '0.88em';
+  content.style.border = '1px solid #cbd5e1';
+  if (kind === 'success') {
+    content.style.color = '#166534';
+    content.style.background = '#ecfdf5';
+    content.style.borderColor = '#86efac';
+  } else if (kind === 'error') {
+    content.style.color = '#b91c1c';
+    content.style.background = '#fef2f2';
+    content.style.borderColor = '#fecaca';
+  } else {
+    content.style.color = '#1e40af';
+    content.style.background = '#eff6ff';
+    content.style.borderColor = '#bfdbfe';
+  }
+}
+
 async function init() {
   // Initialize abort controller to null (set to new AbortController by setLoading(true))
   window._currentAbortController = null;
@@ -19,11 +45,10 @@ async function init() {
   // Flush any messages that were queued before DOMContentLoaded (defensive — should be empty in practice).
   _flushMessageQueue();
 
-  // Show loading message
-  appendMessage('system', '🔄 Connecting to CV Builder...');
-
   const hasActiveSession = await ensureSessionContext();
   if (!hasActiveSession) {
+    const failedMessage = appendMessage('system', '⚠️ Could not establish a session. Create or load a session to continue.');
+    _setConnectionMessage(failedMessage, '⚠️ Could not establish a session. Create or load a session to continue.', 'error');
     setupEventListeners();
     return;
   }
@@ -31,11 +56,17 @@ async function init() {
   // Restore session state first
   await restoreSession();
 
+  // Show connection status after restoreSession so it is not removed by history restore.
+  const connectionMessage = appendMessage('system', '🔄 Connecting to CV Builder...');
+  _setConnectionMessage(connectionMessage, '🔄 Connecting to CV Builder...', 'info');
+
   // Restore ATS badge from cached score (if any)
   updateAtsBadge(stateManager.getAtsScore());
 
   // Initialize the rest
   await fetchStatus();
+  const connectedMessage = appendMessage('system', '✅ Connection successful.');
+  _setConnectionMessage(connectedMessage, '✅ Connection successful.', 'success');
   if (stateManager.getCurrentTab() === 'job') await populateJobTab();
   setupEventListeners();
 

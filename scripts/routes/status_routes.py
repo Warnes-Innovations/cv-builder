@@ -312,6 +312,12 @@ def _build_settings_response(config_doc: Dict[str, Any], config_path: Path) -> D
                 },
             },
         },
+        'runtime': {
+            'llm': {
+                'provider': None,
+                'model': None,
+            },
+        },
         'meta': {
             'sources': sources,
             'env_keys': env_keys,
@@ -348,6 +354,8 @@ def create_blueprint(deps):
                 config_doc = {}
 
         response = _build_settings_response(config_doc, config_path)
+        response['runtime']['llm']['provider'] = _provider_name_ref.get('value')
+        response['runtime']['llm']['model'] = _current_model_ref.get('value')
         response['ok'] = True
         return jsonify(response)
 
@@ -404,6 +412,8 @@ def create_blueprint(deps):
                 return jsonify({'ok': False, 'error': 'Failed to save settings — please try again'}), 500
 
         response = _build_settings_response(updated_doc, config_path)
+        response['runtime']['llm']['provider'] = _provider_name_ref.get('value')
+        response['runtime']['llm']['model'] = _current_model_ref.get('value')
         response['ok'] = True
         response['updated_keys'] = sorted(validated_updates.keys())
         return jsonify(response)

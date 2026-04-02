@@ -31,8 +31,43 @@ let _focusedElementBeforeModal = null;
 
 /** Stores the current keydown listener for focus trap (to enable cleanup). */
 let _currentFocusTrapListener = null;
+let _settingsData = null;
+const RETRY_POLICY_STORAGE_KEY = 'cv-builder-retry-policy';
 
-function _settingsSourceLabel(meta, key) {
+function _getRetryPolicyFromStorage() {
+  const defaults = {
+    baseMs: 1500,
+    capMs: 60000,
+    maxAttempts: 6,
+    autoRetry: true,
+  };
+  try {
+    const raw = localStorage.getItem(RETRY_POLICY_STORAGE_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw);
+    return {
+      baseMs: Math.max(200, Number(parsed.baseMs || defaults.baseMs)),
+      capMs: Math.max(1000, Number(parsed.capMs || defaults.capMs)),
+      maxAttempts: Math.max(1, Number(parsed.maxAttempts || defaults.maxAttempts)),
+      autoRetry: parsed.autoRetry !== false,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function _saveRetryPolicyToStorage(policy) {
+  try {
+    localStorage.setItem(RETRY_POLICY_STORAGE_KEY, JSON.stringify(policy));
+  } catch (error) {
+    log.warn('Could not save retry policy preference:', error);
+  }
+}
+
+function _settingsSourceLabel(meta, key, runtimeOverrides = null) {
+  if (runtimeOverrides && key in runtimeOverrides) {
+    return 'Source: runtime selection';
+  }
   const source = meta?.sources?.[key] || 'default';
   const envKey = meta?.env_keys?.[key] || null;
   if (source === 'env') return `Source: environment variable (${envKey || 'locked'})`;
@@ -41,7 +76,7 @@ function _settingsSourceLabel(meta, key) {
   return 'Source: built-in default';
 }
 
-function _renderSettingsSources(meta) {
+function _renderSettingsSources(meta, runtimeOverrides = null) {
   const sourceTargets = [
     'llm.default_provider',
     'llm.default_model',
@@ -58,9 +93,10 @@ function _renderSettingsSources(meta) {
   sourceTargets.forEach((key) => {
     const el = document.getElementById(`source-${key}`);
     if (!el) return;
-    el.textContent = _settingsSourceLabel(meta, key);
+    el.textContent = _settingsSourceLabel(meta, key, runtimeOverrides);
+    const runtimeKey = runtimeOverrides && key in runtimeOverrides;
     const isLocked = Boolean(meta?.locked?.[key]);
-    el.style.color = isLocked ? '#b45309' : '#64748b';
+    el.style.color = runtimeKey ? '#1e40af' : (isLocked ? '#b45309' : '#64748b');
   });
 }
 
@@ -106,11 +142,25 @@ function _collectSettingsPayloadFromForm() {
   };
 }
 
+function _collectRetryPolicyFromForm() {
+  return {
+    baseMs: Number(document.getElementById('settings-retry-base-ms')?.value || 1500),
+    capMs: Number(document.getElementById('settings-retry-cap-ms')?.value || 60000),
+    maxAttempts: Number(document.getElementById('settings-retry-max-attempts')?.value || 6),
+    autoRetry: Boolean(document.getElementById('settings-retry-auto')?.checked),
+  };
+}
+
 function _renderSettingsToForm(payload) {
   const settings = payload?.settings || {};
   const llm = settings.llm || {};
   const generation = settings.generation || {};
   const formats = generation.formats || {};
+  const runtimeProvider = payload?.runtime?.llm?.provider || null;
+  const runtimeModel = payload?.runtime?.llm?.model || null;
+  const runtimeOverrides = {};
+  if (runtimeProvider) runtimeOverrides['llm.default_provider'] = runtimeProvider;
+  if (runtimeModel) runtimeOverrides['llm.default_model'] = runtimeModel;
 
   const setValue = (id, value) => {
     const el = document.getElementById(id);
@@ -121,8 +171,8 @@ function _renderSettingsToForm(payload) {
     if (el) el.checked = Boolean(value);
   };
 
-  setValue('settings-llm-default-provider', llm.default_provider || '');
-  setValue('settings-llm-default-model', llm.default_model || '');
+  setValue('settings-llm-default-provider', runtimeProvider || llm.default_provider || '');
+  setValue('settings-llm-default-model', runtimeModel || llm.default_model || '');
   setValue('settings-llm-request-timeout', llm.request_timeout_seconds ?? 120);
   setValue('settings-llm-temperature', llm.temperature ?? 0.7);
 
@@ -135,7 +185,13 @@ function _renderSettingsToForm(payload) {
   setChecked('settings-format-human-pdf', formats.human_pdf);
   setChecked('settings-format-human-docx', formats.human_docx);
 
-  _renderSettingsSources(payload.meta || {});
+  const retryPolicy = _getRetryPolicyFromStorage();
+  setValue('settings-retry-base-ms', retryPolicy.baseMs);
+  setValue('settings-retry-cap-ms', retryPolicy.capMs);
+  setValue('settings-retry-max-attempts', retryPolicy.maxAttempts);
+  setChecked('settings-retry-auto', retryPolicy.autoRetry);
+
+  _renderSettingsSources(payload.meta || {}, runtimeOverrides);
 
   const pathEl = document.getElementById('settings-config-path');
   if (pathEl) {
@@ -166,6 +222,8 @@ async function saveSettingsModal() {
     _setSettingsStatus('Saving settings...', 'info');
     const payload = _collectSettingsPayloadFromForm();
     const result = await updateSettings(payload);
+    _saveRetryPolicyToStorage(_collectRetryPolicyFromForm());
+    _settingsData = result;
     _renderSettingsToForm(result);
     _setSettingsStatus('Settings saved successfully.', 'success');
   } catch (error) {
@@ -854,6 +912,80 @@ let _selectedModelProviders = new Set();
 let _modelSelectorLoading = false;   // guard: loadModelSelector() in flight
 let _catalogRefreshing = false;      // guard: _refreshModelCatalogForSelection() in flight
 let _catalogRefreshPending = false;  // queue one rerun when toggles happen mid-refresh
+let _showFullModelCatalog = false;
+let _copilotAuthPollTimer = null;
+let _modelWizardStep = 1;
+let _modelWizardSelectedProvider = null;
+
+function _getModelPrefsFromStorage() {
+  try {
+    const saved = localStorage.getItem(StorageKeys.TAB_DATA);
+    return saved ? (JSON.parse(saved) || {}) : {};
+  } catch {
+    return {};
+  }
+}
+
+function _saveModelPrefsToStorage(patch) {
+  try {
+    const parsed = _getModelPrefsFromStorage();
+    localStorage.setItem(StorageKeys.TAB_DATA, JSON.stringify({ ...parsed, ...patch }));
+  } catch (e) {
+    log.warn('Failed to persist model preferences locally:', e);
+  }
+}
+
+function _appendRecentModel(provider, model) {
+  if (!provider || !model) return;
+  const parsed = _getModelPrefsFromStorage();
+  const existing = Array.isArray(parsed.recentModels) ? parsed.recentModels : [];
+  const filtered = existing.filter((item) => !(item.provider === provider && item.model === model));
+  filtered.unshift({ provider, model });
+  _saveModelPrefsToStorage({ recentModels: filtered.slice(0, 6) });
+}
+
+function _updateLlmStatusPill(kind, text, icon = '', tooltip = '') {
+  const pill = document.getElementById('llm-status-pill');
+  const label = document.getElementById('llm-status-label');
+  const iconEl = document.getElementById('llm-status-icon');
+  if (!pill || !label) return;
+
+  const aliases = {
+    authenticated: 'connected',
+    unauthenticated: 'unconfigured',
+    polling: 'connecting',
+  };
+  const normalizedKind = aliases[kind] || kind || 'unconfigured';
+  const defaultTooltip = {
+    unconfigured: 'No provider/model is configured yet.',
+    configured: 'Provider/model is configured. Connectivity not yet verified.',
+    connecting: 'Testing or connecting to the selected provider.',
+    connected: 'Provider responded successfully to a live request.',
+    'auth-required': 'Authentication is required. Check API key or sign in.',
+    'rate-limited': 'Rate limit reached. Wait before retrying requests.',
+    unavailable: 'Provider is temporarily unavailable or unreachable.',
+    error: 'Connection failed. Open model settings for details.',
+  };
+  pill.classList.remove('authenticated', 'unauthenticated', 'polling', 'unconfigured', 'configured', 'connecting', 'connected', 'auth-required', 'rate-limited', 'unavailable', 'error');
+  if (normalizedKind) pill.classList.add(normalizedKind);
+  label.textContent = text;
+  const iconByKind = {
+    unconfigured: '○',
+    configured: '◔',
+    connecting: '⧗',
+    connected: '✓',
+    'auth-required': '🔑',
+    'rate-limited': '⏳',
+    unavailable: '☁',
+    error: '⚠',
+  };
+  const iconText = icon || iconByKind[normalizedKind] || '⚠';
+  if (iconEl) iconEl.textContent = iconText;
+  const tooltipText = tooltip || defaultTooltip[normalizedKind] || '';
+  pill.title = tooltipText;
+  if (iconEl) iconEl.title = tooltipText;
+  label.title = tooltipText;
+}
 
 async function loadModelSelector() {
   if (_modelSelectorLoading) return;
@@ -885,6 +1017,9 @@ async function loadModelSelector() {
     }
     if (_modelData && _modelData.provider) {
       _selectedModelProviders = new Set([_modelData.provider]);
+      _updateLlmStatusPill('configured', `${_modelData.provider} configured`);
+    } else {
+      _updateLlmStatusPill('unconfigured', 'Not configured');
     }
   } catch (e) {
     log.warn('Could not load model list:', e);
@@ -909,6 +1044,164 @@ function _providerDisplayLabel(provider) {
   return provider;
 }
 
+function _getQuickModelCandidates(rows) {
+  const parsed = _getModelPrefsFromStorage();
+  const recents = Array.isArray(parsed.recentModels) ? parsed.recentModels : [];
+  const ranked = [];
+
+  for (const recent of recents) {
+    const hit = rows.find((row) => row.provider === recent.provider && row.model === recent.model);
+    if (hit) ranked.push(hit);
+  }
+
+  const popular = [...rows]
+    .sort((a, b) => {
+      const am = Number(a.copilot_multiplier ?? 999);
+      const bm = Number(b.copilot_multiplier ?? 999);
+      if (am !== bm) return am - bm;
+      const ac = Number(a.context_window || 0);
+      const bc = Number(b.context_window || 0);
+      return bc - ac;
+    });
+
+  for (const item of popular) {
+    if (!ranked.some((r) => r.provider === item.provider && r.model === item.model)) {
+      ranked.push(item);
+    }
+  }
+
+  return ranked.slice(0, 8);
+}
+
+function _renderQuickModelList(rows) {
+  const quickEl = document.getElementById('model-quick-list');
+  if (!quickEl) return;
+  quickEl.innerHTML = '';
+
+  const candidates = _getQuickModelCandidates(rows || []);
+  for (const item of candidates) {
+    const isActive = item.provider === _modelData?.provider && item.model === _modelData?.model;
+    const button = document.createElement('button');
+    button.className = 'header-pill-btn';
+    button.style.padding = '5px 10px';
+    button.style.fontSize = '0.82em';
+    button.style.background = isActive ? '#dbeafe' : '#f8fafc';
+    button.style.color = isActive ? '#1e3a8a' : '#334155';
+    button.style.borderColor = isActive ? '#93c5fd' : '#cbd5e1';
+    button.title = `${item.provider} · ${item.model}`;
+    button.textContent = `${item.provider} · ${item.model}`;
+    button.addEventListener('click', async () => {
+      await setModel(item.model, item.provider);
+    });
+    quickEl.appendChild(button);
+  }
+}
+
+function _syncCatalogVisibility() {
+  const wrap = document.getElementById('model-full-table-wrap');
+  const search = document.getElementById('model-global-search');
+  const toggle = document.getElementById('model-show-all-btn');
+  if (wrap) wrap.style.display = _showFullModelCatalog ? '' : 'none';
+  if (search) search.style.display = _showFullModelCatalog ? '' : 'none';
+  if (toggle) toggle.textContent = _showFullModelCatalog ? 'Hide Full Catalog' : 'Show Full Catalog';
+}
+
+function toggleModelCatalogVisibility() {
+  _showFullModelCatalog = !_showFullModelCatalog;
+  _syncCatalogVisibility();
+}
+
+async function _refreshCopilotAuthPanel() {
+  const panel = document.getElementById('model-auth-panel');
+  const statusEl = document.getElementById('model-auth-status');
+  const startBtn = document.getElementById('model-auth-start-btn');
+  const logoutBtn = document.getElementById('model-auth-logout-btn');
+  const codeEl = document.getElementById('model-auth-code');
+  const linkEl = document.getElementById('model-auth-link');
+  if (!panel || !statusEl) return;
+
+  const isCopilotOAuth = _modelData?.provider === 'copilot-oauth';
+  panel.style.display = isCopilotOAuth ? '' : 'none';
+  if (!isCopilotOAuth) return;
+
+  codeEl.textContent = '';
+  if (linkEl) linkEl.style.display = 'none';
+
+  try {
+    const st = await fetch('/api/copilot-auth/status').then((res) => res.json());
+    if (st.authenticated) {
+      statusEl.textContent = 'Authenticated with GitHub Copilot.';
+      if (startBtn) startBtn.style.display = 'none';
+      if (logoutBtn) logoutBtn.style.display = '';
+      _updateLlmStatusPill('authenticated', 'Copilot ready');
+    } else if (st.polling) {
+      statusEl.textContent = 'Waiting for device approval…';
+      if (startBtn) startBtn.style.display = '';
+      if (logoutBtn) logoutBtn.style.display = 'none';
+      _updateLlmStatusPill('polling', 'Copilot auth pending', '⧗');
+    } else {
+      statusEl.textContent = 'Not authenticated. Start sign-in to enable Copilot OAuth.';
+      if (startBtn) startBtn.style.display = '';
+      if (logoutBtn) logoutBtn.style.display = 'none';
+      _updateLlmStatusPill('unauthenticated', 'Copilot not authenticated');
+    }
+  } catch {
+    statusEl.textContent = 'Unable to load auth status.';
+  }
+}
+
+async function startCopilotAuthFromWizard() {
+  const statusEl = document.getElementById('model-auth-status');
+  const codeEl = document.getElementById('model-auth-code');
+  const linkEl = document.getElementById('model-auth-link');
+  if (!statusEl || !codeEl || !linkEl) return;
+
+  try {
+    const flowRes = await fetch('/api/copilot-auth/start', { method: 'POST' });
+    if (!flowRes.ok) throw new Error(await flowRes.text());
+    const flow = await flowRes.json();
+
+    codeEl.textContent = flow.user_code || '';
+    linkEl.href = flow.verification_uri || 'https://github.com/login/device';
+    linkEl.style.display = '';
+    statusEl.textContent = 'Open GitHub, enter the code, then return here.';
+    window.open(linkEl.href, '_blank');
+
+    await fetch('/api/copilot-auth/poll', { method: 'POST' });
+    _updateLlmStatusPill('polling', 'Copilot auth pending', '⧗');
+    if (_copilotAuthPollTimer) clearInterval(_copilotAuthPollTimer);
+    _copilotAuthPollTimer = setInterval(async () => {
+      try {
+        const st = await fetch('/api/copilot-auth/status').then((res) => res.json());
+        if (st.authenticated) {
+          clearInterval(_copilotAuthPollTimer);
+          _copilotAuthPollTimer = null;
+          await _refreshCopilotAuthPanel();
+        }
+      } catch {
+        // keep polling silently until close
+      }
+    }, 5000);
+  } catch (error) {
+    statusEl.textContent = `Auth start failed: ${error.message || error}`;
+  }
+}
+
+async function logoutCopilotAuthFromWizard() {
+  await fetch('/api/copilot-auth/logout', { method: 'POST' });
+  await _refreshCopilotAuthPanel();
+}
+
+function _wireGlobalModelSearch() {
+  const input = document.getElementById('model-global-search');
+  if (!input) return;
+  input.oninput = () => {
+    if (_modelDataTable && typeof _modelDataTable.search === 'function') {
+      _modelDataTable.search(input.value || '').draw();
+    }
+  };
+}
+
 function _renderProviderSelector() {
   const listEl = document.getElementById('model-provider-list');
   if (!listEl || !_modelData) return;
@@ -918,38 +1211,113 @@ function _renderProviderSelector() {
     : Array.from(new Set((_modelData.all_models || []).map(r => r.provider).filter(Boolean))).sort();
   const capableSet = new Set(_modelData.list_models_capable || []);
 
-  if (_selectedModelProviders.size === 0 && _modelData.provider) {
-    _selectedModelProviders.add(_modelData.provider);
+  if (!_modelWizardSelectedProvider) {
+    _modelWizardSelectedProvider = _modelData.provider || providers[0] || null;
+  }
+  if (_modelWizardSelectedProvider) {
+    _selectedModelProviders = new Set([_modelWizardSelectedProvider]);
   }
 
   listEl.innerHTML = '';
   providers.forEach(provider => {
-    const checked = _selectedModelProviders.has(provider);
+    const checked = provider === _modelWizardSelectedProvider;
     const sourceLabel = _providerStageLabel(provider, capableSet);
 
     const label = document.createElement('label');
     label.style.cssText = 'display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:0.82em; background:#fff; cursor:pointer;';
     label.innerHTML =
-      `<input type="checkbox" value="${escapeHtml(provider)}" ${checked ? 'checked' : ''} style="margin:0;" />` +
+      `<input type="radio" name="model-provider-choice" value="${escapeHtml(provider)}" ${checked ? 'checked' : ''} style="margin:0;" />` +
       `<span>${escapeHtml(_providerDisplayLabel(provider))}</span>` +
       `<span style="color:#64748b; font-size:0.8em;">(${escapeHtml(sourceLabel)})</span>`;
 
     const checkbox = label.querySelector('input');
-    checkbox.addEventListener('change', async (event) => {
-      if (event.target.checked) {
-        _selectedModelProviders.add(provider);
-      } else {
-        _selectedModelProviders.delete(provider);
-      }
-      if (_selectedModelProviders.size === 0 && _modelData.provider) {
-        _selectedModelProviders.add(_modelData.provider);
-        event.target.checked = true;
-      }
-      await _refreshModelCatalogForSelection();
+    checkbox.addEventListener('change', () => {
+      if (!checkbox.checked) return;
+      _modelWizardSelectedProvider = provider;
+      _selectedModelProviders = new Set([provider]);
+      _updateModelWizardNav();
     });
 
     listEl.appendChild(label);
   });
+
+  _updateModelWizardNav();
+}
+
+function _setModelWizardStep(step) {
+  _modelWizardStep = step === 2 ? 2 : 1;
+  const providerStep = document.getElementById('model-step-provider');
+  const modelStep = document.getElementById('model-step-models');
+  if (providerStep) providerStep.style.display = _modelWizardStep === 1 ? '' : 'none';
+  if (modelStep) modelStep.style.display = _modelWizardStep === 2 ? '' : 'none';
+  _updateModelWizardNav();
+}
+
+function _updateModelWizardNav() {
+  const stepLabel = document.getElementById('model-wizard-step-label');
+  const backBtn = document.getElementById('model-wizard-back-btn');
+  const nextBtn = document.getElementById('model-wizard-next-btn');
+  const testBtn = document.getElementById('model-test-btn');
+  const refreshBtn = document.getElementById('pricing-refresh-btn');
+
+  if (stepLabel) {
+    stepLabel.textContent = _modelWizardStep === 1
+      ? 'Step 1 of 2: Choose provider'
+      : 'Step 2 of 2: Choose model';
+  }
+  if (backBtn) {
+    backBtn.disabled = _modelWizardStep === 1;
+    backBtn.style.display = '';
+  }
+  if (nextBtn) {
+    nextBtn.style.display = _modelWizardStep === 1 ? '' : 'none';
+    nextBtn.disabled = !_modelWizardSelectedProvider;
+  }
+  if (testBtn) testBtn.style.display = _modelWizardStep === 2 ? '' : 'none';
+  if (refreshBtn) refreshBtn.style.display = _modelWizardStep === 2 ? '' : 'none';
+}
+
+async function _loadModelsForSelectedProvider() {
+  if (!_modelWizardSelectedProvider) return false;
+
+  const loadingEl = document.getElementById('model-models-loading');
+  if (loadingEl) {
+    loadingEl.style.display = '';
+    loadingEl.style.color = '#475569';
+    loadingEl.innerHTML = '<span class="loading-spinner" style="width:14px;height:14px;border-width:2px;vertical-align:middle;margin-right:6px;"></span>Loading models for selected provider...';
+  }
+
+  try {
+    _selectedModelProviders = new Set([_modelWizardSelectedProvider]);
+    _modelData.provider = _modelWizardSelectedProvider;
+    await _refreshModelCatalogForSelection();
+    await _refreshCopilotAuthPanel();
+    if (loadingEl) {
+      loadingEl.style.display = 'none';
+      loadingEl.textContent = '';
+    }
+    return true;
+  } catch (error) {
+    log.warn('Could not load models for selected provider:', error);
+    if (loadingEl) {
+      loadingEl.style.display = '';
+      loadingEl.textContent = 'Failed to load models for selected provider.';
+      loadingEl.style.color = '#b91c1c';
+    }
+    return false;
+  }
+}
+
+async function nextWizardStep() {
+  if (_modelWizardStep !== 1) return;
+  const loaded = await _loadModelsForSelectedProvider();
+  if (!loaded) return;
+  _setModelWizardStep(2);
+}
+
+function previousWizardStep() {
+  if (_modelWizardStep !== 2) return;
+  _setModelWizardStep(1);
 }
 
 async function _refreshModelCatalogForSelection() {
@@ -999,8 +1367,13 @@ async function openModelModal() {
   if (!_modelData) {
     await loadModelSelector();
   }
+  if (!_modelWizardSelectedProvider) {
+    _modelWizardSelectedProvider = _modelData?.provider || null;
+  }
   _renderProviderSelector();
-  await _refreshModelCatalogForSelection();
+  _syncCatalogVisibility();
+  _wireGlobalModelSearch();
+  _setModelWizardStep(1);
   overlay.style.display = 'flex';
   _focusedElementBeforeModal = document.activeElement;
   setInitialFocus('model-modal-overlay');
@@ -1010,6 +1383,11 @@ async function openModelModal() {
 function closeModelModal() {
   const overlay = document.getElementById('model-modal-overlay');
   if (overlay) overlay.style.display = 'none';
+  _setModelWizardStep(1);
+  if (_copilotAuthPollTimer) {
+    clearInterval(_copilotAuthPollTimer);
+    _copilotAuthPollTimer = null;
+  }
   restoreFocus();
 }
 
@@ -1087,6 +1465,7 @@ function _buildModelTable() {
           : { model: r, provider: currentProvider }
       );
 
+  _renderQuickModelList(rows);
   tbody.innerHTML = '';
   const tdBase  = 'padding:9px 14px; border-bottom:1px solid #e2e8f0;';
   const fmtCost = v => (v != null) ? '$' + Number(v).toFixed(v < 1 ? 3 : 2) : '—';
@@ -1224,29 +1603,26 @@ async function setModel(model, provider) {
     const payload = provider ? { model, provider } : { model };
     await apiCall('POST', '/api/model', payload);
     if (_modelData) {
-      _modelData.model    = model;
+      _modelData.model = model;
       if (provider) _modelData.provider = provider;
     }
+    const effectiveProvider = (_modelData && _modelData.provider) || provider;
     const label = document.getElementById('model-current-label');
     if (label) {
-      const prov = (_modelData && _modelData.provider) || provider;
-      label.textContent  = prov ? `${prov} · ${model}` : model;
+      label.textContent = effectiveProvider ? `${effectiveProvider} · ${model}` : model;
     }
+    _appendRecentModel(effectiveProvider, model);
     _syncModelTableSelection();
-    // Keep the modal open so the user can click "Test connection"
-    // Fire-and-forget connection test so the result appears immediately
+    _renderQuickModelList((_modelData && _modelData.all_models) || []);
+    _updateLlmStatusPill('configured', `${effectiveProvider || 'Provider'} configured`);
+
+    // Keep the wizard open so users can run quick health checks.
     testCurrentModel();
-    // Persist selection locally so it survives frontend reloads even if backend
-    // does not persist the choice.
-    try {
-      const saved = localStorage.getItem(StorageKeys.TAB_DATA);
-      const parsed = saved ? JSON.parse(saved) : {};
-      parsed.currentModelProvider = provider || (_modelData && _modelData.provider) || null;
-      parsed.currentModelName = model || (_modelData && _modelData.model) || null;
-      localStorage.setItem(StorageKeys.TAB_DATA, JSON.stringify(parsed));
-    } catch (e) {
-      log.warn('Failed to persist model selection locally:', e);
-    }
+    _saveModelPrefsToStorage({
+      currentModelProvider: effectiveProvider || null,
+      currentModelName: model || null,
+    });
+    await _refreshCopilotAuthPanel();
   } catch (e) {
     log.error('Failed to switch model:', e);
     const msg = e.message || String(e);
@@ -1277,6 +1653,7 @@ async function testCurrentModel() {
     if (badge)  { badge.textContent  = SPIN; badge.style.display  = ''; badge.title  = 'Testing…'; }
     if (status) { status.innerHTML   = `${SPIN} Testing connection…`; status.style.display = ''; }
     if (btn)    { btn.disabled = true; btn.textContent = '⏳ Testing…'; }
+    _updateLlmStatusPill('connecting', 'Connecting…', '⧗');
   };
 
   const setOk = (latencyMs) => {
@@ -1284,7 +1661,7 @@ async function testCurrentModel() {
     if (badge)  { badge.textContent  = OK;  badge.style.display  = ''; badge.title  = tip; }
     if (status) { status.innerHTML   = `${OK} ${tip}`; status.style.color = '#16a34a'; status.style.display = ''; }
     if (btn)    { btn.disabled = false; btn.innerHTML = '&#10003; Test connection'; }
-    // Auto-clear the badge after 30 s so it doesn't linger forever
+    _updateLlmStatusPill('connected', `Healthy (${latencyMs}ms)`, '✓');
     setTimeout(() => {
       if (badge  && badge.textContent  === OK)  badge.style.display  = 'none';
       if (status && status.textContent.includes(tip)) status.style.display = 'none';
@@ -1299,6 +1676,7 @@ async function testCurrentModel() {
       status.style.display = '';
     }
     if (btn)    { btn.disabled = false; btn.innerHTML = '&#10003; Test connection'; }
+    _updateLlmStatusPill('error', 'Connection failed', '⚠', errMsg);
   };
 
   setRunning();
@@ -1388,6 +1766,9 @@ export {
   initialize, displayMessage, updatePhaseIndicator, setControlsEnabled,
   // Model selector
   loadModelSelector, openModelModal, closeModelModal, setModel, testCurrentModel, refreshModelPricing,
+  toggleModelCatalogVisibility, startCopilotAuthFromWizard, logoutCopilotAuthFromWizard,
+  nextWizardStep, previousWizardStep,
+  _updateLlmStatusPill,
   // Settings modal
   openSettingsModal, closeSettingsModal, saveSettingsModal, reloadSettingsModal,
 };

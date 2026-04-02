@@ -44,6 +44,7 @@ beforeEach(() => {
   vi.stubGlobal('appendRetryMessage', vi.fn())
   vi.stubGlobal('appendRawHtml', vi.fn())
   vi.stubGlobal('setLoading', vi.fn())
+  vi.stubGlobal('_updateLlmStatusPill', vi.fn())
   vi.stubGlobal('llmFetch', vi.fn())
   vi.stubGlobal('fetchStatus', vi.fn())
   vi.stubGlobal('analyzeJob', vi.fn())
@@ -153,6 +154,46 @@ describe('sendMessage', () => {
     document.getElementById('message-input').value = 'proceed'
     await sendMessage()
     expect(globalThis.showTableBasedReview).toHaveBeenCalled()
+  })
+
+  it('sets rate-limited state when /api/message returns HTTP 429', async () => {
+    globalThis.llmFetch.mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: { get: () => 'application/json' },
+      text: async () => JSON.stringify({ error: 'Rate limit reached. Please wait and try again.' }),
+    })
+
+    document.getElementById('message-input').value = 'hello'
+    await sendMessage()
+
+    expect(globalThis._updateLlmStatusPill).toHaveBeenCalledWith(
+      'rate-limited',
+      'Rate limited',
+      '⏳',
+      'Provider rate limit reached. Wait briefly and retry.',
+    )
+  })
+
+  it('sets unavailable state when provider returns HTTP 503', async () => {
+    globalThis.llmFetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      headers: { get: () => 'text/html' },
+      text: async () => '<!doctype html><html>service unavailable</html>',
+    })
+
+    document.getElementById('message-input').value = 'hello'
+    await sendMessage()
+
+    expect(globalThis._updateLlmStatusPill).toHaveBeenCalledWith(
+      'unavailable',
+      'Provider unavailable',
+      '☁',
+      'Provider is currently unavailable or unreachable. Retry soon.',
+    )
   })
 })
 
