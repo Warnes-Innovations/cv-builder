@@ -196,9 +196,14 @@ function closeOwnershipConflictDialog(choice = 'different') {
 
 // ── Sessions modal ────────────────────────────────────────────────────────────
 
-async function openSessionsModal() {
+async function openSessionsModal({ required = false } = {}) {
   const overlay = document.getElementById('sessions-modal-overlay');
   if (!overlay) return;
+  overlay.dataset.dismissDisabled = required ? '1' : '';
+  const closeX      = document.getElementById('sessions-modal-close-x');
+  const closeFooter = document.getElementById('sessions-modal-close-footer');
+  if (closeX)      closeX.style.display      = required ? 'none' : '';
+  if (closeFooter) closeFooter.style.display = required ? 'none' : '';
   overlay.style.display = 'flex';
   window._focusedElementBeforeModal = document.activeElement;
   await _renderSessionsModalBody();
@@ -208,7 +213,9 @@ async function openSessionsModal() {
 
 function closeSessionsModal() {
   const overlay = document.getElementById('sessions-modal-overlay');
-  if (overlay) overlay.style.display = 'none';
+  if (!overlay) return;
+  if (overlay.dataset.dismissDisabled === '1') return;
+  overlay.style.display = 'none';
   restoreFocus();
 }
 

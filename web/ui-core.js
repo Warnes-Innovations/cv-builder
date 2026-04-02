@@ -726,6 +726,7 @@ function openModal(modalId) {
 function closeModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) {
+    if (modal.dataset.dismissDisabled === '1') return;
     modal.classList.remove('visible');
     modal.setAttribute('aria-hidden', 'true');
     // Restore body scroll
@@ -742,6 +743,7 @@ function closeModal(modalId) {
  */
 function closeAllModals() {
   document.querySelectorAll('[role="dialog"]').forEach(modal => {
+    if (modal.dataset.dismissDisabled === '1') return;
     modal.classList.remove('visible');
     modal.setAttribute('aria-hidden', 'true');
     if (modal.style.display && modal.style.display !== 'none') {

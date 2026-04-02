@@ -211,7 +211,7 @@
     <div class="modal" style="max-width: 680px; width: 92%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2 id="sessions-modal-title" style="margin:0;">📂 Sessions</h2>
-        <button onclick="closeSessionsModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+        <button id="sessions-modal-close-x" onclick="closeSessionsModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
       </div>
       <div class="modal-body" id="sessions-modal-body" style="padding:0; max-height:520px; overflow-y:auto;">
         <p style="padding:24px;text-align:center;color:#6b7280;">Loading sessions…</p>
@@ -222,7 +222,7 @@
         <div style="display:flex;gap:8px;align-items:center;">
           <button id="sessions-trash-btn" class="action-btn" onclick="openTrashView()"
             style="background:#f1f5f9;color:#64748b;border-color:#e2e8f0;">🗑 Trash</button>
-          <button class="action-btn" onclick="closeSessionsModal()">Close</button>
+          <button id="sessions-modal-close-footer" class="action-btn" onclick="closeSessionsModal()">Close</button>
         </div>
       </div>
     </div>
