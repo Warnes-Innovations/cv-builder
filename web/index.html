@@ -267,29 +267,52 @@
     <div class="modal" style="max-width: 1020px; width: 95%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2 id="model-modal-title" style="margin:0;">LLM Configuration Wizard</h2>
-        <button onclick="closeModelModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+        <button class="modal-close-btn" onclick="closeModelModal()" title="Close">&times;</button>
       </div>
-      <div class="modal-body" style="padding: 0;">
-        <div id="model-step-provider" style="padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
-          <div style="font-size:0.85em; color:#334155; margin-bottom:6px; font-weight:600;">
-            Step 1: Choose provider
-          </div>
-          <div id="model-provider-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
-          <div style="margin-top:8px; font-size:0.82em; color:#64748b;">
-            Model availability is refreshed after provider selection and before model choices are shown.
+      <div class="modal-body model-wizard-body" style="padding: 0; position: relative;">
+        <div id="model-wizard-busy-overlay" class="wizard-busy-overlay" style="display:none;">
+          <div class="wizard-busy-card">
+            <span class="loading-spinner wizard-busy-spinner" aria-hidden="true"></span>
+            <div id="model-wizard-busy-message" class="wizard-busy-message">Working...</div>
           </div>
         </div>
 
-        <div id="model-step-models" style="display:none;">
+        <div class="model-wizard-progress" role="status" aria-live="polite">
+          <div id="model-progress-step-1" class="model-progress-step is-active" data-step="1">
+            <span class="model-progress-badge">1</span>
+            <span class="model-progress-text">Choose Provider</span>
+            <span class="model-progress-connector" aria-hidden="true"></span>
+          </div>
+          <div id="model-progress-step-2" class="model-progress-step" data-step="2">
+            <span class="model-progress-badge">2</span>
+            <span class="model-progress-text">Model + Test</span>
+            <span class="model-progress-connector" aria-hidden="true"></span>
+          </div>
+          <div id="model-progress-step-3" class="model-progress-step" data-step="3">
+            <span class="model-progress-badge">3</span>
+            <span class="model-progress-text">Complete</span>
+          </div>
+        </div>
+
+        <div id="model-step-provider" class="model-wizard-pane" style="padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
+          <div class="model-wizard-step-title">
+            Step 1: Choose provider
+          </div>
+          <div id="model-provider-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+          <div class="model-wizard-step-hint">
+            Available models are queried after provider selection and before model choices are shown.
+          </div>
+        </div>
+
+        <div id="model-step-models" class="model-wizard-pane" style="display:none;">
           <div style="padding:10px 14px; border-bottom:1px solid #e2e8f0;">
-            <div style="font-size:0.85em; color:#334155; margin-bottom:6px; font-weight:600;">
-              Step 2: Choose model
+            <div class="model-wizard-step-title">
+              Step 2: Choose model and verify connection
             </div>
             <div id="model-models-loading" style="display:none; margin-bottom:8px; font-size:0.82em; color:#475569;"></div>
             <div id="model-quick-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
             <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
-              <button id="model-show-all-btn" onclick="toggleModelCatalogVisibility()"
-                style="padding:5px 10px; font-size:0.85em; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
+              <button id="model-show-all-btn" class="action-btn" onclick="toggleModelCatalogVisibility()">
                 Show Full Catalog
               </button>
               <input id="model-global-search" type="text" placeholder="Search all models…"
@@ -298,17 +321,15 @@
           </div>
 
           <div id="model-auth-panel" style="display:none; padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
-            <div style="font-size:0.85em; color:#334155; margin-bottom:6px; font-weight:600;">
+            <div class="model-wizard-step-title">
               GitHub Copilot authorization
             </div>
             <div id="model-auth-status" style="font-size:0.85em; color:#475569; margin-bottom:8px;">Status unknown.</div>
             <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
-              <button id="model-auth-start-btn" onclick="startCopilotAuthFromWizard()"
-                style="padding:5px 10px; font-size:0.85em; background:#3b82f6; color:#fff; border:1px solid #2563eb; border-radius:4px; cursor:pointer;">
+              <button id="model-auth-start-btn" class="action-btn primary" onclick="startCopilotAuthFromWizard()">
                 Start Sign-In
               </button>
-              <button id="model-auth-logout-btn" onclick="logoutCopilotAuthFromWizard()"
-                style="display:none; padding:5px 10px; font-size:0.85em; background:#fff; color:#475569; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer;">
+              <button id="model-auth-logout-btn" class="action-btn" style="display:none;" onclick="logoutCopilotAuthFromWizard()">
                 Log Out
               </button>
               <span id="model-auth-code" style="font-family:monospace; font-weight:700; letter-spacing:2px;"></span>
@@ -334,28 +355,31 @@
             </table>
           </div>
         </div>
+
+        <div id="model-step-success" class="model-wizard-pane model-wizard-success" style="display:none;">
+          <div class="model-wizard-success-icon">✓</div>
+          <h3>Configuration Complete</h3>
+          <p id="model-success-summary">Provider and model are configured and the connection check succeeded.</p>
+          <button id="model-wizard-close-btn" class="model-wizard-primary-close" onclick="closeModelModal()">Close Wizard</button>
+        </div>
       </div>
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-top:1px solid #e2e8f0; background:#f8fafc; font-size:0.8em; color:#64748b;">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <span id="model-wizard-step-label">Step 1 of 2: Choose provider</span>
+      <div class="modal-footer model-wizard-footer">
+        <div class="model-wizard-footer-meta">
+          <span id="model-wizard-step-label">Step 1 of 3: Choose provider</span>
           <span id="pricing-updated-label">Loading pricing info…</span>
           <span id="model-test-status" style="display:none;"></span>
         </div>
-        <div style="display:flex; gap:6px;">
-          <button id="model-wizard-back-btn" onclick="previousWizardStep()"
-            style="padding:3px 10px; font-size:0.85em; background:#fff; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
+        <div class="model-wizard-footer-actions">
+          <button id="model-wizard-back-btn" class="action-btn" onclick="previousWizardStep()">
             Back
           </button>
-          <button id="model-wizard-next-btn" onclick="nextWizardStep()"
-            style="padding:3px 10px; font-size:0.85em; background:#3b82f6; color:#fff; border:1px solid #2563eb; border-radius:4px; cursor:pointer;">
+          <button id="model-wizard-next-btn" class="action-btn primary" onclick="nextWizardStep()">
             Next
           </button>
-          <button id="model-test-btn" onclick="testCurrentModel()"
-            style="padding:3px 10px; font-size:0.85em; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
+          <button id="model-test-btn" class="action-btn" onclick="testCurrentModel()">
             &#10003; Test connection
           </button>
-          <button id="pricing-refresh-btn" onclick="refreshModelPricing()"
-            style="padding:3px 10px; font-size:0.85em; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
+          <button id="pricing-refresh-btn" class="action-btn" onclick="refreshModelPricing()">
             ↻ Refresh prices
           </button>
         </div>

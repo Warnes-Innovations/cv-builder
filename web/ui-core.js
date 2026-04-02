@@ -1158,6 +1158,7 @@ async function startCopilotAuthFromWizard() {
   const linkEl = document.getElementById('model-auth-link');
   if (!statusEl || !codeEl || !linkEl) return;
 
+  _showModelWizardBusy('Starting GitHub device authorization...');
   try {
     const flowRes = await fetch('/api/copilot-auth/start', { method: 'POST' });
     if (!flowRes.ok) throw new Error(await flowRes.text());
@@ -1186,6 +1187,8 @@ async function startCopilotAuthFromWizard() {
     }, 5000);
   } catch (error) {
     statusEl.textContent = `Auth start failed: ${error.message || error}`;
+  } finally {
+    _hideModelWizardBusy();
   }
 }
 
@@ -1246,13 +1249,50 @@ function _renderProviderSelector() {
   _updateModelWizardNav();
 }
 
+function _showModelWizardBusy(message) {
+  const overlay = document.getElementById('model-wizard-busy-overlay');
+  const messageEl = document.getElementById('model-wizard-busy-message');
+  if (messageEl) messageEl.textContent = message || 'Working...';
+  if (overlay) overlay.style.display = 'flex';
+}
+
+function _hideModelWizardBusy() {
+  const overlay = document.getElementById('model-wizard-busy-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
 function _setModelWizardStep(step) {
-  _modelWizardStep = step === 2 ? 2 : 1;
+  _modelWizardStep = [1, 2, 3].includes(step) ? step : 1;
   const providerStep = document.getElementById('model-step-provider');
   const modelStep = document.getElementById('model-step-models');
+  const successStep = document.getElementById('model-step-success');
   if (providerStep) providerStep.style.display = _modelWizardStep === 1 ? '' : 'none';
   if (modelStep) modelStep.style.display = _modelWizardStep === 2 ? '' : 'none';
+  if (successStep) successStep.style.display = _modelWizardStep === 3 ? '' : 'none';
   _updateModelWizardNav();
+}
+
+function _updateModelWizardProgressBar() {
+  const steps = [1, 2, 3];
+  steps.forEach((stepNum) => {
+    const stepEl = document.getElementById(`model-progress-step-${stepNum}`);
+    if (!stepEl) return;
+    const badgeEl = stepEl.querySelector('.model-progress-badge');
+    stepEl.classList.remove('is-active', 'is-complete', 'is-upcoming');
+    if (stepNum < _modelWizardStep) {
+      stepEl.classList.add('is-complete');
+      stepEl.setAttribute('aria-current', 'false');
+      if (badgeEl) badgeEl.textContent = '✓';
+    } else if (stepNum === _modelWizardStep) {
+      stepEl.classList.add('is-active');
+      stepEl.setAttribute('aria-current', 'step');
+      if (badgeEl) badgeEl.textContent = String(stepNum);
+    } else {
+      stepEl.classList.add('is-upcoming');
+      stepEl.setAttribute('aria-current', 'false');
+      if (badgeEl) badgeEl.textContent = String(stepNum);
+    }
+  });
 }
 
 function _updateModelWizardNav() {
@@ -1261,15 +1301,19 @@ function _updateModelWizardNav() {
   const nextBtn = document.getElementById('model-wizard-next-btn');
   const testBtn = document.getElementById('model-test-btn');
   const refreshBtn = document.getElementById('pricing-refresh-btn');
+  const footer = document.querySelector('.model-wizard-footer');
+
+  _updateModelWizardProgressBar();
 
   if (stepLabel) {
-    stepLabel.textContent = _modelWizardStep === 1
-      ? 'Step 1 of 2: Choose provider'
-      : 'Step 2 of 2: Choose model';
+    if (_modelWizardStep === 1) stepLabel.textContent = 'Step 1 of 3: Choose provider';
+    if (_modelWizardStep === 2) stepLabel.textContent = 'Step 2 of 3: Choose model and test connection';
+    if (_modelWizardStep === 3) stepLabel.textContent = 'Step 3 of 3: Complete';
   }
+
   if (backBtn) {
     backBtn.disabled = _modelWizardStep === 1;
-    backBtn.style.display = '';
+    backBtn.style.display = _modelWizardStep === 3 ? 'none' : '';
   }
   if (nextBtn) {
     nextBtn.style.display = _modelWizardStep === 1 ? '' : 'none';
@@ -1277,6 +1321,7 @@ function _updateModelWizardNav() {
   }
   if (testBtn) testBtn.style.display = _modelWizardStep === 2 ? '' : 'none';
   if (refreshBtn) refreshBtn.style.display = _modelWizardStep === 2 ? '' : 'none';
+  if (footer) footer.style.justifyContent = _modelWizardStep === 3 ? 'center' : 'space-between';
 }
 
 async function _loadModelsForSelectedProvider() {
@@ -1289,6 +1334,7 @@ async function _loadModelsForSelectedProvider() {
     loadingEl.innerHTML = '<span class="loading-spinner" style="width:14px;height:14px;border-width:2px;vertical-align:middle;margin-right:6px;"></span>Loading models for selected provider...';
   }
 
+  _showModelWizardBusy('Querying available models...');
   try {
     _selectedModelProviders = new Set([_modelWizardSelectedProvider]);
     _modelData.provider = _modelWizardSelectedProvider;
@@ -1307,6 +1353,8 @@ async function _loadModelsForSelectedProvider() {
       loadingEl.style.color = '#b91c1c';
     }
     return false;
+  } finally {
+    _hideModelWizardBusy();
   }
 }
 
@@ -1318,8 +1366,13 @@ async function nextWizardStep() {
 }
 
 function previousWizardStep() {
-  if (_modelWizardStep !== 2) return;
-  _setModelWizardStep(1);
+  if (_modelWizardStep === 2) {
+    _setModelWizardStep(1);
+    return;
+  }
+  if (_modelWizardStep === 3) {
+    _setModelWizardStep(2);
+  }
 }
 
 async function _refreshModelCatalogForSelection() {
@@ -1372,10 +1425,15 @@ async function openModelModal() {
   if (!_modelWizardSelectedProvider) {
     _modelWizardSelectedProvider = _modelData?.provider || null;
   }
+  const successSummary = document.getElementById('model-success-summary');
+  if (successSummary) {
+    successSummary.textContent = 'Provider and model are configured and the connection check succeeded.';
+  }
   _renderProviderSelector();
   _syncCatalogVisibility();
   _wireGlobalModelSearch();
   _setModelWizardStep(1);
+  _hideModelWizardBusy();
   overlay.style.display = 'flex';
   _focusedElementBeforeModal = document.activeElement;
   setInitialFocus('model-modal-overlay');
@@ -1386,6 +1444,7 @@ function closeModelModal() {
   const overlay = document.getElementById('model-modal-overlay');
   if (overlay) overlay.style.display = 'none';
   _setModelWizardStep(1);
+  _hideModelWizardBusy();
   if (_copilotAuthPollTimer) {
     clearInterval(_copilotAuthPollTimer);
     _copilotAuthPollTimer = null;
@@ -1601,6 +1660,7 @@ function _buildModelTable() {
 
 async function setModel(model, provider) {
   if (!model) return;
+  _showModelWizardBusy(`Applying model ${model}...`);
   try {
     const payload = provider ? { model, provider } : { model };
     await apiCall('POST', '/api/model', payload);
@@ -1618,13 +1678,12 @@ async function setModel(model, provider) {
     _renderQuickModelList((_modelData && _modelData.all_models) || []);
     _updateLlmStatusPill('configured', `${effectiveProvider || 'Provider'} configured`);
 
-    // Keep the wizard open so users can run quick health checks.
-    testCurrentModel();
     _saveModelPrefsToStorage({
       currentModelProvider: effectiveProvider || null,
       currentModelName: model || null,
     });
     await _refreshCopilotAuthPanel();
+    await testCurrentModel();
   } catch (e) {
     log.error('Failed to switch model:', e);
     const msg = e.message || String(e);
@@ -1638,6 +1697,8 @@ async function setModel(model, provider) {
     if (typeof appendMessage === 'function') {
       appendMessage('system', `❌ Model switch failed: ${msg}`);
     }
+  } finally {
+    _hideModelWizardBusy();
   }
 }
 
@@ -1664,10 +1725,11 @@ async function testCurrentModel() {
     if (status) { status.innerHTML   = `${OK} ${tip}`; status.style.color = '#16a34a'; status.style.display = ''; }
     if (btn)    { btn.disabled = false; btn.innerHTML = '&#10003; Test connection'; }
     _updateLlmStatusPill('connected', `Healthy (${latencyMs}ms)`, '✓');
-    setTimeout(() => {
-      if (badge  && badge.textContent  === OK)  badge.style.display  = 'none';
-      if (status && status.textContent.includes(tip)) status.style.display = 'none';
-    }, 30_000);
+    const successSummary = document.getElementById('model-success-summary');
+    if (successSummary) {
+      successSummary.textContent = `Connection verified in ${latencyMs}ms. You can close the wizard and continue.`;
+    }
+    _setModelWizardStep(3);
   };
 
   const setFail = (errMsg) => {
@@ -1679,18 +1741,26 @@ async function testCurrentModel() {
     }
     if (btn)    { btn.disabled = false; btn.innerHTML = '&#10003; Test connection'; }
     _updateLlmStatusPill('error', 'Connection failed', '⚠', errMsg);
+    if (_modelWizardStep === 3) {
+      _setModelWizardStep(2);
+    }
   };
 
   setRunning();
+  _showModelWizardBusy('Testing model connection...');
   try {
     const result = await apiCall('POST', '/api/model/test');
     if (result.ok) {
       setOk(result.latency_ms);
-    } else {
-      setFail(result.error || 'Unknown error');
+      return true;
     }
+    setFail(result.error || 'Unknown error');
+    return false;
   } catch (e) {
     setFail(e.message || String(e));
+    return false;
+  } finally {
+    _hideModelWizardBusy();
   }
 }
 
@@ -1719,6 +1789,7 @@ async function refreshModelPricing() {
   const btn = document.getElementById('pricing-refresh-btn');
   const lbl = document.getElementById('pricing-updated-label');
   if (btn) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
+  _showModelWizardBusy('Refreshing model pricing...');
   try {
     await apiCall('POST', '/api/model-pricing/refresh');
     // Re-fetch model data so the table gets fresh prices
@@ -1728,6 +1799,7 @@ async function refreshModelPricing() {
     if (lbl) lbl.textContent = 'Refresh failed';
     log.error('Pricing refresh failed:', e);
   } finally {
+    _hideModelWizardBusy();
     if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh prices'; }
   }
 }

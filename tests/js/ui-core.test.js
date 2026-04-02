@@ -88,15 +88,25 @@ describe('openModelModal', () => {
   function buildModelFixture() {
     document.body.innerHTML = `
       <div id="model-modal-overlay" style="display:none">
+        <div id="model-wizard-busy-overlay" style="display:none"></div>
+        <div id="model-wizard-busy-message"></div>
+        <div id="model-progress-step-1"></div>
+        <div id="model-progress-step-2"></div>
+        <div id="model-progress-step-3"></div>
         <div id="model-step-provider"></div>
         <div id="model-step-models"></div>
+        <div id="model-step-success"></div>
         <div id="model-models-loading"></div>
         <div id="model-provider-list"></div>
         <div id="model-quick-list"></div>
+        <div id="model-success-summary"></div>
         <span id="model-wizard-step-label"></span>
         <button id="model-wizard-back-btn"></button>
         <button id="model-wizard-next-btn"></button>
+        <button id="model-wizard-close-btn"></button>
         <button id="model-show-all-btn"></button>
+        <button id="model-test-btn"></button>
+        <button id="pricing-refresh-btn"></button>
         <input id="model-global-search" />
         <div id="model-auth-panel"></div>
         <div id="model-auth-status"></div>
@@ -428,6 +438,41 @@ describe('openModelModal', () => {
 
     mod.toggleModelCatalogVisibility()
     expect(document.getElementById('model-full-table-wrap').style.display).toBe('')
+  })
+
+  it('advances to success pane after a successful connection test', async () => {
+    buildModelFixture()
+
+    apiCall.mockImplementation(async (_method, url) => {
+      if (url === '/api/model') {
+        return {
+          provider: 'github',
+          model: 'gpt-5.4',
+          providers: ['github'],
+          all_models: [{ provider: 'github', model: 'gpt-5.4', source: 'list_models' }],
+          list_models_capable: ['github'],
+        }
+      }
+      if (url.startsWith('/api/model-catalog')) {
+        return {
+          providers: ['github'],
+          all_models: [{ provider: 'github', model: 'gpt-5.4', source: 'list_models' }],
+          list_models_capable: ['github'],
+        }
+      }
+      if (url === '/api/model/test') {
+        return { ok: true, latency_ms: 123 }
+      }
+      throw new Error(`Unexpected URL: ${url}`)
+    })
+
+    await mod.openModelModal()
+    await mod.nextWizardStep()
+    await mod.testCurrentModel()
+
+    expect(document.getElementById('model-step-success').style.display).toBe('')
+    expect(document.getElementById('model-wizard-step-label').textContent).toContain('Step 3 of 3')
+    expect(document.getElementById('model-success-summary').textContent).toContain('123ms')
   })
 })
 
