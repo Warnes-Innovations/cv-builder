@@ -27,9 +27,11 @@ import json
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import threading
+import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -1171,7 +1173,29 @@ def main():
         flush=True,
     )
 
+    _evict_port(args.port)
     app.run(host=config.web_host, port=args.port, debug=args.debug)
+
+
+def _evict_port(port: int) -> None:
+    """Kill any process already listening on *port* so Flask can bind cleanly."""
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f"tcp:{port}"],
+            capture_output=True, text=True
+        )
+        pids = result.stdout.split()
+        for pid_str in pids:
+            try:
+                pid = int(pid_str)
+                os.kill(pid, signal.SIGTERM)
+                print(f"Stopped process on port {port} (PID {pid})", flush=True)
+            except (ValueError, ProcessLookupError):
+                pass
+        if pids:
+            time.sleep(1)
+    except FileNotFoundError:
+        pass  # lsof not available; skip eviction
 
 
 def _env_file_has_value(key: str) -> bool:
