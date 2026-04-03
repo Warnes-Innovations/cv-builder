@@ -83,47 +83,19 @@ async function fetchPostAnalysisQuestionsFromApi(analysisData) {
   }
 }
 
-async function appendFollowUpPostAnalysisQuestions() {
-  if (!stateManager.getTabData('analysis')) return 0;
-
-  let analysisData;
-  try {
-    const cleanAnalysis = cleanJsonResponse(stateManager.getTabData('analysis'));
-    analysisData = typeof cleanAnalysis === 'string'
-      ? JSON.parse(cleanAnalysis)
-      : cleanAnalysis;
-  } catch (parseError) {
-    log.warn('Skipping follow-up questions due to invalid analysis payload:', parseError);
-    return 0;
-  }
-
-  const followUps = await fetchPostAnalysisQuestionsFromApi(analysisData);
-  if (followUps.length === 0) return 0;
-
-  const beforeCount = Array.isArray(window.postAnalysisQuestions)
-    ? window.postAnalysisQuestions.length
-    : 0;
-
-  window.postAnalysisQuestions = mergePostAnalysisQuestions(
-    window.postAnalysisQuestions,
-    followUps
-  );
-
-  const added = window.postAnalysisQuestions.length - beforeCount;
-  if (added > 0) {
-    await persistPostAnalysisState();
-  }
-  return added;
-}
-
 // ---------------------------------------------------------------------------
 // Main orchestrator: called after analyzeJob completes
 // ---------------------------------------------------------------------------
 
 async function askPostAnalysisQuestions(analysisResult, preferredQuestions = null) {
   try {
-    const cleanResult = cleanJsonResponse(analysisResult);
-    const data = typeof cleanResult === 'string' ? JSON.parse(cleanResult) : cleanResult;
+    let data;
+    if (analysisResult !== null && typeof analysisResult === 'object') {
+      data = analysisResult;
+    } else {
+      const cleanResult = cleanJsonResponse(analysisResult);
+      data = typeof cleanResult === 'string' ? JSON.parse(cleanResult) : cleanResult;
+    }
 
     window.postAnalysisQuestions = mergePostAnalysisQuestions([], preferredQuestions);
 
@@ -409,7 +381,6 @@ export {
   persistPostAnalysisState,
   renderQuestionMarkdown,
   fetchPostAnalysisQuestionsFromApi,
-  appendFollowUpPostAnalysisQuestions,
   askPostAnalysisQuestions,
   populateQuestionsTab,
   renderQuestionsPanel,

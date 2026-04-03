@@ -85,12 +85,6 @@ function applyLayoutFreshnessNavigationState() {
 
 // ── Back to phase ─────────────────────────────────────────────────────────────
 
-function backToPhaseWithFeedback() {
-  const phase    = document.getElementById('refine-phase-select')?.value || 'customizations';
-  const feedback = (document.getElementById('refine-feedback')?.value || '').trim();
-  backToPhase(phase, feedback);
-}
-
 async function backToPhase(step, feedback) {
   try {
     const body = feedback ? {phase: step, feedback} : {phase: step};
@@ -710,7 +704,6 @@ export {
   _STEP_ORDER,
   _STEP_DISPLAY,
   _ACTION_LABELS,
-  backToPhaseWithFeedback,
   backToPhase,
   _showReRunConfirmModal,
   confirmReRunPhase,
