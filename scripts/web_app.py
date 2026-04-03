@@ -755,7 +755,7 @@ def create_app(args) -> Flask:
         if not content_lines:
             content_lines = lines
 
-        title = content_lines[0]
+        title = content_lines[0].lstrip('#').strip()
         company = ""
         for candidate in content_lines[1:4]:
             # Company names are typically a short single line

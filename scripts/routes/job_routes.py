@@ -14,9 +14,14 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
+import io as _io
+import json as _json
+
 import requests as _requests
 from bs4 import BeautifulSoup
 from flask import Blueprint, jsonify, request
+from markitdown import MarkItDown as _MarkItDown
+from markitdown import StreamInfo as _StreamInfo
 from werkzeug.utils import safe_join
 
 logger = logging.getLogger(__name__)
@@ -180,16 +185,16 @@ def create_blueprint(deps):
             elif 'text/html' in content_type or 'html' in content_type:
                 soup = BeautifulSoup(response.text, 'html.parser')
 
-                import json as _json
-
                 # --- Structured metadata extraction (before any tag removal) ---
-                json_ld_text = None
-                json_ld_title = None
+                json_ld_blobs: list  = []
+                json_ld_text         = None
+                json_ld_title        = None
                 for script_tag in soup.find_all('script', type='application/ld+json'):
                     try:
                         ld_data = _json.loads(script_tag.string or '')
                         if not isinstance(ld_data, dict):
                             continue
+                        json_ld_blobs.append(ld_data)
                         if json_ld_title is None:
                             for title_key in ('title', 'name'):
                                 v = ld_data.get(title_key)
@@ -236,37 +241,34 @@ def create_blueprint(deps):
                 for tag in soup.find_all(attrs={"role": "navigation"}):
                     tag.decompose()
 
-                job_selectors = [
-                    '.job-description',
-                    '.job-content',
-                    '.posting-description',
-                    '.description',
-                    '[data-testid="job-description"]',
-                    '.job-details'
-                ]
+                _stream     = _io.BytesIO(str(soup).encode('utf-8'))
+                _stream_info = _StreamInfo(mimetype='text/html', charset='utf-8', url=url)
+                html_text   = _MarkItDown().convert(_stream, stream_info=_stream_info).text_content
 
-                job_content = None
-                for selector in job_selectors:
-                    elements = soup.select(selector)
-                    if elements:
-                        job_content = elements[0]
-                        break
-
-                if not job_content:
-                    job_content = soup.find('main') or soup.find('article') or soup.find('body') or soup
-
-                job_text = job_content.get_text()
-
-                lines = (line.strip() for line in job_text.splitlines())
-                job_text = '\n'.join(line for line in lines if line)
-
-                if len(job_text.strip()) < 200:
+                if len(html_text.strip()) < 200:
+                    # Page body too thin — use JSON-LD or meta description as the whole text
                     if json_ld_text:
                         job_text = json_ld_text
                         logger.debug("Using JSON-LD structured data (body text was too short)")
                     elif meta_desc_text:
                         job_text = meta_desc_text
                         logger.debug("Using meta description (body text was too short)")
+                    else:
+                        job_text = html_text
+                elif json_ld_blobs:
+                    # Both sources available — prepend structured data for the LLM
+                    blobs_md = "\n\n".join(
+                        _json.dumps(b, indent=2, ensure_ascii=False) for b in json_ld_blobs
+                    )
+                    job_text = (
+                        "## Structured Job Data (JSON-LD)\n\n"
+                        + blobs_md
+                        + "\n\n---\n\n## Page Content\n\n"
+                        + html_text
+                    )
+                    logger.debug("Prepended %d JSON-LD blob(s) to page content", len(json_ld_blobs))
+                else:
+                    job_text = html_text
 
                 if len(job_text.strip()) < 100:
                     return jsonify({
@@ -346,31 +348,31 @@ def create_blueprint(deps):
                 text = raw.decode('utf-8', errors='replace')
 
             elif any(filename_lower.endswith(ext) for ext in ('.html', '.htm')):
-                soup = BeautifulSoup(raw, 'html.parser')
-                for tag in soup(['script', 'style', 'head', 'nav', 'footer']):
-                    tag.decompose()
-                text = soup.get_text(separator='\n')
+                _soup = BeautifulSoup(raw, 'html.parser')
+                for _tag in _soup(['script', 'style', 'head', 'nav', 'footer', 'noscript']):
+                    _tag.decompose()
+                _stream      = _io.BytesIO(str(_soup).encode('utf-8'))
+                _stream_info = _StreamInfo(mimetype='text/html', charset='utf-8')
+                text         = _MarkItDown().convert(_stream, stream_info=_stream_info).text_content
 
             elif filename_lower.endswith('.pdf'):
-                import io
                 try:
                     from pypdf import PdfReader
-                    reader = PdfReader(io.BytesIO(raw))
+                    reader = PdfReader(_io.BytesIO(raw))
                     pages = [page.extract_text() or '' for page in reader.pages]
                     text = '\n\n'.join(pages)
                 except ImportError:
                     return jsonify({"error": "PDF support not available. Run: pip install pypdf"}), 500
 
             elif filename_lower.endswith('.docx'):
-                import io
                 try:
                     import mammoth
-                    result = mammoth.extract_raw_text(io.BytesIO(raw))
+                    result = mammoth.extract_raw_text(_io.BytesIO(raw))
                     text = result.value
                 except ImportError:
                     try:
                         from docx import Document
-                        doc = Document(io.BytesIO(raw))
+                        doc = Document(_io.BytesIO(raw))
                         text = '\n'.join(p.text for p in doc.paragraphs)
                     except ImportError:
                         return jsonify({"error": "DOCX support not available. Run: pip install python-docx"}), 500
