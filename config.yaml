@@ -1,56 +1,38 @@
-# CV Builder Configuration
-# This file contains paths and default settings for the CV generation system
-
-# Data File Locations
-# These can be absolute paths or relative to your home directory (~)
 data:
-  master_cv: "~/CV/Master_CV_Data.json"
-  publications: "~/CV/publications.bib"
-  output_dir: "~/CV/cv-builder"
-
-# LLM Provider Settings
+  master_cv: ~/CV/Master_CV_Data.json
+  publications: ~/CV/publications.bib
+  output_dir: ~/CV/cv-builder
 llm:
-  default_provider: "gemini"  # Options: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local
-  default_model: "gemini-flash-latest"  # Model name; null uses provider default
+  default_provider: github
+  default_model: claude-sonnet-4-6
   temperature: 0.7
-  max_tokens: null  # null uses provider default
-  request_timeout_seconds: 300  # Max seconds to wait for a single LLM reply (null = no limit)
-
-# CV Generation Defaults
+  max_tokens: null
+  request_timeout_seconds: 300
 generation:
-  base_font_size: "13px"
+  base_font_size: 13px
   max_skills: 20
   max_achievements: 5
   max_publications: 10
-  page_margin: "0.5in"
-
-  # CV Length Constraints
+  page_margin: 0.5in
   page_count:
-    warn_single: true       # Warn if output is 1 page
-    ideal_min: 2            # Ideal minimum pages
-    ideal_max: 3            # Ideal maximum pages (warn if exceeded)
-    absolute_max: 4         # Absolute maximum (fail if exceeded)
-
-  # Output formats to generate
+    warn_single: true
+    ideal_min: 2
+    ideal_max: 3
+    absolute_max: 4
   formats:
-    ats_docx: true       # ATS-optimized DOCX (machine-parseable)
-    human_pdf: true      # Human-readable PDF (styled)
-    human_docx: true     # Human-readable DOCX (styled)
-
-# Session Management
+    ats_docx: true
+    human_pdf: true
+    human_docx: true
+  skills_section_title: Skills
 session:
   auto_save: true
-  session_dir: "~/CV/cv-builder/sessions"  # Sessions saved in CV directory
-  history_file: "~/CV/cv-builder/input_history"
-
-# Web UI Settings
+  session_dir: ~/CV/cv-builder/sessions
+  history_file: ~/CV/cv-builder/input_history
 web:
-  host: "127.0.0.1"
+  host: 127.0.0.1
   port: 5001
   debug: false
-
-# Logging
 logging:
-  level: "DEBUG"                   # Options: DEBUG, INFO, WARNING, ERROR
-  file: "cv-builder.log"           # null logs to console only
-  log_dir: "~/CV/cv-builder/logs"  # Directory for log files
+  level: DEBUG
+  file: cv-builder.log
+  log_dir: ~/CV/cv-builder/logs

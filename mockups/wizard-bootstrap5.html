@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wizard Mockup — Bootstrap 5 (CSS + JS)</title>
+  <!-- Bootstrap 5 CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <!-- Bootstrap 5 JS bundle (includes Popper) — provides Modal focus-trap, ESC key, backdrop -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <style>
+    body { background: #dee2e6; padding: 0; margin: 0; }
+
+    /* ── Demo banner ── */
+    .demo-banner { position: fixed; top: 0; left: 0; right: 0; background: #212529; color: #f8f9fa; font-size: 12px; font-weight: 600; padding: 8px 20px; display: flex; align-items: center; gap: 12px; z-index: 9999; }
+    .demo-banner a { color: #74c0fc; font-weight: 400; text-decoration: none; }
+    .demo-banner a:hover { text-decoration: underline; }
+
+    /* ── Stepper (Bootstrap has no native stepped wizard; built with flex + badge) ── */
+    .bs-stepper { display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 20px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
+    .bstep { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
+    .bstep:not(:last-child)::after { content: ''; position: absolute; top: 14px; left: calc(50% + 18px); width: calc(100% - 36px); height: 2px; background: #dee2e6; }
+    .bstep.done:not(:last-child)::after { background: #198754; }
+    .bstep-badge { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; border: 2px solid #dee2e6; color: #6c757d; background: #fff; }
+    .bstep.active .bstep-badge { background: #e8f0fe; border-color: #0d6efd; color: #0d6efd; }
+    .bstep.done .bstep-badge { background: #198754; border-color: #198754; color: #fff; }
+    .bstep-label { font-size: 11px; font-weight: 600; color: #6c757d; text-align: center; }
+    .bstep.active .bstep-label { color: #0d6efd; }
+    .bstep.done .bstep-label { color: #198754; }
+
+    /* ── Busy overlay ── */
+    .busy-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); z-index: 10; border-radius: 0 0 8px 8px; }
+    .busy-card { background: #fff; border-radius: 12px; padding: 20px 24px; display: flex; align-items: center; gap: 14px; box-shadow: 0 1rem 3rem rgba(0,0,0,0.175); }
+
+    /* ── Provider pills ── */
+    .prov-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid #ced4da; border-radius: 999px; font-size: 12px; cursor: pointer; background: #fff; color: #212529; }
+    .prov-pill input { margin: 0; }
+    .prov-pill.selected { border-color: #0d6efd; background: #e8f0fe; color: #0d6efd; }
+
+    /* ── Lib note ── */
+    .lib-note { font-size: 11px; color: #6c757d; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 8px 12px; margin-top: 16px; max-width: 900px; }
+  </style>
+</head>
+<body>
+  <div class="demo-banner">
+    🅱 Bootstrap 5 — CSS + JS (Modal, focus-trap, ESC, backdrop)
+    &nbsp;·&nbsp;
+    <a href="wizard-current.html">← Current</a>
+    <a href="wizard-primer.html">Primer</a>
+    <a href="wizard-shoelace.html">Shoelace →</a>
+  </div>
+
+  <!-- Real Bootstrap modal: JS provides focus-trap, ESC key, backdrop click-to-close -->
+  <div class="modal fade" id="llmWizardModal" tabindex="-1" aria-labelledby="wizardTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl" style="max-width: 900px; margin-top: 40px;">
+    <div class="modal-content" style="overflow: hidden; position: relative;">
+
+      <!-- Header -->
+      <div class="modal-header">
+        <h5 class="modal-title" id="wizardTitle">LLM Configuration Wizard</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <!-- Stepper -->
+      <div class="bs-stepper" role="status" aria-live="polite">
+        <div class="bstep active" id="ps1">
+          <div class="bstep-badge" id="pb1">1</div>
+          <div class="bstep-label">Choose Provider</div>
+        </div>
+        <div class="bstep" id="ps2">
+          <div class="bstep-badge" id="pb2">2</div>
+          <div class="bstep-label">Model + Test</div>
+        </div>
+        <div class="bstep" id="ps3">
+          <div class="bstep-badge" id="pb3">3</div>
+          <div class="bstep-label">Complete</div>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div class="modal-body" style="position:relative; min-height:240px;">
+
+        <!-- Busy overlay -->
+        <div class="busy-overlay" id="busy">
+          <div class="busy-card">
+            <div class="spinner-border text-primary" style="width:28px; height:28px;" role="status">
+              <span class="visually-hidden">Loading…</span>
+            </div>
+            <span class="fw-semibold" id="busy-msg">Querying available models…</span>
+          </div>
+        </div>
+
+        <!-- Step 1: Provider -->
+        <div id="step1">
+          <p class="fw-semibold text-secondary mb-3" style="font-size:14px;">Step 1: Choose provider</p>
+          <div class="d-flex flex-wrap gap-2">
+            <label class="prov-pill selected"><input type="radio" name="prov" value="github" checked class="me-1"> GitHub Copilot <span class="badge bg-primary ms-1">list</span></label>
+            <label class="prov-pill"><input type="radio" name="prov" value="openai" class="me-1"> OpenAI <span class="badge bg-secondary ms-1">list</span></label>
+            <label class="prov-pill"><input type="radio" name="prov" value="anthropic" class="me-1"> Anthropic <span class="badge bg-secondary ms-1">catalog</span></label>
+            <label class="prov-pill"><input type="radio" name="prov" value="gemini" class="me-1"> Google Gemini <span class="badge bg-secondary ms-1">catalog</span></label>
+            <label class="prov-pill"><input type="radio" name="prov" value="local" class="me-1"> Local <span class="badge bg-secondary ms-1">manual</span></label>
+          </div>
+          <p class="text-muted mt-3 mb-0" style="font-size:13px;">Available models are queried after provider selection and before model choices are shown.</p>
+        </div>
+
+        <!-- Step 2: Model -->
+        <div id="step2" style="display:none;">
+          <p class="fw-semibold text-secondary mb-3" style="font-size:14px;">Step 2: Choose model and verify connection</p>
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <!-- Bootstrap btn-check pattern would require JS; using btn group for visual clarity -->
+            <button class="btn btn-sm btn-outline-primary active" data-model>gpt-4.1</button>
+            <button class="btn btn-sm btn-outline-secondary" data-model>gpt-4.1-mini</button>
+            <button class="btn btn-sm btn-outline-secondary" data-model>gpt-4.5</button>
+            <button class="btn btn-sm btn-outline-secondary" data-model>o3</button>
+            <button class="btn btn-sm btn-outline-secondary" data-model>claude-sonnet-4-5</button>
+            <button class="btn btn-sm btn-outline-secondary" data-model>gemini-2.5-pro</button>
+          </div>
+          <button class="btn btn-sm btn-outline-secondary">Show Full Catalog</button>
+        </div>
+
+        <!-- Step 3: Success -->
+        <div id="step3" style="display:none; text-align:center; padding:20px 0;">
+          <div class="d-flex justify-content-center mb-3">
+            <div style="width:64px; height:64px; border-radius:50%; background:#198754; color:#fff; display:flex; align-items:center; justify-content:center; font-size:32px; font-weight:700; box-shadow:0 8px 20px rgba(25,135,84,0.3);">✓</div>
+          </div>
+          <h4 class="text-success mb-2">Configuration Complete</h4>
+          <p class="text-secondary mb-4" style="max-width:420px; margin:0 auto 16px; font-size:14px;">GitHub Copilot + <strong>gpt-4.1</strong> configured and tested (latency 312 ms). You're ready to generate CVs.</p>
+          <button class="btn btn-success btn-lg px-4" data-bs-dismiss="modal">Close Wizard</button>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="modal-footer justify-content-between" style="background:#f8f9fa; font-size:13px; flex-wrap:wrap; gap:8px;">
+        <span class="text-muted" id="step-label">Step 1 of 3: Choose provider</span>
+        <div class="d-flex gap-2 align-items-center">
+          <button class="btn btn-sm btn-outline-secondary" onclick="toggleBusy()" id="busy-btn">⏳ Show Busy</button>
+          <button class="btn btn-sm btn-outline-secondary" id="back-btn" onclick="go(-1)" disabled>← Back</button>
+          <button class="btn btn-sm btn-primary" id="next-btn" onclick="go(1)">Next →</button>
+          <button class="btn btn-sm btn-outline-secondary" id="test-btn" onclick="go(1)" style="display:none;">✓ Test connection</button>
+          <button class="btn btn-sm btn-outline-secondary" id="refresh-btn" style="display:none;">↻ Refresh prices</button>
+        </div>
+      </div>
+    </div><!-- /.modal-content -->
+    </div><!-- /.modal-dialog -->
+  </div><!-- /.modal -->
+
+  <div class="lib-note" style="position:fixed; bottom:0; left:0; right:0; border-radius:0; border-left:none; border-right:none; border-bottom:none; z-index:9998; max-width:100%;">
+    <strong>Bootstrap 5 components used:</strong>
+    <code>bootstrap.Modal</code> (focus-trap, ESC, backdrop) — <code>.modal.fade</code> / <code>.modal-dialog</code> / <code>data-bs-dismiss</code> —
+    <code>.btn</code> / <code>.btn-primary</code> / <code>.btn-outline-*</code> —
+    <code>.spinner-border</code> — <code>.badge</code> — custom stepper with Bootstrap flex utilities.
+    <em>Bootstrap JS bundle loaded from CDN.</em>
+  </div>
+
+  <script>
+    let step = 1;
+    const LABELS = ['Step 1 of 3: Choose provider', 'Step 2 of 3: Choose model and test connection', 'Step 3 of 3: Complete'];
+
+    function render() {
+      [1,2,3].forEach(n => {
+        document.getElementById('step'+n).style.display = n === step ? '' : 'none';
+        const ps = document.getElementById('ps'+n);
+        const pb = document.getElementById('pb'+n);
+        ps.className = 'bstep';
+        if (n < step)        { ps.classList.add('done');   pb.textContent = '✓'; }
+        else if (n === step) { ps.classList.add('active'); pb.textContent = String(n); }
+        else                 {                              pb.textContent = String(n); }
+      });
+      document.getElementById('step-label').textContent = LABELS[step-1];
+      document.getElementById('back-btn').disabled = step === 1;
+      document.getElementById('back-btn').style.display = step === 3 ? 'none' : '';
+      document.getElementById('next-btn').style.display = step === 1 ? '' : 'none';
+      document.getElementById('test-btn').style.display = step === 2 ? '' : 'none';
+      document.getElementById('refresh-btn').style.display = step === 2 ? '' : 'none';
+      document.getElementById('busy-btn').style.display = step === 3 ? 'none' : '';
+    }
+
+    function go(dir) {
+      step = Math.min(3, Math.max(1, step + dir));
+      if (step === 2) {
+        const b = document.getElementById('busy');
+        b.style.display = 'flex';
+        setTimeout(() => { b.style.display = 'none'; render(); }, 1200);
+      } else {
+        render();
+      }
+    }
+
+    function toggleBusy() {
+      const b = document.getElementById('busy');
+      b.style.display = b.style.display !== 'flex' ? 'flex' : 'none';
+    }
+
+    // Provider pill selection
+    document.querySelectorAll('.prov-pill input[type=radio]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.querySelectorAll('.prov-pill').forEach(p => p.classList.remove('selected'));
+        radio.closest('.prov-pill').classList.add('selected');
+      });
+    });
+
+    // Model chip selection — Bootstrap .btn-outline-* buttons
+    document.querySelectorAll('[data-model]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-model]').forEach(b => {
+          b.classList.remove('btn-outline-primary', 'active');
+          b.classList.add('btn-outline-secondary');
+        });
+        btn.classList.remove('btn-outline-secondary');
+        btn.classList.add('btn-outline-primary', 'active');
+      });
+    });
+
+    render();
+
+    // Bootstrap Modal — show on page load
+    // In the real app this would be triggered by a settings button:
+    //   <button data-bs-toggle="modal" data-bs-target="#llmWizardModal">Configure LLM</button>
+    // backdrop:'static' prevents accidental close mid-wizard; omitted here so you can test ESC/backdrop
+    const wizardModal = new bootstrap.Modal(document.getElementById('llmWizardModal'));
+    wizardModal.show();
+  </script>
+</body>
+</html>

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wizard Mockup — Shoelace Web Components</title>
+  <!-- Shoelace v2 light theme + autoloader (registers components on demand) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.19.1/cdn/themes/light.css">
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.19.1/cdn/shoelace-autoloader.js"></script>
+  <style>
+    body { margin: 0; background: #f0f4f8; min-height: 100vh; padding: 48px 16px 24px; font-family: var(--sl-font-sans); }
+
+    /* ── Demo banner ── */
+    .demo-banner { position: fixed; top: 0; left: 0; right: 0; background: #0f172a; color: #f8fafc; font-size: 12px; font-weight: 600; padding: 8px 20px; display: flex; align-items: center; gap: 12px; z-index: 9999; }
+    .demo-banner a { color: #7dd3fc; font-weight: 400; text-decoration: none; }
+    .demo-banner a:hover { text-decoration: underline; }
+
+    /* ── sl-dialog customization via ::part() ── */
+    sl-dialog { --width: 900px; }
+    sl-dialog::part(panel) { max-width: 900px; width: 95vw; border-radius: var(--sl-border-radius-large); }
+    sl-dialog::part(body) { padding: 0; overflow: hidden; }
+    sl-dialog::part(footer) {
+      background: var(--sl-color-neutral-50);
+      border-top: 1px solid var(--sl-color-neutral-200);
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    sl-dialog::part(title) { font-size: var(--sl-font-size-medium); font-weight: var(--sl-font-weight-semibold); }
+
+    /* ── Stepper (Shoelace has no native stepper; built using Shoelace design tokens) ── */
+    .sl-stepper { display: flex; align-items: flex-start; justify-content: space-between; padding: 16px 20px; background: var(--sl-color-neutral-50); border-bottom: 1px solid var(--sl-color-neutral-200); }
+    .slstep { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
+    .slstep:not(:last-child)::after { content: ''; position: absolute; top: 15px; left: calc(50% + 19px); width: calc(100% - 38px); height: 2px; background: var(--sl-color-neutral-300); }
+    .slstep.done:not(:last-child)::after { background: var(--sl-color-success-600); }
+    .slbadge { width: 30px; height: 30px; border-radius: var(--sl-border-radius-circle); display: flex; align-items: center; justify-content: center; font-size: var(--sl-font-size-x-small); font-weight: var(--sl-font-weight-bold); border: 2px solid var(--sl-color-neutral-300); color: var(--sl-color-neutral-500); background: var(--sl-color-neutral-0); }
+    .slstep.active .slbadge { background: var(--sl-color-primary-100); border-color: var(--sl-color-primary-600); color: var(--sl-color-primary-700); }
+    .slstep.done .slbadge { background: var(--sl-color-success-600); border-color: var(--sl-color-success-600); color: #fff; }
+    .slstep-label { font-size: 11px; font-weight: var(--sl-font-weight-semibold); color: var(--sl-color-neutral-500); text-align: center; }
+    .slstep.active .slstep-label { color: var(--sl-color-primary-700); }
+    .slstep.done .slstep-label { color: var(--sl-color-success-700); }
+
+    /* ── Busy overlay ── */
+    .busy-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.35); display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); z-index: 10; }
+    .busy-card { background: var(--sl-color-neutral-0); border: 1px solid var(--sl-color-neutral-200); border-radius: var(--sl-border-radius-large); padding: 20px 24px; display: flex; align-items: center; gap: 14px; box-shadow: var(--sl-shadow-large); }
+    .busy-text { font-size: var(--sl-font-size-medium); font-weight: var(--sl-font-weight-semibold); color: var(--sl-color-neutral-900); }
+
+    /* ── Step panels ── */
+    .step-panel { padding: 16px 20px; min-height: 240px; position: relative; }
+
+    /* ── Success panel ── */
+    .success-panel { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; padding: 40px 24px; }
+    .success-icon { width: 64px; height: 64px; border-radius: var(--sl-border-radius-circle); background: var(--sl-color-success-600); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; box-shadow: 0 8px 20px rgba(22,163,74,0.3); }
+
+    /* ── lib note ── */
+    .lib-note { font-size: 11px; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-top: 16px; max-width: 900px; width: 100%; }
+
+    /* ── Testing note box ── */
+    .testing-note { background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; padding: 10px 14px; margin-top: 8px; max-width: 900px; width: 100%; font-size: 12px; color: #92400e; }
+  </style>
+</head>
+<body>
+  <div class="demo-banner">
+    🥾 Shoelace v2 — Web Components
+    &nbsp;·&nbsp;
+    <a href="wizard-current.html">← Current</a>
+    <a href="wizard-primer.html">Primer</a>
+    <a href="wizard-bootstrap5.html">Bootstrap 5</a>
+  </div>
+
+  <!--
+    sl-dialog renders with its own semi-transparent backdrop behind the panel.
+    Footer slot accepts any HTML; label slot accepts custom title content.
+  -->
+  <sl-dialog label="LLM Configuration Wizard" open id="wiz" style="--width:900px;">
+
+    <!-- Default slot = dialog body -->
+    <div style="display:flex; flex-direction:column;">
+
+      <!-- Outer relative wrapper so busy overlay covers stepper + panels -->
+      <div style="position:relative;">
+
+      <!-- Stepper (custom — Shoelace has no stepper component) -->
+      <div class="sl-stepper" role="status" aria-live="polite">
+        <div class="slstep active" id="ps1">
+          <div class="slbadge" id="pb1">1</div>
+          <div class="slstep-label">Choose Provider</div>
+        </div>
+        <div class="slstep" id="ps2">
+          <div class="slbadge" id="pb2">2</div>
+          <div class="slstep-label">Model + Test</div>
+        </div>
+        <div class="slstep" id="ps3">
+          <div class="slbadge" id="pb3">3</div>
+          <div class="slstep-label">Complete</div>
+        </div>
+      </div>
+
+      <!-- Busy overlay covers stepper + panels -->
+        <div class="busy-overlay" id="busy">
+          <div class="busy-card">
+            <!-- sl-spinner: Shoelace's native animated spinner component -->
+            <sl-spinner style="font-size:26px; --track-width:3px; --indicator-color:var(--sl-color-primary-600);"></sl-spinner>
+            <div class="busy-text" id="busy-msg">Querying available models…</div>
+          </div>
+        </div>
+
+        <!-- Step 1: Provider — sl-radio-group + sl-radio-button renders pill-style radio buttons -->
+        <div class="step-panel" id="step1">
+          <sl-radio-group label="Step 1: Choose provider" value="github">
+            <sl-radio-button value="github" size="small">GitHub Copilot</sl-radio-button>
+            <sl-radio-button value="openai" size="small">OpenAI</sl-radio-button>
+            <sl-radio-button value="anthropic" size="small">Anthropic</sl-radio-button>
+            <sl-radio-button value="gemini" size="small">Google Gemini</sl-radio-button>
+            <sl-radio-button value="local" size="small">Local</sl-radio-button>
+          </sl-radio-group>
+          <p style="margin:12px 0 0; font-size:13px; color:var(--sl-color-neutral-500);">Available models are queried after provider selection and before model choices are shown.</p>
+        </div>
+
+        <!-- Step 2: Model — sl-tag for selectable chips -->
+        <div class="step-panel" id="step2" style="display:none;">
+          <p style="margin:0 0 12px; font-size:14px; font-weight:var(--sl-font-weight-semibold); color:var(--sl-color-neutral-700);">Step 2: Choose model and verify connection</p>
+          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+            <!-- sl-tag: Shoelace's label/chip element; variant=primary for selected -->
+            <sl-tag variant="primary" size="medium" style="cursor:pointer;" pill>gpt-4.1</sl-tag>
+            <sl-tag variant="neutral" size="medium" style="cursor:pointer;" pill>gpt-4.1-mini</sl-tag>
+            <sl-tag variant="neutral" size="medium" style="cursor:pointer;" pill>gpt-4.5</sl-tag>
+            <sl-tag variant="neutral" size="medium" style="cursor:pointer;" pill>o3</sl-tag>
+            <sl-tag variant="neutral" size="medium" style="cursor:pointer;" pill>claude-sonnet-4-5</sl-tag>
+            <sl-tag variant="neutral" size="medium" style="cursor:pointer;" pill>gemini-2.5-pro</sl-tag>
+          </div>
+          <sl-button size="small" variant="default">Show Full Catalog</sl-button>
+        </div>
+
+        <!-- Step 3: Success -->
+        <div class="step-panel" id="step3" style="display:none;">
+          <div class="success-panel">
+            <div class="success-icon">✓</div>
+            <h3 style="margin:0; color:var(--sl-color-success-700); font-size:20px;">Configuration Complete</h3>
+            <p style="color:var(--sl-color-neutral-600); font-size:14px; max-width:420px; margin:0;">GitHub Copilot + <strong>gpt-4.1</strong> configured and tested (latency 312 ms). You're ready to generate CVs.</p>
+            <!-- sl-button variant="success" renders a green button using Shoelace's success token -->
+            <sl-button variant="success" size="large">Close Wizard</sl-button>
+          </div>
+        </div>
+      </div><!-- /outer position:relative -->
+
+      <!-- Library and testing notes inside the dialog body so they're not hidden by the backdrop -->
+      <div style="padding:8px 16px; border-top:1px solid var(--sl-color-neutral-200); background:var(--sl-color-neutral-50);">
+        <div style="font-size:11px; color:#475569; margin-bottom:6px;">
+          <strong>Shoelace components used:</strong>
+          <code>&lt;sl-dialog&gt;</code> — <code>&lt;sl-button&gt;</code> (variant=primary/success/neutral) — <code>&lt;sl-spinner&gt;</code> — <code>&lt;sl-tag&gt;</code> (variant=primary/neutral, pill) — <code>&lt;sl-radio-group&gt;</code> + <code>&lt;sl-radio-button&gt;</code> — custom stepper using Shoelace CSS design tokens.
+          <em>No Shoelace React required.</em>
+        </div>
+        <div style="font-size:12px; color:#92400e; background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:7px 10px;">
+          ⚠️ <strong>Testing note:</strong> Shoelace uses Web Components with shadow DOM. Vitest's jsdom does not support
+          custom elements — <code>&lt;sl-dialog&gt;</code>, <code>&lt;sl-button&gt;</code>, etc. render as empty elements in unit tests
+          without additional test infrastructure (polyfills or mocked <code>customElements</code>). This is the primary adoption risk.
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer slot — Shoelace renders this in the dialog footer area -->
+    <div slot="footer" style="display:flex; justify-content:space-between; align-items:center; width:100%; flex-wrap:wrap; gap:8px;">
+      <span id="step-label" style="font-size:13px; color:var(--sl-color-neutral-500);">Step 1 of 3: Choose provider</span>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <sl-button size="small" id="busy-btn" onclick="toggleBusy()">⏳ Show Busy</sl-button>
+        <sl-button size="small" id="back-btn" onclick="go(-1)" disabled>← Back</sl-button>
+        <sl-button size="small" variant="primary" id="next-btn" onclick="go(1)">Next →</sl-button>
+        <sl-button size="small" id="test-btn" onclick="go(1)" style="display:none;">✓ Test connection</sl-button>
+        <sl-button size="small" id="refresh-btn" style="display:none;">↻ Refresh prices</sl-button>
+      </div>
+    </div>
+  </sl-dialog>
+
+  <script type="module">
+    let step = 1;
+    const LABELS = ['Step 1 of 3: Choose provider', 'Step 2 of 3: Choose model and test connection', 'Step 3 of 3: Complete'];
+
+    function render() {
+      [1,2,3].forEach(n => {
+        document.getElementById('step'+n).style.display = n === step ? '' : 'none';
+        const ps = document.getElementById('ps'+n);
+        const pb = document.getElementById('pb'+n);
+        ps.className = 'slstep';
+        if (n < step)        { ps.classList.add('done');   pb.textContent = '✓'; }
+        else if (n === step) { ps.classList.add('active'); pb.textContent = String(n); }
+        else                 {                              pb.textContent = String(n); }
+      });
+      document.getElementById('step-label').textContent = LABELS[step-1];
+      document.getElementById('back-btn').disabled = step === 1;
+      document.getElementById('back-btn').style.display = step === 3 ? 'none' : '';
+      document.getElementById('next-btn').style.display = step === 1 ? '' : 'none';
+      document.getElementById('test-btn').style.display = step === 2 ? '' : 'none';
+      document.getElementById('refresh-btn').style.display = step === 2 ? '' : 'none';
+      document.getElementById('busy-btn').style.display = step === 3 ? 'none' : '';
+    }
+
+    // expose as window functions so inline onclick= works (module scope isolation)
+    window.go = function(dir) {
+      step = Math.min(3, Math.max(1, step + dir));
+      if (step === 2) {
+        const b = document.getElementById('busy');
+        b.style.display = 'flex';
+        setTimeout(() => { b.style.display = 'none'; render(); }, 1200);
+      } else {
+        render();
+      }
+    };
+
+    window.toggleBusy = function() {
+      const b = document.getElementById('busy');
+      b.style.display = b.style.display !== 'flex' ? 'flex' : 'none';
+    };
+
+    // Provider pill selection — sl-radio-group fires sl-change
+    await customElements.whenDefined('sl-radio-group');
+    document.querySelector('sl-radio-group').addEventListener('sl-change', e => {
+      // No visual class needed — sl-radio-button handles its own active styling
+      // (The selected button gets [aria-checked=true] and Shoelace applies primary color via shadow CSS)
+    });
+
+    // Model chip (sl-tag) click — toggle variant between primary and neutral
+    document.getElementById('step2').querySelectorAll('sl-tag').forEach(tag => {
+      tag.addEventListener('click', () => {
+        document.getElementById('step2').querySelectorAll('sl-tag').forEach(t => t.setAttribute('variant', 'neutral'));
+        tag.setAttribute('variant', 'primary');
+      });
+    });
+
+    // Wait for Shoelace dialog to be defined before calling render
+    await customElements.whenDefined('sl-dialog');
+    render();
+  </script>
+</body>
+</html>
