@@ -245,11 +245,25 @@ def create_blueprint(deps):
                 _stream_info = _StreamInfo(mimetype='text/html', charset='utf-8', url=url)
                 html_text   = _MarkItDown().convert(_stream, stream_info=_stream_info).text_content
 
-                if len(html_text.strip()) < 200:
-                    # Page body too thin — use JSON-LD or meta description as the whole text
+                # Detect SPA-style noise: body text is abnormally large relative to
+                # a clean job page (>50 KB) but we have structured JSON-LD — means the
+                # page is a client-rendered SPA (e.g. Eightfold.ai) and the extracted
+                # text is dominated by embedded JSON/CSS configs, not actual content.
+                _SPA_NOISE_THRESHOLD = 50_000
+                _body_is_thin   = len(html_text.strip()) < 200
+                _body_is_noisy  = json_ld_text and len(html_text) > _SPA_NOISE_THRESHOLD
+
+                if _body_is_thin or _body_is_noisy:
+                    # Page body too thin or full of SPA noise — prefer JSON-LD
                     if json_ld_text:
                         job_text = json_ld_text
-                        logger.debug("Using JSON-LD structured data (body text was too short)")
+                        if _body_is_noisy:
+                            logger.info(
+                                "SPA noise detected (%d chars body) — using JSON-LD structured data",
+                                len(html_text),
+                            )
+                        else:
+                            logger.debug("Using JSON-LD structured data (body text was too short)")
                     elif meta_desc_text:
                         job_text = meta_desc_text
                         logger.debug("Using meta description (body text was too short)")
@@ -292,6 +306,7 @@ def create_blueprint(deps):
                 conversation.state["position_name"] = _infer_position_name(
                     job_text, page_title=page_title
                 )
+                conversation.state["job_url"] = url
             session_registry.touch(sid)
             logger.info("Fetched %d chars from %s", len(job_text), domain)
 
