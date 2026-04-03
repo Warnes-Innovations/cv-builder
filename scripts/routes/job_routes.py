@@ -174,36 +174,67 @@ def create_blueprint(deps):
             content_type = response.headers.get('content-type', '').lower()
             logger.debug("Content type: %s", content_type)
 
+            page_title = None  # populated by the HTML branch; used by _infer_position_name
             if 'text/plain' in content_type:
                 job_text = response.text
             elif 'text/html' in content_type or 'html' in content_type:
                 soup = BeautifulSoup(response.text, 'html.parser')
 
                 import json as _json
+
+                # --- Structured metadata extraction (before any tag removal) ---
                 json_ld_text = None
+                json_ld_title = None
                 for script_tag in soup.find_all('script', type='application/ld+json'):
                     try:
                         ld_data = _json.loads(script_tag.string or '')
-                        desc = ld_data.get('description') if isinstance(ld_data, dict) else None
-                        if desc and len(desc) > 100:
-                            json_ld_text = desc
-                            logger.debug("Found JSON-LD job description (%d chars)", len(json_ld_text))
-                            break
+                        if not isinstance(ld_data, dict):
+                            continue
+                        if json_ld_title is None:
+                            for title_key in ('title', 'name'):
+                                v = ld_data.get(title_key)
+                                if v and isinstance(v, str) and 3 < len(v) < 200:
+                                    json_ld_title = v
+                                    logger.debug("Found JSON-LD title: %s", json_ld_title)
+                                    break
+                        if json_ld_text is None:
+                            desc = ld_data.get('description')
+                            if desc and len(desc) > 100:
+                                json_ld_text = desc
+                                logger.debug("Found JSON-LD job description (%d chars)", len(json_ld_text))
                     except Exception:
                         pass
 
+                og_title = None
                 meta_desc_text = None
                 for meta in soup.find_all('meta'):
                     prop = meta.get('property', '') or meta.get('name', '')
-                    if prop in ('og:description', 'description'):
+                    if prop == 'og:title' and og_title is None:
+                        og_title = meta.get('content', '') or None
+                        logger.debug("Found og:title: %s", og_title)
+                    elif prop in ('og:description', 'description') and meta_desc_text is None:
                         content = meta.get('content', '')
                         if len(content) > 100:
                             meta_desc_text = content
                             logger.debug("Found meta description (%d chars)", len(meta_desc_text))
-                            break
 
-                for script in soup(["script", "style", "nav", "header", "footer"]):
-                    script.decompose()
+                html_title = (soup.title.string.strip() if soup.title and soup.title.string else None)
+                logger.debug("HTML <title>: %s", html_title)
+
+                # page_title priority: JSON-LD title > og:title > HTML <title>
+                page_title = json_ld_title or og_title or html_title
+
+                # --- Strip noise elements before text extraction ---
+                _noise_tags = [
+                    "script", "style", "nav", "header", "footer",
+                    "noscript", "aside", "iframe", "button", "form",
+                ]
+                for tag in soup(_noise_tags):
+                    tag.decompose()
+                for tag in soup.find_all(attrs={"aria-hidden": "true"}):
+                    tag.decompose()
+                for tag in soup.find_all(attrs={"role": "navigation"}):
+                    tag.decompose()
 
                 job_selectors = [
                     '.job-description',
@@ -256,7 +287,9 @@ def create_blueprint(deps):
 
             with entry.lock:
                 conversation.add_job_description(job_text)
-                conversation.state["position_name"] = _infer_position_name(job_text)
+                conversation.state["position_name"] = _infer_position_name(
+                    job_text, page_title=page_title
+                )
             session_registry.touch(sid)
             logger.info("Fetched %d chars from %s", len(job_text), domain)
 
