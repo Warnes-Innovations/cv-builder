@@ -37,3 +37,5 @@ htmlcov/
 # Git worktree checkouts
 /worktrees/
 .claude/worktrees
+*.bak
+tasks/e2e-test-report-*.md
