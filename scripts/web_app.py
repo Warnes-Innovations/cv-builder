@@ -705,8 +705,44 @@ def create_app(args) -> Flask:
         if not token_match:
             _abort(403, description='Not the session owner')
 
-    def _infer_position_name(job_text: str) -> Optional[str]:
-        """Infer a concise position label from job text."""
+    def _clean_page_title(raw: str) -> Optional[str]:
+        """Strip site-name suffixes from an HTML page <title> or og:title.
+
+        Common patterns: 'Senior Scientist | BMS Careers'
+                         'Data Manager - Bristol Myers Squibb'
+                         'Software Engineer – Acme Corp Jobs'
+        """
+        cleaned = re.sub(r'\s*[\|\-\u2013\u2014]\s*.{3,}$', '', raw).strip()
+        return cleaned if len(cleaned) > 5 and not cleaned.isupper() else None
+
+    def _is_nav_noise(line: str) -> bool:
+        """Return True when a line looks like UI chrome rather than job content."""
+        if len(line) < 6:
+            return True
+        # All-caps short strings are usually menu labels or badges
+        if line.isupper() and len(line) < 35:
+            return True
+        # Lines that are just punctuation, digits, or a single word < 4 chars
+        if re.fullmatch(r'[\W\d]+', line):
+            return True
+        return False
+
+    def _infer_position_name(
+        job_text: str,
+        page_title: Optional[str] = None,
+    ) -> Optional[str]:
+        """Infer a concise position label from job text and/or page metadata.
+
+        Priority order:
+        1. page_title (HTML <title>, og:title, or JSON-LD title) — most reliable
+        2. First substantive non-nav line of the extracted text body
+        """
+        # 1. Use structured page title when available
+        if page_title:
+            cleaned = _clean_page_title(page_title)
+            if cleaned:
+                return cleaned[:120]
+
         if not job_text:
             return None
 
@@ -714,19 +750,25 @@ def create_app(args) -> Flask:
         if not lines:
             return None
 
-        title = lines[0]
-        company = lines[1] if len(lines) > 1 else ""
+        # 2. Skip navigation-noise lines; take the first content line as the title
+        content_lines = [l for l in lines if not _is_nav_noise(l)]
+        if not content_lines:
+            content_lines = lines
+
+        title = content_lines[0]
+        company = ""
+        for candidate in content_lines[1:4]:
+            # Company names are typically a short single line
+            if len(candidate) < 80:
+                company = candidate
+                break
 
         if " at " in title.lower() and not company:
             parts = title.split(" at ", 1)
             if len(parts) == 2:
                 title, company = parts[0].strip(), parts[1].strip()
 
-        if title and company:
-            label = f"{title} at {company}"
-        else:
-            label = title or company
-
+        label = f"{title} at {company}" if title and company else title or company
         return label[:120] if label else None
 
     def _coerce_to_dict(value: Any) -> Dict[str, Any]:
