@@ -31,17 +31,6 @@ function getSessionIdFromURL() {
   return new URLSearchParams(window.location.search).get('session');
 }
 
-function setSessionIdInURL(sessionId, { replace = false } = {}) {
-  if (typeof window === 'undefined' || !window.location || !window.history || !sessionId) return;
-  const url = new URL(window.location.href);
-  url.searchParams.set('session', sessionId);
-  if (replace) {
-    window.history.replaceState({}, '', url.toString());
-  } else {
-    window.history.pushState({}, '', url.toString());
-  }
-}
-
 function getOwnerToken() {
   if (typeof sessionStorage === 'undefined') return null;
   let token = sessionStorage.getItem(OWNER_TOKEN_KEY);
@@ -202,16 +191,8 @@ async function apiCall(method, endpoint, data = null) {
 // Session Management
 // ====================
 
-async function loadSession(sessionId) {
-  return apiCall('GET', `/api/load-session?id=${encodeURIComponent(sessionId)}`);
-}
-
 async function createSession() {
   return apiCall('POST', '/api/sessions/new');
-}
-
-async function deleteSession(sessionId) {
-  return apiCall('POST', '/api/delete-session', { session_id: sessionId });
 }
 
 async function fetchStatus() {
@@ -229,115 +210,6 @@ async function fetchStatus() {
   return status;
 }
 
-async function fetchHistory() {
-  return apiCall('GET', '/api/history');
-}
-
-async function saveSession() {
-  return apiCall('POST', '/api/save');
-}
-
-// ====================
-// Job Input & Loading
-// ====================
-
-async function uploadJobFile(formData) {
-  // FormData doesn't work well with apiCall, use direct fetch but wrap error handling
-  try {
-    const response = await fetch('/api/upload-file', {
-      method: 'POST',
-      body: formData
-    });
-
-    if (!response.ok) {
-      log.error(`API error on POST /api/upload-file:`, response.status, response.statusText);
-      throw new Error(`${response.status}: ${response.statusText}`);
-    }
-
-    const json = await response.json();
-    return json;
-  } catch (error) {
-    log.error(`API call failed: POST /api/upload-file`, error);
-    throw error;
-  }
-}
-
-async function submitJobText(jobText) {
-  return apiCall('POST', '/api/job', { job_description: jobText });
-}
-
-async function fetchJobFromUrl(url) {
-  return apiCall('POST', '/api/fetch-job-url', { url });
-}
-
-async function loadJobFile(path) {
-  return apiCall('GET', `/api/load-job-file?path=${encodeURIComponent(path)}`);
-}
-
-async function loadExistingItems() {
-  return apiCall('GET', '/api/load-items');
-}
-
-// ====================
-// Analysis
-// ====================
-
-async function askPostAnalysisQuestions(analysisData) {
-  return apiCall('POST', '/api/post-analysis-questions', { analysis: analysisData });
-}
-
-async function submitPostAnalysisAnswers(answers) {
-  return apiCall('POST', '/api/post-analysis-responses', { answers });
-}
-
-// ====================
-// Messages & Conversation
-// ====================
-
-async function sendMessage(message) {
-  return apiCall('POST', '/api/message', { message });
-}
-
-// ====================
-// CV Data & Editing
-// ====================
-
-async function fetchCVData() {
-  return apiCall('GET', '/api/cv-data');
-}
-
-async function updateCVData(cvData) {
-  return apiCall('POST', '/api/cv-data', { cv_data: cvData });
-}
-
-async function updateExperience(experienceId, updates) {
-  return apiCall('POST', '/api/experience-details', { id: experienceId, ...updates });
-}
-
-async function fetchExperienceDetails(experienceId) {
-  return apiCall('GET', `/api/experience-details?id=${encodeURIComponent(experienceId)}`);
-}
-
-// ====================
-// Recommendations & Customizations
-// ====================
-
-async function fetchPublicationRecommendations() {
-  return apiCall('GET', '/api/publication-recommendations');
-}
-
-async function submitReviewDecisions(decisions) {
-  return apiCall('POST', '/api/review-decisions', decisions);
-}
-
-async function fetchRewrites() {
-  return apiCall('GET', '/api/rewrites');
-}
-
-async function approveRewrites(decisions) {
-  return apiCall('POST', '/api/rewrites/approve', { decisions });
-}
-
 // ====================
 // Settings
 // ====================
@@ -350,61 +222,16 @@ async function updateSettings(settings) {
   return apiCall('PUT', '/api/settings', { settings });
 }
 
-// ====================
-// Generation & Download
-// ====================
-
-async function generateCV(options = {}) {
-  const payload = {
-    formats: options.formats || ['ats_docx', 'human_pdf', 'human_docx'],
-    ...options
-  };
-  return apiCall('POST', '/api/generate', payload);
-}
-
-async function downloadFile(filename) {
-  // Downloads bypass JSON parsing - return blob
-  const response = await fetch(`/api/download/${encodeURIComponent(filename)}`);
-  if (!response.ok) {
-    throw new Error(`Failed to download: ${response.statusText}`);
-  }
-  return response.blob();
-}
-
-// ====================
-// Helper: Set Loading State
-// ====================
-
-function setLoading(isLoading) {
-  let loadingElement = document.getElementById('loading-indicator');
-  if (!loadingElement) {
-    // Create loading indicator if it doesn't exist
-    loadingElement = document.createElement('div');
-    loadingElement.id = 'loading-indicator';
-    loadingElement.style.display = 'none';
-    document.body.appendChild(loadingElement);
-  }
-  loadingElement.style.display = isLoading ? 'block' : 'none';
-}
-
 export {
   StorageKeys,
   OWNER_TOKEN_KEY,
   apiCall,
   getSessionIdFromURL,
-  setSessionIdInURL,
   getOwnerToken,
   getScopedTabDataStorageKey,
   sessionAwareFetch,
-  loadSession, deleteSession, fetchStatus, fetchHistory,
   createSession,
-  saveSession,
-  uploadJobFile, submitJobText, fetchJobFromUrl, loadJobFile, loadExistingItems,
-  askPostAnalysisQuestions, submitPostAnalysisAnswers,
-  sendMessage,
-  fetchCVData, updateCVData, updateExperience, fetchExperienceDetails,
-  fetchPublicationRecommendations, submitReviewDecisions,
-  fetchRewrites, approveRewrites,
+  fetchStatus,
   fetchSettings, updateSettings,
-  generateCV, downloadFile, setLoading,
 };
+

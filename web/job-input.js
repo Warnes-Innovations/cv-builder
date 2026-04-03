@@ -9,6 +9,7 @@
  * Job description input panel: paste, URL fetch, file upload, load-items table.
  *
  * DEPENDENCIES (all on globalThis at runtime):
+ *   - marked, dompurify (npm — bundled; used internally for safe markdown rendering)
  *   - escapeHtml (utils.js)
  *   - appendMessage, appendRetryMessage (message-queue.js)
  *   - setLoading (fetch-utils.js)
@@ -28,6 +29,15 @@ import { getLogger } from './logger.js';
 const log = getLogger('job-input');
 
 import { PHASES, stateManager } from './state-manager.js';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+
+// Render job description markdown safely: marked parses GFM, DOMPurify strips
+// any injected HTML/JS before the result is written to innerHTML.
+function _renderJobText(text) {
+  const raw = marked.parse(text, { gfm: true, breaks: true });
+  return DOMPurify.sanitize(raw);
+}
 
 // ---------------------------------------------------------------------------
 // Job tab display
@@ -42,12 +52,12 @@ async function populateJobTab() {
     if (data.job_description_text) {
       const jobText = data.job_description_text;
       const positionName = data.position_name || null;
-      const lines = jobText.split('\n');
-      const h1 = positionName || lines[0];
-      let html = '<h1>' + escapeHtml(h1) + '</h1>';
-      if (!positionName && lines[1]) html += '<h2>' + escapeHtml(lines[1]) + '</h2>';
+      const h1 = positionName
+        ? escapeHtml(positionName)
+        : '<em style="color:#9ca3af;">Position title not yet extracted — analysis in progress…</em>';
+      let html = '<h1>' + h1 + '</h1>';
 
-      html += '<div style="white-space: pre-wrap; line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + escapeHtml(jobText) + '</div>';
+      html += '<div style="line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + _renderJobText(jobText) + '</div>';
       html += '<div style="margin-top:20px;"><button onclick="showLoadJobPanel()" class="btn-secondary">📥 Load Different Job</button></div>';
       content.innerHTML = html;
     } else {
@@ -164,9 +174,6 @@ async function showLoadJobPanel() {
     </div>
   `;
 }
-
-// backward-compat shim
-function showJobInput() { showLoadJobPanel(); }
 
 // ---------------------------------------------------------------------------
 // Input method switching
@@ -555,7 +562,6 @@ function _clearFieldError(inputId, errorId) {
 export {
   populateJobTab,
   showLoadJobPanel,
-  showJobInput,
   switchInputMethod,
   _pendingUploadFile,
   handleFileDrop,

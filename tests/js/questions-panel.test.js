@@ -7,8 +7,9 @@
 /**
  * tests/js/questions-panel.test.js
  * Unit tests for web/questions-panel.js — pure helpers and DOM-bound functions.
- * (askPostAnalysisQuestions / draftQuestionResponse are orchestration-heavy
- *  and covered by integration tests.)
+ * askPostAnalysisQuestions is covered by the regression suite at the bottom of
+ * this file; draftQuestionResponse is orchestration-heavy and covered by
+ * integration tests.
  */
 import {
   renderQuestionMarkdown,
@@ -20,6 +21,7 @@ import {
   showNextQuestion,
   handleQuestionResponse,
   finishPostAnalysisQuestions,
+  askPostAnalysisQuestions,
 } from '../../web/questions-panel.js'
 import { initializeState, stateManager } from '../../web/state-manager.js'
 
@@ -303,5 +305,54 @@ describe('finishPostAnalysisQuestions', () => {
     finishPostAnalysisQuestions()
     expect(window.waitingForQuestionResponse).toBe(false)
     expect(globalThis.appendMessage).toHaveBeenCalledWith('assistant', expect.stringContaining('Thank you'))
+  })
+})
+
+// ── askPostAnalysisQuestions — object-argument regression ─────────────────
+//
+// Regression test: when analyzeJob passes an analysis *object* (not a string),
+// askPostAnalysisQuestions must not throw and must render the questions panel.
+// Previously, the function called cleanJsonResponse(object) which invoked
+// .replace() on a non-string and threw a TypeError, causing the catch-all to
+// suppress the panel and fall through to "Click Recommend Customizations".
+
+describe('askPostAnalysisQuestions', () => {
+  const analysisObj = { job_title: 'Engineer', company_name: 'Acme Corp' }
+  const sampleQuestions = [{ type: 'clarification_1', question: 'Q1?', choices: [] }]
+
+  beforeEach(() => {
+    buildContent()
+    window.questionAnswers = {}
+    // Override cleanJsonResponse with a strict version that throws on non-strings,
+    // matching real runtime behaviour and proving the fix is necessary.
+    vi.stubGlobal('cleanJsonResponse', s => {
+      if (typeof s !== 'string') throw new TypeError('cleanJsonResponse called with non-string')
+      return s
+    })
+    vi.stubGlobal('mergePostAnalysisQuestions', vi.fn((_a, b) => (Array.isArray(b) ? b : [])))
+    vi.stubGlobal('buildFallbackPostAnalysisQuestions', vi.fn(() => []))
+    vi.stubGlobal('persistPostAnalysisState', vi.fn().mockResolvedValue(undefined))
+    vi.stubGlobal('switchTab', vi.fn())
+  })
+
+  it('renders the questions panel when passed an analysis object with preferred questions', async () => {
+    await askPostAnalysisQuestions(analysisObj, sampleQuestions)
+
+    expect(globalThis.switchTab).toHaveBeenCalledWith('questions')
+    expect(document.querySelector('.questions-panel')).not.toBeNull()
+    // Must NOT have shown the error fallback message
+    expect(globalThis.appendMessage).not.toHaveBeenCalledWith(
+      'assistant',
+      expect.stringContaining('Click "Recommend Customizations"'),
+    )
+  })
+
+  it('calls sendAction when no questions can be found at all', async () => {
+    vi.stubGlobal('mergePostAnalysisQuestions', vi.fn(() => []))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
+
+    await askPostAnalysisQuestions(analysisObj, null)
+
+    expect(globalThis.sendAction).toHaveBeenCalledWith('recommend_customizations')
   })
 })
