@@ -113,9 +113,12 @@ class TestFrontendBundleHelpers(unittest.TestCase):
             _touch(root / 'scripts' / 'build.mjs', 100)
             _touch(root / 'web' / 'src' / 'main.js', 100)
             _touch(root / 'web' / 'bundle.js', 50)
+            (root / 'node_modules').mkdir()  # satisfy node_modules guard
 
+            env = {'CI': ''}  # ensure CI check does not skip
             with patch('scripts.web_app.shutil.which', return_value='/usr/bin/node') as mock_which, \
-                 patch('scripts.web_app.subprocess.run') as mock_run:
+                 patch('scripts.web_app.subprocess.run') as mock_run, \
+                 patch.dict('os.environ', env, clear=False):
                 mock_run.return_value.returncode = 0
                 rebuilt = _ensure_frontend_bundle_current(root)
 
@@ -123,6 +126,39 @@ class TestFrontendBundleHelpers(unittest.TestCase):
             mock_which.assert_called_once_with('node')
             mock_run.assert_called_once()
             self.assertEqual(mock_run.call_args.kwargs['cwd'], root)
+
+    def test_ensure_bundle_current_skips_in_ci_environment(self):
+        """CI=true causes auto-rebuild to be skipped (git timestamps are unreliable)."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _touch(root / 'scripts' / 'build.mjs', 100)
+            _touch(root / 'web' / 'src' / 'main.js', 100)
+            _touch(root / 'web' / 'bundle.js', 50)
+
+            with patch('scripts.web_app.subprocess.run') as mock_run, \
+                 patch.dict('os.environ', {'CI': 'true'}, clear=False):
+                rebuilt = _ensure_frontend_bundle_current(root)
+
+            self.assertFalse(rebuilt)
+            mock_run.assert_not_called()
+
+    def test_ensure_bundle_current_skips_when_node_modules_absent(self):
+        """Missing node_modules causes rebuild to be skipped (not crash) gracefully."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _touch(root / 'scripts' / 'build.mjs', 100)
+            _touch(root / 'web' / 'src' / 'main.js', 100)
+            _touch(root / 'web' / 'bundle.js', 50)
+            # Deliberately no node_modules directory
+
+            env = {'CI': ''}  # ensure CI check does not skip
+            with patch('scripts.web_app.shutil.which', return_value='/usr/bin/node'), \
+                 patch('scripts.web_app.subprocess.run') as mock_run, \
+                 patch.dict('os.environ', env, clear=False):
+                rebuilt = _ensure_frontend_bundle_current(root)
+
+            self.assertFalse(rebuilt)
+            mock_run.assert_not_called()
 
     def test_ensure_bundle_current_skips_build_when_fresh(self):
         with tempfile.TemporaryDirectory() as td:

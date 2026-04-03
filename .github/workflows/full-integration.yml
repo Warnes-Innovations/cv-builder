@@ -154,9 +154,9 @@ jobs:
       - name: Start stub web server
         run: |
           python scripts/web_app.py --llm-provider stub --port 5001 &
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             curl -sf http://127.0.0.1:5001/api/status > /dev/null 2>&1 && echo "Server up" && break
-            sleep 0.5
+            sleep 1
           done
           curl -sf http://127.0.0.1:5001/api/status > /dev/null
         env:
