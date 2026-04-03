@@ -315,9 +315,25 @@ def _frontend_bundle_is_outdated(project_root: Optional[Path] = None) -> bool:
 
 
 def _ensure_frontend_bundle_current(project_root: Optional[Path] = None) -> bool:
-    """Rebuild web/bundle.js when frontend sources are newer than the bundle."""
+    """Rebuild web/bundle.js when frontend sources are newer than the bundle.
+
+    In CI environments (CI=true) the bundle is always committed current and
+    git-checkout timestamps are unreliable, so the rebuild is skipped.
+    The rebuild is also skipped when node_modules is absent (no npm install
+    has been run), which would cause the build to fail anyway.
+    """
     root = project_root or _frontend_project_root()
     if not _frontend_bundle_is_outdated(root):
+        return False
+
+    # Skip rebuild in CI: git checkout does not preserve file timestamps, so
+    # the mtime-based staleness check is unreliable.  The bundle is always
+    # committed as current per project policy.
+    if os.environ.get('CI'):
+        logger.info(
+            'CI environment detected; skipping frontend bundle auto-rebuild '
+            '(committed bundle.js is used as-is).'
+        )
         return False
 
     node_bin = shutil.which('node')
@@ -325,6 +341,16 @@ def _ensure_frontend_bundle_current(project_root: Optional[Path] = None) -> bool
         raise RuntimeError(
             'Frontend bundle is outdated, but Node.js is not available to rebuild web/bundle.js.'
         )
+
+    # Skip rebuild when node_modules is absent — the build would fail anyway
+    # and crashing the server over a missing npm install is too aggressive.
+    node_modules = root / 'node_modules'
+    if not node_modules.exists():
+        logger.warning(
+            'Frontend bundle may be stale but node_modules is not installed; '
+            'skipping rebuild. Run `npm install && npm run build` to update.'
+        )
+        return False
 
     logger.info('Frontend bundle is stale; rebuilding web/bundle.js')
     result = subprocess.run(
