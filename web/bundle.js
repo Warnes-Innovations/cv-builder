@@ -1231,6 +1231,11 @@
   });
 
   // web/provider-info.js
+  var provider_info_exports = {};
+  __export(provider_info_exports, {
+    PROVIDER_INFO: () => PROVIDER_INFO,
+    providerInfoPopoverContent: () => providerInfoPopoverContent
+  });
   var PROVIDER_INFO = {
     "github": {
       freeTier: true,
@@ -1319,6 +1324,48 @@
   }
 
   // web/ui-core.js
+  var ui_core_exports = {};
+  __export(ui_core_exports, {
+    _updateLlmStatusPill: () => _updateLlmStatusPill2,
+    closeAlertModal: () => closeAlertModal2,
+    closeAllModals: () => closeAllModals,
+    closeModal: () => closeModal,
+    closeModelModal: () => closeModelModal2,
+    closeSettingsModal: () => closeSettingsModal,
+    confirmDialog: () => confirmDialog2,
+    displayMessage: () => displayMessage,
+    getStageForTab: () => getStageForTab2,
+    getVisibleStage: () => getVisibleStage2,
+    initialize: () => initialize,
+    loadModelSelector: () => loadModelSelector,
+    loadTabContent: () => loadTabContent,
+    logoutCopilotAuthFromWizard: () => logoutCopilotAuthFromWizard,
+    nextWizardStep: () => nextWizardStep,
+    openModal: () => openModal,
+    openModelModal: () => openModelModal2,
+    openSettingsModal: () => openSettingsModal,
+    previousWizardStep: () => previousWizardStep,
+    refreshModelPricing: () => refreshModelPricing,
+    reloadSettingsModal: () => reloadSettingsModal,
+    restoreFocus: () => restoreFocus2,
+    saveProviderApiKey: () => saveProviderApiKey,
+    saveSettingsModal: () => saveSettingsModal,
+    setControlsEnabled: () => setControlsEnabled,
+    setInitialFocus: () => setInitialFocus2,
+    setModel: () => setModel,
+    setupEventListeners: () => setupEventListeners,
+    showAlertModal: () => showAlertModal2,
+    showSessionConflictBanner: () => showSessionConflictBanner,
+    startCopilotAuthFromWizard: () => startCopilotAuthFromWizard,
+    switchStage: () => switchStage,
+    testCurrentModel: () => testCurrentModel,
+    toggleApiKeyVisibility: () => toggleApiKeyVisibility,
+    toggleChat: () => toggleChat,
+    toggleModelCatalogVisibility: () => toggleModelCatalogVisibility,
+    trapFocus: () => trapFocus2,
+    updatePhaseIndicator: () => updatePhaseIndicator,
+    updateTabBarForStage: () => updateTabBarForStage2
+  });
   var log3 = getLogger("ui-core");
   var _focusedElementBeforeModal2 = null;
   var _currentFocusTrapListener = null;
@@ -17286,6 +17333,7 @@ Proceed anyway?`,
     utils_exports,
     api_client_exports,
     state_manager_exports,
+    provider_info_exports,
     ui_core_exports,
     layout_instruction_exports,
     validators_exports,
