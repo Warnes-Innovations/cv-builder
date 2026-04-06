@@ -6,45 +6,52 @@ The CV Builder uses a flexible configuration system that supports multiple sourc
 
 Settings are loaded in this order (highest to lowest priority):
 
-1. **Environment variables** (e.g., `CV_MASTER_DATA_PATH`)
-2. **`.env` file** (for API keys and overrides)
-3. **`config.yaml`** (project defaults)
+1. **Environment variables** (e.g., `GITHUB_MODELS_TOKEN`)
+2. **`.env` file** (legacy override; still supported)
+3. **`config.yaml`** — includes the `api_keys:` section written by the wizard
 4. **Hardcoded defaults** (fallback)
 
 ## Quick Setup
 
-### 1. Copy the example environment file:
+### 1. Copy the example configuration file:
 
 ```bash
-cp .env.example .env
+cp config.yaml.example config.yaml
 ```
 
-### 2. Edit `.env` and add your API key:
+> **Note:** `config.yaml` is gitignored — it is your personal configuration file and is never committed.
+
+### 2. Configure your LLM provider
+
+**Option A — Use the web wizard (recommended):**
 
 ```bash
-# For GitHub Models (recommended):
-GITHUB_MODELS_TOKEN=ghp_your_token_here
-
-# Or for OpenAI:
-OPENAI_API_KEY=sk-your_key_here
-
-# Or for Anthropic:
-ANTHROPIC_API_KEY=sk-ant-your_key_here
+conda activate cvgen && python scripts/web_app.py --llm-provider github
 ```
 
-### 3. (Optional) Customize `config.yaml`:
+Click the provider badge in the top-right of the UI to open the wizard. The four-step wizard walks you through:
+1. **Choose provider** — pick the LLM service you want to use
+2. **API Key / Auth** — enter your API key (or complete OAuth / CLI auth)
+3. **Model + Test** — select a model and verify the connection
+4. **Complete** — you're done
 
-The default `config.yaml` is already set up to use `~/CV/` for data files. You can customize:
+The wizard saves your key to the `api_keys:` section of `config.yaml` and applies it immediately (no restart needed).
+
+**Option B — Edit `config.yaml` directly:**
 
 ```yaml
-data:
-  master_cv: "~/CV/Master_CV_Data.json"
-  publications: "~/CV/publications.bib"
-  output_dir: "./files"
-
 llm:
   default_provider: "github"
-  temperature: 0.7
+
+api_keys:
+  github_token: "ghp_your_token_here"
+```
+
+**Option C — Use environment variables:**
+
+```bash
+export GITHUB_MODELS_TOKEN=ghp_your_token_here
+export CV_LLM_PROVIDER=github
 ```
 
 ## Configuration Options
@@ -94,14 +101,33 @@ llm:
 - `CV_LLM_TEMPERATURE`
 - `CV_LLM_MAX_TOKENS`
 
-**API Keys (in `.env` file):**
-```bash
-GITHUB_MODELS_TOKEN=ghp_xxxx
-OPENAI_API_KEY=sk-xxxx
-ANTHROPIC_API_KEY=sk-ant-xxxx
-GEMINI_API_KEY=xxxx
-GROQ_API_KEY=xxxx
+**API Keys:**
+
+The recommended approach is to use the built-in wizard (see Quick Setup above), which writes keys to
+the `api_keys:` section of your `config.yaml`. You can also set them directly:
+
+```yaml
+# config.yaml
+api_keys:
+  github_token: "ghp_xxxx"        # used by github and copilot providers
+  openai_api_key: "sk-xxxx"
+  anthropic_api_key: "sk-ant-xxxx"
+  gemini_api_key: "xxxx"
+  groq_api_key: "xxxx"
 ```
+
+Or via environment variables (highest priority):
+
+```bash
+export GITHUB_MODELS_TOKEN=ghp_xxxx
+export OPENAI_API_KEY=sk-xxxx
+export ANTHROPIC_API_KEY=sk-ant-xxxx
+export GEMINI_API_KEY=xxxx
+export GROQ_API_KEY=xxxx
+```
+
+For `copilot-oauth`, use the wizard's device-flow sign-in (no key required).
+For `copilot-sdk`, run `gh auth login` in your terminal before starting the app.
 
 ### Generation Defaults
 
@@ -190,10 +216,11 @@ Command-line arguments take precedence over all configuration sources.
 
 ## Security Notes
 
-- **Never commit `.env`** to git - it contains sensitive API keys
-- `.env` is already in `.gitignore`
-- `.env.example` shows the template without actual keys
-- API keys in `.env` take precedence over `config.yaml`
+- **Never commit `config.yaml`** — it contains your personal API keys and local paths. It is gitignored by default.
+- **`config.yaml.example`** is the tracked template. Copy it to `config.yaml` to get started.
+- `.env` is still supported for legacy setups and is also gitignored.
+- API keys in environment variables or `.env` always take precedence over `config.yaml api_keys.*`.
+- The backend never returns key values to the frontend — only a boolean `is_set` flag.
 
 ## Troubleshooting
 
@@ -202,7 +229,8 @@ Command-line arguments take precedence over all configuration sources.
 - The system will use hardcoded defaults
 
 **"API key not found" errors:**
-- Check that `.env` file exists and contains your key
+- Use the wizard to enter and save your key (opens via the provider badge in the top-right of the UI)
+- Or edit `config.yaml` directly and add the key to the `api_keys:` section
 - Verify the environment variable is set: `echo $GITHUB_MODELS_TOKEN`
 - Make sure you're in the right directory when running scripts
 
