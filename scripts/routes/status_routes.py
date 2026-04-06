@@ -280,6 +280,157 @@ def _effective_setting_value(
     return _SETTINGS_DEFAULTS[dotted_key]
 
 
+# ── Credential / API key helpers ─────────────────────────────────────────────
+
+# Maps provider name → credential metadata.
+# auth_type:   "api_key"    — user provides a bearer/PAT token
+#              "device_flow" — GitHub OAuth device-flow (wizard handles this)
+#              "cli"         — external CLI (`gh auth login`)
+#              "none"        — no credential needed (local models)
+_PROVIDER_CREDENTIAL_MAP: Dict[str, Dict[str, str]] = {
+    "github": {
+        "auth_type":    "api_key",
+        "config_key":   "api_keys.github_token",
+        "env_var":      "GITHUB_MODELS_TOKEN",
+        "label":        "GitHub Personal Access Token (PAT)",
+        "get_key_url":  "https://github.com/settings/tokens",
+        "help_text":    (
+            "Create a fine-grained PAT with the 'read:user' scope, or a Classic token "
+            "with 'read:user' and 'models:read'. Paste the token value below."
+        ),
+    },
+    "copilot": {
+        "auth_type":    "api_key",
+        "config_key":   "api_keys.github_token",
+        "env_var":      "GITHUB_MODELS_TOKEN",
+        "label":        "GitHub Personal Access Token (PAT)",
+        "get_key_url":  "https://github.com/settings/tokens",
+        "help_text":    (
+            "Copilot provider uses the same GitHub PAT as the 'github' provider. "
+            "If you already set it for 'github', you are done."
+        ),
+    },
+    "copilot-oauth": {
+        "auth_type":    "device_flow",
+        "config_key":   "",
+        "env_var":      "",
+        "label":        "GitHub Copilot (OAuth Device Flow)",
+        "get_key_url":  "https://github.com/login/device",
+        "help_text":    (
+            "Click 'Start Sign-In' below, enter the code shown at github.com/login/device, "
+            "then return here. No token is stored in config.yaml — the session token is "
+            "cached by the app."
+        ),
+    },
+    "copilot-sdk": {
+        "auth_type":    "cli",
+        "config_key":   "",
+        "env_var":      "",
+        "label":        "GitHub CLI (gh auth login)",
+        "get_key_url":  "https://cli.github.com/",
+        "help_text":    (
+            "copilot-sdk uses the GitHub CLI token. "
+            "Run 'gh auth login' in a terminal, then return here and test the connection."
+        ),
+    },
+    "openai": {
+        "auth_type":    "api_key",
+        "config_key":   "api_keys.openai_api_key",
+        "env_var":      "OPENAI_API_KEY",
+        "label":        "OpenAI API Key",
+        "get_key_url":  "https://platform.openai.com/api-keys",
+        "help_text":    "Create a secret key in the OpenAI dashboard and paste it below.",
+    },
+    "anthropic": {
+        "auth_type":    "api_key",
+        "config_key":   "api_keys.anthropic_api_key",
+        "env_var":      "ANTHROPIC_API_KEY",
+        "label":        "Anthropic API Key",
+        "get_key_url":  "https://console.anthropic.com/settings/keys",
+        "help_text":    "Generate an API key in the Anthropic Console and paste it below.",
+    },
+    "gemini": {
+        "auth_type":    "api_key",
+        "config_key":   "api_keys.gemini_api_key",
+        "env_var":      "GEMINI_API_KEY",
+        "label":        "Google AI API Key",
+        "get_key_url":  "https://aistudio.google.com/app/apikey",
+        "help_text":    "Create an API key in Google AI Studio and paste it below.",
+    },
+    "groq": {
+        "auth_type":    "api_key",
+        "config_key":   "api_keys.groq_api_key",
+        "env_var":      "GROQ_API_KEY",
+        "label":        "Groq API Key",
+        "get_key_url":  "https://console.groq.com/keys",
+        "help_text":    "Create a free API key at console.groq.com and paste it below.",
+    },
+    "local": {
+        "auth_type":    "none",
+        "config_key":   "",
+        "env_var":      "",
+        "label":        "Local model — no API key required",
+        "get_key_url":  "",
+        "help_text":    "Local models run on your machine and do not require an API key.",
+    },
+}
+
+
+def _credential_is_set(provider: str, config_doc: Dict[str, Any]) -> bool:
+    """Return True if a usable credential exists for the given provider.
+
+    Checks env vars first (highest priority), then config.yaml api_keys.*.
+    For device_flow / cli / none providers always returns False so the wizard
+    renders appropriate guidance rather than a key-is-set badge.
+    """
+    meta = _PROVIDER_CREDENTIAL_MAP.get(provider)
+    if not meta or meta["auth_type"] in ("device_flow", "cli", "none"):
+        return False
+    env_var = meta["env_var"]
+    if env_var and os.environ.get(env_var, "").strip():
+        return True
+    config_key = meta["config_key"]
+    if config_key:
+        stored = _deep_get(config_doc, config_key, "")
+        if isinstance(stored, str) and stored.strip():
+            return True
+    return False
+
+
+def _write_api_key_to_config(config_path: Path, config_key: str, value: str, env_var: str) -> None:
+    """Atomically write an API key into config.yaml api_keys.* and os.environ.
+
+    Preserves all other top-level keys and sections.  Uses the same temp-file
+    swap strategy as the settings update route to avoid partial writes.
+    """
+    with _SETTINGS_WRITE_LOCK:
+        config_doc: Dict[str, Any] = {}
+        if config_path.exists():
+            config_doc = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
+
+        _deep_set(config_doc, config_key, value)
+
+        tmp_path    = config_path.with_suffix('.yaml.tmp')
+        backup_path = config_path.with_suffix('.yaml.bak')
+        try:
+            tmp_path.write_text(
+                yaml.safe_dump(config_doc, sort_keys=False, default_flow_style=False),
+                encoding='utf-8',
+            )
+            if config_path.exists():
+                config_path.replace(backup_path)
+            tmp_path.replace(config_path)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            if backup_path.exists() and not config_path.exists():
+                backup_path.replace(config_path)
+            raise
+
+    # Apply immediately to the running process (no restart required).
+    if env_var:
+        os.environ[env_var] = value
+
+
 def _build_settings_response(config_doc: Dict[str, Any], config_path: Path) -> Dict[str, Any]:
     dotenv_values = _read_dotenv_values(config_path.parent / '.env')
 
@@ -417,6 +568,91 @@ def create_blueprint(deps):
         response['ok'] = True
         response['updated_keys'] = sorted(validated_updates.keys())
         return jsonify(response)
+
+    # ── Credential / API key routes ───────────────────────────────────────────
+
+    @bp.get('/api/settings/credentials/status')
+    def get_credentials_status():
+        """Return which providers have a credential set (never returns key values).
+
+        Response shape:
+          {
+            "ok": true,
+            "providers": {
+              "github":       {"auth_type": "api_key", "is_set": true,  "label": "...", "get_key_url": "..."},
+              "copilot-oauth":{"auth_type": "device_flow", "is_set": false, ...},
+              ...
+            }
+          }
+        """
+        config_path = _resolve_config_yaml_path()
+        config_doc: Dict[str, Any] = {}
+        if config_path.exists():
+            try:
+                config_doc = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
+            except Exception:
+                logger.warning("Could not parse config.yaml for credential status check")
+
+        providers: Dict[str, Any] = {}
+        for provider, meta in _PROVIDER_CREDENTIAL_MAP.items():
+            providers[provider] = {
+                "auth_type":   meta["auth_type"],
+                "is_set":      _credential_is_set(provider, config_doc),
+                "label":       meta["label"],
+                "get_key_url": meta["get_key_url"],
+                "help_text":   meta["help_text"],
+            }
+        return jsonify({"ok": True, "providers": providers})
+
+    @bp.post('/api/settings/credentials')
+    def save_credential():
+        """Write an API key for a provider into config.yaml api_keys.* and os.environ.
+
+        Request body: {"provider": "<name>", "key_value": "<secret>"}
+
+        The key value is never echoed back in the response — only a presence flag.
+        """
+        body = request.get_json(silent=True) or {}
+        provider  = (body.get('provider') or '').strip()
+        key_value = (body.get('key_value') or '').strip()
+
+        if not provider:
+            return jsonify({'ok': False, 'error': 'provider is required'}), 400
+
+        meta = _PROVIDER_CREDENTIAL_MAP.get(provider)
+        if meta is None:
+            return jsonify({'ok': False, 'error': f'Unknown provider: {provider}'}), 400
+
+        if meta['auth_type'] in ('device_flow', 'cli', 'none'):
+            return jsonify({
+                'ok':    False,
+                'error': f"Provider '{provider}' does not use an API key — "
+                         f"use the '{meta['auth_type']}' method instead.",
+            }), 400
+
+        if not key_value:
+            return jsonify({'ok': False, 'error': 'key_value must not be empty'}), 400
+
+        config_path = _resolve_config_yaml_path()
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            _write_api_key_to_config(
+                config_path,
+                config_key=meta['config_key'],
+                value=key_value,
+                env_var=meta['env_var'],
+            )
+        except Exception:
+            logger.exception("Failed to save credential for provider '%s'", provider)
+            return jsonify({'ok': False, 'error': 'Failed to save credential — please try again'}), 500
+
+        return jsonify({
+            'ok':      True,
+            'provider': provider,
+            'is_set':  True,
+        })
+
+    # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _usage_prompt_tokens(usage):
         if usage is None:

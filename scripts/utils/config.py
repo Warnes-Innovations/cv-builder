@@ -172,20 +172,39 @@ class Config:
         return float(val) if val is not None else None
 
     # API Keys
+    # Precedence: env var > .env entry > config.yaml api_keys.* > None
     @property
     def github_token(self) -> Optional[str]:
-        """GitHub Models API token."""
-        return os.getenv('GITHUB_MODELS_TOKEN')
-    
+        """GitHub Models API token (used by: github, copilot providers)."""
+        return (
+            os.getenv('GITHUB_MODELS_TOKEN')
+            or os.getenv('GITHUB_TOKEN')
+            or self.get('api_keys.github_token') or None
+        )
+
     @property
     def openai_api_key(self) -> Optional[str]:
         """OpenAI API key."""
-        return os.getenv('OPENAI_API_KEY')
-    
+        return os.getenv('OPENAI_API_KEY') or self.get('api_keys.openai_api_key') or None
+
     @property
     def anthropic_api_key(self) -> Optional[str]:
         """Anthropic API key."""
-        return os.getenv('ANTHROPIC_API_KEY')
+        return os.getenv('ANTHROPIC_API_KEY') or self.get('api_keys.anthropic_api_key') or None
+
+    @property
+    def gemini_api_key(self) -> Optional[str]:
+        """Google Gemini API key."""
+        return (
+            os.getenv('GEMINI_API_KEY')
+            or os.getenv('GOOGLE_API_KEY')
+            or self.get('api_keys.gemini_api_key') or None
+        )
+
+    @property
+    def groq_api_key(self) -> Optional[str]:
+        """Groq API key."""
+        return os.getenv('GROQ_API_KEY') or self.get('api_keys.groq_api_key') or None
     
     # Generation defaults
     @property
