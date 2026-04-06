@@ -2668,7 +2668,7 @@
         currentModelProvider: effectiveProvider || null,
         currentModelName: model || null
       });
-      await _refreshCopilotAuthPanel();
+      await _refreshCopilotAuthStatus();
       await testCurrentModel();
     } catch (e) {
       log3.error("Failed to switch model:", e);
