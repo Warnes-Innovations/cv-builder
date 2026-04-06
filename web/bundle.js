@@ -1229,6 +1229,96 @@
     trapFocus: () => trapFocus2,
     updateTabBarForStage: () => updateTabBarForStage2
   });
+
+  // web/provider-info.js
+  var PROVIDER_INFO = {
+    "github": {
+      freeTier: true,
+      confidential: true,
+      note: "GitHub Models API powered by Azure AI. Free tier available (rate-limited). API requests are not used for model training.",
+      homepage: "https://github.com/marketplace/models",
+      pricingUrl: "https://github.com/features/models",
+      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
+    },
+    "copilot": {
+      freeTier: false,
+      confidential: true,
+      note: "GitHub Copilot \u2014 same Azure-hosted models as the github provider. Requires a paid Copilot Individual/Business subscription. API requests are not used for training.",
+      homepage: "https://github.com/features/copilot",
+      pricingUrl: "https://github.com/features/copilot#pricing",
+      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
+    },
+    "copilot-oauth": {
+      freeTier: false,
+      confidential: true,
+      note: "GitHub Copilot via browser OAuth \u2014 authenticates with your GitHub account. Requires an active Copilot subscription. No API key stored.",
+      homepage: "https://github.com/features/copilot",
+      pricingUrl: "https://github.com/features/copilot#pricing",
+      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
+    },
+    "copilot-sdk": {
+      freeTier: false,
+      confidential: true,
+      note: "GitHub Copilot via the GitHub CLI (gh auth login). Requires an active Copilot subscription. No separate API key needed.",
+      homepage: "https://cli.github.com/",
+      pricingUrl: "https://github.com/features/copilot#pricing",
+      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
+    },
+    "openai": {
+      freeTier: false,
+      confidential: true,
+      note: "OpenAI \u2014 creator of the GPT model family. Pay-as-you-go pricing; no free API tier. API data is not used for training by default per OpenAI API policy.",
+      homepage: "https://openai.com",
+      pricingUrl: "https://openai.com/api/pricing",
+      privacyUrl: "https://openai.com/policies/privacy-policy"
+    },
+    "anthropic": {
+      freeTier: false,
+      confidential: true,
+      note: "Anthropic \u2014 creator of the Claude model family. Pay-as-you-go pricing; no free API tier. API requests are not used to train models.",
+      homepage: "https://anthropic.com",
+      pricingUrl: "https://www.anthropic.com/pricing",
+      privacyUrl: "https://www.anthropic.com/privacy"
+    },
+    "gemini": {
+      freeTier: true,
+      confidential: false,
+      note: "Google Gemini \u2014 Google AI Studio / Vertex AI. Free tier available. Free-tier prompts may be reviewed by Google; paid Vertex AI offers full confidentiality.",
+      homepage: "https://ai.google.dev",
+      pricingUrl: "https://ai.google.dev/pricing",
+      privacyUrl: "https://policies.google.com/privacy"
+    },
+    "groq": {
+      freeTier: true,
+      confidential: false,
+      note: "Groq \u2014 ultra-fast inference on open-source models (Llama, Mixtral) via custom LPU hardware. Generous free tier. Review Groq privacy policy for data retention details.",
+      homepage: "https://groq.com",
+      pricingUrl: "https://groq.com/pricing",
+      privacyUrl: "https://groq.com/privacy-policy"
+    },
+    "local": {
+      freeTier: true,
+      confidential: true,
+      note: "Local model running entirely on your machine. No data leaves your device. Completely private. No API key or account required.",
+      homepage: null,
+      pricingUrl: null,
+      privacyUrl: null
+    }
+  };
+  function providerInfoPopoverContent(info) {
+    const tierIcon = info.freeTier ? "&#10003; Free tier available" : "&#10007; Paid only (no free API tier)";
+    const privIcon = info.confidential ? "&#128274; Data confidential" : "&#9888;&#65039; Data may be reviewed/retained";
+    const tierColor = info.freeTier ? "#065f46" : "#92400e";
+    const privColor = info.confidential ? "#1e40af" : "#92400e";
+    const links = [
+      info.homepage ? `<a href="${escapeHtml2(info.homepage)}"   target="_blank" rel="noopener noreferrer">Homepage</a>` : "",
+      info.pricingUrl ? `<a href="${escapeHtml2(info.pricingUrl)}" target="_blank" rel="noopener noreferrer">Pricing &amp; plans</a>` : "",
+      info.privacyUrl ? `<a href="${escapeHtml2(info.privacyUrl)}" target="_blank" rel="noopener noreferrer">Privacy policy</a>` : ""
+    ].filter(Boolean);
+    return `<div style="min-width:220px;max-width:300px;font-size:0.82em;line-height:1.5;"><div style="margin-bottom:6px;"><span style="color:${tierColor};">${tierIcon}</span></div><div style="margin-bottom:8px;"><span style="color:${privColor};">${privIcon}</span></div><p style="margin:0 0 8px;color:#374151;">${escapeHtml2(info.note)}</p>` + (links.length ? '<ul style="margin:0;padding-left:16px;">' + links.map((l) => `<li>${l}</li>`).join("") + "</ul>" : "") + "</div>";
+  }
+
+  // web/ui-core.js
   var log3 = getLogger("ui-core");
   var _focusedElementBeforeModal2 = null;
   var _currentFocusTrapListener = null;
@@ -1786,92 +1876,6 @@
   var _copilotAuthPollTimer = null;
   var _modelWizardStep = 1;
   var _modelWizardSelectedProvider = null;
-  var _PROVIDER_INFO = {
-    "github": {
-      freeTier: true,
-      confidential: true,
-      note: "GitHub Models API powered by Azure AI. Free tier available (rate-limited). API requests are not used for model training.",
-      homepage: "https://github.com/marketplace/models",
-      pricingUrl: "https://github.com/features/models",
-      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
-    },
-    "copilot": {
-      freeTier: false,
-      confidential: true,
-      note: "GitHub Copilot \u2014 same Azure-hosted models as the github provider. Requires a paid Copilot Individual/Business subscription. API requests are not used for training.",
-      homepage: "https://github.com/features/copilot",
-      pricingUrl: "https://github.com/features/copilot#pricing",
-      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
-    },
-    "copilot-oauth": {
-      freeTier: false,
-      confidential: true,
-      note: "GitHub Copilot via browser OAuth \u2014 authenticates with your GitHub account. Requires an active Copilot subscription. No API key stored.",
-      homepage: "https://github.com/features/copilot",
-      pricingUrl: "https://github.com/features/copilot#pricing",
-      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
-    },
-    "copilot-sdk": {
-      freeTier: false,
-      confidential: true,
-      note: "GitHub Copilot via the GitHub CLI (gh auth login). Requires an active Copilot subscription. No separate API key needed.",
-      homepage: "https://cli.github.com/",
-      pricingUrl: "https://github.com/features/copilot#pricing",
-      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
-    },
-    "openai": {
-      freeTier: false,
-      confidential: true,
-      note: "OpenAI \u2014 creator of the GPT model family. Pay-as-you-go pricing; no free API tier. API data is not used for training by default per OpenAI API policy.",
-      homepage: "https://openai.com",
-      pricingUrl: "https://openai.com/api/pricing",
-      privacyUrl: "https://openai.com/policies/privacy-policy"
-    },
-    "anthropic": {
-      freeTier: false,
-      confidential: true,
-      note: "Anthropic \u2014 creator of the Claude model family. Pay-as-you-go pricing; no free API tier. API requests are not used to train models.",
-      homepage: "https://anthropic.com",
-      pricingUrl: "https://www.anthropic.com/pricing",
-      privacyUrl: "https://www.anthropic.com/privacy"
-    },
-    "gemini": {
-      freeTier: true,
-      confidential: false,
-      note: "Google Gemini \u2014 Google AI Studio / Vertex AI. Free tier available. Free-tier prompts may be reviewed by Google; paid Vertex AI offers full confidentiality.",
-      homepage: "https://ai.google.dev",
-      pricingUrl: "https://ai.google.dev/pricing",
-      privacyUrl: "https://policies.google.com/privacy"
-    },
-    "groq": {
-      freeTier: true,
-      confidential: false,
-      note: "Groq \u2014 ultra-fast inference on open-source models (Llama, Mixtral) via custom LPU hardware. Generous free tier. Review Groq privacy policy for data retention details.",
-      homepage: "https://groq.com",
-      pricingUrl: "https://groq.com/pricing",
-      privacyUrl: "https://groq.com/privacy-policy"
-    },
-    "local": {
-      freeTier: true,
-      confidential: true,
-      note: "Local model running entirely on your machine. No data leaves your device. Completely private. No API key or account required.",
-      homepage: null,
-      pricingUrl: null,
-      privacyUrl: null
-    }
-  };
-  function _providerInfoPopoverContent(info) {
-    const tierIcon = info.freeTier ? "&#10003; Free tier available" : "&#10007; Paid only (no free API tier)";
-    const privIcon = info.confidential ? "&#128274; Data confidential" : "&#9888;&#65039; Data may be reviewed/retained";
-    const tierColor = info.freeTier ? "#065f46" : "#92400e";
-    const privColor = info.confidential ? "#1e40af" : "#92400e";
-    const links = [
-      info.homepage ? `<a href="${escapeHtml2(info.homepage)}"   target="_blank" rel="noopener noreferrer">Homepage</a>` : "",
-      info.pricingUrl ? `<a href="${escapeHtml2(info.pricingUrl)}" target="_blank" rel="noopener noreferrer">Pricing &amp; plans</a>` : "",
-      info.privacyUrl ? `<a href="${escapeHtml2(info.privacyUrl)}" target="_blank" rel="noopener noreferrer">Privacy policy</a>` : ""
-    ].filter(Boolean);
-    return `<div style="min-width:220px;max-width:300px;font-size:0.82em;line-height:1.5;"><div style="margin-bottom:6px;"><span style="color:${tierColor};">${tierIcon}</span></div><div style="margin-bottom:8px;"><span style="color:${privColor};">${privIcon}</span></div><p style="margin:0 0 8px;color:#374151;">${escapeHtml2(info.note)}</p>` + (links.length ? '<ul style="margin:0;padding-left:16px;">' + links.map((l) => `<li>${l}</li>`).join("") + "</ul>" : "") + "</div>";
-  }
   function _getModelPrefsFromStorage() {
     try {
       const saved = localStorage.getItem(StorageKeys2.TAB_DATA);
@@ -2263,7 +2267,7 @@
     providers.forEach((provider) => {
       const checked = provider === _modelWizardSelectedProvider;
       const sourceLabel = _providerStageLabel(provider, capableSet);
-      const info = _PROVIDER_INFO[provider] || null;
+      const info = PROVIDER_INFO[provider] || null;
       const label = document.createElement("label");
       label.style.cssText = "display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:0.82em; background:#fff; cursor:pointer;";
       label.innerHTML = `<input type="radio" name="model-provider-choice" value="${escapeHtml2(provider)}" ${checked ? "checked" : ""} style="margin:0;" /><span>${escapeHtml2(_providerDisplayLabel(provider))}</span><span style="color:#64748b; font-size:0.8em;">(${escapeHtml2(sourceLabel)})</span>`;
@@ -2276,7 +2280,7 @@
         btn.setAttribute("data-bs-placement", "right");
         btn.setAttribute("data-bs-html", "true");
         btn.setAttribute("data-bs-container", "body");
-        btn.setAttribute("data-bs-content", _providerInfoPopoverContent(info));
+        btn.setAttribute("data-bs-content", providerInfoPopoverContent(info));
         btn.style.cssText = "background:none;border:none;cursor:pointer;color:#64748b;font-size:0.9em;padding:0 1px;line-height:1;vertical-align:middle;";
         btn.textContent = "\u24D8";
         btn.addEventListener("click", (e) => e.stopPropagation());
