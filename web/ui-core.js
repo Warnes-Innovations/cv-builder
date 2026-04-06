@@ -878,9 +878,9 @@ function _providerInfoPopoverContent(info) {
   const privColor   = info.confidential ? '#1e40af' : '#92400e';
 
   const links = [
-    info.homepage   ? `<a href="${info.homepage}"   target="_blank" rel="noopener noreferrer">Homepage</a>`          : '',
-    info.pricingUrl ? `<a href="${info.pricingUrl}" target="_blank" rel="noopener noreferrer">Pricing &amp; plans</a>` : '',
-    info.privacyUrl ? `<a href="${info.privacyUrl}" target="_blank" rel="noopener noreferrer">Privacy policy</a>`      : '',
+    info.homepage   ? `<a href="${escapeHtml(info.homepage)}"   target="_blank" rel="noopener noreferrer">Homepage</a>`          : '',
+    info.pricingUrl ? `<a href="${escapeHtml(info.pricingUrl)}" target="_blank" rel="noopener noreferrer">Pricing &amp; plans</a>` : '',
+    info.privacyUrl ? `<a href="${escapeHtml(info.privacyUrl)}" target="_blank" rel="noopener noreferrer">Privacy policy</a>`      : '',
   ].filter(Boolean);
 
   return '<div style="min-width:220px;max-width:300px;font-size:0.82em;line-height:1.5;">'
