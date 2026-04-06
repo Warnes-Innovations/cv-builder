@@ -28,11 +28,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 import yaml
 from routes.status_routes import (
-    _PROVIDER_CREDENTIAL_MAP,
     _credential_is_set,
     _write_api_key_to_config,
     create_blueprint,
 )
+from utils.provider_registry import PROVIDER_REGISTRY as _PROVIDER_CREDENTIAL_MAP
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +354,74 @@ class TestSaveCredentialRoute(unittest.TestCase):
         self._post({'provider': 'github', 'key_value': 'ghp_gh_test'})
         doc = yaml.safe_load(self.config_path.read_text())
         self.assertEqual(doc['api_keys']['github_token'], 'ghp_gh_test')
+
+
+# ---------------------------------------------------------------------------
+# GET /api/providers
+# ---------------------------------------------------------------------------
+
+class TestProvidersEndpoint(unittest.TestCase):
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.config_path = Path(self.tmpdir) / 'config.yaml'
+        with patch('routes.status_routes._resolve_config_yaml_path', return_value=self.config_path):
+            self.client = _make_flask_app(self.config_path)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _get(self):
+        return self.client.get('/api/providers')
+
+    def test_returns_200_with_ok_flag(self):
+        r = self._get()
+        self.assertEqual(r.status_code, 200)
+        data = json.loads(r.data)
+        self.assertTrue(data['ok'])
+
+    def test_returns_all_known_providers(self):
+        r = self._get()
+        data = json.loads(r.data)
+        self.assertIn('providers', data)
+        for provider in _PROVIDER_CREDENTIAL_MAP:
+            self.assertIn(provider, data['providers'], msg=f"Provider '{provider}' missing from /api/providers")
+
+    def test_each_provider_has_display_fields(self):
+        r = self._get()
+        data = json.loads(r.data)
+        display_fields = {'free_tier', 'confidential', 'note', 'homepage', 'pricing_url', 'privacy_url'}
+        for provider, info in data['providers'].items():
+            for field in display_fields:
+                self.assertIn(field, info, msg=f"Provider '{provider}' missing display field '{field}'")
+
+    def test_credential_fields_not_exposed(self):
+        r = self._get()
+        data = json.loads(r.data)
+        sensitive = {'config_key', 'env_var'}
+        for provider, info in data['providers'].items():
+            for field in sensitive:
+                self.assertNotIn(field, info, msg=f"Provider '{provider}' leaks credential field '{field}'")
+
+    def test_free_tier_is_boolean(self):
+        r = self._get()
+        data = json.loads(r.data)
+        for provider, info in data['providers'].items():
+            self.assertIsInstance(info['free_tier'], bool, msg=f"Provider '{provider}' free_tier is not bool")
+
+    def test_local_provider_has_null_urls(self):
+        r = self._get()
+        data = json.loads(r.data)
+        local = data['providers']['local']
+        self.assertIsNone(local['homepage'])
+        self.assertIsNone(local['pricing_url'])
+        self.assertIsNone(local['privacy_url'])
+
+    def test_github_is_free_tier(self):
+        r = self._get()
+        data = json.loads(r.data)
+        self.assertTrue(data['providers']['github']['free_tier'])
 
 
 # ---------------------------------------------------------------------------

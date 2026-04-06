@@ -1233,92 +1233,35 @@
   // web/provider-info.js
   var provider_info_exports = {};
   __export(provider_info_exports, {
-    PROVIDER_INFO: () => PROVIDER_INFO,
+    getProviderInfo: () => getProviderInfo,
+    loadProviderInfo: () => loadProviderInfo,
     providerInfoPopoverContent: () => providerInfoPopoverContent
   });
-  var PROVIDER_INFO = {
-    "github": {
-      freeTier: true,
-      confidential: true,
-      note: "GitHub Models API powered by Azure AI. Free tier available (rate-limited). API requests are not used for model training.",
-      homepage: "https://github.com/marketplace/models",
-      pricingUrl: "https://github.com/features/models",
-      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
-    },
-    "copilot": {
-      freeTier: false,
-      confidential: true,
-      note: "GitHub Copilot \u2014 same Azure-hosted models as the github provider. Requires a paid Copilot Individual/Business subscription. API requests are not used for training.",
-      homepage: "https://github.com/features/copilot",
-      pricingUrl: "https://github.com/features/copilot#pricing",
-      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
-    },
-    "copilot-oauth": {
-      freeTier: false,
-      confidential: true,
-      note: "GitHub Copilot via browser OAuth \u2014 authenticates with your GitHub account. Requires an active Copilot subscription. No API key stored.",
-      homepage: "https://github.com/features/copilot",
-      pricingUrl: "https://github.com/features/copilot#pricing",
-      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
-    },
-    "copilot-sdk": {
-      freeTier: false,
-      confidential: true,
-      note: "GitHub Copilot via the GitHub CLI (gh auth login). Requires an active Copilot subscription. No separate API key needed.",
-      homepage: "https://cli.github.com/",
-      pricingUrl: "https://github.com/features/copilot#pricing",
-      privacyUrl: "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement"
-    },
-    "openai": {
-      freeTier: false,
-      confidential: true,
-      note: "OpenAI \u2014 creator of the GPT model family. Pay-as-you-go pricing; no free API tier. API data is not used for training by default per OpenAI API policy.",
-      homepage: "https://openai.com",
-      pricingUrl: "https://openai.com/api/pricing",
-      privacyUrl: "https://openai.com/policies/privacy-policy"
-    },
-    "anthropic": {
-      freeTier: false,
-      confidential: true,
-      note: "Anthropic \u2014 creator of the Claude model family. Pay-as-you-go pricing; no free API tier. API requests are not used to train models.",
-      homepage: "https://anthropic.com",
-      pricingUrl: "https://www.anthropic.com/pricing",
-      privacyUrl: "https://www.anthropic.com/privacy"
-    },
-    "gemini": {
-      freeTier: true,
-      confidential: false,
-      note: "Google Gemini \u2014 Google AI Studio / Vertex AI. Free tier available. Free-tier prompts may be reviewed by Google; paid Vertex AI offers full confidentiality.",
-      homepage: "https://ai.google.dev",
-      pricingUrl: "https://ai.google.dev/pricing",
-      privacyUrl: "https://policies.google.com/privacy"
-    },
-    "groq": {
-      freeTier: true,
-      confidential: false,
-      note: "Groq \u2014 ultra-fast inference on open-source models (Llama, Mixtral) via custom LPU hardware. Generous free tier. Review Groq privacy policy for data retention details.",
-      homepage: "https://groq.com",
-      pricingUrl: "https://groq.com/pricing",
-      privacyUrl: "https://groq.com/privacy-policy"
-    },
-    "local": {
-      freeTier: true,
-      confidential: true,
-      note: "Local model running entirely on your machine. No data leaves your device. Completely private. No API key or account required.",
-      homepage: null,
-      pricingUrl: null,
-      privacyUrl: null
+  var _cache = null;
+  async function loadProviderInfo() {
+    if (_cache !== null) return _cache;
+    try {
+      const resp = await fetch("/api/providers");
+      if (resp.ok) {
+        const data = await resp.json();
+        _cache = data.providers || {};
+      }
+    } catch {
     }
-  };
+    return _cache;
+  }
+  function getProviderInfo(provider) {
+    return _cache ? _cache[provider] || null : null;
+  }
   function providerInfoPopoverContent(info) {
-    const tierIcon = info.freeTier ? "&#10003; Free tier available" : "&#10007; Paid only (no free API tier)";
+    const tierIcon = info.free_tier ? "&#10003; Free tier available" : "&#10007; Paid only (no free API tier)";
     const privIcon = info.confidential ? "&#128274; Data confidential" : "&#9888;&#65039; Data may be reviewed/retained";
-    const tierColor = info.freeTier ? "#065f46" : "#92400e";
+    const tierColor = info.free_tier ? "#065f46" : "#92400e";
     const privColor = info.confidential ? "#1e40af" : "#92400e";
     const links = [
-      info.homepage ? `<a href="${escapeHtml2(info.homepage)}"   target="_blank" rel="noopener noreferrer">Homepage</a>` : "",
-      info.pricingUrl ? `<a href="${escapeHtml2(info.pricingUrl)}" target="_blank" rel="noopener noreferrer">Pricing &amp; plans</a>` : "",
-      info.privacyUrl ? `<a href="${escapeHtml2(info.privacyUrl)}" target="_blank" rel="noopener noreferrer">Privacy policy</a>` : ""
+      info.homepage ? `<a href="${escapeHtml2(info.homepage)}"    target="_blank" rel="noopener noreferrer">Homepage</a>` : "",
+      info.pricing_url ? `<a href="${escapeHtml2(info.pricing_url)}" target="_blank" rel="noopener noreferrer">Pricing &amp; plans</a>` : "",
+      info.privacy_url ? `<a href="${escapeHtml2(info.privacy_url)}" target="_blank" rel="noopener noreferrer">Privacy policy</a>` : ""
     ].filter(Boolean);
     return `<div style="min-width:220px;max-width:300px;font-size:0.82em;line-height:1.5;"><div style="margin-bottom:6px;"><span style="color:${tierColor};">${tierIcon}</span></div><div style="margin-bottom:8px;"><span style="color:${privColor};">${privIcon}</span></div><p style="margin:0 0 8px;color:#374151;">${escapeHtml2(info.note)}</p>` + (links.length ? '<ul style="margin:0;padding-left:16px;">' + links.map((l) => `<li>${l}</li>`).join("") + "</ul>" : "") + "</div>";
   }
@@ -2314,7 +2257,7 @@
     providers.forEach((provider) => {
       const checked = provider === _modelWizardSelectedProvider;
       const sourceLabel = _providerStageLabel(provider, capableSet);
-      const info = PROVIDER_INFO[provider] || null;
+      const info = getProviderInfo(provider);
       const label = document.createElement("label");
       label.style.cssText = "display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:0.82em; background:#fff; cursor:pointer;";
       label.innerHTML = `<input type="radio" name="model-provider-choice" value="${escapeHtml2(provider)}" ${checked ? "checked" : ""} style="margin:0;" /><span>${escapeHtml2(_providerDisplayLabel(provider))}</span><span style="color:#64748b; font-size:0.8em;">(${escapeHtml2(sourceLabel)})</span>`;
@@ -2522,6 +2465,7 @@
     if (!_modelData) {
       await loadModelSelector();
     }
+    await loadProviderInfo();
     if (!_modelWizardSelectedProvider) {
       _modelWizardSelectedProvider = _modelData?.provider || null;
     }
