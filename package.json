@@ -21,6 +21,8 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "loglevel": "^1.9.2"
+    "dompurify": "^3.3.3",
+    "loglevel": "^1.9.2",
+    "marked": "^17.0.5"
   }
 }

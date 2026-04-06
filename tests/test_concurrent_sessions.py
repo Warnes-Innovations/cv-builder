@@ -795,7 +795,9 @@ def test_load_session_route_restores_saved_session_metadata(build_app):
     payload = response.get_json()
     assert payload["ok"] is True
     assert payload["session_id"] == session_id
-    assert payload["session_file"] == session_path
+    # _resolve_session_path returns the fully-resolved path (symlinks followed),
+    # so compare against Path.resolve() to handle macOS /var → /private/var alias.
+    assert payload["session_file"] == str(Path(session_path).resolve())
     assert payload["position_name"] == "Principal Engineer at Acme Labs"
     assert payload["phase"] == Phase.CUSTOMIZATION
     assert payload["has_job"] is True
@@ -804,7 +806,7 @@ def test_load_session_route_restores_saved_session_metadata(build_app):
 
     loaded_entry = app.session_registry.get(session_id)
     assert loaded_entry is not None
-    assert loaded_entry.manager.session_file == Path(session_path)
+    assert loaded_entry.manager.session_file == Path(session_path).resolve()
     assert loaded_entry.manager.conversation_history == [
         {"role": "assistant", "content": "Loaded from disk"}
     ]
