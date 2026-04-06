@@ -375,7 +375,7 @@ def create_blueprint(deps):
             validated_updates = _validate_settings_update(normalized_updates)
         except Exception as exc:
             logger.exception("Settings validation failed")
-            return jsonify({'ok': False, 'error': str(exc)}), 400
+            return jsonify({'ok': False, 'error': str(exc)[:300]}), 400
 
         config_path = _resolve_config_yaml_path()
         config_path.parent.mkdir(parents=True, exist_ok=True)

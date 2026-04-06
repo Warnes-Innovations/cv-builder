@@ -45,26 +45,19 @@ def create_blueprint(deps):
 
         Accepts both absolute and relative ``path_param`` values.  In either
         case the resolved path must fall within ``session_root``; anything that
-        escapes the root (path traversal or out-of-tree absolute paths) returns
-        None.
+        escapes the root (path traversal, out-of-tree absolute paths, or
+        symlinks pointing outside the root) returns None.
 
-        For absolute inputs the *original* (unresolved) path is returned so
-        that callers can compare it against paths stored before symlinks are
-        followed (e.g. /var vs /private/var on macOS).
+        Always returns the fully-resolved path so that callers operate on a
+        canonical, symlink-free path.
         """
         candidate = Path(path_param)
-        if candidate.is_absolute():
-            # Resolve symlinks for containment check only; return original path.
-            try:
-                candidate.resolve().relative_to(session_root.resolve())
-                return candidate
-            except ValueError:
-                return None
-        # Relative path: delegate to safe_join so traversal sequences are caught.
-        safe_path = safe_join(str(session_root), path_param)
-        if safe_path is None:
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(session_root.resolve())
+            return resolved
+        except ValueError:
             return None
-        return Path(safe_path)
 
     @bp.post("/api/save")
     def save():
