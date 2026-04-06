@@ -51,12 +51,14 @@ def create_blueprint(deps):
         Always returns the fully-resolved path so that callers operate on a
         canonical, symlink-free path.
         """
-        candidate = Path(path_param)
+        raw = Path(path_param)
+        candidate = raw if raw.is_absolute() else session_root / raw
+        resolved_root = session_root.resolve()
         try:
             resolved = candidate.resolve()
-            resolved.relative_to(session_root.resolve())
+            resolved.relative_to(resolved_root)
             return resolved
-        except ValueError:
+        except (ValueError, OSError):
             return None
 
     @bp.post("/api/save")
