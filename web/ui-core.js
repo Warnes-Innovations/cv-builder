@@ -1262,7 +1262,7 @@ function _renderProviderSelector() {
   providers.forEach(provider => {
     const checked = provider === _modelWizardSelectedProvider;
     const sourceLabel = _providerStageLabel(provider, capableSet);
-    const info = PROVIDER_INFO[provider] || null;
+    const info = getProviderInfo(provider);
 
     const label = document.createElement('label');
     label.style.cssText = 'display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:0.82em; background:#fff; cursor:pointer;';
@@ -1495,6 +1495,7 @@ async function openModelModal() {
   if (!_modelData) {
     await loadModelSelector();
   }
+  await loadProviderInfo();
   if (!_modelWizardSelectedProvider) {
     _modelWizardSelectedProvider = _modelData?.provider || null;
   }

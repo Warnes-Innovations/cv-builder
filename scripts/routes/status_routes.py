@@ -26,6 +26,7 @@ import yaml
 from utils.config import get_config
 from utils.conversation_manager import Phase
 from utils.llm_client import PROVIDER_MODELS
+from utils.provider_registry import PROVIDER_REGISTRY
 from utils.session_data_view import SessionDataView
 
 
@@ -282,98 +283,10 @@ def _effective_setting_value(
 
 # ── Credential / API key helpers ─────────────────────────────────────────────
 
-# Maps provider name → credential metadata.
-# auth_type:   "api_key"    — user provides a bearer/PAT token
-#              "device_flow" — GitHub OAuth device-flow (wizard handles this)
-#              "cli"         — external CLI (`gh auth login`)
-#              "none"        — no credential needed (local models)
-_PROVIDER_CREDENTIAL_MAP: Dict[str, Dict[str, str]] = {
-    "github": {
-        "auth_type":    "api_key",
-        "config_key":   "api_keys.github_token",
-        "env_var":      "GITHUB_MODELS_TOKEN",
-        "label":        "GitHub Personal Access Token (PAT)",
-        "get_key_url":  "https://github.com/settings/tokens",
-        "help_text":    (
-            "Create a fine-grained PAT with the 'read:user' scope, or a Classic token "
-            "with 'read:user' and 'models:read'. Paste the token value below."
-        ),
-    },
-    "copilot": {
-        "auth_type":    "api_key",
-        "config_key":   "api_keys.github_token",
-        "env_var":      "GITHUB_MODELS_TOKEN",
-        "label":        "GitHub Personal Access Token (PAT)",
-        "get_key_url":  "https://github.com/settings/tokens",
-        "help_text":    (
-            "Copilot provider uses the same GitHub PAT as the 'github' provider. "
-            "If you already set it for 'github', you are done."
-        ),
-    },
-    "copilot-oauth": {
-        "auth_type":    "device_flow",
-        "config_key":   "",
-        "env_var":      "",
-        "label":        "GitHub Copilot (OAuth Device Flow)",
-        "get_key_url":  "https://github.com/login/device",
-        "help_text":    (
-            "Click 'Start Sign-In' below, enter the code shown at github.com/login/device, "
-            "then return here. No token is stored in config.yaml — the session token is "
-            "cached by the app."
-        ),
-    },
-    "copilot-sdk": {
-        "auth_type":    "cli",
-        "config_key":   "",
-        "env_var":      "",
-        "label":        "GitHub CLI (gh auth login)",
-        "get_key_url":  "https://cli.github.com/",
-        "help_text":    (
-            "copilot-sdk uses the GitHub CLI token. "
-            "Run 'gh auth login' in a terminal, then return here and test the connection."
-        ),
-    },
-    "openai": {
-        "auth_type":    "api_key",
-        "config_key":   "api_keys.openai_api_key",
-        "env_var":      "OPENAI_API_KEY",
-        "label":        "OpenAI API Key",
-        "get_key_url":  "https://platform.openai.com/api-keys",
-        "help_text":    "Create a secret key in the OpenAI dashboard and paste it below.",
-    },
-    "anthropic": {
-        "auth_type":    "api_key",
-        "config_key":   "api_keys.anthropic_api_key",
-        "env_var":      "ANTHROPIC_API_KEY",
-        "label":        "Anthropic API Key",
-        "get_key_url":  "https://console.anthropic.com/settings/keys",
-        "help_text":    "Generate an API key in the Anthropic Console and paste it below.",
-    },
-    "gemini": {
-        "auth_type":    "api_key",
-        "config_key":   "api_keys.gemini_api_key",
-        "env_var":      "GEMINI_API_KEY",
-        "label":        "Google AI API Key",
-        "get_key_url":  "https://aistudio.google.com/app/apikey",
-        "help_text":    "Create an API key in Google AI Studio and paste it below.",
-    },
-    "groq": {
-        "auth_type":    "api_key",
-        "config_key":   "api_keys.groq_api_key",
-        "env_var":      "GROQ_API_KEY",
-        "label":        "Groq API Key",
-        "get_key_url":  "https://console.groq.com/keys",
-        "help_text":    "Create a free API key at console.groq.com and paste it below.",
-    },
-    "local": {
-        "auth_type":    "none",
-        "config_key":   "",
-        "env_var":      "",
-        "label":        "Local model — no API key required",
-        "get_key_url":  "",
-        "help_text":    "Local models run on your machine and do not require an API key.",
-    },
-}
+# Provider credential metadata is now centralised in utils/provider_registry.py.
+# Import the unified registry and expose it here under its legacy local alias so
+# that the helper functions below do not need to be updated.
+_PROVIDER_CREDENTIAL_MAP = PROVIDER_REGISTRY
 
 
 def _credential_source(
@@ -597,6 +510,35 @@ def create_blueprint(deps):
         response['ok'] = True
         response['updated_keys'] = sorted(validated_updates.keys())
         return jsonify(response)
+
+    # ── Provider metadata (session-free) ─────────────────────────────────────
+
+    @bp.get('/api/providers')
+    def get_providers():
+        """Return display metadata for all known providers (no credentials, no session).
+
+        Response shape:
+          {
+            "ok": true,
+            "providers": {
+              "<provider>": {
+                "free_tier":    true | false,
+                "confidential": true | false,
+                "note":         "One-sentence description.",
+                "homepage":     "https://..." | null,
+                "pricing_url":  "https://..." | null,
+                "privacy_url":  "https://..." | null
+              },
+              ...
+            }
+          }
+        """
+        from utils.provider_registry import DISPLAY_FIELDS
+        providers = {
+            name: {k: entry[k] for k in DISPLAY_FIELDS}
+            for name, entry in PROVIDER_REGISTRY.items()
+        }
+        return jsonify({"ok": True, "providers": providers})
 
     # ── Credential / API key routes ───────────────────────────────────────────
 
