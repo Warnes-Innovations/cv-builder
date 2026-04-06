@@ -788,6 +788,74 @@ let _copilotAuthPollTimer = null;
 let _modelWizardStep = 1;
 let _modelWizardSelectedProvider = null;
 
+// Static background information shown on provider selector cards (Step 1).
+// freeTier: bool  — whether a no-cost entry tier is available for the API
+// confidential: bool — whether the provider commits not to train on API request data
+// note: brief plain-text description shown in the ⓘ tooltip
+const _PROVIDER_INFO = {
+  'github': {
+    freeTier: true,
+    confidential: true,
+    note: 'GitHub Models API powered by Azure AI. Free tier available (rate-limited). '
+        + 'API requests are not used for model training. Data processed by GitHub/Microsoft.',
+  },
+  'copilot': {
+    freeTier: false,
+    confidential: true,
+    note: 'GitHub Copilot — same Azure-hosted models as the github provider, authenticated '
+        + 'via a Copilot subscription. Requires a GitHub Copilot Individual/Business plan. '
+        + 'API requests are not used for training.',
+  },
+  'copilot-oauth': {
+    freeTier: false,
+    confidential: true,
+    note: 'GitHub Copilot via browser OAuth — no API key required, authenticates with your '
+        + 'GitHub account. Requires an active Copilot subscription. '
+        + 'API requests are not used for training.',
+  },
+  'copilot-sdk': {
+    freeTier: false,
+    confidential: true,
+    note: 'GitHub Copilot via the GitHub CLI (gh). Requires an active Copilot subscription '
+        + 'and gh auth login to be run first. No separate API key needed. '
+        + 'API requests are not used for training.',
+  },
+  'openai': {
+    freeTier: false,
+    confidential: true,
+    note: 'OpenAI — creator of the GPT model family. Pay-as-you-go pricing; no free API tier '
+        + '(separate from the ChatGPT free plan). '
+        + 'API data is not used for training by default per OpenAI\'s API data policy.',
+  },
+  'anthropic': {
+    freeTier: false,
+    confidential: true,
+    note: 'Anthropic — creator of the Claude model family. Pay-as-you-go pricing; no free API tier. '
+        + 'API requests are not used to train models. Strong privacy and safety commitments.',
+  },
+  'gemini': {
+    freeTier: true,
+    confidential: false,
+    note: 'Google Gemini — Google\'s model family accessed via Google AI Studio / Vertex AI. '
+        + 'Free tier available (with rate limits). '
+        + 'By default, prompts sent to the free-tier API may be reviewed by Google to improve products; '
+        + 'paid Vertex AI tier offers confidentiality guarantees.',
+  },
+  'groq': {
+    freeTier: true,
+    confidential: false,
+    note: 'Groq — ultra-fast inference on open-source models (Llama, Mixtral, etc.) via custom hardware. '
+        + 'Generous free tier available. '
+        + 'Review Groq\'s privacy policy; data retention and training policies apply.',
+  },
+  'local': {
+    freeTier: true,
+    confidential: true,
+    note: 'Local model running entirely on your machine. No data leaves your device. '
+        + 'Completely private. No API key or account required.',
+  },
+};
+
 function _getModelPrefsFromStorage() {
   try {
     const saved = localStorage.getItem(StorageKeys.TAB_DATA);
@@ -1256,13 +1324,28 @@ function _renderProviderSelector() {
   providers.forEach(provider => {
     const checked = provider === _modelWizardSelectedProvider;
     const sourceLabel = _providerStageLabel(provider, capableSet);
+    const info = _PROVIDER_INFO[provider] || null;
+
+    // Build tooltip text for the ⓘ button.
+    let infoTitle = '';
+    if (info) {
+      const tierTag   = info.freeTier     ? 'Free tier available'    : 'Paid only (no free API tier)';
+      const privTag   = info.confidential ? 'Data confidential'      : 'Data may be reviewed/retained';
+      infoTitle = `${tierTag} | ${privTag}\n\n${info.note}`;
+    }
+    const infoBtn = infoTitle
+      ? `<button type="button" title="${escapeHtml(infoTitle)}" aria-label="Provider info" ` +
+        `style="background:none;border:none;cursor:help;color:#64748b;font-size:0.9em;padding:0 1px;line-height:1;vertical-align:middle;" ` +
+        `onclick="event.preventDefault();">ⓘ</button>`
+      : '';
 
     const label = document.createElement('label');
     label.style.cssText = 'display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:0.82em; background:#fff; cursor:pointer;';
     label.innerHTML =
       `<input type="radio" name="model-provider-choice" value="${escapeHtml(provider)}" ${checked ? 'checked' : ''} style="margin:0;" />` +
       `<span>${escapeHtml(_providerDisplayLabel(provider))}</span>` +
-      `<span style="color:#64748b; font-size:0.8em;">(${escapeHtml(sourceLabel)})</span>`;
+      `<span style="color:#64748b; font-size:0.8em;">(${escapeHtml(sourceLabel)})</span>` +
+      infoBtn;
 
     const checkbox = label.querySelector('input');
     checkbox.addEventListener('change', () => {
