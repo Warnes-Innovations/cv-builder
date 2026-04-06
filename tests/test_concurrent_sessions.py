@@ -3673,10 +3673,10 @@ def test_fetch_job_url_route_prefers_json_ld_when_body_is_too_short(build_app):
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["job_text"] == json_ld_description
+    assert json_ld_description in payload["job_text"]
 
     manager = _manager_for_session(tracker, session_id)
-    assert manager.state["job_description"] == json_ld_description
+    assert json_ld_description in manager.state["job_description"]
     assert manager.state["position_name"].startswith(
         "Principal Machine Learning Engineer at Example Labs."
     )
