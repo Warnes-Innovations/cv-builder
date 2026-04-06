@@ -153,9 +153,10 @@ def create_blueprint(deps):
                 "experiences":             data.get('experience', []),
             })
         except Exception as e:
+            logger.exception("Failed to load data for finalise endpoint")
             return jsonify({
                 "ok": False,
-                "error": str(e),
+                "error": "Internal error loading data — check server logs.",
                 "selected_achievements":  [],
                 "professional_summaries": {},
                 "experiences":            [],
@@ -1209,7 +1210,8 @@ def create_blueprint(deps):
         try:
             parsed = bibtex_text_to_publications(content)
         except Exception as e:
-            return jsonify({"ok": False, "error": f"BibTeX parse error: {e}"}), 400
+            logger.warning("BibTeX parse error in publications replace", exc_info=True)
+            return jsonify({"ok": False, "error": f"BibTeX parse error: {str(e)[:300]}"}), 400
 
         if content.strip() and not parsed:
             return jsonify({
@@ -1353,7 +1355,8 @@ def create_blueprint(deps):
         try:
             imported = bibtex_text_to_publications(bibtex_text)
         except Exception as e:
-            return jsonify({"ok": False, "error": f"BibTeX parse error: {e}"}), 400
+            logger.warning("BibTeX parse error in publications import", exc_info=True)
+            return jsonify({"ok": False, "error": f"BibTeX parse error: {str(e)[:300]}"}), 400
 
         if not imported:
             return jsonify({"ok": False, "error": "No valid BibTeX entries found"}), 400
@@ -1555,7 +1558,8 @@ Close professionally with a call to action.
                     temperature=0.7,
                 )
             except Exception as e:
-                return jsonify({'ok': False, 'error': f'LLM error: {e}'}), 500
+                logger.exception("Cover letter LLM request failed")
+                return jsonify({'ok': False, 'error': 'LLM request failed — check provider settings or try again.'}), 500
 
             letter_text = header_block + response.strip()
             conversation.state['cover_letter_text']   = letter_text
@@ -1777,7 +1781,8 @@ Close professionally with a call to action.
                     temperature=0.7,
                 )
             except Exception as e:
-                return jsonify({'ok': False, 'error': f'LLM error: {e}'}), 500
+                logger.exception("Screening LLM request failed")
+                return jsonify({'ok': False, 'error': 'LLM request failed — check provider settings or try again.'}), 500
 
             return jsonify({'ok': True, 'text': response_text.strip()})
         except Exception as e:

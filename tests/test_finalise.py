@@ -767,7 +767,7 @@ class TestMasterFieldsEndpoint(unittest.TestCase):
             data = res.get_json()
         self.assertEqual(res.status_code, 500)
         self.assertFalse(data['ok'])
-        self.assertIn('file not found', data['error'])
+        self.assertIn('Internal error loading data', data['error'])
 
 
 if __name__ == '__main__':

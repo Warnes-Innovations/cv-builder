@@ -9,6 +9,7 @@ Job/chat routes — job submission, URL fetch, file upload, load job file,
 send message, do action, back-to-phase, re-run-phase.
 """
 import dataclasses
+import ipaddress
 import logging
 from pathlib import Path
 from typing import Optional
@@ -94,6 +95,20 @@ def create_blueprint(deps):
             parsed = urlparse(url)
             if not all([parsed.scheme, parsed.netloc]):
                 return jsonify({"error": "Invalid URL format"}), 400
+
+            if parsed.scheme not in ("http", "https"):
+                return jsonify({"error": "Only http and https URLs are supported"}), 400
+
+            # Block loopback and private-range addresses to prevent SSRF.
+            hostname = parsed.hostname or ""
+            if hostname.lower() in ("localhost", "ip6-localhost", "ip6-loopback"):
+                return jsonify({"error": "URL host not permitted"}), 400
+            try:
+                addr = ipaddress.ip_address(hostname)
+                if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
+                    return jsonify({"error": "URL host not permitted"}), 400
+            except ValueError:
+                pass  # hostname is a name, not a bare IP — allow normal DNS resolution
 
             domain = parsed.netloc.lower()
 

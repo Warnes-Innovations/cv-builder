@@ -64,8 +64,11 @@ find_codeql() {
   fi
 
   for candidate in \
+    "$HOME/Library/Application Support/Code/User/globalStorage/github.vscode-codeql/distribution2/codeql/codeql" \
     "$HOME/Library/Application Support/Code/User/globalStorage/github.vscode-codeql/distribution1/codeql/codeql" \
+    "$HOME/.config/Code/User/globalStorage/github.vscode-codeql/distribution2/codeql/codeql" \
     "$HOME/.config/Code/User/globalStorage/github.vscode-codeql/distribution1/codeql/codeql" \
+    "$HOME/.vscode-server/data/User/globalStorage/github.vscode-codeql/distribution2/codeql/codeql" \
     "$HOME/.vscode-server/data/User/globalStorage/github.vscode-codeql/distribution1/codeql/codeql"
   do
     if [[ -x "$candidate" ]]; then
