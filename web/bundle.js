@@ -1995,25 +1995,31 @@
     const isLocked = credData?.locked || false;
     const isSetBadge = isSet ? '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#d1fae5;color:#065f46;font-size:0.8em;font-weight:600;">&#10003; Key saved</span>' : '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:0.8em;font-weight:600;">Not configured</span>';
     let sourceLabel = "";
-    if (source === "env") sourceLabel = `Source: environment variable (${envVar || "locked"})`;
-    else if (source === "dotenv") sourceLabel = `Source: .env file (${envVar || "locked"})`;
-    else if (source === "config") sourceLabel = "Source: config.yaml";
-    const sourceLabelHtml = sourceLabel ? `<span style="margin-left:10px;font-size:0.8em;color:${isLocked ? "#b45309" : "#64748b"};">${escapeHtml2(sourceLabel)}</span>` : "";
+    let tooltipText = "";
+    if (source === "env") {
+      sourceLabel = `Source: environment variable (${envVar || "locked"})`;
+      tooltipText = `Currently loaded from the ${envVar} environment variable. To change it permanently, update your shell config (e.g. ~/.zshrc) and restart the server. You can still save a value below \u2014 it takes effect immediately but will be overridden by the environment variable on next restart.`;
+    } else if (source === "dotenv") {
+      sourceLabel = `Source: .env file (${envVar || "locked"})`;
+      tooltipText = `Currently loaded from ${envVar} in your .env file. To change it permanently, edit the .env file in the project directory and restart the server. You can still save a value below \u2014 it takes effect immediately but will be overridden by .env on next restart.`;
+    } else if (source === "config") {
+      sourceLabel = "Source: config.yaml";
+      tooltipText = "Stored in config.yaml. Update it using the input below.";
+    }
+    const infoIcon = tooltipText ? ` <button type="button" title="${escapeHtml2(tooltipText)}" aria-label="Where is this key stored?" style="background:none;border:none;cursor:help;color:#64748b;font-size:0.85em;padding:0 2px;vertical-align:middle;line-height:1;">\u24D8</button>` : "";
+    const sourceLabelHtml = sourceLabel ? `<span style="margin-left:10px;font-size:0.8em;color:${isLocked ? "#b45309" : "#64748b"};">${escapeHtml2(sourceLabel)}${infoIcon}</span>` : "";
+    const sourceDesc = source === "env" ? "environment variable" : ".env file";
+    const sourceRef = envVar ? `${sourceDesc} <code>${escapeHtml2(envVar)}</code>` : sourceDesc;
+    const lockedWarnHtml = isLocked ? `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin:8px 0;font-size:0.85em;color:#92400e;">\u26A0 This key is loaded from the <strong>${sourceRef}</strong>. Any value saved below takes effect immediately for the current session, but will be <strong>overridden by the ${sourceDesc} when the server restarts or reloads</strong>.</div>` : "";
     const getKeyLink = getKeyUrl ? `<a href="${escapeHtml2(getKeyUrl)}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;">Get your key &#8599;</a>` : "";
-    content.innerHTML = `<div style="margin-bottom:10px;">  <strong>${escapeHtml2(label)}</strong> ${isSetBadge}${sourceLabelHtml}` + (getKeyLink ? `  <span style="margin-left:10px;">${getKeyLink}</span>` : "") + `</div>` + (helpText ? `<p style="font-size:0.85em;color:#475569;margin:0 0 12px;">${escapeHtml2(helpText)}</p>` : "");
+    content.innerHTML = `<div style="margin-bottom:10px;">  <strong>${escapeHtml2(label)}</strong> ${isSetBadge}${sourceLabelHtml}` + (getKeyLink ? `  <span style="margin-left:10px;">${getKeyLink}</span>` : "") + `</div>` + (helpText ? `<p style="font-size:0.85em;color:#475569;margin:0 0 12px;">${escapeHtml2(helpText)}</p>` : "") + lockedWarnHtml;
     if (authType === "api_key") {
       if (keyPanel) {
         keyPanel.style.display = "";
         if (keyInput) {
-          if (isLocked) {
-            keyInput.disabled = true;
-            keyInput.placeholder = "Key managed by environment variable \u2014 edit your shell/env config to change it";
-            keyInput.style.opacity = "0.6";
-          } else {
-            keyInput.disabled = false;
-            keyInput.style.opacity = "";
-            keyInput.placeholder = isSet ? "Enter new key to replace the saved one" : "Paste your API key here";
-          }
+          keyInput.disabled = false;
+          keyInput.style.opacity = "";
+          keyInput.placeholder = isSet ? "Enter new key to replace the saved one" : "Paste your API key here";
           keyInput.dataset.provider = provider;
         }
       }
