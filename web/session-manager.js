@@ -159,7 +159,7 @@ async function _claimCurrentSession(sessionIdToClaim) {
     }
     if (action !== 'takeover') {
       showSessionsLandingPanel('Select a different session or create a new one.');
-      openSessionsModal();
+      openSessionsModal({ required: true });
       return false;
     }
 
@@ -180,7 +180,7 @@ async function _claimCurrentSession(sessionIdToClaim) {
 
   if (res.status === 404 || data.error === 'session_not_found') {
     showSessionsLandingPanel('That session is no longer active. Load it from disk or create a new one.');
-    openSessionsModal();
+    openSessionsModal({ required: true });
     return false;
   }
 
@@ -190,19 +190,6 @@ async function _claimCurrentSession(sessionIdToClaim) {
 // ---------------------------------------------------------------------------
 // Session navigation from landing page
 // ---------------------------------------------------------------------------
-
-async function openSavedSessionFromLanding(path) {
-  try {
-    await loadSessionFile(path);
-  } catch (error) {
-    appendMessage('system', `❌ Could not load session: ${error.message}`);
-  }
-}
-
-function openActiveSessionFromLanding(sessionIdToOpen) {
-  if (!sessionIdToOpen) return;
-  window.location.assign(`/?session=${encodeURIComponent(sessionIdToOpen)}`);
-}
 
 function showSessionsLandingPanel(message = '') {
   stateManager.setCurrentTab('job');
@@ -272,7 +259,7 @@ async function ensureSessionContext() {
   const urlSessionId = getSessionIdFromURL();
   if (!urlSessionId) {
     showSessionsLandingPanel();
-    openSessionsModal();
+    openSessionsModal({ required: true });
     return false;
   }
 
@@ -685,8 +672,6 @@ export {
   createNewSessionAndNavigate,
   createNewSessionInNewTab,
   _claimCurrentSession,
-  openSavedSessionFromLanding,
-  openActiveSessionFromLanding,
   showSessionsLandingPanel,
   ensureSessionContext,
   restoreSession,

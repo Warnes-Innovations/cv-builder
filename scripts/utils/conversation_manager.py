@@ -1526,9 +1526,14 @@ Ask questions that are specific to this job posting, not generic career question
             if not self.session_dir:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 # Sessions live alongside generated files under the output dir.
-                # Use a placeholder name; _rename_session_dir() will rename it
-                # once company / role are extracted from the job analysis.
-                output_base = Path(self.config.get('data.output_dir', '~/CV/files')).expanduser()
+                # Prefer the orchestrator's output_dir (which tests can set to a
+                # temp directory) over the global config so that test runs never
+                # create session directories under the real ~/CV path.
+                orch_dir = getattr(self.orchestrator, 'output_dir', None)
+                if isinstance(orch_dir, Path):
+                    output_base = orch_dir
+                else:
+                    output_base = Path(self.config.get('data.output_dir', '~/CV/files')).expanduser()
                 self.session_dir = output_base / f"pending_{timestamp}"
                 print(f"Creating session directory: {self.session_dir}")
                 logger.debug("_save_session: creating new session_dir=%s", self.session_dir)

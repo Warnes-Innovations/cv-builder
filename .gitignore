@@ -37,3 +37,8 @@ htmlcov/
 # Git worktree checkouts
 /worktrees/
 .claude/worktrees
+
+# Throwaway scripts and scratch files
+/tmp/
+*.bak
+tasks/e2e-test-report-*.md

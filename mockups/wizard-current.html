@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wizard Mockup — Current Hand-crafted CSS</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 14px; background: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 48px 16px 24px; }
+
+    /* ── Demo banner ── */
+    .demo-banner { position: fixed; top: 0; left: 0; right: 0; background: #1e293b; color: #f8fafc; font-size: 12px; font-weight: 600; padding: 8px 20px; display: flex; align-items: center; gap: 12px; z-index: 9999; }
+    .demo-banner a { color: #93c5fd; font-weight: 400; text-decoration: none; }
+    .demo-banner a:hover { text-decoration: underline; }
+
+    /* ── Modal shell ── */
+    .modal { background: #fff; border-radius: 12px; max-width: 900px; width: 100%; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.12), 0 8px 10px -6px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
+    .modal-header { padding: 20px 24px 14px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h2 { margin: 0; font-size: 18px; font-weight: 600; color: #1e293b; }
+    .modal-footer { padding: 10px 16px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; flex-wrap: wrap; gap: 8px; }
+
+    /* ── Reusable classes (from styles.css) ── */
+    .modal-close-btn { background: none; border: none; font-size: 1.5em; cursor: pointer; color: #64748b; line-height: 1; padding: 0; }
+    .modal-close-btn:hover { color: #334155; }
+    .action-btn { background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: inherit; }
+    .action-btn:hover:not(:disabled) { background: #f1f5f9; }
+    .action-btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    .action-btn.primary:hover:not(:disabled) { background: #2563eb; }
+    .action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ── Wizard progress stepper ── */
+    .model-wizard-body { padding: 0; position: relative; overflow-y: auto; flex: 1; background: linear-gradient(180deg, #f8fafc 0%, #fff 180px); }
+    .model-wizard-progress { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 20px 12px; border-bottom: 1px solid #e2e8f0; background: rgba(241,245,249,0.85); }
+    .model-progress-step { position: relative; flex: 1 1 0; display: inline-flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; padding: 0 6px; transition: all 0.2s; }
+    .model-progress-connector { position: absolute; top: 14px; left: calc(50% + 18px); width: calc(100% - 36px); height: 2px; background: #cbd5e1; }
+    .model-progress-step:last-child .model-progress-connector { display: none; }
+    .model-progress-badge { width: 28px; height: 28px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; border: 2px solid transparent; }
+    .model-progress-text { font-size: 12px; font-weight: 600; text-align: center; }
+    .model-progress-step.is-active { color: #1e40af; }
+    .model-progress-step.is-active .model-progress-badge { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+    .model-progress-step.is-complete { color: #166534; }
+    .model-progress-step.is-complete .model-progress-badge { background: #16a34a; border-color: #16a34a; color: #fff; }
+    .model-progress-step.is-complete .model-progress-connector { background: #16a34a; }
+    .model-progress-step.is-upcoming { color: #94a3b8; }
+    .model-progress-step.is-upcoming .model-progress-badge { background: #f8fafc; border-color: #cbd5e1; color: #64748b; }
+    .model-wizard-step-title { font-size: 0.9em; color: #334155; margin-bottom: 8px; font-weight: 700; }
+    .model-wizard-step-hint { margin-top: 8px; font-size: 0.82em; color: #64748b; }
+
+    /* ── Wizard panes ── */
+    .model-wizard-pane { padding: 14px 20px; min-height: 240px; }
+
+    /* ── Provider pills (rendered by JS) ── */
+    .provider-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid #cbd5e1; border-radius: 999px; font-size: 12px; background: #fff; cursor: pointer; }
+    .provider-pill input { margin: 0; }
+    .provider-pill.selected { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
+    .provider-pill small { color: #64748b; font-size: 0.85em; }
+
+    /* ── Model chips ── */
+    .model-chip { padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; background: #fff; cursor: pointer; }
+    .model-chip.selected { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
+
+    /* ── Busy overlay ── */
+    .wizard-busy-overlay { position: absolute; inset: 0; z-index: 12; display: none; align-items: center; justify-content: center; background: rgba(15,23,42,0.42); backdrop-filter: blur(1px); }
+    .wizard-busy-card { min-width: 280px; padding: 20px 24px; border-radius: 14px; border: 1px solid rgba(148,163,184,0.45); background: rgba(255,255,255,0.98); box-shadow: 0 20px 30px rgba(15,23,42,0.2); display: flex; align-items: center; gap: 14px; }
+    .wizard-busy-spinner { width: 26px; height: 26px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.75s linear infinite; display: inline-block; flex-shrink: 0; }
+    .wizard-busy-message { font-size: 14px; font-weight: 600; color: #0f172a; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Success pane ── */
+    .model-wizard-success { min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 32px 24px; }
+    .model-wizard-success-icon { width: 64px; height: 64px; border-radius: 999px; background: #16a34a; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; box-shadow: 0 10px 24px rgba(22,163,74,0.25); }
+    .model-wizard-success h3 { color: #14532d; font-size: 22px; margin: 0; }
+    .model-wizard-success p { max-width: 420px; color: #166534; font-size: 14px; line-height: 1.6; margin: 0; }
+    .model-wizard-primary-close { border: none; border-radius: 10px; padding: 12px 26px; font-size: 15px; font-weight: 700; background: #16a34a; color: #fff; cursor: pointer; box-shadow: 0 6px 16px rgba(22,163,74,0.25); font-family: inherit; }
+    .model-wizard-primary-close:hover { background: #15803d; }
+
+    /* ── Footer layout ── */
+    .model-wizard-footer-meta { display: flex; align-items: center; gap: 10px; color: #64748b; font-size: 0.85em; }
+    .model-wizard-footer-actions { display: flex; gap: 6px; align-items: center; }
+  </style>
+</head>
+<body>
+  <div class="demo-banner">
+    📐 Current — hand-crafted CSS
+    &nbsp;·&nbsp;
+    <a href="wizard-primer.html">Primer →</a>
+    <a href="wizard-bootstrap5.html">Bootstrap 5 →</a>
+    <a href="wizard-shoelace.html">Shoelace →</a>
+  </div>
+
+  <div class="modal">
+    <div class="modal-header">
+      <h2>LLM Configuration Wizard</h2>
+      <button class="modal-close-btn" title="Close">&times;</button>
+    </div>
+
+    <div class="model-wizard-body">
+      <!-- Busy overlay -->
+      <div class="wizard-busy-overlay" id="busy">
+        <div class="wizard-busy-card">
+          <span class="wizard-busy-spinner"></span>
+          <div class="wizard-busy-message" id="busy-msg">Querying available models…</div>
+        </div>
+      </div>
+
+      <!-- Progress stepper -->
+      <div class="model-wizard-progress" role="status" aria-live="polite">
+        <div class="model-progress-step is-active" id="ps1">
+          <span class="model-progress-badge" id="pb1">1</span>
+          <span class="model-progress-text">Choose Provider</span>
+          <span class="model-progress-connector" id="pc1"></span>
+        </div>
+        <div class="model-progress-step is-upcoming" id="ps2">
+          <span class="model-progress-badge" id="pb2">2</span>
+          <span class="model-progress-text">Model + Test</span>
+          <span class="model-progress-connector" id="pc2"></span>
+        </div>
+        <div class="model-progress-step is-upcoming" id="ps3">
+          <span class="model-progress-badge" id="pb3">3</span>
+          <span class="model-progress-text">Complete</span>
+        </div>
+      </div>
+
+      <!-- Step 1: Provider -->
+      <div class="model-wizard-pane" id="step1">
+        <div class="model-wizard-step-title">Step 1: Choose provider</div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+          <label class="provider-pill selected"><input type="radio" name="prov" value="github" checked> GitHub Copilot <small>(list)</small></label>
+          <label class="provider-pill"><input type="radio" name="prov" value="openai"> OpenAI <small>(list)</small></label>
+          <label class="provider-pill"><input type="radio" name="prov" value="anthropic"> Anthropic <small>(catalog)</small></label>
+          <label class="provider-pill"><input type="radio" name="prov" value="gemini"> Google Gemini <small>(catalog)</small></label>
+          <label class="provider-pill"><input type="radio" name="prov" value="local"> Local <small>(manual)</small></label>
+        </div>
+        <div class="model-wizard-step-hint">Available models are queried after provider selection and before model choices are shown.</div>
+      </div>
+
+      <!-- Step 2: Model -->
+      <div class="model-wizard-pane" id="step2" style="display:none;">
+        <div class="model-wizard-step-title">Step 2: Choose model and verify connection</div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+          <span class="model-chip selected">gpt-4.1</span>
+          <span class="model-chip">gpt-4.1-mini</span>
+          <span class="model-chip">gpt-4.5</span>
+          <span class="model-chip">o3</span>
+          <span class="model-chip">claude-sonnet-4-5</span>
+          <span class="model-chip">gemini-2.5-pro</span>
+        </div>
+        <button class="action-btn" style="font-size:12px;">Show Full Catalog</button>
+      </div>
+
+      <!-- Step 3: Success -->
+      <div class="model-wizard-success" id="step3" style="display:none;">
+        <div class="model-wizard-success-icon">✓</div>
+        <h3>Configuration Complete</h3>
+        <p>GitHub Copilot + <strong>gpt-4.1</strong> is configured and the connection test passed (latency 312 ms). You're ready to generate CVs.</p>
+        <button class="model-wizard-primary-close">Close Wizard</button>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <div class="model-wizard-footer-meta">
+        <span id="step-label">Step 1 of 3: Choose provider</span>
+        <span style="color:#cbd5e1;">|</span>
+        <span style="color:#94a3b8; font-size:0.82em;">Prices: 2026-04-02</span>
+      </div>
+      <div class="model-wizard-footer-actions">
+        <button class="action-btn" id="busy-btn" onclick="toggleBusy()">⏳ Show Busy</button>
+        <button class="action-btn" id="back-btn" onclick="go(-1)" disabled>← Back</button>
+        <button class="action-btn primary" id="next-btn" onclick="go(1)">Next →</button>
+        <button class="action-btn" id="test-btn" onclick="go(1)" style="display:none;">✓ Test connection</button>
+        <button class="action-btn" id="refresh-btn" style="display:none;">↻ Refresh prices</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let step = 1;
+    const LABELS = ['Step 1 of 3: Choose provider', 'Step 2 of 3: Choose model and test connection', 'Step 3 of 3: Complete'];
+
+    function render() {
+      [1,2,3].forEach(n => {
+        document.getElementById('step'+n).style.display = n === step ? '' : 'none';
+        const ps = document.getElementById('ps'+n);
+        const pb = document.getElementById('pb'+n);
+        ps.className = 'model-progress-step';
+        if (n < step)       { ps.classList.add('is-complete');  pb.textContent = '✓'; }
+        else if (n === step) { ps.classList.add('is-active');    pb.textContent = String(n); }
+        else                 { ps.classList.add('is-upcoming');  pb.textContent = String(n); }
+        const pc = document.getElementById('pc'+n);
+        if (pc) pc.style.background = n < step ? '#16a34a' : '#cbd5e1';
+      });
+      document.getElementById('step-label').textContent = LABELS[step-1];
+      document.getElementById('back-btn').disabled = step === 1;
+      document.getElementById('back-btn').style.display = step === 3 ? 'none' : '';
+      document.getElementById('next-btn').style.display = step === 1 ? '' : 'none';
+      document.getElementById('test-btn').style.display = step === 2 ? '' : 'none';
+      document.getElementById('refresh-btn').style.display = step === 2 ? '' : 'none';
+      document.getElementById('busy-btn').style.display = step === 3 ? 'none' : '';
+    }
+
+    function go(dir) {
+      step = Math.min(3, Math.max(1, step + dir));
+      if (step === 2) {
+        const b = document.getElementById('busy');
+        b.style.display = 'flex';
+        document.getElementById('busy-msg').textContent = 'Querying available models…';
+        setTimeout(() => { b.style.display = 'none'; render(); }, 1200);
+      } else {
+        render();
+      }
+    }
+
+    function toggleBusy() {
+      const b = document.getElementById('busy');
+      b.style.display = b.style.display !== 'flex' ? 'flex' : 'none';
+    }
+
+    // Provider pill selection
+    document.querySelectorAll('.provider-pill input[type=radio]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.querySelectorAll('.provider-pill').forEach(p => p.classList.remove('selected'));
+        radio.closest('.provider-pill').classList.add('selected');
+      });
+    });
+
+    // Model chip selection
+    document.querySelectorAll('.model-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.model-chip').forEach(c => c.classList.remove('selected'));
+        chip.classList.add('selected');
+      });
+    });
+
+    render();
+  </script>
+</body>
+</html>

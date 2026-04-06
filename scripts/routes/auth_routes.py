@@ -296,7 +296,7 @@ def create_blueprint(deps):
                 return True, None
             except Exception as exc:
                 logger.warning("Model probe failed: %s", exc)
-                return False, str(exc)
+                return False, str(exc)[:300]
 
         data     = request.get_json(silent=True) or {}
         model    = data.get("model", "").strip()

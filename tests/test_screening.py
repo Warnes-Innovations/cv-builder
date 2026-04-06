@@ -271,7 +271,7 @@ class TestScreeningGenerate(unittest.TestCase):
                                    json={'question': 'Tell me about yourself.', 'format': 'direct',
                                          'session_id': sid})
                 self.assertEqual(res.status_code, 500)
-                self.assertIn('LLM error', res.get_json()['error'])
+                self.assertIn('LLM request failed', res.get_json()['error'])
 
 
 # ---------------------------------------------------------------------------

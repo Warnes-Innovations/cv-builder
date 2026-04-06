@@ -29,29 +29,265 @@ import { getLogger } from './logger.js';
 const log = getLogger('message-dispatch');
 
 import { stateManager } from './state-manager.js';
+import { getSessionIdFromURL } from './api-client.js';
 
 let _pendingPostIntakeContinuation = null;
+const RETRY_POLICY_STORAGE_KEY = 'cv-builder-retry-policy';
+let _retryAttemptCount = 0;
+let _retryTimer = null;
+let _retryInterval = null;
+
+function _clearRetryTimers() {
+  if (_retryTimer) {
+    clearTimeout(_retryTimer);
+    _retryTimer = null;
+  }
+  if (_retryInterval) {
+    clearInterval(_retryInterval);
+    _retryInterval = null;
+  }
+}
+
+function _getRetryPolicy() {
+  const defaults = {
+    baseMs: 1500,
+    capMs: 60000,
+    maxAttempts: 6,
+    autoRetry: true,
+  };
+  try {
+    const raw = localStorage.getItem(RETRY_POLICY_STORAGE_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw);
+    return {
+      baseMs: Math.max(200, Number(parsed.baseMs || defaults.baseMs)),
+      capMs: Math.max(1000, Number(parsed.capMs || defaults.capMs)),
+      maxAttempts: Math.max(1, Number(parsed.maxAttempts || defaults.maxAttempts)),
+      autoRetry: parsed.autoRetry !== false,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function _calculateRetryDelayMs(kind, error) {
+  const policy = _getRetryPolicy();
+  const exp = Math.min(policy.capMs, policy.baseMs * (2 ** _retryAttemptCount));
+  const jitter = Math.round(exp * (0.1 + Math.random() * 0.15));
+  let delayMs = Math.min(policy.capMs, exp + jitter);
+
+  if (kind === 'rate-limited') {
+    const retryAfterSec = Number(error?.retryAfterSec || 0);
+    if (retryAfterSec > 0) {
+      delayMs = Math.max(delayMs, retryAfterSec * 1000);
+    }
+  }
+  return delayMs;
+}
+
+function _scheduleRetry(text, derived, error) {
+  _clearRetryTimers();
+  const policy = _getRetryPolicy();
+
+  // Client errors (4xx) and auth failures are not transient; do not auto-retry.
+  const NON_RETRYABLE = new Set(['client-error', 'auth-required']);
+  const canAutoRetry = policy.autoRetry
+    && _retryAttemptCount < policy.maxAttempts
+    && !NON_RETRYABLE.has(derived.kind);
+
+  const delayMs = _calculateRetryDelayMs(derived.kind, error);
+  const totalSeconds = Math.max(1, Math.ceil(delayMs / 1000));
+
+  const retryAction = () => {
+    const input = document.getElementById('message-input');
+    if (input) input.value = text;
+    sendMessage();
+  };
+
+  let retryMessage;
+  const cancelFn = canAutoRetry ? () => {
+    _clearRetryTimers();
+    if (retryMessage) retryMessage.remove();
+  } : null;
+
+  retryMessage = appendRetryMessage(
+    `⚠️ ${error.message}`,
+    () => {
+      _clearRetryTimers();
+      _retryAttemptCount += 1;
+      retryAction();
+    },
+    canAutoRetry ? `Retry in ${totalSeconds}s` : 'Retry',
+    cancelFn,
+  );
+
+  if (!canAutoRetry) return;
+
+  const retryBtn = retryMessage?.querySelector('button');
+  let remaining = totalSeconds;
+  if (retryBtn) {
+    retryBtn.textContent = `Retry in ${remaining}s`;
+    if (derived.kind === 'rate-limited') {
+      retryBtn.disabled = true;
+      retryBtn.style.opacity = '0.7';
+      retryBtn.style.cursor = 'not-allowed';
+    }
+  }
+
+  _retryInterval = setInterval(() => {
+    remaining -= 1;
+    if (retryBtn && remaining > 0) {
+      retryBtn.textContent = `Retry in ${remaining}s`;
+    }
+    if (remaining <= 0) {
+      if (retryBtn) {
+        retryBtn.textContent = 'Retry Now';
+        retryBtn.disabled = false;
+        retryBtn.style.opacity = '';
+        retryBtn.style.cursor = '';
+      }
+      clearInterval(_retryInterval);
+      _retryInterval = null;
+    }
+  }, 1000);
+
+  _retryTimer = setTimeout(() => {
+    _retryTimer = null;
+    _retryAttemptCount += 1;
+    retryMessage?.remove();
+    retryAction();
+  }, delayMs);
+}
+
+async function _parseApiJsonResponse(response, endpoint) {
+  const status = Number(response?.status || 0);
+  const statusText = response?.statusText || 'Unknown Status';
+  const contentType = (response?.headers?.get('content-type') || '').toLowerCase();
+  const raw = await response.text();
+
+  if (!response.ok) {
+    let detail = statusText;
+    if (contentType.includes('application/json')) {
+      try {
+        const payload = JSON.parse(raw || '{}');
+        detail = payload?.error || payload?.message || detail;
+      } catch {
+        // Keep fallback detail if malformed JSON error payload.
+      }
+    } else if ((raw || '').trim().startsWith('<')) {
+      detail = 'server returned HTML instead of JSON (possible session redirect or backend error)';
+    } else if ((raw || '').trim()) {
+      detail = raw.trim().slice(0, 220);
+    }
+    const error = new Error(`${status}: ${detail}`);
+    error.status = status;
+    error.retryAfterSec = Number(response?.headers?.get('retry-after') || 0);
+    throw error;
+  }
+
+  if (!contentType.includes('application/json')) {
+    const snippet = (raw || '').trim().slice(0, 80);
+    throw new SyntaxError(
+      `Expected JSON from ${endpoint}, got ${contentType || 'unknown content type'}${snippet ? `: ${snippet}` : ''}`,
+    );
+  }
+
+  try {
+    return parseMessageResponse(JSON.parse(raw || '{}'));
+  } catch (error) {
+    throw new SyntaxError(`Invalid JSON from ${endpoint}: ${error.message}`);
+  }
+}
+
+function _setLiveLlmState(kind, text, icon = '', tooltip = '') {
+  if (typeof _updateLlmStatusPill === 'function') {
+    _updateLlmStatusPill(kind, text, icon, tooltip);
+  }
+}
+
+function _deriveErrorState(error) {
+  const message = String(error?.message || error || 'Unknown error');
+  const lower = message.toLowerCase();
+  const status = Number(error?.status || 0);
+
+  if (status === 401 || status === 403 || message.startsWith('401:') || message.startsWith('403:') || lower.includes('auth')) {
+    return {
+      kind: 'auth-required',
+      text: 'Authentication required',
+      icon: '🔑',
+      tooltip: 'Authentication failed. Check API key/token or sign in again.',
+    };
+  }
+
+  if (status === 429 || message.startsWith('429:') || lower.includes('rate limit')) {
+    return {
+      kind: 'rate-limited',
+      text: 'Rate limited',
+      icon: '⏳',
+      tooltip: 'Provider rate limit reached. Wait briefly and retry.',
+    };
+  }
+
+  if (
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    message.startsWith('502:') ||
+    message.startsWith('503:') ||
+    message.startsWith('504:') ||
+    lower.includes('timeout') ||
+    lower.includes('unavailable') ||
+    lower.includes('cannot reach')
+  ) {
+    return {
+      kind: 'unavailable',
+      text: 'Provider unavailable',
+      icon: '☁',
+      tooltip: 'Provider is currently unavailable or unreachable. Retry soon.',
+    };
+  }
+
+  // 4xx client errors are not transient — retrying will not fix them.
+  if (status >= 400 && status < 500) {
+    return {
+      kind: 'client-error',
+      text: 'Request error',
+      icon: '⚠',
+      tooltip: message,
+    };
+  }
+
+  return {
+    kind: 'error',
+    text: 'Connection failed',
+    icon: '⚠',
+    tooltip: message,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Default LLM message handler
 // ---------------------------------------------------------------------------
 
 async function _handleLLMMessage(text) {
+  _clearRetryTimers();
   setLoading(true, 'Thinking…');
+  _setLiveLlmState('connecting', 'Connecting…', '⧗', 'Sending request to provider.');
+  let terminalState = null;
   try {
     const res = await llmFetch('/api/message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text }),
     });
-    const data = parseMessageResponse(await res.json());
+    const data = await _parseApiJsonResponse(res, '/api/message');
 
     if (data.error) {
       const errorMsg = data.error.toString();
-      appendRetryMessage('❌ Error: ' + errorMsg, () => {
-        document.getElementById('message-input').value = text;
-        sendMessage();
-      });
+      const derived = _deriveErrorState(new Error(errorMsg));
+      _setLiveLlmState(derived.kind, derived.text, derived.icon, derived.tooltip);
+      _scheduleRetry(text, derived, new Error(errorMsg));
+      terminalState = derived;
       log.error('Server error:', data.error);
     } else if (data.response) {
       try {
@@ -71,29 +307,33 @@ async function _handleLLMMessage(text) {
         }
       } catch (err) {
         log.error('Error processing message response:', err, data.response);
+        const derived = _deriveErrorState(err);
+        _setLiveLlmState(derived.kind, derived.text, derived.icon, derived.tooltip);
         appendMessage('system', `⚠️ I encountered an issue processing that response: ${err.message}. The conversation has been saved.`);
+        terminalState = derived;
       }
+      const connectedState = { kind: 'connected', text: 'Connected', icon: '✓', tooltip: 'Provider responded successfully to a live request.' };
+      _setLiveLlmState(connectedState.kind, connectedState.text, connectedState.icon, connectedState.tooltip);
+      terminalState = connectedState;
+      _retryAttemptCount = 0;
     }
   } catch (error) {
     log.error('=== MESSAGE ERROR ===', error.name, error.message, error.stack);
     if (error.name === 'AbortError') {
-      // user clicked Stop — message already shown in abortCurrentRequest()
-    } else if (error instanceof TypeError) {
-      appendRetryMessage(`⚠️ Cannot reach the server — is it still running? (${error.message})`, () => {
-        document.getElementById('message-input').value = text; sendMessage();
-      });
-    } else if (error instanceof SyntaxError) {
-      appendRetryMessage(`⚠️ The server returned an unexpected response: ${error.message}`, () => {
-        document.getElementById('message-input').value = text; sendMessage();
-      });
-    } else {
-      appendRetryMessage('⚠️ ' + error.message, () => {
-        document.getElementById('message-input').value = text; sendMessage();
-      });
+      // User clicked Stop — message already shown by abortCurrentRequest().
+      setLoading(false);
+      return;
     }
+    const derived = _deriveErrorState(error);
+    _setLiveLlmState(derived.kind, derived.text, derived.icon, derived.tooltip);
+    _scheduleRetry(text, derived, error);
+    terminalState = derived;
   }
   setLoading(false);
   await fetchStatus();
+  if (terminalState) {
+    _setLiveLlmState(terminalState.kind, terminalState.text, terminalState.icon, terminalState.tooltip);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -126,7 +366,7 @@ const _messageHandlers = [
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: t }),
         });
-        const data = parseMessageResponse(await res.json());
+        const data = await _parseApiJsonResponse(res, '/api/message');
         if (data.error) {
           log.error('Backend error saving question response:', data.error);
         } else if (data.response && !questionHandled) {
@@ -155,6 +395,11 @@ async function sendMessage() {
   const input = document.getElementById('message-input');
   const text = normalizeText(input.value);
   if (!text || stateManager.isLoading()) return;
+
+  if (!getSessionIdFromURL()) {
+    appendMessage('system', '⚠️ No active session. Create or load a session before sending messages.');
+    return;
+  }
 
   appendMessage('user', text);
   input.value = '';

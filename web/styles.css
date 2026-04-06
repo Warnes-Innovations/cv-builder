@@ -39,6 +39,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .auth-badge.authenticated { color: #86efac; border-color: #86efac; }
 .auth-badge.unauthenticated { color: #fca5a5; border-color: #fca5a5; }
 .auth-badge.polling { color: #fde68a; border-color: #fde68a; }
+.auth-badge.unconfigured { color: #cbd5e1; border-color: #cbd5e1; }
+.auth-badge.configured { color: #bfdbfe; border-color: #93c5fd; }
+.auth-badge.connecting { color: #fde68a; border-color: #fde68a; }
+.auth-badge.connected { color: #86efac; border-color: #86efac; }
+.auth-badge.auth-required { color: #fdba74; border-color: #fdba74; }
+.auth-badge.rate-limited { color: #fcd34d; border-color: #fcd34d; }
+.auth-badge.unavailable { color: #c4b5fd; border-color: #c4b5fd; }
+.auth-badge.error { color: #fca5a5; border-color: #fca5a5; }
 
 /* ===== HEADER PILL BUTTONS (Sessions, Model) ===== */
 .header-pill-btn { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap; color: #fff; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.3); transition: background 0.2s; }
@@ -719,14 +727,215 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 }
 
 /* ===== MODAL ===== */
+/* Bootstrap 5 defines .modal { display: none; height: 100%; } — override both here since styles.css loads after Bootstrap CSS */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: none; z-index: 1000; }
-.modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fff; border-radius: 12px; width: 600px; max-height: 80vh; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+.modal { display: block; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fff; border-radius: 12px; width: 600px; height: auto; max-height: 80vh; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
 .modal-header { padding: 24px 24px 16px; border-bottom: 1px solid #e2e8f0; }
 .modal-header h2 { font-size: 20px; font-weight: 600; color: #1e293b; }
 .modal-body { padding: 24px; max-height: 400px; overflow-y: auto; }
 .modal-footer { padding: 16px 24px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px; }
+.modal-close-btn { background:none; border:none; font-size:1.4em; cursor:pointer; color:#64748b; line-height:1; }
+.modal-close-btn:hover { color:#334155; }
 .modal-btn { background: #3b82f6; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
 .modal-btn:hover { background: #2563eb; }
+
+/* ===== MODEL WIZARD ===== */
+.model-wizard-body {
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 180px);
+}
+.model-wizard-progress {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: rgba(241, 245, 249, 0.85);
+}
+.model-progress-step {
+  position: relative;
+  flex: 1 1 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 6px;
+  transition: all 0.2s ease;
+}
+.model-progress-connector {
+  position: absolute;
+  top: 14px;
+  left: calc(50% + 20px);
+  width: calc(100% - 40px);
+  height: 2px;
+  background: #cbd5e1;
+}
+.model-progress-step:last-child .model-progress-connector {
+  display: none;
+}
+.model-progress-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  border: 2px solid transparent;
+}
+.model-progress-text {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+.model-progress-step.is-active {
+  color: #1e40af;
+}
+.model-progress-step.is-active .model-progress-badge {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+}
+.model-progress-step.is-active .model-progress-connector {
+  background: #cbd5e1;
+}
+.model-progress-step.is-complete {
+  color: #166534;
+}
+.model-progress-step.is-complete .model-progress-badge {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+.model-progress-step.is-complete .model-progress-connector {
+  background: #16a34a;
+}
+.model-progress-step.is-upcoming {
+  color: #94a3b8;
+}
+.model-progress-step.is-upcoming .model-progress-badge {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+.model-wizard-step-title {
+  font-size: 0.9em;
+  color: #334155;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.model-wizard-step-hint {
+  margin-top: 8px;
+  font-size: 0.82em;
+  color: #64748b;
+}
+.model-wizard-pane {
+  min-height: 320px;
+}
+.model-wizard-success {
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+  padding: 28px 24px;
+}
+.model-wizard-success-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  background: #16a34a;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 700;
+  box-shadow: 0 10px 24px rgba(22, 163, 74, 0.24);
+}
+.model-wizard-success h3 {
+  color: #14532d;
+  font-size: 24px;
+}
+.model-wizard-success p {
+  max-width: 520px;
+  color: #166534;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.model-wizard-primary-close {
+  margin-top: 8px;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 26px;
+  font-size: 15px;
+  font-weight: 700;
+  background: #16a34a;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(22, 163, 74, 0.24);
+}
+.model-wizard-primary-close:hover {
+  background: #15803d;
+}
+.wizard-busy-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(1px);
+}
+.wizard-busy-card {
+  min-width: 320px;
+  max-width: 88%;
+  padding: 22px 24px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 20px 30px rgba(15, 23, 42, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.wizard-busy-spinner {
+  width: 28px;
+  height: 28px;
+  border-width: 3px;
+}
+.wizard-busy-message {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 600;
+}
+.model-wizard-footer {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.85em;
+  color: #64748b;
+  background: #f8fafc;
+  padding: 10px 16px;
+}
+.model-wizard-footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #64748b;
+  font-size: 0.85em;
+}
+.model-wizard-footer-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
 
 /* ===== REVIEW TABLES ===== */
 .review-section { padding: 12px; background: #fff; }

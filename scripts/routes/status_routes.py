@@ -11,17 +11,320 @@ intake metadata, prior clarifications.
 import dataclasses
 import json
 import logging
+import os
+import threading
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 from flask import Blueprint, jsonify, request
+import yaml
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
 from utils.config import get_config
 from utils.conversation_manager import Phase
+from utils.llm_client import PROVIDER_MODELS
 from utils.session_data_view import SessionDataView
+
+
+_SETTINGS_WRITE_LOCK = threading.Lock()
+
+_SETTINGS_ENV_MAP: Dict[str, List[str]] = {
+    'llm.default_provider': ['CV_LLM_PROVIDER', 'CV_LLM_DEFAULT_PROVIDER'],
+    'llm.default_model': ['CV_LLM_MODEL', 'CV_LLM_DEFAULT_MODEL'],
+    'llm.request_timeout_seconds': ['CV_LLM_REQUEST_TIMEOUT', 'CV_LLM_REQUEST_TIMEOUT_SECONDS'],
+    'llm.temperature': ['CV_LLM_TEMPERATURE'],
+    'generation.max_skills': ['CV_GEN_MAX_SKILLS'],
+    'generation.max_achievements': ['CV_GEN_MAX_ACHIEVEMENTS'],
+    'generation.max_publications': ['CV_GEN_MAX_PUBLICATIONS'],
+    'generation.formats.ats_docx': ['CV_GEN_FORMAT_ATS_DOCX'],
+    'generation.formats.human_pdf': ['CV_GEN_FORMAT_HUMAN_PDF'],
+    'generation.formats.human_docx': ['CV_GEN_FORMAT_HUMAN_DOCX'],
+    'generation.skills_section_title': ['CV_GEN_SKILLS_SECTION_TITLE'],
+}
+
+_SETTINGS_DEFAULTS: Dict[str, Any] = {
+    'llm.default_provider': None,
+    'llm.default_model': None,
+    'llm.request_timeout_seconds': 120,
+    'llm.temperature': 0.7,
+    'generation.max_skills': 20,
+    'generation.max_achievements': 5,
+    'generation.max_publications': 10,
+    'generation.formats.ats_docx': True,
+    'generation.formats.human_pdf': True,
+    'generation.formats.human_docx': True,
+    'generation.skills_section_title': 'Skills',
+}
+
+
+def _resolve_config_yaml_path() -> Path:
+    explicit = (os.getenv('CV_BUILDER_CONFIG_FILE') or '').strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    return Path.cwd() / 'config.yaml'
+
+
+def _read_dotenv_values(path: Path) -> Dict[str, str]:
+    values: Dict[str, str] = {}
+    if not path.exists():
+        return values
+    try:
+        for line in path.read_text(encoding='utf-8').splitlines():
+            raw = line.strip()
+            if not raw or raw.startswith('#') or '=' not in raw:
+                continue
+            key, value = raw.split('=', 1)
+            values[key.strip()] = value.strip().strip('"').strip("'")
+    except OSError:
+        return {}
+    return values
+
+
+_MISSING: Any = object()
+
+
+def _deep_get(container: Dict[str, Any], dotted_key: str, default: Any = _MISSING) -> Any:
+    current: Any = container
+    for token in dotted_key.split('.'):
+        if not isinstance(current, dict) or token not in current:
+            return default
+        current = current[token]
+    return current
+
+
+def _deep_set(container: Dict[str, Any], dotted_key: str, value: Any) -> None:
+    parts = dotted_key.split('.')
+    current = container
+    for token in parts[:-1]:
+        node = current.get(token)
+        if not isinstance(node, dict):
+            node = {}
+            current[token] = node
+        current = node
+    current[parts[-1]] = value
+
+
+def _normalize_settings_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized: Dict[str, Any] = {}
+
+    llm = payload.get('llm') or {}
+    if isinstance(llm, dict):
+        if 'default_provider' in llm:
+            normalized['llm.default_provider'] = llm.get('default_provider')
+        if 'default_model' in llm:
+            normalized['llm.default_model'] = llm.get('default_model')
+        if 'request_timeout_seconds' in llm:
+            normalized['llm.request_timeout_seconds'] = llm.get('request_timeout_seconds')
+        if 'temperature' in llm:
+            normalized['llm.temperature'] = llm.get('temperature')
+
+    generation = payload.get('generation') or {}
+    if isinstance(generation, dict):
+        if 'max_skills' in generation:
+            normalized['generation.max_skills'] = generation.get('max_skills')
+        if 'max_achievements' in generation:
+            normalized['generation.max_achievements'] = generation.get('max_achievements')
+        if 'max_publications' in generation:
+            normalized['generation.max_publications'] = generation.get('max_publications')
+        if 'skills_section_title' in generation:
+            normalized['generation.skills_section_title'] = generation.get('skills_section_title')
+        formats = generation.get('formats') or {}
+        if isinstance(formats, dict):
+            if 'ats_docx' in formats:
+                normalized['generation.formats.ats_docx'] = formats.get('ats_docx')
+            if 'human_pdf' in formats:
+                normalized['generation.formats.human_pdf'] = formats.get('human_pdf')
+            if 'human_docx' in formats:
+                normalized['generation.formats.human_docx'] = formats.get('human_docx')
+
+    return normalized
+
+
+def _validate_settings_update(update_map: Dict[str, Any]) -> Dict[str, Any]:
+    clean: Dict[str, Any] = {}
+    allowed_providers = set(PROVIDER_MODELS.keys())
+
+    for key, value in update_map.items():
+        if key not in _SETTINGS_DEFAULTS:
+            raise ValueError(f'Unsupported setting: {key}')
+
+        if key == 'llm.default_provider':
+            raw = (value or '').strip() if value is not None else None
+            if raw is None:
+                clean[key] = None
+            elif raw not in allowed_providers:
+                allowed = ', '.join(sorted(allowed_providers))
+                raise ValueError(f'llm.default_provider must be one of: {allowed}')
+            else:
+                clean[key] = raw
+            continue
+
+        if key == 'llm.default_model':
+            if value in (None, ''):
+                clean[key] = None
+            else:
+                clean[key] = str(value).strip()
+            continue
+
+        if key == 'llm.request_timeout_seconds':
+            intval = int(value)
+            if intval < 5 or intval > 600:
+                raise ValueError('llm.request_timeout_seconds must be between 5 and 600')
+            clean[key] = intval
+            continue
+
+        if key == 'llm.temperature':
+            floatval = float(value)
+            if floatval < 0.0 or floatval > 2.0:
+                raise ValueError('llm.temperature must be between 0.0 and 2.0')
+            clean[key] = round(floatval, 3)
+            continue
+
+        if key in ('generation.max_skills', 'generation.max_achievements', 'generation.max_publications'):
+            intval = int(value)
+            if intval < 1 or intval > 100:
+                raise ValueError(f'{key} must be between 1 and 100')
+            clean[key] = intval
+            continue
+
+        if key.startswith('generation.formats.'):
+            if not isinstance(value, bool):
+                raise ValueError(f'{key} must be a boolean')
+            clean[key] = value
+            continue
+
+        if key == 'generation.skills_section_title':
+            text = str(value or '').strip()
+            if not text:
+                raise ValueError('generation.skills_section_title must not be empty')
+            clean[key] = text[:120]
+            continue
+
+    return clean
+
+
+def _setting_source(
+    dotted_key: str,
+    config_doc: Dict[str, Any],
+    dotenv_values: Dict[str, str],
+) -> Dict[str, Optional[str]]:
+    env_keys = _SETTINGS_ENV_MAP.get(dotted_key, [])
+    env_match = next((key for key in env_keys if key in os.environ), None)
+    dotenv_match = next((key for key in env_keys if key in dotenv_values), None)
+
+    if env_match:
+        return {'source': 'env', 'env_key': env_match}
+    if dotenv_match:
+        return {'source': 'dotenv', 'env_key': dotenv_match}
+    if _deep_get(config_doc, dotted_key) is not _MISSING:
+        return {'source': 'config', 'env_key': None}
+    return {'source': 'default', 'env_key': None}
+
+
+def _coerce_setting_value(dotted_key: str, raw_value: Any) -> Any:
+    if raw_value is None:
+        return None
+
+    if dotted_key in (
+        'generation.formats.ats_docx',
+        'generation.formats.human_pdf',
+        'generation.formats.human_docx',
+    ):
+        if isinstance(raw_value, bool):
+            return raw_value
+        return str(raw_value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+    if dotted_key in (
+        'llm.request_timeout_seconds',
+        'generation.max_skills',
+        'generation.max_achievements',
+        'generation.max_publications',
+    ):
+        return int(raw_value)
+
+    if dotted_key == 'llm.temperature':
+        return float(raw_value)
+
+    if dotted_key in ('llm.default_provider', 'llm.default_model'):
+        text = str(raw_value).strip()
+        return text or None
+
+    if dotted_key == 'generation.skills_section_title':
+        return str(raw_value).strip() or 'Skills'
+
+    return raw_value
+
+
+def _effective_setting_value(
+    dotted_key: str,
+    config_doc: Dict[str, Any],
+    dotenv_values: Dict[str, str],
+) -> Any:
+    env_keys = _SETTINGS_ENV_MAP.get(dotted_key, [])
+
+    for env_key in env_keys:
+        if env_key in os.environ:
+            return _coerce_setting_value(dotted_key, os.environ.get(env_key))
+
+    for env_key in env_keys:
+        if env_key in dotenv_values:
+            return _coerce_setting_value(dotted_key, dotenv_values.get(env_key))
+
+    config_value = _deep_get(config_doc, dotted_key)
+    if config_value is not None:
+        return _coerce_setting_value(dotted_key, config_value)
+
+    return _SETTINGS_DEFAULTS[dotted_key]
+
+
+def _build_settings_response(config_doc: Dict[str, Any], config_path: Path) -> Dict[str, Any]:
+    dotenv_values = _read_dotenv_values(config_path.parent / '.env')
+
+    sources: Dict[str, str] = {}
+    env_keys: Dict[str, Optional[str]] = {}
+    locked: Dict[str, bool] = {}
+    for key in _SETTINGS_DEFAULTS:
+        source_info = _setting_source(key, config_doc, dotenv_values)
+        sources[key] = source_info['source'] or 'default'
+        env_keys[key] = source_info['env_key']
+        locked[key] = sources[key] in ('env', 'dotenv')
+
+    return {
+        'settings': {
+            'llm': {
+                'default_provider': _effective_setting_value('llm.default_provider', config_doc, dotenv_values),
+                'default_model': _effective_setting_value('llm.default_model', config_doc, dotenv_values),
+                'request_timeout_seconds': int(_effective_setting_value('llm.request_timeout_seconds', config_doc, dotenv_values)),
+                'temperature': float(_effective_setting_value('llm.temperature', config_doc, dotenv_values)),
+            },
+            'generation': {
+                'max_skills': int(_effective_setting_value('generation.max_skills', config_doc, dotenv_values)),
+                'max_achievements': int(_effective_setting_value('generation.max_achievements', config_doc, dotenv_values)),
+                'max_publications': int(_effective_setting_value('generation.max_publications', config_doc, dotenv_values)),
+                'skills_section_title': str(_effective_setting_value('generation.skills_section_title', config_doc, dotenv_values) or 'Skills'),
+                'formats': {
+                    'ats_docx': bool(_effective_setting_value('generation.formats.ats_docx', config_doc, dotenv_values)),
+                    'human_pdf': bool(_effective_setting_value('generation.formats.human_pdf', config_doc, dotenv_values)),
+                    'human_docx': bool(_effective_setting_value('generation.formats.human_docx', config_doc, dotenv_values)),
+                },
+            },
+        },
+        'runtime': {
+            'llm': {
+                'provider': None,
+                'model': None,
+            },
+        },
+        'meta': {
+            'sources': sources,
+            'env_keys': env_keys,
+            'locked': locked,
+            'config_path': str(config_path),
+        },
+    }
 
 
 def create_blueprint(deps):
@@ -38,6 +341,82 @@ def create_blueprint(deps):
     _fallback_post_analysis_questions = deps['fallback_post_analysis_questions']
     _generate_post_analysis_questions = deps['generate_post_analysis_questions']
     StatusResponse = deps['StatusResponse']
+
+    @bp.get('/api/settings')
+    def get_settings():
+        """Return effective app settings and per-field precedence metadata."""
+        config_path = _resolve_config_yaml_path()
+        config_doc: Dict[str, Any] = {}
+        if config_path.exists():
+            try:
+                config_doc = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
+            except Exception:
+                config_doc = {}
+
+        response = _build_settings_response(config_doc, config_path)
+        response['runtime']['llm']['provider'] = _provider_name_ref.get('value')
+        response['runtime']['llm']['model'] = _current_model_ref.get('value')
+        response['ok'] = True
+        return jsonify(response)
+
+    @bp.put('/api/settings')
+    def update_settings():
+        """Update persisted config.yaml settings with validation and source-awareness."""
+        body = request.get_json(silent=True) or {}
+        raw_updates = body.get('settings') if isinstance(body.get('settings'), dict) else body
+        if not isinstance(raw_updates, dict):
+            return jsonify({'ok': False, 'error': 'settings payload must be an object'}), 400
+
+        normalized_updates = _normalize_settings_payload(raw_updates)
+        if not normalized_updates:
+            return jsonify({'ok': False, 'error': 'No supported settings were provided'}), 400
+
+        try:
+            validated_updates = _validate_settings_update(normalized_updates)
+        except Exception as exc:
+            logger.exception("Settings validation failed")
+            return jsonify({'ok': False, 'error': str(exc)[:300]}), 400
+
+        config_path = _resolve_config_yaml_path()
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with _SETTINGS_WRITE_LOCK:
+            original_doc: Dict[str, Any] = {}
+            if config_path.exists():
+                try:
+                    original_doc = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
+                except Exception:
+                    logger.exception("Failed to parse config.yaml")
+                    return jsonify({'ok': False, 'error': 'Failed to read configuration — please check file format and try again'}), 500
+
+            updated_doc = dict(original_doc)
+            for dotted_key, value in validated_updates.items():
+                _deep_set(updated_doc, dotted_key, value)
+
+            tmp_path = config_path.with_suffix('.yaml.tmp')
+            backup_path = config_path.with_suffix('.yaml.bak')
+            try:
+                tmp_path.write_text(
+                    yaml.safe_dump(updated_doc, sort_keys=False, default_flow_style=False),
+                    encoding='utf-8',
+                )
+                if config_path.exists():
+                    config_path.replace(backup_path)
+                tmp_path.replace(config_path)
+            except Exception:
+                if tmp_path.exists():
+                    tmp_path.unlink(missing_ok=True)
+                if backup_path.exists() and not config_path.exists():
+                    backup_path.replace(config_path)
+                logger.exception("Failed to persist settings to config.yaml")
+                return jsonify({'ok': False, 'error': 'Failed to save settings — please try again'}), 500
+
+        response = _build_settings_response(updated_doc, config_path)
+        response['runtime']['llm']['provider'] = _provider_name_ref.get('value')
+        response['runtime']['llm']['model'] = _current_model_ref.get('value')
+        response['ok'] = True
+        response['updated_keys'] = sorted(validated_updates.keys())
+        return jsonify(response)
 
     def _usage_prompt_tokens(usage):
         if usage is None:
@@ -214,15 +593,6 @@ def create_blueprint(deps):
         except Exception:
             logger.exception("Failed to get context stats")
             return jsonify({"ok": False, "error": "Failed to retrieve context stats."}), 500
-
-    @bp.get("/api/settings")
-    def get_settings():
-        """Return user-configurable settings exposed to the frontend."""
-        cfg = get_config()
-        return jsonify({
-            "ok": True,
-            "llm_request_timeout": cfg.llm_request_timeout,
-        })
 
     @bp.post("/api/generation-settings")
     def update_generation_settings():
