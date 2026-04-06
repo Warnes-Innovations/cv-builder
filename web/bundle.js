@@ -1990,14 +1990,30 @@
     const helpText = credData?.help_text || "";
     const getKeyUrl = credData?.get_key_url || "";
     const isSet = credData?.is_set || false;
+    const source = credData?.source || "unset";
+    const envVar = credData?.env_var || null;
+    const isLocked = credData?.locked || false;
     const isSetBadge = isSet ? '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#d1fae5;color:#065f46;font-size:0.8em;font-weight:600;">&#10003; Key saved</span>' : '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:0.8em;font-weight:600;">Not configured</span>';
+    let sourceLabel = "";
+    if (source === "env") sourceLabel = `Source: environment variable (${envVar || "locked"})`;
+    else if (source === "dotenv") sourceLabel = `Source: .env file (${envVar || "locked"})`;
+    else if (source === "config") sourceLabel = "Source: config.yaml";
+    const sourceLabelHtml = sourceLabel ? `<span style="margin-left:10px;font-size:0.8em;color:${isLocked ? "#b45309" : "#64748b"};">${escapeHtml2(sourceLabel)}</span>` : "";
     const getKeyLink = getKeyUrl ? `<a href="${escapeHtml2(getKeyUrl)}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;">Get your key &#8599;</a>` : "";
-    content.innerHTML = `<div style="margin-bottom:10px;">  <strong>${escapeHtml2(label)}</strong> ${isSetBadge}` + (getKeyLink ? `  <span style="margin-left:10px;">${getKeyLink}</span>` : "") + `</div>` + (helpText ? `<p style="font-size:0.85em;color:#475569;margin:0 0 12px;">${escapeHtml2(helpText)}</p>` : "");
+    content.innerHTML = `<div style="margin-bottom:10px;">  <strong>${escapeHtml2(label)}</strong> ${isSetBadge}${sourceLabelHtml}` + (getKeyLink ? `  <span style="margin-left:10px;">${getKeyLink}</span>` : "") + `</div>` + (helpText ? `<p style="font-size:0.85em;color:#475569;margin:0 0 12px;">${escapeHtml2(helpText)}</p>` : "");
     if (authType === "api_key") {
       if (keyPanel) {
         keyPanel.style.display = "";
         if (keyInput) {
-          keyInput.placeholder = isSet ? "Enter new key to replace the saved one" : "Paste your API key here";
+          if (isLocked) {
+            keyInput.disabled = true;
+            keyInput.placeholder = "Key managed by environment variable \u2014 edit your shell/env config to change it";
+            keyInput.style.opacity = "0.6";
+          } else {
+            keyInput.disabled = false;
+            keyInput.style.opacity = "";
+            keyInput.placeholder = isSet ? "Enter new key to replace the saved one" : "Paste your API key here";
+          }
           keyInput.dataset.provider = provider;
         }
       }
