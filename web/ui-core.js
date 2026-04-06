@@ -1756,7 +1756,7 @@ async function setModel(model, provider) {
       currentModelProvider: effectiveProvider || null,
       currentModelName: model || null,
     });
-    await _refreshCopilotAuthPanel();
+    await _refreshCopilotAuthStatus();
     await testCurrentModel();
   } catch (e) {
     log.error('Failed to switch model:', e);
