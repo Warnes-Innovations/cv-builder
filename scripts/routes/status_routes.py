@@ -376,25 +376,44 @@ _PROVIDER_CREDENTIAL_MAP: Dict[str, Dict[str, str]] = {
 }
 
 
-def _credential_is_set(provider: str, config_doc: Dict[str, Any]) -> bool:
-    """Return True if a usable credential exists for the given provider.
+def _credential_source(
+    provider: str,
+    config_doc: Dict[str, Any],
+    dotenv_values: Dict[str, str],
+) -> Dict[str, Any]:
+    """Return credential source info for a provider.
 
-    Checks env vars first (highest priority), then config.yaml api_keys.*.
-    For device_flow / cli / none providers always returns False so the wizard
-    renders appropriate guidance rather than a key-is-set badge.
+    Returns a dict with:
+      is_set  (bool)  — True when a non-empty credential exists
+      source  (str)   — 'env' | 'dotenv' | 'config' | 'unset'
+      env_var (str|None) — the specific env-var name when source is env/dotenv
+
+    device_flow / cli / none providers always return is_set=False / source='unset'
+    so the wizard renders auth-type guidance rather than a key-is-set badge.
     """
     meta = _PROVIDER_CREDENTIAL_MAP.get(provider)
     if not meta or meta["auth_type"] in ("device_flow", "cli", "none"):
-        return False
+        return {"is_set": False, "source": "unset", "env_var": None}
+
     env_var = meta["env_var"]
     if env_var and os.environ.get(env_var, "").strip():
-        return True
+        return {"is_set": True, "source": "env", "env_var": env_var}
+
+    if env_var and dotenv_values.get(env_var, "").strip():
+        return {"is_set": True, "source": "dotenv", "env_var": env_var}
+
     config_key = meta["config_key"]
     if config_key:
         stored = _deep_get(config_doc, config_key, "")
         if isinstance(stored, str) and stored.strip():
-            return True
-    return False
+            return {"is_set": True, "source": "config", "env_var": None}
+
+    return {"is_set": False, "source": "unset", "env_var": None}
+
+
+# Keep a thin wrapper for callers that only need the boolean.
+def _credential_is_set(provider: str, config_doc: Dict[str, Any]) -> bool:
+    return _credential_source(provider, config_doc, {})["is_set"]
 
 
 def _write_api_key_to_config(config_path: Path, config_key: str, value: str, env_var: str) -> None:
@@ -579,8 +598,16 @@ def create_blueprint(deps):
           {
             "ok": true,
             "providers": {
-              "github":       {"auth_type": "api_key", "is_set": true,  "label": "...", "get_key_url": "..."},
-              "copilot-oauth":{"auth_type": "device_flow", "is_set": false, ...},
+              "github": {
+                "auth_type": "api_key",
+                "is_set":    true,
+                "source":    "env",       // 'env' | 'dotenv' | 'config' | 'unset'
+                "env_var":   "GITHUB_MODELS_TOKEN",  // set when source is env/dotenv
+                "locked":    true,        // true when controlled by env var or .env
+                "label":     "...",
+                "get_key_url": "...",
+                "help_text": "..."
+              },
               ...
             }
           }
@@ -593,11 +620,17 @@ def create_blueprint(deps):
             except Exception:
                 logger.warning("Could not parse config.yaml for credential status check")
 
+        dotenv_values = _read_dotenv_values(config_path.parent / '.env')
+
         providers: Dict[str, Any] = {}
         for provider, meta in _PROVIDER_CREDENTIAL_MAP.items():
+            cred = _credential_source(provider, config_doc, dotenv_values)
             providers[provider] = {
                 "auth_type":   meta["auth_type"],
-                "is_set":      _credential_is_set(provider, config_doc),
+                "is_set":      cred["is_set"],
+                "source":      cred["source"],
+                "env_var":     cred["env_var"],
+                "locked":      cred["source"] in ("env", "dotenv"),
                 "label":       meta["label"],
                 "get_key_url": meta["get_key_url"],
                 "help_text":   meta["help_text"],

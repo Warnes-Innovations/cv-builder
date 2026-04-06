@@ -193,6 +193,9 @@ class TestCredentialsStatusRoute(unittest.TestCase):
         for provider, info in data['providers'].items():
             self.assertIn('auth_type', info)
             self.assertIn('is_set', info)
+            self.assertIn('source', info)
+            self.assertIn('env_var', info)
+            self.assertIn('locked', info)
             self.assertIn('label', info)
             self.assertIn('get_key_url', info)
             self.assertIn('help_text', info)
@@ -211,13 +214,49 @@ class TestCredentialsStatusRoute(unittest.TestCase):
         with patch.dict(os.environ, {'GITHUB_MODELS_TOKEN': '', 'GITHUB_TOKEN': ''}, clear=False):
             r = self._get_status()
         data = json.loads(r.data)
-        self.assertFalse(data['providers']['github']['is_set'])
+        info = data['providers']['github']
+        self.assertFalse(info['is_set'])
+        self.assertEqual(info['source'], 'unset')
+        self.assertIsNone(info['env_var'])
+        self.assertFalse(info['locked'])
 
     def test_is_set_true_from_env_var(self):
         with patch.dict(os.environ, {'OPENAI_API_KEY': 'sk-present'}, clear=False):
             r = self._get_status()
         data = json.loads(r.data)
-        self.assertTrue(data['providers']['openai']['is_set'])
+        info = data['providers']['openai']
+        self.assertTrue(info['is_set'])
+        self.assertEqual(info['source'], 'env')
+        self.assertEqual(info['env_var'], 'OPENAI_API_KEY')
+        self.assertTrue(info['locked'])
+
+    def test_is_set_true_from_config(self):
+        self.config_path.write_text(
+            yaml.safe_dump({'api_keys': {'github_token': 'ghp_from_config'}}),
+            encoding='utf-8',
+        )
+        env_patch = {'GITHUB_MODELS_TOKEN': '', 'GITHUB_TOKEN': ''}
+        with patch.dict(os.environ, env_patch, clear=False):
+            r = self._get_status()
+        data = json.loads(r.data)
+        info = data['providers']['github']
+        self.assertTrue(info['is_set'])
+        self.assertEqual(info['source'], 'config')
+        self.assertIsNone(info['env_var'])
+        self.assertFalse(info['locked'])
+
+    def test_is_set_true_from_dotenv(self):
+        dotenv_path = self.config_path.parent / '.env'
+        dotenv_path.write_text('OPENAI_API_KEY=sk-dotenv-test\n', encoding='utf-8')
+        env_patch = {'OPENAI_API_KEY': ''}  # env cleared so dotenv path is hit
+        with patch.dict(os.environ, env_patch, clear=False):
+            r = self._get_status()
+        data = json.loads(r.data)
+        info = data['providers']['openai']
+        self.assertTrue(info['is_set'])
+        self.assertEqual(info['source'], 'dotenv')
+        self.assertEqual(info['env_var'], 'OPENAI_API_KEY')
+        self.assertTrue(info['locked'])
 
 
 # ---------------------------------------------------------------------------
