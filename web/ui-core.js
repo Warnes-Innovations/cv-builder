@@ -789,72 +789,107 @@ let _modelWizardStep = 1;
 let _modelWizardSelectedProvider = null;
 
 // Static background information shown on provider selector cards (Step 1).
-// freeTier: bool  — whether a no-cost entry tier is available for the API
-// confidential: bool — whether the provider commits not to train on API request data
-// note: brief plain-text description shown in the ⓘ tooltip
+// freeTier    — whether a no-cost API entry tier is available
+// confidential — whether the provider commits not to train on API request data
+// note        — one-sentence plain-text description
+// homepage    — provider landing page URL
+// pricingUrl  — pricing / plans page URL
+// privacyUrl  — privacy policy or data-use policy URL
 const _PROVIDER_INFO = {
   'github': {
-    freeTier: true,
+    freeTier:    true,
     confidential: true,
-    note: 'GitHub Models API powered by Azure AI. Free tier available (rate-limited). '
-        + 'API requests are not used for model training. Data processed by GitHub/Microsoft.',
+    note:        'GitHub Models API powered by Azure AI. Free tier available (rate-limited). API requests are not used for model training.',
+    homepage:    'https://github.com/marketplace/models',
+    pricingUrl:  'https://github.com/features/models',
+    privacyUrl:  'https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement',
   },
   'copilot': {
-    freeTier: false,
+    freeTier:    false,
     confidential: true,
-    note: 'GitHub Copilot — same Azure-hosted models as the github provider, authenticated '
-        + 'via a Copilot subscription. Requires a GitHub Copilot Individual/Business plan. '
-        + 'API requests are not used for training.',
+    note:        'GitHub Copilot — same Azure-hosted models as the github provider. Requires a paid Copilot Individual/Business subscription. API requests are not used for training.',
+    homepage:    'https://github.com/features/copilot',
+    pricingUrl:  'https://github.com/features/copilot#pricing',
+    privacyUrl:  'https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement',
   },
   'copilot-oauth': {
-    freeTier: false,
+    freeTier:    false,
     confidential: true,
-    note: 'GitHub Copilot via browser OAuth — no API key required, authenticates with your '
-        + 'GitHub account. Requires an active Copilot subscription. '
-        + 'API requests are not used for training.',
+    note:        'GitHub Copilot via browser OAuth — authenticates with your GitHub account. Requires an active Copilot subscription. No API key stored.',
+    homepage:    'https://github.com/features/copilot',
+    pricingUrl:  'https://github.com/features/copilot#pricing',
+    privacyUrl:  'https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement',
   },
   'copilot-sdk': {
-    freeTier: false,
+    freeTier:    false,
     confidential: true,
-    note: 'GitHub Copilot via the GitHub CLI (gh). Requires an active Copilot subscription '
-        + 'and gh auth login to be run first. No separate API key needed. '
-        + 'API requests are not used for training.',
+    note:        'GitHub Copilot via the GitHub CLI (gh auth login). Requires an active Copilot subscription. No separate API key needed.',
+    homepage:    'https://cli.github.com/',
+    pricingUrl:  'https://github.com/features/copilot#pricing',
+    privacyUrl:  'https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement',
   },
   'openai': {
-    freeTier: false,
+    freeTier:    false,
     confidential: true,
-    note: 'OpenAI — creator of the GPT model family. Pay-as-you-go pricing; no free API tier '
-        + '(separate from the ChatGPT free plan). '
-        + 'API data is not used for training by default per OpenAI\'s API data policy.',
+    note:        'OpenAI — creator of the GPT model family. Pay-as-you-go pricing; no free API tier. API data is not used for training by default per OpenAI API policy.',
+    homepage:    'https://openai.com',
+    pricingUrl:  'https://openai.com/api/pricing',
+    privacyUrl:  'https://openai.com/policies/privacy-policy',
   },
   'anthropic': {
-    freeTier: false,
+    freeTier:    false,
     confidential: true,
-    note: 'Anthropic — creator of the Claude model family. Pay-as-you-go pricing; no free API tier. '
-        + 'API requests are not used to train models. Strong privacy and safety commitments.',
+    note:        'Anthropic — creator of the Claude model family. Pay-as-you-go pricing; no free API tier. API requests are not used to train models.',
+    homepage:    'https://anthropic.com',
+    pricingUrl:  'https://www.anthropic.com/pricing',
+    privacyUrl:  'https://www.anthropic.com/privacy',
   },
   'gemini': {
-    freeTier: true,
+    freeTier:    true,
     confidential: false,
-    note: 'Google Gemini — Google\'s model family accessed via Google AI Studio / Vertex AI. '
-        + 'Free tier available (with rate limits). '
-        + 'By default, prompts sent to the free-tier API may be reviewed by Google to improve products; '
-        + 'paid Vertex AI tier offers confidentiality guarantees.',
+    note:        'Google Gemini — Google AI Studio / Vertex AI. Free tier available. Free-tier prompts may be reviewed by Google; paid Vertex AI offers full confidentiality.',
+    homepage:    'https://ai.google.dev',
+    pricingUrl:  'https://ai.google.dev/pricing',
+    privacyUrl:  'https://policies.google.com/privacy',
   },
   'groq': {
-    freeTier: true,
+    freeTier:    true,
     confidential: false,
-    note: 'Groq — ultra-fast inference on open-source models (Llama, Mixtral, etc.) via custom hardware. '
-        + 'Generous free tier available. '
-        + 'Review Groq\'s privacy policy; data retention and training policies apply.',
+    note:        'Groq — ultra-fast inference on open-source models (Llama, Mixtral) via custom LPU hardware. Generous free tier. Review Groq privacy policy for data retention details.',
+    homepage:    'https://groq.com',
+    pricingUrl:  'https://groq.com/pricing',
+    privacyUrl:  'https://groq.com/privacy-policy',
   },
   'local': {
-    freeTier: true,
+    freeTier:    true,
     confidential: true,
-    note: 'Local model running entirely on your machine. No data leaves your device. '
-        + 'Completely private. No API key or account required.',
+    note:        'Local model running entirely on your machine. No data leaves your device. Completely private. No API key or account required.',
+    homepage:    null,
+    pricingUrl:  null,
+    privacyUrl:  null,
   },
 };
+
+// Build the HTML content for a provider info BS5 popover.
+function _providerInfoPopoverContent(info) {
+  const tierIcon    = info.freeTier     ? '&#10003; Free tier available'    : '&#10007; Paid only (no free API tier)';
+  const privIcon    = info.confidential ? '&#128274; Data confidential'     : '&#9888;&#65039; Data may be reviewed/retained';
+  const tierColor   = info.freeTier     ? '#065f46' : '#92400e';
+  const privColor   = info.confidential ? '#1e40af' : '#92400e';
+
+  const links = [
+    info.homepage   ? `<a href="${info.homepage}"   target="_blank" rel="noopener noreferrer">Homepage</a>`          : '',
+    info.pricingUrl ? `<a href="${info.pricingUrl}" target="_blank" rel="noopener noreferrer">Pricing &amp; plans</a>` : '',
+    info.privacyUrl ? `<a href="${info.privacyUrl}" target="_blank" rel="noopener noreferrer">Privacy policy</a>`      : '',
+  ].filter(Boolean);
+
+  return '<div style="min-width:220px;max-width:300px;font-size:0.82em;line-height:1.5;">'
+    + `<div style="margin-bottom:6px;"><span style="color:${tierColor};">${tierIcon}</span></div>`
+    + `<div style="margin-bottom:8px;"><span style="color:${privColor};">${privIcon}</span></div>`
+    + `<p style="margin:0 0 8px;color:#374151;">${escapeHtml(info.note)}</p>`
+    + (links.length ? '<ul style="margin:0;padding-left:16px;">' + links.map(l => `<li>${l}</li>`).join('') + '</ul>' : '')
+    + '</div>';
+}
 
 function _getModelPrefsFromStorage() {
   try {
@@ -1320,32 +1355,48 @@ function _renderProviderSelector() {
     _selectedModelProviders = new Set([_modelWizardSelectedProvider]);
   }
 
+  // Dispose any existing BS5 popovers before clearing the list.
+  listEl.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
+    window.bootstrap?.Popover?.getInstance(el)?.dispose();
+  });
+
   listEl.innerHTML = '';
   providers.forEach(provider => {
     const checked = provider === _modelWizardSelectedProvider;
     const sourceLabel = _providerStageLabel(provider, capableSet);
     const info = _PROVIDER_INFO[provider] || null;
 
-    // Build tooltip text for the ⓘ button.
-    let infoTitle = '';
-    if (info) {
-      const tierTag   = info.freeTier     ? 'Free tier available'    : 'Paid only (no free API tier)';
-      const privTag   = info.confidential ? 'Data confidential'      : 'Data may be reviewed/retained';
-      infoTitle = `${tierTag} | ${privTag}\n\n${info.note}`;
-    }
-    const infoBtn = infoTitle
-      ? `<button type="button" title="${escapeHtml(infoTitle)}" aria-label="Provider info" ` +
-        `style="background:none;border:none;cursor:help;color:#64748b;font-size:0.9em;padding:0 1px;line-height:1;vertical-align:middle;" ` +
-        `onclick="event.preventDefault();">ⓘ</button>`
-      : '';
-
     const label = document.createElement('label');
     label.style.cssText = 'display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:0.82em; background:#fff; cursor:pointer;';
     label.innerHTML =
       `<input type="radio" name="model-provider-choice" value="${escapeHtml(provider)}" ${checked ? 'checked' : ''} style="margin:0;" />` +
       `<span>${escapeHtml(_providerDisplayLabel(provider))}</span>` +
-      `<span style="color:#64748b; font-size:0.8em;">(${escapeHtml(sourceLabel)})</span>` +
-      infoBtn;
+      `<span style="color:#64748b; font-size:0.8em;">(${escapeHtml(sourceLabel)})</span>`;
+
+    // Append a ⓘ button wired to a BS5 HTML popover so links inside are clickable.
+    if (info) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.setAttribute('aria-label', 'Provider info');
+      btn.setAttribute('data-bs-toggle', 'popover');
+      btn.setAttribute('data-bs-trigger', 'click');
+      btn.setAttribute('data-bs-placement', 'right');
+      btn.setAttribute('data-bs-html', 'true');
+      btn.setAttribute('data-bs-container', 'body');
+      btn.setAttribute('data-bs-content', _providerInfoPopoverContent(info));
+      btn.style.cssText = 'background:none;border:none;cursor:pointer;color:#64748b;font-size:0.9em;padding:0 1px;line-height:1;vertical-align:middle;';
+      btn.textContent = 'ⓘ';
+      // Prevent the radio-label click from propagating to the radio button.
+      btn.addEventListener('click', e => e.stopPropagation());
+      label.appendChild(btn);
+
+      // Initialise after append — BS5 must find the element in the DOM.
+      requestAnimationFrame(() => {
+        if (window.bootstrap?.Popover) {
+          new window.bootstrap.Popover(btn, { sanitize: false });
+        }
+      });
+    }
 
     const checkbox = label.querySelector('input');
     checkbox.addEventListener('change', () => {
