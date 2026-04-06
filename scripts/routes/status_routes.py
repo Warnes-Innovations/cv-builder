@@ -26,7 +26,7 @@ import yaml
 from utils.config import get_config
 from utils.conversation_manager import Phase
 from utils.llm_client import PROVIDER_MODELS
-from utils.provider_registry import PROVIDER_REGISTRY
+from utils.provider_registry import DISPLAY_FIELDS, PROVIDER_REGISTRY
 from utils.session_data_view import SessionDataView
 
 
@@ -533,7 +533,6 @@ def create_blueprint(deps):
             }
           }
         """
-        from utils.provider_registry import DISPLAY_FIELDS
         providers = {
             name: {k: entry[k] for k in DISPLAY_FIELDS}
             for name, entry in PROVIDER_REGISTRY.items()

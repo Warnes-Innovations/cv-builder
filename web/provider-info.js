@@ -29,7 +29,8 @@ let _cache = null;
 
 /**
  * Fetch provider display metadata from the server and cache it.
- * Safe to call multiple times — only one request is ever made.
+ * Safe to call multiple times — returns the cache if populated, retries if
+ * the initial fetch failed (non-fatal, popovers will just not appear).
  * @returns {Promise<Record<string, object>|null>}
  */
 export async function loadProviderInfo() {
