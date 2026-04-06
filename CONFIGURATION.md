@@ -35,7 +35,15 @@ Click the provider badge in the top-right of the UI to open the wizard. The four
 3. **Model + Test** — select a model and verify the connection
 4. **Complete** — you're done
 
-The wizard saves your key to the `api_keys:` section of `config.yaml` and applies it immediately (no restart needed).
+The wizard saves your key to the `api_keys:` section of `config.yaml` and applies it immediately
+to the running process via `os.environ` — no restart needed.
+
+> **Single-worker limitation:** The immediate `os.environ` effect is process-local. cv-builder is
+> designed to run as a single-worker server (the only supported mode), so this is always correct.
+> If the server is ever run with multiple workers (e.g. `gunicorn -w 4`), only the worker that
+> handled the save request would pick up the new value; other workers would need a restart to read
+> the updated `config.yaml`. Do not move to a multi-worker deployment without revisiting this
+> behaviour.
 
 **Option B — Edit `config.yaml` directly:**
 

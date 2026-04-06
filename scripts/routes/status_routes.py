@@ -445,7 +445,17 @@ def _write_api_key_to_config(config_path: Path, config_key: str, value: str, env
                 backup_path.replace(config_path)
             raise
 
-    # Apply immediately to the running process (no restart required).
+    # Apply immediately to the running process so the key is usable without a
+    # server restart (e.g. for the Step 3 "Test connection" in the wizard).
+    #
+    # LIMITATION — process-local only:
+    #   os.environ changes are visible only in the current OS process.  In a
+    #   single-worker deployment (the only supported mode for this local app)
+    #   this is always correct.  If the server is ever run with multiple
+    #   workers (e.g. gunicorn -w 4), each worker would need its own restart
+    #   to pick up the new value; the config.yaml write above is the durable
+    #   record and will be read correctly on any restart.  Do not move to a
+    #   multi-worker deployment without revisiting this behaviour.
     if env_var:
         os.environ[env_var] = value
 
