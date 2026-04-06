@@ -93,7 +93,9 @@ describe('openModelModal', () => {
         <div id="model-progress-step-1"></div>
         <div id="model-progress-step-2"></div>
         <div id="model-progress-step-3"></div>
+        <div id="model-progress-step-4"></div>
         <div id="model-step-provider"></div>
+        <div id="model-step-auth"></div>
         <div id="model-step-models"></div>
         <div id="model-step-success"></div>
         <div id="model-models-loading"></div>
@@ -246,7 +248,8 @@ describe('openModelModal', () => {
     })
 
     await mod.openModelModal()
-    await mod.nextWizardStep()
+    await mod.nextWizardStep()  // step 1 → 2 (auth)
+    await mod.nextWizardStep()  // step 2 → 3 (models)
 
     const input = document.querySelector('tr.model-filter-row input')
     expect(input).not.toBeNull()
@@ -342,7 +345,8 @@ describe('openModelModal', () => {
     })
 
     await mod.openModelModal()
-    await mod.nextWizardStep()
+    await mod.nextWizardStep()  // step 1 → 2 (auth)
+    await mod.nextWizardStep()  // step 2 → 3 (models)
 
     const notesCell = document.querySelector('#model-table-body tr td:last-child')
     expect(notesCell).not.toBeNull()
@@ -471,7 +475,7 @@ describe('openModelModal', () => {
     await mod.testCurrentModel()
 
     expect(document.getElementById('model-step-success').style.display).toBe('')
-    expect(document.getElementById('model-wizard-step-label').textContent).toContain('Step 3 of 3')
+    expect(document.getElementById('model-wizard-step-label').textContent).toContain('Step 4 of 4: Complete')
     expect(document.getElementById('model-success-summary').textContent).toContain('123ms')
   })
 })
