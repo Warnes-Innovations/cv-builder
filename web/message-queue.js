@@ -114,7 +114,7 @@ function appendMessage(type, text) {
  * @param {Function} [retryFn]  - Called when Retry is clicked; omit for non-retryable errors
  * @param {string}   [retryLabel] - Retry button label (default 'Retry')
  */
-function appendRetryMessage(text, retryFn, retryLabel = 'Retry') {
+function appendRetryMessage(text, retryFn, retryLabel = 'Retry', cancelFn = null) {
   const conversation = document.getElementById('conversation');
   const message = document.createElement('div');
   message.className = 'message system';
@@ -128,9 +128,16 @@ function appendRetryMessage(text, retryFn, retryLabel = 'Retry') {
   if (typeof retryFn === 'function') {
     const btn = document.createElement('button');
     btn.textContent = retryLabel;
-    btn.style.cssText = 'margin-top:8px;padding:6px 14px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;display:block;';
+    btn.style.cssText = 'margin-top:8px;padding:6px 14px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;display:inline-block;margin-right:8px;';
     btn.onclick = () => { message.remove(); retryFn(); };
     message.appendChild(btn);
+  }
+  if (typeof cancelFn === 'function') {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Stop retries';
+    cancelBtn.style.cssText = 'margin-top:8px;padding:6px 14px;background:#6b7280;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;display:inline-block;';
+    cancelBtn.onclick = () => { message.remove(); cancelFn(); };
+    message.appendChild(cancelBtn);
   }
   conversation.appendChild(message);
   conversation.scrollTop = conversation.scrollHeight;

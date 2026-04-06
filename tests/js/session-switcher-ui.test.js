@@ -97,6 +97,23 @@ describe('_renderSavedSessionRows', () => {
     expect(_renderSavedSessionRows([])).toContain('No saved sessions found')
   })
 
+  it('parses and displays creation date from session directory name', () => {
+    const formatter = vi.fn(s => `FMT:${s || ''}`)
+    vi.stubGlobal('formatSessionTimestamp', formatter)
+
+    const html = _renderSavedSessionRows([
+      {
+        path: '/tmp/sessions/session_20260331_082933/session.json',
+        position_name: 'Saved Job',
+        phase: 'rewrite',
+        timestamp: '',
+      },
+    ])
+
+    expect(formatter).toHaveBeenCalledWith('2026-03-31T08:29:33Z')
+    expect(html).toContain('Created FMT:2026-03-31T08:29:33Z')
+  })
+
   it('renders rename/delete buttons when includeManagement=true', () => {
     const html = _renderSavedSessionRows(
       [{ path: '/tmp/s.json', position_name: 'Saved Job', phase: 'rewrite', timestamp: '' }],

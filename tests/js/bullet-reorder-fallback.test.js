@@ -70,4 +70,35 @@ describe('showBulletReorder fallback behavior', () => {
     // Suggested-order button should be absent when optional data unavailable.
     expect(document.getElementById('use-llm-order-btn')).toBeNull()
   })
+
+  it('prefers LLM-provided bullet order from pending recommendations', async () => {
+    window.pendingRecommendations = {
+      experience_recommendations: [{
+        id: 'exp_001',
+        bullet_order: {
+          order: [1, 0],
+          reasoning: 'Lead with the stronger impact bullet.',
+          ats_impact: 'Puts the matching keyword earlier.',
+          page_length_impact: 'none',
+        },
+      }],
+    }
+
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        experience: {
+          achievements: ['Shipped feature X', 'Reduced latency by 30%'],
+        },
+      }),
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    await showBulletReorder('exp_001', 'Senior Engineer')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(document.getElementById('use-llm-order-btn')).not.toBeNull()
+    expect(document.getElementById('bullet-order-ai-note').textContent).toContain('Lead with the stronger impact bullet.')
+  })
 })

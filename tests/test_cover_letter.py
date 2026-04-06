@@ -219,7 +219,7 @@ class TestCoverLetterGenerate(unittest.TestCase):
 
         self.assertEqual(res.status_code, 500)
         self.assertFalse(data['ok'])
-        self.assertIn('LLM error', data['error'])
+        self.assertIn('LLM request failed', data['error'])
 
     def test_generate_stores_params(self):
         """cover_letter_params is stored in session state with correct fields."""

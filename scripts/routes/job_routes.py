@@ -9,14 +9,20 @@ Job/chat routes — job submission, URL fetch, file upload, load job file,
 send message, do action, back-to-phase, re-run-phase.
 """
 import dataclasses
+import ipaddress
 import logging
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
+import io as _io
+import json as _json
+
 import requests as _requests
 from bs4 import BeautifulSoup
 from flask import Blueprint, jsonify, request
+from markitdown import MarkItDown as _MarkItDown
+from markitdown import StreamInfo as _StreamInfo
 from werkzeug.utils import safe_join
 
 logger = logging.getLogger(__name__)
@@ -89,6 +95,20 @@ def create_blueprint(deps):
             parsed = urlparse(url)
             if not all([parsed.scheme, parsed.netloc]):
                 return jsonify({"error": "Invalid URL format"}), 400
+
+            if parsed.scheme not in ("http", "https"):
+                return jsonify({"error": "Only http and https URLs are supported"}), 400
+
+            # Block loopback and private-range addresses to prevent SSRF.
+            hostname = parsed.hostname or ""
+            if hostname.lower() in ("localhost", "ip6-localhost", "ip6-loopback"):
+                return jsonify({"error": "URL host not permitted"}), 400
+            try:
+                addr = ipaddress.ip_address(hostname)
+                if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
+                    return jsonify({"error": "URL host not permitted"}), 400
+            except ValueError:
+                pass  # hostname is a name, not a bare IP — allow normal DNS resolution
 
             domain = parsed.netloc.lower()
 
@@ -174,68 +194,110 @@ def create_blueprint(deps):
             content_type = response.headers.get('content-type', '').lower()
             logger.debug("Content type: %s", content_type)
 
+            page_title = None  # populated by the HTML branch; used by _infer_position_name
             if 'text/plain' in content_type:
                 job_text = response.text
             elif 'text/html' in content_type or 'html' in content_type:
                 soup = BeautifulSoup(response.text, 'html.parser')
 
-                import json as _json
-                json_ld_text = None
+                # --- Structured metadata extraction (before any tag removal) ---
+                json_ld_blobs: list  = []
+                json_ld_text         = None
+                json_ld_title        = None
                 for script_tag in soup.find_all('script', type='application/ld+json'):
                     try:
                         ld_data = _json.loads(script_tag.string or '')
-                        desc = ld_data.get('description') if isinstance(ld_data, dict) else None
-                        if desc and len(desc) > 100:
-                            json_ld_text = desc
-                            logger.debug("Found JSON-LD job description (%d chars)", len(json_ld_text))
-                            break
+                        if not isinstance(ld_data, dict):
+                            continue
+                        json_ld_blobs.append(ld_data)
+                        if json_ld_title is None:
+                            for title_key in ('title', 'name'):
+                                v = ld_data.get(title_key)
+                                if v and isinstance(v, str) and 3 < len(v) < 200:
+                                    json_ld_title = v
+                                    logger.debug("Found JSON-LD title: %s", json_ld_title)
+                                    break
+                        if json_ld_text is None:
+                            desc = ld_data.get('description')
+                            if desc and len(desc) > 100:
+                                json_ld_text = desc
+                                logger.debug("Found JSON-LD job description (%d chars)", len(json_ld_text))
                     except Exception:
                         pass
 
+                og_title = None
                 meta_desc_text = None
                 for meta in soup.find_all('meta'):
                     prop = meta.get('property', '') or meta.get('name', '')
-                    if prop in ('og:description', 'description'):
+                    if prop == 'og:title' and og_title is None:
+                        og_title = meta.get('content', '') or None
+                        logger.debug("Found og:title: %s", og_title)
+                    elif prop in ('og:description', 'description') and meta_desc_text is None:
                         content = meta.get('content', '')
                         if len(content) > 100:
                             meta_desc_text = content
                             logger.debug("Found meta description (%d chars)", len(meta_desc_text))
-                            break
 
-                for script in soup(["script", "style", "nav", "header", "footer"]):
-                    script.decompose()
+                html_title = (soup.title.string.strip() if soup.title and soup.title.string else None)
+                logger.debug("HTML <title>: %s", html_title)
 
-                job_selectors = [
-                    '.job-description',
-                    '.job-content',
-                    '.posting-description',
-                    '.description',
-                    '[data-testid="job-description"]',
-                    '.job-details'
+                # page_title priority: JSON-LD title > og:title > HTML <title>
+                page_title = json_ld_title or og_title or html_title
+
+                # --- Strip noise elements before text extraction ---
+                _noise_tags = [
+                    "script", "style", "nav", "header", "footer",
+                    "noscript", "aside", "iframe", "button", "form",
                 ]
+                for tag in soup(_noise_tags):
+                    tag.decompose()
+                for tag in soup.find_all(attrs={"aria-hidden": "true"}):
+                    tag.decompose()
+                for tag in soup.find_all(attrs={"role": "navigation"}):
+                    tag.decompose()
 
-                job_content = None
-                for selector in job_selectors:
-                    elements = soup.select(selector)
-                    if elements:
-                        job_content = elements[0]
-                        break
+                _stream     = _io.BytesIO(str(soup).encode('utf-8'))
+                _stream_info = _StreamInfo(mimetype='text/html', charset='utf-8', url=url)
+                html_text   = _MarkItDown().convert(_stream, stream_info=_stream_info).text_content
 
-                if not job_content:
-                    job_content = soup.find('main') or soup.find('article') or soup.find('body') or soup
+                # Detect SPA-style noise: body text is abnormally large relative to
+                # a clean job page (>50 KB) but we have structured JSON-LD — means the
+                # page is a client-rendered SPA (e.g. Eightfold.ai) and the extracted
+                # text is dominated by embedded JSON/CSS configs, not actual content.
+                _SPA_NOISE_THRESHOLD = 50_000
+                _body_is_thin   = len(html_text.strip()) < 200
+                _body_is_noisy  = json_ld_text and len(html_text) > _SPA_NOISE_THRESHOLD
 
-                job_text = job_content.get_text()
-
-                lines = (line.strip() for line in job_text.splitlines())
-                job_text = '\n'.join(line for line in lines if line)
-
-                if len(job_text.strip()) < 200:
+                if _body_is_thin or _body_is_noisy:
+                    # Page body too thin or full of SPA noise — prefer JSON-LD
                     if json_ld_text:
                         job_text = json_ld_text
-                        logger.debug("Using JSON-LD structured data (body text was too short)")
+                        if _body_is_noisy:
+                            logger.info(
+                                "SPA noise detected (%d chars body) — using JSON-LD structured data",
+                                len(html_text),
+                            )
+                        else:
+                            logger.debug("Using JSON-LD structured data (body text was too short)")
                     elif meta_desc_text:
                         job_text = meta_desc_text
                         logger.debug("Using meta description (body text was too short)")
+                    else:
+                        job_text = html_text
+                elif json_ld_blobs:
+                    # Both sources available — prepend structured data for the LLM
+                    blobs_md = "\n\n".join(
+                        _json.dumps(b, indent=2, ensure_ascii=False) for b in json_ld_blobs
+                    )
+                    job_text = (
+                        "## Structured Job Data (JSON-LD)\n\n"
+                        + blobs_md
+                        + "\n\n---\n\n## Page Content\n\n"
+                        + html_text
+                    )
+                    logger.debug("Prepended %d JSON-LD blob(s) to page content", len(json_ld_blobs))
+                else:
+                    job_text = html_text
 
                 if len(job_text.strip()) < 100:
                     return jsonify({
@@ -256,7 +318,10 @@ def create_blueprint(deps):
 
             with entry.lock:
                 conversation.add_job_description(job_text)
-                conversation.state["position_name"] = _infer_position_name(job_text)
+                conversation.state["position_name"] = _infer_position_name(
+                    job_text, page_title=page_title
+                )
+                conversation.state["job_url"] = url
             session_registry.touch(sid)
             logger.info("Fetched %d chars from %s", len(job_text), domain)
 
@@ -313,31 +378,31 @@ def create_blueprint(deps):
                 text = raw.decode('utf-8', errors='replace')
 
             elif any(filename_lower.endswith(ext) for ext in ('.html', '.htm')):
-                soup = BeautifulSoup(raw, 'html.parser')
-                for tag in soup(['script', 'style', 'head', 'nav', 'footer']):
-                    tag.decompose()
-                text = soup.get_text(separator='\n')
+                _soup = BeautifulSoup(raw, 'html.parser')
+                for _tag in _soup(['script', 'style', 'head', 'nav', 'footer', 'noscript']):
+                    _tag.decompose()
+                _stream      = _io.BytesIO(str(_soup).encode('utf-8'))
+                _stream_info = _StreamInfo(mimetype='text/html', charset='utf-8')
+                text         = _MarkItDown().convert(_stream, stream_info=_stream_info).text_content
 
             elif filename_lower.endswith('.pdf'):
-                import io
                 try:
                     from pypdf import PdfReader
-                    reader = PdfReader(io.BytesIO(raw))
+                    reader = PdfReader(_io.BytesIO(raw))
                     pages = [page.extract_text() or '' for page in reader.pages]
                     text = '\n\n'.join(pages)
                 except ImportError:
                     return jsonify({"error": "PDF support not available. Run: pip install pypdf"}), 500
 
             elif filename_lower.endswith('.docx'):
-                import io
                 try:
                     import mammoth
-                    result = mammoth.extract_raw_text(io.BytesIO(raw))
+                    result = mammoth.extract_raw_text(_io.BytesIO(raw))
                     text = result.value
                 except ImportError:
                     try:
                         from docx import Document
-                        doc = Document(io.BytesIO(raw))
+                        doc = Document(_io.BytesIO(raw))
                         text = '\n'.join(p.text for p in doc.paragraphs)
                     except ImportError:
                         return jsonify({"error": "DOCX support not available. Run: pip install python-docx"}), 500

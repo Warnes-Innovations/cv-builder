@@ -27,9 +27,11 @@ import json
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import threading
+import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -313,9 +315,25 @@ def _frontend_bundle_is_outdated(project_root: Optional[Path] = None) -> bool:
 
 
 def _ensure_frontend_bundle_current(project_root: Optional[Path] = None) -> bool:
-    """Rebuild web/bundle.js when frontend sources are newer than the bundle."""
+    """Rebuild web/bundle.js when frontend sources are newer than the bundle.
+
+    In CI environments (CI=true) the bundle is always committed current and
+    git-checkout timestamps are unreliable, so the rebuild is skipped.
+    The rebuild is also skipped when node_modules is absent (no npm install
+    has been run), which would cause the build to fail anyway.
+    """
     root = project_root or _frontend_project_root()
     if not _frontend_bundle_is_outdated(root):
+        return False
+
+    # Skip rebuild in CI: git checkout does not preserve file timestamps, so
+    # the mtime-based staleness check is unreliable.  The bundle is always
+    # committed as current per project policy.
+    if os.environ.get('CI'):
+        logger.info(
+            'CI environment detected; skipping frontend bundle auto-rebuild '
+            '(committed bundle.js is used as-is).'
+        )
         return False
 
     node_bin = shutil.which('node')
@@ -323,6 +341,16 @@ def _ensure_frontend_bundle_current(project_root: Optional[Path] = None) -> bool
         raise RuntimeError(
             'Frontend bundle is outdated, but Node.js is not available to rebuild web/bundle.js.'
         )
+
+    # Skip rebuild when node_modules is absent — the build would fail anyway
+    # and crashing the server over a missing npm install is too aggressive.
+    node_modules = root / 'node_modules'
+    if not node_modules.exists():
+        logger.warning(
+            'Frontend bundle may be stale but node_modules is not installed; '
+            'skipping rebuild. Run `npm install && npm run build` to update.'
+        )
+        return False
 
     logger.info('Frontend bundle is stale; rebuilding web/bundle.js')
     result = subprocess.run(
@@ -576,11 +604,27 @@ def create_app(args) -> Flask:
     # ── Provider / model state ───────────────────────────────────────────────
     _provider_name: str = args.llm_provider
     _current_model: Optional[str] = args.model  # short form; updated by set_model()
+    static_only_providers = {"copilot-oauth", "copilot", "github", "local"}
+    provider_models = PROVIDER_MODELS.get(_provider_name, [])
+    if (
+        _provider_name in static_only_providers
+        and _current_model
+        and provider_models
+        and _current_model not in provider_models
+    ):
+        fallback_model = provider_models[0]
+        logger.warning(
+            "Model '%s' is not valid for provider '%s'; using '%s' instead.",
+            _current_model,
+            _provider_name,
+            fallback_model,
+        )
+        _current_model = fallback_model
 
     # One shared LLM client used by model-catalog / test endpoints.
     # Per-session LLM clients are created inside each SessionEntry.
     llm_client = get_llm_provider(
-        provider=_provider_name, model=args.model, auth_manager=auth_manager
+        provider=_provider_name, model=_current_model, auth_manager=auth_manager
     )
     provider_name_ref = {"value": _provider_name}
     current_model_ref = {"value": _current_model}
@@ -687,8 +731,44 @@ def create_app(args) -> Flask:
         if not token_match:
             _abort(403, description='Not the session owner')
 
-    def _infer_position_name(job_text: str) -> Optional[str]:
-        """Infer a concise position label from job text."""
+    def _clean_page_title(raw: str) -> Optional[str]:
+        """Strip site-name suffixes from an HTML page <title> or og:title.
+
+        Common patterns: 'Senior Scientist | BMS Careers'
+                         'Data Manager - Bristol Myers Squibb'
+                         'Software Engineer – Acme Corp Jobs'
+        """
+        cleaned = re.sub(r'\s*[\|\-\u2013\u2014]\s*.{3,}$', '', raw).strip()
+        return cleaned if len(cleaned) > 5 and not cleaned.isupper() else None
+
+    def _is_nav_noise(line: str) -> bool:
+        """Return True when a line looks like UI chrome rather than job content."""
+        if len(line) < 6:
+            return True
+        # All-caps short strings are usually menu labels or badges
+        if line.isupper() and len(line) < 35:
+            return True
+        # Lines that are just punctuation, digits, or a single word < 4 chars
+        if re.fullmatch(r'[\W\d]+', line):
+            return True
+        return False
+
+    def _infer_position_name(
+        job_text: str,
+        page_title: Optional[str] = None,
+    ) -> Optional[str]:
+        """Infer a concise position label from job text and/or page metadata.
+
+        Priority order:
+        1. page_title (HTML <title>, og:title, or JSON-LD title) — most reliable
+        2. First substantive non-nav line of the extracted text body
+        """
+        # 1. Use structured page title when available
+        if page_title:
+            cleaned = _clean_page_title(page_title)
+            if cleaned:
+                return cleaned[:120]
+
         if not job_text:
             return None
 
@@ -696,19 +776,25 @@ def create_app(args) -> Flask:
         if not lines:
             return None
 
-        title = lines[0]
-        company = lines[1] if len(lines) > 1 else ""
+        # 2. Skip navigation-noise lines; take the first content line as the title
+        content_lines = [l for l in lines if not _is_nav_noise(l)]
+        if not content_lines:
+            content_lines = lines
+
+        title = content_lines[0].lstrip('#').strip()
+        company = ""
+        for candidate in content_lines[1:4]:
+            # Company names are typically a short single line
+            if len(candidate) < 80:
+                company = candidate
+                break
 
         if " at " in title.lower() and not company:
             parts = title.split(" at ", 1)
             if len(parts) == 2:
                 title, company = parts[0].strip(), parts[1].strip()
 
-        if title and company:
-            label = f"{title} at {company}"
-        else:
-            label = title or company
-
+        label = f"{title} at {company}" if title and company else title or company
         return label[:120] if label else None
 
     def _coerce_to_dict(value: Any) -> Dict[str, Any]:
@@ -996,6 +1082,18 @@ Job Description (excerpt):
     app.register_blueprint(create_master_data_blueprint(deps))
     app.register_blueprint(create_static_blueprint(deps))
 
+    # Return JSON (not HTML) for all HTTP errors on /api/ routes.
+    # Without this, flask.abort(400/403/404) sends an HTML error page, which
+    # causes the frontend's res.json() to throw a SyntaxError.
+    from flask import jsonify as _jsonify
+    from werkzeug.exceptions import HTTPException
+
+    @app.errorhandler(HTTPException)
+    def _api_error_handler(exc: HTTPException):  # type: ignore[misc]
+        if request.path.startswith('/api/'):
+            return _jsonify(error=exc.description, status=exc.code), exc.code
+        return exc
+
     return app
 
 # ---------------------------------------------------------------------------
@@ -1143,7 +1241,29 @@ def main():
         flush=True,
     )
 
+    _evict_port(args.port)
     app.run(host=config.web_host, port=args.port, debug=args.debug)
+
+
+def _evict_port(port: int) -> None:
+    """Kill any process already listening on *port* so Flask can bind cleanly."""
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f"tcp:{port}"],
+            capture_output=True, text=True
+        )
+        pids = result.stdout.split()
+        for pid_str in pids:
+            try:
+                pid = int(pid_str)
+                os.kill(pid, signal.SIGTERM)
+                print(f"Stopped process on port {port} (PID {pid})", flush=True)
+            except (ValueError, ProcessLookupError):
+                pass
+        if pids:
+            time.sleep(1)
+    except FileNotFoundError:
+        pass  # lsof not available; skip eviction
 
 
 def _env_file_has_value(key: str) -> bool:

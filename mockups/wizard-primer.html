@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wizard Mockup — Primer CSS (GitHub Design System)</title>
+  <link rel="stylesheet" href="https://unpkg.com/@primer/css@21/dist/primer.css">
+  <style>
+    body { margin: 0; background: #eaeef2; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; padding: 48px 16px 24px; }
+
+    /* ── Demo banner ── */
+    .demo-banner { position: fixed; top: 0; left: 0; right: 0; background: #24292f; color: #f6f8fa; font-size: 12px; font-weight: 600; padding: 8px 20px; display: flex; align-items: center; gap: 12px; z-index: 9999; }
+    .demo-banner a { color: #79c0ff; font-weight: 400; text-decoration: none; }
+    .demo-banner a:hover { text-decoration: underline; }
+
+    /* ── Dialog container (Primer has no CSS-only modal; Box component approximates it) ── */
+    .dialog-box { background: #ffffff; border: 1px solid #d0d7de; border-radius: 12px; max-width: 900px; width: 100%; margin: 0 auto; box-shadow: 0 8px 24px rgba(140,149,159,0.2); overflow: hidden; }
+
+    /* ── Stepper (Primer has no native stepper; built with Primer tokens) ── */
+    .primer-stepper { display: flex; align-items: flex-start; justify-content: space-between; padding: 16px 20px; background: #f6f8fa; border-bottom: 1px solid #d0d7de; }
+    .pstep { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
+    .pstep:not(:last-child)::after { content: ''; position: absolute; top: 14px; left: calc(50% + 18px); width: calc(100% - 36px); height: 2px; background: #d0d7de; }
+    .pstep.done:not(:last-child)::after { background: #1a7f37; }
+    .pbadge { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; border: 2px solid #d0d7de; color: #57606a; background: #fff; }
+    .pstep.active .pbadge { background: #ddf4ff; border-color: #0969da; color: #0969da; }
+    .pstep.done .pbadge { background: #1a7f37; border-color: #1a7f37; color: #fff; }
+    .pstep-label { font-size: 11px; font-weight: 600; color: #57606a; text-align: center; }
+    .pstep.active .pstep-label { color: #0969da; }
+    .pstep.done .pstep-label { color: #1a7f37; }
+
+    /* ── Busy overlay ── */
+    .busy-overlay { position: absolute; inset: 0; background: rgba(36,41,47,0.45); display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); z-index: 10; }
+    .busy-card { background: #fff; border: 1px solid #d0d7de; border-radius: 12px; padding: 20px 24px; display: flex; align-items: center; gap: 14px; box-shadow: 0 16px 32px rgba(140,149,159,0.4); }
+    .busy-spinner { width: 24px; height: 24px; border: 3px solid #d0d7de; border-top-color: #0969da; border-radius: 50%; animation: spin 0.75s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Provider pills ── */
+    .prov-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid #d0d7de; border-radius: 999px; font-size: 12px; cursor: pointer; background: #fff; color: #24292f; }
+    .prov-pill input { margin: 0; }
+    .prov-pill.selected { border-color: #0969da; background: #ddf4ff; color: #0969da; }
+
+    /* ── Success panel ── */
+    .success-panel { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; padding: 40px 24px; min-height: 240px; justify-content: center; }
+    .success-icon { width: 64px; height: 64px; border-radius: 50%; background: #1a7f37; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; box-shadow: 0 8px 20px rgba(26,127,55,0.25); }
+
+    /* ── Model chips (custom selected state, Primer Label--accent is too subtle) ── */
+    [data-model-chip] { display: inline-block; padding: 4px 10px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 12px; cursor: pointer; background: #fff; color: #24292f; }
+    [data-model-chip].selected { border-color: #0969da; background: #ddf4ff; color: #0969da; font-weight: 600; }
+
+    /* ── Note on components used ── */
+    .lib-note { font-size: 11px; color: #57606a; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 8px 12px; margin-top: 20px; max-width: 900px; width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="demo-banner">
+    🎨 Primer CSS — GitHub's design system
+    &nbsp;·&nbsp;
+    <a href="wizard-current.html">← Current</a>
+    <a href="wizard-bootstrap5.html">Bootstrap 5 →</a>
+    <a href="wizard-shoelace.html">Shoelace →</a>
+  </div>
+
+  <div class="dialog-box">
+    <!-- Header — uses Primer Box-header pattern -->
+    <div class="Box-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px;">
+      <h2 class="Box-title" style="font-size:16px;">LLM Configuration Wizard</h2>
+      <button class="btn-octicon" style="font-size:20px; line-height:1; color:#57606a;" title="Close">×</button>
+    </div>
+
+    <!-- Stepper -->
+    <div class="primer-stepper" role="status" aria-live="polite">
+      <div class="pstep active" id="ps1">
+        <div class="pbadge" id="pb1">1</div>
+        <div class="pstep-label">Choose Provider</div>
+      </div>
+      <div class="pstep" id="ps2">
+        <div class="pbadge" id="pb2">2</div>
+        <div class="pstep-label">Model + Test</div>
+      </div>
+      <div class="pstep" id="ps3">
+        <div class="pbadge" id="pb3">3</div>
+        <div class="pstep-label">Complete</div>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div style="position:relative; min-height:240px;">
+      <!-- Busy overlay -->
+      <div class="busy-overlay" id="busy">
+        <div class="busy-card">
+          <div class="busy-spinner"></div>
+          <div style="font-size:14px; font-weight:600; color:#24292f;" id="busy-msg">Querying available models…</div>
+        </div>
+      </div>
+
+      <!-- Step 1: Provider -->
+      <div id="step1" style="padding:16px 20px;">
+        <p class="text-bold text-sm color-fg-muted mb-3" style="margin:0 0 10px;">Step 1: Choose provider</p>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+          <label class="prov-pill selected"><input type="radio" name="prov" value="github" checked> GitHub Copilot <span class="Label Label--accent ml-1">list</span></label>
+          <label class="prov-pill"><input type="radio" name="prov" value="openai"> OpenAI <span class="Label ml-1">list</span></label>
+          <label class="prov-pill"><input type="radio" name="prov" value="anthropic"> Anthropic <span class="Label ml-1">catalog</span></label>
+          <label class="prov-pill"><input type="radio" name="prov" value="gemini"> Google Gemini <span class="Label ml-1">catalog</span></label>
+          <label class="prov-pill"><input type="radio" name="prov" value="local"> Local <span class="Label ml-1">manual</span></label>
+        </div>
+        <p class="color-fg-muted mt-3 mb-0" style="font-size:12px;">Available models are queried after provider selection and before model choices are shown.</p>
+      </div>
+
+      <!-- Step 2: Model -->
+      <div id="step2" style="display:none; padding:16px 20px;">
+        <p class="text-bold text-sm color-fg-muted" style="margin:0 0 10px;">Step 2: Choose model and verify connection</p>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+          <!-- Custom chip style instead of Primer .Label—accent is too subtle at this size -->
+          <span data-model-chip class="selected">gpt-4.1</span>
+          <span data-model-chip>gpt-4.1-mini</span>
+          <span data-model-chip>gpt-4.5</span>
+          <span data-model-chip>o3</span>
+          <span data-model-chip>claude-sonnet-4-5</span>
+          <span data-model-chip>gemini-2.5-pro</span>
+        </div>
+        <button class="btn btn-sm">Show Full Catalog</button>
+      </div>
+
+      <!-- Step 3: Success -->
+      <div id="step3" style="display:none;">
+        <div class="success-panel">
+          <div class="success-icon">✓</div>
+          <h3 style="margin:0; color:#1a7f37; font-size:20px;">Configuration Complete</h3>
+          <p class="color-fg-muted" style="font-size:14px; max-width:420px; margin:0;">GitHub Copilot + <strong>gpt-4.1</strong> configured and tested (latency 312 ms). You're ready to generate CVs.</p>
+          <!-- Primer has no native success variant button; use custom background override -->
+          <button class="btn btn-primary" style="background:#1a7f37; border-color:#1a7f37; padding:10px 22px; font-size:14px;">Close Wizard</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer — uses Primer Box-footer pattern -->
+    <div class="Box-footer" style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#f6f8fa; border-top:1px solid #d0d7de; gap:8px; flex-wrap:wrap;">
+      <span class="color-fg-muted" id="step-label" style="font-size:12px;">Step 1 of 3: Choose provider</span>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button class="btn btn-sm" onclick="toggleBusy()" id="busy-btn">⏳ Show Busy</button>
+        <button class="btn btn-sm" id="back-btn" onclick="go(-1)" disabled>← Back</button>
+        <button class="btn btn-sm btn-primary" id="next-btn" onclick="go(1)">Next →</button>
+        <button class="btn btn-sm" id="test-btn" onclick="go(1)" style="display:none;">✓ Test connection</button>
+        <button class="btn btn-sm" id="refresh-btn" style="display:none;">↻ Refresh prices</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="lib-note">
+    <strong>Primer CSS components used:</strong>
+    <code>.Box-header</code> / <code>.Box-footer</code> — <code>.btn</code> / <code>.btn-primary</code> / <code>.btn-sm</code> — <code>.Label</code> / <code>.Label--accent</code> — <code>.btn-octicon</code> — custom stepper with Primer color tokens.
+    <em>No Primer React required.</em>
+  </div>
+
+  <script>
+    let step = 1;
+    const LABELS = ['Step 1 of 3: Choose provider', 'Step 2 of 3: Choose model and test connection', 'Step 3 of 3: Complete'];
+
+    function render() {
+      [1,2,3].forEach(n => {
+        document.getElementById('step'+n).style.display = n === step ? '' : 'none';
+        const ps = document.getElementById('ps'+n);
+        const pb = document.getElementById('pb'+n);
+        ps.className = 'pstep';
+        if (n < step)        { ps.classList.add('done');   pb.textContent = '✓'; }
+        else if (n === step) { ps.classList.add('active'); pb.textContent = String(n); }
+        else                 {                              pb.textContent = String(n); }
+      });
+      document.getElementById('step-label').textContent = LABELS[step-1];
+      document.getElementById('back-btn').disabled = step === 1;
+      document.getElementById('back-btn').style.display = step === 3 ? 'none' : '';
+      document.getElementById('next-btn').style.display = step === 1 ? '' : 'none';
+      document.getElementById('test-btn').style.display = step === 2 ? '' : 'none';
+      document.getElementById('refresh-btn').style.display = step === 2 ? '' : 'none';
+      document.getElementById('busy-btn').style.display = step === 3 ? 'none' : '';
+    }
+
+    function go(dir) {
+      step = Math.min(3, Math.max(1, step + dir));
+      if (step === 2) {
+        const b = document.getElementById('busy');
+        b.style.display = 'flex';
+        setTimeout(() => { b.style.display = 'none'; render(); }, 1200);
+      } else {
+        render();
+      }
+    }
+
+    function toggleBusy() {
+      const b = document.getElementById('busy');
+      b.style.display = b.style.display !== 'flex' ? 'flex' : 'none';
+    }
+
+    // Provider pill selection
+    document.querySelectorAll('.prov-pill input[type=radio]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.querySelectorAll('.prov-pill').forEach(p => p.classList.remove('selected'));
+        radio.closest('.prov-pill').classList.add('selected');
+      });
+    });
+
+    // Model chip selection — custom data-model-chip spans
+    document.querySelectorAll('[data-model-chip]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('[data-model-chip]').forEach(c => c.classList.remove('selected'));
+        chip.classList.add('selected');
+      });
+    });
+
+    render();
+  </script>
+</body>
+</html>

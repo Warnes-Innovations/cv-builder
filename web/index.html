@@ -13,11 +13,17 @@
   <title>CV Generator — Professional Web UI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   
+  <!-- Bootstrap 5 CSS (base framework; custom styles.css overrides below) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+
   <!-- DataTables CSS -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
 
   <!-- Modularized styles (Phase 11 refactoring) -->
   <link rel="stylesheet" href="styles.css">
+
+  <!-- Bootstrap 5 JS bundle (required for wizard modal, adopt for other widgets over time) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 </head>
 <body>
@@ -41,33 +47,21 @@
         title="Create a new session in a new tab">＋ New Session</button>
       <button id="model-selector-btn" onclick="openModelModal()"
         class="header-pill-btn">
-        <span style="opacity:0.7;">Model:</span>
+        <span style="opacity:0.7;">LLM:</span>
         <span id="model-current-label">Loading…</span>
+        <span id="llm-status-pill" class="auth-badge unauthenticated" style="padding:2px 8px; font-size:0.75em; border-radius:999px;">
+          <span id="llm-status-icon">&#x26A0;</span>
+          <span id="llm-status-label">Not ready</span>
+        </span>
         <span id="model-test-badge" title="Connection test result" style="display:none; font-size:0.85em;"></span>
         <span class="pill-chevron">&#9660;</span>
       </button>
-      <div id="copilot-auth-badge" class="auth-badge unauthenticated" onclick="openCopilotAuthModal()" title="Click to authenticate with GitHub Copilot">
-        <span id="auth-badge-icon">&#x26A0;</span>
-        <span id="auth-badge-label">Not authenticated</span>
-      </div>
+      <button id="settings-btn" onclick="openSettingsModal()"
+        class="header-pill-btn"
+        title="Configure provider and generation defaults">⚙️ Settings</button>
     </div>
   </div>
 
-  <!-- Copilot Auth Modal -->
-  <div class="auth-modal-overlay" id="auth-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" aria-describedby="auth-modal-desc">
-    <div class="auth-modal">
-      <h2 id="auth-modal-title">&#x1F512; Authenticate with GitHub Copilot</h2>
-      <p id="auth-modal-desc">Sign in to use GitHub Copilot for LLM-powered CV generation.</p>
-      <div class="auth-code" id="auth-user-code">&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;</div>
-      <p style="text-align:center; font-size:13px; color:#64748b;">Enter this code at:</p>
-      <p style="text-align:center;"><a id="auth-verify-link" href="https://github.com/login/device" target="_blank" style="color:#3b82f6; font-weight:600;">github.com/login/device</a></p>
-      <div class="auth-status-msg" id="auth-status-msg">Ready to start &mdash; click "Open GitHub" to begin.</div>
-      <div class="auth-modal-actions">
-        <button class="auth-btn-primary" id="auth-open-btn" onclick="openAuthGitHub()">Open GitHub</button>
-        <button class="auth-btn-secondary" onclick="closeCopilotAuthModal()">Cancel</button>
-      </div>
-    </div>
-  </div>
 
   <!-- Position Bar (GAP-21: ATS score badge lives on this row) -->
   <div class="position-bar-row">
@@ -131,15 +125,25 @@
     <!-- Interaction Area -->
     <div class="interaction-area" id="chat-area">
       <button class="toggle-chat" id="toggle-chat" onclick="toggleChat()">◀</button>
+
+      <!-- LLM busy overlay — covers the chat panel while an LLM call is in flight -->
+      <div id="llm-busy-overlay">
+        <div id="llm-busy-card">
+          <div class="llm-busy-spinner"></div>
+          <div id="llm-busy-label">Reasoning…</div>
+          <div id="llm-busy-elapsed">0:00</div>
+          <button id="llm-busy-stop" onclick="abortCurrentRequest()">■ Stop</button>
+        </div>
+      </div>
       <div class="conversation-header">
         <h2>Conversation</h2>
+        <span id="llm-token-count" title="Estimated tokens used vs context window"></span>
       </div>
       
-      <!-- LLM status bar: thinking indicator / token count / stop button -->
-      <div id="llm-status-bar">
-        <div id="llm-thinking"><span class="llm-dot">●</span> <span id="llm-step-label">Reasoning…</span><span id="llm-elapsed"></span></div>
-        <span id="llm-token-count" title="Estimated tokens used vs context window"></span>
-        <button id="llm-abort-btn" onclick="abortCurrentRequest()" title="Stop the current request">■ Stop</button>
+      <!-- LLM status bar: thinking indicator / stop button -->
+      <div id="llm-status-bar" style="display:none">
+        <div id="llm-thinking" style="display:none"><span class="llm-dot">●</span> <span id="llm-step-label">Reasoning…</span><span id="llm-elapsed"></span></div>
+        <button id="llm-abort-btn" onclick="abortCurrentRequest()" title="Stop the current request" style="display:none">■ Stop</button>
       </div>
 
       <div class="conversation" id="conversation">
@@ -213,7 +217,7 @@
     <div class="modal" style="max-width: 680px; width: 92%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2 id="sessions-modal-title" style="margin:0;">📂 Sessions</h2>
-        <button onclick="closeSessionsModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+        <button id="sessions-modal-close-x" onclick="closeSessionsModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
       </div>
       <div class="modal-body" id="sessions-modal-body" style="padding:0; max-height:520px; overflow-y:auto;">
         <p style="padding:24px;text-align:center;color:#6b7280;">Loading sessions…</p>
@@ -224,7 +228,7 @@
         <div style="display:flex;gap:8px;align-items:center;">
           <button id="sessions-trash-btn" class="action-btn" onclick="openTrashView()"
             style="background:#f1f5f9;color:#64748b;border-color:#e2e8f0;">🗑 Trash</button>
-          <button class="action-btn" onclick="closeSessionsModal()">Close</button>
+          <button id="sessions-modal-close-footer" class="action-btn" onclick="closeSessionsModal()">Close</button>
         </div>
       </div>
     </div>
@@ -264,50 +268,237 @@
     </div>
   </div>
 
-  <!-- Model Selection Modal -->
+  <!-- LLM Configuration Wizard -->
   <div class="modal-overlay" id="model-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="model-modal-title" onclick="if(event.target===this)closeModelModal()">
     <div class="modal" style="max-width: 1020px; width: 95%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 id="model-modal-title" style="margin:0;">Select Model</h2>
-        <button onclick="closeModelModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+        <h2 id="model-modal-title" style="margin:0;">LLM Configuration Wizard</h2>
+        <button class="modal-close-btn" onclick="closeModelModal()" title="Close">&times;</button>
       </div>
-      <div class="modal-body" style="padding: 0;">
-        <div style="padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
-          <div style="font-size:0.85em; color:#334155; margin-bottom:6px;">
-            Step 1: Select provider(s)
+      <div class="modal-body model-wizard-body" style="padding: 0; position: relative;">
+        <div id="model-wizard-busy-overlay" class="wizard-busy-overlay" style="display:none;">
+          <div class="wizard-busy-card">
+            <span class="loading-spinner wizard-busy-spinner" aria-hidden="true"></span>
+            <div id="model-wizard-busy-message" class="wizard-busy-message">Working...</div>
+          </div>
+        </div>
+
+        <div class="model-wizard-progress" role="status" aria-live="polite">
+          <div id="model-progress-step-1" class="model-progress-step is-active" data-step="1">
+            <span class="model-progress-badge">1</span>
+            <span class="model-progress-text">Choose Provider</span>
+            <span class="model-progress-connector" aria-hidden="true"></span>
+          </div>
+          <div id="model-progress-step-2" class="model-progress-step" data-step="2">
+            <span class="model-progress-badge">2</span>
+            <span class="model-progress-text">Model + Test</span>
+            <span class="model-progress-connector" aria-hidden="true"></span>
+          </div>
+          <div id="model-progress-step-3" class="model-progress-step" data-step="3">
+            <span class="model-progress-badge">3</span>
+            <span class="model-progress-text">Complete</span>
+          </div>
+        </div>
+
+        <div id="model-step-provider" class="model-wizard-pane" style="padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
+          <div class="model-wizard-step-title">
+            Step 1: Choose provider
           </div>
           <div id="model-provider-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+          <div class="model-wizard-step-hint">
+            Available models are queried after provider selection and before model choices are shown.
+          </div>
         </div>
-        <table id="model-table" style="width:100%; border-collapse: collapse; font-size: 0.9em;">
-          <thead id="model-table-head">
-            <tr style="background: #f1f5f9; text-align: left;">
-              <th style="padding: 10px 14px; white-space: nowrap;">Provider</th>
-              <th style="padding: 10px 14px;">Model</th>
-              <th style="padding: 10px 14px; white-space: nowrap;">Context</th>
-              <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M in</th>
-              <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M out</th>
-              <th style="padding: 10px 14px; white-space: nowrap; text-align: right;" title="GitHub Copilot premium-request multiplier (0 = free for paid subscribers)">Copilot</th>
-              <th style="padding: 10px 14px; white-space: nowrap;">Source</th>
-              <th style="padding: 10px 14px;">Notes</th>
-            </tr>
-          </thead>
-          <tbody id="model-table-body"></tbody>
-        </table>
+
+        <div id="model-step-models" class="model-wizard-pane" style="display:none;">
+          <div style="padding:10px 14px; border-bottom:1px solid #e2e8f0;">
+            <div class="model-wizard-step-title">
+              Step 2: Choose model and verify connection
+            </div>
+            <div id="model-models-loading" style="display:none; margin-bottom:8px; font-size:0.82em; color:#475569;"></div>
+            <div id="model-quick-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+              <button id="model-show-all-btn" class="action-btn" onclick="toggleModelCatalogVisibility()">
+                Show Full Catalog
+              </button>
+              <input id="model-global-search" type="text" placeholder="Search all models…"
+                style="display:none; flex:1; min-width:240px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.85em;">
+            </div>
+          </div>
+
+          <div id="model-auth-panel" style="display:none; padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
+            <div class="model-wizard-step-title">
+              GitHub Copilot authorization
+            </div>
+            <div id="model-auth-status" style="font-size:0.85em; color:#475569; margin-bottom:8px;">Status unknown.</div>
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+              <button id="model-auth-start-btn" class="action-btn primary" onclick="startCopilotAuthFromWizard()">
+                Start Sign-In
+              </button>
+              <button id="model-auth-logout-btn" class="action-btn" style="display:none;" onclick="logoutCopilotAuthFromWizard()">
+                Log Out
+              </button>
+              <span id="model-auth-code" style="font-family:monospace; font-weight:700; letter-spacing:2px;"></span>
+              <a id="model-auth-link" href="https://github.com/login/device" target="_blank" style="display:none; color:#2563eb; text-decoration:underline;">Open GitHub device login</a>
+            </div>
+          </div>
+
+          <div id="model-full-table-wrap" style="display:none;">
+            <table id="model-table" style="width:100%; border-collapse: collapse; font-size: 0.9em;">
+              <thead id="model-table-head">
+                <tr style="background: #f1f5f9; text-align: left;">
+                  <th style="padding: 10px 14px; white-space: nowrap;">Provider</th>
+                  <th style="padding: 10px 14px;">Model</th>
+                  <th style="padding: 10px 14px; white-space: nowrap;">Context</th>
+                  <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M in</th>
+                  <th style="padding: 10px 14px; white-space: nowrap; text-align: right;">$/1M out</th>
+                  <th style="padding: 10px 14px; white-space: nowrap; text-align: right;" title="GitHub Copilot premium-request multiplier (0 = free for paid subscribers)">Copilot</th>
+                  <th style="padding: 10px 14px; white-space: nowrap;">Source</th>
+                  <th style="padding: 10px 14px;">Notes</th>
+                </tr>
+              </thead>
+              <tbody id="model-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="model-step-success" class="model-wizard-pane model-wizard-success" style="display:none;">
+          <div class="model-wizard-success-icon">✓</div>
+          <h3>Configuration Complete</h3>
+          <p id="model-success-summary">Provider and model are configured and the connection check succeeded.</p>
+          <button id="model-wizard-close-btn" class="model-wizard-primary-close" onclick="closeModelModal()">Close Wizard</button>
+        </div>
       </div>
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-top:1px solid #e2e8f0; background:#f8fafc; font-size:0.8em; color:#64748b;">
-        <div style="display:flex; align-items:center; gap:10px;">
+      <div class="modal-footer model-wizard-footer">
+        <div class="model-wizard-footer-meta">
+          <span id="model-wizard-step-label">Step 1 of 3: Choose provider</span>
           <span id="pricing-updated-label">Loading pricing info…</span>
           <span id="model-test-status" style="display:none;"></span>
         </div>
-        <div style="display:flex; gap:6px;">
-          <button id="model-test-btn" onclick="testCurrentModel()"
-            style="padding:3px 10px; font-size:0.85em; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
+        <div class="model-wizard-footer-actions">
+          <button id="model-wizard-back-btn" class="action-btn" onclick="previousWizardStep()">
+            Back
+          </button>
+          <button id="model-wizard-next-btn" class="action-btn primary" onclick="nextWizardStep()">
+            Next
+          </button>
+          <button id="model-test-btn" class="action-btn" onclick="testCurrentModel()">
             &#10003; Test connection
           </button>
-          <button id="pricing-refresh-btn" onclick="refreshModelPricing()"
-            style="padding:3px 10px; font-size:0.85em; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; color:#475569;">
+          <button id="pricing-refresh-btn" class="action-btn" onclick="refreshModelPricing()">
             ↻ Refresh prices
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settings-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title" onclick="if(event.target===this)closeSettingsModal()">
+    <div class="modal" style="max-width: 760px; width: 94%;">
+      <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 id="settings-modal-title" style="margin:0;">⚙️ Settings</h2>
+        <button onclick="closeSettingsModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height:65vh; overflow-y:auto; padding: 12px 4px;">
+        <div id="settings-status-msg" style="display:none; margin:0 10px 12px; padding:8px 10px; border-radius:6px; font-size:0.9em;"></div>
+
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin:0 10px 12px; background:#f8fafc;">
+          <h3 style="margin:0 0 10px; font-size:1em; color:#334155;">LLM Defaults</h3>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Default Provider</span>
+              <input id="settings-llm-default-provider" type="text" placeholder="github" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span id="source-llm.default_provider" style="font-size:0.78em; color:#64748b;"></span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Default Model</span>
+              <input id="settings-llm-default-model" type="text" placeholder="provider default" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span id="source-llm.default_model" style="font-size:0.78em; color:#64748b;"></span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Request Timeout (seconds)</span>
+              <input id="settings-llm-request-timeout" type="number" min="5" max="600" step="1" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span id="source-llm.request_timeout_seconds" style="font-size:0.78em; color:#64748b;"></span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Temperature</span>
+              <input id="settings-llm-temperature" type="number" min="0" max="2" step="0.1" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span id="source-llm.temperature" style="font-size:0.78em; color:#64748b;"></span>
+            </label>
+          </div>
+        </div>
+
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin:0 10px 12px; background:#f8fafc;">
+          <h3 style="margin:0 0 10px; font-size:1em; color:#334155;">Generation Defaults</h3>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Max Skills</span>
+              <input id="settings-gen-max-skills" type="number" min="1" max="100" step="1" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span id="source-generation.max_skills" style="font-size:0.78em; color:#64748b;"></span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Max Achievements</span>
+              <input id="settings-gen-max-achievements" type="number" min="1" max="100" step="1" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span id="source-generation.max_achievements" style="font-size:0.78em; color:#64748b;"></span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Max Publications</span>
+              <input id="settings-gen-max-publications" type="number" min="1" max="100" step="1" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span id="source-generation.max_publications" style="font-size:0.78em; color:#64748b;"></span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Skills Section Title</span>
+              <input id="settings-gen-skills-title" type="text" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span id="source-generation.skills_section_title" style="font-size:0.78em; color:#64748b;"></span>
+            </label>
+          </div>
+          <div style="margin-top:10px; display:flex; gap:16px; flex-wrap:wrap;">
+            <label><input id="settings-format-ats-docx" type="checkbox"> ATS DOCX</label>
+            <label><input id="settings-format-human-pdf" type="checkbox"> Human PDF</label>
+            <label><input id="settings-format-human-docx" type="checkbox"> Human DOCX</label>
+          </div>
+          <div style="display:flex; gap:16px; margin-top:4px; color:#64748b; font-size:0.78em; flex-wrap:wrap;">
+            <span id="source-generation.formats.ats_docx"></span>
+            <span id="source-generation.formats.human_pdf"></span>
+            <span id="source-generation.formats.human_docx"></span>
+          </div>
+        </div>
+
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin:0 10px 12px; background:#f8fafc;">
+          <h3 style="margin:0 0 10px; font-size:1em; color:#334155;">LLM Retry Policy (Browser)</h3>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Base Delay (ms)</span>
+              <input id="settings-retry-base-ms" type="number" min="200" max="10000" step="100" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span style="font-size:0.78em; color:#64748b;">Source: browser preference</span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Maximum Delay (ms)</span>
+              <input id="settings-retry-cap-ms" type="number" min="1000" max="300000" step="500" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span style="font-size:0.78em; color:#64748b;">Source: browser preference</span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85em; color:#475569;">Auto Retry Attempts</span>
+              <input id="settings-retry-max-attempts" type="number" min="1" max="20" step="1" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+              <span style="font-size:0.78em; color:#64748b;">Source: browser preference</span>
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px; justify-content:center;">
+              <span style="font-size:0.85em; color:#475569;">Automatic Backoff Retry</span>
+              <label style="display:flex; align-items:center; gap:8px;">
+                <input id="settings-retry-auto" type="checkbox">
+                <span style="font-size:0.9em; color:#334155;">Enable exponential auto-retry</span>
+              </label>
+              <span style="font-size:0.78em; color:#64748b;">Source: browser preference</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+        <span id="settings-config-path" style="font-size:0.78em; color:#64748b;"></span>
+        <div style="display:flex; gap:8px;">
+          <button id="settings-reload-btn" class="action-btn" onclick="reloadSettingsModal()">Reload</button>
+          <button id="settings-save-btn" class="action-btn primary" onclick="saveSettingsModal()">Save Settings</button>
         </div>
       </div>
     </div>
@@ -344,6 +535,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Markdown renderer — must load before bundle.js so populateJobTab() can call marked.parse() -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi" crossorigin="anonymous"></script>
 
   <!-- Module bundle — exposes all module functions as globals via Object.assign(globalThis, ...) -->
   <script src="bundle.js"></script>

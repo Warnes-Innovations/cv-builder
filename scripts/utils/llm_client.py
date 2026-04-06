@@ -297,25 +297,89 @@ Return ONLY a JSON object — no prose, no markdown fences:
             lines.append("-" * 60 + "\n")
             history_block = "\n".join(lines) + "\n"
 
-        # ── Experience and achievement lists ──────────────────────────────────
+        # ── Experience, achievement, and skill lists ─────────────────────────
         exp_lines = "\n".join(
             f"- {exp.get('id', '')}: {exp.get('title', '')} at {exp.get('company', '')}"
             for exp in master_data.get('experience', [])
         )
+        exp_bullet_lines = []
+        for exp in master_data.get('experience', []):
+            exp_id = exp.get('id', '')
+            bullets = exp.get('achievements') or []
+            bullet_texts = []
+            for idx, bullet in enumerate(bullets[:5]):
+                text = bullet.get('text', '') if isinstance(bullet, dict) else str(bullet)
+                if text.strip():
+                    bullet_texts.append(f"    [{idx}] {text}")
+            if bullet_texts:
+                exp_bullet_lines.append(
+                    f"- {exp_id}:\n" + "\n".join(bullet_texts)
+                )
         ach_lines = "\n".join(
             f"- {ach.get('id', '')}: {ach.get('title', '')} "
             f"(relevant for: {', '.join(ach.get('relevant_for', []))})"
             for ach in master_data.get('selected_achievements', [])
         )
+        skills_raw = master_data.get('skills', [])
+        skill_lines_list = []
+        if isinstance(skills_raw, dict):
+            for category_name, category_value in skills_raw.items():
+                if isinstance(category_value, dict):
+                    category_label = str(category_value.get('category') or category_name)
+                    category_skills = category_value.get('skills', []) or []
+                    group_value = category_value.get('group')
+                elif isinstance(category_value, list):
+                    category_label = str(category_name)
+                    category_skills = category_value
+                    group_value = None
+                else:
+                    continue
+                for skill in category_skills:
+                    if isinstance(skill, dict):
+                        skill_name = str(skill.get('name') or '').strip()
+                        if not skill_name:
+                            continue
+                        skill_group = str(skill.get('group') or group_value or '').strip()
+                        details = [f"category={category_label}"]
+                        if skill_group:
+                            details.append(f"group={skill_group}")
+                        skill_lines_list.append(f"- {skill_name} ({', '.join(details)})")
+                    else:
+                        skill_name = str(skill).strip()
+                        if skill_name:
+                            skill_lines_list.append(f"- {skill_name} (category={category_label})")
+        else:
+            for skill in (skills_raw or []):
+                if isinstance(skill, dict):
+                    skill_name = str(skill.get('name') or '').strip()
+                    if not skill_name:
+                        continue
+                    category_label = str(skill.get('category') or 'General')
+                    skill_group = str(skill.get('group') or '').strip()
+                    details = [f"category={category_label}"]
+                    if skill_group:
+                        details.append(f"group={skill_group}")
+                    skill_lines_list.append(f"- {skill_name} ({', '.join(details)})")
+                else:
+                    skill_name = str(skill).strip()
+                    if skill_name:
+                        skill_lines_list.append(f"- {skill_name} (category=General)")
 
         n_exp = len(master_data.get('experience', []))
         n_ach = len(master_data.get('selected_achievements', []))
+        n_skills = len(skill_lines_list)
 
         prompt = f"""{prefs_block}{history_block}Job Analysis:
 {json.dumps(job_summary, indent=2)}
 
 Available Experiences ({n_exp} total):
 {exp_lines or '(none)'}
+
+Experience Bullet Inventory (for bullet-order suggestions):
+{chr(10).join(exp_bullet_lines) or '(none)'}
+
+Available Skills ({n_skills} total):
+{chr(10).join(skill_lines_list) or '(none)'}
 
 Available Key Achievements ({n_ach} total):
 {ach_lines or '(none)'}
@@ -339,6 +403,14 @@ STEP 2 — For EACH experience, provide THREE independent assessments:
 
 3. REASONING — 2-3 sentences: why this recommendation, what evidence, any assumptions.
 
+For experiences with 2+ bullets, also decide whether a different bullet order would improve ATS scan order or human readability.
+Only include a bullet-order suggestion when the changed order is meaningfully better than the current one.
+
+Bullet-order suggestions must:
+- reference the bullet indexes shown in Experience Bullet Inventory
+- explain the ATS impact and page-length impact
+- preserve the same bullets, only change their order
+
 STEP 3 — Same three-part structure for Key Achievements.
 
 STEP 4 — Suggest NEW achievements not already in the list above.
@@ -352,6 +424,8 @@ Limit to at most 2 suggestions per experience; omit if none are credible.
 
 For skills: only flag skills that are notably relevant (Emphasize/Include) or
 notably irrelevant/misleading (De-emphasize/Omit) — skip unremarkable ones.
+When a flagged skill should move to a different category or grouped inline with other skills,
+include a grouping suggestion that clearly states what changes, why, ATS impact, and page-length impact.
 
 Return ONLY a JSON object — no prose, no markdown fences:
 {{
@@ -360,7 +434,13 @@ Return ONLY a JSON object — no prose, no markdown fences:
       "id":             "exp_001",
       "recommendation": "Emphasize|Include|De-emphasize|Omit",
       "confidence":     "Very High|High|Medium|Low|Very Low",
-      "reasoning":      "..."
+      "reasoning":      "...",
+      "bullet_order": {{
+        "order":              [1, 0, 2],
+        "reasoning":          "...",
+        "ats_impact":         "...",
+        "page_length_impact": "none|low|medium|high"
+      }}
     }}
   ],
   "skill_recommendations": [
@@ -368,7 +448,14 @@ Return ONLY a JSON object — no prose, no markdown fences:
       "skill":          "...",
       "recommendation": "Emphasize|Include|De-emphasize|Omit",
       "confidence":     "Very High|High|Medium|Low|Very Low",
-      "reasoning":      "..."
+      "reasoning":      "...",
+      "grouping": {{
+        "category":           "...",
+        "group":              "...",
+        "reasoning":          "...",
+        "ats_impact":         "...",
+        "page_length_impact": "none|low|medium|high"
+      }}
     }}
   ],
   "recommended_skills": ["..."],
