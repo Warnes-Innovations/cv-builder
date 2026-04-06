@@ -1209,9 +1209,9 @@ def create_blueprint(deps):
 
         try:
             parsed = bibtex_text_to_publications(content)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning("BibTeX parse error in publications replace", exc_info=True)
-            return jsonify({"ok": False, "error": f"BibTeX parse error: {str(e)[:300]}"}), 400
+            return jsonify({"ok": False, "error": "BibTeX parse error in uploaded content."}), 400
 
         if content.strip() and not parsed:
             return jsonify({
@@ -1354,9 +1354,9 @@ def create_blueprint(deps):
 
         try:
             imported = bibtex_text_to_publications(bibtex_text)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning("BibTeX parse error in publications import", exc_info=True)
-            return jsonify({"ok": False, "error": f"BibTeX parse error: {str(e)[:300]}"}), 400
+            return jsonify({"ok": False, "error": "BibTeX parse error in submitted content."}), 400
 
         if not imported:
             return jsonify({"ok": False, "error": "No valid BibTeX entries found"}), 400
