@@ -48,11 +48,6 @@ function _clearRetryTimers() {
   }
 }
 
-function _resetRetryController() {
-  _retryAttemptCount = 0;
-  _clearRetryTimers();
-}
-
 function _getRetryPolicy() {
   const defaults = {
     baseMs: 1500,

@@ -615,13 +615,6 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   const allExperiences = Array.isArray(window._allExperiences) ? window._allExperiences : [];
   const savedMatches = (window._savedDecisions && window._savedDecisions.extra_skill_matches) || {};
 
-  const parseMatchInput = (raw) => {
-    return String(raw || '')
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean);
-  };
-
   const deriveMatches = (skillName) => {
     const needle = skillName.toLowerCase();
     const ids = [];

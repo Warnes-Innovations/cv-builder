@@ -191,19 +191,6 @@ async function _claimCurrentSession(sessionIdToClaim) {
 // Session navigation from landing page
 // ---------------------------------------------------------------------------
 
-async function openSavedSessionFromLanding(path) {
-  try {
-    await loadSessionFile(path);
-  } catch (error) {
-    appendMessage('system', `❌ Could not load session: ${error.message}`);
-  }
-}
-
-function openActiveSessionFromLanding(sessionIdToOpen) {
-  if (!sessionIdToOpen) return;
-  window.location.assign(`/?session=${encodeURIComponent(sessionIdToOpen)}`);
-}
-
 function showSessionsLandingPanel(message = '') {
   stateManager.setCurrentTab('job');
   stateManager.setPhase(PHASES.INIT);
@@ -685,8 +672,6 @@ export {
   createNewSessionAndNavigate,
   createNewSessionInNewTab,
   _claimCurrentSession,
-  openSavedSessionFromLanding,
-  openActiveSessionFromLanding,
   showSessionsLandingPanel,
   ensureSessionContext,
   restoreSession,

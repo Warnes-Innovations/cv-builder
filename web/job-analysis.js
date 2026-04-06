@@ -15,7 +15,7 @@
  *   - appendLoadingMessage, removeLoadingMessage, appendMessage,
  *     appendRetryMessage, appendFormattedAnalysis (message-queue.js)
  *   - parseMessageResponse (validators.js)
- *   - askPostAnalysisQuestions (api-client.js)
+ *   - askPostAnalysisQuestions (questions-panel.js)
  *   - refreshAtsScore (ats-refinement.js)
  *   - switchTab (review-table-base.js, Tier 4)
  *   - fetchStatus (app.js orchestrator, Tier 8)

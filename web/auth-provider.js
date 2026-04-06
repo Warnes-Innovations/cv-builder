@@ -94,17 +94,6 @@ function updateAuthBadge(authStatus, provider = null) {
   }
 }
 
-async function openCopilotAuthModal() {
-  if (typeof openModelModal === 'function') {
-    await openModelModal();
-  }
-}
-
-function openAuthGitHub() {
-  const link = document.getElementById('model-auth-link') || document.getElementById('auth-verify-link');
-  if (link && link.href) window.open(link.href, '_blank');
-}
-
 function closeCopilotAuthModal() {
   if (_authPollTimer) { clearInterval(_authPollTimer); _authPollTimer = null; }
   if (typeof closeModelModal === 'function') {
@@ -119,5 +108,5 @@ function closeCopilotAuthModal() {
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
   formatProviderLabel, updateAuthBadge,
-  openCopilotAuthModal, closeCopilotAuthModal, openAuthGitHub,
+  closeCopilotAuthModal,
 };

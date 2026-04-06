@@ -14,7 +14,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('ui-core');
 
 import { escapeHtml } from './utils.js';
-import { StorageKeys, apiCall, fetchStatus, askPostAnalysisQuestions, sendMessage, fetchSettings, updateSettings } from './api-client.js';
+import { StorageKeys, apiCall, fetchStatus, fetchSettings, updateSettings } from './api-client.js';
 import {
   getWorkflowStepForPhase,
   initializeState,
@@ -529,8 +529,8 @@ function setupEventListeners() {
     messageInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        if (typeof sendMessage === 'function') {
-          sendMessage();
+        if (typeof globalThis.sendMessage === 'function') {
+          globalThis.sendMessage();
         }
       }
     });
@@ -598,24 +598,6 @@ function updateTabBarForStage(stage) {
 }
 
 /**
- * Activate a workflow stage: update second-bar visibility and navigate to the
- * first (or already-active) tab within that stage.
- * @param {string} stage - Key from STAGE_TABS
- */
-function switchStage(stage) {
-  updateTabBarForStage(stage);
-  const stageTabs = STAGE_TABS[stage] || [];
-  if (stageTabs.length === 0) return;
-  // Prefer whichever tab within this stage is already active; else use first
-  const activeTab = document.querySelector('.tab.active');
-  const activeTabName = activeTab ? activeTab.dataset.tab : null;
-  const target = (activeTabName && stageTabs.includes(activeTabName))
-    ? activeTabName
-    : stageTabs[0];
-  switchTab(target);
-}
-
-/**
  * Load content for a specific tab.
  * Routes to appropriate rendering function based on tab.
  * @param {string} tab - Tab name
@@ -639,14 +621,6 @@ async function loadTabContent(tab) {
           populateAnalysisTab(stateManager.getTabData('analysis'));
         } else {
           content.innerHTML = '<p style="padding: 20px; color: #666;">No analysis data yet. Submit a job description to begin.</p>';
-        }
-        break;
-
-      case 'customizations':
-        if (typeof populateCustomizationsTab === 'function' && stateManager.getTabData('customizations')) {
-          populateCustomizationsTab(stateManager.getTabData('customizations'));
-        } else {
-          content.innerHTML = '<p style="padding: 20px; color: #666;">Run analysis first to see customization recommendations.</p>';
         }
         break;
 
@@ -799,111 +773,6 @@ function showAlertModal(title, message) {
  */
 function closeAlertModal() {
   closeModal('alert-modal');
-}
-
-/**
- * Route message responses to appropriate handlers based on workflow phase.
- * @param {string} phase - Current workflow phase
- * @param {object} response - Server response
- */
-async function displayMessage(phase, response) {
-  try {
-    switch (phase) {
-      case 'job_input':
-        if (response.error) {
-          appendMessage('system', `Error: ${response.error}`);
-        } else if (response.job_analysis) {
-          // Analysis ready
-          stateManager.setTabData('analysis', response.job_analysis);
-          appendMessage('assistant', `Analysis complete! I'll now show you the job analysis and post-analysis questions.`);
-          switchTab('analysis');
-          if (typeof populateAnalysisTab === 'function') {
-            populateAnalysisTab(response.job_analysis);
-          }
-          if (typeof askPostAnalysisQuestions === 'function') {
-            await askPostAnalysisQuestions(response.job_analysis);
-          }
-        }
-        break;
-
-      case 'customization_selection':
-        if (response.customizations) {
-          stateManager.setTabData('customizations', response.customizations);
-          window.pendingRecommendations = response.customizations;
-          switchTab('customizations');
-          if (typeof populateCustomizationsTab === 'function') {
-            populateCustomizationsTab(response.customizations);
-          }
-        }
-        break;
-
-      case 'rewrite_review':
-        if (response.rewrites) {
-          switchTab('rewrites');
-          if (typeof fetchAndReviewRewrites === 'function') {
-            await fetchAndReviewRewrites();
-          }
-        }
-        break;
-
-      case 'generation':
-        if (response.generated_files) {
-          stateManager.setTabData('cv', response.generated_files);
-          switchTab('download');
-          if (typeof populateDownloadTab === 'function') {
-            await populateDownloadTab(response.generated_files);
-          }
-        }
-        break;
-
-      default:
-        // Regular conversation message
-        if (response.message || response.response) {
-          appendMessage('assistant', response.message || response.response);
-        }
-    }
-  } catch (error) {
-    log.error('Error displaying message:', error);
-    appendMessage('system', `Error processing response: ${error.message}`);
-  }
-}
-
-/**
- * Update visual workflow indicator (progress bar, breadcrumb).
- * @param {object} status - Status object from server
- */
-function updatePhaseIndicator(status) {
-  if (!status.phase) return;
-
-  const sessionNameEl = document.getElementById('header-session-name');
-  if (sessionNameEl) {
-    sessionNameEl.textContent = status.position_name || '';
-  }
-
-  const phases = ['job_input', 'analysis', 'customization', 'rewrite_review', 'generation', 'refinement'];
-  const phaseIndex = phases.indexOf(status.phase);
-
-  document.querySelectorAll('.step').forEach((step, idx) => {
-    step.classList.remove('active', 'completed', 'upcoming');
-
-    if (idx < phaseIndex) {
-      step.classList.add('completed');
-    } else if (idx === phaseIndex) {
-      step.classList.add('active');
-    } else {
-      step.classList.add('upcoming');
-    }
-  });
-}
-
-/**
- * Enable/disable controls based on workflow state.
- * @param {boolean} enabled - True to enable controls
- */
-function setControlsEnabled(enabled) {
-  document.querySelectorAll('button, input, textarea').forEach(el => {
-    el.disabled = !enabled;
-  });
 }
 
 // ── Model selector ────────────────────────────────────────────────────────────
@@ -1833,11 +1702,11 @@ export {
   confirmDialog, openModal, closeModal, closeAllModals,
   showSessionConflictBanner, showAlertModal, closeAlertModal,
   // Tab & stage management
-  setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage, switchStage, loadTabContent,
+  setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage, loadTabContent,
   // Chat
   toggleChat,
   // Phase / status
-  initialize, displayMessage, updatePhaseIndicator, setControlsEnabled,
+  initialize,
   // Model selector
   loadModelSelector, openModelModal, closeModelModal, setModel, testCurrentModel, refreshModelPricing,
   toggleModelCatalogVisibility, startCopilotAuthFromWizard, logoutCopilotAuthFromWizard,
