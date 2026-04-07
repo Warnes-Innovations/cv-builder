@@ -599,21 +599,6 @@ async function submitLayoutInstruction(instructionText) {
 }
 
 /**
- * Fetch the CV HTML preview via the staged generation contract.
- *
- * Strategy depends on the current generation state:
- *
- * - previewAvailable=true AND phase is not confirmed/final_complete:
- *   Fresh render via POST /api/cv/generate-preview (calls markPreviewGenerated).
- *   Falls back to GET /api/layout-html (passive, no state change).
- *
- * - previewAvailable=false OR phase is confirmed/final_complete (passive restore):
- *   Tries GET /api/layout-html first (no state change).
- *   Only falls back to POST /api/cv/generate-preview as recovery when layout-html
- *   fails (e.g. HTML file missing after server restart), and only when not confirmed.
- *   Recovery calls markPreviewGenerated, transitioning phase to layout_review.
- */
-/**
  * Build the markPreviewGenerated payload from a /api/cv/generate-preview response.
  * @param {Object} data - Response from the generate-preview endpoint.
  * @returns {Object} Payload suitable for stateManager.markPreviewGenerated().
@@ -632,6 +617,21 @@ function _buildPreviewPayload(data) {
   };
 }
 
+/**
+ * Fetch the CV HTML preview via the staged generation contract.
+ *
+ * Strategy depends on the current generation state:
+ *
+ * - previewAvailable=true AND phase is not confirmed/final_complete:
+ *   Fresh render via POST /api/cv/generate-preview (calls markPreviewGenerated).
+ *   Falls back to GET /api/layout-html (passive, no state change).
+ *
+ * - previewAvailable=false OR phase is confirmed/final_complete (passive restore):
+ *   Tries GET /api/layout-html first (no state change).
+ *   Only falls back to POST /api/cv/generate-preview as recovery when layout-html
+ *   fails (e.g. HTML file missing after server restart), and only when not confirmed.
+ *   Recovery calls markPreviewGenerated, transitioning phase to layout_review.
+ */
 async function _fetchAndDisplayLayoutPreview() {
   const genState    = stateManager?.getGenerationState?.() || {};
   const isConfirmed = genState.phase === GENERATION_PHASES.CONFIRMED

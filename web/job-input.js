@@ -54,11 +54,15 @@ async function populateJobTab() {
       const positionName = data.position_name || null;
       const h1 = positionName
         ? escapeHtml(positionName)
-        : '<em style="color:#9ca3af;">Position title not yet extracted — analysis in progress…</em>';
+        : '<em style="color:#9ca3af;">Position title not yet extracted…</em>';
       let html = '<h1>' + h1 + '</h1>';
 
       html += '<div style="line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + _renderJobText(jobText) + '</div>';
-      html += '<div style="margin-top:20px;"><button onclick="showLoadJobPanel()" class="btn-secondary">📥 Load Different Job</button></div>';
+
+      const analyzeBtn = data.phase === PHASES.INIT
+        ? '<button onclick="analyzeJob()" class="btn-primary" style="margin-right:8px;">🔍 Analyze Job</button>'
+        : '';
+      html += '<div style="margin-top:20px;">' + analyzeBtn + '<button onclick="showLoadJobPanel()" class="btn-secondary">📥 Load Different Job</button></div>';
       content.innerHTML = html;
     } else {
       await showLoadJobPanel();
@@ -481,9 +485,10 @@ async function fetchJobFromURL() {
     } else {
       stateManager.setTabData('job', data.job_text);
       saveTabData();
-      appendMessage('assistant', `✅ ${data.message}! Fetched ${data.content_length || 'content'} characters.`);
+      appendMessage('assistant', `✅ ${data.message}! Fetched ${data.content_length || 'content'} characters. Review the job description below, then click "🔍 Analyze Job" to continue.`);
       setLoading(false);
-      await analyzeJob();
+      switchTab('job');
+      await populateJobTab();
       return;
     }
   } catch (error) {
