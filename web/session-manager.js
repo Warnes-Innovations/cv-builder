@@ -242,10 +242,21 @@ function _restoreTabForPhase(sessionPhase) {
 function _resolveRestoredPhase(statusData) {
   const phase = statusData?.phase || PHASES.INIT;
 
-  // Guard against stale persisted phase values that moved past analysis while
-  // analysis data was never produced for this session.
+  // Guard: no job_analysis means we cannot be past the initial input step.
   if (!statusData?.job_analysis) {
     return PHASES.INIT;
+  }
+
+  // Guard: phase claims customizations were reviewed, but they were never
+  // generated (e.g. backend restarted after analyze_job but before
+  // recommend_customizations ran, or legacy sessions saved with the old
+  // premature-CUSTOMIZATION bug). Fall back so the user sees the Analysis
+  // step and can run Recommend Customizations from there.
+  if (
+    (phase === PHASES.CUSTOMIZATION || phase === PHASES.REWRITE_REVIEW)
+    && !statusData?.customizations
+  ) {
+    return PHASES.JOB_ANALYSIS;
   }
 
   return phase;
@@ -672,6 +683,7 @@ export {
   createNewSessionAndNavigate,
   createNewSessionInNewTab,
   _claimCurrentSession,
+  _resolveRestoredPhase,
   showSessionsLandingPanel,
   ensureSessionContext,
   restoreSession,

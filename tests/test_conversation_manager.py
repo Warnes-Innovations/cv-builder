@@ -637,6 +637,34 @@ class TestAnalyzeQuestionExtraction(unittest.TestCase):
         self.assertIn('- item two with additional detail', questions[0]['question'])
         self.assertIn('Could you clarify which direction to prioritize and why?', questions[0]['question'])
 
+    def test_analyze_action_sets_job_analysis_phase(self):
+        """analyze_job must advance to JOB_ANALYSIS, not CUSTOMIZATION.
+
+        Jumping straight to CUSTOMIZATION is premature: the user hasn't yet
+        answered clarifying questions or run recommend_customizations. A backend
+        restart at this point would restore the session into the Customise tab
+        with no recommendations present.
+        """
+        self.cm.llm.chat.return_value = 'Any clarifying question?'
+        self.cm._execute_action({'action': 'analyze_job'})
+        self.assertEqual(self.cm.state['phase'], 'job_analysis')
+
+    def test_recommend_customizations_sets_customization_phase(self):
+        """recommend_customizations must advance to CUSTOMIZATION, not REWRITE_REVIEW.
+
+        After recommendations are generated the user still needs to review them
+        in the Customise tab. Jumping to REWRITE_REVIEW skips that review and
+        drops the user into the Rewrite tab on next session restore.
+        """
+        self.cm.state['job_analysis'] = {
+            'title': 'SDE', 'company': 'Acme', 'ats_keywords': [],
+        }
+        self.cm.llm.recommend_customizations.return_value = {
+            'recommended_experiences': [], 'recommended_skills': [],
+        }
+        self.cm._execute_action({'action': 'recommend_customizations'})
+        self.assertEqual(self.cm.state['phase'], 'customization')
+
     def test_analyze_action_includes_extracted_questions_in_context(self):
         self.cm.llm.chat.return_value = (
             'Here are focused questions:\n\n'

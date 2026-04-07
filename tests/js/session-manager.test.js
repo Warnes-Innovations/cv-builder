@@ -16,6 +16,7 @@ import {
   getActiveSessionOwnershipMeta,
   formatSessionTimestamp,
   _claimCurrentSession,
+  _resolveRestoredPhase,
   showSessionsLandingPanel,
   ensureSessionContext,
   createNewSessionAndNavigate,
@@ -62,6 +63,57 @@ describe('formatSessionPhaseLabel', () => {
 
   it('converts unknown phases by replacing underscores with spaces', () => {
     expect(formatSessionPhaseLabel('some_custom_phase')).toBe('some custom phase')
+  })
+})
+
+// ── _resolveRestoredPhase ──────────────────────────────────────────────────
+
+describe('_resolveRestoredPhase', () => {
+  it('returns init when statusData is null or undefined', () => {
+    expect(_resolveRestoredPhase(null)).toBe('init')
+    expect(_resolveRestoredPhase(undefined)).toBe('init')
+  })
+
+  it('returns init when job_analysis is absent', () => {
+    expect(_resolveRestoredPhase({ phase: 'job_analysis' })).toBe('init')
+    expect(_resolveRestoredPhase({ phase: 'customization', job_analysis: null })).toBe('init')
+  })
+
+  it('falls back to job_analysis when phase is customization but customizations absent', () => {
+    // Covers: backend restarted after analyze_job but before recommend_customizations.
+    const statusData = { phase: 'customization', job_analysis: { title: 'SWE' }, customizations: null }
+    expect(_resolveRestoredPhase(statusData)).toBe('job_analysis')
+  })
+
+  it('falls back to job_analysis when phase is rewrite_review but customizations absent', () => {
+    // Covers: stale sessions with old premature-REWRITE_REVIEW bug or partial restart.
+    const statusData = { phase: 'rewrite_review', job_analysis: { title: 'SWE' }, customizations: null }
+    expect(_resolveRestoredPhase(statusData)).toBe('job_analysis')
+  })
+
+  it('returns customization when customizations are present', () => {
+    const statusData = {
+      phase: 'customization',
+      job_analysis: { title: 'SWE' },
+      customizations: { recommended_experiences: [] },
+    }
+    expect(_resolveRestoredPhase(statusData)).toBe('customization')
+  })
+
+  it('returns rewrite_review when customizations are present', () => {
+    const statusData = {
+      phase: 'rewrite_review',
+      job_analysis: { title: 'SWE' },
+      customizations: { recommended_experiences: [] },
+    }
+    expect(_resolveRestoredPhase(statusData)).toBe('rewrite_review')
+  })
+
+  it('passes through later phases unchanged when job_analysis is present', () => {
+    const base = { job_analysis: { title: 'SWE' }, customizations: { recommended_experiences: [] } }
+    expect(_resolveRestoredPhase({ ...base, phase: 'spell_check' })).toBe('spell_check')
+    expect(_resolveRestoredPhase({ ...base, phase: 'generation' })).toBe('generation')
+    expect(_resolveRestoredPhase({ ...base, phase: 'refinement' })).toBe('refinement')
   })
 })
 

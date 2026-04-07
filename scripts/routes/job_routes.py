@@ -48,10 +48,12 @@ def _json_ld_blobs_to_markdown(blobs: list) -> str:
         return _re.sub(r'([A-Z])', r' \1', key).strip().title()
 
     def _strip_html(text: str) -> str:
-        return BeautifulSoup(text, 'html.parser').get_text(separator='\n', strip=True)
-
-    def _is_html(text: str) -> bool:
-        return bool(_re.search(r'<[a-zA-Z][^>]*>', text))
+        soup = BeautifulSoup(text, 'html.parser')
+        for tag in soup.find_all('br'):
+            tag.replace_with('\n')
+        for tag in soup.find_all(['p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'blockquote', 'tr']):
+            tag.insert_after('\n')
+        return '\n'.join(line.strip() for line in soup.get_text(separator='').splitlines() if line.strip())
 
     def _render(v, depth: int = 0) -> str:
         pad = '  ' * depth
@@ -61,7 +63,7 @@ def _json_ld_blobs_to_markdown(blobs: list) -> str:
             v = v.strip()
             if not v:
                 return ''
-            return _strip_html(v) if _is_html(v) else v
+            return _strip_html(v)
         if isinstance(v, (int, float, bool)):
             return str(v)
         if isinstance(v, dict):
@@ -96,6 +98,20 @@ def _json_ld_blobs_to_markdown(blobs: list) -> str:
         'experienceRequirements', 'educationRequirements', 'description',
     )
     _HEADING_KEYS = ('title', 'name')
+
+    # Deduplicate identical blobs and drop content-free WebPage blobs (navigation
+    # metadata emitted multiple times by SPA career sites with no job content).
+    _seen_fps: set = set()
+    _deduped = []
+    for _blob in blobs:
+        _fp = _json.dumps(_blob, sort_keys=True, default=str)
+        if _fp in _seen_fps:
+            continue
+        _seen_fps.add(_fp)
+        if _blob.get('@type') == 'WebPage' and not any(_blob.get(k) for k in _BODY_KEYS):
+            continue
+        _deduped.append(_blob)
+    blobs = _deduped
 
     sections = []
     for blob in blobs:
