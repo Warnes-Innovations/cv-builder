@@ -291,15 +291,21 @@
           </div>
           <div id="model-progress-step-2" class="model-progress-step" data-step="2">
             <span class="model-progress-badge">2</span>
-            <span class="model-progress-text">Model + Test</span>
+            <span class="model-progress-text">API Key / Auth</span>
             <span class="model-progress-connector" aria-hidden="true"></span>
           </div>
           <div id="model-progress-step-3" class="model-progress-step" data-step="3">
             <span class="model-progress-badge">3</span>
+            <span class="model-progress-text">Model + Test</span>
+            <span class="model-progress-connector" aria-hidden="true"></span>
+          </div>
+          <div id="model-progress-step-4" class="model-progress-step" data-step="4">
+            <span class="model-progress-badge">4</span>
             <span class="model-progress-text">Complete</span>
           </div>
         </div>
 
+        <!-- Step 1: Choose provider -->
         <div id="model-step-provider" class="model-wizard-pane" style="padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
           <div class="model-wizard-step-title">
             Step 1: Choose provider
@@ -310,26 +316,36 @@
           </div>
         </div>
 
-        <div id="model-step-models" class="model-wizard-pane" style="display:none;">
-          <div style="padding:10px 14px; border-bottom:1px solid #e2e8f0;">
-            <div class="model-wizard-step-title">
-              Step 2: Choose model and verify connection
-            </div>
-            <div id="model-models-loading" style="display:none; margin-bottom:8px; font-size:0.82em; color:#475569;"></div>
-            <div id="model-quick-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
-            <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
-              <button id="model-show-all-btn" class="action-btn" onclick="toggleModelCatalogVisibility()">
-                Show Full Catalog
-              </button>
-              <input id="model-global-search" type="text" placeholder="Search all models…"
-                style="display:none; flex:1; min-width:240px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.85em;">
+        <!-- Step 2: API Key / Auth -->
+        <div id="model-step-auth" class="model-wizard-pane" style="display:none; padding:14px 20px;">
+          <div class="model-wizard-step-title">Step 2: Set up authentication</div>
+          <!-- Content injected by _renderAuthStep(provider) in ui-core.js -->
+          <div id="model-auth-step-content"></div>
+
+          <!-- API key input sub-panel (shown for api_key providers) -->
+          <div id="model-auth-key-panel" style="display:none; margin-top:14px;">
+            <div style="display:flex; flex-direction:column; gap:10px; max-width:560px;">
+              <div style="display:flex; gap:8px; align-items:center;">
+                <input id="model-auth-key-input" type="password"
+                  placeholder="Paste your API key here"
+                  autocomplete="off" autocorrect="off" spellcheck="false"
+                  style="flex:1; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-family:monospace; font-size:0.9em;">
+                <button id="model-auth-key-toggle" class="action-btn"
+                  onclick="toggleApiKeyVisibility()"
+                  title="Show/hide key" aria-label="Show or hide API key">
+                  👁
+                </button>
+                <button id="model-auth-key-save-btn" class="action-btn primary"
+                  onclick="saveProviderApiKey()">
+                  Save key
+                </button>
+              </div>
+              <div id="model-auth-key-status" style="font-size:0.85em; color:#475569; min-height:1.2em;"></div>
             </div>
           </div>
 
-          <div id="model-auth-panel" style="display:none; padding:10px 14px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
-            <div class="model-wizard-step-title">
-              GitHub Copilot authorization
-            </div>
+          <!-- Device-flow auth sub-panel (copilot-oauth) -->
+          <div id="model-auth-device-panel" style="display:none; margin-top:14px;">
             <div id="model-auth-status" style="font-size:0.85em; color:#475569; margin-bottom:8px;">Status unknown.</div>
             <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
               <button id="model-auth-start-btn" class="action-btn primary" onclick="startCopilotAuthFromWizard()">
@@ -340,6 +356,24 @@
               </button>
               <span id="model-auth-code" style="font-family:monospace; font-weight:700; letter-spacing:2px;"></span>
               <a id="model-auth-link" href="https://github.com/login/device" target="_blank" style="display:none; color:#2563eb; text-decoration:underline;">Open GitHub device login</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: Choose model + verify connection -->
+        <div id="model-step-models" class="model-wizard-pane" style="display:none;">
+          <div style="padding:10px 14px; border-bottom:1px solid #e2e8f0;">
+            <div class="model-wizard-step-title">
+              Step 3: Choose model and verify connection
+            </div>
+            <div id="model-models-loading" style="display:none; margin-bottom:8px; font-size:0.82em; color:#475569;"></div>
+            <div id="model-quick-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+              <button id="model-show-all-btn" class="action-btn" onclick="toggleModelCatalogVisibility()">
+                Show Full Catalog
+              </button>
+              <input id="model-global-search" type="text" placeholder="Search all models…"
+                style="display:none; flex:1; min-width:240px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.85em;">
             </div>
           </div>
 
@@ -362,8 +396,9 @@
           </div>
         </div>
 
+        <!-- Step 4: Complete -->
         <div id="model-step-success" class="model-wizard-pane model-wizard-success" style="display:none;">
-          <div class="model-wizard-success-icon">✓</div>
+          <div class="model-wizard-success-icon">&#10003;</div>
           <h3>Configuration Complete</h3>
           <p id="model-success-summary">Provider and model are configured and the connection check succeeded.</p>
           <button id="model-wizard-close-btn" class="model-wizard-primary-close" onclick="closeModelModal()">Close Wizard</button>
@@ -371,7 +406,7 @@
       </div>
       <div class="modal-footer model-wizard-footer">
         <div class="model-wizard-footer-meta">
-          <span id="model-wizard-step-label">Step 1 of 3: Choose provider</span>
+          <span id="model-wizard-step-label">Step 1 of 4: Choose provider</span>
           <span id="pricing-updated-label">Loading pricing info…</span>
           <span id="model-test-status" style="display:none;"></span>
         </div>
@@ -386,7 +421,7 @@
             &#10003; Test connection
           </button>
           <button id="pricing-refresh-btn" class="action-btn" onclick="refreshModelPricing()">
-            ↻ Refresh prices
+            &#8635; Refresh prices
           </button>
         </div>
       </div>
