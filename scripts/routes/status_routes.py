@@ -373,9 +373,9 @@ def create_blueprint(deps):
 
         try:
             validated_updates = _validate_settings_update(normalized_updates)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.exception("Settings validation failed")
-            return jsonify({'ok': False, 'error': str(exc)[:300]}), 400
+            return jsonify({'ok': False, 'error': 'Settings validation failed'}), 400
 
         config_path = _resolve_config_yaml_path()
         config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -539,6 +539,7 @@ def create_blueprint(deps):
             skills_section_title=conversation.state.get("skills_section_title") or "Skills",
             achievement_edits=conversation.state.get("achievement_edits")       or {},
             intake=conversation.state.get("intake")                             or {},
+            stale_steps=list(conversation.state.get("stale_steps") or []),
         )))
 
     @bp.get("/api/context-stats")

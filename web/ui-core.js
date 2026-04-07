@@ -480,24 +480,6 @@ function setupEventListeners() {
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', (e) => {
       const tabName = e.target.id.replace('tab-', '');
-
-      // Guard: if the user is clicking into an earlier stage, show the same
-      // downstream-aware confirmation modal used by the stage progress bar.
-      const targetStage = getStageForTab(tabName);
-      if (
-        targetStage &&
-        typeof _STEP_ORDER !== 'undefined' &&
-        typeof _showReRunConfirmModal === 'function'
-      ) {
-        const targetIdx  = _STEP_ORDER.indexOf(targetStage);
-        const currentIdx = _STEP_ORDER.indexOf(getVisibleStage());
-        const targetStepEl = document.getElementById(`step-${targetStage}`);
-        if (targetIdx < currentIdx && targetStepEl && targetStepEl.classList.contains('completed')) {
-          _showReRunConfirmModal(targetStage, 'back-nav', () => switchTab(tabName));
-          return;
-        }
-      }
-
       switchTab(tabName);
     });
 
