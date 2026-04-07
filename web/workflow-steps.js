@@ -179,7 +179,82 @@ function _showReRunConfirmModal(step, mode, onConfirm) {
 }
 
 function confirmReRunPhase(step) {
-  _showReRunConfirmModal(step, 'rerun', () => reRunPhase(step));
+  _showReRunConfirmModal(step, 'rerun', () => backToPhase(step));
+}
+
+// ── View-cursor indicator ─────────────────────────────────────────────────────
+
+/**
+ * Return a tooltip string for a step pill based on its combined state.
+ */
+function _getStepTooltip(step, isActive, isViewing, isBrowsingAway, isCompleted, isStale, isStaleCritical) {
+  if (isStaleCritical) return isViewing ? 'Critical changes — review required. Click ↻ to rerun.' : 'Critical changes — review required.';
+  if (isStale)         return isViewing ? 'Results may be outdated. Click ↻ to rerun.'           : 'Results may be outdated.';
+  if (isBrowsingAway)  return 'Active step — click to return';
+  if (isActive && isViewing)    return 'Current step';
+  if (isCompleted && isViewing) return 'Click ↻ to rerun from here';
+  if (isCompleted)              return 'Click to view';
+  return '';
+}
+
+/**
+ * Sync the blue ring (view cursor) and amber pulsing ring (browsing-away)
+ * to the currently visible tab. Called after every tab switch and status update.
+ * @param {string} tabName - The currently visible tab id (e.g. 'analysis', 'exp-review')
+ */
+function _updateViewingIndicator(tabName) {
+  const tabToStep = {
+    'job':        'job',
+    'analysis':   'analysis',
+    'questions':  'analysis',
+    'exp-review': 'customizations',
+    'rewrite':    'rewrite',
+    'spell':      'spell',
+    'generate':   'generate',
+    'layout':     'layout',
+    'finalise':   'finalise',
+  };
+  const viewedStep = tabToStep[tabName] || null;
+
+  let activeStep = null;
+  _STEP_ORDER.forEach(step => {
+    const el = document.getElementById(`step-${step}`);
+    if (el && el.classList.contains('active')) activeStep = step;
+  });
+
+  _STEP_ORDER.forEach(step => {
+    const el = document.getElementById(`step-${step}`);
+    if (!el) return;
+
+    const isViewing      = step === viewedStep;
+    const isActive       = step === activeStep;
+    const isBrowsingAway = isActive && !!viewedStep && viewedStep !== activeStep;
+    const isCompleted    = el.classList.contains('completed');
+    const isStale        = el.classList.contains('stale');
+    const isStaleCritical = el.classList.contains('stale-critical');
+
+    el.classList.toggle('viewing',       isViewing);
+    el.classList.toggle('browsing-away', isBrowsingAway);
+
+    const tooltipText = _getStepTooltip(step, isActive, isViewing, isBrowsingAway, isCompleted, isStale, isStaleCritical);
+    if (tooltipText) {
+      el.setAttribute('data-bs-toggle',    'tooltip');
+      el.setAttribute('data-bs-placement', 'bottom');
+      el.setAttribute('data-bs-title',     tooltipText);
+      if (typeof bootstrap !== 'undefined') {
+        const tip = bootstrap.Tooltip.getInstance(el);
+        if (tip) tip.setContent({ '.tooltip-inner': tooltipText });
+        else     new bootstrap.Tooltip(el);
+      }
+    } else {
+      el.removeAttribute('data-bs-toggle');
+      el.removeAttribute('data-bs-title');
+      if (typeof bootstrap !== 'undefined') {
+        const tip = bootstrap.Tooltip.getInstance(el);
+        if (tip) tip.dispose();
+      }
+    }
+  });
 }
 
 // ── Re-run phase ──────────────────────────────────────────────────────────────
@@ -571,12 +646,13 @@ function updateWorkflowSteps(status) {
     : null;
 
   const stepIds = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise'];
+  const staleSteps = new Set(status.stale_steps || []);
   stepIds.forEach(step => {
     const el = document.getElementById(`step-${step}`);
     if (!el) return;
     // Upcoming steps are fixed — never change their class.
     if (UPCOMING.has(step)) return;
-    el.classList.remove('active', 'completed', 'clickable', 'upcoming');
+    el.classList.remove('active', 'completed', 'clickable', 'upcoming', 'stale');
 
     let label = STEP_LABELS[step] || step;
 
@@ -598,6 +674,9 @@ function updateWorkflowSteps(status) {
       }
     }
 
+    // Apply stale class for steps downstream of a re-run
+    if (staleSteps.has(step)) el.classList.add('stale');
+
     el.innerHTML = label;
   });
 
@@ -617,6 +696,9 @@ function updateWorkflowSteps(status) {
     updateTabBarForStage(activeStep);
   }
   updateActionButtons(activeStep);
+
+  // Sync view-cursor ring to the currently visible tab
+  _updateViewingIndicator(stateManager.getCurrentTab());
 }
 
 if (typeof window !== 'undefined') {
@@ -633,17 +715,8 @@ function handleStepClick(step) {
 
   // Job step: show job content if a job is loaded, otherwise open the load panel.
   if (step === 'job') {
-    if (el.classList.contains('completed')) {
-      // Show confirmation if any downstream stages are completed
-      const hasCompletedDownstream = _STEP_ORDER.slice(1).some(s => {
-        const sEl = document.getElementById(`step-${s}`);
-        return sEl && sEl.classList.contains('completed');
-      });
-      if (hasCompletedDownstream) {
-        _showReRunConfirmModal('job', 'back-nav', () => switchTab('job'));
-      } else {
-        switchTab('job');
-      }
+    if (el.classList.contains('completed') || el.classList.contains('active')) {
+      switchTab('job');
     } else {
       showLoadJobPanel();
     }
@@ -676,21 +749,6 @@ function handleStepClick(step) {
   };
   const tabName = stepToTab[step];
   if (tabName) {
-    const visibleStage = typeof getVisibleStage === 'function'
-      ? getVisibleStage()
-      : stateManager.getCurrentStage();
-    const currentIdx = _STEP_ORDER.indexOf(visibleStage);
-    const targetIdx  = _STEP_ORDER.indexOf(step);
-    const navigatingBack = targetIdx < currentIdx && el.classList.contains('completed');
-
-    if (navigatingBack) {
-      _showReRunConfirmModal(step, 'back-nav', () => {
-        if (typeof updateTabBarForStage === 'function') updateTabBarForStage(step);
-        switchTab(tabName);
-      });
-      return;
-    }
-
     if (typeof updateTabBarForStage === 'function') {
       updateTabBarForStage(step);
     }
@@ -708,6 +766,8 @@ export {
   _showReRunConfirmModal,
   confirmReRunPhase,
   reRunPhase,
+  _getStepTooltip,
+  _updateViewingIndicator,
   _highlightChangedItems,
   _markChanged,
   applyLayoutFreshnessNavigationState,

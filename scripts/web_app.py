@@ -142,6 +142,7 @@ class StatusResponse:
     skills_section_title: str
     achievement_edits: Dict[str, Any]
     intake: Dict[str, Any]
+    stale_steps: List[str]
 
 
 @dataclass
