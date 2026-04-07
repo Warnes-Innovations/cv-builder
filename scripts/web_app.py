@@ -143,6 +143,7 @@ class StatusResponse:
     achievement_edits: Dict[str, Any]
     intake: Dict[str, Any]
     stale_steps: List[str]
+    job_url: Optional[str]
 
 
 @dataclass
