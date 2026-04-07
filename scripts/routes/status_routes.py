@@ -540,6 +540,7 @@ def create_blueprint(deps):
             achievement_edits=conversation.state.get("achievement_edits")       or {},
             intake=conversation.state.get("intake")                             or {},
             stale_steps=list(conversation.state.get("stale_steps") or []),
+            job_url=conversation.state.get("job_url"),
         )))
 
     @bp.get("/api/context-stats")
