@@ -40,6 +40,9 @@ function buildFixture() {
 beforeEach(async () => {
   document.body.innerHTML = ''
   vi.stubGlobal('sendMessage', vi.fn())
+  vi.stubGlobal('loadProviderInfo', vi.fn().mockResolvedValue(undefined))
+  vi.stubGlobal('getProviderInfo', vi.fn().mockReturnValue(null))
+  vi.stubGlobal('providerInfoPopoverContent', vi.fn().mockReturnValue(''))
   apiCall.mockReset()
   fetchSettings.mockReset()
   updateSettings.mockReset()
