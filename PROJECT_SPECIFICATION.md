@@ -965,6 +965,10 @@ This interface fully satisfies **US-A4** (Rewrite Review) acceptance criteria:
 - A fetch loading state (spinner or progress bar) appears **within 300 ms** of URL submission.
 - Extracted fields (company name, role title, date) are inline-editable at the confirmation UI; editing does not restart the workflow.
 - Paste text area shows a minimum character guidance hint.
+- When a job was loaded via URL, the source URL is stored in session state and displayed in two places:
+  - **Position title** (the large `<h1>` on the Job tab): the title text is rendered as a clickable link (`target="_blank"`) pointing to the job posting.
+  - **URL subtitle** (immediately below the `<h1>`): the full URL is shown as a link, taking the full available width with `text-overflow: ellipsis` truncation and the complete URL exposed on hover via `title` attribute.
+- URL display is conditional: when a job was pasted or uploaded (no `job_url` in session state), no link or subtitle is rendered and the title remains plain text.
 
 **Failure modes to guard against:**
 
@@ -972,6 +976,7 @@ This interface fully satisfies **US-A4** (Rewrite Review) acceptance criteria:
 - Raw status code or generic error on protected-site fetch failure.
 - Fetch taking >3 s with no visible progress indicator.
 - Correcting an extracted field requires restarting the step.
+- Job source URL displayed even when the job was pasted (not fetched from a URL).
 
 ---
 

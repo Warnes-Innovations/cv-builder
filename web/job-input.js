@@ -52,10 +52,17 @@ async function populateJobTab() {
     if (data.job_description_text) {
       const jobText = data.job_description_text;
       const positionName = data.position_name || null;
-      const h1 = positionName
+      const jobUrl = data.job_url || null;
+      const titleText = positionName
         ? escapeHtml(positionName)
         : '<em style="color:#9ca3af;">Position title not yet extracted…</em>';
-      let html = '<h1>' + h1 + '</h1>';
+      const titleContent = (positionName && jobUrl)
+        ? `<a href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:none;">${titleText}</a>`
+        : titleText;
+      let html = '<h1>' + titleContent + '</h1>';
+      if (jobUrl) {
+        html += `<div style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b;font-size:0.85em;margin:-8px 0 8px 0;" title="${escapeHtml(jobUrl)}"><a href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:none;">${escapeHtml(jobUrl)}</a></div>`;
+      }
 
       html += '<div style="line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + _renderJobText(jobText) + '</div>';
 
