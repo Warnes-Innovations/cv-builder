@@ -32,8 +32,8 @@ import { PHASES, stateManager } from './state-manager.js';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
-// Render job description markdown safely: marked parses GFM, DOMPurify strips
-// any injected HTML/JS before the result is written to innerHTML.
+// Render job description text safely: marked parses GFM (including embedded HTML
+// and autolinks), DOMPurify sanitizes the output before writing to innerHTML.
 function _renderJobText(text) {
   const raw = marked.parse(text, { gfm: true, breaks: true });
   return DOMPurify.sanitize(raw);

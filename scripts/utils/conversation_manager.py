@@ -170,7 +170,7 @@ class ConversationManager:
                         self.orchestrator.master_data
                     )
                     self._store_job_analysis(analysis)
-                    self.state['phase'] = Phase.CUSTOMIZATION
+                    self.state['phase'] = Phase.JOB_ANALYSIS
                     print(f"✓ Job analysis complete:\n{json.dumps(analysis, indent=2)}")
                     # Prompt assistant to ask clarifying questions with specific context
                     contextual_prompt = f"""I've analyzed the job description. Here are the key findings:
@@ -506,7 +506,7 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
                 self.orchestrator.master_data
             )
             self._store_job_analysis(analysis)
-            self.state['phase'] = Phase.CUSTOMIZATION
+            self.state['phase'] = Phase.JOB_ANALYSIS
             self.state['post_analysis_questions'] = []
             self.state['post_analysis_answers'] = {}
 
@@ -600,7 +600,7 @@ Ask questions that are specific to this job posting, not generic career question
             )
             self._normalize_recommendations(recommendations)
             self.state['customizations'] = recommendations
-            self.state['phase'] = Phase.REWRITE_REVIEW
+            self.state['phase'] = Phase.CUSTOMIZATION
             
             return {
                 'text': f"✓ Customization recommendations generated ({len(recommendations.get('recommended_experiences', []))} experiences, {len(recommendations.get('recommended_skills', []))} skills).",
