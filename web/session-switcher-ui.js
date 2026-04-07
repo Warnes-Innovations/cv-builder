@@ -267,6 +267,10 @@ async function _renderSessionsModalBody() {
 }
 
 async function loadSessionAndCloseModal(path) {
+  // Clear dismissDisabled so loading a session always closes the modal,
+  // even when it was opened in required (startup) mode.
+  const overlay = document.getElementById('sessions-modal-overlay');
+  if (overlay) overlay.dataset.dismissDisabled = '';
   closeSessionsModal();
   await loadSessionFile(path);
 }
