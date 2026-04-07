@@ -10,8 +10,8 @@ Tests for cv-template.html rendering behaviour.
 Covers:
     - Selected Achievements section omitted when achievements list is empty
     - Selected Achievements section rendered when achievements are present
-    - Print layout keeps a bounded first page and flowing continuation page
-    - Technical Skills render in the continuation-page sidebar
+    - Print layout uses a single #cv-body div for continuous two-column output
+    - Technical Skills render in the unified left-column sidebar
 """
 
 import sys
@@ -181,12 +181,12 @@ class TestOptionalSidebarFields(unittest.TestCase):
         )
         self.assertNotIn('<div class="sidebar-title">Languages</div>', html)
 
-    def test_print_layout_uses_two_page_wrappers(self):
+    def test_print_layout_uses_single_cv_body_wrapper(self):
+        """Template uses a single #cv-body div for continuous column flow."""
         html = _render(skills_by_category=[])
-        self.assertNotIn('id="page-three"', html)
-        self.assertNotIn('id="cv-layout"', html)
-        self.assertIn('id="page-one"', html)
-        self.assertIn('id="page-two"', html)
+        self.assertIn('id="cv-body"', html)
+        self.assertNotIn('id="page-one"', html)
+        self.assertNotIn('id="page-two"', html)
 
     def test_page_margin_default_is_rendered_in_print_rule(self):
         html = _render()
@@ -197,14 +197,10 @@ class TestOptionalSidebarFields(unittest.TestCase):
         html = _render()
         self.assertIn('@page {', html)
         self.assertIn('background-color: var(--sidebar-bg) !important;', html)
-        self.assertIn(
-            'min-height: calc(11in - (2 * var(--page-margin)));',
-            html,
-        )
+        self.assertIn('#cv-body .left-col {', html)
         self.assertIn('box-decoration-break: clone;', html)
         self.assertIn('background: white !important;', html)
-        self.assertIn('#page-two {', html)
-        self.assertIn('page-break-before: always;', html)
+        self.assertIn('break-inside: avoid;', html)
         self.assertIn('break-after: avoid-page;', html)
         self.assertIn('.section-title + .pub-list {', html)
         self.assertIn('break-before: avoid-page;', html)
@@ -219,12 +215,12 @@ class TestOptionalSidebarFields(unittest.TestCase):
 
     def test_column_spacing_tunings_are_rendered(self):
         html = _render()
-        self.assertIn('#page-one .right-col {', html)
+        self.assertIn('#cv-body .right-col {', html)
         self.assertIn('padding: 40px 30px;', html)
-        self.assertIn('#page-two .left-col {', html)
+        self.assertIn('#cv-body .left-col {', html)
 
 class TestExperiencePageFlow(unittest.TestCase):
-    """Experience and skills should render in the continuation page."""
+    """Experience and skills should render in the unified cv-body div."""
 
     def _make_experiences(self, count: int) -> list:
         return [
@@ -239,20 +235,19 @@ class TestExperiencePageFlow(unittest.TestCase):
             for i in range(count)
         ]
 
-    def test_all_experiences_render_in_continuation_page(self):
+    def test_all_experiences_render_in_cv_body(self):
         exps = self._make_experiences(6)
         html = _render(experiences=exps)
-        page_two = _page_slice(html, 'page-two')
+        cv_body = _page_slice(html, 'cv-body')
         for exp in exps:
-            self.assertIn(exp['title'], page_two)
+            self.assertIn(exp['title'], cv_body)
 
-    def test_experience_heading_is_not_rendered_on_first_page(self):
+    def test_experience_follows_achievements_in_document_order(self):
+        """Experience section must appear after achievements in document order."""
         html = _render(
             achievements=[{'text': 'Built a major platform'}],
             experiences=self._make_experiences(1),
         )
-        page_one = _page_slice(html, 'page-one', 'page-two')
-        page_two = _page_slice(html, 'page-two')
         achievements_heading = (
             '<h2 class="section-title"><i class="fas fa-trophy"></i> '
             'Selected Achievements</h2>'
@@ -261,11 +256,13 @@ class TestExperiencePageFlow(unittest.TestCase):
             '<h2 class="section-title"><i class="fas fa-briefcase"></i> '
             'Experience</h2>'
         )
-        self.assertIn(achievements_heading, page_one)
-        self.assertNotIn(experience_heading, page_one)
-        self.assertIn(experience_heading, page_two)
+        ach_pos = html.find(achievements_heading)
+        exp_pos = html.find(experience_heading)
+        self.assertGreater(ach_pos, -1, 'Achievements heading not found')
+        self.assertGreater(exp_pos, -1, 'Experience heading not found')
+        self.assertGreater(exp_pos, ach_pos, 'Experience should follow achievements in document order')
 
-    def test_skills_render_in_continuation_sidebar(self):
+    def test_skills_render_in_cv_body_sidebar(self):
         html = _render(
             skills_by_category=[
                 {
@@ -274,12 +271,12 @@ class TestExperiencePageFlow(unittest.TestCase):
                 }
             ]
         )
-        page_two = _page_slice(html, 'page-two')
-        self.assertIn('Technical Skills', page_two)
-        self.assertIn('Programming', page_two)
-        self.assertIn('Python', page_two)
+        cv_body = _page_slice(html, 'cv-body')
+        self.assertIn('Technical Skills', cv_body)
+        self.assertIn('Programming', cv_body)
+        self.assertIn('Python', cv_body)
 
-    def test_all_skill_groups_render_in_continuation_sidebar(self):
+    def test_all_skill_groups_render_in_cv_body_sidebar(self):
         html = _render(
             skills_by_category=[
                 {'category': 'Programming', 'skills': [{'name': 'Python'}]},
@@ -290,25 +287,25 @@ class TestExperiencePageFlow(unittest.TestCase):
                 {'category': 'Leadership', 'skills': [{'name': 'Mentoring'}]},
             ]
         )
-        page_two = _page_slice(html, 'page-two')
+        cv_body = _page_slice(html, 'cv-body')
         for label in ('Programming', 'Cloud', 'ML', 'Data', 'Ops', 'Leadership'):
-            self.assertIn(label, page_two)
+            self.assertIn(label, cv_body)
 
     def test_fewer_than_four_experiences_still_render(self):
-        """Multiple experiences should still render in the continuation page."""
+        """Multiple experiences should still render in the cv body."""
         exps = self._make_experiences(2)
         html = _render(experiences=exps)
-        page_two = _page_slice(html, 'page-two')
+        cv_body = _page_slice(html, 'cv-body')
         for exp in exps:
-                self.assertIn(exp['title'], page_two)
+            self.assertIn(exp['title'], cv_body)
 
     def test_exactly_four_experiences_render(self):
-        """Exactly 4 experiences should all render in the continuation page."""
+        """Exactly 4 experiences should all render in the cv body."""
         exps = self._make_experiences(4)
         html = _render(experiences=exps)
-        page_two = _page_slice(html, 'page-two')
+        cv_body = _page_slice(html, 'cv-body')
         for exp in exps:
-                self.assertIn(exp['title'], page_two)
+            self.assertIn(exp['title'], cv_body)
 
 
 if __name__ == '__main__':
