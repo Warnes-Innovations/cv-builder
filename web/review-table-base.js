@@ -92,6 +92,9 @@ function switchTab(tab) {
   }
   stateManager.setCurrentTab(tab);
 
+  // Sync view-cursor ring to the newly visible tab
+  if (typeof _updateViewingIndicator === 'function') _updateViewingIndicator(tab);
+
   // All tabs except 'cv' use full-width layout (no paper-sized centering)
   const content = document.getElementById('document-content');
   content.classList.toggle('full-width', tab !== 'generate');
