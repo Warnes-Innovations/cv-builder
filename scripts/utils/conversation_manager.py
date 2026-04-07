@@ -1130,6 +1130,14 @@ Ask questions that are specific to this job posting, not generic career question
         # Accept either frontend step labels or internal phase strings
         resolved = self._STEP_TO_PHASE.get(target_phase, target_phase)
 
+        # Mark all steps after the target as stale so the UI can signal
+        # that downstream results may not reflect any edits made here.
+        step_order = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise']
+        step_key   = {v: k for k, v in self._STEP_TO_PHASE.items()}.get(resolved, target_phase)
+        target_idx = step_order.index(step_key) if step_key in step_order else -1
+        stale = step_order[target_idx + 1:] if target_idx >= 0 else []
+
+        self.state['stale_steps']   = stale
         self.state['iterating']     = True
         self.state['reentry_phase'] = resolved
         self.state['phase']         = resolved
