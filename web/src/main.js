@@ -25,6 +25,7 @@ import * as Logger from '../logger.js';
 import * as Utils             from '../utils.js';
 import * as ApiClient         from '../api-client.js';
 import * as State             from '../state-manager.js';
+import * as ProviderInfo      from '../provider-info.js';
 import * as UiCore            from '../ui-core.js';
 import * as LayoutInstruction from '../layout-instruction.js';
 
@@ -79,7 +80,7 @@ import * as SessionSwitcherUi from '../session-switcher-ui.js';
 // implementations override any placeholder stubs (e.g. showSessionConflictBanner
 // in session-switcher-ui overrides the simple stub in ui-core).
 Object.assign(globalThis,
-  Logger, Utils, ApiClient, State, UiCore, LayoutInstruction,
+  Logger, Utils, ApiClient, State, ProviderInfo, UiCore, LayoutInstruction,
   Validators, RecommendationHelpers, UiHelpers,
   FetchUtils, MessageQueue,
   AuthProvider, AtsRefinement, AtsModals, SessionActions, JobAnalysis,
