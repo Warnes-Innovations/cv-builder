@@ -12,9 +12,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON=/usr/local/Caskroom/miniconda/base/envs/cvgen/bin/python
 
 cd "$REPO_DIR"
 
 echo "Running Playwright UI tests..."
-exec "$PYTHON" -m pytest tests/ui/ -q --tb=short "$@"
+exec conda run -n cvgen python -m pytest tests/ui/ -q --tb=short "$@"
