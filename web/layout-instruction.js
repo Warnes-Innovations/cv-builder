@@ -613,6 +613,25 @@ async function submitLayoutInstruction(instructionText) {
  *   fails (e.g. HTML file missing after server restart), and only when not confirmed.
  *   Recovery calls markPreviewGenerated, transitioning phase to layout_review.
  */
+/**
+ * Build the markPreviewGenerated payload from a /api/cv/generate-preview response.
+ * @param {Object} data - Response from the generate-preview endpoint.
+ * @returns {Object} Payload suitable for stateManager.markPreviewGenerated().
+ */
+function _buildPreviewPayload(data) {
+  return {
+    previewAvailable:    true,
+    previewOutputs:      data.preview_outputs      || null,
+    pageCountEstimate:   data.page_count_estimate  ?? null,
+    pageCountExact:      data.page_count_exact      ?? null,
+    pageCountConfidence: data.page_count_confidence ?? null,
+    pageCountSource:     data.page_count_source     || null,
+    pageWarning:         Boolean(data.page_length_warning),
+    previewGeneratedAt:  data.preview_generated_at  || new Date().toISOString(),
+    previewRequestId:    data.preview_request_id    || null,
+  };
+}
+
 async function _fetchAndDisplayLayoutPreview() {
   const genState    = stateManager?.getGenerationState?.() || {};
   const isConfirmed = genState.phase === GENERATION_PHASES.CONFIRMED
@@ -626,17 +645,7 @@ async function _fetchAndDisplayLayoutPreview() {
         displayLayoutPreview(data.html);
         setPreviewHtml(data.html);
         dismissedStaleCalloutRevision = null;
-        stateManager?.markPreviewGenerated?.({
-          previewAvailable: true,
-          previewOutputs: data.preview_outputs || null,
-          pageCountEstimate: data.page_count_estimate ?? null,
-          pageCountExact: data.page_count_exact ?? null,
-          pageCountConfidence: data.page_count_confidence ?? null,
-          pageCountSource: data.page_count_source || null,
-          pageWarning: Boolean(data.page_length_warning),
-          previewGeneratedAt: data.preview_generated_at || new Date().toISOString(),
-          previewRequestId: data.preview_request_id || null,
-        });
+        stateManager?.markPreviewGenerated?.(_buildPreviewPayload(data));
         renderPreviewOutputStatus(data.preview_outputs || null);
         refreshLayoutReviewState();
         return;
@@ -670,17 +679,7 @@ async function _fetchAndDisplayLayoutPreview() {
         displayLayoutPreview(data.html);
         setPreviewHtml(data.html);
         dismissedStaleCalloutRevision = null;
-        stateManager?.markPreviewGenerated?.({
-          previewAvailable: true,
-          previewOutputs: data.preview_outputs || null,
-          pageCountEstimate: data.page_count_estimate ?? null,
-          pageCountExact: data.page_count_exact ?? null,
-          pageCountConfidence: data.page_count_confidence ?? null,
-          pageCountSource: data.page_count_source || null,
-          pageWarning: Boolean(data.page_length_warning),
-          previewGeneratedAt: data.preview_generated_at || new Date().toISOString(),
-          previewRequestId: data.preview_request_id || null,
-        });
+        stateManager?.markPreviewGenerated?.(_buildPreviewPayload(data));
         renderPreviewOutputStatus(data.preview_outputs || null);
         refreshLayoutReviewState();
       }
