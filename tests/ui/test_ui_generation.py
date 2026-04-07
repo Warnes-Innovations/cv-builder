@@ -24,13 +24,17 @@ class TestGeneration:
         """#generate-btn is visible in the customization stage."""
         expect(seeded_page.locator("#generate-btn")).to_be_visible()
 
-    def test_generate_calls_api_rewrites_then_action(self, seeded_page: Page):
+    def test_generate_btn_calls_api_rewrites(self, seeded_page: Page):
         """
-        Clicking Generate CV calls GET /api/rewrites first.
-        If rewrites are empty it then calls POST /api/action(generate_cv).
+        Clicking Generate CV calls GET /api/rewrites.
+
+        With the current workflow the button initiates rewrite review, which
+        calls /api/rewrites first.  When rewrites are empty the rewrite tab is
+        shown with a 'continue to spell check' message — the actual generate_cv
+        action is only triggered after the user completes the rewrite and spell
+        steps.
         """
         rewrites_called = []
-        action_called = []
 
         def capture_rewrites(route):
             rewrites_called.append(route.request.url)
@@ -40,26 +44,27 @@ class TestGeneration:
                 body=json.dumps({"rewrites": [], "persuasion_warnings": []}),
             )
 
-        def capture_action(route):
-            body = json.loads(route.request.post_data or "{}")
-            action_called.append(body.get("action", ""))
-            route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps(
-                    {"ok": True, "phase": "refinement", "result": {}}
-                ),
-            )
-
         seeded_page.route("**/api/rewrites**", capture_rewrites)
-        seeded_page.route("**/api/action**", capture_action)
         seeded_page.locator("#generate-btn").click()
         seeded_page.wait_for_timeout(800)
 
         assert len(rewrites_called) > 0, \
             "Expected GET /api/rewrites when Generate CV is clicked"
-        assert "generate_cv" in action_called, \
-            "Expected /api/action(generate_cv) after empty rewrites"
+
+    def test_generate_btn_switches_to_rewrite_tab_when_rewrites_empty(self, seeded_page: Page):
+        """When /api/rewrites returns no items, the rewrite tab is activated."""
+        seeded_page.route(
+            "**/api/rewrites**",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"rewrites": [], "persuasion_warnings": []}),
+            ),
+        )
+        seeded_page.locator("#generate-btn").click()
+        seeded_page.wait_for_timeout(800)
+
+        expect(seeded_page.locator("#tab-rewrite")).to_be_visible()
 
     def test_generate_adds_conversation_message(self, seeded_page: Page):
         """Triggering generation adds a message to the conversation panel."""

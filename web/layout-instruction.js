@@ -17,7 +17,7 @@ import { apiCall } from './api-client.js';
 import { scheduleAtsRefresh } from './ats-refinement.js';
 import { appendMessage, appendMessageHtml } from './message-queue.js';
 import { switchTab } from './review-table-base.js';
-import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
+import { stateManager, GENERATION_STATE_EVENT, GENERATION_PHASES } from './state-manager.js';
 import { escapeHtml } from './utils.js';
 
 let dismissedStaleCalloutRevision = null;
@@ -601,51 +601,92 @@ async function submitLayoutInstruction(instructionText) {
 /**
  * Fetch the CV HTML preview via the staged generation contract.
  *
- * First tries POST /api/cv/generate-preview (renders fresh HTML from current
- * session state and stores it).  Falls back to GET /api/layout-html (legacy
- * endpoint that reads the most recent HTML file from disk) when the session
- * does not yet have customization data.
+ * Strategy depends on the current generation state:
+ *
+ * - previewAvailable=true AND phase is not confirmed/final_complete:
+ *   Fresh render via POST /api/cv/generate-preview (calls markPreviewGenerated).
+ *   Falls back to GET /api/layout-html (passive, no state change).
+ *
+ * - previewAvailable=false OR phase is confirmed/final_complete (passive restore):
+ *   Tries GET /api/layout-html first (no state change).
+ *   Only falls back to POST /api/cv/generate-preview as recovery when layout-html
+ *   fails (e.g. HTML file missing after server restart), and only when not confirmed.
+ *   Recovery calls markPreviewGenerated, transitioning phase to layout_review.
  */
 async function _fetchAndDisplayLayoutPreview() {
-  // Try staged generation endpoint first
-  try {
-    const data = await apiCall('POST', '/api/cv/generate-preview', {});
-    if (data.ok && data.html) {
-      displayLayoutPreview(data.html);
-      setPreviewHtml(data.html);
-      // Mark client state so completeLayoutReview() enters the staged generation path.
-      dismissedStaleCalloutRevision = null;
-      stateManager?.markPreviewGenerated?.({
-        previewAvailable: true,
-        previewOutputs: data.preview_outputs || null,
-        pageCountEstimate: data.page_count_estimate ?? null,
-        pageCountExact: data.page_count_exact ?? null,
-        pageCountConfidence: data.page_count_confidence ?? null,
-        pageCountSource: data.page_count_source || null,
-        pageWarning: Boolean(data.page_length_warning),
-        previewGeneratedAt: data.preview_generated_at || new Date().toISOString(),
-        previewRequestId: data.preview_request_id || null,
-      });
-      renderPreviewOutputStatus(data.preview_outputs || null);
-      refreshLayoutReviewState();
-      return;
+  const genState    = stateManager?.getGenerationState?.() || {};
+  const isConfirmed = genState.phase === GENERATION_PHASES.CONFIRMED
+                   || genState.phase === GENERATION_PHASES.FINAL_COMPLETE;
+
+  // Fresh-render path: backend has a live preview ready and layout is not yet confirmed.
+  if (genState.previewAvailable && !isConfirmed) {
+    try {
+      const data = await apiCall('POST', '/api/cv/generate-preview', {});
+      if (data.ok && data.html) {
+        displayLayoutPreview(data.html);
+        setPreviewHtml(data.html);
+        dismissedStaleCalloutRevision = null;
+        stateManager?.markPreviewGenerated?.({
+          previewAvailable: true,
+          previewOutputs: data.preview_outputs || null,
+          pageCountEstimate: data.page_count_estimate ?? null,
+          pageCountExact: data.page_count_exact ?? null,
+          pageCountConfidence: data.page_count_confidence ?? null,
+          pageCountSource: data.page_count_source || null,
+          pageWarning: Boolean(data.page_length_warning),
+          previewGeneratedAt: data.preview_generated_at || new Date().toISOString(),
+          previewRequestId: data.preview_request_id || null,
+        });
+        renderPreviewOutputStatus(data.preview_outputs || null);
+        refreshLayoutReviewState();
+        return;
+      }
+    } catch (_e) {
+      // fall through to legacy disk read
     }
-  } catch (_e) {
-    // fall through to legacy endpoint
   }
 
-  // Legacy fallback: load HTML from the output directory on disk
+  // Passive restore path: load stored HTML from disk without touching generation state.
+  // Used when previewAvailable=false (idle/confirmed) or as fresh-render fallback.
   try {
     const data = await apiCall('GET', '/api/layout-html');
     if (data.ok && data.html) {
       displayLayoutPreview(data.html);
       setPreviewHtml(data.html);
       refreshLayoutReviewState();
-    } else {
-      log.warn('Layout preview not available:', data.error || 'no HTML returned');
+      return;
     }
-  } catch (err) {
-    log.warn('Could not load layout preview:', err);
+    log.warn('Layout preview not available:', data.error || 'no HTML returned');
+  } catch (_e) {
+    // fall through to recovery
+  }
+
+  // Recovery path: disk HTML is missing and layout is not yet confirmed.
+  // Generate a fresh preview to avoid an empty layout pane.
+  if (!isConfirmed) {
+    try {
+      const data = await apiCall('POST', '/api/cv/generate-preview', {});
+      if (data.ok && data.html) {
+        displayLayoutPreview(data.html);
+        setPreviewHtml(data.html);
+        dismissedStaleCalloutRevision = null;
+        stateManager?.markPreviewGenerated?.({
+          previewAvailable: true,
+          previewOutputs: data.preview_outputs || null,
+          pageCountEstimate: data.page_count_estimate ?? null,
+          pageCountExact: data.page_count_exact ?? null,
+          pageCountConfidence: data.page_count_confidence ?? null,
+          pageCountSource: data.page_count_source || null,
+          pageWarning: Boolean(data.page_length_warning),
+          previewGeneratedAt: data.preview_generated_at || new Date().toISOString(),
+          previewRequestId: data.preview_request_id || null,
+        });
+        renderPreviewOutputStatus(data.preview_outputs || null);
+        refreshLayoutReviewState();
+      }
+    } catch (err) {
+      log.warn('Could not load layout preview:', err);
+    }
   }
 }
 

@@ -11,6 +11,7 @@
     "test:js": "NODE_NO_WARNINGS=1 vitest run tests/js",
     "test:js:watch": "NODE_NO_WARNINGS=1 vitest tests/js",
     "test:js:cover": "NODE_NO_WARNINGS=1 vitest run tests/js --coverage",
+    "test:ui": "conda run -n cvgen python -m pytest tests/ui/ -q --tb=short",
     "test:integration:headless": "node web/tests/integration/run_integration.js"
   },
   "devDependencies": {
