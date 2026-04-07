@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 import io as _io
 import json as _json
+import re as _re
 
 import requests as _requests
 from bs4 import BeautifulSoup
@@ -30,6 +31,121 @@ logger = logging.getLogger(__name__)
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
 from utils.llm_client import LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
+
+
+def _json_ld_blobs_to_markdown(blobs: list) -> str:
+    """Render JSON-LD blobs as human-readable markdown.
+
+    All present fields are rendered dynamically without assuming any particular
+    field name exists.  JSON-LD internal tokens (@-prefixed keys and metadata
+    tokens such as sameAs and url) are always skipped.  HTML content in field
+    values is stripped to plain text via BeautifulSoup.
+    """
+    _SKIP = frozenset({'@context', '@id', 'sameAs', 'url'})
+
+    def _label(key: str) -> str:
+        """Convert camelCase key to Title Case label."""
+        return _re.sub(r'([A-Z])', r' \1', key).strip().title()
+
+    def _strip_html(text: str) -> str:
+        return BeautifulSoup(text, 'html.parser').get_text(separator='\n', strip=True)
+
+    def _is_html(text: str) -> bool:
+        return bool(_re.search(r'<[a-zA-Z][^>]*>', text))
+
+    def _render(v, depth: int = 0) -> str:
+        pad = '  ' * depth
+        if v is None:
+            return ''
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return ''
+            return _strip_html(v) if _is_html(v) else v
+        if isinstance(v, (int, float, bool)):
+            return str(v)
+        if isinstance(v, dict):
+            parts = []
+            for k, sub in v.items():
+                if k in _SKIP or k.startswith('@'):
+                    continue
+                rendered = _render(sub, depth + 1)
+                if rendered:
+                    if '\n' in rendered:
+                        parts.append(f"{pad}  - **{_label(k)}:**\n{rendered}")
+                    else:
+                        parts.append(f"{pad}  - **{_label(k)}:** {rendered}")
+            return '\n'.join(parts)
+        if isinstance(v, list):
+            items = []
+            for item in v:
+                rendered = _render(item, depth)
+                if rendered:
+                    items.append(f"{pad}- {rendered}")
+            return '\n'.join(items)
+        return str(v)
+
+    # Fields shown as brief inline metadata (top of section)
+    _META_KEYS = (
+        'hiringOrganization', 'jobLocation', 'employmentType',
+        'datePosted', 'validThrough', 'baseSalary',
+    )
+    # Fields shown as sub-section headers (longer content)
+    _BODY_KEYS = (
+        'qualifications', 'responsibilities', 'skills',
+        'experienceRequirements', 'educationRequirements', 'description',
+    )
+    _HEADING_KEYS = ('title', 'name')
+
+    sections = []
+    for blob in blobs:
+        lines: list = []
+        heading = next(
+            (blob[k].strip() for k in _HEADING_KEYS
+             if isinstance(blob.get(k), str) and blob.get(k, '').strip()),
+            None,
+        )
+        schema_type = blob.get('@type', '')
+        if heading:
+            lines.append(f"## {heading}")
+        if schema_type:
+            lines.append(f"*{schema_type}*")
+        if lines:
+            lines.append('')
+
+        for key in _META_KEYS:
+            val = blob.get(key)
+            if val is None:
+                continue
+            rendered = _render(val)
+            if not rendered:
+                continue
+            label = _label(key)
+            if isinstance(val, (dict, list)):
+                lines.append(f"**{label}:**\n{rendered}\n")
+            else:
+                lines.append(f"**{label}:** {rendered}\n")
+
+        for key in _BODY_KEYS:
+            val = blob.get(key)
+            if val is None:
+                continue
+            rendered = _render(val)
+            if rendered:
+                lines.append(f"\n### {_label(key)}\n\n{rendered}")
+
+        already = _SKIP | set(_HEADING_KEYS) | set(_META_KEYS) | set(_BODY_KEYS) | {'@type'}
+        for key, val in blob.items():
+            if key in already or key.startswith('@'):
+                continue
+            rendered = _render(val)
+            if rendered:
+                lines.append(f"\n**{_label(key)}:** {rendered}")
+
+        if lines:
+            sections.append('\n'.join(lines))
+
+    return '\n\n---\n\n'.join(sections)
 
 
 def create_blueprint(deps):
@@ -202,7 +318,6 @@ def create_blueprint(deps):
 
                 # --- Structured metadata extraction (before any tag removal) ---
                 json_ld_blobs: list  = []
-                json_ld_text         = None
                 json_ld_title        = None
                 for script_tag in soup.find_all('script', type='application/ld+json'):
                     try:
@@ -217,11 +332,6 @@ def create_blueprint(deps):
                                     json_ld_title = v
                                     logger.debug("Found JSON-LD title: %s", json_ld_title)
                                     break
-                        if json_ld_text is None:
-                            desc = ld_data.get('description')
-                            if desc and len(desc) > 100:
-                                json_ld_text = desc
-                                logger.debug("Found JSON-LD job description (%d chars)", len(json_ld_text))
                     except Exception:
                         pass
 
@@ -266,12 +376,12 @@ def create_blueprint(deps):
                 # text is dominated by embedded JSON/CSS configs, not actual content.
                 _SPA_NOISE_THRESHOLD = 50_000
                 _body_is_thin   = len(html_text.strip()) < 200
-                _body_is_noisy  = json_ld_text and len(html_text) > _SPA_NOISE_THRESHOLD
+                _body_is_noisy  = bool(json_ld_blobs) and len(html_text) > _SPA_NOISE_THRESHOLD
 
                 if _body_is_thin or _body_is_noisy:
-                    # Page body too thin or full of SPA noise — prefer JSON-LD
-                    if json_ld_text:
-                        job_text = json_ld_text
+                    # Page body too thin or full of SPA noise — prefer structured JSON-LD
+                    if json_ld_blobs:
+                        job_text = _json_ld_blobs_to_markdown(json_ld_blobs)
                         if _body_is_noisy:
                             logger.info(
                                 "SPA noise detected (%d chars body) — using JSON-LD structured data",
@@ -285,16 +395,9 @@ def create_blueprint(deps):
                     else:
                         job_text = html_text
                 elif json_ld_blobs:
-                    # Both sources available — prepend structured data for the LLM
-                    blobs_md = "\n\n".join(
-                        _json.dumps(b, indent=2, ensure_ascii=False) for b in json_ld_blobs
-                    )
-                    job_text = (
-                        "## Structured Job Data (JSON-LD)\n\n"
-                        + blobs_md
-                        + "\n\n---\n\n## Page Content\n\n"
-                        + html_text
-                    )
+                    # Both sources available — combine rendered structured data with page text
+                    blobs_md = _json_ld_blobs_to_markdown(json_ld_blobs)
+                    job_text = blobs_md + "\n\n---\n\n## Page Content\n\n" + html_text
                     logger.debug("Prepended %d JSON-LD blob(s) to page content", len(json_ld_blobs))
                 else:
                     job_text = html_text

@@ -142,6 +142,7 @@ class StatusResponse:
     skills_section_title: str
     achievement_edits: Dict[str, Any]
     intake: Dict[str, Any]
+    stale_steps: List[str]
 
 
 @dataclass
@@ -776,8 +777,20 @@ def create_app(args) -> Flask:
         if not lines:
             return None
 
-        # 2. Skip navigation-noise lines; take the first content line as the title
-        content_lines = [l for l in lines if not _is_nav_noise(l)]
+        # 2. Skip navigation-noise lines and bare markdown section headers;
+        #    take the first content line as the title.
+        _GENERIC_LABELS = frozenset({
+            'description', 'qualifications', 'responsibilities', 'skills',
+            'requirements', 'overview', 'about', 'summary', 'details',
+            'job description', 'position', 'role', 'duties',
+            'experience requirements', 'education requirements',
+        })
+        def _is_section_header(line: str) -> bool:
+            stripped = line.lstrip('#').strip().lower()
+            return line.lstrip('#') != line and stripped in _GENERIC_LABELS
+        content_lines = [
+            l for l in lines if not _is_nav_noise(l) and not _is_section_header(l)
+        ]
         if not content_lines:
             content_lines = lines
 
