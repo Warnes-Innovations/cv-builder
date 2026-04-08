@@ -20,10 +20,20 @@ import asyncio
 import logging
 import os
 import json
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Type, TypeVar
 from abc import ABC, abstractmethod
 
+from pydantic import BaseModel, ValidationError
+
+from .llm_response_models import (
+    JobAnalysisResponse,
+    CustomizationResult,
+    PublicationRankingItem,
+)
+
 logger = logging.getLogger(__name__)
+
+_M = TypeVar("_M", bound=BaseModel)
 
 
 # ── Typed LLM error hierarchy ─────────────────────────────────────────────────
@@ -253,7 +263,13 @@ Return ONLY a JSON object — no prose, no markdown fences:
             {"role": "user", "content": prompt},
         ]
         response = self.chat(messages, temperature=0.3, json_mode=True)
-        return self._parse_json_response(response)
+        data = self._parse_json_response(response)
+        try:
+            validated = self._validate_with_repair(data, JobAnalysisResponse, messages, temperature=0.3)
+            return validated.model_dump()
+        except ValidationError as exc:
+            logger.warning("analyze_job_description: validation failed after repair: %s", exc)
+            return data if isinstance(data, dict) else {}
 
     def recommend_customizations(
         self,
@@ -516,6 +532,17 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             logger.warning("recommend_customizations failed to parse response: %s", e)
             logger.debug("Response preview: %s", response[:500])
             result = {}
+
+        if result:
+            try:
+                validated = self._validate_with_repair(
+                    result, CustomizationResult, messages, temperature=0.4
+                )
+                result = validated.model_dump()
+            except ValidationError as exc:
+                logger.warning(
+                    "recommend_customizations: validation failed after repair: %s", exc
+                )
 
         # Populate recommended_experiences from experience_recommendations for
         # backwards compatibility with callers that read the flat ID list.
@@ -1272,6 +1299,65 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             'details': f"Found {len(found_phrases)} generic filler phrase(s): {', '.join(found_phrases)}. Rewrite with specific value claims."
         }
 
+    def _validate_with_repair(
+        self,
+        data: Any,
+        model: Type[_M],
+        original_messages: List[Dict[str, str]],
+        temperature: float,
+    ) -> _M:
+        """Validate *data* against *model*, retrying once with a repair prompt.
+
+        If ``model.model_validate(data)`` succeeds on the first attempt the
+        result is returned immediately.  On ``ValidationError`` a concise repair
+        message is appended to *original_messages* and a single follow-up
+        ``chat()`` call is made; the repaired response is then parsed and
+        re-validated.  If validation still fails the ``ValidationError`` is
+        re-raised so the caller can decide how to handle it.
+
+        Args:
+            data:              The already-parsed Python object (dict or list)
+                               to validate.
+            model:             The Pydantic ``BaseModel`` subclass to validate
+                               against.
+            original_messages: The messages used in the original ``chat()``
+                               call (used to build the repair context).
+            temperature:       Temperature forwarded to the repair ``chat()``
+                               call; should match the original call's value.
+
+        Returns:
+            A validated *model* instance.
+
+        Raises:
+            ValidationError: If the repaired response also fails validation.
+        """
+        try:
+            return model.model_validate(data)
+        except ValidationError as exc:
+            missing = [".".join(str(loc) for loc in err["loc"]) for err in exc.errors()]
+            logger.warning(
+                "_validate_with_repair: %s missing/invalid fields %s — issuing repair prompt",
+                model.__name__,
+                missing,
+            )
+            repair_messages = list(original_messages) + [
+                {
+                    "role": "assistant",
+                    "content": json.dumps(data) if not isinstance(data, str) else data,
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Your previous response was missing or had invalid fields: "
+                        f"{missing}. Return a corrected, complete JSON object with "
+                        "all required fields present and valid."
+                    ),
+                },
+            ]
+            repaired_response = self.chat(repair_messages, temperature=temperature, json_mode=True)
+            repaired_data = self._parse_json_response(repaired_response)
+            return model.model_validate(repaired_data)
+
     def _parse_json_response(self, response: str) -> Any:
         """Parse a JSON value from an LLM response, tolerating markdown fences.
 
@@ -1421,18 +1507,33 @@ Return ONLY a JSON array — no prose, no markdown fences.
   }}
 ]
 """
+        pub_messages = [
+            {
+                "role": "system",
+                "content": "You are an expert academic CV advisor. Select and rank publications by relevance to a target job. Return only valid JSON — a bare array, no markdown fences.",
+            },
+            {"role": "user", "content": prompt},
+        ]
         try:
-            response = self.chat(
-                messages=[
-                    {"role": "system", "content": "You are an expert academic CV advisor. Select and rank publications by relevance to a target job. Return only valid JSON — a bare array, no markdown fences."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.3,
-                json_mode=True,
-            )
+            response = self.chat(pub_messages, temperature=0.3, json_mode=True)
             ranked_raw = self._parse_json_response(response)
             if not isinstance(ranked_raw, list):
                 return []
+            validated_items = []
+            for item in ranked_raw:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    validated_items.append(
+                        self._validate_with_repair(
+                            item, PublicationRankingItem, pub_messages, temperature=0.3
+                        ).model_dump()
+                    )
+                except ValidationError as exc:
+                    logger.warning(
+                        "rank_publications_for_job: item validation failed: %s", exc
+                    )
+            ranked_raw = validated_items
         except Exception as exc:
             import warnings
             warnings.warn(f"rank_publications_for_job: LLM call failed ({exc}); returning empty list")
