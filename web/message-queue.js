@@ -61,6 +61,50 @@ function appendMessageHtml(type, html) {
   conversation.scrollTop = conversation.scrollHeight;
 }
 
+// ---------------------------------------------------------------------------
+// Collapsible long-content helper
+// ---------------------------------------------------------------------------
+
+const COLLAPSE_LINE_THRESHOLD = 8;  // lines before collapsing
+const COLLAPSE_CHAR_THRESHOLD = 480; // chars before collapsing
+
+/**
+ * Wrap rendered HTML in a collapsible container when the content exceeds the
+ * threshold, showing the first few lines with a toggle button.
+ */
+function _makeCollapsibleContent(html, textStr) {
+  const lines = textStr.split('\n');
+  if (lines.length <= COLLAPSE_LINE_THRESHOLD && textStr.length <= COLLAPSE_CHAR_THRESHOLD) {
+    return { html, collapsible: false };
+  }
+
+  // Build preview: first COLLAPSE_LINE_THRESHOLD lines worth of escaped text
+  const previewLines = lines.slice(0, COLLAPSE_LINE_THRESHOLD);
+  const previewHtml = escapeHtml(previewLines.join('\n'))
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\n/g, '<br>');
+
+  const overflow = lines.length - COLLAPSE_LINE_THRESHOLD;
+  const id = `collapsible-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  const wrapped = `
+    <div class="msg-preview" id="${id}-preview">${previewHtml}</div>
+    <div class="msg-full" id="${id}-full" style="display:none">${html}</div>
+    <button class="msg-toggle-btn" onclick="(function(btn){
+      var p=document.getElementById('${id}-preview'),
+          f=document.getElementById('${id}-full');
+      if(f.style.display==='none'){
+        p.style.display='none'; f.style.display=''; btn.textContent='Show less';
+      } else {
+        p.style.display=''; f.style.display='none'; btn.textContent='Show ${overflow} more line${overflow === 1 ? '' : 's'}…';
+      }
+    })(this)" type="button">Show ${overflow} more line${overflow === 1 ? '' : 's'}…</button>`;
+
+  return { html: wrapped, collapsible: true };
+}
+
 function appendMessage(type, text) {
   const conversation = document.getElementById('conversation');
   if (!conversation) {
@@ -75,12 +119,20 @@ function appendMessage(type, text) {
 
   // Simple markdown rendering: convert **text** to <strong> and preserve newlines
   const textStr = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
-  const html = escapeHtml(textStr)
+  const renderedHtml = escapeHtml(textStr)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\n/g, '<br>');
 
-  content.innerHTML = html;
+  // Apply collapsible wrapper for long user/assistant messages
+  if (type === 'user' || type === 'assistant') {
+    const { html, collapsible } = _makeCollapsibleContent(renderedHtml, textStr);
+    content.innerHTML = html;
+    if (collapsible) content.classList.add('collapsible-msg');
+  } else {
+    content.innerHTML = renderedHtml;
+  }
   message.appendChild(content);
 
   // Check if message ends with response options like (yes/no/maybe)

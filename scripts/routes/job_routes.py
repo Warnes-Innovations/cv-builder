@@ -441,6 +441,10 @@ def create_blueprint(deps):
                     job_text, page_title=page_title
                 )
                 conversation.state["job_url"] = url
+                conversation.conversation_history.append({
+                    "role": "user",
+                    "content": f"[Job description fetched from {domain}]\n\n{job_text}",
+                })
             session_registry.touch(sid)
             logger.info("Fetched %d chars from %s", len(job_text), domain)
 
@@ -604,6 +608,10 @@ def create_blueprint(deps):
             with entry.lock:
                 conversation.add_job_description(job_text)
                 conversation.state["position_name"] = _infer_position_name(job_text)
+                conversation.conversation_history.append({
+                    "role": "user",
+                    "content": f"[Job description loaded from {filename}]\n\n{job_text}",
+                })
             session_registry.touch(sid)
 
             return jsonify({
@@ -670,6 +678,13 @@ def create_blueprint(deps):
         try:
             with entry.lock:
                 result = conversation._execute_action(payload)
+                # Persist session (including conversation_history) immediately so
+                # history is on disk even if the client never calls
+                # /api/post-analysis-responses.
+                try:
+                    conversation._save_session()
+                except Exception:
+                    logger.warning("Non-fatal: failed to save session after action %s", action)
             if not result:
                 return jsonify({"error": "Invalid or unsupported action"}), 400
             session_registry.touch(sid)
