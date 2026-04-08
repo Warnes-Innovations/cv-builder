@@ -157,6 +157,62 @@ class TestParseJsonResponse(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# LLMClient._validate_with_repair
+# ---------------------------------------------------------------------------
+
+class TestValidateWithRepair(unittest.TestCase):
+    """Unit tests for LLMClient._validate_with_repair()."""
+
+    def setUp(self):
+        self.client = _make_openai_client()
+        # A minimal Pydantic model with one required field for testing.
+        from pydantic import BaseModel
+        class _TestModel(BaseModel):
+            cite_key: str
+            score: int = 0
+
+        self._TestModel = _TestModel
+
+    def test_valid_data_returns_immediately_without_chat_call(self):
+        self.client.client.chat.completions.create = MagicMock()
+        messages = [{"role": "user", "content": "rank these"}]
+        data = {"cite_key": "Jones2020", "score": 5}
+        result = self.client._validate_with_repair(data, self._TestModel, messages, temperature=0.3)
+        self.assertEqual(result.cite_key, "Jones2020")
+        self.assertEqual(result.score, 5)
+        self.client.client.chat.completions.create.assert_not_called()
+
+    def test_invalid_data_triggers_repair_and_returns_repaired_result(self):
+        repaired_json = '{"cite_key": "Jones2020", "score": 3}'
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = repaired_json
+        mock_response.usage = None
+        self.client.client.chat.completions.create = MagicMock(return_value=mock_response)
+
+        messages = [{"role": "user", "content": "rank these"}]
+        invalid_data = {"score": 5}  # missing required cite_key
+        result = self.client._validate_with_repair(invalid_data, self._TestModel, messages, temperature=0.3)
+        self.assertEqual(result.cite_key, "Jones2020")
+        self.client.client.chat.completions.create.assert_called_once()
+
+    def test_persistent_validation_failure_raises_validation_error(self):
+        from pydantic import ValidationError
+        still_invalid_json = '{"score": 99}'  # still missing cite_key after repair
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = still_invalid_json
+        mock_response.usage = None
+        self.client.client.chat.completions.create = MagicMock(return_value=mock_response)
+
+        messages = [{"role": "user", "content": "rank these"}]
+        invalid_data = {"score": 5}  # missing required cite_key
+        with self.assertRaises(ValidationError):
+            self.client._validate_with_repair(invalid_data, self._TestModel, messages, temperature=0.3)
+        self.client.client.chat.completions.create.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # OpenAIClient.propose_rewrites  (task 1.2.4)
 # ---------------------------------------------------------------------------
 
