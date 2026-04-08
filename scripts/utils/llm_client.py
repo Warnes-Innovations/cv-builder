@@ -196,9 +196,20 @@ class LLMClient(ABC):
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
-        """Send messages and get response."""
+        """Send messages and get response.
+
+        Args:
+            messages:    Conversation messages in OpenAI role/content format.
+            temperature: Sampling temperature.
+            max_tokens:  Token limit (None = provider default).
+            json_mode:   When True, instruct the provider to constrain output to
+                         valid JSON.  Providers that support a native API param
+                         (OpenAI, GitHub Models) set ``response_format`` on the
+                         request; others rely on the prompt wording alone.
+        """
         pass
     
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
@@ -241,7 +252,7 @@ Return ONLY a JSON object — no prose, no markdown fences:
             {"role": "system", "content": "You are an expert at analyzing job descriptions for CV optimization."},
             {"role": "user", "content": prompt},
         ]
-        response = self.chat(messages, temperature=0.3)
+        response = self.chat(messages, temperature=0.3, json_mode=True)
         return self._parse_json_response(response)
 
     def recommend_customizations(
@@ -497,7 +508,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             {"role": "user", "content": prompt},
         ]
 
-        response = self.chat(messages, temperature=0.4)
+        response = self.chat(messages, temperature=0.4, json_mode=True)
 
         try:
             result = self._parse_json_response(response)
@@ -759,7 +770,8 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         prompt: str,
         system_prompt: str = "",
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Call LLM with a single user prompt and optional system prompt.
 
@@ -771,6 +783,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             system_prompt: Optional system/instruction prompt.
             temperature:   Sampling temperature passed to :meth:`chat`.
             max_tokens:    Token limit passed to :meth:`chat` (None = provider default).
+            json_mode:     Passed through to :meth:`chat`; see that method for details.
 
         Returns:
             The model's response as a plain string.
@@ -779,7 +792,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        return self.chat(messages, temperature=temperature, max_tokens=max_tokens)
+        return self.chat(messages, temperature=temperature, max_tokens=max_tokens, json_mode=json_mode)
 
     # ── Concrete helpers shared by all provider implementations ──────────────
 
@@ -1415,6 +1428,7 @@ Return ONLY a JSON array — no prose, no markdown fences.
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
+                json_mode=True,
             )
             ranked_raw = self._parse_json_response(response)
             if not isinstance(ranked_raw, list):
@@ -1636,7 +1650,7 @@ Return ONLY a JSON array — no prose, no markdown fences.
         ]
 
         try:
-            response = self.chat(messages, temperature=0.3)
+            response = self.chat(messages, temperature=0.3, json_mode=True)
             raw = self._parse_json_response(response)
             if not isinstance(raw, list):
                 raw = raw.get('rewrites') or raw.get('proposals') or []
@@ -1684,16 +1698,20 @@ class OpenAIClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to OpenAI."""
+        kwargs: Dict[str, Any] = dict(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
+            response = self.client.chat.completions.create(**kwargs)
             self.last_usage = response.usage
             return response.choices[0].message.content
         except Exception as exc:
@@ -1764,7 +1782,8 @@ class AnthropicClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to Claude."""
         system_blocks, payload_messages = _anthropic_messages_payload(messages)
@@ -1814,7 +1833,8 @@ class GeminiClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to Gemini."""
         try:
@@ -1928,6 +1948,7 @@ class CopilotSdkClient(LLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to GitHub Copilot via any-llm copilotsdk provider."""
         kwargs: Dict[str, Any] = dict(
@@ -2018,7 +2039,8 @@ class LocalLLMClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Generate response using local model."""
         self._ensure_model_loaded()
@@ -2298,6 +2320,7 @@ class CopilotOAuthClient(LLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         payload: dict = {
             "model":       self.model,
@@ -2306,6 +2329,8 @@ class CopilotOAuthClient(LLMClient):
         }
         if max_tokens:
             payload["max_tokens"] = max_tokens
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
         try:
             data = self._post(payload)
             self.last_usage = data.get("usage")
@@ -2437,6 +2462,7 @@ class StubLLMClient(LLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Return a canned JSON response based on the last user message."""
         last_user = next(
