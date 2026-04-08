@@ -29,7 +29,14 @@ from pydantic import BaseModel, Field
 # ── Job Analysis ─────────────────────────────────────────────────────────────
 
 class JobAnalysisResponse(BaseModel):
-    """Shape of the JSON object returned by ``analyze_job_description``."""
+    """Shape of the JSON object returned by ``analyze_job_description``.
+
+    All fields intentionally have defaults so partially-populated LLM responses
+    are accepted without triggering a repair round-trip.  The self-repair helper
+    (``_validate_with_repair``) catches *type* mismatches; presence of individual
+    fields is not enforced because any missing field degrades gracefully to its
+    empty default in the downstream workflow.
+    """
 
     title:                   str            = ""
     company:                 str            = ""
@@ -56,7 +63,7 @@ class BulletOrder(BaseModel):
 class ExperienceRecommendation(BaseModel):
     id:             str
     recommendation: str
-    confidence:     str
+    confidence:     str  # expected: 'high' | 'medium' | 'low'
     reasoning:      str                   = ""
     bullet_order:   Optional[BulletOrder] = None
 
@@ -72,7 +79,7 @@ class SkillGrouping(BaseModel):
 class SkillRecommendation(BaseModel):
     skill:          str
     recommendation: str
-    confidence:     str
+    confidence:     str  # expected: 'high' | 'medium' | 'low'
     reasoning:      str                    = ""
     grouping:       Optional[SkillGrouping] = None
 
@@ -80,7 +87,7 @@ class SkillRecommendation(BaseModel):
 class AchievementRecommendation(BaseModel):
     id:             str
     recommendation: str
-    confidence:     str
+    confidence:     str  # expected: 'high' | 'medium' | 'low'
     reasoning:      str = ""
 
 
@@ -89,11 +96,17 @@ class SuggestedAchievement(BaseModel):
     title:         str
     description:   str
     rationale:     str
-    confidence:    str
+    confidence:    str  # expected: 'high' | 'medium' | 'low'
 
 
 class CustomizationResult(BaseModel):
-    """Shape of the JSON object returned by ``recommend_customizations``."""
+    """Shape of the JSON object returned by ``recommend_customizations``.
+
+    All fields intentionally have defaults; see ``JobAnalysisResponse`` for the
+    rationale.  Missing list fields degrade to empty lists in the downstream
+    backwards-compatibility shim that populates ``recommended_experiences``
+    and ``recommended_achievements``.
+    """
 
     experience_recommendations:  list[ExperienceRecommendation]  = Field(default_factory=list)
     skill_recommendations:       list[SkillRecommendation]       = Field(default_factory=list)

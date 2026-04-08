@@ -2052,6 +2052,13 @@ class CopilotSdkClient(LLMClient):
         json_mode: bool = False,
     ) -> str:
         """Send chat messages to GitHub Copilot via any-llm copilotsdk provider."""
+        if json_mode:
+            # copilotsdk has no response_format API param; enforce JSON via a
+            # hard system instruction so the model still receives the constraint.
+            messages = [
+                {"role": "system", "content": "Respond with valid JSON only. No prose, no markdown fences."},
+                *messages,
+            ]
         kwargs: Dict[str, Any] = dict(
             # any-llm expects the provider key without an underscore.
             provider="copilotsdk",
