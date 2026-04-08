@@ -456,6 +456,67 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
         except json.JSONDecodeError:
             return None
 
+    def _parse_json_questions_response(self, text: str) -> Dict[str, object]:
+        """Parse a JSON questions response from the LLM.
+
+        Expects ``{"intro": "...", "questions": [{"type": ..., "question": ..., "choices": [...]}]}``.
+        Tolerates markdown fences and falls back gracefully on malformed output.
+        """
+        if not text:
+            return {}
+        # Strip markdown code fences
+        clean = text.strip()
+        for fence in ('```json', '```'):
+            if clean.startswith(fence):
+                clean = clean[len(fence):]
+        if clean.endswith('```'):
+            clean = clean[:-3]
+        clean = clean.strip()
+        try:
+            result = json.loads(clean)
+            if isinstance(result, dict):
+                return result
+            if isinstance(result, list):
+                return {'questions': result}
+        except json.JSONDecodeError:
+            pass
+        # Bracket-depth fallback (same strategy as _parse_json_response)
+        for start_char, close_char in [('{', '}'), ('[', ']')]:
+            idx = clean.find(start_char)
+            if idx == -1:
+                continue
+            depth = 0
+            in_string = False
+            escape_next = False
+            for j in range(idx, len(clean)):
+                ch = clean[j]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if ch == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if ch == '"':
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if ch == start_char:
+                    depth += 1
+                elif ch == close_char:
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            result = json.loads(clean[idx:j + 1])
+                            if isinstance(result, dict):
+                                return result
+                            if isinstance(result, list):
+                                return {'questions': result}
+                        except json.JSONDecodeError:
+                            pass
+                        break
+        return {}
+
     def _extract_structured_questions(self, text: str) -> List[Dict[str, object]]:
         """Extract numbered clarifying questions from free-form LLM text.
 
@@ -516,50 +577,87 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
                 analysis.get('title', '')
             )
 
-            # After analysis, prompt for contextual questions  
-            contextual_prompt = f"""I've analyzed the job description. Here are the key findings:
+            # After analysis, generate structured clarifying questions via JSON prompt.
+            contextual_prompt = f"""You are helping tailor a CV to a specific job posting.
 
-JOB ANALYSIS:
+Job analysis summary:
 - Title: {analysis.get('title', 'Not specified')}
-- Company: {analysis.get('company', 'Not specified')}  
+- Company: {analysis.get('company', 'Not specified')}
 - Domain: {analysis.get('domain', 'Not specified')}
 - Role Level: {analysis.get('role_level', 'Not specified')}
 - Required Skills: {', '.join(analysis.get('required_skills', []))}
 - Key Requirements: {', '.join(analysis.get('must_have_requirements', []))}
 
-Based on this analysis and my CV data, please ask me 2-3 specific clarifying questions to help customize my CV for this role. Focus on:
-1. Which of my experiences should be emphasized/de-emphasized for this specific role
-2. How I'd like to position myself relative to the role level and domain  
-3. Any specific achievements or skills I want highlighted for this company/domain
+Generate 3-4 targeted clarifying questions that will help customise the candidate's CV for this specific role.
+Requirements:
+- Questions must be specific to this role, company, and domain — not generic.
+- Focus on experience emphasis, positioning relative to role level, and achievement selection.
+- Each question must have 2-4 short answer choices covering the most likely responses.
+- Keep each question under 220 characters.
 
-Ask questions that are specific to this job posting, not generic career questions."""
-            
-            # Get contextual questions from LLM
+Return ONLY a JSON object with this exact structure — no prose, no markdown fences:
+{{
+  "intro": "One concise sentence (≤120 chars) summarising the key customisation themes for this role.",
+  "questions": [
+    {{"type": "short_snake_case_key", "question": "...", "choices": ["Option A", "Option B", "Option C"]}}
+  ]
+}}"""
+
+            # Get structured questions from LLM
             try:
-                # Build context-aware system message
                 system_msg = self._build_system_prompt()
                 messages = (
-                    [{'role': 'system', 'content': system_msg}]
+                    [{'role': 'system', 'content': 'You generate targeted CV-optimisation questions and respond with strict JSON only.'}]
                     + self._strip_context_from_history(self.conversation_history)
                     + [{'role': 'user', 'content': contextual_prompt}]
                 )
-                questions_response = self.llm.chat(messages, temperature=0.7)
-                
-                # Add the questions to conversation history 
+                raw_response = self.llm.chat(messages, temperature=0.4)
+
+                # Parse JSON response
+                parsed = self._parse_json_questions_response(raw_response)
+                intro = parsed.get('intro', '✓ Job analysis complete.')
+                structured_questions = parsed.get('questions', [])
+
+                # Validate and clean questions
+                cleaned_questions = []
+                for idx, q in enumerate(structured_questions[:4]):
+                    if not isinstance(q, dict):
+                        continue
+                    question_text = str(q.get('question', '')).strip()
+                    if not question_text:
+                        continue
+                    qtype = str(q.get('type', f'clarification_{idx + 1}')).strip().lower().replace(' ', '_')
+                    choices = q.get('choices')
+                    if not isinstance(choices, list):
+                        choices = []
+                    choices = [str(c).strip() for c in choices if str(c).strip()][:4]
+                    cleaned_questions.append({
+                        'type': qtype[:40] or f'clarification_{idx + 1}',
+                        'question': question_text[:220],
+                        'choices': choices,
+                    })
+
+                if cleaned_questions:
+                    self.state['post_analysis_questions'] = cleaned_questions
+
+                # Build a human-readable chat message so history is useful on restore.
+                chat_lines = [intro, '']
+                for i, q in enumerate(cleaned_questions, 1):
+                    chat_lines.append(f"{i}. {q['question']}")
+                    if q.get('choices'):
+                        chat_lines.append('   Options: ' + ' / '.join(q['choices']))
+                chat_text = '\n'.join(chat_lines)
+
                 self.conversation_history.append({
                     'role': 'assistant',
-                    'content': questions_response
+                    'content': chat_text,
                 })
 
-                extracted_questions = self._extract_structured_questions(questions_response)
-                if extracted_questions:
-                    self.state['post_analysis_questions'] = extracted_questions
-                
                 return {
-                    'text': f"✓ Job analysis complete:\n\n{questions_response}",
+                    'text': chat_text,
                     'context_data': {
                         'job_analysis': analysis,
-                        'post_analysis_questions': extracted_questions,
+                        'post_analysis_questions': cleaned_questions,
                     },
                 }
             except LLMError as e:

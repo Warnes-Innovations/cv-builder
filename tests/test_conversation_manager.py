@@ -667,9 +667,11 @@ class TestAnalyzeQuestionExtraction(unittest.TestCase):
 
     def test_analyze_action_includes_extracted_questions_in_context(self):
         self.cm.llm.chat.return_value = (
-            'Here are focused questions:\n\n'
-            '1. Which experiences should I emphasize most?\n'
-            '2. Should we emphasize technical depth or leadership scope?\n'
+            '{"intro": "Focus on data science and leadership for this role.", '
+            '"questions": ['
+            '{"type": "experience_emphasis", "question": "Which experiences should I emphasize most?", "choices": ["Data science", "Leadership"]},'
+            '{"type": "positioning", "question": "Should we emphasize technical depth or leadership scope?", "choices": ["Technical depth", "Leadership scope"]}'
+            ']}'
         )
 
         result = self.cm._execute_action({'action': 'analyze_job'})
