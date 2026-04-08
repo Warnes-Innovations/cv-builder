@@ -78,6 +78,7 @@ def create_blueprint(deps):
             try:
                 auth_manager.complete_device_flow(device_code, interval)
             except Exception as exc:
+                logger.warning("Copilot auth poll failed: %s", exc)
                 _auth_poll["error"] = str(exc)
             finally:
                 _auth_poll["polling"] = False
@@ -313,14 +314,22 @@ def create_blueprint(deps):
             if not ok:
                 formatted_error = _format_probe_error(provider, probe_error)
                 probe_lower = (probe_error or "").lower()
+                # Map provider to a user-friendly label for error messages
+                _friendly: Dict[str, str] = {
+                    "github": "GitHub Models", "openai": "OpenAI",
+                    "anthropic": "Anthropic",  "copilot": "Copilot",
+                    "copilot-oauth": "Copilot", "copilot-sdk": "Copilot SDK",
+                    "gemini": "Gemini",         "groq": "Groq",
+                }
+                provider_label = _friendly.get(provider, provider)
                 if any(k in probe_lower for k in ("auth", "unauthorized", "forbidden", "token", "api key")):
                     return jsonify({
-                        "error": f"Authentication failed for provider '{provider}'. {formatted_error}",
+                        "error": f"Authentication failed for provider '{provider_label}'. Check your API key or token.",
                         "provider": provider,
                         "model": model,
                     }), 400
                 return jsonify({
-                    "error": f"Model '{model}' is not currently available for provider '{provider}'. {formatted_error}",
+                    "error": f"Model '{model}' is not currently available for '{provider_label}'.",
                     "provider": provider,
                     "model": model,
                 }), 400

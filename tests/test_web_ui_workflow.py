@@ -241,6 +241,11 @@ def test_web_ui_workflow(running_server):
         if status.get("phase") == "generation":
             print("  ✅ In generation phase")
             break
+        if status.get("phase") == "customization":
+            # Trigger the transition: GET /api/rewrites generates rewrites
+            # and advances the phase to rewrite_review.
+            _get("/api/rewrites")
+            continue
         if status.get("phase") == "rewrite_review":
             rewrites_response = _get("/api/rewrites")
             assert rewrites_response.status_code == 200, (
