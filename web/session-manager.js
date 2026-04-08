@@ -328,6 +328,11 @@ async function restoreSession() {
 
     stateManager.setIsReconnecting(false);
 
+    // Run a background health check so the status pill reflects live connectivity.
+    if (typeof globalThis.testCurrentModel === 'function') {
+      globalThis.testCurrentModel().catch(() => {});
+    }
+
   } catch (error) {
     log.warn('Session restoration failed:', error);
     appendMessage('system', `⚠️ Could not restore previous session. Starting fresh. (${error.message})`);
@@ -552,6 +557,11 @@ async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
     }
 
     await fetchStatus();
+
+    // Run a background health check so the status pill reflects live connectivity.
+    if (typeof globalThis.testCurrentModel === 'function') {
+      globalThis.testCurrentModel().catch(() => {});
+    }
 
     // Rehydrate tabData and switch to the correct tab for the restored phase
     const sessionPhase = data.phase || PHASES.INIT;

@@ -40,6 +40,7 @@ function fmtDate(ts) {
  * ```
  */
 function cleanJsonResponse(text) {
+  if (typeof text !== 'string') return text;
   let cleaned = text;
   // Remove ```json wrapper
   cleaned = cleaned.replace(/^```json\s*/i, '').replace(/```\s*$/i, '');

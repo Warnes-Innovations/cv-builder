@@ -96,7 +96,7 @@ function _makeCollapsibleContent(html, textStr) {
       var p=document.getElementById('${id}-preview'),
           f=document.getElementById('${id}-full');
       if(f.style.display==='none'){
-        p.style.display='none'; f.style.display=''; btn.textContent='Show less';
+        p.style.display='none'; f.style.display='block'; btn.textContent='Show less';
       } else {
         p.style.display=''; f.style.display='none'; btn.textContent='Show ${overflow} more line${overflow === 1 ? '' : 's'}…';
       }

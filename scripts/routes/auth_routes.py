@@ -8,12 +8,53 @@
 Authentication routes — Copilot OAuth, model catalog, model get/set/test, pricing.
 """
 import logging
+import os
 import threading
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import yaml
 from flask import Blueprint, jsonify, request
 
 logger = logging.getLogger(__name__)
+
+_CONFIG_WRITE_LOCK = threading.Lock()
+
+
+def _persist_provider_model_to_config(provider: str, model: str) -> None:
+    """Write llm.default_provider and llm.default_model back to config.yaml."""
+    explicit = (os.getenv('CV_BUILDER_CONFIG_FILE') or '').strip()
+    config_path = Path(explicit).expanduser() if explicit else Path.cwd() / 'config.yaml'
+    with _CONFIG_WRITE_LOCK:
+        doc: Dict[str, Any] = {}
+        if config_path.exists():
+            try:
+                doc = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
+            except Exception:
+                logger.exception("Failed to read config.yaml for provider/model persistence")
+                return
+        if 'llm' not in doc or not isinstance(doc.get('llm'), dict):
+            doc['llm'] = {}
+        doc['llm']['default_provider'] = provider
+        doc['llm']['default_model'] = model
+        tmp_path = config_path.with_suffix('.yaml.tmp')
+        backup_path = config_path.with_suffix('.yaml.bak')
+        try:
+            tmp_path.write_text(
+                yaml.safe_dump(doc, sort_keys=False, default_flow_style=False),
+                encoding='utf-8',
+            )
+            if config_path.exists():
+                config_path.replace(backup_path)
+            tmp_path.replace(config_path)
+            logger.info("Persisted default_provider=%s default_model=%s to config.yaml", provider, model)
+        except Exception:
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+            if backup_path.exists() and not config_path.exists():
+                backup_path.replace(config_path)
+            logger.exception("Failed to persist provider/model to config.yaml")
+
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
@@ -337,6 +378,7 @@ def create_blueprint(deps):
             _llm_client_ref['value']     = candidate_client
             _provider_name_ref['value']  = provider
             _current_model_ref['value']  = model
+            _persist_provider_model_to_config(provider, model)
             for _entry in session_registry.all_active():
                 _entry.orchestrator.llm = candidate_client
                 _entry.manager.llm = candidate_client
