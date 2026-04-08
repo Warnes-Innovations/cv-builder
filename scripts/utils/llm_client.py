@@ -1803,6 +1803,8 @@ class OpenAIClient(LLMClient):
         json_mode: bool = False,
     ) -> str:
         """Send chat messages to OpenAI."""
+        from utils.config import get_config as _get_config  # noqa: PLC0415
+        timeout_secs = _get_config().llm_request_timeout
         kwargs: Dict[str, Any] = dict(
             model=self.model,
             messages=messages,
@@ -1811,6 +1813,8 @@ class OpenAIClient(LLMClient):
         )
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
+        if timeout_secs is not None:
+            kwargs["timeout"] = timeout_secs
         try:
             response = self.client.chat.completions.create(**kwargs)
             self.last_usage = response.usage
@@ -1889,6 +1893,8 @@ class AnthropicClient(LLMClient):
         """Send chat messages to Claude."""
         system_blocks, payload_messages = _anthropic_messages_payload(messages)
 
+        from utils.config import get_config as _get_config  # noqa: PLC0415
+        timeout_secs = _get_config().llm_request_timeout
         try:
             request_kwargs = {
                 "model":       self.model,
@@ -1898,6 +1904,8 @@ class AnthropicClient(LLMClient):
             }
             if system_blocks:
                 request_kwargs["system"] = system_blocks
+            if timeout_secs is not None:
+                request_kwargs["timeout"] = timeout_secs
 
             response = self.client.messages.create(**request_kwargs)
             self.last_usage = response.usage
@@ -1938,8 +1946,10 @@ class GeminiClient(LLMClient):
         json_mode: bool = False,
     ) -> str:
         """Send chat messages to Gemini."""
+        from utils.config import get_config as _get_config  # noqa: PLC0415
+        timeout_secs = _get_config().llm_request_timeout
         try:
-            response = self._anyllm_completion(
+            gemini_kwargs: Dict[str, Any] = dict(
                 provider="gemini",
                 model=self.model,
                 api_key=self.api_key,
@@ -1947,6 +1957,9 @@ class GeminiClient(LLMClient):
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+            if timeout_secs is not None:
+                gemini_kwargs["timeout"] = timeout_secs
+            response = self._anyllm_completion(**gemini_kwargs)
         except Exception as exc:
             raise _classify_llm_error(exc, provider='Gemini') from exc
         self.last_usage = getattr(response, 'usage', None)

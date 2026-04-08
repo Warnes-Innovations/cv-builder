@@ -34,9 +34,12 @@ import DOMPurify from 'dompurify';
 
 // Render job description text safely: marked parses GFM (including embedded HTML
 // and autolinks), DOMPurify sanitizes the output before writing to innerHTML.
+// FORBID_ATTR: ['style'] strips inline CSS from HTML embedded in the job text
+// (e.g. Word-style font-size/font-family from JSON-LD description fields),
+// so the page's own stylesheet controls font rendering consistently.
 function _renderJobText(text) {
   const raw = marked.parse(text, { gfm: true, breaks: true });
-  return DOMPurify.sanitize(raw);
+  return DOMPurify.sanitize(raw, { FORBID_ATTR: ['style'] });
 }
 
 // ---------------------------------------------------------------------------

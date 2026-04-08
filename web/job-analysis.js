@@ -116,9 +116,14 @@ async function analyzeJob() {
       const analysisData = typeof result === 'object' && result !== null
         ? (result.context_data?.job_analysis ?? result)
         : result;
+      const contextQuestions = (typeof result === 'object' && result !== null)
+        ? result.context_data?.post_analysis_questions
+        : null;
       const structuredQuestions = mergePostAnalysisQuestions(
-        (typeof result === 'object' && result !== null) ? result.context_data?.post_analysis_questions : null,
-        extractStructuredQuestionsFromAssistantText(analysisText),
+        contextQuestions,
+        (contextQuestions && contextQuestions.length > 0)
+          ? []
+          : extractStructuredQuestionsFromAssistantText(analysisText),
       );
 
       if (analysisText) appendMessage('assistant', analysisText);

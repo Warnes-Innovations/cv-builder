@@ -423,14 +423,16 @@ class TestAnthropicClient(unittest.TestCase):
             content=[SimpleNamespace(text='ready')],
         )
 
-        result = client.chat(
-            messages=[
-                {'role': 'system', 'content': 'Answer in one word.'},
-                {'role': 'user', 'content': 'Say ready'},
-            ],
-            temperature=0,
-            max_tokens=8,
-        )
+        _no_timeout = SimpleNamespace(llm_request_timeout=None)
+        with patch('utils.config.get_config', return_value=_no_timeout, create=True):
+            result = client.chat(
+                messages=[
+                    {'role': 'system', 'content': 'Answer in one word.'},
+                    {'role': 'user', 'content': 'Say ready'},
+                ],
+                temperature=0,
+                max_tokens=8,
+            )
 
         self.assertEqual(result, 'ready')
         client.client.messages.create.assert_called_once_with(
@@ -580,7 +582,9 @@ class TestGeminiClientAnyLLM(unittest.TestCase):
             {'role': 'user', 'content': 'Say ready'}
         ]
 
-        result = client.chat(messages, temperature=0.1, max_tokens=12)
+        _no_timeout = SimpleNamespace(llm_request_timeout=None)
+        with patch('utils.config.get_config', return_value=_no_timeout, create=True):
+            result = client.chat(messages, temperature=0.1, max_tokens=12)
 
         self.assertEqual(result, 'Ready')
         client._anyllm_completion.assert_called_once_with(
