@@ -240,7 +240,18 @@ def create_blueprint(deps):
                 if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
                     return jsonify({"error": "URL host not permitted"}), 400
             except ValueError:
-                pass  # hostname is a name, not a bare IP — allow normal DNS resolution
+                # Hostname is not a bare IP — resolve it and re-check the
+                # resulting address to prevent DNS-rebinding attacks.
+                import socket as _socket
+                try:
+                    resolved = _socket.getaddrinfo(hostname, None)
+                    for _family, _type, _proto, _canonname, sockaddr in resolved:
+                        resolved_addr = ipaddress.ip_address(sockaddr[0])
+                        if (resolved_addr.is_loopback or resolved_addr.is_private
+                                or resolved_addr.is_link_local or resolved_addr.is_reserved):
+                            return jsonify({"error": "URL host not permitted"}), 400
+                except _socket.gaierror:
+                    return jsonify({"error": "Unable to resolve URL host"}), 400
 
             domain = parsed.netloc.lower()
 

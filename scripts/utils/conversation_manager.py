@@ -517,41 +517,6 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
                         break
         return {}
 
-    def _extract_structured_questions(self, text: str) -> List[Dict[str, object]]:
-        """Extract numbered clarifying questions from free-form LLM text.
-
-        The analyze flow often returns narrative text followed by numbered
-        questions (``1.``, ``2.``, ``3.``). This helper converts that output
-        into the structured question objects used by the web Questions tab.
-        """
-        if not text:
-            return []
-
-        normalized = text.replace("\r\n", "\n")
-        blocks = re.split(r"(?m)^\s*\d+\.\s+", normalized)
-        if len(blocks) <= 1:
-            return []
-
-        extracted: List[Dict[str, object]] = []
-        for idx, block in enumerate(blocks[1:], 1):
-            chunk = block.strip()
-            if not chunk:
-                continue
-
-            # Preserve full question body (including markdown/newlines) so the
-            # Questions tab can render rich context without truncation.
-            question = chunk.strip()
-            if not question:
-                continue
-
-            extracted.append({
-                "type": f"clarification_{idx}",
-                "question": question[:4000],
-                "choices": [],
-            })
-
-        return extracted[:4]
-    
     def _execute_action(self, action: Dict) -> Optional[str]:
         """Execute requested action."""
         action_type = action.get('action')
@@ -611,7 +576,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                     + self._strip_context_from_history(self.conversation_history)
                     + [{'role': 'user', 'content': contextual_prompt}]
                 )
-                raw_response = self.llm.chat(messages, temperature=0.4)
+                raw_response = self.llm.chat(messages, temperature=0.4, json_mode=True)
 
                 # Parse JSON response
                 parsed = self._parse_json_questions_response(raw_response)

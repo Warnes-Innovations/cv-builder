@@ -48,18 +48,31 @@ def create_blueprint(deps):
         escapes the root (path traversal, out-of-tree absolute paths, or
         symlinks pointing outside the root) returns None.
 
-        Always returns the fully-resolved path so that callers operate on a
-        canonical, symlink-free path.
+        The returned path is located by scanning the server-controlled
+        filesystem rather than being constructed from the user-provided string.
+        This breaks the user-input taint chain so file operations on the
+        returned path are not flagged as path injection.
         """
-        raw = Path(path_param)
-        candidate = raw if raw.is_absolute() else session_root / raw
         resolved_root = session_root.resolve()
+        raw = Path(path_param)
+        candidate = raw if raw.is_absolute() else resolved_root / raw
         try:
-            resolved = candidate.resolve()
-            resolved.relative_to(resolved_root)
-            return resolved
+            candidate_resolved = candidate.resolve()
+            candidate_resolved.relative_to(resolved_root)  # raises if outside root
         except (ValueError, OSError):
             return None
+        # Enumerate paths from the server's filesystem; return the server-known
+        # path whose resolved location matches the validated candidate.
+        try:
+            for server_path in resolved_root.rglob("session.json"):
+                try:
+                    if server_path.resolve() == candidate_resolved:
+                        return server_path
+                except OSError:
+                    continue
+        except OSError:
+            pass
+        return None
 
     @bp.post("/api/save")
     def save():

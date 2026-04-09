@@ -254,6 +254,15 @@ API_STATUS_IN_ANALYSIS = {
 API_STATUS_REWRITE = {
     **API_STATUS_ANALYSIS_DONE,
     "phase": "rewrite_review",
+    # customizations must be non-null so _resolveRestoredPhase() does not
+    # downgrade rewrite_review → job_analysis (the guard fires when
+    # customizations is falsy for customization/rewrite_review phases).
+    "customizations": {
+        "experience_recommendations": API_STATUS_ANALYSIS_DONE["job_analysis"]["experience_recommendations"],
+        "skill_recommendations":      API_STATUS_ANALYSIS_DONE["job_analysis"]["skill_recommendations"],
+        "recommended_experiences":    ["exp-001", "exp-002"],
+        "recommended_skills":         ["Python", "R"],
+    },
 }
 
 # GET /api/status — in spell_check phase (spell stage: #tab-spell visible)

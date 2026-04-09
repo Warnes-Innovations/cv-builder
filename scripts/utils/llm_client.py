@@ -20,10 +20,20 @@ import asyncio
 import logging
 import os
 import json
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Type, TypeVar
 from abc import ABC, abstractmethod
 
+from pydantic import BaseModel, ValidationError
+
+from .llm_response_models import (
+    JobAnalysisResponse,
+    CustomizationResult,
+    PublicationRankingItem,
+)
+
 logger = logging.getLogger(__name__)
+
+_M = TypeVar("_M", bound=BaseModel)
 
 
 # ── Typed LLM error hierarchy ─────────────────────────────────────────────────
@@ -196,9 +206,20 @@ class LLMClient(ABC):
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
-        """Send messages and get response."""
+        """Send messages and get response.
+
+        Args:
+            messages:    Conversation messages in OpenAI role/content format.
+            temperature: Sampling temperature.
+            max_tokens:  Token limit (None = provider default).
+            json_mode:   When True, instruct the provider to constrain output to
+                         valid JSON.  Providers that support a native API param
+                         (OpenAI, GitHub Models) set ``response_format`` on the
+                         request; others rely on the prompt wording alone.
+        """
         pass
     
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
@@ -241,8 +262,14 @@ Return ONLY a JSON object — no prose, no markdown fences:
             {"role": "system", "content": "You are an expert at analyzing job descriptions for CV optimization."},
             {"role": "user", "content": prompt},
         ]
-        response = self.chat(messages, temperature=0.3)
-        return self._parse_json_response(response)
+        response = self.chat(messages, temperature=0.3, json_mode=True)
+        data = self._parse_json_response(response)
+        try:
+            validated = self._validate_with_repair(data, JobAnalysisResponse, messages, temperature=0.3)
+            return validated.model_dump()
+        except ValidationError as exc:
+            logger.warning("analyze_job_description: validation failed after repair: %s", exc)
+            return data if isinstance(data, dict) else {}
 
     def recommend_customizations(
         self,
@@ -497,7 +524,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             {"role": "user", "content": prompt},
         ]
 
-        response = self.chat(messages, temperature=0.4)
+        response = self.chat(messages, temperature=0.4, json_mode=True)
 
         try:
             result = self._parse_json_response(response)
@@ -505,6 +532,17 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             logger.warning("recommend_customizations failed to parse response: %s", e)
             logger.debug("Response preview: %s", response[:500])
             result = {}
+
+        if result:
+            try:
+                validated = self._validate_with_repair(
+                    result, CustomizationResult, messages, temperature=0.4
+                )
+                result = validated.model_dump()
+            except ValidationError as exc:
+                logger.warning(
+                    "recommend_customizations: validation failed after repair: %s", exc
+                )
 
         # Populate recommended_experiences from experience_recommendations for
         # backwards compatibility with callers that read the flat ID list.
@@ -759,7 +797,8 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         prompt: str,
         system_prompt: str = "",
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Call LLM with a single user prompt and optional system prompt.
 
@@ -771,6 +810,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             system_prompt: Optional system/instruction prompt.
             temperature:   Sampling temperature passed to :meth:`chat`.
             max_tokens:    Token limit passed to :meth:`chat` (None = provider default).
+            json_mode:     Passed through to :meth:`chat`; see that method for details.
 
         Returns:
             The model's response as a plain string.
@@ -779,7 +819,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        return self.chat(messages, temperature=temperature, max_tokens=max_tokens)
+        return self.chat(messages, temperature=temperature, max_tokens=max_tokens, json_mode=json_mode)
 
     # ── Concrete helpers shared by all provider implementations ──────────────
 
@@ -1259,6 +1299,65 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             'details': f"Found {len(found_phrases)} generic filler phrase(s): {', '.join(found_phrases)}. Rewrite with specific value claims."
         }
 
+    def _validate_with_repair(
+        self,
+        data: Any,
+        model: Type[_M],
+        original_messages: List[Dict[str, str]],
+        temperature: float,
+    ) -> _M:
+        """Validate *data* against *model*, retrying once with a repair prompt.
+
+        If ``model.model_validate(data)`` succeeds on the first attempt the
+        result is returned immediately.  On ``ValidationError`` a concise repair
+        message is appended to *original_messages* and a single follow-up
+        ``chat()`` call is made; the repaired response is then parsed and
+        re-validated.  If validation still fails the ``ValidationError`` is
+        re-raised so the caller can decide how to handle it.
+
+        Args:
+            data:              The already-parsed Python object (dict or list)
+                               to validate.
+            model:             The Pydantic ``BaseModel`` subclass to validate
+                               against.
+            original_messages: The messages used in the original ``chat()``
+                               call (used to build the repair context).
+            temperature:       Temperature forwarded to the repair ``chat()``
+                               call; should match the original call's value.
+
+        Returns:
+            A validated *model* instance.
+
+        Raises:
+            ValidationError: If the repaired response also fails validation.
+        """
+        try:
+            return model.model_validate(data)
+        except ValidationError as exc:
+            missing = [".".join(str(loc) for loc in err["loc"]) for err in exc.errors()]
+            logger.warning(
+                "_validate_with_repair: %s missing/invalid fields %s — issuing repair prompt",
+                model.__name__,
+                missing,
+            )
+            repair_messages = list(original_messages) + [
+                {
+                    "role": "assistant",
+                    "content": json.dumps(data) if not isinstance(data, str) else data,
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Your previous response was missing or had invalid fields: "
+                        f"{missing}. Return a corrected, complete JSON object with "
+                        "all required fields present and valid."
+                    ),
+                },
+            ]
+            repaired_response = self.chat(repair_messages, temperature=temperature, json_mode=True)
+            repaired_data = self._parse_json_response(repaired_response)
+            return model.model_validate(repaired_data)
+
     def _parse_json_response(self, response: str) -> Any:
         """Parse a JSON value from an LLM response, tolerating markdown fences.
 
@@ -1408,17 +1507,33 @@ Return ONLY a JSON array — no prose, no markdown fences.
   }}
 ]
 """
+        pub_messages = [
+            {
+                "role": "system",
+                "content": "You are an expert academic CV advisor. Select and rank publications by relevance to a target job. Return only valid JSON — a bare array, no markdown fences.",
+            },
+            {"role": "user", "content": prompt},
+        ]
         try:
-            response = self.chat(
-                messages=[
-                    {"role": "system", "content": "You are an expert academic CV advisor. Select and rank publications by relevance to a target job. Return only valid JSON — a bare array, no markdown fences."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.3,
-            )
+            response = self.chat(pub_messages, temperature=0.3, json_mode=True)
             ranked_raw = self._parse_json_response(response)
             if not isinstance(ranked_raw, list):
                 return []
+            validated_items = []
+            for item in ranked_raw:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    validated_items.append(
+                        self._validate_with_repair(
+                            item, PublicationRankingItem, pub_messages, temperature=0.3
+                        ).model_dump()
+                    )
+                except ValidationError as exc:
+                    logger.warning(
+                        "rank_publications_for_job: item validation failed: %s", exc
+                    )
+            ranked_raw = validated_items
         except Exception as exc:
             import warnings
             warnings.warn(f"rank_publications_for_job: LLM call failed ({exc}); returning empty list")
@@ -1636,7 +1751,7 @@ Return ONLY a JSON array — no prose, no markdown fences.
         ]
 
         try:
-            response = self.chat(messages, temperature=0.3)
+            response = self.chat(messages, temperature=0.3, json_mode=True)
             raw = self._parse_json_response(response)
             if not isinstance(raw, list):
                 raw = raw.get('rewrites') or raw.get('proposals') or []
@@ -1684,16 +1799,20 @@ class OpenAIClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to OpenAI."""
+        kwargs: Dict[str, Any] = dict(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
+            response = self.client.chat.completions.create(**kwargs)
             self.last_usage = response.usage
             return response.choices[0].message.content
         except Exception as exc:
@@ -1764,7 +1883,8 @@ class AnthropicClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to Claude."""
         system_blocks, payload_messages = _anthropic_messages_payload(messages)
@@ -1814,7 +1934,8 @@ class GeminiClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to Gemini."""
         try:
@@ -1928,8 +2049,16 @@ class CopilotSdkClient(LLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to GitHub Copilot via any-llm copilotsdk provider."""
+        if json_mode:
+            # copilotsdk has no response_format API param; enforce JSON via a
+            # hard system instruction so the model still receives the constraint.
+            messages = [
+                {"role": "system", "content": "Respond with valid JSON only. No prose, no markdown fences."},
+                *messages,
+            ]
         kwargs: Dict[str, Any] = dict(
             # any-llm expects the provider key without an underscore.
             provider="copilotsdk",
@@ -2018,7 +2147,8 @@ class LocalLLMClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Generate response using local model."""
         self._ensure_model_loaded()
@@ -2298,6 +2428,7 @@ class CopilotOAuthClient(LLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         payload: dict = {
             "model":       self.model,
@@ -2306,6 +2437,8 @@ class CopilotOAuthClient(LLMClient):
         }
         if max_tokens:
             payload["max_tokens"] = max_tokens
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
         try:
             data = self._post(payload)
             self.last_usage = data.get("usage")
@@ -2437,6 +2570,7 @@ class StubLLMClient(LLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Return a canned JSON response based on the last user message."""
         last_user = next(

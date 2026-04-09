@@ -544,6 +544,8 @@ class TestApplyLayoutInstructionErrorHandling(unittest.TestCase):
         """Invalid JSON must include the raw LLM output in the error for debugging."""
         raw = 'I cannot do that, it would change the content.'
         self.mock_llm.call_llm.return_value = raw
+        # _parse_json_response raises ValueError when no JSON container is found.
+        self.mock_llm._parse_json_response.side_effect = ValueError('no JSON')
         result = self.orchestrator.apply_layout_instruction(
             instruction_text='Move Skills section',
             current_html='<html>Test</html>',
@@ -561,6 +563,25 @@ class TestApplyLayoutInstructionErrorHandling(unittest.TestCase):
         )
         self.assertEqual(result.get('error'), 'timeout')
         self.assertIn('timed out', result.get('details', '').lower())
+
+    def test_markdown_fenced_json_response_is_parsed(self):
+        """A response wrapped in markdown fences must be parsed via the bracket-scan fallback."""
+        payload = {
+            'modified_html': '<html><body><h1>CV</h1></body></html>',
+            'change_summary': 'Moved Skills above Education.',
+            'confidence': 0.95,
+            'requires_clarification': False,
+        }
+        fenced = f"```json\n{json.dumps(payload)}\n```"
+        self.mock_llm.call_llm.return_value = fenced
+        self.mock_llm._parse_json_response.return_value = payload
+        result = self.orchestrator.apply_layout_instruction(
+            instruction_text='Move Skills above Education',
+            current_html='<html><body><h1>CV</h1></body></html>',
+        )
+        # The fallback bracket-scan parser should extract the JSON successfully.
+        self.assertNotIn('error', result)
+        self.assertIn('html', result)
 
 
 if __name__ == '__main__':
