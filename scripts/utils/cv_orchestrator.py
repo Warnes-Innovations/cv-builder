@@ -2261,7 +2261,10 @@ If you need clarification, return:
                     'raw_response': response or ''
                 }
 
-            result = json.loads(response)
+            try:
+                result = json.loads(response)
+            except json.JSONDecodeError:
+                result = self.llm._parse_json_response(response)
 
             # Validate response structure
             if result.get('requires_clarification', False):
@@ -2319,7 +2322,7 @@ If you need clarification, return:
                 },
             }
 
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, ValueError) as e:
             return {
                 'error': 'parse_error',
                 'details': f'LLM response was not valid JSON: {str(e)}',
