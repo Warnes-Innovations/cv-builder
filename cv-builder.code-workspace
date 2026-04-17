@@ -23,9 +23,6 @@
 		},
 		{
 			"path": "../any-llm"
-		},
-		{
-			"path": "../clem-diagrams"
 		}
 	],
 	"settings": {

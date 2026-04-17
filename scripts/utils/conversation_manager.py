@@ -1796,7 +1796,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 if pos_name and pos_name not in names:
                     names.append(pos_name)
             except Exception:
-                pass
+                logger.debug("Skipping unreadable session file during position scan", exc_info=True)
         return sorted(names)
 
     def _load_latest_session_for_position(self, name: str) -> bool:
@@ -2168,7 +2168,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 gen['layout_template_version'] = LAYOUT_TEMPLATE_VERSION
                 gen['layout_template_update_note'] = LAYOUT_TEMPLATE_UPDATE_NOTE
         except Exception:
-            pass
+            logger.warning("Failed to build layout digest for generation baseline", exc_info=True)
 
         return result
 

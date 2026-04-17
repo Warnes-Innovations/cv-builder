@@ -112,7 +112,7 @@ def create_blueprint(deps):
                             has_customizations=bool(state.get('customizations')),
                         ))
                     except Exception:
-                        pass
+                        logger.debug("Skipping unreadable session file during list: %s", session_file, exc_info=True)
             return jsonify(SessionListResponse(sessions=sessions[:20]).to_dict())
         except Exception:
             logger.exception("Failed to list sessions")
@@ -145,9 +145,9 @@ def create_blueprint(deps):
                             "has_cv":       bool(state.get('generated_files')),
                         })
                     except Exception:
-                        pass
+                        logger.debug("Skipping unreadable session file during load-items: %s", session_file, exc_info=True)
         except Exception:
-            pass
+            logger.warning("Error scanning session files for load items", exc_info=True)
 
         items = items[:20]
 
@@ -268,7 +268,7 @@ def create_blueprint(deps):
                             "phase":         state.get('phase', ''),
                         })
                     except Exception:
-                        pass
+                        logger.debug("Skipping unreadable session file during trash list: %s", session_file, exc_info=True)
             return jsonify({"items": items, "count": len(items)})
         except Exception:
             logger.exception("Failed to list trash")

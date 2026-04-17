@@ -3,8 +3,8 @@ data:
   publications: ~/CV/publications.bib
   output_dir: ~/CV/cv-builder
 llm:
-  default_provider: github
-  default_model: claude-sonnet-4-6
+  default_provider: copilot-sdk
+  default_model: gpt-5-mini
   temperature: 0.7
   max_tokens: null
   request_timeout_seconds: 300

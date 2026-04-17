@@ -300,6 +300,7 @@ def _collect_harvest_skill_candidates(conversation) -> List[Dict[str, Any]]:
             customizations,
         ).materialize_generation_customizations()
     except Exception:
+        current_app.logger.warning("materialize_generation_customizations failed — using raw customizations", exc_info=True)
         materialized = dict(customizations)
 
     candidates_by_key: Dict[str, Dict[str, Any]] = {}
@@ -1835,6 +1836,7 @@ def create_blueprint(deps):
                             result.stderr.strip() or result.stdout.strip(),
                         )
                 except Exception as git_exc:
+                    current_app.logger.warning("Git commit raised unexpectedly: %s", git_exc)
                     git_error = _git_commit_error(
                         'Git commit failed. See server logs for details.',
                         str(git_exc),
@@ -1979,6 +1981,7 @@ def create_blueprint(deps):
                             result.stderr.strip() or result.stdout.strip(),
                         )
                 except Exception as git_exc:
+                    current_app.logger.warning("Git commit raised unexpectedly: %s", git_exc)
                     git_error = _git_commit_error(
                         'Git commit failed. See server logs for details.',
                         str(git_exc),

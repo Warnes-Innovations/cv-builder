@@ -915,7 +915,7 @@ def create_blueprint(deps):
                     if len(matches) >= limit:
                         break
                 except Exception:
-                    pass
+                    logger.debug("Skipping unreadable session during prior clarification search", exc_info=True)
             return jsonify({'found': len(matches) > 0, 'matches': matches})
         except Exception:
             logger.exception("Error searching for prior clarifications")

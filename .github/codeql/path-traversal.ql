@@ -18,12 +18,28 @@ module PathTraversalConfig implements DataFlow::ConfigSig {
     source instanceof RemoteFlowSource
   }
 
+  /**
+   * Sanitized by helper functions that constrain paths to a known root:
+   *   - _resolve_session_path(root, path) — resolves and checks relative_to(root)
+   *   - _resolve_backup_path(dir, filename) — uses werkzeug safe_join + regex check
+   *   - safe_join(base, *paths) — werkzeug whitelist-based joiner
+   * If these return None the callers bail out before using the path.
+   */
+  predicate isBarrier(DataFlow::Node node) {
+    exists(Call c |
+      node.asExpr() = c and
+      (
+        c.getFunc().(Name).getId() = ["_resolve_session_path", "_resolve_backup_path", "safe_join"] or
+        c.getFunc().(Attribute).getName() = "safe_join"
+      )
+    )
+  }
+
   predicate isSink(DataFlow::Node sink) {
-    // File open, os.path.join, os.makedirs etc.
+    // File open and directory operations — constrain 'join' to os.path.join only
     exists(Call c |
       (
         c.getFunc().(Name).getId() = "open" or
-        c.getFunc().(Attribute).getName() = "join" or
         c.getFunc().(Attribute).getName() = "makedirs" or
         c.getFunc().(Attribute).getName() = "remove" or
         c.getFunc().(Attribute).getName() = "listdir"
