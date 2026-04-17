@@ -11,6 +11,8 @@
  */
 import {
   _screeningState,
+  _screeningInputText,
+  _resetScreeningInputText,
   _fmtLabel,
   selectFormat,
   _getSelectedFormat,
@@ -18,6 +20,7 @@ import {
   togglePriorUse,
   updateExpSelection,
   saveScreeningResponses,
+  populateScreeningTab,
 } from '../../web/screening-questions.js'
 
 // ── Global stubs ──────────────────────────────────────────────────────────────
@@ -234,5 +237,48 @@ describe('saveScreeningResponses', () => {
     })
     await saveScreeningResponses()
     expect(document.getElementById('sc-save-btn').textContent).toBe('💾 Save All Responses')
+  })
+})
+
+// ── _screeningInputText — tab-navigation persistence ─────────────────────────
+
+describe('populateScreeningTab input persistence', () => {
+  beforeEach(() => {
+    _resetScreeningInputText()
+    document.body.innerHTML = '<div id="document-content"></div>'
+    vi.stubGlobal('escapeHtml', s => String(s ?? ''))
+    vi.stubGlobal('showAlertModal', vi.fn())
+  })
+
+  it('restores previously saved input text on re-render', async () => {
+    // First visit: populate and type into the textarea.
+    await populateScreeningTab()
+    const ta = document.getElementById('sc-input')
+    ta.value = 'Describe a time you led a project.'
+    ta.dispatchEvent(new Event('input'))
+
+    // Navigate away then back (simulate by calling populateScreeningTab again).
+    await populateScreeningTab()
+
+    expect(document.getElementById('sc-input').value).toBe('Describe a time you led a project.')
+  })
+
+  it('updates _screeningInputText on every keystroke', async () => {
+    await populateScreeningTab()
+    const ta = document.getElementById('sc-input')
+    ta.value = 'Question one'
+    ta.dispatchEvent(new Event('input'))
+    ta.value = 'Question one\nQuestion two'
+    ta.dispatchEvent(new Event('input'))
+
+    // The module-level export reflects the latest value.
+    // Re-render to confirm it is restored from the module, not a closure.
+    await populateScreeningTab()
+    expect(document.getElementById('sc-input').value).toBe('Question one\nQuestion two')
+  })
+
+  it('leaves sc-input empty when no text has been typed', async () => {
+    await populateScreeningTab()
+    expect(document.getElementById('sc-input').value).toBe('')
   })
 })
