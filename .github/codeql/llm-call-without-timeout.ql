@@ -47,12 +47,25 @@ predicate hasTimeoutExceptionHandler(Call c) {
   )
 }
 
+/**
+ * True if the call is inside a provider chat() implementation inside llm_client.py.
+ * Those methods read timeout from config internally — flagging them is misleading.
+ */
+predicate isInsideProviderImpl(Call c) {
+  exists(Function f |
+    f.contains(c) and
+    f.getName() = "chat" and
+    f.getLocation().getFile().getShortName() = "llm_client.py"
+  )
+}
+
 from Call c, Attribute method
 where
   c.getFunc() = method and
   isLlmMethod(method.getName()) and
   not hasTimeoutArg(c) and
-  not hasTimeoutExceptionHandler(c)
+  not hasTimeoutExceptionHandler(c) and
+  not isInsideProviderImpl(c)
 select c,
   "LLM call to '" + method.getName()
     + "' has no timeout argument and no TimeoutError handler. "

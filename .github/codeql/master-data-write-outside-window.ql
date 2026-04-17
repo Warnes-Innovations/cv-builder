@@ -20,9 +20,12 @@ import python
 
 /**
  * Variable names that refer to the loaded master CV data dictionary.
+ *
+ * Note: cv_data is intentionally excluded — it is always a local rendering
+ * copy returned by _prepare_cv_data_for_template() and never the master dict.
  */
 predicate isMasterDataVar(string name) {
-  name = ["master_data", "master_cv_data", "master_cv", "cv_data"]
+  name = ["master_data", "master_cv_data", "master_cv"]
 }
 
 /**

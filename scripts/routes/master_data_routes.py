@@ -1241,7 +1241,7 @@ def create_blueprint(deps):
                 try:
                     shutil.copy2(backup_path, bib_path)
                 except Exception:
-                    pass
+                    logger.warning("Failed to restore publications backup to %s", bib_path, exc_info=True)
             logger.exception("Failed to write publications file")
             return jsonify({"ok": False, "error": "Failed to save publications"}), 500
 

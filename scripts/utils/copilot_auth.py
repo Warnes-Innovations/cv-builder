@@ -48,7 +48,7 @@ def _load_cache() -> dict:
         if TOKEN_CACHE_PATH.exists():
             return json.loads(TOKEN_CACHE_PATH.read_text())
     except Exception:
-        pass
+        logger.debug("Token cache unreadable — starting fresh", exc_info=True)
     return {}
 
 

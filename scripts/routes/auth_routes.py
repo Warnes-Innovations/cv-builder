@@ -393,7 +393,7 @@ def create_blueprint(deps):
                     conv._save_session()
                     session_registry.touch(entry.session_id)
                 except Exception:
-                    pass
+                    logger.debug("Non-critical: failed to persist provider/model to session", exc_info=True)
 
             return jsonify({"ok": True, "provider": provider, "model": model})
         except Exception:

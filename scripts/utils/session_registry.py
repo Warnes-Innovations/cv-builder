@@ -316,6 +316,7 @@ class SessionRegistry:
                     raw.get("timestamp", "")
                 )
             except Exception:
+                logger.debug("Could not parse session timestamp — using current time", exc_info=True)
                 created = datetime.now()
 
             entry = SessionEntry(
