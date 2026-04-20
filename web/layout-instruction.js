@@ -622,23 +622,26 @@ function _buildPreviewPayload(data) {
  *
  * Strategy depends on the current generation state:
  *
- * - previewAvailable=true AND phase is not confirmed/final_complete:
- *   Fresh render via POST /api/cv/generate-preview (calls markPreviewGenerated).
- *   Falls back to GET /api/layout-html (passive, no state change).
+ * - phase is not confirmed/final_complete:
+ *   Always calls POST /api/cv/generate-preview, which stores preview_html in
+ *   generation_state (required for confirm-layout) and calls markPreviewGenerated.
+ *   This bootstraps the staged state even after legacy generate_cv actions that
+ *   write files to disk without populating generation_state.preview_html.
+ *   Falls back to GET /api/layout-html (passive, no state change) when
+ *   generate-preview is unavailable (e.g. session has no job_analysis yet).
  *
- * - previewAvailable=false OR phase is confirmed/final_complete (passive restore):
- *   Tries GET /api/layout-html first (no state change).
- *   Only falls back to POST /api/cv/generate-preview as recovery when layout-html
- *   fails (e.g. HTML file missing after server restart), and only when not confirmed.
- *   Recovery calls markPreviewGenerated, transitioning phase to layout_review.
+ * - phase is confirmed/final_complete (passive restore):
+ *   Reads HTML from disk via GET /api/layout-html without touching session state.
  */
 async function _fetchAndDisplayLayoutPreview() {
   const genState    = stateManager?.getGenerationState?.() || {};
   const isConfirmed = genState.phase === GENERATION_PHASES.CONFIRMED
                    || genState.phase === GENERATION_PHASES.FINAL_COMPLETE;
 
-  // Fresh-render path: backend has a live preview ready and layout is not yet confirmed.
-  if (genState.previewAvailable && !isConfirmed) {
+  // Fresh-render path: always populate generation_state.preview_html on the backend
+  // so that confirm-layout succeeds. Covers both the normal staged path and the
+  // legacy generate_cv path that does not call generate-preview itself.
+  if (!isConfirmed) {
     try {
       const data = await apiCall('POST', '/api/cv/generate-preview', {});
       if (data.ok && data.html) {
@@ -656,7 +659,8 @@ async function _fetchAndDisplayLayoutPreview() {
   }
 
   // Passive restore path: load stored HTML from disk without touching generation state.
-  // Used when previewAvailable=false (idle/confirmed) or as fresh-render fallback.
+  // Used for confirmed/final_complete layouts, or as fallback when generate-preview
+  // is unavailable (e.g. session has no job_analysis yet).
   try {
     const data = await apiCall('GET', '/api/layout-html');
     if (data.ok && data.html) {
@@ -667,25 +671,7 @@ async function _fetchAndDisplayLayoutPreview() {
     }
     log.warn('Layout preview not available:', data.error || 'no HTML returned');
   } catch (_e) {
-    // fall through to recovery
-  }
-
-  // Recovery path: disk HTML is missing and layout is not yet confirmed.
-  // Generate a fresh preview to avoid an empty layout pane.
-  if (!isConfirmed) {
-    try {
-      const data = await apiCall('POST', '/api/cv/generate-preview', {});
-      if (data.ok && data.html) {
-        displayLayoutPreview(data.html);
-        setPreviewHtml(data.html);
-        dismissedStaleCalloutRevision = null;
-        stateManager?.markPreviewGenerated?.(_buildPreviewPayload(data));
-        renderPreviewOutputStatus(data.preview_outputs || null);
-        refreshLayoutReviewState();
-      }
-    } catch (err) {
-      log.warn('Could not load layout preview:', err);
-    }
+    // no preview available
   }
 }
 
