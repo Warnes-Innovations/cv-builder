@@ -17,6 +17,12 @@
 /** Per-question draft state: { format, experienceIndices, responseText, topicTag, priorResponse } */
 const _screeningState = {};
 
+/** Raw text from the sc-input textarea — survives tab navigation. */
+let _screeningInputText = '';
+
+/** Reset function for testing — clears saved textarea state. */
+function _resetScreeningInputText() { _screeningInputText = ''; }
+
 // ── Populate screening tab ────────────────────────────────────────────────────
 
 async function populateScreeningTab() {
@@ -34,6 +40,13 @@ async function populateScreeningTab() {
         <button class="btn btn-success" id="sc-save-btn" onclick="saveScreeningResponses()">💾 Save All Responses</button>
       </div>
     </div>`;
+
+  // Restore the raw input text and wire up save-on-input listener.
+  const scInput = document.getElementById('sc-input');
+  if (scInput) {
+    if (_screeningInputText) scInput.value = _screeningInputText;
+    scInput.addEventListener('input', () => { _screeningInputText = scInput.value; });
+  }
 }
 
 // ── Parse questions ───────────────────────────────────────────────────────────
@@ -316,6 +329,8 @@ async function saveScreeningResponses() {
 
 export {
   _screeningState,
+  _screeningInputText,
+  _resetScreeningInputText,
   populateScreeningTab,
   parseScreeningQuestions,
   renderQuestionBlock,

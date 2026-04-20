@@ -26,6 +26,16 @@ const COVER_LETTER_TONES = [
 
 let _coverLetterPriorSessions = [];
 
+/** Survives tab navigation: form inputs and the generated letter body. */
+let _coverLetterFormState = {
+  tone:          '',
+  hiringManager: '',
+  companyAddress: '',
+  highlight:     '',
+  letterText:    '',
+  letterVisible: false,
+};
+
 // ── Populate cover letter tab ─────────────────────────────────────────────────
 
 async function populateCoverLetterTab() {
@@ -120,13 +130,50 @@ async function populateCoverLetterTab() {
       </p>
       <textarea id="cl-letter-textarea" class="cl-letter-textarea" rows="22"
           aria-label="Cover letter text — edit as needed"
-          oninput="_debouncedValidateCL()"></textarea>
+          oninput="_debouncedValidateCL(); _coverLetterFormState.letterText = this.value;"></textarea>
       <div id="cl-validation-panel" class="cl-validation-panel" style="display:none;">
         <h4>📊 Quality Checks</h4>
         <div id="cl-checks-container"></div>
       </div>
     </div>
   `;
+
+  // Restore saved form state and wire up save-on-change listeners.
+  _restoreCoverLetterFormState();
+}
+
+// ── Cover letter form state helpers ──────────────────────────────────────────
+
+function _restoreCoverLetterFormState() {
+  const toneEl    = document.getElementById('cl-tone-select');
+  const hmEl      = document.getElementById('cl-hiring-manager');
+  const addrEl    = document.getElementById('cl-company-address');
+  const hlEl      = document.getElementById('cl-highlight');
+  const resultEl  = document.getElementById('cl-result-section');
+  const letterEl  = document.getElementById('cl-letter-textarea');
+
+  if (toneEl && _coverLetterFormState.tone)
+    toneEl.value = _coverLetterFormState.tone;
+  if (hmEl && _coverLetterFormState.hiringManager)
+    hmEl.value = _coverLetterFormState.hiringManager;
+  if (addrEl && _coverLetterFormState.companyAddress)
+    addrEl.value = _coverLetterFormState.companyAddress;
+  if (hlEl && _coverLetterFormState.highlight)
+    hlEl.value = _coverLetterFormState.highlight;
+
+  if (_coverLetterFormState.letterVisible && _coverLetterFormState.letterText) {
+    if (resultEl) resultEl.style.display = 'block';
+    if (letterEl) {
+      letterEl.value = _coverLetterFormState.letterText;
+      _validateCoverLetter(letterEl.value);
+    }
+  }
+
+  // Wire up save-on-change listeners (inline oninput already handles letterText).
+  if (toneEl)  toneEl.addEventListener('change', () => { _coverLetterFormState.tone = toneEl.value; });
+  if (hmEl)    hmEl.addEventListener('input',    () => { _coverLetterFormState.hiringManager = hmEl.value; });
+  if (addrEl)  addrEl.addEventListener('input',  () => { _coverLetterFormState.companyAddress = addrEl.value; });
+  if (hlEl)    hlEl.addEventListener('input',    () => { _coverLetterFormState.highlight = hlEl.value; });
 }
 
 // ── Generate cover letter ─────────────────────────────────────────────────────
@@ -189,6 +236,8 @@ async function generateCoverLetter() {
         textarea.value = data.text;
         _validateCoverLetter(textarea.value);
       }
+      _coverLetterFormState.letterText    = data.text;
+      _coverLetterFormState.letterVisible = true;
     } else {
       showAlertModal('❌ Generation Failed', data.error || 'LLM did not return a cover letter.');
     }
@@ -499,6 +548,7 @@ function _getCompanyNameForCL() {
 
 export {
   COVER_LETTER_TONES,
+  _coverLetterFormState,
   populateCoverLetterTab,
   generateCoverLetter,
   saveCoverLetter,

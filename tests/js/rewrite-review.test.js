@@ -439,3 +439,61 @@ describe('submitRewriteDecisions', () => {
     )
   })
 })
+
+// ── renderRewritePanel — decision state restoration ───────────────────────────
+
+describe('renderRewritePanel decision restoration on re-render', () => {
+  let mod
+
+  beforeEach(async () => {
+    mod = await import('../../web/rewrite-review.js')
+    document.body.innerHTML = '<div id="document-content"></div>'
+    Object.keys(mod.rewriteDecisions).forEach(k => delete mod.rewriteDecisions[k])
+  })
+
+  const sampleRewrites = [
+    { id: 'rw-a', original: 'old text', proposed: 'new text' },
+    { id: 'rw-b', original: 'foo bar',  proposed: 'baz qux'  },
+  ]
+
+  it('restores accepted card styling on re-render', () => {
+    renderRewritePanel(sampleRewrites, [])
+    applyRewriteAction('rw-a', 'accept')
+    renderRewritePanel(sampleRewrites, [])
+
+    expect(document.getElementById('rw-card-rw-a').classList.contains('accepted')).toBe(true)
+  })
+
+  it('restores rejected card styling on re-render', () => {
+    renderRewritePanel(sampleRewrites, [])
+    applyRewriteAction('rw-b', 'reject')
+    renderRewritePanel(sampleRewrites, [])
+
+    expect(document.getElementById('rw-card-rw-b').classList.contains('rejected')).toBe(true)
+  })
+
+  it('restores edited text and shows accepted state after re-render', () => {
+    renderRewritePanel(sampleRewrites, [])
+    applyRewriteAction('rw-a', 'edit')
+    const ta = document.getElementById('rw-textarea-rw-a')
+    ta.value = 'user-edited text'
+    saveRewriteEdit('rw-a')
+
+    // Simulate tab navigation away and back
+    renderRewritePanel(sampleRewrites, [])
+
+    expect(document.getElementById('rw-card-rw-a').classList.contains('accepted')).toBe(true)
+    expect(mod.rewriteDecisions['rw-a'].final_text).toBe('user-edited text')
+  })
+
+  it('updates tally correctly after restoring mixed decisions', () => {
+    renderRewritePanel(sampleRewrites, [])
+    applyRewriteAction('rw-a', 'accept')
+    applyRewriteAction('rw-b', 'reject')
+    renderRewritePanel(sampleRewrites, [])
+
+    expect(document.getElementById('tally-accepted').textContent).toBe('1')
+    expect(document.getElementById('tally-rejected').textContent).toBe('1')
+    expect(document.getElementById('tally-pending').textContent).toBe('0')
+  })
+})

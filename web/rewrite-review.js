@@ -139,6 +139,26 @@ function renderRewritePanel(rewrites, warnings = []) {
       </div>
     </div>
   `;
+
+  // Re-apply any decisions made before the last tab navigation.
+  if (Object.keys(rewriteDecisions).length > 0) {
+    for (const [id, dec] of Object.entries(rewriteDecisions)) {
+      if (!dec || !dec.outcome) continue;
+      if (dec.outcome === 'edit' && dec.final_text != null) {
+        // Enter edit mode, inject the saved text, then save so the card
+        // shows as accepted with the correct diff rendered.
+        applyRewriteAction(id, 'edit');
+        const ta = document.getElementById(`rw-textarea-${id}`);
+        if (ta) {
+          ta.value = dec.final_text;
+          saveRewriteEdit(id);
+        }
+      } else {
+        applyRewriteAction(id, dec.outcome);
+      }
+    }
+    updateRewriteTally();
+  }
 }
 
 /**
