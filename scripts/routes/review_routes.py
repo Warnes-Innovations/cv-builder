@@ -338,18 +338,26 @@ def create_blueprint(deps):
                 # duckflow:
                 #   id: summary_api_review_decision_live
                 #   kind: api
-                #   timestamp: "2026-03-27T01:23:28Z"
+                #   timestamp: "2026-04-20T17:00:00Z"
                 #   status: live
                 #   handles:
                 #     - "POST /api/review-decisions"
                 #   reads:
                 #     - "request:POST /api/review-decisions.summary_focus"
+                #     - "request:POST /api/review-decisions.summary_text"
                 #   writes:
                 #     - "state:summary_focus_override"
+                #     - "state:session_summaries.<key>"
                 #   notes:
-                #     "Live review-decisions route persists the selected
-                #     summary key in session state."
+                #     "Persists the selected summary key; if summary_text is
+                #     provided, also updates the stored text for that key so
+                #     user edits survive navigation."
                 conversation.state['summary_focus_override'] = decisions
+                summary_text = (data.get('summary_text') or '').strip()
+                if summary_text:
+                    session_summaries = conversation.state.get('session_summaries') or {}
+                    session_summaries[decisions] = summary_text
+                    conversation.state['session_summaries'] = session_summaries
                 message = "Saved summary focus preference"
             else:
                 return jsonify(

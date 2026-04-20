@@ -72,9 +72,10 @@ async function buildSummaryFocusSection() {
         <strong style="color:#065f46;">AI-Generated Summary</strong>
         <span id="ai-summary-status" style="font-size:0.8em;color:#6b7280;">Generating…</span>
       </div>
-      <div id="ai-summary-text" style="font-size:0.9em;color:#374151;line-height:1.6;min-height:60px;white-space:pre-wrap;">
-        <em style="color:#9ca3af;">Generating a tailored summary for this application…</em>
-      </div>
+      <div id="ai-summary-loading" style="font-size:0.9em;color:#9ca3af;min-height:40px;"><em>Generating a tailored summary for this application…</em></div>
+      <textarea id="ai-summary-text" rows="7" oninput="onSummaryTextChange()"
+        placeholder="Generating…"
+        style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #d1d5db;border-radius:4px;font-size:0.9em;line-height:1.6;resize:vertical;display:none;"></textarea>
       <div style="margin-top:12px;">
         <label style="font-size:0.85em;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Request changes (optional):</label>
         <textarea id="summary-refinement-input" rows="2"
@@ -147,10 +148,15 @@ function _renderStoredSummaryRadios(professionalSummaries) {
 // ── Show AI-generated summary ────────────────────────────────────────────────
 
 function _showAISummary(text, statusLabel) {
-  const textEl   = document.getElementById('ai-summary-text');
-  const statusEl = document.getElementById('ai-summary-status');
-  if (textEl)   textEl.textContent = text;
-  if (statusEl) statusEl.textContent = statusLabel || '';
+  const textEl    = document.getElementById('ai-summary-text');
+  const loadingEl = document.getElementById('ai-summary-loading');
+  const statusEl  = document.getElementById('ai-summary-status');
+  if (textEl) {
+    textEl.value = text;
+    textEl.style.display = '';
+  }
+  if (loadingEl) loadingEl.style.display = 'none';
+  if (statusEl)  statusEl.textContent = statusLabel || '';
   window._aiGeneratedSummary = text;
 }
 
@@ -173,10 +179,12 @@ async function _callGenerateSummary(refinementPrompt, previousSummary) {
   const btn      = document.getElementById('ai-regenerate-btn');
   const statusEl = document.getElementById('ai-summary-status');
   const textEl   = document.getElementById('ai-summary-text');
+  const loadingEl = document.getElementById('ai-summary-loading');
   if (btn)      btn.disabled = true;
   if (statusEl) statusEl.textContent = 'Generating…';
-  // Show a prominent spinner inside the summary text area while waiting
-  if (textEl)   textEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;color:#6b7280;padding:8px 0;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;"></div><em>Generating a tailored summary…</em></div>';
+  // Show loading indicator; hide the textarea while generating.
+  if (loadingEl) { loadingEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;color:#6b7280;padding:8px 0;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;"></div><em>Generating a tailored summary…</em></div>'; loadingEl.style.display = ''; }
+  if (textEl)   textEl.style.display = 'none';
 
   // Use the global LLM status bar for visibility
   setLoading(true, 'Generating summary…');
@@ -222,7 +230,9 @@ async function regenerateAISummary() {
 
 async function useAISummary() {
   window.selectedSummaryKey = 'ai_generated';
-  await saveSummaryFocusToBackend('ai_generated');
+  const textEl = document.getElementById('ai-summary-text');
+  const currentText = textEl ? textEl.value.trim() : (window._aiGeneratedSummary || '');
+  await saveSummaryFocusToBackend('ai_generated', currentText);
   scheduleAtsRefresh('review_checkpoint');
   showToast('AI-generated summary selected for your CV');
 }
@@ -254,12 +264,27 @@ function selectSummaryKey(key) {
  *   notes: "Persists only the selected summary key so backend state can resolve the active summary variant later."
  */
 
-async function saveSummaryFocusToBackend(key) {
+// Debounce timer for auto-persisting edits to the summary text.
+let _summaryPersistTimer = null;
+
+function onSummaryTextChange() {
+  const textEl = document.getElementById('ai-summary-text');
+  if (!textEl) return;
+  window._aiGeneratedSummary = textEl.value;
+  clearTimeout(_summaryPersistTimer);
+  _summaryPersistTimer = setTimeout(() => {
+    saveSummaryFocusToBackend('ai_generated', textEl.value.trim());
+  }, 500);
+}
+
+async function saveSummaryFocusToBackend(key, text) {
   try {
+    const payload = { type: 'summary_focus', decisions: key };
+    if (text !== undefined && text !== null) payload.summary_text = text;
     const response = await fetch('/api/review-decisions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'summary_focus', decisions: key })
+      body: JSON.stringify(payload)
     });
     return response.ok;
   } catch (e) {
@@ -290,6 +315,7 @@ export {
   _callGenerateSummary,
   regenerateAISummary,
   useAISummary,
+  onSummaryTextChange,
   selectSummaryKey,
   saveSummaryFocusToBackend,
   submitSummaryFocusDecision,

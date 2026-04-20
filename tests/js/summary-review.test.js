@@ -88,13 +88,14 @@ describe('_renderStoredSummaryRadios', () => {
 describe('_showAISummary', () => {
   beforeEach(() => {
     document.body.innerHTML = `
-      <div id="ai-summary-text"></div>
+      <textarea id="ai-summary-text"></textarea>
+      <div id="ai-summary-loading"></div>
       <span id="ai-summary-status"></span>`
   })
 
-  it('sets textContent of ai-summary-text', () => {
+  it('sets value of ai-summary-text textarea', () => {
     _showAISummary('My generated summary', '')
-    expect(document.getElementById('ai-summary-text').textContent).toBe('My generated summary')
+    expect(document.getElementById('ai-summary-text').value).toBe('My generated summary')
   })
 
   it('sets textContent of ai-summary-status', () => {
