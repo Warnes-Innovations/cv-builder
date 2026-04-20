@@ -32,7 +32,7 @@ async function buildPublicationsReviewTable() {
   const pubTabBtn = document.querySelector('.review-subtab[data-pane="publications"]');
   if (!container) return;
 
-  container.innerHTML = '<p style="padding: 20px; text-align: center; color: #6b7280;">Loading publication recommendations…</p>';
+  container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:#6b7280;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;flex-shrink:0;"></div><span>Loading publication recommendations\u2026</span></div>';
 
   let recommendations = [];
   let totalCount = 0;

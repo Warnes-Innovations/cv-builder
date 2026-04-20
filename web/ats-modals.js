@@ -119,7 +119,7 @@ async function openAtsReportModal() {
     return;
   }
 
-  body.innerHTML = '<p style="padding:24px;text-align:center;color:#6b7280;">Fetching ATS score…</p>';
+  body.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:24px;color:#6b7280;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;flex-shrink:0;"></div><span>Fetching ATS score…</span></div>';
   try {
     const sessionId = stateManager?.getSessionId?.();
     const res = await fetch('/api/cv/ats-score', {

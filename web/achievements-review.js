@@ -99,7 +99,7 @@ async function buildAchievementsReviewTable() {
   const container = document.getElementById('achievements-table-container');
   if (!container) return;
 
-  container.innerHTML = '<p style="padding:20px;text-align:center;color:#6b7280;">Loading achievements…</p>';
+  container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:#6b7280;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;flex-shrink:0;"></div><span>Loading achievements…</span></div>';
 
   // Prefer session-aware status data so review-time overlays are reflected.
   let allAchievements = [];
@@ -444,7 +444,7 @@ async function buildAchievementsEditor() {
   const container = document.getElementById('document-content');
   if (!container) return;
 
-  container.innerHTML = '<p style="padding:20px;text-align:center;color:#6b7280;">Loading experience bullets editor…</p>';
+  container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:#6b7280;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;flex-shrink:0;"></div><span>Loading experience bullets editor…</span></div>';
 
   // Fetch experiences + their achievements from master fields
   let experiences = [];
@@ -566,11 +566,26 @@ function renderAchievementEditorRows(expIdx) {
   }).join('');
 }
 
+// Debounce timer for auto-persisting achievement text edits.
+let _achPersistTimer = null;
+
 function updateAchievementText(expIdx, achIdx, value) {
   if (!window.achievementEdits[expIdx]) return;
   const existing = _normalizeAchievementEditEntry(window.achievementEdits[expIdx][achIdx]);
   existing.text = value;
   window.achievementEdits[expIdx][achIdx] = existing;
+
+  // Debounce-persist so edits survive tab navigation and status polling.
+  clearTimeout(_achPersistTimer);
+  _achPersistTimer = setTimeout(async () => {
+    try {
+      await fetch('/api/save-achievement-edits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ edits: window.achievementEdits }),
+      });
+    } catch (_e) { /* silent — user still has in-memory state */ }
+  }, 500);
 }
 
 function toggleAchievementHidden(expIdx, achIdx) {
