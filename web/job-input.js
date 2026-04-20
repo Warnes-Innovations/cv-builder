@@ -96,12 +96,6 @@ async function showLoadJobPanel() {
   const content = document.getElementById('document-content');
   content.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading…</p></div>';
 
-  const stepJob = document.getElementById('step-job');
-  if (stepJob) {
-    stepJob.classList.remove('completed');
-    stepJob.classList.add('active');
-  }
-
   content.innerHTML = `
     <div style="max-width:820px;margin:0 auto;padding:24px;">
       <h1 style="font-size:22px;font-weight:700;color:#1e293b;margin-bottom:6px;">📥 Add Job Description</h1>
