@@ -204,17 +204,19 @@ function renderLayoutStaleCallout() {
 function refreshLayoutReviewState() {
   const freshness = stateManager.getLayoutFreshness();
   const generationState = stateManager.getGenerationState();
-  const confirmBtn = document.getElementById('confirm-layout-btn');
+  const confirmBtn  = document.getElementById('confirm-layout-btn');
+  const confirmBtn2 = document.getElementById('confirm-layout-btn-2');
   const finalBtn = document.getElementById('proceed-to-finalise-btn');
 
   renderLayoutPreviewStatus();
   renderLayoutStaleCallout();
 
-  if (confirmBtn) {
-    confirmBtn.style.display = generationState.previewAvailable && !freshness.isStale && !generationState.layoutConfirmed
-      ? 'block'
-      : 'none';
-  }
+  const showConfirm = generationState.previewAvailable && !freshness.isStale && !generationState.layoutConfirmed
+    ? 'block'
+    : 'none';
+
+  if (confirmBtn)  confirmBtn.style.display  = showConfirm;
+  if (confirmBtn2) confirmBtn2.style.display = showConfirm;
 
   if (finalBtn) {
     finalBtn.style.display = generationState.previewAvailable
@@ -318,6 +320,10 @@ async function initiateLayoutInstructions() {
             <div id="instruction-history" class="instruction-history-list"></div>
           </div>
 
+          <button id="confirm-layout-btn-2" class="btn btn-success layout-action-btn" style="display:none;">
+            Confirm Layout
+          </button>
+
           <button id="proceed-to-finalise-btn" class="btn btn-success layout-action-btn" style="display: none;">
             Generate Final Files
           </button>
@@ -365,6 +371,7 @@ async function initiateLayoutInstructions() {
 function setupLayoutInstructionListeners() {
   const applyBtn          = document.getElementById('apply-instruction-btn');
   const confirmBtn        = document.getElementById('confirm-layout-btn');
+  const confirmBtn2       = document.getElementById('confirm-layout-btn-2');
   const proceedBtn        = document.getElementById('proceed-to-finalise-btn');
   const regenerateBtn     = document.getElementById('regenerate-layout-preview-btn');
   const dismissCalloutBtn = document.getElementById('dismiss-layout-stale-btn');
@@ -397,6 +404,10 @@ function setupLayoutInstructionListeners() {
 
   if (confirmBtn) {
     confirmBtn.addEventListener('click', confirmLayoutReview);
+  }
+
+  if (confirmBtn2) {
+    confirmBtn2.addEventListener('click', confirmLayoutReview);
   }
 
   if (proceedBtn) {

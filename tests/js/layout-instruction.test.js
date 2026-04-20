@@ -63,6 +63,7 @@ function buildDom() {
     <div id="preview-output-status"></div>
     <span id="instruction-count">0</span>
     <button id="confirm-layout-btn" style="display:none"></button>
+    <button id="confirm-layout-btn-2" style="display:none"></button>
     <button id="proceed-to-finalise-btn" style="display:none"></button>`
 }
 
