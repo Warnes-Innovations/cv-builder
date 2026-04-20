@@ -11,11 +11,13 @@
  */
 import {
   COVER_LETTER_TONES,
+  _coverLetterFormState,
   _validateCoverLetter,
   _getCompanyNameForCL,
   _renderConsistencyReport,
   saveCoverLetter,
   generateCoverLetter,
+  populateCoverLetterTab,
 } from '../../web/cover-letter.js'
 import { initializeState, stateManager } from '../../web/state-manager.js'
 
@@ -307,5 +309,78 @@ describe('generateCoverLetter', () => {
     })
     await generateCoverLetter()
     expect(document.getElementById('cl-generate-btn').textContent).toBe('✨ Generate Cover Letter')
+  })
+})
+
+// ── _coverLetterFormState — tab-navigation persistence ────────────────────────
+
+describe('_coverLetterFormState tab-navigation persistence', () => {
+  beforeEach(() => {
+    // Reset shared module state before each test.
+    _coverLetterFormState.tone          = ''
+    _coverLetterFormState.hiringManager = ''
+    _coverLetterFormState.companyAddress = ''
+    _coverLetterFormState.highlight     = ''
+    _coverLetterFormState.letterText    = ''
+    _coverLetterFormState.letterVisible = false
+
+    // populateCoverLetterTab fetches prior sessions — stub it out.
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ sessions: [] }),
+    })
+    document.body.innerHTML = '<div id="document-content"></div>'
+  })
+
+  it('generateCoverLetter saves letter text to _coverLetterFormState', async () => {
+    document.body.innerHTML = `
+      <button id="cl-generate-btn">✨ Generate Cover Letter</button>
+      <select id="cl-tone-select"><option value="startup/tech">Startup</option></select>
+      <input id="cl-hiring-manager" value="" />
+      <textarea id="cl-company-address"></textarea>
+      <input id="cl-highlight" value="" />
+      <div id="cl-result-section" style="display:none;">
+        <textarea id="cl-letter-textarea"></textarea>
+        <div id="cl-validation-panel" style="display:none;"><div id="cl-checks-container"></div></div>
+      </div>`
+    const generatedText = Array(60).fill('word').join(' ')
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ ok: true, text: generatedText }),
+    })
+    await generateCoverLetter()
+    expect(_coverLetterFormState.letterText).toBe(generatedText)
+    expect(_coverLetterFormState.letterVisible).toBe(true)
+  })
+
+  it('populateCoverLetterTab restores saved form inputs after re-render', async () => {
+    _coverLetterFormState.tone           = 'academia'
+    _coverLetterFormState.hiringManager  = 'Dr. Smith'
+    _coverLetterFormState.companyAddress = '123 Main St'
+    _coverLetterFormState.highlight      = 'Led migration'
+
+    await populateCoverLetterTab()
+
+    expect(document.getElementById('cl-tone-select').value).toBe('academia')
+    expect(document.getElementById('cl-hiring-manager').value).toBe('Dr. Smith')
+    expect(document.getElementById('cl-company-address').value).toBe('123 Main St')
+    expect(document.getElementById('cl-highlight').value).toBe('Led migration')
+  })
+
+  it('populateCoverLetterTab restores generated letter when letterVisible is true', async () => {
+    _coverLetterFormState.letterText    = 'Dear Hiring Manager, ...'
+    _coverLetterFormState.letterVisible = true
+
+    await populateCoverLetterTab()
+
+    expect(document.getElementById('cl-result-section').style.display).toBe('block')
+    expect(document.getElementById('cl-letter-textarea').value).toBe('Dear Hiring Manager, ...')
+  })
+
+  it('input events update _coverLetterFormState', async () => {
+    await populateCoverLetterTab()
+
+    const hmEl = document.getElementById('cl-hiring-manager')
+    hmEl.value = 'Jane Doe'
+    hmEl.dispatchEvent(new Event('input'))
+    expect(_coverLetterFormState.hiringManager).toBe('Jane Doe')
   })
 })
