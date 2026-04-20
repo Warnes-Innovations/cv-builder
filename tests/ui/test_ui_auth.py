@@ -97,7 +97,7 @@ def _navigate_to_copilot_auth_step(page: Page) -> None:
     # Next button loads models then switches to step 2
     page.locator("#model-wizard-next-btn").click()
     # Auth panel only becomes visible once the provider models are loaded
-    page.locator("#model-auth-panel").wait_for(state="visible", timeout=8_000)
+    page.locator("#model-step-auth").wait_for(state="visible", timeout=8_000)
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +168,7 @@ class TestModelWizard:
         """Step 2 reveals the Copilot auth panel when copilot-oauth is selected."""
         _install_wizard_routes(page)
         _navigate_to_copilot_auth_step(page)
-        expect(page.locator("#model-auth-panel")).to_be_visible()
+        expect(page.locator("#model-step-auth")).to_be_visible()
 
     def test_wizard_auth_step_has_device_code_area(self, page: Page):
         """Auth panel contains the device-code element (populated after sign-in starts)."""
