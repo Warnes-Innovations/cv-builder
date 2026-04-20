@@ -202,7 +202,7 @@ async function showTableBasedReview() {
   }
 
   switchTab('exp-review');
-  appendMessage('assistant', '✅ Customizations generated! Please review the **Experiences** and **Skills** tabs. Select your preferences using the action buttons, then submit your decisions.');
+  appendMessage('assistant', '✅ Customizations generated! Please review each section in the **Customizations** tab — Experiences, Achievements, Skills, Summary, and Publications. Select your preferences using the action buttons, then submit your decisions.');
 }
 
 // ── Analysis tab ──────────────────────────────────────────────────────────
@@ -324,7 +324,7 @@ async function handleCustomizationResponse(response) {
       saveTabData();
 
       if (!isReconnectInProgress()) {
-        appendMessage('assistant', '✅ Customizations generated! Please review the **Experiences** and **Skills** in the **Customizations** tab. Select your preferences using the action buttons, then submit your decisions.');
+        appendMessage('assistant', '✅ Customizations generated! Please review each section in the **Customizations** tab — Experiences, Achievements, Skills, Summary, and Publications. Select your preferences using the action buttons, then submit your decisions.');
         switchTab('exp-review');
       }
     } else if (!isReconnectInProgress()) {
