@@ -20,6 +20,8 @@ import {
   _updateBulletArrows,
   backToPhase,
   reRunPhase,
+  _getStepTooltip,
+  _updateViewingIndicator,
 } from '../../web/workflow-steps.js'
 
 // ── Global stubs ──────────────────────────────────────────────────────────
@@ -348,5 +350,105 @@ describe('reRunPhase', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
     await reRunPhase('analysis')
     expect(globalThis.appendRetryMessage).toHaveBeenCalled()
+  })
+})
+
+// ── _getStepTooltip ───────────────────────────────────────────────────────────
+
+describe('_getStepTooltip', () => {
+  it('returns empty string for upcoming step', () => {
+    expect(_getStepTooltip('job', false, false, false, false, false, false)).toBe('')
+  })
+
+  it('returns "Current step" for active+viewing', () => {
+    expect(_getStepTooltip('analysis', true, true, false, false, false, false)).toBe('Current step')
+  })
+
+  it('returns click-to-return text when browsing away from active step', () => {
+    expect(_getStepTooltip('analysis', true, false, true, false, false, false)).toBe('Active step — click to return')
+  })
+
+  it('returns rerun prompt for completed+viewing', () => {
+    expect(_getStepTooltip('customizations', false, true, false, true, false, false)).toBe('Click ↻ to rerun from here')
+  })
+
+  it('returns click-to-view for completed+not-viewing', () => {
+    expect(_getStepTooltip('customizations', false, false, false, true, false, false)).toBe('Click to view')
+  })
+
+  it('includes stale-critical text when viewing', () => {
+    const tip = _getStepTooltip('layout', false, true, false, true, true, true)
+    expect(tip).toContain('Critical changes')
+    expect(tip).toContain('↻')
+  })
+
+  it('returns stale-critical without rerun hint when not viewing', () => {
+    const tip = _getStepTooltip('layout', false, false, false, true, true, true)
+    expect(tip).toContain('Critical changes')
+    expect(tip).not.toContain('↻')
+  })
+
+  it('returns stale text with rerun hint when stale+viewing', () => {
+    const tip = _getStepTooltip('layout', false, true, false, true, true, false)
+    expect(tip).toContain('may be outdated')
+    expect(tip).toContain('↻')
+  })
+})
+
+// ── _updateViewingIndicator ───────────────────────────────────────────────────
+
+describe('_updateViewingIndicator', () => {
+  function makeStepPills(activeStep) {
+    const steps = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise']
+    document.body.innerHTML = steps.map(s => {
+      const classes = s === activeStep ? 'step active' : 'step completed'
+      return `<div id="step-${s}" class="${classes}"></div>`
+    }).join('')
+  }
+
+  it('adds .viewing to the pill matching the current tab', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('analysis')
+    expect(document.getElementById('step-analysis').classList.contains('viewing')).toBe(true)
+  })
+
+  it('removes .viewing from all other pills', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('analysis')
+    expect(document.getElementById('step-job').classList.contains('viewing')).toBe(false)
+    expect(document.getElementById('step-rewrite').classList.contains('viewing')).toBe(false)
+  })
+
+  it('adds .browsing-away to the active pill when user is viewing a different step', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('analysis')
+    expect(document.getElementById('step-rewrite').classList.contains('browsing-away')).toBe(true)
+  })
+
+  it('does NOT add .browsing-away when user is viewing the active step', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('rewrite')
+    expect(document.getElementById('step-rewrite').classList.contains('browsing-away')).toBe(false)
+  })
+
+  it('maps the questions tab to the analysis pill', () => {
+    makeStepPills('customizations')
+    _updateViewingIndicator('questions')
+    expect(document.getElementById('step-analysis').classList.contains('viewing')).toBe(true)
+  })
+
+  it('maps the exp-review tab to the customizations pill', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('exp-review')
+    expect(document.getElementById('step-customizations').classList.contains('viewing')).toBe(true)
+  })
+
+  it('clears all rings when an unknown tab is passed', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('some-unknown-tab')
+    document.querySelectorAll('.step').forEach(el => {
+      expect(el.classList.contains('viewing')).toBe(false)
+      expect(el.classList.contains('browsing-away')).toBe(false)
+    })
   })
 })
