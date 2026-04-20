@@ -38,6 +38,10 @@ htmlcov/
 /worktrees/
 .claude/worktrees
 
+# AI assistant history / chat logs (may contain secrets)
+.specstory/history/
+.specstory/statistics.json
+
 # Throwaway scripts and scratch files
 /tmp/
 *.bak
