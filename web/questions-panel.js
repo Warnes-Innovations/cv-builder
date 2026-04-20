@@ -285,6 +285,9 @@ function selectQChip(btn, qIdx) {
   }
 }
 
+// Debounce timer for persisting answers while the user types.
+let _persistDebounceTimer = null;
+
 function onQInputChange(idx) {
   updateQProgress();
   const q = (window.postAnalysisQuestions || [])[idx];
@@ -295,6 +298,10 @@ function onQInputChange(idx) {
     window.questionAnswers = {};
   }
   window.questionAnswers[q.type] = ta.value;
+
+  // Debounce-persist so answers survive tab navigation and status polling.
+  clearTimeout(_persistDebounceTimer);
+  _persistDebounceTimer = setTimeout(() => persistPostAnalysisState(), 500);
 }
 
 function updateQProgress() {
