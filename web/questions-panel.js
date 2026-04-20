@@ -185,7 +185,7 @@ function renderQuestionsPanel() {
         </div>
         ${chips ? `<div class="q-chips">${chips}</div>` : ''}
         <div class="q-answer-row">
-          <textarea class="q-input" id="q-input-${idx}" placeholder="Your answer…" oninput="updateQProgress()">${escapeHtml(savedAnswer)}</textarea>
+          <textarea class="q-input" id="q-input-${idx}" placeholder="Your answer…" oninput="onQInputChange(${idx})">${escapeHtml(savedAnswer)}</textarea>
           <button class="q-draft-btn" id="q-draft-btn-${idx}" onclick="draftQuestionResponse(${idx})" title="Generate a draft answer using AI">✨ Draft</button>
         </div>
       </div>`;
@@ -274,6 +274,27 @@ function selectQChip(btn, qIdx) {
     textarea.value = btn.textContent;
     updateQProgress();
   }
+  // Persist the chip answer immediately so it survives tab navigation.
+  const q = (window.postAnalysisQuestions || [])[qIdx];
+  if (q) {
+    if (!window.questionAnswers || typeof window.questionAnswers !== 'object') {
+      window.questionAnswers = {};
+    }
+    window.questionAnswers[q.type] = btn.textContent;
+    persistPostAnalysisState();
+  }
+}
+
+function onQInputChange(idx) {
+  updateQProgress();
+  const q = (window.postAnalysisQuestions || [])[idx];
+  if (!q) return;
+  const ta = document.getElementById(`q-input-${idx}`);
+  if (!ta) return;
+  if (!window.questionAnswers || typeof window.questionAnswers !== 'object') {
+    window.questionAnswers = {};
+  }
+  window.questionAnswers[q.type] = ta.value;
 }
 
 function updateQProgress() {
@@ -386,6 +407,7 @@ export {
   renderQuestionsPanel,
   draftQuestionResponse,
   selectQChip,
+  onQInputChange,
   updateQProgress,
   submitAllAnswers,
   showDraftError,

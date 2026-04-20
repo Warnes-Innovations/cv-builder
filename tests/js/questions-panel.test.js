@@ -16,6 +16,7 @@ import {
   populateQuestionsTab,
   renderQuestionsPanel,
   selectQChip,
+  onQInputChange,
   updateQProgress,
   showDraftError,
   showNextQuestion,
@@ -230,6 +231,54 @@ describe('selectQChip', () => {
     const chip = document.querySelector('.q-chip')
     selectQChip(chip, 0)
     expect(document.getElementById('q-input-0').value).toBe('Option A')
+  })
+
+  it('saves chip text to window.questionAnswers for the matching question type', () => {
+    window.questionAnswers = {}
+    const chip = document.querySelector('.q-chip')
+    selectQChip(chip, 0)
+    expect(window.questionAnswers['t1']).toBe('Option A')
+  })
+
+  it('updates window.questionAnswers so answers survive tab navigation', () => {
+    window.questionAnswers = {}
+    const chips = document.querySelectorAll('.q-chip')
+    // Select first chip, then switch to second — final state should reflect last selection
+    selectQChip(chips[0], 0)
+    expect(window.questionAnswers['t1']).toBe('Option A')
+    selectQChip(chips[1], 0)
+    expect(window.questionAnswers['t1']).toBe('Option B')
+  })
+})
+
+// ── onQInputChange ────────────────────────────────────────────────────────
+
+describe('onQInputChange', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="q-item-0">
+        <textarea id="q-input-0">Typed answer</textarea>
+      </div>
+      <p id="q-progress"></p>
+      <button id="q-submit-btn" disabled></button>`
+    window.postAnalysisQuestions = [{ type: 't1', question: 'Q?', choices: [] }]
+    window.questionAnswers = {}
+  })
+
+  it('saves textarea value to window.questionAnswers for the matching question type', () => {
+    onQInputChange(0)
+    expect(window.questionAnswers['t1']).toBe('Typed answer')
+  })
+
+  it('updates the progress display', () => {
+    onQInputChange(0)
+    const progressEl = document.getElementById('q-progress')
+    expect(progressEl.textContent).toContain('1')
+  })
+
+  it('does nothing when question index is out of range', () => {
+    expect(() => onQInputChange(99)).not.toThrow()
+    expect(window.questionAnswers).toEqual({})
   })
 })
 
