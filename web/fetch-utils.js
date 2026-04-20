@@ -215,8 +215,10 @@ function setLoading(loading, label) {
 
   _updateLLMStatusBar(loading, label);
 
-  const buttons = document.querySelectorAll('button');
-  buttons.forEach(btn => btn.disabled = loading);
+  // Only disable buttons inside the chat/interaction area — not the whole page.
+  const chatArea = document.getElementById('chat-area');
+  const scope = chatArea || document;
+  scope.querySelectorAll('button').forEach(btn => { btn.disabled = loading; });
   const stopBtn = document.getElementById('llm-busy-stop');
   if (stopBtn) stopBtn.disabled = false;
 
