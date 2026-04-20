@@ -639,6 +639,35 @@ class TestAnalyzeQuestionExtraction(unittest.TestCase):
         self.cm._execute_action({'action': 'recommend_customizations'})
         self.assertEqual(self.cm.state['phase'], 'customization')
 
+    def test_analyze_action_sets_job_analysis_phase(self):
+        """analyze_job must advance to JOB_ANALYSIS, not CUSTOMIZATION.
+
+        CUSTOMIZATION is only set when recommend_customizations runs.  If the
+        backend jumps straight to CUSTOMIZATION here, a restart between analysis
+        and recommendations restores the session with an empty Customise tab.
+        """
+        self.cm.llm.chat.return_value = 'Any question?'
+        self.cm._execute_action({'action': 'analyze_job'})
+        self.assertEqual(self.cm.state['phase'], 'job_analysis')
+
+    def test_recommend_customizations_action_sets_customization_phase(self):
+        """recommend_customizations must set CUSTOMIZATION, not REWRITE_REVIEW.
+
+        The user reviews recommendations in the Customise tab before proceeding
+        to the Rewrite tab.  Premature REWRITE_REVIEW here means a restart
+        would drop the user into an empty Rewrite tab.
+        """
+        self.cm.state['job_analysis'] = {
+            'title': 'Senior Data Scientist', 'company': 'Acme',
+            'required_skills': [], 'must_have_requirements': [],
+        }
+        self.cm.llm.recommend_customizations.return_value = {
+            'recommended_experiences': [],
+            'recommended_skills': [],
+        }
+        self.cm._execute_action({'action': 'recommend_customizations'})
+        self.assertEqual(self.cm.state['phase'], 'customization')
+
     def test_analyze_action_includes_extracted_questions_in_context(self):
         self.cm.llm.chat.return_value = (
             '{"intro": "Focus on data science and leadership for this role.", '
