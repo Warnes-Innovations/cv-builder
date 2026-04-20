@@ -351,7 +351,7 @@ async function openTrashView() {
   const footer = document.querySelector('#sessions-modal-overlay .modal-footer');
   if (!body) return;
 
-  body.innerHTML = '<p style="padding:24px;text-align:center;color:#6b7280;">Loading trash…</p>';
+  body.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:24px;color:#6b7280;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;flex-shrink:0;"></div><span>Loading trash…</span></div>';
 
   if (footer) {
     footer.innerHTML = `
