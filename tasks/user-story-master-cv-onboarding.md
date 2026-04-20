@@ -16,7 +16,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 - [US-O1: Precondition — Guided Entry into the Onboarding Workflow](#us-o1-precondition--guided-entry-into-the-onboarding-workflow)
 - [US-O2: Import from LinkedIn Data Export](#us-o2-import-from-linkedin-data-export)
-- [US-O3: Import from Existing Resume or CV Document](#us-o3-import-from-existing-resume-or-cv-document)
+- [US-O3: Import from Existing Resume or CV Document](#us-o3-import-from-existing-resume-or-cv-document) — PDF, DOCX, plain text, Markdown, HTML, or paste
 - [US-O4: Import Publications from BibTeX or Google Scholar](#us-o4-import-publications-from-bibtex-or-google-scholar)
 - [US-O5: Import Projects and Skills from GitHub Profile](#us-o5-import-projects-and-skills-from-github-profile)
 - [US-O6: Merge Multiple Sources into a Unified Master CV](#us-o6-merge-multiple-sources-into-a-unified-master-cv)
@@ -115,27 +115,45 @@ For commercial licensing, contact greg@warnes-innovations.com
 **Related stories:** US-A10, US-O1, US-O6, US-O8
 
 **As a** user onboarding into CV Builder,  
-**I want to** upload my existing CV or resume (PDF or DOCX) so the system uses LLM extraction to pre-populate the master CV,  
-**So that** I can quickly seed the system with my professional history without re-typing it.
+**I want to** provide my existing CV or resume in whatever format I have it — uploaded file, pasted text, or a web page — so the system uses LLM extraction to pre-populate the master CV,  
+**So that** I can quickly seed the system with my professional history without re-typing it, regardless of what format my existing materials are in.
+
+**Supported input paths:**
+
+| Path | Description |
+| --- | --- |
+| **File upload — PDF** | Upload a PDF resume. System extracts embedded text. |
+| **File upload — DOCX** | Upload a Word document. System extracts text and paragraph structure. |
+| **File upload — plain text (.txt)** | Upload a UTF-8 text file. Used directly as-is. |
+| **File upload — Markdown (.md)** | Upload a Markdown-formatted CV. Markdown is stripped to plain text before LLM processing; heading structure is used to aid section detection. |
+| **File upload — HTML (.html / .htm)** | Upload an HTML page (e.g., a saved LinkedIn profile page or an HTML-format CV). System strips tags and extracts readable text; `<h1>`–`<h3>` elements are used as section-boundary hints. |
+| **Paste text** | The user pastes resume text directly into a text area. Any format is accepted: plain text, Markdown, or lightly formatted text copied from a browser. |
 
 **Steps:**
-1. The user uploads a PDF or DOCX resume file.
-2. The system extracts the text content from the file and constructs a structured extraction prompt.
-3. The LLM is invoked with the extracted text and asked to return a structured JSON payload conforming to the master CV schema. A progress indicator is shown during LLM processing.
-4. The system receives the LLM response, validates it against the master CV JSON schema, and flags any fields with low extraction confidence (e.g., ambiguous date ranges, titles that look like section headings).
-5. The extraction result is presented for user review (US-O8).
+1. The user selects an input path from the options above. File upload and paste text are presented as clearly labelled tabs or panels of equal weight.
+2. For file uploads, the system detects the format from the file extension and MIME type and routes it through the appropriate text extraction step (PDF text extraction, DOCX paragraph extraction, HTML tag-stripping, or direct read for `.txt`/`.md`). A progress indicator is shown during extraction.
+3. For paste input, the system accepts the text as-is after a minimum-length validation (see Acceptance Criteria).
+4. Markdown heading structure (for `.md` or pasted Markdown) and HTML heading tags (for `.html` uploads or pasted HTML) are used as lightweight section-boundary hints to aid LLM extraction accuracy. They are not required.
+5. The extracted or pasted text is passed to the LLM with a structured extraction prompt. The LLM returns a JSON payload conforming to the master CV schema. A progress indicator is shown during LLM processing.
+6. The system validates the LLM response against the master CV JSON schema and flags fields with low extraction confidence (e.g., ambiguous date ranges, titles that look like section headings, phone numbers that fail format validation).
+7. The extraction result is presented for user review (US-O8). The raw source text is available in a collapsible panel for the user to inspect if an extraction looks wrong.
 
 **Acceptance Criteria:**
-- PDF and DOCX uploads both accepted; other formats produce a clear "unsupported format" message with suggested alternatives.
-- LLM extraction targets all master CV sections: personal info, experience, education, skills, certifications, and summaries. Publications found in the document are extracted as candidate `publications.bib` entries.
-- Low-confidence fields (e.g., extracted phone number that doesn't look like a valid number, ambiguous employer names) are visually flagged during review.
-- The raw extracted text is available for the user to inspect if an extraction looks wrong.
+- All six input paths (PDF, DOCX, TXT, MD, HTML, paste) are accepted; a file with an unrecognised extension produces a clear "unsupported format" message listing the supported formats, not a generic error.
+- HTML input has tags stripped before LLM processing; the raw HTML is never passed verbatim into the LLM prompt.
+- Markdown input has syntax markers (headings, bold, bullet markers) preserved as plain-text hints rather than stripped entirely, so the LLM can use structural signals.
+- Pasted text is accepted as long as it meets a minimum length threshold (default: 100 characters); input below the threshold produces an inline hint that the text appears too short to extract a useful CV.
+- LLM extraction targets all master CV sections: personal info, experience, education, skills, certifications, and summaries. Publications found in the source are extracted as candidate `publications.bib` entries.
+- Low-confidence fields are visually flagged during review with an amber indicator and an inline note explaining the flag.
+- The raw extracted text (post-stripping, pre-LLM) is available in a collapsible panel at the review screen.
 - Files over a configurable size limit (default: 5 MB) are rejected with a clear message before processing begins.
-- Processing time is indicated with a progress indicator; if it exceeds 30 seconds the UI explains why (LLM latency) and gives a cancel option.
+- Processing time is indicated with a progress indicator; if extraction exceeds 30 seconds the UI explains why (LLM latency) and offers a cancel option.
 
 **Failure Modes to Guard Against:**
-- LLM fabricating employment history not present in the document (hallucination). The UI must make clear that user review is essential, not optional.
-- Scanned-image PDFs (no embedded text) failing silently instead of surfacing a "no text detected" warning with guidance to use a text-based PDF.
+- LLM fabricating employment history not present in the source (hallucination). The UI must make clear that review is essential, not optional, regardless of input format.
+- Scanned-image PDFs (no embedded text) failing silently instead of surfacing a "no text detected" warning with guidance to use a text-based PDF or the paste path instead.
+- HTML uploads retaining `<script>`, `<style>`, or other non-content tags in the text passed to the LLM, polluting the extraction.
+- Pasted HTML (e.g., content copy-pasted from a browser) being passed raw to the LLM rather than being detected and tag-stripped first.
 - Extraction writing directly to `Master_CV_Data.json` before the user has confirmed the review step.
 
 ---
