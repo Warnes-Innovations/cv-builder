@@ -26,6 +26,7 @@ import yaml
 from utils.config import get_config
 from utils.conversation_manager import Phase
 from utils.llm_client import PROVIDER_MODELS
+from utils.provider_registry import DISPLAY_FIELDS, PROVIDER_REGISTRY
 from utils.session_data_view import SessionDataView
 
 
@@ -280,6 +281,98 @@ def _effective_setting_value(
     return _SETTINGS_DEFAULTS[dotted_key]
 
 
+# ── Credential / API key helpers ─────────────────────────────────────────────
+
+# Provider credential metadata is now centralised in utils/provider_registry.py.
+# Import the unified registry and expose it here under its legacy local alias so
+# that the helper functions below do not need to be updated.
+_PROVIDER_CREDENTIAL_MAP = PROVIDER_REGISTRY
+
+
+def _credential_source(
+    provider: str,
+    config_doc: Dict[str, Any],
+    dotenv_values: Dict[str, str],
+) -> Dict[str, Any]:
+    """Return credential source info for a provider.
+
+    Returns a dict with:
+      is_set  (bool)  — True when a non-empty credential exists
+      source  (str)   — 'env' | 'dotenv' | 'config' | 'unset'
+      env_var (str|None) — the specific env-var name when source is env/dotenv
+
+    device_flow / cli / none providers always return is_set=False / source='unset'
+    so the wizard renders auth-type guidance rather than a key-is-set badge.
+    """
+    meta = _PROVIDER_CREDENTIAL_MAP.get(provider)
+    if not meta or meta["auth_type"] in ("device_flow", "cli", "none"):
+        return {"is_set": False, "source": "unset", "env_var": None}
+
+    env_var = meta["env_var"]
+    if env_var and os.environ.get(env_var, "").strip():
+        return {"is_set": True, "source": "env", "env_var": env_var}
+
+    if env_var and dotenv_values.get(env_var, "").strip():
+        return {"is_set": True, "source": "dotenv", "env_var": env_var}
+
+    config_key = meta["config_key"]
+    if config_key:
+        stored = _deep_get(config_doc, config_key, "")
+        if isinstance(stored, str) and stored.strip():
+            return {"is_set": True, "source": "config", "env_var": None}
+
+    return {"is_set": False, "source": "unset", "env_var": None}
+
+
+# Keep a thin wrapper for callers that only need the boolean.
+def _credential_is_set(provider: str, config_doc: Dict[str, Any]) -> bool:
+    return _credential_source(provider, config_doc, {})["is_set"]
+
+
+def _write_api_key_to_config(config_path: Path, config_key: str, value: str, env_var: str) -> None:
+    """Atomically write an API key into config.yaml api_keys.* and os.environ.
+
+    Preserves all other top-level keys and sections.  Uses the same temp-file
+    swap strategy as the settings update route to avoid partial writes.
+    """
+    with _SETTINGS_WRITE_LOCK:
+        config_doc: Dict[str, Any] = {}
+        if config_path.exists():
+            config_doc = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
+
+        _deep_set(config_doc, config_key, value)
+
+        tmp_path    = config_path.with_suffix('.yaml.tmp')
+        backup_path = config_path.with_suffix('.yaml.bak')
+        try:
+            tmp_path.write_text(
+                yaml.safe_dump(config_doc, sort_keys=False, default_flow_style=False),
+                encoding='utf-8',
+            )
+            if config_path.exists():
+                config_path.replace(backup_path)
+            tmp_path.replace(config_path)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            if backup_path.exists() and not config_path.exists():
+                backup_path.replace(config_path)
+            raise
+
+    # Apply immediately to the running process so the key is usable without a
+    # server restart (e.g. for the Step 3 "Test connection" in the wizard).
+    #
+    # LIMITATION — process-local only:
+    #   os.environ changes are visible only in the current OS process.  In a
+    #   single-worker deployment (the only supported mode for this local app)
+    #   this is always correct.  If the server is ever run with multiple
+    #   workers (e.g. gunicorn -w 4), each worker would need its own restart
+    #   to pick up the new value; the config.yaml write above is the durable
+    #   record and will be read correctly on any restart.  Do not move to a
+    #   multi-worker deployment without revisiting this behaviour.
+    if env_var:
+        os.environ[env_var] = value
+
+
 def _build_settings_response(config_doc: Dict[str, Any], config_path: Path) -> Dict[str, Any]:
     dotenv_values = _read_dotenv_values(config_path.parent / '.env')
 
@@ -417,6 +510,133 @@ def create_blueprint(deps):
         response['ok'] = True
         response['updated_keys'] = sorted(validated_updates.keys())
         return jsonify(response)
+
+    # ── Provider metadata (session-free) ─────────────────────────────────────
+
+    @bp.get('/api/providers')
+    def get_providers():
+        """Return display metadata for all known providers (no credentials, no session).
+
+        Response shape:
+          {
+            "ok": true,
+            "providers": {
+              "<provider>": {
+                "free_tier":    true | false,
+                "confidential": true | false,
+                "note":         "One-sentence description.",
+                "homepage":     "https://..." | null,
+                "pricing_url":  "https://..." | null,
+                "privacy_url":  "https://..." | null
+              },
+              ...
+            }
+          }
+        """
+        providers = {
+            name: {k: entry[k] for k in DISPLAY_FIELDS}
+            for name, entry in PROVIDER_REGISTRY.items()
+        }
+        return jsonify({"ok": True, "providers": providers})
+
+    # ── Credential / API key routes ───────────────────────────────────────────
+
+    @bp.get('/api/settings/credentials/status')
+    def get_credentials_status():
+        """Return which providers have a credential set (never returns key values).
+
+        Response shape:
+          {
+            "ok": true,
+            "providers": {
+              "github": {
+                "auth_type": "api_key",
+                "is_set":    true,
+                "source":    "env",       // 'env' | 'dotenv' | 'config' | 'unset'
+                "env_var":   "GITHUB_MODELS_TOKEN",  // set when source is env/dotenv
+                "locked":    true,        // true when controlled by env var or .env
+                "label":     "...",
+                "get_key_url": "...",
+                "help_text": "..."
+              },
+              ...
+            }
+          }
+        """
+        config_path = _resolve_config_yaml_path()
+        config_doc: Dict[str, Any] = {}
+        if config_path.exists():
+            try:
+                config_doc = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
+            except Exception:
+                logger.warning("Could not parse config.yaml for credential status check")
+
+        dotenv_values = _read_dotenv_values(config_path.parent / '.env')
+
+        providers: Dict[str, Any] = {}
+        for provider, meta in _PROVIDER_CREDENTIAL_MAP.items():
+            cred = _credential_source(provider, config_doc, dotenv_values)
+            providers[provider] = {
+                "auth_type":   meta["auth_type"],
+                "is_set":      cred["is_set"],
+                "source":      cred["source"],
+                "env_var":     cred["env_var"],
+                "locked":      cred["source"] in ("env", "dotenv"),
+                "label":       meta["label"],
+                "get_key_url": meta["get_key_url"],
+                "help_text":   meta["help_text"],
+            }
+        return jsonify({"ok": True, "providers": providers})
+
+    @bp.post('/api/settings/credentials')
+    def save_credential():
+        """Write an API key for a provider into config.yaml api_keys.* and os.environ.
+
+        Request body: {"provider": "<name>", "key_value": "<secret>"}
+
+        The key value is never echoed back in the response — only a presence flag.
+        """
+        body = request.get_json(silent=True) or {}
+        provider  = (body.get('provider') or '').strip()
+        key_value = (body.get('key_value') or '').strip()
+
+        if not provider:
+            return jsonify({'ok': False, 'error': 'provider is required'}), 400
+
+        meta = _PROVIDER_CREDENTIAL_MAP.get(provider)
+        if meta is None:
+            return jsonify({'ok': False, 'error': f'Unknown provider: {provider}'}), 400
+
+        if meta['auth_type'] in ('device_flow', 'cli', 'none'):
+            return jsonify({
+                'ok':    False,
+                'error': f"Provider '{provider}' does not use an API key — "
+                         f"use the '{meta['auth_type']}' method instead.",
+            }), 400
+
+        if not key_value:
+            return jsonify({'ok': False, 'error': 'key_value must not be empty'}), 400
+
+        config_path = _resolve_config_yaml_path()
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            _write_api_key_to_config(
+                config_path,
+                config_key=meta['config_key'],
+                value=key_value,
+                env_var=meta['env_var'],
+            )
+        except Exception:
+            logger.exception("Failed to save credential for provider '%s'", provider)
+            return jsonify({'ok': False, 'error': 'Failed to save credential — please try again'}), 500
+
+        return jsonify({
+            'ok':      True,
+            'provider': provider,
+            'is_set':  True,
+        })
+
+    # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _usage_prompt_tokens(usage):
         if usage is None:
