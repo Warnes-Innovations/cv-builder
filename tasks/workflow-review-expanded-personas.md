@@ -59,6 +59,7 @@ New story/spec files:
 - `tasks/user-story-master-cv-curator.md`
 - `tasks/user-story-trust-compliance.md`
 - `tasks/user-story-graphical-designer.md`
+- `tasks/user-story-master-cv-onboarding.md`
 
 ## Evaluation Model
 

@@ -98,7 +98,7 @@
           await buildSummaryFocusSection();
           // The summary panel should have session summary applied; we inspect the DOM element
           const aiTextEl = document.getElementById('ai-summary-text');
-          const aiText = aiTextEl ? aiTextEl.textContent : '';
+          const aiText = aiTextEl ? aiTextEl.value : '';
           if (aiText && aiText.includes('Session AI')){
             log('PASS: buildSummaryFocusSection used session summary');
           } else {
