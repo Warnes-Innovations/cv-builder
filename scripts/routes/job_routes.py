@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
 from utils.llm_client import LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
+from utils.prompt_safety import scan_for_safety_alert
 
 
 def _json_ld_blobs_to_markdown(blobs: list) -> str:
@@ -208,7 +209,17 @@ def create_blueprint(deps):
                 "content": job_text,
             })
         session_registry.touch(sid)
-        return jsonify({"ok": True, "message": "Job description added."})
+        safety_alert = scan_for_safety_alert(job_text)
+        if safety_alert:
+            logger.warning(
+                "Prompt-injection indicators in submitted job description (session %s): %s",
+                sid,
+                safety_alert,
+            )
+        response: dict = {"ok": True, "message": "Job description added."}
+        if safety_alert:
+            response["safety_alert"] = safety_alert
+        return jsonify(response)
 
     @bp.post("/api/fetch-job-url")
     def fetch_job_url():
@@ -459,13 +470,24 @@ def create_blueprint(deps):
             session_registry.touch(sid)
             logger.info("Fetched %d chars from %s", len(job_text), domain)
 
-            return jsonify({
+            safety_alert = scan_for_safety_alert(job_text)
+            if safety_alert:
+                logger.warning(
+                    "Prompt-injection indicators in fetched job description (session %s, url %s): %s",
+                    sid,
+                    url,
+                    safety_alert,
+                )
+            fetch_response: dict = {
                 "ok": True,
                 "job_text": job_text,
                 "message": f"Job description fetched from {domain}",
                 "source_url": url,
-                "content_length": len(job_text)
-            })
+                "content_length": len(job_text),
+            }
+            if safety_alert:
+                fetch_response["safety_alert"] = safety_alert
+            return jsonify(fetch_response)
 
         except _requests.Timeout:
             return jsonify({
@@ -625,11 +647,22 @@ def create_blueprint(deps):
                 })
             session_registry.touch(sid)
 
-            return jsonify({
+            safety_alert = scan_for_safety_alert(job_text)
+            if safety_alert:
+                logger.warning(
+                    "Prompt-injection indicators in loaded job file (session %s, file %s): %s",
+                    sid,
+                    filename,
+                    safety_alert,
+                )
+            file_response: dict = {
                 "ok": True,
                 "job_text": job_text,
-                "message": f"Loaded job description from {filename}"
-            })
+                "message": f"Loaded job description from {filename}",
+            }
+            if safety_alert:
+                file_response["safety_alert"] = safety_alert
+            return jsonify(file_response)
         except Exception:
             logger.exception("Failed to load job file: %s", filename)
             return jsonify({"error": "Failed to load file."}), 500
