@@ -8,6 +8,13 @@ llm:
   temperature: 0.7
   max_tokens: null
   request_timeout_seconds: 300
+
+api_keys:
+  github_token:      ""
+  openai_api_key:    ""
+  anthropic_api_key: ""
+  gemini_api_key:    ""
+  groq_api_key:      ""
 generation:
   base_font_size: 13px
   max_skills: 20

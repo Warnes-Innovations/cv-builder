@@ -16,8 +16,12 @@ archive/
 
 # OS artifacts
 .DS_Store
-.env
 .github/obo_sessions/
+
+# Personal configuration (contains local paths and API keys — not for sharing)
+# Use config.yaml.example as the starting point when setting up a new instance.
+config.yaml
+.env
 
 # Node / JS tooling
 node_modules/

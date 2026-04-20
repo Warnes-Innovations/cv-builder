@@ -770,6 +770,7 @@ let _copilotAuthPollTimer = null;
 let _modelWizardStep = 1;
 let _modelWizardSelectedProvider = null;
 
+
 function _getModelPrefsFromStorage() {
   try {
     const saved = localStorage.getItem(StorageKeys.TAB_DATA);
@@ -964,21 +965,142 @@ function toggleModelCatalogVisibility() {
   _syncCatalogVisibility();
 }
 
-async function _refreshCopilotAuthPanel() {
-  const panel = document.getElementById('model-auth-panel');
+// _renderAuthStep — called by _setModelWizardStep when entering Step 2.
+// Renders provider-specific content into #model-auth-step-content and shows
+// the appropriate sub-panel (key input, device-flow, CLI notice, or none).
+async function _renderAuthStep(provider) {
+  const content    = document.getElementById('model-auth-step-content');
+  const keyPanel   = document.getElementById('model-auth-key-panel');
+  const devPanel   = document.getElementById('model-auth-device-panel');
+  const keyInput   = document.getElementById('model-auth-key-input');
+  const keyStatus  = document.getElementById('model-auth-key-status');
+
+  if (!content) return;
+
+  // Reset sub-panels
+  if (keyPanel)  keyPanel.style.display  = 'none';
+  if (devPanel)  devPanel.style.display  = 'none';
+  if (keyInput)  keyInput.value = '';
+  if (keyStatus) keyStatus.textContent = '';
+
+  if (!provider) {
+    content.innerHTML = '<p style="color:#64748b;">Select a provider in Step 1 first.</p>';
+    return;
+  }
+
+  let credData = null;
+  try {
+    const resp = await fetch('/api/settings/credentials/status');
+    if (resp.ok) {
+      const data = await resp.json();
+      credData = (data.providers || {})[provider] || null;
+    }
+  } catch { /* non-fatal */ }
+
+  const authType   = credData?.auth_type  || 'api_key';
+  const label      = credData?.label      || provider;
+  const helpText   = credData?.help_text  || '';
+  const getKeyUrl  = credData?.get_key_url || '';
+  const isSet      = credData?.is_set     || false;
+  const source     = credData?.source     || 'unset';
+  const envVar     = credData?.env_var    || null;
+  const isLocked   = credData?.locked     || false;
+
+  const isSetBadge = isSet
+    ? '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#d1fae5;color:#065f46;font-size:0.8em;font-weight:600;">&#10003; Key saved</span>'
+    : '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:0.8em;font-weight:600;">Not configured</span>';
+
+  // Source label + ⓘ tooltip — mirrors the settings dialog pattern.
+  let sourceLabel = '';
+  let tooltipText = '';
+  if (source === 'env') {
+    sourceLabel = `Source: environment variable (${envVar || 'locked'})`;
+    tooltipText = `Currently loaded from the ${envVar} environment variable. ` +
+      `To change it permanently, update your shell config (e.g. ~/.zshrc) and restart the server. ` +
+      `You can still save a value below — it takes effect immediately but will be overridden by the environment variable on next restart.`;
+  } else if (source === 'dotenv') {
+    sourceLabel = `Source: .env file (${envVar || 'locked'})`;
+    tooltipText = `Currently loaded from ${envVar} in your .env file. ` +
+      `To change it permanently, edit the .env file in the project directory and restart the server. ` +
+      `You can still save a value below — it takes effect immediately but will be overridden by .env on next restart.`;
+  } else if (source === 'config') {
+    sourceLabel = 'Source: config.yaml';
+    tooltipText = 'Stored in config.yaml. Update it using the input below.';
+  }
+
+  const infoIcon = tooltipText
+    ? ` <button type="button" title="${escapeHtml(tooltipText)}" aria-label="Where is this key stored?" ` +
+      `style="background:none;border:none;cursor:help;color:#64748b;font-size:0.85em;padding:0 2px;vertical-align:middle;line-height:1;">ⓘ</button>`
+    : '';
+
+  const sourceLabelHtml = sourceLabel
+    ? `<span style="margin-left:10px;font-size:0.8em;color:${isLocked ? '#b45309' : '#64748b'};">${escapeHtml(sourceLabel)}${infoIcon}</span>`
+    : '';
+
+  // Amber warning when a locked source exists — input remains enabled so the
+  // user can save a session/config override, but the precedence rule is clear.
+  const sourceDesc = source === 'env' ? 'environment variable' : '.env file';
+  const sourceRef  = envVar
+    ? `${sourceDesc} <code>${escapeHtml(envVar)}</code>`
+    : sourceDesc;
+  const lockedWarnHtml = isLocked
+    ? `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin:8px 0;font-size:0.85em;color:#92400e;">` +
+      `⚠ This key is loaded from the <strong>${sourceRef}</strong>. ` +
+      `Any value saved below takes effect immediately for the current session, but will be ` +
+      `<strong>overridden by the ${sourceDesc} when the server restarts or reloads</strong>.</div>`
+    : '';
+
+  const getKeyLink = getKeyUrl
+    ? `<a href="${escapeHtml(getKeyUrl)}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;">Get your key &#8599;</a>`
+    : '';
+
+  content.innerHTML =
+    `<div style="margin-bottom:10px;">` +
+    `  <strong>${escapeHtml(label)}</strong> ${isSetBadge}${sourceLabelHtml}` +
+    (getKeyLink ? `  <span style="margin-left:10px;">${getKeyLink}</span>` : '') +
+    `</div>` +
+    (helpText ? `<p style="font-size:0.85em;color:#475569;margin:0 0 12px;">${escapeHtml(helpText)}</p>` : '') +
+    lockedWarnHtml;
+
+  if (authType === 'api_key') {
+    if (keyPanel) {
+      keyPanel.style.display = '';
+      if (keyInput) {
+        // Always enable input — user can save a new value even when env/dotenv is the current
+        // source. The warning banner above communicates the restart-precedence behaviour.
+        keyInput.disabled = false;
+        keyInput.style.opacity = '';
+        keyInput.placeholder = isSet ? 'Enter new key to replace the saved one' : 'Paste your API key here';
+        keyInput.dataset.provider = provider;
+      }
+    }
+  } else if (authType === 'device_flow') {
+    if (devPanel) {
+      devPanel.style.display = '';
+      await _refreshCopilotAuthStatus();
+    }
+  } else if (authType === 'cli') {
+    content.innerHTML +=
+      `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;font-size:0.88em;">` +
+      `<p style="margin:0 0 6px;">Run this command in a terminal, then return here and click <strong>Next</strong>:</p>` +
+      `<code style="font-size:1em;">gh auth login</code></div>`;
+  } else {
+    content.innerHTML +=
+      `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;font-size:0.88em;color:#475569;">` +
+      `No authentication required for this provider.</div>`;
+  }
+}
+
+async function _refreshCopilotAuthStatus() {
   const statusEl = document.getElementById('model-auth-status');
-  const startBtn = document.getElementById('model-auth-start-btn');
+  const startBtn  = document.getElementById('model-auth-start-btn');
   const logoutBtn = document.getElementById('model-auth-logout-btn');
-  const codeEl = document.getElementById('model-auth-code');
-  const linkEl = document.getElementById('model-auth-link');
-  if (!panel || !statusEl) return;
+  const codeEl    = document.getElementById('model-auth-code');
+  const linkEl    = document.getElementById('model-auth-link');
+  if (!statusEl) return;
 
-  const isCopilotOAuth = _modelData?.provider === 'copilot-oauth';
-  panel.style.display = isCopilotOAuth ? '' : 'none';
-  if (!isCopilotOAuth) return;
-
-  codeEl.textContent = '';
-  if (linkEl) linkEl.style.display = 'none';
+  if (codeEl)  codeEl.textContent = '';
+  if (linkEl)  linkEl.style.display = 'none';
 
   try {
     const st = await fetch('/api/copilot-auth/status').then((res) => res.json());
@@ -1001,6 +1123,45 @@ async function _refreshCopilotAuthPanel() {
   } catch {
     statusEl.textContent = 'Unable to load auth status.';
   }
+}
+
+async function saveProviderApiKey() {
+  const keyInput  = document.getElementById('model-auth-key-input');
+  const keyStatus = document.getElementById('model-auth-key-status');
+  const provider  = keyInput?.dataset?.provider || _modelWizardSelectedProvider;
+  const value     = (keyInput?.value || '').trim();
+
+  if (!value) {
+    if (keyStatus) { keyStatus.textContent = 'Please enter a key value.'; keyStatus.style.color = '#b91c1c'; }
+    return;
+  }
+  if (!provider) {
+    if (keyStatus) { keyStatus.textContent = 'No provider selected.'; keyStatus.style.color = '#b91c1c'; }
+    return;
+  }
+
+  if (keyStatus) { keyStatus.textContent = 'Saving…'; keyStatus.style.color = '#475569'; }
+  try {
+    await apiCall('POST', '/api/settings/credentials', { provider, key_value: value });
+    if (keyInput)  keyInput.value = '';
+    if (keyStatus) {
+      keyStatus.textContent = 'Key saved successfully.';
+      keyStatus.style.color = '#065f46';
+    }
+    // Re-render badge to show key is now set
+    await _renderAuthStep(provider);
+  } catch (e) {
+    if (keyStatus) { keyStatus.textContent = `Error: ${e.message || e}`; keyStatus.style.color = '#b91c1c'; }
+  }
+}
+
+function toggleApiKeyVisibility() {
+  const input  = document.getElementById('model-auth-key-input');
+  const toggle = document.getElementById('model-auth-key-toggle');
+  if (!input) return;
+  const isHidden = input.type === 'password';
+  input.type = isHidden ? 'text' : 'password';
+  if (toggle) toggle.textContent = isHidden ? '🙈' : '👁';
 }
 
 async function startCopilotAuthFromWizard() {
@@ -1030,7 +1191,7 @@ async function startCopilotAuthFromWizard() {
         if (st.authenticated) {
           clearInterval(_copilotAuthPollTimer);
           _copilotAuthPollTimer = null;
-          await _refreshCopilotAuthPanel();
+          await _refreshCopilotAuthStatus();
         }
       } catch {
         // keep polling silently until close
@@ -1045,7 +1206,7 @@ async function startCopilotAuthFromWizard() {
 
 async function logoutCopilotAuthFromWizard() {
   await fetch('/api/copilot-auth/logout', { method: 'POST' });
-  await _refreshCopilotAuthPanel();
+  await _refreshCopilotAuthStatus();
 }
 
 function _wireGlobalModelSearch() {
@@ -1074,10 +1235,16 @@ function _renderProviderSelector() {
     _selectedModelProviders = new Set([_modelWizardSelectedProvider]);
   }
 
+  // Dispose any existing BS5 popovers before clearing the list.
+  listEl.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
+    window.bootstrap?.Popover?.getInstance(el)?.dispose();
+  });
+
   listEl.innerHTML = '';
   providers.forEach(provider => {
     const checked = provider === _modelWizardSelectedProvider;
     const sourceLabel = _providerStageLabel(provider, capableSet);
+    const info = getProviderInfo(provider);
 
     const label = document.createElement('label');
     label.style.cssText = 'display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:0.82em; background:#fff; cursor:pointer;';
@@ -1085,6 +1252,31 @@ function _renderProviderSelector() {
       `<input type="radio" name="model-provider-choice" value="${escapeHtml(provider)}" ${checked ? 'checked' : ''} style="margin:0;" />` +
       `<span>${escapeHtml(_providerDisplayLabel(provider))}</span>` +
       `<span style="color:#64748b; font-size:0.8em;">(${escapeHtml(sourceLabel)})</span>`;
+
+    // Append a ⓘ button wired to a BS5 HTML popover so links inside are clickable.
+    if (info) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.setAttribute('aria-label', 'Provider info');
+      btn.setAttribute('data-bs-toggle', 'popover');
+      btn.setAttribute('data-bs-trigger', 'click');
+      btn.setAttribute('data-bs-placement', 'right');
+      btn.setAttribute('data-bs-html', 'true');
+      btn.setAttribute('data-bs-container', 'body');
+      btn.setAttribute('data-bs-content', providerInfoPopoverContent(info));
+      btn.style.cssText = 'background:none;border:none;cursor:pointer;color:#64748b;font-size:0.9em;padding:0 1px;line-height:1;vertical-align:middle;';
+      btn.textContent = 'ⓘ';
+      // Prevent the radio-label click from propagating to the radio button.
+      btn.addEventListener('click', e => e.stopPropagation());
+      label.appendChild(btn);
+
+      // Initialise after append — BS5 must find the element in the DOM.
+      requestAnimationFrame(() => {
+        if (window.bootstrap?.Popover) {
+          new window.bootstrap.Popover(btn, { sanitize: false });
+        }
+      });
+    }
 
     const checkbox = label.querySelector('input');
     checkbox.addEventListener('change', () => {
@@ -1113,19 +1305,24 @@ function _hideModelWizardBusy() {
 }
 
 function _setModelWizardStep(step) {
-  _modelWizardStep = [1, 2, 3].includes(step) ? step : 1;
-  const providerStep = document.getElementById('model-step-provider');
-  const modelStep = document.getElementById('model-step-models');
-  const successStep = document.getElementById('model-step-success');
-  if (providerStep) providerStep.style.display = _modelWizardStep === 1 ? '' : 'none';
-  if (modelStep) modelStep.style.display = _modelWizardStep === 2 ? '' : 'none';
-  if (successStep) successStep.style.display = _modelWizardStep === 3 ? '' : 'none';
+  _modelWizardStep = [1, 2, 3, 4].includes(step) ? step : 1;
+  const panes = {
+    1: document.getElementById('model-step-provider'),
+    2: document.getElementById('model-step-auth'),
+    3: document.getElementById('model-step-models'),
+    4: document.getElementById('model-step-success'),
+  };
+  Object.entries(panes).forEach(([num, el]) => {
+    if (el) el.style.display = Number(num) === _modelWizardStep ? '' : 'none';
+  });
+  if (_modelWizardStep === 2) {
+    _renderAuthStep(_modelWizardSelectedProvider);
+  }
   _updateModelWizardNav();
 }
 
 function _updateModelWizardProgressBar() {
-  const steps = [1, 2, 3];
-  steps.forEach((stepNum) => {
+  [1, 2, 3, 4].forEach((stepNum) => {
     const stepEl = document.getElementById(`model-progress-step-${stepNum}`);
     if (!stepEl) return;
     const badgeEl = stepEl.querySelector('.model-progress-badge');
@@ -1147,32 +1344,38 @@ function _updateModelWizardProgressBar() {
 }
 
 function _updateModelWizardNav() {
-  const stepLabel = document.getElementById('model-wizard-step-label');
-  const backBtn = document.getElementById('model-wizard-back-btn');
-  const nextBtn = document.getElementById('model-wizard-next-btn');
-  const testBtn = document.getElementById('model-test-btn');
+  const stepLabel  = document.getElementById('model-wizard-step-label');
+  const backBtn    = document.getElementById('model-wizard-back-btn');
+  const nextBtn    = document.getElementById('model-wizard-next-btn');
+  const testBtn    = document.getElementById('model-test-btn');
   const refreshBtn = document.getElementById('pricing-refresh-btn');
-  const footer = document.querySelector('.model-wizard-footer');
+  const footer     = document.querySelector('.model-wizard-footer');
 
   _updateModelWizardProgressBar();
 
   if (stepLabel) {
-    if (_modelWizardStep === 1) stepLabel.textContent = 'Step 1 of 3: Choose provider';
-    if (_modelWizardStep === 2) stepLabel.textContent = 'Step 2 of 3: Choose model and test connection';
-    if (_modelWizardStep === 3) stepLabel.textContent = 'Step 3 of 3: Complete';
+    const labels = {
+      1: 'Step 1 of 4: Choose provider',
+      2: 'Step 2 of 4: Set up authentication',
+      3: 'Step 3 of 4: Choose model and test connection',
+      4: 'Step 4 of 4: Complete',
+    };
+    stepLabel.textContent = labels[_modelWizardStep] || '';
   }
 
   if (backBtn) {
     backBtn.disabled = _modelWizardStep === 1;
-    backBtn.style.display = _modelWizardStep === 3 ? 'none' : '';
+    backBtn.style.display = _modelWizardStep === 4 ? 'none' : '';
   }
+  // Next button: visible on steps 1 and 2
   if (nextBtn) {
-    nextBtn.style.display = _modelWizardStep === 1 ? '' : 'none';
-    nextBtn.disabled = !_modelWizardSelectedProvider;
+    nextBtn.style.display = (_modelWizardStep === 1 || _modelWizardStep === 2) ? '' : 'none';
+    nextBtn.disabled = _modelWizardStep === 1 && !_modelWizardSelectedProvider;
+    nextBtn.textContent = _modelWizardStep === 2 ? 'Next' : 'Next';
   }
-  if (testBtn) testBtn.style.display = _modelWizardStep === 2 ? '' : 'none';
-  if (refreshBtn) refreshBtn.style.display = _modelWizardStep === 2 ? '' : 'none';
-  if (footer) footer.style.justifyContent = _modelWizardStep === 3 ? 'center' : 'space-between';
+  if (testBtn)    testBtn.style.display    = _modelWizardStep === 3 ? '' : 'none';
+  if (refreshBtn) refreshBtn.style.display = _modelWizardStep === 3 ? '' : 'none';
+  if (footer) footer.style.justifyContent  = _modelWizardStep === 4 ? 'center' : 'space-between';
 }
 
 async function _loadModelsForSelectedProvider() {
@@ -1190,7 +1393,6 @@ async function _loadModelsForSelectedProvider() {
     _selectedModelProviders = new Set([_modelWizardSelectedProvider]);
     _modelData.provider = _modelWizardSelectedProvider;
     await _refreshModelCatalogForSelection();
-    await _refreshCopilotAuthPanel();
     if (loadingEl) {
       loadingEl.style.display = 'none';
       loadingEl.textContent = '';
@@ -1210,20 +1412,22 @@ async function _loadModelsForSelectedProvider() {
 }
 
 async function nextWizardStep() {
-  if (_modelWizardStep !== 1) return;
-  const loaded = await _loadModelsForSelectedProvider();
-  if (!loaded) return;
-  _setModelWizardStep(2);
+  if (_modelWizardStep === 1) {
+    if (!_modelWizardSelectedProvider) return;
+    _setModelWizardStep(2);
+    return;
+  }
+  if (_modelWizardStep === 2) {
+    const loaded = await _loadModelsForSelectedProvider();
+    if (!loaded) return;
+    _setModelWizardStep(3);
+  }
 }
 
 function previousWizardStep() {
-  if (_modelWizardStep === 2) {
-    _setModelWizardStep(1);
-    return;
-  }
-  if (_modelWizardStep === 3) {
-    _setModelWizardStep(2);
-  }
+  if (_modelWizardStep === 2) { _setModelWizardStep(1); return; }
+  if (_modelWizardStep === 3) { _setModelWizardStep(2); return; }
+  if (_modelWizardStep === 4) { _setModelWizardStep(3); }
 }
 
 async function _refreshModelCatalogForSelection() {
@@ -1273,6 +1477,7 @@ async function openModelModal() {
   if (!_modelData) {
     await loadModelSelector();
   }
+  await loadProviderInfo();
   if (!_modelWizardSelectedProvider) {
     _modelWizardSelectedProvider = _modelData?.provider || null;
   }
@@ -1533,7 +1738,7 @@ async function setModel(model, provider) {
       currentModelProvider: effectiveProvider || null,
       currentModelName: model || null,
     });
-    await _refreshCopilotAuthPanel();
+    await _refreshCopilotAuthStatus();
     await testCurrentModel();
   } catch (e) {
     log.error('Failed to switch model:', e);
@@ -1580,7 +1785,7 @@ async function testCurrentModel() {
     if (successSummary) {
       successSummary.textContent = `Connection verified in ${latencyMs}ms. You can close the wizard and continue.`;
     }
-    _setModelWizardStep(3);
+    _setModelWizardStep(4);
   };
 
   const setFail = (errMsg) => {
@@ -1693,6 +1898,7 @@ export {
   loadModelSelector, openModelModal, closeModelModal, setModel, testCurrentModel, refreshModelPricing,
   toggleModelCatalogVisibility, startCopilotAuthFromWizard, logoutCopilotAuthFromWizard,
   nextWizardStep, previousWizardStep,
+  saveProviderApiKey, toggleApiKeyVisibility,
   _updateLlmStatusPill,
   // Settings modal
   openSettingsModal, closeSettingsModal, saveSettingsModal, reloadSettingsModal,
