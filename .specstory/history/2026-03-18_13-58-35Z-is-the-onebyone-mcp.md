@@ -21425,3 +21425,5 @@ Done — `38e3e93`.
 2. Refinement feedback now appended as `'system'` message instead of `'assistant'`
 
 **No blockers** — all other patterns (focus management, XSS escaping, retry closures, backend ordering) were correct.
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->
