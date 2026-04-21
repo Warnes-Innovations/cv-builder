@@ -112,20 +112,81 @@ function formatSessionTimestamp(timestamp, { includeTime = true } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Master CV onboarding
+// Welcome / onboarding modal (GAP-36 / GAP-37)
 // ---------------------------------------------------------------------------
 
+const _WELCOME_DISMISSED_KEY = 'cv-builder-welcome-dismissed';
+
 /**
- * Show the onboarding modal when Master_CV_Data.json is absent.
+ * Switch which content section is visible inside the welcome modal.
+ * @param {'present'|'missing'} section
+ */
+function _setWelcomeSection(section) {
+  const sPresent = document.getElementById('welcome-section-present');
+  const sMissing = document.getElementById('welcome-section-missing');
+  const fPresent = document.getElementById('welcome-footer-present');
+  const fMissing = document.getElementById('welcome-footer-missing');
+  if (sPresent) sPresent.style.display = section === 'present' ? '' : 'none';
+  if (sMissing) sMissing.style.display = section === 'missing' ? '' : 'none';
+  if (fPresent) fPresent.style.display = section === 'present' ? 'flex' : 'none';
+  if (fMissing) fMissing.style.display = section === 'missing' ? 'flex' : 'none';
+}
+
+/**
+ * Show the onboarding modal in the "missing master CV" state.
+ * Called from createNewSessionAndNavigate() when the backend returns master_cv_missing.
  * @param {string} masterCvPath - Server-reported expected file path.
  */
 function showOnboardingModal(masterCvPath) {
-  const overlay = document.getElementById('onboarding-modal-overlay');
-  const pathEl  = document.getElementById('onboarding-master-cv-path');
+  const overlay  = document.getElementById('onboarding-modal-overlay');
+  const pathEl   = document.getElementById('onboarding-master-cv-path');
   const statusEl = document.getElementById('onboarding-modal-status');
   if (pathEl)   pathEl.textContent   = masterCvPath || '(unknown)';
   if (statusEl) statusEl.textContent = '';
-  if (overlay)  overlay.style.display = 'flex';
+  _setWelcomeSection('missing');
+  if (overlay) overlay.style.display = 'flex';
+}
+
+/**
+ * Show the welcome modal unless the user has dismissed it.
+ * Calls /api/setup/master-cv-status to choose which section to display.
+ * Safe to call on every startup — no-ops immediately if dismissed.
+ */
+async function maybeShowWelcomeModal() {
+  try {
+    if (localStorage.getItem(_WELCOME_DISMISSED_KEY)) return;
+  } catch (_) {}
+  let section = 'present';
+  try {
+    const res = await fetch('/api/setup/master-cv-status');
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (!data.exists) {
+        // Let the missing-CV flow handle the path display
+        const pathEl = document.getElementById('onboarding-master-cv-path');
+        if (pathEl) pathEl.textContent = data.path || '(unknown)';
+        section = 'missing';
+      }
+    }
+  } catch (_) {}
+  const statusEl = document.getElementById('onboarding-modal-status');
+  if (statusEl) statusEl.textContent = '';
+  _setWelcomeSection(section);
+  const overlay = document.getElementById('onboarding-modal-overlay');
+  if (overlay) overlay.style.display = 'flex';
+}
+
+/**
+ * Close the welcome modal.
+ * If "Don't show again" is checked, persists the dismissal in localStorage.
+ */
+function closeWelcomeModal() {
+  const overlay  = document.getElementById('onboarding-modal-overlay');
+  const checkbox = document.getElementById('welcome-dont-show-again');
+  if (overlay) overlay.style.display = 'none';
+  if (checkbox && checkbox.checked) {
+    try { localStorage.setItem(_WELCOME_DISMISSED_KEY, '1'); } catch (_) {}
+  }
 }
 
 /**
@@ -748,6 +809,8 @@ export {
   createNewSessionInNewTab,
   onboardingCreateEmptyProfile,
   showOnboardingModal,
+  maybeShowWelcomeModal,
+  closeWelcomeModal,
   _claimCurrentSession,
   _resolveRestoredPhase,
   showSessionsLandingPanel,
