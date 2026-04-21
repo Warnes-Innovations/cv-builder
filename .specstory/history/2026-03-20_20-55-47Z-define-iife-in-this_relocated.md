@@ -64,4 +64,4 @@ So `modules.js` would look roughly like:
 })(window);
 ```
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder-prod target=cv-builder-prod reason="already in correct repo" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder-prod reason="first-path signal (signal2) points to cv-builder-prod" -->

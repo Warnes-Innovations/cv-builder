@@ -1074,4 +1074,4 @@ _**Agent (claude-sonnet-4-6 2026-03-20 23:12:27Z)**_
 
 Committed: `dde44b4` — `feat(auth): add authorize-agent skill and auto-approve grep/git-status`
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder-prod target=cv-builder-prod reason="already in correct repo" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder-prod reason="first-path signal (signal2) points to cv-builder-prod" -->
