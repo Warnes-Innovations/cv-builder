@@ -636,10 +636,9 @@
                 {% if publications %}
                 <section class="section pub-section">
                     <h2 class="section-title"><i class="fas fa-file-alt"></i>
+                        Selected Publications
                         {% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}
-                        Selected Publications ({{ publications | length }})
-                        {% else %}
-                        Publications
+                        ({{ publications | length }})
                         {% endif %}
                     </h2>
                     <ol class="pub-list">

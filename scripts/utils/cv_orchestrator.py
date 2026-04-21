@@ -622,6 +622,10 @@ class CVOrchestrator:
                 else:
                     entry['is_first_author'] = False
 
+                # Flag entries with no venue so the template can render a warning icon
+                has_venue = bool(pub.get('journal') or pub.get('booktitle'))
+                entry['venue_warning'] = '' if has_venue else 'No journal or conference name found in BibTeX entry'
+
                 formatted_pubs.append(entry)
         return formatted_pubs
     
