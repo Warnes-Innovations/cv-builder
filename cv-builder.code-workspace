@@ -39,7 +39,8 @@
 			"/^npm --prefix /Users/warnes/src/cv-builder run build$/": {
 				"approve": true,
 				"matchCommandLine": true
-			}
+			},
+			"uv": true
 		},
 		"workbench.colorCustomizations": {
 			"activityBar.activeBackground": "#d8bc98",

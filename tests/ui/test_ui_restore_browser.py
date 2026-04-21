@@ -196,8 +196,10 @@ class TestBrowserRestore:
         assert restored["phase"] == "layout_review"
         assert restored["stage"] == "layout"
         assert restored["tab"] == "layout"
-        assert restored["generationState"]["phase"] == "idle"
-        assert restored["generationState"]["previewAvailable"] is False
+        # Entering layout review restores/regenerates preview HTML, which
+        # transitions generation_state into active layout_review mode.
+        assert restored["generationState"]["phase"] == "layout_review"
+        assert restored["generationState"]["previewAvailable"] is True
 
     def test_reload_into_layout_review_idle_recovers_when_stored_html_missing(
         self,
