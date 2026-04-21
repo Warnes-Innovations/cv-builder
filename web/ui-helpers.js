@@ -9,12 +9,6 @@
  * Lightweight DOM helpers: toasts, alert/confirm modals, chat toggle, and
  * workflow-stage action-button management.
  *
- * NOTE: showAlertModal / closeAlertModal are also defined in ui-core.js
- * (the bundled version that includes focus-trap behaviour).  This file
- * provides the app.js-side versions that call trapFocus / restoreFocus
- * (exported from ui-core.js and available on globalThis after the bundle
- * is loaded).
- *
  * DEPENDENCIES: ui-core.js exports (trapFocus, restoreFocus, setInitialFocus)
  *               available on globalThis at runtime.
  */
