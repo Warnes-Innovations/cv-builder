@@ -218,8 +218,8 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 **Severity:** HIGH
 **Affected stories:** US-A3, US-R2, US-M4, US-M7
 **Status:** OPEN - discovered 2026-03-19 11:36 ET; applicant, resume, and hiring-manager reviews confirmed ranked publication review exists, but final omission rules, metadata persistence, heading/count rendering, first-author visibility, and role-type gating remain incomplete. See also GAP-28, GAP-29 (new bugs in the rendering path).
-**Description:** Publication recommendation is one of the stronger current review surfaces, but the end-to-end publication workflow is still broken at the edges. The reviewed code does not prove that rejecting all publications removes the section, that selected publications persist under the expected metadata key, or that final outputs always render the required heading, count context, venue/year completeness, and first-author signal.
-**Recommended resolution:** Carry publication decisions into the required metadata structure, enforce section omission when nothing is selected, render a consistent `Selected Publications` section in final outputs, and add explicit role-type gating plus first-author and venue completeness checks before generation.
+**Description:** Publication recommendation is one of the stronger current review surfaces, but the end-to-end publication workflow is still broken at the edges. The reviewed code does not prove that rejecting all publications removes the section, that selected publications persist under the expected metadata key, or that final outputs correctly render the heading ("Selected Publications" for subset, "Publications" for full list), venue/year completeness, and first-author signal.
+**Recommended resolution:** Carry publication decisions into the required metadata structure, enforce section omission when nothing is selected, render the correct section heading per updated US-M7 (subset vs full), and add explicit role-type gating plus first-author and venue completeness checks before generation.
 
 ---
 
@@ -253,13 +253,18 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 **Description:** The rewrite audit stores the user-approved final text per bullet, but there is no post-generation step that diffs the generated document text against those approved values and flags discrepancies.
 **Recommended resolution:** After generation, compare each generated bullet span against the corresponding `rewrite_audit[*].final` value and surface any mismatch as a validation warning before allowing finalisation.
 
-## GAP-28: Publications Heading Degrades to "Publications"
+## GAP-28: Publications Heading Does Not Distinguish Subset vs Full List
 
 **Severity:** HIGH
 **Affected stories:** US-M4, US-M7, US-A3
-**Status:** OPEN - discovered 2026-04-20; hiring-manager review found `cv-template.html:636–643` renders "Publications" instead of the required "Selected Publications" under certain conditions (e.g., when the count label is omitted or the section title is overridden). The story requires the heading to always read "Selected Publications" when publications are present.
-**Description:** The publications section heading degrades to the generic "Publications" label instead of maintaining the "Selected Publications" phrasing, which signals curation and selection to the reader.
-**Recommended resolution:** Ensure `cv-template.html` always renders "Selected Publications" as the section heading when any publications are present, regardless of count or other conditional logic.
+**Status:** CLOSED - fixed 2026-04-21 (commit ad9edf0, amended). Template logic corrected.
+**Description:** The publications section heading did not correctly signal whether a subset or the full list was rendered.
+**Resolution:** `cv-template.html` now renders the heading conditionally:
+- **"Selected Publications"** — when `template_metadata.total_publications_count` exceeds the number of rendered publications (i.e., a subset is shown).
+- **"Publications"** — when all publications are shown or when no count metadata is available.
+- The publication count is **never** shown in generated documents.
+
+This behavior must not be reversed. The count suffix `(N)` was intentionally removed.
 
 ## GAP-29: Venue-Missing Publications Render Silently
 

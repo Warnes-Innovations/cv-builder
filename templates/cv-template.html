@@ -636,9 +636,10 @@
                 {% if publications %}
                 <section class="section pub-section">
                     <h2 class="section-title"><i class="fas fa-file-alt"></i>
-                        Selected Publications
                         {% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}
-                        ({{ publications | length }})
+                        Selected Publications
+                        {% else %}
+                        Publications
                         {% endif %}
                     </h2>
                     <ol class="pub-list">
@@ -725,7 +726,7 @@ CERTIFICATIONS
 {% endfor %}{% endif %}
 {% if publications %}
 --------------------------------------------------------------------------------
-SELECTED PUBLICATIONS
+{% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}SELECTED PUBLICATIONS{% else %}PUBLICATIONS{% endif %}
 --------------------------------------------------------------------------------
 {% for pub in publications %}{{ loop.index }}. {{ pub.formatted_citation }}
 {% endfor %}{% endif %}
