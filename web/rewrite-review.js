@@ -102,7 +102,7 @@ function renderRewritePanel(rewrites, warnings = []) {
               <span style="color:#7c2d12;">${w.details}</span>
             </div>
           `).join('')}
-          <button style="margin-top:10px;padding:8px 12px;background:#991b1b;color:white;border:none;border-radius:4px;cursor:pointer;" onclick="persuasionWarningsAcknowledged = true; this.parentElement.parentElement.style.opacity = '0.6';">
+          <button style="margin-top:10px;padding:8px 12px;background:#991b1b;color:white;border:none;border-radius:4px;cursor:pointer;" onclick="persuasionWarningsAcknowledged = true; this.parentElement.parentElement.style.opacity = '0.6'; updateRewriteTally();">
             ✓ Acknowledged
           </button>
         </div>
@@ -355,10 +355,14 @@ function updateRewriteTally() {
   if (pendingEl) pendingEl.textContent  = pending;
 
   const submitBtn = document.getElementById('submit-rewrites-btn');
-  if (submitBtn) submitBtn.disabled = (pending > 0);
+  if (submitBtn) submitBtn.disabled = (pending > 0 || !persuasionWarningsAcknowledged);
 }
 
 async function submitRewriteDecisions() {
+  if (!persuasionWarningsAcknowledged) {
+    showAlertModal('⚠️ Persuasion Checks', 'Please review and acknowledge the persuasion warnings before submitting.');
+    return;
+  }
   /* duckflow:
    *   id: rewrite_ui_submit_live
    *   kind: ui
@@ -412,10 +416,15 @@ async function submitRewriteDecisions() {
 }
 
 // ── Exports ──────────────────────────────────────────────────────────────────
+function setPersuasionWarningsAcknowledged(value) {
+  persuasionWarningsAcknowledged = value;
+}
+
 export {
   rewriteDecisions,
   _rewritePanelCache,
   persuasionWarningsAcknowledged,
+  setPersuasionWarningsAcknowledged,
   fetchAndReviewRewrites,
   renderRewritePanel,
   computeWordDiff,
