@@ -140,7 +140,7 @@ The following gaps are either new (introduced this review cycle) or have been su
 
 3. **GAP-08 (strengthened): Spell-audit write-back unreliable** — `spell_check.audit` and `spell_audit` are used as state keys in different parts of the code. Accepted spell corrections may not propagate to generated CV text. `(resume-expert.md)`
 
-4. **GAP-28: Publications heading degrades to plain "Publications"** — `cv-template.html:636–643` renders "Publications" instead of "Selected Publications" under certain conditions, contradicting the hiring-manager story requirement. `(hiring-manager.md)`
+4. **GAP-28: Publications heading (CLOSED)** — Fixed 2026-04-21. Template now renders **"Selected Publications"** when a subset is shown, **"Publications"** when all publications are included. Count suffix never appears in generated documents. `(hiring-manager.md)`
 
 5. **GAP-29: Venue-missing publications render silently** — `.pub-venue-warn` CSS class is defined but dead — no code adds it when a venue is missing, so incomplete publication records render without any warning. `(hiring-manager.md)`
 
