@@ -149,6 +149,30 @@ def _internal_server_error(message: str):
     return jsonify({'error': message}), 500
 
 
+def _try_patch_metadata(conv: Any, updates: Dict) -> None:
+    """Write *updates* into the session's metadata.json without raising.
+
+    Silently skips when no output_dir is in session state or the file
+    does not yet exist.
+    """
+    try:
+        generated = conv.state.get('generated_files') or {}
+        output_dir = generated.get('output_dir')
+        if not output_dir:
+            return
+        metadata_path = Path(output_dir) / 'metadata.json'
+        if not metadata_path.exists():
+            return
+        with open(metadata_path, encoding='utf-8') as f:
+            metadata = json.load(f)
+        metadata.update(updates)
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=2)
+    except Exception:
+        if has_app_context():
+            current_app.logger.warning('_try_patch_metadata failed silently', exc_info=True)
+
+
 def _git_commit_error(message: str, detail: Optional[str] = None) -> str:
     if detail:
         current_app.logger.error('%s %s', message, detail)
@@ -1622,6 +1646,10 @@ def create_blueprint(deps):
         gen = conv.state.setdefault("generation_state", {})
         gen["ats_score"] = score
         conv._save_session()
+
+        # Persist to metadata.json so the score survives without a finalise call.
+        _try_patch_metadata(conv, {"ats_score": score})
+
         return jsonify({"ok": True, "ats_score": score})
 
     @bp.post("/api/cv/generate-final")
