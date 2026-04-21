@@ -42,6 +42,25 @@ def create_blueprint(deps):
         current_app.logger.exception(message)
         return jsonify({'error': message}), 500
 
+    def _try_patch_metadata(conv, updates: Dict) -> None:
+        """Write *updates* into the session's metadata.json without raising."""
+        try:
+            import json as _json
+            generated = conv.state.get('generated_files') or {}
+            output_dir = generated.get('output_dir')
+            if not output_dir:
+                return
+            metadata_path = Path(output_dir) / 'metadata.json'
+            if not metadata_path.exists():
+                return
+            with open(metadata_path, encoding='utf-8') as f:
+                metadata = _json.load(f)
+            metadata.update(updates)
+            with open(metadata_path, 'w', encoding='utf-8') as f:
+                _json.dump(metadata, f, indent=2)
+        except Exception:
+            current_app.logger.warning('_try_patch_metadata failed silently', exc_info=True)
+
     def _trigger_render_snapshot_refresh(conversation, reason: str) -> None:
         """Best-effort async render snapshot refresh after submitted changes."""
         try:
@@ -2197,6 +2216,10 @@ def create_blueprint(deps):
                 'summary': summary,
                 'validation_date': _dt.now().isoformat(),
             }
+
+            # Persist to metadata.json so validation survives without a finalise call.
+            _try_patch_metadata(conversation, {'validation_results': conversation.state['validation_results']})
+
             session_registry.touch(sid)
 
             return jsonify({
