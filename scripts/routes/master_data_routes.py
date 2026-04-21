@@ -1645,6 +1645,12 @@ Close professionally with a call to action.
                     json.dump(metadata, f, indent=2)
 
                 conversation.state['cover_letter_text'] = text
+                # Register in generated_files so File Review tab surfaces the download.
+                gen = conversation.state.setdefault('generated_files', {})
+                if isinstance(gen, dict):
+                    files_list = gen.setdefault('files', [])
+                    if filename not in files_list:
+                        files_list.append(filename)
                 session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename})
             except Exception as e:
@@ -1888,6 +1894,12 @@ Close professionally with a call to action.
                     json.dump(library, f, indent=2)
 
                 conversation.state['screening_responses'] = responses_in
+                # Register in generated_files so File Review tab surfaces the download.
+                gen = conversation.state.setdefault('generated_files', {})
+                if isinstance(gen, dict):
+                    files_list = gen.setdefault('files', [])
+                    if filename not in files_list:
+                        files_list.append(filename)
                 session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename, 'count': len(responses_in)})
         except Exception as e:
