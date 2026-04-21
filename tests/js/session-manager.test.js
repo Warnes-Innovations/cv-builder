@@ -20,6 +20,8 @@ import {
   showSessionsLandingPanel,
   ensureSessionContext,
   createNewSessionAndNavigate,
+  onboardingCreateEmptyProfile,
+  showOnboardingModal,
   restoreSession,
   loadSessionFile,
   saveTabData,
@@ -534,12 +536,90 @@ describe('saveTabData and restoreTabData', () => {
 describe('createNewSessionAndNavigate', () => {
   beforeEach(() => {
     vi.stubGlobal('createSession', vi.fn())
+    // Set up onboarding modal DOM for side-effect assertions
+    document.body.innerHTML = `
+      <div id="onboarding-modal-overlay" style="display:none;"></div>
+      <p id="onboarding-master-cv-path"></p>
+      <p id="onboarding-modal-status"></p>
+    `
   })
+  afterEach(() => { vi.unstubAllGlobals() })
 
   it('throws when the new session response omits a session id', async () => {
     createSession.mockResolvedValue({ redirect_url: '/?session=missing' })
 
     await expect(createNewSessionAndNavigate()).rejects.toThrow('Failed to create session')
+  })
+
+  it('shows onboarding modal and does not navigate when master_cv_missing', async () => {
+    createSession.mockResolvedValue({ ok: false, error: 'master_cv_missing', master_cv_path: '/home/user/CV/Master_CV_Data.json' })
+    const assignMock = vi.fn()
+    vi.stubGlobal('location', { assign: assignMock })
+
+    await createNewSessionAndNavigate()
+
+    // showOnboardingModal side effects: overlay visible, path text set
+    expect(document.getElementById('onboarding-modal-overlay').style.display).toBe('flex')
+    expect(document.getElementById('onboarding-master-cv-path').textContent)
+      .toBe('/home/user/CV/Master_CV_Data.json')
+    expect(assignMock).not.toHaveBeenCalled()
+  })
+})
+
+// ── onboardingCreateEmptyProfile ─────────────────────────────────────────
+
+describe('onboardingCreateEmptyProfile', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+    // createNewSessionAndNavigate calls createSession then location.assign
+    vi.stubGlobal('createSession', vi.fn().mockResolvedValue({ session_id: 'abc', redirect_url: '/?session=abc' }))
+    vi.stubGlobal('location', { assign: vi.fn() })
+    vi.stubGlobal('localStorage', { removeItem: vi.fn() })
+    document.body.innerHTML = `
+      <button id="onboarding-create-btn"></button>
+      <p id="onboarding-modal-status"></p>
+    `
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('navigates to a new session after successful file creation', async () => {
+    fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true, path: '/home/user/CV/Master_CV_Data.json' }) })
+
+    await onboardingCreateEmptyProfile()
+
+    expect(fetch).toHaveBeenCalledWith('/api/setup/create-master-cv', { method: 'POST' })
+    // createNewSessionAndNavigate should have been triggered — verifiable via location.assign
+    expect(location.assign).toHaveBeenCalled()
+  })
+
+  it('shows error message and re-enables button when API returns already_exists', async () => {
+    fetch.mockResolvedValue({ ok: false, json: async () => ({ ok: false, error: 'already_exists' }) })
+
+    await onboardingCreateEmptyProfile()
+
+    const statusEl = document.getElementById('onboarding-modal-status')
+    expect(statusEl.textContent).toMatch(/already exists/i)
+    expect(document.getElementById('onboarding-create-btn').disabled).toBe(false)
+    expect(location.assign).not.toHaveBeenCalled()
+  })
+})
+
+describe('showOnboardingModal', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="onboarding-modal-overlay" style="display:none;"></div>
+      <p id="onboarding-master-cv-path"></p>
+      <p id="onboarding-modal-status">some old status</p>
+    `
+  })
+
+  it('sets the path text and shows the overlay', () => {
+    showOnboardingModal('/home/user/CV/Master_CV_Data.json')
+
+    expect(document.getElementById('onboarding-master-cv-path').textContent)
+      .toBe('/home/user/CV/Master_CV_Data.json')
+    expect(document.getElementById('onboarding-modal-overlay').style.display).toBe('flex')
+    expect(document.getElementById('onboarding-modal-status').textContent).toBe('')
   })
 })
 

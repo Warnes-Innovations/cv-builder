@@ -140,6 +140,8 @@ async function submitEmptySpellCheck() {
     showAlertModal('❌ Error', `Failed to save spell check: ${data.error || 'Unknown error'}`);
     return;
   }
+  const proceed = await _confirmProceedToGenerate();
+  if (!proceed) return;
   stateManager.markContentChanged();
   appendMessage('assistant', '✅ Spell check complete — no issues required changes. Generating your CV…');
   scheduleAtsRefresh('review_checkpoint');
@@ -322,13 +324,29 @@ async function addSpellWord(word, sugId) {
   }
 }
 
+// ── Pre-generation confirmation ─────────────────────────────────────────────
+
+async function _confirmProceedToGenerate() {
+  const atsScore = stateManager.getAtsScore();
+  const freshness = stateManager.getLayoutFreshness();
+  const lines = ['Your CV is ready to generate.'];
+  if (atsScore !== null && atsScore !== undefined) {
+    lines.push(`Current ATS score: ${atsScore}%`);
+  }
+  if (freshness.isStale) {
+    lines.push(`⚠ ${freshness.ariaLabel}`);
+  }
+  lines.push('\nProceed?');
+  return showConfirmModal('📄 Proceed to Generate?', lines.join('\n'), 'Generate Now');
+}
+
 // ── Submit audit ──────────────────────────────────────────────────────────────
 
 async function submitSpellCheckDecisions() {
   /* duckflow:
    *   id: spell_ui_submit_live
    *   kind: ui
-   *   timestamp: '2026-03-25T21:39:48Z'
+   *   timestamp: '2026-04-21T18:00:00Z'
    *   status: live
    *   handles:
    *   - ui:spell-check.submit
@@ -340,7 +358,7 @@ async function submitSpellCheckDecisions() {
    *   writes:
    *   - request:POST /api/spell-check-complete.spell_audit
    *   - window:spellAudit
-   *   notes: Collapses reviewed spell suggestions into the canonical spell audit, persists that audit in session state, and then triggers generation using the corrected content.
+   *   notes: Collapses reviewed spell suggestions into the canonical spell audit, persists that audit in session state, shows a pre-generation confirmation modal, and then triggers generation using the corrected content.
    */
   // Count items still marked 'pending' (not explicitly reviewed)
   const pendingEntries = Object.values(window._spellSugMap || {}).filter(e => e.outcome === 'pending');
@@ -378,6 +396,8 @@ async function submitSpellCheckDecisions() {
       return;
     }
     stateManager.markContentChanged();
+    const proceed = await _confirmProceedToGenerate();
+    if (!proceed) return;
     appendMessage('assistant', `✅ Spell check complete — ${spellAudit.length} item${spellAudit.length !== 1 ? 's' : ''} reviewed. Generating your CV…`);
     scheduleAtsRefresh('review_checkpoint');
     await fetchStatus();

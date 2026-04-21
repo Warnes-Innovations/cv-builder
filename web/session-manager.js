@@ -112,11 +112,61 @@ function formatSessionTimestamp(timestamp, { includeTime = true } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Master CV onboarding
+// ---------------------------------------------------------------------------
+
+/**
+ * Show the onboarding modal when Master_CV_Data.json is absent.
+ * @param {string} masterCvPath - Server-reported expected file path.
+ */
+function showOnboardingModal(masterCvPath) {
+  const overlay = document.getElementById('onboarding-modal-overlay');
+  const pathEl  = document.getElementById('onboarding-master-cv-path');
+  const statusEl = document.getElementById('onboarding-modal-status');
+  if (pathEl)   pathEl.textContent   = masterCvPath || '(unknown)';
+  if (statusEl) statusEl.textContent = '';
+  if (overlay)  overlay.style.display = 'flex';
+}
+
+/**
+ * Called by the onboarding modal "Create empty profile" button.
+ * POSTs to /api/setup/create-master-cv, then navigates to a new session.
+ */
+async function onboardingCreateEmptyProfile() {
+  const btn      = document.getElementById('onboarding-create-btn');
+  const statusEl = document.getElementById('onboarding-modal-status');
+  if (btn) btn.disabled = true;
+  if (statusEl) statusEl.textContent = 'Creating profile…';
+  try {
+    const res  = await fetch('/api/setup/create-master-cv', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data.error === 'already_exists'
+        ? 'File already exists — please reload the page.'
+        : (data.error || `Server error ${res.status}`);
+      if (statusEl) statusEl.textContent = msg;
+      if (btn) btn.disabled = false;
+      return;
+    }
+    // File created — now navigate to a new session
+    if (statusEl) statusEl.textContent = 'Profile created! Starting session…';
+    await createNewSessionAndNavigate();
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Session creation
 // ---------------------------------------------------------------------------
 
 async function createNewSessionAndNavigate() {
   const data = await createSession();
+  if (data.error === 'master_cv_missing') {
+    showOnboardingModal(data.master_cv_path || '');
+    return;
+  }
   if (!data.session_id) throw new Error('Failed to create session');
   // Clear any stale session path — the new session has no saved file yet.
   // If SESSION_PATH were left pointing at a previous session's file, the
@@ -128,6 +178,10 @@ async function createNewSessionAndNavigate() {
 
 async function createNewSessionInNewTab() {
   const data = await createSession();
+  if (data.error === 'master_cv_missing') {
+    showOnboardingModal(data.master_cv_path || '');
+    return;
+  }
   if (!data.session_id) throw new Error('Failed to create session');
   window.open(data.redirect_url || `/?session=${data.session_id}`, '_blank', 'noopener');
 }
@@ -692,6 +746,8 @@ export {
   formatSessionTimestamp,
   createNewSessionAndNavigate,
   createNewSessionInNewTab,
+  onboardingCreateEmptyProfile,
+  showOnboardingModal,
   _claimCurrentSession,
   _resolveRestoredPhase,
   showSessionsLandingPanel,
