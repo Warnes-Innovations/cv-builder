@@ -302,6 +302,7 @@ def create_blueprint(deps):
                 "skills":                 master.get('skills', []),
                 "education":              master.get('education', []),
                 "awards":                 master.get('awards', []),
+                "certifications":         master.get('certifications', []),
                 "selected_achievements":  master.get('selected_achievements', []),
                 "professional_summaries": master.get('professional_summaries', {}),
             })
