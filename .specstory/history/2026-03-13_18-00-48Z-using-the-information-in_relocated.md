@@ -3535,4 +3535,4 @@ At Boehringer Ingelheim I led statistical analysis of high-resolution and single
 
 **Note for tailoring:** The Pfizer cardiac risk example is the strongest direct hit for "risk stratification" and "phenotyping." The longitudinal measurement error work is the strongest for "trajectory modeling." If you want me to develop these into polished CV bullet points, I'd suggest being explicit about the statistical methods used (e.g., mixed-effects models, measurement error correction, SNP-based risk scoring) since those keywords match the job description closely.
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder-prod target=cv-builder-prod reason="already in correct repo" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->
