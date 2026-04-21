@@ -25,6 +25,9 @@ The files in this directory are the working review-status outputs for the person
 ## Persona Files
 
 - [applicant.md](./applicant.md): Applicant persona review snapshot
+- [backend-developer.md](./backend-developer.md): Backend developer technical review snapshot
+- [frontend-developer.md](./frontend-developer.md): Frontend developer technical review snapshot
+- [ci-cd-engineer.md](./ci-cd-engineer.md): CI/CD engineer pipeline review snapshot
 - [resume-expert.md](./resume-expert.md): Resume expert review snapshot
 - [ux-expert.md](./ux-expert.md): UX expert review snapshot
 - [hiring-manager.md](./hiring-manager.md): Hiring manager review snapshot
@@ -45,4 +48,5 @@ The files in this directory are the working review-status outputs for the person
 - Preserve the story specifications in `tasks/user-story-*.md` as the source of truth for requirements.
 - Keep review evidence and summary content scoped to the relevant persona file so parallel subagents do not collide.
 - For expert personas, organize findings into `Application Evaluation` and `Generated Materials Evaluation`, and add `Additional Story Gaps / Proposed Story Items` when needed.
+- For technical personas, scope the review to architecture, implementation quality, security, performance, CI/CD, and test coverage rather than persona-story acceptance criteria.
 - Include evidence sufficient to verify each conclusion, citing repository-relative source paths with line numbers, the relevant story criteria, and any other repository references needed to support the finding.
