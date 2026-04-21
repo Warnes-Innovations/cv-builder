@@ -253,30 +253,68 @@
     </div>
   </div>
 
-  <!-- Master CV onboarding modal — shown on first run when Master_CV_Data.json is absent -->
-  <div class="modal-overlay" id="onboarding-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="onboarding-modal-title" aria-describedby="onboarding-modal-desc">
-    <div class="modal" style="max-width: 560px; width: 92%;">
+  <!-- Welcome / onboarding modal — shown on every startup until dismissed;
+       content adapts to whether Master_CV_Data.json is present or absent -->
+  <div class="modal-overlay" id="onboarding-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="onboarding-modal-title">
+    <div class="modal" style="max-width: 580px; width: 92%;">
       <div class="modal-header">
         <h2 id="onboarding-modal-title">👋 Welcome to CV Builder</h2>
       </div>
       <div class="modal-body" style="line-height: 1.6;">
-        <p id="onboarding-modal-desc">
-          CV Builder stores your professional history in a local file called
-          <strong>Master_CV_Data.json</strong>. That file was not found at:
-        </p>
-        <p id="onboarding-master-cv-path" style="font-family: monospace; font-size: 0.85em; background: #f1f5f9; padding: 6px 10px; border-radius: 4px; word-break: break-all; color: #1e293b;"></p>
-        <p>You have two options:</p>
-        <ol style="padding-left: 1.4em; margin: 0 0 12px;">
-          <li style="margin-bottom: 8px;">
-            <strong>Create an empty profile</strong> — start from scratch and fill in your details in the Master CV editor.
-          </li>
-          <li>
-            <strong>Place an existing file</strong> — copy your <code>Master_CV_Data.json</code> to the path shown above, then reload.
-          </li>
-        </ol>
-        <p id="onboarding-modal-status" style="color: #dc2626; font-size: 0.9em; min-height: 1.2em;"></p>
+
+        <p style="margin: 0 0 14px; color: #475569;">CV Builder uses AI to create tailored, ATS-optimised CVs for specific job postings from your complete professional history.</p>
+
+        <!-- ── Shared 3-phase workflow ──────────────────────────────────── -->
+        <p style="font-size: 0.8em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; margin: 0 0 10px;">How it works</p>
+
+        <div style="display: flex; gap: 12px; margin-bottom: 10px; align-items: flex-start;">
+          <span style="flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 2px;">1</span>
+          <div style="color: #475569;"><strong style="color: #1e293b;">Build your master profile</strong> — Populate <code>Master_CV_Data.json</code> once with your complete work history, skills, publications, and achievements. Refine it over time as your career evolves.</div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-bottom: 10px; align-items: flex-start;">
+          <span style="flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: #6366f1; color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 2px;">2</span>
+          <div style="color: #475569;"><strong style="color: #1e293b;">Target a specific job</strong> — Provide a job description → AI analysis → review and refine recommended skills, experience highlights, and summary → generate a tailored cover letter → export CV as PDF and DOCX.</div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-bottom: 14px; align-items: flex-start;">
+          <span style="flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: #10b981; color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 2px;">3</span>
+          <div style="color: #475569;"><strong style="color: #1e293b;">Harvest improvements</strong> — After reviewing the output, apply your customized improvements (refined bullets, new skills, summary variants) back to your master profile for future applications.</div>
+        </div>
+
+        <!-- ── Shown when Master_CV_Data.json EXISTS ─────────────────────── -->
+        <div id="welcome-section-present" style="display: none;">
+          <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 14px; color: #166534; font-size: 0.9em;">
+            ✅ Your master profile is ready. <strong>Next:</strong> switch to the <strong>Job</strong> tab, provide a job description, and click <strong>Analyze Job</strong>.
+          </div>
+        </div>
+
+        <!-- ── Shown when Master_CV_Data.json is MISSING ─────────────────── -->
+        <div id="welcome-section-missing" style="display: none;">
+          <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 10px 14px; color: #9a3412; font-size: 0.9em; margin-bottom: 10px;">
+            ⚠️ <strong>Start here (Step 1):</strong> your master profile was not found at:
+          </div>
+          <p id="onboarding-master-cv-path" style="font-family: monospace; font-size: 0.85em; background: #f1f5f9; padding: 6px 10px; border-radius: 4px; word-break: break-all; color: #1e293b; margin: 0 0 10px;"></p>
+          <p id="onboarding-modal-desc" style="margin: 0 0 6px; color: #475569;">Choose an option to continue:</p>
+          <ul style="padding-left: 1.4em; margin: 0; color: #475569;">
+            <li style="margin-bottom: 6px;"><strong style="color: #1e293b;">Create an empty profile</strong> — start from scratch and fill in your details in the Master CV editor.</li>
+            <li><strong style="color: #1e293b;">Place an existing file</strong> — copy your <code>Master_CV_Data.json</code> to the path shown above, then click Reload.</li>
+          </ul>
+        </div>
+
+        <p id="onboarding-modal-status" style="color: #dc2626; font-size: 0.9em; min-height: 1.2em; margin: 8px 0 0;"></p>
       </div>
-      <div class="modal-footer" style="gap: 8px;">
+
+      <!-- Footer: present-CV variant -->
+      <div id="welcome-footer-present" class="modal-footer" style="display: none; gap: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9em; cursor: pointer; color: #475569;">
+          <input type="checkbox" id="welcome-dont-show-again"> Don't show this again
+        </label>
+        <button class="action-btn primary" onclick="closeWelcomeModal()">Get Started</button>
+      </div>
+
+      <!-- Footer: missing-CV variant -->
+      <div id="welcome-footer-missing" class="modal-footer" style="display: none; gap: 8px;">
         <button class="action-btn" onclick="location.reload()">Reload</button>
         <button class="action-btn primary" id="onboarding-create-btn" onclick="onboardingCreateEmptyProfile()">Create empty profile</button>
       </div>
