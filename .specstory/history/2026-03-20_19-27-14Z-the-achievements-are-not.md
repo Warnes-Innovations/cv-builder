@@ -74971,3 +74971,5 @@ _**Agent (claude-sonnet-4-6 2026-03-21 14:14:34Z)**_
 | OBO refactor item #2 | ✅ Marked complete |
 
 The repo is clean (`git status` shows only `AGENTS.md` untracked, which is unrelated). The next items in priority order from the refactor OBO session are: #1 Split Flask app factory (`web_app.py`), #3 Separate selection/ATS validation (`cv_orchestrator.py`), and #7 Centralize browser state ownership.
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

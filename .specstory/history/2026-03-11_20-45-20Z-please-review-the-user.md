@@ -3968,3 +3968,5 @@ A third-party professional using the tool for someone else's data. Different tru
 | Missing user types | 6 | Medium/Low — some may be out of scope |
 
 The most urgent fixes are the **three directly contradictory acceptance criteria** (count notation D7.4 vs. US-M7, cover letter length US-P5 vs. US-M6, and skill write-back US-R5 vs. US-A11), followed by the **workflow ordering ambiguity** for spell-check and cover letter. The missing personas are worth cataloguing as explicit out-of-scope statements if they truly won't be supported.
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

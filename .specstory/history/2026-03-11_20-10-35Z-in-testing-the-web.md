@@ -3955,3 +3955,5 @@ All five issues resolved. Here's a summary of what changed:
 - Cache hit path now includes `total_count: len(cached)` so the frontend always gets a count regardless of whether the data came from cache or was freshly computed.
 
 - Non-recommended publications are now collected into a list, sorted by year descending, then appended — rather than appended in BibTeX parse order.
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

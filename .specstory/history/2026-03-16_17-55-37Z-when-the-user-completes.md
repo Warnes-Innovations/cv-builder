@@ -654,3 +654,5 @@ Done. The auto-advance flow is now:
 | Save Publication Decisions | Rewrites main tab |
 
 The confirmation modal still appears (providing feedback), and the tab switches simultaneously so the user sees the next section when they dismiss it.
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

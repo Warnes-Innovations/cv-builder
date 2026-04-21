@@ -4672,3 +4672,5 @@ Done. Summary:
 - **`tasks/rewrite-feature.md`** deleted — feature is fully implemented; "Not started" was stale
 
 The archive is ready for your instruction optimization analysis.
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->
