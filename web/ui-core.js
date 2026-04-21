@@ -721,42 +721,6 @@ function showSessionConflictBanner() {
   }
 }
 
-/**
- * Display an alert modal with title and message.
- * @param {string} title - Modal title
- * @param {string} message - Modal message
- */
-function showAlertModal(title, message) {
-  const modal = document.getElementById('alert-modal');
-  if (!modal) {
-    // Create alert modal if it doesn't exist
-    const newModal = document.createElement('div');
-    newModal.id = 'alert-modal';
-    newModal.setAttribute('role', 'dialog');
-    newModal.innerHTML = `
-      <div class="modal-overlay alert-modal-overlay" style="display: none;">
-        <div class="modal-content alert-modal">
-          <h2 id="alert-title"></h2>
-          <p id="alert-message"></p>
-          <button onclick="closeAlertModal()" class="modal-btn">OK</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(newModal);
-  }
-
-  document.getElementById('alert-title').textContent = title;
-  document.getElementById('alert-message').innerHTML = message;
-  openModal('alert-modal');
-}
-
-/**
- * Close the alert modal.
- */
-function closeAlertModal() {
-  closeModal('alert-modal');
-}
-
 // ── Model selector ────────────────────────────────────────────────────────────
 
 let _modelData = null; // cached from last loadModelSelector() call
@@ -1887,7 +1851,7 @@ export {
   setInitialFocus, trapFocus, restoreFocus,
   // Dialogs & modals
   confirmDialog, openModal, closeModal, closeAllModals,
-  showSessionConflictBanner, showAlertModal, closeAlertModal,
+  showSessionConflictBanner,
   // Tab & stage management
   setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage, loadTabContent,
   // Chat
