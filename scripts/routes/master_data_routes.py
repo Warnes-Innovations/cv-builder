@@ -82,6 +82,12 @@ _TONE_GUIDANCE: Dict[str, str] = {
     'leadership':     'Strategic, vision-focused, people-first.  Highlight team-building and organisational impact.',
 }
 
+_OPENING_GUIDANCE: Dict[str, str] = {
+    'formal':             'Start directly with the salutation line: "Dear {hiring_manager}," — do NOT include a date, address block, or subject line.',
+    'hook':               'Open with a compelling hook or pattern-interrupt — a specific achievement, a bold claim, or a provocative question that immediately establishes value. Do NOT use a formal salutation.',
+    'narrative':          'Open with a brief vivid scene or narrative moment that connects you personally to the work. Do NOT use a formal salutation.',
+}
+
 # Text similarity helper (used in screening search)
 def _text_similarity(query: str, target: str) -> float:
     """Simple word-overlap similarity score (0–1) for response library search."""
@@ -1471,6 +1477,7 @@ def create_blueprint(deps):
         with entry.lock:
             body            = request.get_json(silent=True) or {}
             tone            = body.get('tone', 'startup/tech')
+            opening_style   = body.get('opening_style', 'formal')
             hiring_manager  = (body.get('hiring_manager') or 'Hiring Manager').strip()
             company_address = (body.get('company_address') or '').strip()
             highlight       = (body.get('highlight') or '').strip()
@@ -1543,8 +1550,8 @@ CANDIDATE PROFILE
 {'Please especially highlight: ' + highlight if highlight else ''}
 
 Write a compelling, personalised cover letter (3–4 paragraphs, ~300–400 words).
-Start directly with the salutation line: "Dear {hiring_manager},"
-Do NOT include a date, address block, or subject line — return only the letter body starting with the salutation.
+{_OPENING_GUIDANCE.get(opening_style, _OPENING_GUIDANCE['formal']).format(hiring_manager=hiring_manager)}
+Do NOT include a date, address block, or subject line before the opening line.
 Reference concrete skills and achievements from the candidate profile.
 Close professionally with a call to action.
 """
@@ -1565,6 +1572,7 @@ Close professionally with a call to action.
             conversation.state['cover_letter_text']   = letter_text
             conversation.state['cover_letter_params'] = {
                 'tone': tone, 'hiring_manager': hiring_manager,
+                'opening_style': opening_style,
                 'company_address': company_address, 'highlight': highlight,
             }
         session_registry.touch(sid)

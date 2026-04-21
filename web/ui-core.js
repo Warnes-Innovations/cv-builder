@@ -348,7 +348,7 @@ function restoreFocus() {
 
 /** Maps each workflow stage (top bar) to the tabs shown in the second nav bar. */
 const STAGE_TABS = {
-  job:            ['job'],
+  job:            ['job', 'master'],
   analysis:       ['analysis', 'questions'],
   customizations: ['exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'summary-review', 'publications-review', 'ats-score'],
   rewrite:        ['rewrite'],
