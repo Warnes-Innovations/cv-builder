@@ -21,6 +21,7 @@ import {
   completeLayoutReview,
   generateFinalOutputs,
   loadLayoutInstructionHistory,
+  submitLayoutInstruction,
 } from '../../web/layout-instruction.js'
 import { scheduleAtsRefresh } from '../../web/ats-refinement.js'
 import { apiCall } from '../../web/api-client.js'
@@ -306,37 +307,82 @@ describe('addToInstructionHistory', () => {
 // ── undoInstruction ───────────────────────────────────────────────────────
 
 describe('undoInstruction', () => {
-  beforeEach(() => {
+  it('shows "Nothing to undo" when undo stack is empty', () => {
+    window.layoutInstructions = []
+    undoInstruction(0)
+    expect(appendMessage).toHaveBeenCalledWith('system', expect.stringContaining('Nothing to undo'))
+  })
+
+  it('restores previous instructions and HTML after a successful submit', async () => {
+    // Set up pre-submit state
     window.layoutInstructions = [
-      { timestamp: '', instruction_text: 'A', change_summary: '' },
-      { timestamp: '', instruction_text: 'B', change_summary: '' },
+      { timestamp: '10:00', instruction_text: 'A', change_summary: 'summary A', confirmation: true },
     ]
-  })
+    stateManager.getTabData.mockReturnValue({ '*.html': '<html>before</html>' })
+    stateManager.getGenerationState.mockReturnValue({ previewAvailable: true })
 
-  it('removes the entry at the given index', () => {
-    undoInstruction(0)
-    expect(window.layoutInstructions).toHaveLength(1)
-    expect(window.layoutInstructions[0].instruction_text).toBe('B')
-  })
+    apiCall.mockResolvedValueOnce({
+      ok: true,
+      html: '<html>after</html>',
+      summary: 'made bold',
+      safety_alert: null,
+      preview_outputs: null,
+      page_count_estimate: null,
+      page_count_exact: null,
+      page_count_confidence: null,
+      page_count_source: null,
+      page_length_warning: false,
+      preview_generated_at: '2026-01-01T00:00:00Z',
+      preview_request_id: 'req-1',
+    })
 
-  it('calls appendMessage with a system message', () => {
-    undoInstruction(0)
-    expect(appendMessage).toHaveBeenCalledWith('system', expect.stringContaining('Undo'))
-  })
+    await submitLayoutInstruction('make it bold')
 
-  it('does nothing for an out-of-range index', () => {
-    undoInstruction(99)
+    // After submit: two instructions in history, stateManager has new HTML
     expect(window.layoutInstructions).toHaveLength(2)
+
+    // Now undo
+    undoInstruction(0)
+
+    // Instructions restored to pre-submit snapshot
+    expect(window.layoutInstructions).toHaveLength(1)
+    expect(window.layoutInstructions[0].instruction_text).toBe('A')
+
+    // HTML restored via setTabData
+    const lastSetTabDataCall = stateManager.setTabData.mock.calls
+      .slice()
+      .reverse()
+      .find(([tab]) => tab === 'cv')
+    expect(lastSetTabDataCall[1]).toMatchObject({ '*.html': '<html>before</html>' })
   })
 
-  it('does nothing when layoutInstructions is absent', () => {
+  it('appends a system message on successful undo', async () => {
+    stateManager.getTabData.mockReturnValue({ '*.html': '<html>x</html>' })
+    stateManager.getGenerationState.mockReturnValue({ previewAvailable: true })
+    apiCall.mockResolvedValueOnce({
+      ok: true,
+      html: '<html>y</html>',
+      summary: 's',
+      safety_alert: null,
+      preview_outputs: null,
+      page_count_estimate: null,
+      page_count_exact: null,
+      page_count_confidence: null,
+      page_count_source: null,
+      page_length_warning: false,
+      preview_generated_at: '2026-01-01T00:00:00Z',
+      preview_request_id: null,
+    })
+    await submitLayoutInstruction('tweak')
+    appendMessage.mockReset()
+
+    undoInstruction(0)
+    expect(appendMessage).toHaveBeenCalledWith('system', expect.stringContaining('undone'))
+  })
+
+  it('does not throw when layoutInstructions is absent', () => {
     delete window.layoutInstructions
     expect(() => undoInstruction(0)).not.toThrow()
-  })
-
-  it('updates the DOM count after removal', () => {
-    undoInstruction(1)
-    expect(document.getElementById('instruction-count').textContent).toBe('1')
   })
 })
 

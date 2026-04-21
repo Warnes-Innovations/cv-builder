@@ -22,6 +22,11 @@ import { escapeHtml } from './utils.js';
 
 let dismissedStaleCalloutRevision = null;
 
+// Undo stack — each entry is { html, instructions } snapshotted before a
+// layout instruction is applied.  Cap at 20 entries to bound memory.
+const _layoutUndoStack = [];
+const _UNDO_STACK_MAX = 20;
+
 function getCvArtifacts() {
   return stateManager.getTabData('cv') || {};
 }
@@ -529,6 +534,15 @@ async function submitLayoutInstruction(instructionText) {
   const currentHtml = getCvArtifacts()['*.html'] || '';
   const priorInstructions = window.layoutInstructions || [];
 
+  // Snapshot state before applying so Undo can restore it.
+  _layoutUndoStack.push({
+    html: currentHtml,
+    instructions: (window.layoutInstructions || []).map(i => ({ ...i })),
+  });
+  if (_layoutUndoStack.length > _UNDO_STACK_MAX) {
+    _layoutUndoStack.shift();
+  }
+
   try {
     showProcessing(true);
 
@@ -851,24 +865,23 @@ function showClarificationDialog(question, originalInstruction) {
 }
 
 /**
- * Undo a specific instruction (regenerate from prior step).
+ * Undo the last layout instruction by restoring the previous snapshot.
+ * The index parameter is accepted for backward compatibility but is ignored —
+ * the undo stack always restores the most recent pre-instruction state.
  */
-function undoInstruction(index) {
-  if (!window.layoutInstructions || index < 0 || index >= window.layoutInstructions.length) {
+function undoInstruction(_index) {
+  if (_layoutUndoStack.length === 0) {
+    appendMessage('system', 'ℹ️ Nothing to undo.');
     return;
   }
 
-  window.layoutInstructions.splice(index, 1);
+  const snapshot = _layoutUndoStack.pop();
+  window.layoutInstructions = snapshot.instructions;
 
-  // Regenerate preview from HTML at this point
-  // (simplified: in production, would re-apply all prior instructions)
-  appendMessage('system', '🔄 Undo not yet implemented — would regenerate from prior state');
-
-  // Update history display
-  const historyList = document.getElementById('instruction-history');
-  if (historyList) {
-    renderInstructionHistory();
-  }
+  displayLayoutPreview(snapshot.html);
+  setPreviewHtml(snapshot.html);
+  renderInstructionHistory();
+  appendMessage('system', '↩️ Last layout instruction undone.');
 }
 
 window.addEventListener('resize', () => {
