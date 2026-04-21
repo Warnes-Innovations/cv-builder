@@ -19,9 +19,13 @@ import logging
 import re
 from typing import Any
 
-from llm_sanitizer.models import RiskLevel, ScanResult
-from llm_sanitizer.redactor import redact
-from llm_sanitizer.scanner import Scanner
+try:
+    from llm_sanitizer.models import RiskLevel, ScanResult
+    from llm_sanitizer.redactor import redact
+    from llm_sanitizer.scanner import Scanner
+    _HAS_LLM_SANITIZER = True
+except ImportError:  # pragma: no cover
+    _HAS_LLM_SANITIZER = False
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +75,7 @@ def _get_scanner() -> Scanner:
 
 def scan_text_for_injection(
     text: str,
-    min_risk: RiskLevel = RiskLevel.high,
+    min_risk: Any = None,
 ) -> bool:
     """Return True if *text* contains injection indicators at or above *min_risk*.
 
@@ -82,16 +86,21 @@ def scan_text_for_injection(
        hidden elements where surrounding HTML syntax is absent.
     2. **Rule pass** — runs the full llm-sanitizer rule set (catches zero-width
        characters, base64 payloads, homoglyphs, data-exfil patterns, etc.).
+       Skipped when the *llm-sanitizer* package is not installed.
 
     Scans at ``"high"`` sensitivity so all risk levels are evaluated.
+    The *min_risk* parameter is ignored when llm-sanitizer is not installed.
     """
     if not text:
         return False
     lowered = text.lower()
     if any(pattern in lowered for pattern in _INJECTION_SUBSTRINGS):
         return True
+    if not _HAS_LLM_SANITIZER:
+        return False
+    effective_risk = min_risk if min_risk is not None else RiskLevel.high
     result: ScanResult = _get_scanner().scan(text, sensitivity="high")
-    return any(f.risk >= min_risk for f in result.findings)
+    return any(f.risk >= effective_risk for f in result.findings)
 
 
 def sanitize_instruction_text(text: str) -> tuple[str, list[dict[str, Any]]]:
@@ -107,18 +116,19 @@ def sanitize_instruction_text(text: str) -> tuple[str, list[dict[str, Any]]]:
     sanitized = text
     findings: list[dict[str, Any]] = []
 
-    # Pass 1: llm-sanitizer rule scan + redact
-    result: ScanResult = _get_scanner().scan(text, sensitivity="high")
-    if result.findings:
-        sanitized = redact(sanitized, result, mode="strip")
-        findings.extend(
-            {
-                "issue": "unsafe_instruction_text",
-                "detail": f.explanation,
-                "fragment": f.matched[:500],
-            }
-            for f in result.findings
-        )
+    if _HAS_LLM_SANITIZER:
+        # Pass 1: llm-sanitizer rule scan + redact
+        result: ScanResult = _get_scanner().scan(text, sensitivity="high")
+        if result.findings:
+            sanitized = redact(sanitized, result, mode="strip")
+            findings.extend(
+                {
+                    "issue": "unsafe_instruction_text",
+                    "detail": f.explanation,
+                    "fragment": f.matched[:500],
+                }
+                for f in result.findings
+            )
 
     # Pass 2: supplementary substring stripping
     for pattern in _INSTRUCTION_PATTERNS:
@@ -149,6 +159,8 @@ def scan_for_safety_alert(
     indicators are detected.
     """
     if not text:
+        return None
+    if not _HAS_LLM_SANITIZER:
         return None
     result: ScanResult = _get_scanner().scan(text, sensitivity=sensitivity)
     if not result.findings:

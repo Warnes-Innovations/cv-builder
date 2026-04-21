@@ -23,6 +23,9 @@
 		},
 		{
 			"path": "../any-llm"
+		},
+		{
+			"path": "../llm-sanitizer"
 		}
 	],
 	"settings": {
