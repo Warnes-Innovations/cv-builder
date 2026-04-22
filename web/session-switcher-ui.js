@@ -82,7 +82,7 @@ function _renderSavedSessionRows(savedSessions, { includeManagement = false } = 
     const managementHtml = includeManagement
       ? `
         <button data-sm-action="rename" data-sm-path="${escapedPath}" data-sm-idx="${index}" class="session-switcher-btn" title="Rename session">Rename</button>
-        <button data-sm-action="delete" data-sm-path="${escapedPath}" class="session-switcher-btn danger" title="Delete session">Delete</button>`
+        <button data-sm-action="delete" data-sm-path="${escapedPath}" class="session-switcher-btn danger" title="Move session to Trash">Move to Trash</button>`
       : '';
 
     return `
@@ -111,7 +111,7 @@ function _renderSavedSessionRows(savedSessions, { includeManagement = false } = 
 
 function _renderSessionSwitcherSections(activeSessions, savedSessions, { includeSavedManagement = false } = {}) {
   const savedSectionNote = includeSavedManagement
-    ? 'Load from disk, rename, or delete saved work.'
+    ? 'Load from disk, rename, or move saved work to Trash.'
     : 'Load saved work from disk.';
 
   return `
