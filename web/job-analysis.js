@@ -25,6 +25,7 @@
 import { getLogger } from './logger.js';
 const log = getLogger('job-analysis');
 
+import { StorageKeys } from './api-client.js';
 import { stateManager } from './state-manager.js';
 
 // ---------------------------------------------------------------------------
@@ -94,6 +95,11 @@ function mergePostAnalysisQuestions(existingQuestions, incomingQuestions) {
 
 async function analyzeJob() {
   if (stateManager.isLoading()) return;
+
+  if (!localStorage.getItem(StorageKeys.LLM_DISCLOSURE_SHOWN)) {
+    appendMessage('system', 'ℹ️ Content you submit is sent to the configured LLM provider for analysis. Review your provider\'s data policy for details.');
+    localStorage.setItem(StorageKeys.LLM_DISCLOSURE_SHOWN, '1');
+  }
 
   const loadingMsg = appendLoadingMessage('Analyzing job description...');
   setLoading(true, 'Analysing job description…');
