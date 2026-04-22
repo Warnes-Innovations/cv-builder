@@ -26,6 +26,9 @@
 		},
 		{
 			"path": "../llm-sanitizer"
+		},
+		{
+			"path": "../linkedown"
 		}
 	],
 	"settings": {
