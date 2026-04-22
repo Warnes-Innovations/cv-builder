@@ -6530,3 +6530,5 @@ Fix 1 and 2.
 _**Agent (<synthetic> 2026-03-17 01:36:50Z)**_
 
 Failed to authenticate. API Error: 401 {"type":"error","error":{"type":"authentication_error","message":"Invalid OAuth token. The provided token was not found or is malformed."},"request_id":"req_011CZ7o79dGGEyAemaDpDaM2"}
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

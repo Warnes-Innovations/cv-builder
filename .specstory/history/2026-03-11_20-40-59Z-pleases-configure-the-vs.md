@@ -186,3 +186,5 @@ Tests are discovered correctly. The two key additions to [.vscode/settings.json]
 - `python.testing.pytestPath` — points the test runner to the cvgen pytest binary
 
 You may need to reload VS Code (or run **Python: Select Interpreter** → pick `cvgen`) for the Testing panel to pick up the new interpreter. After that, the test discovery should work and show all tests in the Testing sidebar.
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

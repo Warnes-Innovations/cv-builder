@@ -434,10 +434,62 @@ def create_blueprint(deps):
 
     # ── Multi-tab session management ─────────────────────────────────────────
 
+    @bp.get("/api/setup/master-cv-status")
+    def setup_master_cv_status():
+        """Return whether Master_CV_Data.json exists at the configured path.
+
+        Session-free endpoint — safe to call before any session is created.
+        """
+        p = Path(_app_config.master_cv_path).expanduser()
+        return jsonify({"exists": p.exists(), "path": str(p)})
+
+    @bp.post("/api/setup/create-master-cv")
+    def setup_create_master_cv():
+        """Create a minimal skeleton Master_CV_Data.json at the configured path.
+
+        Session-free endpoint — creates the parent directory if needed.
+        Fails with 409 if the file already exists to prevent accidental overwrite.
+        """
+        p = Path(_app_config.master_cv_path).expanduser()
+        if p.exists():
+            return jsonify({"ok": False, "error": "already_exists", "path": str(p)}), 409
+        skeleton = {
+            "personal_info": {
+                "name": "",
+                "email": "",
+                "phone": "",
+                "location": "",
+                "linkedin": "",
+                "github": "",
+                "website": "",
+            },
+            "professional_summaries": [],
+            "experience": [],
+            "skills": [],
+            "education": [],
+            "awards": [],
+            "certifications": [],
+        }
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(skeleton, indent=2), encoding="utf-8")
+        except OSError as exc:
+            logger.exception("Failed to create skeleton Master_CV_Data.json")
+            return jsonify({"ok": False, "error": str(exc)}), 500
+        return jsonify({"ok": True, "path": str(p)})
+
     @bp.post("/api/sessions/new")
     def sessions_new():
         """Create a new session and return its ID."""
-        sid, _entry = session_registry.create(_app_config)
+        try:
+            sid, _entry = session_registry.create(_app_config)
+        except FileNotFoundError:
+            p = Path(_app_config.master_cv_path).expanduser()
+            return jsonify({
+                "ok": False,
+                "error": "master_cv_missing",
+                "master_cv_path": str(p),
+            }), 503
         return jsonify({"ok": True, "session_id": sid, "redirect_url": f"/?session={sid}"})
 
     @bp.post("/api/sessions/claim")

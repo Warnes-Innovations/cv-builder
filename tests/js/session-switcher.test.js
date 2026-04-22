@@ -36,8 +36,8 @@ describe('session switcher helpers', () => {
   })
 
   it('formats workflow phases for display', () => {
-    expect(formatSessionPhaseLabel('rewrite_review')).toBe('rewrite')
-    expect(formatSessionPhaseLabel('layout_review')).toBe('layout review')
+    expect(formatSessionPhaseLabel('rewrite_review')).toBe('Rewrite Review')
+    expect(formatSessionPhaseLabel('layout_review')).toBe('Layout Review')
     expect(formatSessionPhaseLabel('custom_phase')).toBe('custom phase')
   })
 

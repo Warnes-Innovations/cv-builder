@@ -200,7 +200,7 @@
 2. **Concise, scannable citations** — Each entry should show: title, venue (journal or conference), year, and enough author information to confirm first-author or senior-author status. I do not want full BibTeX formatting or excess metadata.
 3. **Curation, not volume** — 2–5 highly relevant publications signal judgment and focus. 15+ entries signal the candidate did not edit. For a pure research role, up to 10 is acceptable if all are clearly relevant.
 4. **Section placement** — Publications are always the final section of the CV, regardless of role type. The page they land on is a consequence of CV length and publication count — not a separate placement directive. For research-heavy roles, keep the CV to 2 pages so publications appear on page 2; for industry roles, a 3-page CV with publications on the last page is acceptable.
-5. **"Selected" framing** — The heading "Selected Publications" tells me this is an intentional subset. Heading "Publications" implies it's a complete list and raises the question of what's missing.
+5. **Heading signals curation** — When only a subset of publications is shown, the heading reads "Selected Publications", signalling deliberate curation. When all publications are included, the heading reads "Publications". This distinction is meaningful: "Selected" communicates intentional filtering; using it when the full list is shown would be misleading.
 6. **First-author visibility** — I care whether the candidate led the work. The citation format should make first-author status immediately apparent (name position, or a "First Author" note if not obvious from citation style).
 
 **Failure Modes:**
@@ -214,10 +214,10 @@
 
 **Acceptance Criteria:**
 
-- Section heading is always "Selected Publications" when the section is present.
+- Section heading is **"Selected Publications"** when a subset of publications is shown (i.e., some were omitted); heading is **"Publications"** when all publications from the accepted list are shown. Never use "Selected Publications" for a full, unfiltered list.
+- The publication count is **never shown** in the generated CV or ATS document (no "(4 of 52)" or similar suffix).
 - Each entry displays: authors (first-author name identifiable), title, venue, year — in that order of scan priority.
 - Total entry count matches what the applicant confirmed in the Customisation step — not the full `publications.bib` count.
-- A count indicator is shown: _"Selected Publications (4 of 52)"_ — communicates curation to the reader.
 - Selected Publications is always the final section of the CV; its page position is determined by overall CV length and publication count, not by a separate placement rule.
 - No entry appears without a venue — entries missing a `journal` or `booktitle` BibTeX field are flagged to the user during Customisation rather than silently rendered without venue.
 

@@ -511,7 +511,7 @@ def page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_ANALYSIS_DONE)
 
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "customization")
     _force_stage(p, "customizations")
@@ -540,7 +540,7 @@ def seeded_page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_ANALYSIS_DONE)
 
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "customization")
     _force_stage(p, "customizations")
@@ -563,7 +563,7 @@ def analysis_seeded_page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_IN_ANALYSIS)
 
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "job_analysis")
     _force_stage(p, "analysis")
@@ -586,7 +586,7 @@ def job_stage_page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_INIT)
 
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "init")
     _force_stage(p, "job")
@@ -604,7 +604,7 @@ def rewrite_stage_page(browser, live_server):
     p.set_default_timeout(10_000)
     _install_mock_routes(p, status_response=API_STATUS_REWRITE)
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "rewrite_review")
     _force_stage(p, "rewrite")
@@ -621,7 +621,7 @@ def spell_stage_page(browser, live_server):
     p.set_default_timeout(10_000)
     _install_mock_routes(p, status_response=API_STATUS_SPELL)
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "spell_check")
     _force_stage(p, "spell")
@@ -638,7 +638,7 @@ def finalise_stage_page(browser, live_server):
     p.set_default_timeout(10_000)
     _install_mock_routes(p, status_response=API_STATUS_FINALISE)
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "refinement")
     _force_stage(p, "finalise")
@@ -655,7 +655,7 @@ def generate_stage_page(browser, live_server):
     p.set_default_timeout(10_000)
     _install_mock_routes(p, status_response=API_STATUS_GENERATE)
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "generation")
     _force_stage(p, "generate")

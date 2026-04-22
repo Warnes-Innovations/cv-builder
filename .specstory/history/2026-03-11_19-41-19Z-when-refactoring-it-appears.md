@@ -8990,3 +8990,5 @@ Summary of what was fixed:
 - **Reset test** — `resetSession()` clears the conversation by design; changed assertion to check page stability
 - **Auth modal tests** — added `/api/copilot-auth/start` mock to conftest; rewrote to use `wait_for(state="visible")` instead of fixed timeouts; `test_auth_start_calls_api` now correctly checks the badge-click path
 - **Text paste** — use `wait_for(state="visible")` before `fill()`; all line-length violations resolved
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

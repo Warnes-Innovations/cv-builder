@@ -20,6 +20,10 @@ import {
   showSessionsLandingPanel,
   ensureSessionContext,
   createNewSessionAndNavigate,
+  onboardingCreateEmptyProfile,
+  showOnboardingModal,
+  maybeShowWelcomeModal,
+  closeWelcomeModal,
   restoreSession,
   loadSessionFile,
   saveTabData,
@@ -534,12 +538,200 @@ describe('saveTabData and restoreTabData', () => {
 describe('createNewSessionAndNavigate', () => {
   beforeEach(() => {
     vi.stubGlobal('createSession', vi.fn())
+    // Set up full welcome modal DOM for side-effect assertions
+    document.body.innerHTML = `
+      <div id="onboarding-modal-overlay" style="display:none;"></div>
+      <div id="welcome-section-present" style="display:none;"></div>
+      <div id="welcome-section-missing" style="display:none;"></div>
+      <div id="welcome-footer-present" style="display:none;"></div>
+      <div id="welcome-footer-missing" style="display:none;"></div>
+      <p id="onboarding-master-cv-path"></p>
+      <p id="onboarding-modal-status"></p>
+    `
   })
+  afterEach(() => { vi.unstubAllGlobals() })
 
   it('throws when the new session response omits a session id', async () => {
     createSession.mockResolvedValue({ redirect_url: '/?session=missing' })
 
     await expect(createNewSessionAndNavigate()).rejects.toThrow('Failed to create session')
+  })
+
+  it('shows onboarding modal and does not navigate when master_cv_missing', async () => {
+    createSession.mockResolvedValue({ ok: false, error: 'master_cv_missing', master_cv_path: '/home/user/CV/Master_CV_Data.json' })
+    const assignMock = vi.fn()
+    vi.stubGlobal('location', { assign: assignMock })
+
+    await createNewSessionAndNavigate()
+
+    // showOnboardingModal side effects: overlay visible, path text set
+    expect(document.getElementById('onboarding-modal-overlay').style.display).toBe('flex')
+    expect(document.getElementById('onboarding-master-cv-path').textContent)
+      .toBe('/home/user/CV/Master_CV_Data.json')
+    expect(assignMock).not.toHaveBeenCalled()
+  })
+})
+
+// ── onboardingCreateEmptyProfile ─────────────────────────────────────────
+
+describe('onboardingCreateEmptyProfile', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+    // createNewSessionAndNavigate calls createSession then location.assign
+    vi.stubGlobal('createSession', vi.fn().mockResolvedValue({ session_id: 'abc', redirect_url: '/?session=abc' }))
+    vi.stubGlobal('location', { assign: vi.fn() })
+    vi.stubGlobal('localStorage', { removeItem: vi.fn() })
+    document.body.innerHTML = `
+      <button id="onboarding-create-btn"></button>
+      <p id="onboarding-modal-status"></p>
+    `
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('navigates to a new session after successful file creation', async () => {
+    fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true, path: '/home/user/CV/Master_CV_Data.json' }) })
+
+    await onboardingCreateEmptyProfile()
+
+    expect(fetch).toHaveBeenCalledWith('/api/setup/create-master-cv', { method: 'POST' })
+    // createNewSessionAndNavigate should have been triggered — verifiable via location.assign
+    expect(location.assign).toHaveBeenCalled()
+  })
+
+  it('shows error message and re-enables button when API returns already_exists', async () => {
+    fetch.mockResolvedValue({ ok: false, json: async () => ({ ok: false, error: 'already_exists' }) })
+
+    await onboardingCreateEmptyProfile()
+
+    const statusEl = document.getElementById('onboarding-modal-status')
+    expect(statusEl.textContent).toMatch(/already exists/i)
+    expect(document.getElementById('onboarding-create-btn').disabled).toBe(false)
+    expect(location.assign).not.toHaveBeenCalled()
+  })
+})
+
+describe('showOnboardingModal', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="onboarding-modal-overlay" style="display:none;"></div>
+      <div id="welcome-section-present" style="display:none;"></div>
+      <div id="welcome-section-missing" style="display:none;"></div>
+      <div id="welcome-footer-present" style="display:none;"></div>
+      <div id="welcome-footer-missing" style="display:none;"></div>
+      <p id="onboarding-master-cv-path"></p>
+      <p id="onboarding-modal-status">some old status</p>
+    `
+  })
+
+  it('sets the path text and shows the overlay in missing-CV mode', () => {
+    showOnboardingModal('/home/user/CV/Master_CV_Data.json')
+
+    expect(document.getElementById('onboarding-master-cv-path').textContent)
+      .toBe('/home/user/CV/Master_CV_Data.json')
+    expect(document.getElementById('onboarding-modal-overlay').style.display).toBe('flex')
+    expect(document.getElementById('onboarding-modal-status').textContent).toBe('')
+    // missing section visible; present section hidden
+    expect(document.getElementById('welcome-section-missing').style.display).toBe('')
+    expect(document.getElementById('welcome-section-present').style.display).toBe('none')
+    expect(document.getElementById('welcome-footer-missing').style.display).toBe('flex')
+    expect(document.getElementById('welcome-footer-present').style.display).toBe('none')
+  })
+})
+
+// ── maybeShowWelcomeModal ─────────────────────────────────────────────────
+
+describe('maybeShowWelcomeModal', () => {
+  const fullDom = `
+    <div id="onboarding-modal-overlay" style="display:none;"></div>
+    <div id="welcome-section-present" style="display:none;"></div>
+    <div id="welcome-section-missing" style="display:none;"></div>
+    <div id="welcome-footer-present" style="display:none;"></div>
+    <div id="welcome-footer-missing" style="display:none;"></div>
+    <p id="onboarding-master-cv-path"></p>
+    <p id="onboarding-modal-status"></p>
+  `
+  beforeEach(() => {
+    document.body.innerHTML = fullDom
+    vi.stubGlobal('fetch', vi.fn())
+    try { localStorage.removeItem('cv-builder-welcome-dismissed') } catch (_) {}
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    try { localStorage.removeItem('cv-builder-welcome-dismissed') } catch (_) {}
+  })
+
+  it('shows present section when master CV exists', async () => {
+    fetch.mockResolvedValue({ ok: true, json: async () => ({ exists: true, path: '/home/CV/Master_CV_Data.json' }) })
+
+    await maybeShowWelcomeModal()
+
+    expect(document.getElementById('onboarding-modal-overlay').style.display).toBe('flex')
+    expect(document.getElementById('welcome-section-present').style.display).toBe('')
+    expect(document.getElementById('welcome-section-missing').style.display).toBe('none')
+    expect(document.getElementById('welcome-footer-present').style.display).toBe('flex')
+  })
+
+  it('shows missing section and sets path when master CV is absent', async () => {
+    fetch.mockResolvedValue({ ok: true, json: async () => ({ exists: false, path: '/home/CV/Master_CV_Data.json' }) })
+
+    await maybeShowWelcomeModal()
+
+    expect(document.getElementById('onboarding-modal-overlay').style.display).toBe('flex')
+    expect(document.getElementById('welcome-section-missing').style.display).toBe('')
+    expect(document.getElementById('welcome-section-present').style.display).toBe('none')
+    expect(document.getElementById('welcome-footer-missing').style.display).toBe('flex')
+    expect(document.getElementById('onboarding-master-cv-path').textContent)
+      .toBe('/home/CV/Master_CV_Data.json')
+  })
+
+  it('does nothing when the welcome modal has been dismissed', async () => {
+    localStorage.setItem('cv-builder-welcome-dismissed', '1')
+
+    await maybeShowWelcomeModal()
+
+    expect(document.getElementById('onboarding-modal-overlay').style.display).toBe('none')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('shows present section (safe fallback) when status fetch fails', async () => {
+    fetch.mockRejectedValue(new Error('network error'))
+
+    await maybeShowWelcomeModal()
+
+    expect(document.getElementById('onboarding-modal-overlay').style.display).toBe('flex')
+    expect(document.getElementById('welcome-section-present').style.display).toBe('')
+  })
+})
+
+// ── closeWelcomeModal ─────────────────────────────────────────────────────
+
+describe('closeWelcomeModal', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="onboarding-modal-overlay" style="display:flex;"></div>
+      <input type="checkbox" id="welcome-dont-show-again">
+    `
+    try { localStorage.removeItem('cv-builder-welcome-dismissed') } catch (_) {}
+  })
+  afterEach(() => {
+    try { localStorage.removeItem('cv-builder-welcome-dismissed') } catch (_) {}
+  })
+
+  it('hides the overlay', () => {
+    closeWelcomeModal()
+    expect(document.getElementById('onboarding-modal-overlay').style.display).toBe('none')
+  })
+
+  it('persists dismissed flag in localStorage when checkbox is checked', () => {
+    document.getElementById('welcome-dont-show-again').checked = true
+    closeWelcomeModal()
+    expect(localStorage.getItem('cv-builder-welcome-dismissed')).toBe('1')
+  })
+
+  it('does NOT set dismissed flag when checkbox is unchecked', () => {
+    document.getElementById('welcome-dont-show-again').checked = false
+    closeWelcomeModal()
+    expect(localStorage.getItem('cv-builder-welcome-dismissed')).toBeNull()
   })
 })
 
@@ -1359,7 +1551,7 @@ describe('restoreBackendState', () => {
           expect(switchTab).toHaveBeenCalledWith('rewrite')
           expect(appendMessage).toHaveBeenCalledWith(
             'system',
-            '✅ Session restored: Restored Session (rewrite_review)',
+            '✅ Session restored: Restored Session (Rewrite Review)',
           )
         })
 

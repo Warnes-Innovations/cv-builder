@@ -12,3 +12,5 @@ _**User (2026-03-21 03:50:00Z)**_
 _**User (2026-03-21 03:50:27Z)**_
 
 /review changed files in `/Users/warnes/src/cv-builder/.claude/worktrees/gh-issues`, then [$commit-message-generator](/Users/warnes/src/vscode-config/skills/commit-message-generator/SKILL.md) 
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

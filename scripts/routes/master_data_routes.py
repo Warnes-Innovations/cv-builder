@@ -37,7 +37,9 @@ def _load_master(master_data_path: str) -> "tuple[dict, Path]":
 
 
 def _save_master(master: Dict[str, Any], master_path: Path) -> None:
-    """Write master CV data to disk, create a timestamped backup, and stage in git."""
+    """Write master CV data to disk, validate schema, restore backup on failure, and stage in git."""
+    from utils.master_data_validator import validate_master_data
+
     backup_dir = master_path.parent / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -46,6 +48,17 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
         shutil.copy2(master_path, backup_path)
     with open(master_path, 'w', encoding='utf-8') as f:
         json.dump(master, f, indent=2)
+
+    # Post-write schema validation: restore backup if the written data is invalid.
+    result = validate_master_data(master)
+    if not result.valid:
+        if backup_path.exists():
+            shutil.copy2(backup_path, master_path)
+        raise ValueError(
+            f"Master data failed schema validation after write; backup restored. "
+            f"Errors: {'; '.join(result.errors)}"
+        )
+
     subprocess.run(
         ['git', '-C', str(master_path.parent), 'add', master_path.name],
         capture_output=True, check=False,
@@ -80,6 +93,12 @@ _TONE_GUIDANCE: Dict[str, str] = {
     'academia':       'Scholarly, collaborative.  Highlight publications, teaching experience, and departmental service.',
     'financial':      'Professional, quantitative, risk-aware.  Emphasise fiduciary responsibility and data-driven decisions.',
     'leadership':     'Strategic, vision-focused, people-first.  Highlight team-building and organisational impact.',
+}
+
+_OPENING_GUIDANCE: Dict[str, str] = {
+    'formal':             'Start directly with the salutation line: "Dear {hiring_manager}," — do NOT include a date, address block, or subject line.',
+    'hook':               'Open with a compelling hook or pattern-interrupt — a specific achievement, a bold claim, or a provocative question that immediately establishes value. Do NOT use a formal salutation.',
+    'narrative':          'Open with a brief vivid scene or narrative moment that connects you personally to the work. Do NOT use a formal salutation.',
 }
 
 # Text similarity helper (used in screening search)
@@ -296,6 +315,7 @@ def create_blueprint(deps):
                 "skills":                 master.get('skills', []),
                 "education":              master.get('education', []),
                 "awards":                 master.get('awards', []),
+                "certifications":         master.get('certifications', []),
                 "selected_achievements":  master.get('selected_achievements', []),
                 "professional_summaries": master.get('professional_summaries', {}),
             })
@@ -1471,6 +1491,7 @@ def create_blueprint(deps):
         with entry.lock:
             body            = request.get_json(silent=True) or {}
             tone            = body.get('tone', 'startup/tech')
+            opening_style   = body.get('opening_style', 'formal')
             hiring_manager  = (body.get('hiring_manager') or 'Hiring Manager').strip()
             company_address = (body.get('company_address') or '').strip()
             highlight       = (body.get('highlight') or '').strip()
@@ -1542,9 +1563,9 @@ CANDIDATE PROFILE
 {reuse_instruction}
 {'Please especially highlight: ' + highlight if highlight else ''}
 
-Write a compelling, personalised cover letter (3–4 paragraphs, ~300–400 words).
-Start directly with the salutation line: "Dear {hiring_manager},"
-Do NOT include a date, address block, or subject line — return only the letter body starting with the salutation.
+Write a compelling, personalised cover letter (3–4 paragraphs, ~250–300 words).
+{_OPENING_GUIDANCE.get(opening_style, _OPENING_GUIDANCE['formal']).format(hiring_manager=hiring_manager)}
+Do NOT include a date, address block, or subject line before the opening line.
 Reference concrete skills and achievements from the candidate profile.
 Close professionally with a call to action.
 """
@@ -1565,6 +1586,7 @@ Close professionally with a call to action.
             conversation.state['cover_letter_text']   = letter_text
             conversation.state['cover_letter_params'] = {
                 'tone': tone, 'hiring_manager': hiring_manager,
+                'opening_style': opening_style,
                 'company_address': company_address, 'highlight': highlight,
             }
         session_registry.touch(sid)
@@ -1636,6 +1658,12 @@ Close professionally with a call to action.
                     json.dump(metadata, f, indent=2)
 
                 conversation.state['cover_letter_text'] = text
+                # Register in generated_files so File Review tab surfaces the download.
+                gen = conversation.state.setdefault('generated_files', {})
+                if isinstance(gen, dict):
+                    files_list = gen.setdefault('files', [])
+                    if filename not in files_list:
+                        files_list.append(filename)
                 session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename})
             except Exception as e:
@@ -1879,6 +1907,12 @@ Close professionally with a call to action.
                     json.dump(library, f, indent=2)
 
                 conversation.state['screening_responses'] = responses_in
+                # Register in generated_files so File Review tab surfaces the download.
+                gen = conversation.state.setdefault('generated_files', {})
+                if isinstance(gen, dict):
+                    files_list = gen.setdefault('files', [])
+                    if filename not in files_list:
+                        files_list.append(filename)
                 session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename, 'count': len(responses_in)})
         except Exception as e:

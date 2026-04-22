@@ -288,6 +288,7 @@ describe('updateRewriteTally', () => {
     Object.keys(mod.rewriteDecisions).forEach(k => delete mod.rewriteDecisions[k])
     mod.rewriteDecisions['p'] = { outcome: 'accept', final_text: null }
     mod.rewriteDecisions['q'] = { outcome: 'reject', final_text: null }
+    mod.setPersuasionWarningsAcknowledged(true)
     updateRewriteTally()
     const btn = document.getElementById('submit-rewrites-btn')
     expect(btn.disabled).toBe(false)

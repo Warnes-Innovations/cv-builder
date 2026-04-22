@@ -29,7 +29,7 @@
 import { getLogger } from './logger.js';
 const log = getLogger('session-manager');
 
-import { SESSION_PHASE_LABELS_SHORT } from './utils.js';
+import { SESSION_PHASE_LABELS_SHORT, SESSION_PHASE_LABELS } from './utils.js';
 import { PHASES, stateManager } from './state-manager.js';
 
 // ---------------------------------------------------------------------------
@@ -112,11 +112,122 @@ function formatSessionTimestamp(timestamp, { includeTime = true } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Welcome / onboarding modal (GAP-36 / GAP-37)
+// ---------------------------------------------------------------------------
+
+const _WELCOME_DISMISSED_KEY = 'cv-builder-welcome-dismissed';
+
+/**
+ * Switch which content section is visible inside the welcome modal.
+ * @param {'present'|'missing'} section
+ */
+function _setWelcomeSection(section) {
+  const sPresent = document.getElementById('welcome-section-present');
+  const sMissing = document.getElementById('welcome-section-missing');
+  const fPresent = document.getElementById('welcome-footer-present');
+  const fMissing = document.getElementById('welcome-footer-missing');
+  if (sPresent) sPresent.style.display = section === 'present' ? '' : 'none';
+  if (sMissing) sMissing.style.display = section === 'missing' ? '' : 'none';
+  if (fPresent) fPresent.style.display = section === 'present' ? 'flex' : 'none';
+  if (fMissing) fMissing.style.display = section === 'missing' ? 'flex' : 'none';
+}
+
+/**
+ * Show the onboarding modal in the "missing master CV" state.
+ * Called from createNewSessionAndNavigate() when the backend returns master_cv_missing.
+ * @param {string} masterCvPath - Server-reported expected file path.
+ */
+function showOnboardingModal(masterCvPath) {
+  const overlay  = document.getElementById('onboarding-modal-overlay');
+  const pathEl   = document.getElementById('onboarding-master-cv-path');
+  const statusEl = document.getElementById('onboarding-modal-status');
+  if (pathEl)   pathEl.textContent   = masterCvPath || '(unknown)';
+  if (statusEl) statusEl.textContent = '';
+  _setWelcomeSection('missing');
+  if (overlay) overlay.style.display = 'flex';
+}
+
+/**
+ * Show the welcome modal unless the user has dismissed it.
+ * Calls /api/setup/master-cv-status to choose which section to display.
+ * Safe to call on every startup — no-ops immediately if dismissed.
+ */
+async function maybeShowWelcomeModal() {
+  try {
+    if (localStorage.getItem(_WELCOME_DISMISSED_KEY)) return;
+  } catch (_) {}
+  let section = 'present';
+  try {
+    const res = await fetch('/api/setup/master-cv-status');
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (!data.exists) {
+        // Let the missing-CV flow handle the path display
+        const pathEl = document.getElementById('onboarding-master-cv-path');
+        if (pathEl) pathEl.textContent = data.path || '(unknown)';
+        section = 'missing';
+      }
+    }
+  } catch (_) {}
+  const statusEl = document.getElementById('onboarding-modal-status');
+  if (statusEl) statusEl.textContent = '';
+  _setWelcomeSection(section);
+  const overlay = document.getElementById('onboarding-modal-overlay');
+  if (overlay) overlay.style.display = 'flex';
+}
+
+/**
+ * Close the welcome modal.
+ * If "Don't show again" is checked, persists the dismissal in localStorage.
+ */
+function closeWelcomeModal() {
+  const overlay  = document.getElementById('onboarding-modal-overlay');
+  const checkbox = document.getElementById('welcome-dont-show-again');
+  if (overlay) overlay.style.display = 'none';
+  if (checkbox && checkbox.checked) {
+    try { localStorage.setItem(_WELCOME_DISMISSED_KEY, '1'); } catch (_) {}
+  }
+}
+
+/**
+ * Called by the onboarding modal "Create empty profile" button.
+ * POSTs to /api/setup/create-master-cv, then navigates to a new session.
+ */
+async function onboardingCreateEmptyProfile() {
+  const btn      = document.getElementById('onboarding-create-btn');
+  const statusEl = document.getElementById('onboarding-modal-status');
+  if (btn) btn.disabled = true;
+  if (statusEl) statusEl.textContent = 'Creating profile…';
+  try {
+    const res  = await fetch('/api/setup/create-master-cv', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data.error === 'already_exists'
+        ? 'File already exists — please reload the page.'
+        : (data.error || `Server error ${res.status}`);
+      if (statusEl) statusEl.textContent = msg;
+      if (btn) btn.disabled = false;
+      return;
+    }
+    // File created — now navigate to a new session
+    if (statusEl) statusEl.textContent = 'Profile created! Starting session…';
+    await createNewSessionAndNavigate();
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Session creation
 // ---------------------------------------------------------------------------
 
 async function createNewSessionAndNavigate() {
   const data = await createSession();
+  if (data.error === 'master_cv_missing') {
+    showOnboardingModal(data.master_cv_path || '');
+    return;
+  }
   if (!data.session_id) throw new Error('Failed to create session');
   // Clear any stale session path — the new session has no saved file yet.
   // If SESSION_PATH were left pointing at a previous session's file, the
@@ -128,6 +239,10 @@ async function createNewSessionAndNavigate() {
 
 async function createNewSessionInNewTab() {
   const data = await createSession();
+  if (data.error === 'master_cv_missing') {
+    showOnboardingModal(data.master_cv_path || '');
+    return;
+  }
   if (!data.session_id) throw new Error('Failed to create session');
   window.open(data.redirect_url || `/?session=${data.session_id}`, '_blank', 'noopener');
 }
@@ -605,7 +720,7 @@ async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
     }
 
     switchTab(targetTab);
-    appendMessage('system', `✅ Session restored: ${data.position_name || 'Unnamed'} (${data.phase || PHASES.INIT})`);
+    appendMessage('system', `✅ Session restored: ${data.position_name || 'Unnamed'} (${SESSION_PHASE_LABELS[data.phase] || String(data.phase || PHASES.INIT).replace(/_/g, ' ')})`);
     return true;
   } catch (err) {
     appendMessage('system', `❌ Error restoring session: ${err.message}`);
@@ -692,6 +807,10 @@ export {
   formatSessionTimestamp,
   createNewSessionAndNavigate,
   createNewSessionInNewTab,
+  onboardingCreateEmptyProfile,
+  showOnboardingModal,
+  maybeShowWelcomeModal,
+  closeWelcomeModal,
   _claimCurrentSession,
   _resolveRestoredPhase,
   showSessionsLandingPanel,

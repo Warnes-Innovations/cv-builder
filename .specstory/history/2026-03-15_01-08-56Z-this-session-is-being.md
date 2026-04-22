@@ -1892,3 +1892,5 @@ EOF
 _**Agent (claude-sonnet-4-6 2026-03-15 01:19:53Z)**_
 
 Committed as `dd2698e`.
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

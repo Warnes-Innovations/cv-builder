@@ -2335,3 +2335,5 @@ EOF
 _**Agent (claude-sonnet-4-6 2026-03-16 17:56:05Z)**_
 
 Committed as `42dde6f`. The commit groups all changes thematically with a clear summary of the 7 distinct fixes and the new gap documentation.
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

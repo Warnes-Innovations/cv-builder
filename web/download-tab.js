@@ -48,9 +48,15 @@ function _collectDownloadableFiles(cvData = {}) {
       format = 'pdf';
     } else if (filename.endsWith('.docx')) {
       icon = '📝';
-      description = filename.includes('ATS')
-        ? 'ATS-optimised Word document — keyword-optimised for job applications'
-        : 'Human-readable Word document — editable format';
+      if (filename.startsWith('CoverLetter_')) {
+        description = 'Cover letter — Word document for the application';
+      } else if (filename.startsWith('Screening_Responses_')) {
+        description = 'Screening question responses — Word document';
+      } else {
+        description = filename.includes('ATS')
+          ? 'ATS-optimised Word document — keyword-optimised for job applications'
+          : 'Human-readable Word document — editable format';
+      }
       format = 'docx';
     } else if (filename.endsWith('.html')) {
       icon = '🌐';

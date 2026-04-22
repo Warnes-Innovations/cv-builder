@@ -22431,3 +22431,5 @@ EOF
 _**Agent (claude-sonnet-4-6 2026-03-11 01:18:02Z)**_
 
 Committed as `42ac849` — initial commit to the CV repo with all 48 abstracts.
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->
