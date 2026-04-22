@@ -1551,7 +1551,7 @@ describe('restoreBackendState', () => {
           expect(switchTab).toHaveBeenCalledWith('rewrite')
           expect(appendMessage).toHaveBeenCalledWith(
             'system',
-            '✅ Session restored: Restored Session (rewrite_review)',
+            '✅ Session restored: Restored Session (Rewrite Review)',
           )
         })
 
