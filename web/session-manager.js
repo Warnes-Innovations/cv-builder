@@ -29,7 +29,7 @@
 import { getLogger } from './logger.js';
 const log = getLogger('session-manager');
 
-import { SESSION_PHASE_LABELS_SHORT } from './utils.js';
+import { SESSION_PHASE_LABELS_SHORT, SESSION_PHASE_LABELS } from './utils.js';
 import { PHASES, stateManager } from './state-manager.js';
 
 // ---------------------------------------------------------------------------
@@ -720,7 +720,7 @@ async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
     }
 
     switchTab(targetTab);
-    appendMessage('system', `✅ Session restored: ${data.position_name || 'Unnamed'} (${data.phase || PHASES.INIT})`);
+    appendMessage('system', `✅ Session restored: ${data.position_name || 'Unnamed'} (${SESSION_PHASE_LABELS[data.phase] || String(data.phase || PHASES.INIT).replace(/_/g, ' ')})`);
     return true;
   } catch (err) {
     appendMessage('system', `❌ Error restoring session: ${err.message}`);
