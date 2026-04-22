@@ -161,6 +161,35 @@ describe('analyzeJob', () => {
     vi.unstubAllGlobals()
   })
 
+  it('shows the LLM data-transmission disclosure on the first call and sets the storage flag', async () => {
+    global.localStorage.getItem.mockReturnValue(null)
+    globalThis.llmFetch
+      .mockResolvedValueOnce({ json: async () => ({ result: { text: 'Analysis', context_data: { job_analysis: {}, post_analysis_questions: [] } } }) })
+      .mockResolvedValueOnce({ json: async () => ({ confirmed: false }) })
+
+    await analyzeJob()
+
+    expect(globalThis.appendMessage).toHaveBeenCalledWith(
+      'system',
+      "ℹ️ Content you submit is sent to the configured LLM provider for analysis. Review your provider's data policy for details.",
+    )
+    expect(global.localStorage.setItem).toHaveBeenCalledWith('cv-builder-llm-disclosure-shown', '1')
+  })
+
+  it('suppresses the disclosure when the storage flag is already set', async () => {
+    global.localStorage.getItem.mockReturnValue('1')
+    globalThis.llmFetch
+      .mockResolvedValueOnce({ json: async () => ({ result: { text: 'Analysis', context_data: { job_analysis: {}, post_analysis_questions: [] } } }) })
+      .mockResolvedValueOnce({ json: async () => ({ confirmed: false }) })
+
+    await analyzeJob()
+
+    const disclosureCalls = globalThis.appendMessage.mock.calls.filter(
+      ([, msg]) => msg && msg.includes('configured LLM provider'),
+    )
+    expect(disclosureCalls).toHaveLength(0)
+  })
+
   it('analyzes before showing intake confirmation when intake is unconfirmed', async () => {
     globalThis.llmFetch
       .mockResolvedValueOnce({
