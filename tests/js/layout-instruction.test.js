@@ -22,6 +22,7 @@ import {
   generateFinalOutputs,
   loadLayoutInstructionHistory,
   submitLayoutInstruction,
+  pxToPt,
 } from '../../web/layout-instruction.js'
 import { scheduleAtsRefresh } from '../../web/ats-refinement.js'
 import { apiCall } from '../../web/api-client.js'
@@ -482,5 +483,28 @@ describe('renderLayoutPreviewStatus', () => {
     expect(container.style.display).toBe('block')
     expect(container.textContent).toContain('Ready for final files')
     expect(container.textContent).toContain('Confirmed preview matches the latest approved content')
+  })
+})
+
+describe('pxToPt', () => {
+  it('converts 13px to 9.8pt (default font size; 9.75 rounds up)', () => {
+    expect(pxToPt(13)).toBe(9.8)
+  })
+
+  it('converts 12px to 9pt', () => {
+    expect(pxToPt(12)).toBe(9)
+  })
+
+  it('converts 16px to 12pt', () => {
+    expect(pxToPt(16)).toBe(12)
+  })
+
+  it('converts 6px to 4.5pt (minimum allowed value)', () => {
+    expect(pxToPt(6)).toBe(4.5)
+  })
+
+  it('rounds to one decimal place', () => {
+    // 10.5px * 0.75 = 7.875 → rounds to 7.9
+    expect(pxToPt(10.5)).toBe(7.9)
   })
 })

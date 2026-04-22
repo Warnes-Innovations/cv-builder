@@ -22,6 +22,17 @@ import { escapeHtml } from './utils.js';
 
 let dismissedStaleCalloutRevision = null;
 
+/**
+ * Convert a CSS pixel value to its typographic point equivalent.
+ * Assumes the standard screen resolution convention: 96 px/in, 72 pt/in,
+ * so 1px = 0.75 pt.
+ * @param {number} px
+ * @returns {number} pt value rounded to one decimal place
+ */
+export function pxToPt(px) {
+  return Math.round(px * 0.75 * 10) / 10;
+}
+
 // Undo stack — each entry is { html, instructions } snapshotted before a
 // layout instruction is applied.  Cap at 20 entries to bound memory.
 const _layoutUndoStack = [];
@@ -274,7 +285,7 @@ async function initiateLayoutInstructions() {
           </div>
 
           <div class="layout-settings-row" style="display:flex; align-items:center; gap:10px; margin-bottom:14px; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;">
-            <label for="base-font-size-input" style="font-size:0.85em; font-weight:600; color:#475569; white-space:nowrap;">Base font size (px):</label>
+            <label for="base-font-size-input" style="font-size:0.85em; font-weight:600; color:#475569; white-space:nowrap;">Base font size:</label>
             <input
               id="base-font-size-input"
               type="number"
@@ -283,6 +294,7 @@ async function initiateLayoutInstructions() {
               style="width:60px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
               title="Controls the root font size for the CV. All rem-based sizes scale with this value."
             />
+            <span id="font-size-pt-display" style="font-size:0.82em; color:#64748b; white-space:nowrap;">px&nbsp;(9.8&nbsp;pt)</span>
             <label for="page-margin-input" style="font-size:0.85em; font-weight:600; color:#475569; white-space:nowrap; margin-left:8px;">Page margin (in):</label>
             <input
               id="page-margin-input"
@@ -344,7 +356,12 @@ async function initiateLayoutInstructions() {
   const savedFontSize = stateManager?.getSessionState?.()?.base_font_size;
   if (savedFontSize) {
     const input = document.getElementById('base-font-size-input');
-    if (input) input.value = parseFloat(savedFontSize) || 13;
+    if (input) {
+      const px = parseFloat(savedFontSize) || 13;
+      input.value = px;
+      const ptDisplay = document.getElementById('font-size-pt-display');
+      if (ptDisplay) ptDisplay.textContent = `px\u00a0(${pxToPt(px)}\u00a0pt)`;
+    }
   }
   const savedPageMargin = stateManager?.getSessionState?.()?.page_margin;
   if (savedPageMargin) {
@@ -388,6 +405,13 @@ function setupLayoutInstructionListeners() {
 
   if (applySettingsBtn && fontSizeInput && pageMarginInput) {
     applySettingsBtn.addEventListener('click', () => applyLayoutSettings(fontSizeInput.value, pageMarginInput.value));
+    fontSizeInput.addEventListener('input', () => {
+      const ptDisplay = document.getElementById('font-size-pt-display');
+      if (ptDisplay) {
+        const px = parseFloat(fontSizeInput.value);
+        ptDisplay.textContent = isNaN(px) ? 'px' : `px\u00a0(${pxToPt(px)}\u00a0pt)`;
+      }
+    });
     fontSizeInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') applyLayoutSettings(fontSizeInput.value, pageMarginInput.value);
     });
