@@ -37,7 +37,9 @@ def _load_master(master_data_path: str) -> "tuple[dict, Path]":
 
 
 def _save_master(master: Dict[str, Any], master_path: Path) -> None:
-    """Write master CV data to disk, create a timestamped backup, and stage in git."""
+    """Write master CV data to disk, validate schema, restore backup on failure, and stage in git."""
+    from utils.master_data_validator import validate_master_data
+
     backup_dir = master_path.parent / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -46,6 +48,17 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
         shutil.copy2(master_path, backup_path)
     with open(master_path, 'w', encoding='utf-8') as f:
         json.dump(master, f, indent=2)
+
+    # Post-write schema validation: restore backup if the written data is invalid.
+    result = validate_master_data(master)
+    if not result.valid:
+        if backup_path.exists():
+            shutil.copy2(backup_path, master_path)
+        raise ValueError(
+            f"Master data failed schema validation after write; backup restored. "
+            f"Errors: {'; '.join(result.errors)}"
+        )
+
     subprocess.run(
         ['git', '-C', str(master_path.parent), 'add', master_path.name],
         capture_output=True, check=False,
