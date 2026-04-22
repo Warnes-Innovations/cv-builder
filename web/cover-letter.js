@@ -24,11 +24,18 @@ const COVER_LETTER_TONES = [
   { value: 'leadership',     label: 'Leadership / Exec'  },
 ];
 
+const COVER_LETTER_OPENINGS = [
+  { value: 'formal',    label: 'Formal salutation — “Dear [name],”' },
+  { value: 'hook',      label: 'Attention hook — bold claim or achievement' },
+  { value: 'narrative', label: 'Narrative opener — vivid scene or story' },
+];
+
 let _coverLetterPriorSessions = [];
 
 /** Survives tab navigation: form inputs and the generated letter body. */
 let _coverLetterFormState = {
   tone:          '',
+  openingStyle:  '',
   hiringManager: '',
   companyAddress: '',
   highlight:     '',
@@ -53,6 +60,10 @@ async function populateCoverLetterTab() {
 
   const toneOptions = COVER_LETTER_TONES.map(t =>
     `<option value="${t.value}">${escapeHtml(t.label)}</option>`
+  ).join('');
+
+  const openingOptions = COVER_LETTER_OPENINGS.map(o =>
+    `<option value="${o.value}">${escapeHtml(o.label)}</option>`
   ).join('');
 
   const priorSection = _coverLetterPriorSessions.length ? `
@@ -92,6 +103,10 @@ async function populateCoverLetterTab() {
         <div class="cl-form-field">
           <label for="cl-tone-select">Tone / Industry</label>
           <select id="cl-tone-select" class="edit-input">${toneOptions}</select>
+        </div>
+        <div class="cl-form-field">
+          <label for="cl-opening-style">Opening Style</label>
+          <select id="cl-opening-style" class="edit-input">${openingOptions}</select>
         </div>
         <div class="cl-form-field">
           <label for="cl-hiring-manager">Hiring Manager Name/Title <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
@@ -146,6 +161,7 @@ async function populateCoverLetterTab() {
 
 function _restoreCoverLetterFormState() {
   const toneEl    = document.getElementById('cl-tone-select');
+  const openingEl = document.getElementById('cl-opening-style');
   const hmEl      = document.getElementById('cl-hiring-manager');
   const addrEl    = document.getElementById('cl-company-address');
   const hlEl      = document.getElementById('cl-highlight');
@@ -154,6 +170,8 @@ function _restoreCoverLetterFormState() {
 
   if (toneEl && _coverLetterFormState.tone)
     toneEl.value = _coverLetterFormState.tone;
+  if (openingEl && _coverLetterFormState.openingStyle)
+    openingEl.value = _coverLetterFormState.openingStyle;
   if (hmEl && _coverLetterFormState.hiringManager)
     hmEl.value = _coverLetterFormState.hiringManager;
   if (addrEl && _coverLetterFormState.companyAddress)
@@ -170,10 +188,11 @@ function _restoreCoverLetterFormState() {
   }
 
   // Wire up save-on-change listeners (inline oninput already handles letterText).
-  if (toneEl)  toneEl.addEventListener('change', () => { _coverLetterFormState.tone = toneEl.value; });
-  if (hmEl)    hmEl.addEventListener('input',    () => { _coverLetterFormState.hiringManager = hmEl.value; });
-  if (addrEl)  addrEl.addEventListener('input',  () => { _coverLetterFormState.companyAddress = addrEl.value; });
-  if (hlEl)    hlEl.addEventListener('input',    () => { _coverLetterFormState.highlight = hlEl.value; });
+  if (toneEl)    toneEl.addEventListener('change',   () => { _coverLetterFormState.tone = toneEl.value; });
+  if (openingEl) openingEl.addEventListener('change', () => { _coverLetterFormState.openingStyle = openingEl.value; });
+  if (hmEl)      hmEl.addEventListener('input',      () => { _coverLetterFormState.hiringManager = hmEl.value; });
+  if (addrEl)    addrEl.addEventListener('input',    () => { _coverLetterFormState.companyAddress = addrEl.value; });
+  if (hlEl)      hlEl.addEventListener('input',      () => { _coverLetterFormState.highlight = hlEl.value; });
 }
 
 // ── Generate cover letter ─────────────────────────────────────────────────────
@@ -182,7 +201,7 @@ async function generateCoverLetter() {
   /* duckflow:
    *   id: cover_letter_ui_generate_live
    *   kind: ui
-   *   timestamp: '2026-03-25T21:39:48Z'
+   *   timestamp: '2026-04-21T18:00:00Z'
    *   status: live
    *   handles:
    *   - ui:cover-letter.generate
@@ -190,24 +209,27 @@ async function generateCoverLetter() {
    *   - POST /api/cover-letter/generate
    *   reads:
    *   - dom:#cl-tone-select.value
+   *   - dom:#cl-opening-style.value
    *   - dom:#cl-hiring-manager.value
    *   - dom:#cl-company-address.value
    *   - dom:#cl-highlight.value
    *   - dom:input[name=cl-prior].checked
    *   writes:
    *   - request:POST /api/cover-letter/generate.tone
+   *   - request:POST /api/cover-letter/generate.opening_style
    *   - request:POST /api/cover-letter/generate.hiring_manager
    *   - request:POST /api/cover-letter/generate.company_address
    *   - request:POST /api/cover-letter/generate.highlight
    *   - request:POST /api/cover-letter/generate.reuse_body
    *   - dom:#cl-letter-textarea.value
-   *   notes: Submits cover-letter prompt inputs and optional reuse text, then writes the generated body into the editable cover-letter textarea.
+   *   notes: Submits cover-letter prompt inputs (including configurable opening style) and optional reuse text, then writes the generated body into the editable cover-letter textarea.
    */
   const btn = document.getElementById('cl-generate-btn');
   btn.disabled = true;
   btn.textContent = '⏳ Generating…';
 
   const tone           = (document.getElementById('cl-tone-select')    || {}).value || 'startup/tech';
+  const opening_style  = (document.getElementById('cl-opening-style')  || {}).value || 'formal';
   const hiring_manager = (document.getElementById('cl-hiring-manager') || {}).value || '';
   const company_address = (document.getElementById('cl-company-address') || {}).value || '';
   const highlight      = (document.getElementById('cl-highlight')       || {}).value || '';
@@ -224,7 +246,7 @@ async function generateCoverLetter() {
     const res  = await fetch('/api/cover-letter/generate', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ tone, hiring_manager, company_address, highlight, reuse_body }),
+      body:    JSON.stringify({ tone, opening_style, hiring_manager, company_address, highlight, reuse_body }),
     });
     const data = await res.json();
 

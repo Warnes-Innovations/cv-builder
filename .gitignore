@@ -22,6 +22,7 @@ archive/
 # Use config.yaml.example as the starting point when setting up a new instance.
 config.yaml
 .env
+__env
 
 # Node / JS tooling
 node_modules/

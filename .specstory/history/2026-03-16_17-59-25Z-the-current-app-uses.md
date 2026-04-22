@@ -5205,3 +5205,5 @@ Syntax check Python files
 
 `python -m py_compile scripts/utils/llm_client.py && echo "llm_client OK" && python -m py_compile scripts/web_app.py && echo "web_app OK"`
 </details></tool-use>
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

@@ -2720,3 +2720,5 @@ Duplicates: []
 _**Agent (claude-sonnet-4-6 2026-03-11 19:46:00Z)**_
 
 No more duplicates. Hard-reload the page — the `currentTab` error is fixed.
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

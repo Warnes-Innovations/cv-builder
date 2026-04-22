@@ -39,8 +39,11 @@ describe('StorageKeys', () => {
   it('defines CHAT_COLLAPSED', () => {
     expect(apiClient.StorageKeys.CHAT_COLLAPSED).toBe('cv-builder-chat-collapsed')
   })
-  it('has exactly 5 keys', () => {
-    expect(Object.keys(apiClient.StorageKeys)).toHaveLength(5)
+  it('defines LLM_DISCLOSURE_SHOWN', () => {
+    expect(apiClient.StorageKeys.LLM_DISCLOSURE_SHOWN).toBe('cv-builder-llm-disclosure-shown')
+  })
+  it('has exactly 6 keys', () => {
+    expect(Object.keys(apiClient.StorageKeys)).toHaveLength(6)
   })
   it('all values are strings', () => {
     Object.values(apiClient.StorageKeys).forEach(v => expect(typeof v).toBe('string'))

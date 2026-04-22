@@ -4624,7 +4624,7 @@ Output:
       <div class="arrow">→</div>
       <div class="step" id="step-customizations" title="Content customisation" onclick="handleStepClick('customizations')">⚙️ Customise</div>
       <div class="arrow">→</div>
-      <div class="step" id="step-rewrite" title="Rewrite review" onclick="handleStepClick('rewrite')">✏�
+      <div class="step" id="step-rewrite" title="Rewrite review" onclick="handleStepClick('rewrite')">✏�
 ... (truncated)
 ```
 </details></tool-use>
@@ -8602,3 +8602,5 @@ _**Agent (gpt-5.4 2026-03-19 17:24:27Z)**_
 - workdir: `/Users/warnes/src/cv-builder`
 
 </details></tool-use>
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->

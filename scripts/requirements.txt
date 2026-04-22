@@ -1,3 +1,5 @@
+# Prompt-injection detection
+llm-sanitizer>=0.1.0
 # requirements.txt — CV Builder dependencies for CI and pure-pip environments
 #
 # PURPOSE: Full dependency list including ALL packages. Used by GitHub Actions

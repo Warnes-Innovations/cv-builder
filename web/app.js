@@ -53,6 +53,9 @@ async function init() {
     return;
   }
 
+  // Show welcome/onboarding modal on every startup until user dismisses it.
+  await maybeShowWelcomeModal();
+
   // Restore session state first
   await restoreSession();
 

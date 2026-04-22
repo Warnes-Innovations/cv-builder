@@ -242,6 +242,16 @@ describe('submitSpellCheckDecisions', () => {
     const ignoredItem = body.spell_audit.find(e => e.final === 'teh')
     expect(ignoredItem.outcome).toBe('ignore')
   })
+
+  it('does not call sendAction when user cancels the generate confirmation', async () => {
+    window._spellSugMap = {}
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ ok: true }),
+    })
+    vi.stubGlobal('showConfirmModal', vi.fn(async () => false))
+    await submitSpellCheckDecisions()
+    expect(globalThis.sendAction).not.toHaveBeenCalled()
+  })
 })
 
 describe('renderSpellCheckZeroState', () => {
@@ -270,6 +280,16 @@ describe('submitEmptySpellCheck', () => {
       method: 'POST',
     }))
     expect(globalThis.sendAction).toHaveBeenCalledWith('generate_cv')
+  })
+
+  it('does not call sendAction when user cancels the generate confirmation', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+    })
+    vi.stubGlobal('showConfirmModal', vi.fn(async () => false))
+    await submitEmptySpellCheck()
+    expect(globalThis.sendAction).not.toHaveBeenCalled()
   })
 })
 

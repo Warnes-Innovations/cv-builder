@@ -37,6 +37,7 @@ from .config import get_config
 from .llm_client import LLMClient
 from .master_data_validator import validate_master_data_file
 from .session_data_view import SessionDataView
+from .prompt_safety import sanitize_instruction_text, scan_text_for_injection
 from .template_renderer import safe_css_size, safe_url
 
 logger = logging.getLogger(__name__)
@@ -44,18 +45,6 @@ logger = logging.getLogger(__name__)
 _LAYOUT_URL_ATTRS = ('href', 'src', 'srcset', 'poster', 'xlink:href')
 _LAYOUT_PRESERVED_HEAD_TAGS = {'link', 'script', 'meta', 'base'}
 _SCHEMA_ORG_CONTEXTS = {'https://schema.org', 'http://schema.org'}
-_LAYOUT_AGENT_INSTRUCTION_PATTERNS = (
-    'system prompt',
-    'developer prompt',
-    'developer instruction',
-    'assistant instruction',
-    'agent instruction',
-    'llm instruction',
-    'copilot instruction',
-    'you are chatgpt',
-    'you are github copilot',
-    'ignore previous instructions',
-)
 
 def _append_layout_finding(
     findings: List[Dict[str, Any]],
@@ -632,6 +621,10 @@ class CVOrchestrator:
                     entry['is_first_author'] = bool(first_token and owner_last in first_token)
                 else:
                     entry['is_first_author'] = False
+
+                # Flag entries with no venue so the template can render a warning icon
+                has_venue = bool(pub.get('journal') or pub.get('booktitle'))
+                entry['venue_warning'] = '' if has_venue else 'No journal or conference name found in BibTeX entry'
 
                 formatted_pubs.append(entry)
         return formatted_pubs
@@ -1973,23 +1966,7 @@ For manual generation:
     def _sanitize_layout_instruction_text(self, instruction_text: str) -> Dict[str, Any]:
         """Strip prompt-injection phrases from layout instructions."""
         raw_text = str(instruction_text or '')
-        sanitized_text = raw_text
-        findings: List[Dict[str, Any]] = []
-
-        for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS:
-            regex = re.compile(
-                rf'(?i)(?:^|\b){re.escape(pattern)}(?:\b|$)(?:\s*(?:and|then)\s*)?',
-            )
-            updated_text, count = regex.subn(' ', sanitized_text)
-            if count:
-                sanitized_text = updated_text
-                _append_layout_finding(
-                    findings,
-                    'unsafe_instruction_text',
-                    f'Removed prompt-like directive: {pattern}',
-                    pattern,
-                )
-
+        sanitized_text, findings = sanitize_instruction_text(raw_text)
         sanitized_text = re.sub(r'\s+', ' ', sanitized_text).strip(' ,;:-')
         return {
             'flagged': bool(findings),
@@ -2006,7 +1983,7 @@ For manual generation:
 
         for comment in soup.find_all(string=lambda value: isinstance(value, Comment)):
             text = str(comment)
-            if any(pattern in text.lower() for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+            if scan_text_for_injection(text):
                 _append_layout_finding(
                     findings,
                     'unsafe_context_comment',
@@ -2017,13 +1994,12 @@ For manual generation:
 
         for element in list(soup.find_all(True)):
             text = element.get_text(' ', strip=True)
-            lowered = text.lower()
             is_hidden = (
                 element.has_attr('hidden')
                 or element.get('aria-hidden') == 'true'
                 or 'display:none' in element.get('style', '').replace(' ', '').lower()
             )
-            if is_hidden and text and any(pattern in lowered for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+            if is_hidden and text and scan_text_for_injection(text):
                 _append_layout_finding(
                     findings,
                     'unsafe_context_element',
@@ -2115,7 +2091,7 @@ For manual generation:
 
         for comment in soup.find_all(string=lambda value: isinstance(value, Comment)):
             text = str(comment)
-            if any(pattern in text.lower() for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+            if scan_text_for_injection(text):
                 _append_layout_finding(
                     findings,
                     'unsafe_rewritten_comment',
@@ -2126,13 +2102,12 @@ For manual generation:
 
         for element in list(soup.find_all(True)):
             text = element.get_text(' ', strip=True)
-            lowered = text.lower()
             is_hidden = (
                 element.has_attr('hidden')
                 or element.get('aria-hidden') == 'true'
                 or 'display:none' in element.get('style', '').replace(' ', '').lower()
             )
-            if is_hidden and text and any(pattern in lowered for pattern in _LAYOUT_AGENT_INSTRUCTION_PATTERNS):
+            if is_hidden and text and scan_text_for_injection(text):
                 _append_layout_finding(
                     findings,
                     'unsafe_rewritten_element',

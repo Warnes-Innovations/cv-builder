@@ -3257,3 +3257,5 @@ _**Agent (claude-sonnet-4-6 2026-03-18 18:58:44Z)**_
 That's a Claude Code sandbox limitation — my tools can't reach loopback addresses. It doesn't reflect the actual server state. If your browser is connecting successfully, everything is working fine on the server side.
 
 Is the app itself behaving as expected?
+
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->
