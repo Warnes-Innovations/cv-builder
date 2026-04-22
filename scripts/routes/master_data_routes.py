@@ -1563,7 +1563,7 @@ CANDIDATE PROFILE
 {reuse_instruction}
 {'Please especially highlight: ' + highlight if highlight else ''}
 
-Write a compelling, personalised cover letter (3–4 paragraphs, ~300–400 words).
+Write a compelling, personalised cover letter (3–4 paragraphs, ~250–300 words).
 {_OPENING_GUIDANCE.get(opening_style, _OPENING_GUIDANCE['formal']).format(hiring_manager=hiring_manager)}
 Do NOT include a date, address block, or subject line before the opening line.
 Reference concrete skills and achievements from the candidate profile.
