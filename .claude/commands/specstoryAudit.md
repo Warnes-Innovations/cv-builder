@@ -1,1 +1,1 @@
-/Users/warnes/src/cv-builder/.github/prompts/specstoryAudit.prompt.md
+/Users/warnes/src/cv-builder-prod/.github/prompts/specstoryAudit.prompt.md
