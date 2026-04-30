@@ -1246,6 +1246,10 @@ def create_blueprint(deps):
             "render_snapshot_generated_at": gen.get("render_snapshot_generated_at"),
             "render_snapshot_stale":     bool(gen.get("render_snapshot_stale", False)),
             "render_snapshot_regenerating": bool(gen.get("render_snapshot_regenerating", False)),
+            # Optional revision metadata for client-side freshness tracking
+            "content_revision": gen.get("content_revision"),
+            "last_preview_content_revision": gen.get("last_preview_content_revision"),
+            "last_final_content_revision": gen.get("last_final_content_revision"),
         })
 
     @bp.post("/api/cv/generate-preview")
@@ -1331,6 +1335,15 @@ def create_blueprint(deps):
         now     = datetime.now().isoformat()
         prev_id = str(_u.uuid4())
         preview_outputs = _generate_preview_outputs(conv, html_str, prev_id)
+
+        # Optional client-provided revision to help the server track freshness
+        body = request.get_json(silent=True) or {}
+        client_rev = body.get('content_revision')
+        try:
+            client_rev_num = int(client_rev) if client_rev is not None else None
+        except (TypeError, ValueError):
+            client_rev_num = None
+
         gen = conv.state.setdefault("generation_state", {})
         gen.update({
             "phase":                "layout_review",
@@ -1340,6 +1353,8 @@ def create_blueprint(deps):
             "layout_confirmed":     False,
             "preview_output_paths": preview_outputs,
         })
+        if client_rev_num is not None:
+            gen["last_preview_content_revision"] = client_rev_num
         if "layout_instructions" not in gen:
             gen["layout_instructions"] = []
 
@@ -1485,6 +1500,14 @@ def create_blueprint(deps):
 
         preview_outputs = _generate_preview_outputs(conv, updated_html, prev_id)
 
+        # Accept optional client-provided revision metadata
+        body = request.get_json(silent=True) or {}
+        client_rev = body.get('content_revision')
+        try:
+            client_rev_num = int(client_rev) if client_rev is not None else None
+        except (TypeError, ValueError):
+            client_rev_num = None
+
         gen = conv.state.setdefault("generation_state", {})
         gen["preview_html"]        = updated_html
         gen["preview_request_id"]  = prev_id
@@ -1492,6 +1515,8 @@ def create_blueprint(deps):
         gen["phase"]               = "layout_review"
         gen["layout_confirmed"]    = False
         gen["preview_output_paths"] = preview_outputs
+        if client_rev_num is not None:
+            gen["last_preview_content_revision"] = client_rev_num
         gen.setdefault("layout_instructions", []).append(instruction_record)
 
         safety = result.get('safety') or {}
@@ -1540,6 +1565,13 @@ def create_blueprint(deps):
             return jsonify({"error": "No preview — call /api/cv/generate-preview first."}), 400
         if gen.get("layout_confirmed"):
             return jsonify({"error": "Layout is already confirmed."}), 400
+        body = request.get_json(silent=True) or {}
+        client_rev = body.get('content_revision')
+        try:
+            client_rev_num = int(client_rev) if client_rev is not None else None
+        except (TypeError, ValueError):
+            client_rev_num = None
+
         now   = datetime.now().isoformat()
         chash = hashlib.sha256(gen["preview_html"].encode()).hexdigest()[:16]
         gen   = conv.state.setdefault("generation_state", {})
@@ -1547,6 +1579,8 @@ def create_blueprint(deps):
             "phase": "confirmed", "layout_confirmed": True,
             "confirmed_at": now, "confirmed_preview_hash": chash,
         })
+        if client_rev_num is not None:
+            gen["last_final_content_revision"] = client_rev_num
         conv._save_session()
         return jsonify({"ok": True, "confirmed": True, "confirmed_at": now, "hash": chash})
 
