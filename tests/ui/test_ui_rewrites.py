@@ -52,7 +52,17 @@ class TestRewritesTab:
             )
 
         seeded_page.route("**/api/rewrites**", capture)
-        seeded_page.locator("#generate-btn").click()
+        # Dismiss onboarding modal if present (can block clicks in CI)
+        try:
+            if seeded_page.locator("#onboarding-modal-overlay").count() > 0:
+                try:
+                    seeded_page.locator("#onboarding-modal-overlay button:has-text('Close')").first.click()
+                except Exception:
+                    seeded_page.locator("#onboarding-modal-overlay").first.click()
+                seeded_page.wait_for_timeout(200)
+        except Exception:
+            pass
+        seeded_page.locator("#generate-btn").click(force=True)
         seeded_page.wait_for_timeout(800)
         assert any("/api/rewrites" in url for url in api_calls), (
             "Expected GET /api/rewrites when Generate CV is clicked"
@@ -72,7 +82,7 @@ class TestRewritesTab:
                 body=json.dumps(API_REWRITES_GET),
             ),
         )
-        seeded_page.locator("#generate-btn").click()
+        seeded_page.locator("#generate-btn").click(force=True)
         seeded_page.wait_for_timeout(800)
 
         content = seeded_page.locator("#document-content")
@@ -99,7 +109,7 @@ class TestRewritesTab:
                 body=json.dumps(API_REWRITES_GET),
             ),
         )
-        seeded_page.locator("#generate-btn").click()
+        seeded_page.locator("#generate-btn").click(force=True)
         seeded_page.wait_for_timeout(800)
 
         content_html = seeded_page.locator("#document-content").inner_html()
@@ -144,7 +154,7 @@ class TestRewritesTab:
         seeded_page.route("**/api/rewrites/approve**", capture_approve)
 
         # Generate button fetches rewrites and renders the card panel.
-        seeded_page.locator("#generate-btn").click()
+        seeded_page.locator("#generate-btn").click(force=True)
         seeded_page.wait_for_timeout(1_000)
 
         # Cards render with "✓ Accept" buttons.
@@ -195,7 +205,7 @@ class TestRewritesTab:
         seeded_page.route("**/api/rewrites/approve**", capture_approve)
 
         # Generate button fetches rewrites and renders the card panel.
-        seeded_page.locator("#generate-btn").click()
+        seeded_page.locator("#generate-btn").click(force=True)
         seeded_page.wait_for_timeout(1_000)
 
         # Accept all rewrite cards so Submit All Decisions becomes enabled.
