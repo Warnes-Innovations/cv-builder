@@ -499,7 +499,7 @@ async function applyLayoutSettings(fontSizeValue, pageMarginValue) {
     if (!saveRes.ok) throw new Error(saveRes.error || 'save failed');
 
     if (statusEl) statusEl.textContent = 'Re-rendering…';
-    const previewRes = await apiCall('POST', '/api/cv/generate-preview', {});
+    const previewRes = await apiCall('POST', '/api/cv/generate-preview', { content_revision: getCurrentContentRevision() });
     if (previewRes.ok && previewRes.html) {
       displayLayoutPreview(previewRes.html);
       setPreviewHtml(previewRes.html);
@@ -578,6 +578,7 @@ async function submitLayoutInstruction(instructionText) {
     if (useSessionEndpoint) {
       response = await apiCall('POST', '/api/cv/layout-refine', {
         instruction: instructionText,
+        content_revision: getCurrentContentRevision(),
       });
     } else {
       response = await apiCall('POST', '/api/layout-instruction', {
@@ -692,7 +693,7 @@ async function _fetchAndDisplayLayoutPreview() {
   // legacy generate_cv path that does not call generate-preview itself.
   if (!isConfirmed) {
     try {
-      const data = await apiCall('POST', '/api/cv/generate-preview', {});
+      const data = await apiCall('POST', '/api/cv/generate-preview', { content_revision: getCurrentContentRevision() });
       if (data.ok && data.html) {
         displayLayoutPreview(data.html);
         setPreviewHtml(data.html);
@@ -924,7 +925,7 @@ async function confirmLayoutReview() {
       throw new Error('Preview is outdated. Regenerate the preview before confirming layout.');
     }
 
-    const confirmRes = await apiCall('POST', '/api/cv/confirm-layout', {});
+    const confirmRes = await apiCall('POST', '/api/cv/confirm-layout', { content_revision: getCurrentContentRevision() });
     if (!confirmRes?.ok) {
       throw new Error(confirmRes?.error || 'Failed to confirm layout.');
     }
