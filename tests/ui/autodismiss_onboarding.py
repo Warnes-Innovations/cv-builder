@@ -10,7 +10,9 @@ def _dismiss_onboarding_modal(page: Page):
     with the page elements.
     """
     try:
-        page.evaluate("() => { const el = document.getElementById('onboarding-modal-overlay'); if (el) el.style.display = 'none'; }")
+        # Remove existing overlay and install a MutationObserver to remove any
+        # future onboarding overlay that may be inserted after page load.
+        page.evaluate("() => { const remove = () => { const el = document.getElementById('onboarding-modal-overlay'); if (el) el.remove(); }; remove(); const mo = new MutationObserver(remove); mo.observe(document.documentElement, { childList: true, subtree: true }); }")
     except Exception:
         pass
     yield
