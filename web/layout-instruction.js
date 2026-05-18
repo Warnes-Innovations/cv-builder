@@ -19,6 +19,7 @@ import { appendMessage, appendMessageHtml } from './message-queue.js';
 import { switchTab } from './review-table-base.js';
 import { stateManager, GENERATION_STATE_EVENT, GENERATION_PHASES } from './state-manager.js';
 import { escapeHtml } from './utils.js';
+import { confirmReRunPhase } from './workflow-steps.js';
 
 let dismissedStaleCalloutRevision = null;
 
@@ -226,8 +227,12 @@ function refreshLayoutReviewState() {
 
   renderLayoutPreviewStatus();
   renderLayoutStaleCallout();
+  renderDirtyPhasesCallout();
 
-  const showConfirm = generationState.previewAvailable && !freshness.isStale && !generationState.layoutConfirmed
+  const dirtyPhases = stateManager.getDirtyPhases();
+  const hasDirty = dirtyPhases.length > 0;
+
+  const showConfirm = generationState.previewAvailable && !freshness.isStale && !generationState.layoutConfirmed && !hasDirty
     ? 'block'
     : 'none';
 
@@ -237,6 +242,7 @@ function refreshLayoutReviewState() {
   if (finalBtn) {
     finalBtn.style.display = generationState.previewAvailable
       && !freshness.isStale
+      && !hasDirty
       && (generationState.layoutConfirmed || generationState.phase === 'confirmed')
       ? 'block'
       : 'none';
@@ -259,20 +265,25 @@ async function initiateLayoutInstructions() {
           <h3>Current Layout Preview</h3>
           <div id="layout-preview-status" class="layout-preview-status" style="display:none;"></div>
           <div class="preview-iframe-container">
+            <div id="preview-loading-overlay" class="preview-loading-overlay" style="display:none;">
+              <div class="spinner"></div>
+              <p class="preview-loading-label">Rendering preview…</p>
+              <p id="preview-loading-log" class="preview-loading-log"></p>
+            </div>
             <iframe id="layout-preview" class="layout-preview-iframe" title="CV Layout Preview" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>
           </div>
         </div>
 
         <div class="layout-input-pane">
           <h3>Layout Review</h3>
-          <p class="layout-scope-label">💡 Layout changes only — approved text is never modified</p>
+          <p class="layout-scope-label">💡 Describe a layout or text change — the AI will determine the right approach.</p>
 
           <div id="layout-stale-callout" class="layout-stale-callout" style="display:none;">
             <h4>Layout preview is out of date</h4>
             <p>You changed CV content after the current preview was generated. Regenerate the preview before trusting page count, layout feedback, or final files.</p>
             <div class="layout-stale-callout-actions">
-              <button id="regenerate-layout-preview-btn" class="btn btn-warning layout-action-btn">Regenerate preview</button>
-              <button id="dismiss-layout-stale-btn" class="btn btn-secondary layout-action-btn">Keep reviewing current preview</button>
+              <button id="regenerate-layout-preview-btn" class="btn-warning layout-action-btn">Regenerate preview</button>
+              <button id="dismiss-layout-stale-btn" class="btn-secondary layout-action-btn">Keep reviewing current preview</button>
             </div>
           </div>
 
@@ -304,21 +315,21 @@ async function initiateLayoutInstructions() {
               style="width:72px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
               title="Controls the print page margins for all PDF pages."
             />
-            <button id="apply-layout-settings-btn" class="btn btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
+            <button id="apply-layout-settings-btn" class="btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
             <span id="layout-settings-status" style="font-size:0.8em; color:#64748b;"></span>
           </div>
 
           <textarea
             id="instruction-input"
             class="layout-instruction-textarea"
-            placeholder="e.g., Move Publications section after Skills&#10;or: Make the Summary section smaller&#10;or: Keep the Genentech entry on one page"
-            rows="8"></textarea>
+            placeholder="e.g., Move Publications section after Skills&#10;or: Shorten the second bullet under Genentech to focus on impact&#10;or: Keep the Genentech entry on one page"
+            rows="6"></textarea>
 
-          <button id="apply-instruction-btn" class="btn btn-primary layout-action-btn">
-            Apply Layout Changes
+          <button id="apply-instruction-btn" class="btn-primary layout-action-btn">
+            Apply
           </button>
 
-          <button id="confirm-layout-btn" class="btn btn-success layout-action-btn" style="display:none;">
+          <button id="confirm-layout-btn" class="continue-btn layout-action-btn" style="display:none;">
             Confirm Layout
           </button>
 
@@ -337,13 +348,30 @@ async function initiateLayoutInstructions() {
             <div id="instruction-history" class="instruction-history-list"></div>
           </div>
 
-          <button id="confirm-layout-btn-2" class="btn btn-success layout-action-btn" style="display:none;">
+          <button id="confirm-layout-btn-2" class="continue-btn layout-action-btn" style="display:none;">
             Confirm Layout
           </button>
 
-          <button id="proceed-to-finalise-btn" class="btn btn-success layout-action-btn" style="display: none;">
+          <button id="proceed-to-finalise-btn" class="continue-btn layout-action-btn" style="display: none;">
             Generate Final Files
           </button>
+
+          <div id="content-proposal-processing" class="processing-indicator" style="display:none;">
+            <div class="spinner"></div>
+            <p>Generating content proposals…</p>
+          </div>
+          <div id="content-proposals-panel" style="display:none;"></div>
+          <button id="apply-content-changes-btn" class="btn-warning layout-action-btn" style="display:none;">
+            Apply Approved Changes
+          </button>
+
+          <div id="dirty-phases-callout" class="dirty-phases-callout" style="display:none;">
+            <h4>⚠ Content Changed — Re-run Required</h4>
+            <p>Text edits have been staged. The current preview no longer reflects the updated content.</p>
+            <div class="layout-stale-callout-actions">
+              <button id="return-to-earliest-dirty-btn" class="btn-warning layout-action-btn">↻ Return to Generate CV</button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -424,10 +452,10 @@ function setupLayoutInstructionListeners() {
     applyBtn.addEventListener('click', () => {
       const instruction = instructionInput.value.trim();
       if (!instruction) {
-        appendMessage('system', '⚠️ Please enter a layout instruction before submitting.');
+        appendMessage('system', '⚠️ Please enter an instruction before submitting.');
         return;
       }
-      submitLayoutInstruction(instruction);
+      submitSmartInstruction(instruction);
     });
   }
 
@@ -471,6 +499,21 @@ function setupLayoutInstructionListeners() {
         e.preventDefault();
         applyBtn?.click();
       }
+    });
+  }
+
+  // Content proposal and dirty-phase buttons
+  const applyContentChangesBtn = document.getElementById('apply-content-changes-btn');
+  const returnToDirtyBtn       = document.getElementById('return-to-earliest-dirty-btn');
+
+  if (applyContentChangesBtn) {
+    applyContentChangesBtn.addEventListener('click', applyAcceptedProposals);
+  }
+
+  if (returnToDirtyBtn) {
+    returnToDirtyBtn.addEventListener('click', () => {
+      const step = stateManager.getEarliestDirtyStep() || 'generate';
+      confirmReRunPhase(step);
     });
   }
 }
@@ -521,6 +564,94 @@ async function applyLayoutSettings(fontSizeValue, pageMarginValue) {
     if (statusEl) { statusEl.textContent = '✅ Applied'; setTimeout(() => { statusEl.textContent = ''; }, 2000); }
   } catch (err) {
     if (statusEl) statusEl.textContent = `❌ ${err.message}`;
+  }
+}
+
+/**
+ * Submit an instruction through the unified smart-instruction endpoint.
+ * The backend classifies the instruction as layout or content and delegates
+ * to the appropriate handler. The response is routed accordingly here.
+ */
+async function submitSmartInstruction(instructionText) {
+  const currentHtml = getCvArtifacts()['*.html'] || '';
+  // Snapshot state for undo before applying.
+  _layoutUndoStack.push({
+    html: currentHtml,
+    instructions: (window.layoutInstructions || []).map(i => ({ ...i })),
+  });
+  if (_layoutUndoStack.length > _UNDO_STACK_MAX) {
+    _layoutUndoStack.shift();
+  }
+
+  try {
+    showProcessing(true);
+    const response = await apiCall('POST', '/api/cv/smart-instruction', { instruction: instructionText });
+
+    if (!response.ok) {
+      if (response.error === 'clarify') {
+        showClarificationDialog(response.question, instructionText);
+      } else {
+        appendLayoutSafetyAlert(response.safety_alert);
+        let errorHtml = `⚠️ Error: ${escapeHtml(response.error)} — ${escapeHtml(response.details || '')}`;
+        if (response.raw_response !== undefined) {
+          errorHtml += `<br><details style="margin-top:6px"><summary style="cursor:pointer;font-size:0.85em;color:#64748b">Raw LLM response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:4px">${escapeHtml(response.raw_response || '(empty)')}</pre></details>`;
+        }
+        appendMessageHtml('system', errorHtml);
+      }
+      return;
+    }
+
+    const instructionType = response.instruction_type || 'layout';
+
+    if (instructionType === 'content') {
+      // Content path: render proposals for review
+      const proposals = response.proposals || [];
+      if (proposals.length === 0) {
+        appendMessage('system', '⚠️ No content proposals were generated. Try rephrasing your instruction.');
+      } else {
+        renderContentProposals(proposals);
+        const panel = document.getElementById('content-proposals-panel');
+        if (panel) panel.style.display = 'block';
+      }
+      document.getElementById('instruction-input').value = '';
+      return;
+    }
+
+    // Layout path: update preview
+    const newHtml = response.html;
+    displayLayoutPreview(newHtml);
+    appendLayoutSafetyAlert(response.safety_alert);
+    setPreviewHtml(newHtml);
+    dismissedStaleCalloutRevision = null;
+    stateManager?.markPreviewGenerated?.({
+      previewAvailable: true,
+      previewOutputs: response.preview_outputs || null,
+      layoutConfirmed: false,
+      pageCountEstimate: response.page_count_estimate ?? null,
+      pageCountExact: response.page_count_exact ?? null,
+      pageCountConfidence: response.page_count_confidence ?? null,
+      pageCountSource: response.page_count_source || null,
+      pageWarning: Boolean(response.page_length_warning),
+      previewGeneratedAt: response.preview_generated_at || new Date().toISOString(),
+      previewRequestId: response.preview_request_id || null,
+    });
+    renderPreviewOutputStatus(response.preview_outputs || null);
+
+    const instruction = {
+      timestamp: new Date().toLocaleTimeString(),
+      instruction_text: instructionText,
+      change_summary: response.summary,
+      confirmation: true,
+    };
+    addToInstructionHistory(instruction);
+    showConfirmationMessage(`${response.safety_alert?.flagged ? '⚠️ ' : '✅ '}${response.summary}`);
+    document.getElementById('instruction-input').value = '';
+    refreshLayoutReviewState();
+
+  } catch (error) {
+    appendMessage('system', `❌ Failed to apply instruction: ${error.message}`);
+  } finally {
+    showProcessing(false);
   }
 }
 
@@ -687,40 +818,46 @@ async function _fetchAndDisplayLayoutPreview() {
   const isConfirmed = genState.phase === GENERATION_PHASES.CONFIRMED
                    || genState.phase === GENERATION_PHASES.FINAL_COMPLETE;
 
-  // Fresh-render path: always populate generation_state.preview_html on the backend
-  // so that confirm-layout succeeds. Covers both the normal staged path and the
-  // legacy generate_cv path that does not call generate-preview itself.
-  if (!isConfirmed) {
+  showPreviewLoading(true, isConfirmed ? 'Loading saved layout…' : 'Generating preview…');
+  try {
+    // Fresh-render path: always populate generation_state.preview_html on the backend
+    // so that confirm-layout succeeds. Covers both the normal staged path and the
+    // legacy generate_cv path that does not call generate-preview itself.
+    if (!isConfirmed) {
+      try {
+        const data = await apiCall('POST', '/api/cv/generate-preview', {});
+        if (data.ok && data.html) {
+          displayLayoutPreview(data.html);
+          setPreviewHtml(data.html);
+          dismissedStaleCalloutRevision = null;
+          stateManager?.markPreviewGenerated?.(_buildPreviewPayload(data));
+          renderPreviewOutputStatus(data.preview_outputs || null);
+          refreshLayoutReviewState();
+          return;
+        }
+      } catch (_e) {
+        // fall through to legacy disk read
+      }
+    }
+
+    // Passive restore path: load stored HTML from disk without touching generation state.
+    // Used for confirmed/final_complete layouts, or as fallback when generate-preview
+    // is unavailable (e.g. session has no job_analysis yet).
     try {
-      const data = await apiCall('POST', '/api/cv/generate-preview', {});
+      showPreviewLoading(true, 'Loading stored layout…');
+      const data = await apiCall('GET', '/api/layout-html');
       if (data.ok && data.html) {
         displayLayoutPreview(data.html);
         setPreviewHtml(data.html);
-        dismissedStaleCalloutRevision = null;
-        stateManager?.markPreviewGenerated?.(_buildPreviewPayload(data));
-        renderPreviewOutputStatus(data.preview_outputs || null);
         refreshLayoutReviewState();
         return;
       }
+      log.warn('Layout preview not available:', data.error || 'no HTML returned');
     } catch (_e) {
-      // fall through to legacy disk read
+      // no preview available
     }
-  }
-
-  // Passive restore path: load stored HTML from disk without touching generation state.
-  // Used for confirmed/final_complete layouts, or as fallback when generate-preview
-  // is unavailable (e.g. session has no job_analysis yet).
-  try {
-    const data = await apiCall('GET', '/api/layout-html');
-    if (data.ok && data.html) {
-      displayLayoutPreview(data.html);
-      setPreviewHtml(data.html);
-      refreshLayoutReviewState();
-      return;
-    }
-    log.warn('Layout preview not available:', data.error || 'no HTML returned');
-  } catch (_e) {
-    // no preview available
+  } finally {
+    showPreviewLoading(false);
   }
 }
 
@@ -731,6 +868,7 @@ function displayLayoutPreview(html) {
   const preview = document.getElementById('layout-preview');
   if (!preview) return;
 
+  showPreviewLoading(false);
   preview.onload = () => fitLayoutPreviewToPane(preview);
   preview.setAttribute('sandbox', 'allow-same-origin');
   preview.setAttribute('referrerpolicy', 'no-referrer');
@@ -802,7 +940,7 @@ function renderInstructionHistory() {
       <div class="instruction-time">${instruction.timestamp || ''}</div>
       <div class="instruction-text">${escapeHtml(instruction.instruction_text || '')}</div>
       <div class="instruction-summary"><em>${escapeHtml(instruction.change_summary || '')}</em></div>
-      <button class="btn btn-small" onclick="undoInstruction(${index})">
+      <button class="action-btn-sm" onclick="undoInstruction(${index})">
         Undo
       </button>
     `;
@@ -843,19 +981,33 @@ async function handleRegeneratePreviewAction() {
     showConfirmationMessage('✅ Preview regenerated from the latest content.');
   } catch (error) {
     appendMessage('system', `❌ Failed to regenerate preview: ${error.message}`);
+    showPreviewLoading(false);
   } finally {
     showProcessing(false);
   }
 }
 
 /**
- * Show processing spinner.
+ * Show processing spinner (right-pane indicator for layout-instruction apply).
  */
 function showProcessing(show) {
   const indicator = document.getElementById('processing-indicator');
   if (indicator) {
     indicator.style.display = show ? 'block' : 'none';
   }
+}
+
+/**
+ * Show or hide the preview-area loading overlay.
+ * @param {boolean} show
+ * @param {string} [logText] Optional status line shown below the spinner.
+ */
+function showPreviewLoading(show, logText = '') {
+  const overlay = document.getElementById('preview-loading-overlay');
+  if (!overlay) return;
+  overlay.style.display = show ? 'flex' : 'none';
+  const logEl = document.getElementById('preview-loading-log');
+  if (logEl) logEl.textContent = logText;
 }
 
 /**
@@ -1034,6 +1186,138 @@ if (typeof window !== 'undefined') {
   window.addEventListener(GENERATION_STATE_EVENT, refreshLayoutReviewState);
 }
 
+// ── Content proposal functions ────────────────────────────────────────────────
+
+/**
+ * Submit a natural-language content edit request to the backend and render proposals.
+ */
+async function submitContentProposal() {
+  const input      = document.getElementById('instruction-input');
+  const processing = document.getElementById('content-proposal-processing');
+  const panel      = document.getElementById('content-proposals-panel');
+
+  const instruction = input?.value.trim();
+  if (!instruction) {
+    appendMessage('system', '⚠️ Please describe the content change you want before submitting.');
+    return;
+  }
+
+  if (processing) processing.style.display = 'flex';
+  if (panel)       panel.style.display = 'none';
+
+  try {
+    const res = await apiCall('POST', '/api/cv/propose-content-change', { instruction });
+    if (!res?.ok) {
+      appendMessage('system', `❌ Could not generate proposals: ${res?.error || 'Unknown error'}`);
+      return;
+    }
+    const proposals = res.proposals || [];
+    if (proposals.length === 0) {
+      appendMessage('system', '⚠️ No proposals were generated. Try rephrasing your instruction.');
+      return;
+    }
+    renderContentProposals(proposals);
+    if (panel) panel.style.display = 'block';
+  } catch (err) {
+    appendMessage('system', `❌ Network error submitting content proposal: ${err.message}`);
+  } finally {
+    if (processing) processing.style.display = 'none';
+  }
+}
+
+/**
+ * Render a list of content proposals as reviewable cards inside #content-proposals-panel.
+ * @param {Array<{id, type, location, original, proposed, reason}>} proposals
+ */
+function renderContentProposals(proposals) {
+  const panel = document.getElementById('content-proposals-panel');
+  if (!panel) return;
+
+  const applyBtn = document.getElementById('apply-content-changes-btn');
+
+  panel.innerHTML = `
+    <p class="content-proposals-heading">${proposals.length} proposal${proposals.length !== 1 ? 's' : ''} — approve the changes you want to apply:</p>
+    ${proposals.map((p, i) => `
+      <div class="content-proposal-card" data-proposal-id="${escapeHtml(p.id)}" data-proposal-index="${i}">
+        <div class="proposal-meta">
+          <span class="proposal-type-badge">${p.type === 'summary' ? 'Summary' : 'Bullet'}</span>
+          <span class="proposal-location">${escapeHtml(p.location)}</span>
+        </div>
+        <div class="proposal-diff">
+          <div class="proposal-original"><strong>Before:</strong> ${escapeHtml(p.original)}</div>
+          <div class="proposal-proposed"><strong>After:</strong> ${escapeHtml(p.proposed)}</div>
+        </div>
+        ${p.reason ? `<div class="proposal-reason"><em>${escapeHtml(p.reason)}</em></div>` : ''}
+        <div class="proposal-actions">
+          <label class="proposal-approve-label">
+            <input type="checkbox" class="proposal-approve-checkbox" checked>
+            Approve this change
+          </label>
+        </div>
+      </div>`).join('')}
+  `;
+
+  // Store proposals for later retrieval
+  panel.dataset.proposals = JSON.stringify(proposals);
+
+  if (applyBtn) applyBtn.style.display = 'block';
+}
+
+/**
+ * Collect approved proposals and POST them to /api/cv/apply-content-changes.
+ * Updates dirty-phase state and shows the return callout.
+ */
+async function applyAcceptedProposals() {
+  const panel    = document.getElementById('content-proposals-panel');
+  const applyBtn = document.getElementById('apply-content-changes-btn');
+
+  const allProposals = JSON.parse(panel?.dataset.proposals || '[]');
+  const checkboxes   = panel?.querySelectorAll('.proposal-approve-checkbox') || [];
+
+  const accepted = allProposals.filter((_, i) => checkboxes[i]?.checked);
+  if (accepted.length === 0) {
+    appendMessage('system', '⚠️ No proposals approved. Tick at least one change to apply.');
+    return;
+  }
+
+  if (applyBtn) applyBtn.disabled = true;
+
+  try {
+    const res = await apiCall('POST', '/api/cv/apply-content-changes', { accepted });
+    if (!res?.ok) {
+      appendMessage('system', `❌ Failed to apply content changes: ${res?.error || 'Unknown error'}`);
+      return;
+    }
+
+    stateManager.setDirtyPhases(
+      res.dirty_phases || ['generate', 'layout'],
+      res.earliest_dirty_step || 'generate',
+    );
+
+    appendMessage('assistant', `✅ ${res.applied_count} content change${res.applied_count !== 1 ? 's' : ''} staged. Return to Generate CV to apply them.`);
+
+    // Clear the proposal panel
+    if (panel) { panel.innerHTML = ''; panel.style.display = 'none'; panel.dataset.proposals = '[]'; }
+    if (applyBtn) applyBtn.style.display = 'none';
+
+    refreshLayoutReviewState();
+  } catch (err) {
+    appendMessage('system', `❌ Network error applying content changes: ${err.message}`);
+  } finally {
+    if (applyBtn) applyBtn.disabled = false;
+  }
+}
+
+/**
+ * Show or hide the dirty-phases callout based on stateManager.getDirtyPhases().
+ */
+function renderDirtyPhasesCallout() {
+  const callout = document.getElementById('dirty-phases-callout');
+  if (!callout) return;
+  const dirty = stateManager.getDirtyPhases();
+  callout.style.display = dirty.length > 0 ? 'block' : 'none';
+}
+
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
   initiateLayoutInstructions,
@@ -1046,10 +1330,16 @@ export {
   renderLayoutPreviewStatus,
   displayLayoutPreview,
   submitLayoutInstruction,
+  submitSmartInstruction,
   // helpers exported for unit tests
   showProcessing,
   showConfirmationMessage,
   renderInstructionHistory,
   addToInstructionHistory,
   undoInstruction,
+  // content proposal
+  submitContentProposal,
+  renderContentProposals,
+  applyAcceptedProposals,
+  renderDirtyPhasesCallout,
 };
