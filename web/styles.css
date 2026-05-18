@@ -307,6 +307,55 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .message.user .msg-toggle-btn { color: #bfdbfe; border-color: rgba(255,255,255,0.4); }
 .message.user .msg-toggle-btn:hover { background: rgba(255,255,255,0.15); }
 
+/* ===== LLM RAW INTERACTION LOG ===== */
+.message.llm-raw .content {
+  background: #0f172a;
+  color: #94a3b8;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border-left: 3px solid #334155;
+  display: block;
+  max-width: 90%;
+  font-size: 0.82em;
+}
+.llm-log-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+.llm-log-icon  { font-size: 1em; }
+.llm-log-label { color: #e2e8f0; }
+.llm-log-meta  { font-size: 0.8em; color: #64748b; }
+.llm-log-ts    { font-size: 0.8em; color: #475569; margin-left: auto; }
+.llm-log-section { margin-top: 8px; }
+.llm-log-section-label {
+  font-size: 0.75em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #475569;
+  margin-bottom: 4px;
+}
+.llm-log-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #020617;
+  color: #64748b;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 0.85em;
+  margin: 0;
+}
+.message.llm-raw .msg-toggle-btn {
+  color: #475569;
+  border-color: #1e293b;
+}
+.message.llm-raw .msg-toggle-btn:hover { background: #1e293b; }
+
 /* ===== ANALYSIS FORMATTING ===== */
 .job-analysis { background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 16px; margin: 8px 0; border-radius: 8px; }
 .job-analysis h3 { margin: 0 0 12px; color: #0c4a6e; font-size: 16px; }
@@ -1202,8 +1251,12 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .layout-instruction-panel { display: flex; gap: 20px; height: calc(100vh - 240px); min-height: 500px; align-items: stretch; }
 .layout-preview-pane { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
 .layout-preview-pane h3 { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px; }
-.preview-iframe-container { flex: 1; min-width: 0; border: 1px solid #e2e8f0; border-radius: 8px; overflow: auto; background: #f8fafc; }
+.preview-iframe-container { position: relative; flex: 1; min-width: 0; border: 1px solid #e2e8f0; border-radius: 8px; overflow: auto; background: #f8fafc; }
 .layout-preview-iframe { width: 100%; height: 100%; border: none; }
+.preview-loading-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #f8fafc; border-radius: 8px; z-index: 2; }
+.preview-loading-overlay .spinner { width: 28px; height: 28px; border: 3px solid #cbd5e1; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+.preview-loading-overlay .preview-loading-label { font-size: 0.9em; color: #475569; margin: 0; }
+.preview-loading-log { margin-top: 4px; font-size: 0.8em; color: #94a3b8; text-align: center; max-width: 260px; }
 .layout-input-pane { width: 320px; flex: 0 0 320px; display: flex; flex-direction: column; gap: 12px; }
 .layout-input-pane h3 { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 0; }
 .preview-output-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
@@ -1227,6 +1280,27 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .layout-stale-callout h4 { margin: 0 0 6px; font-size: 14px; color: #92400e; }
 .layout-stale-callout p { margin: 0; font-size: 13px; line-height: 1.5; color: #78350f; }
 .layout-stale-callout-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+
+/* ── Content proposal / dirty-phase styles ────────────────────────────────── */
+.content-edit-divider { margin: 18px 0; border: none; border-top: 1px solid #e2e8f0; }
+.content-edit-section { border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; background: #f8fafc; margin-top: 4px; display: flex; flex-direction: column; gap: 10px; }
+.content-edit-heading { margin: 0; font-size: 13px; font-weight: 600; color: #374151; }
+.content-edit-scope-label { font-size: 12px; color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 6px 10px; margin: 0; }
+.content-proposals-heading { font-size: 12px; font-weight: 600; color: #374151; margin: 0 0 6px; }
+.content-proposal-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.proposal-meta { display: flex; gap: 8px; align-items: center; }
+.proposal-type-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; background: #e0f2fe; color: #0369a1; border-radius: 4px; padding: 1px 6px; }
+.proposal-location { font-size: 11px; color: #6b7280; font-family: monospace; }
+.proposal-diff { display: flex; flex-direction: column; gap: 4px; }
+.proposal-original { color: #991b1b; font-size: 12px; line-height: 1.5; }
+.proposal-proposed { color: #166534; font-size: 12px; font-weight: 500; line-height: 1.5; }
+.proposal-reason { font-size: 11px; color: #6b7280; font-style: italic; }
+.proposal-actions { display: flex; align-items: center; gap: 8px; padding-top: 4px; border-top: 1px solid #f1f5f9; }
+.proposal-approve-label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: #374151; }
+.dirty-phases-callout { background: #fff7ed; border-left: 4px solid #f97316; border-radius: 8px; padding: 14px 16px; color: #7c2d12; margin-top: 12px; }
+.dirty-phases-callout h4 { margin: 0 0 6px; font-size: 14px; color: #9a3412; }
+.dirty-phases-callout p { margin: 0 0 10px; font-size: 13px; line-height: 1.5; color: #7c2d12; }
+.step-stale-badge { background: #fed7aa; color: #7c2d12; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 600; vertical-align: middle; }
 .layout-preview-status { margin-bottom: 8px; }
 .layout-preview-status-card { padding: 10px 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc; }
 .layout-preview-status-card.fresh { background: #f0fdf4; border-color: #bbf7d0; }

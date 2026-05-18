@@ -175,10 +175,13 @@ function _renderDownloadGrid(files, checks, summary) {
         </div>
         ${blocked
           ? `<button class="btn-download" disabled style="${blockedStyle}">Blocked</button>`
-          : `<a href="/api/download/${encodeURIComponent(file.filename)}"
-                class="download-link" download="${escapeHtml(file.filename)}">
-              <button class="btn-download">Download</button>
-            </a>`}
+          : (() => {
+              const _sid = typeof getSessionIdFromURL === 'function' ? getSessionIdFromURL() : null;
+              const _sp  = _sid ? `?session_id=${encodeURIComponent(_sid)}` : '';
+              return `<a href="/api/download/${encodeURIComponent(file.filename)}${_sp}"
+                class="btn-download download-link" download="${escapeHtml(file.filename)}"
+                style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">Download</a>`;
+            })()}
       </div>`;
   }
 
@@ -318,6 +321,7 @@ async function populateDownloadTab(cvData) {
   content.innerHTML = `${html}<p style="color:#6b7280;margin-top:16px;font-size:0.9em;">Analysing bullet persuasiveness…</p>`;
   html += await _fetchPersuasionHtml();
   html += _renderRefinementPanel();
+  html += '<div class="nav-buttons nav-end" style="margin-top:16px;"><button class="continue-btn" onclick="switchTab(\'layout\')">Open Layout Review →</button></div>';
   content.innerHTML = html;
 }
 

@@ -9,6 +9,7 @@ Session management routes — list, load, save, delete, rename, trash, new/claim
 """
 import json
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,34 @@ from flask import Blueprint, jsonify, request
 from werkzeug.utils import safe_join
 
 logger = logging.getLogger(__name__)
+
+
+def _load_json_guarded(path, timeout_sec: float = 0.5):
+    """Read and parse JSON from *path* on a daemon thread.
+
+    Raises ``TimeoutError`` if the file-system call stalls longer than
+    *timeout_sec* (e.g. a network-mounted drive that is offline).
+    Any other exception from the read is re-raised unchanged.
+    """
+    result: list = [None]
+    error:  list = [None]
+
+    def _read() -> None:
+        try:
+            with open(path) as f:
+                result[0] = json.load(f)
+        except Exception as exc:  # noqa: BLE001
+            error[0] = exc
+
+    thread = threading.Thread(target=_read, daemon=True)
+    thread.start()
+    thread.join(timeout_sec)
+    if thread.is_alive():
+        raise TimeoutError(f"Timed out reading {path} after {timeout_sec}s")
+    if error[0] is not None:
+        raise error[0]
+    return result[0]
+
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
@@ -99,8 +128,7 @@ def create_blueprint(deps):
                     if trash_dir in session_file.parents:
                         continue
                     try:
-                        with open(session_file) as f:
-                            data = json.load(f)
+                        data = _load_json_guarded(session_file)
                         state = data.get('state', {})
                         sessions.append(SessionItem(
                             path=str(session_file),
@@ -131,8 +159,7 @@ def create_blueprint(deps):
                     if trash_dir in session_file.parents:
                         continue
                     try:
-                        with open(session_file) as f:
-                            data = json.load(f)
+                        data = _load_json_guarded(session_file)
                         state = data.get('state', {})
                         items.append({
                             "kind":         "session",
@@ -258,8 +285,7 @@ def create_blueprint(deps):
             if trash_dir.exists():
                 for session_file in sorted(trash_dir.rglob("session.json"), reverse=True):
                     try:
-                        with open(session_file) as f:
-                            data = json.load(f)
+                        data = _load_json_guarded(session_file)
                         state = data.get('state', {})
                         items.append({
                             "path":          str(session_file),
@@ -430,6 +456,39 @@ def create_blueprint(deps):
         return jsonify({
             "history": conversation.conversation_history,
             "phase": conversation.state.get("phase"),
+        })
+
+    @bp.get("/api/llm-log")
+    def llm_log():
+        """Return new LLM interaction log entries for this session.
+
+        Query params:
+            since (int): Return only interactions at index >= since.  Defaults to 0.
+
+        Response:
+            interactions: list of {timestamp, messages, response}
+            total:        total number of logged interactions (use as next `since`)
+        """
+        entry = _get_session()
+        try:
+            since = int(request.args.get('since', 0))
+        except (ValueError, TypeError):
+            since = 0
+        llm = getattr(entry.manager, 'llm', None)
+        if llm is None:
+            return jsonify({"interactions": [], "total": 0})
+        interactions = llm.get_interaction_log(since=since)
+        total = llm.get_interaction_log_length()
+        return jsonify({
+            "interactions": [
+                {
+                    "timestamp": ix["timestamp"],
+                    "messages":  ix["messages"],
+                    "response":  ix["response"],
+                }
+                for ix in interactions
+            ],
+            "total": total,
         })
 
     # ── Multi-tab session management ─────────────────────────────────────────
