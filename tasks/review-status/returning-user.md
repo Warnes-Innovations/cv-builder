@@ -7,8 +7,10 @@ For commercial licensing, contact greg@warnes-innovations.com
 -->
 
 # Returning User Review Status
-**Last Updated:** 2026-04-20 17:30 ET
-**Executive Summary:** Session restoration is functionally sound — context, phase, and decisions are recovered automatically — but gaps exist in surfacing a human-readable summary of what was restored and in communicating the distinction between view-navigation and LLM re-computation to users who return after an interruption.
+
+**Last Updated:** 2026-04-22 16:30 ET
+
+**Executive Summary:** Session restoration is functionally sound — job context, phase, and decisions are recovered automatically on return. Since the previous review (2026-04-20), one previously-flagged terminology defect has been corrected ("Delete" → "Move to Trash") and Bootstrap tooltips have been added to workflow step pills to partially explain navigation versus re-computation. Four medium-priority gaps remain open: no restored-decisions summary on return, the ↻ re-run icon is keyboard-inaccessible by default, abbreviated phase labels are opaque, and the header rename still uses the browser's native `prompt()`. A new low-severity finding has been added: the "Move to Trash" action in the sessions modal executes without a confirmation dialog.
 
 ---
 
@@ -42,10 +44,10 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 ⚠️ **Partial** — Two distinct mechanisms exist:
 
-1. **Step-click (view navigation):** `handleStepClick(step)` (`web/workflow-steps.js:712`) simply calls `switchTab()` without changing backend phase and without showing any warning. This is technically safe (no state change), but provides no explanation to the user.
+1. **Step-click (view navigation):** `handleStepClick(step)` (`web/workflow-steps.js:712`) simply calls `switchTab()` without changing backend phase and without showing any warning. This is technically safe (no state change). Bootstrap tooltips via `_getStepTooltip()` and `_updateViewingIndicator()` (`web/workflow-steps.js:195-253`) now show `'Click to view'` (on completed non-active steps) and `'Active step — click to return'` (on browsing-away steps). However, the tooltip is hover-only and provides no persistent on-screen label; keyboard-only and touch users receive no explanation.
 2. **↻ Re-run (LLM recomputation):** `confirmReRunPhase(step)` (`web/workflow-steps.js:182`) calls `_showReRunConfirmModal(step, 'rerun', ...)` which lists downstream stages that have been completed and states "All existing approvals and rewrites are preserved as context." This path is correctly guarded.
 
-The modal is **not** triggered for step-click back-navigation, only for the ↻ button. The gap is that users clicking a completed step to "go back" receive no explanation that this is view-only.
+The modal is **not** triggered for step-click back-navigation, only for the ↻ button. The gap is that users clicking a completed step to "go back" receive only a transient hover tooltip, not a persistent explanation that this is view-only.
 
 #### S2.2 — Re-entry into earlier phases preserves prior context where intended
 
@@ -53,11 +55,13 @@ The modal is **not** triggered for step-click back-navigation, only for the ↻ 
 
 #### S2.3 — UI distinguishes between navigating back and rerunning/recomputing
 
-⚠️ **Partial** — The ↻ icon is hidden by default (`web/styles.css`-injected rule: `.step.completed:hover .step-rerun { opacity: 1 !important; }`, `web/workflow-steps.js:686-691`), and is only revealed on hover. Keyboard-only and touch users cannot discover it. The tooltip on ↻ is `title="Re-run ${step} with updated inputs"` (visible on hover). No persistent inline label explains the distinction between step-click (view) and ↻ (recompute) for users who have returned after an absence.
+⚠️ **Partial (improved)** — The ↻ icon is `opacity:0` by default, injected via `style="…opacity:0…"` inline on the element (`web/workflow-steps.js:668`) with the CSS `.step.completed:hover .step-rerun { opacity: 1 !important; }` applied at runtime (`web/workflow-steps.js:687`). Only on hover does ↻ appear. Keyboard-only and touch users cannot discover it. The element carries `title="Re-run ${step} with updated inputs"` (standard HTML title, not a Bootstrap tooltip).
+
+Since the previous review, Bootstrap tooltips via `_getStepTooltip()` + `_updateViewingIndicator()` (`web/workflow-steps.js:195-253`) now show `'Click ↻ to rerun from here'` when the user is *currently viewing* a completed step, and `'Click to view'` on other completed steps. This is an improvement but still hover-dependent.
 
 **Failure modes:**
 - "Users unintentionally overwriting downstream work" — ✅ mitigated: step-click does not change phase; re-run requires ↻ + confirmation dialog.
-- "Re-run behavior visually indistinguishable from navigation" — ⚠️ partially fails: the ↻ button is present but invisible by default; the confirmation modal titles differ ("↻ Re-run X?" vs. "← Navigate back to X?"), but users must discover ↻ first.
+- "Re-run behavior visually indistinguishable from navigation" — ⚠️ partially addressed: Bootstrap tooltip on the step pill now distinguishes 'Click to view' from 'Click ↻ to rerun from here', but this distinction remains hover-only and invisible to keyboard/touch users.
 
 **Acceptance criteria:**
 - "Returning users receive sufficient warning before downstream state changes" — ✅ for re-run path.
@@ -98,13 +102,14 @@ The returning user persona does not directly evaluate generated CV files; the re
 
 | Term | Location | Assessment |
 |------|----------|------------|
-| "Delete" button in sessions modal | `web/session-switcher-ui.js:85` | ❌ Misleading — performs `POST /api/delete-session` which moves to Trash, not permanent delete. Label should read "Move to Trash". |
+| "Move to Trash" button in sessions modal | `web/session-switcher-ui.js:85` | ✅ Fixed (updated from "Delete" since prior review) — label now reads "Move to Trash"; `title` attribute also says "Move session to Trash". The reversible soft-delete behavior is now accurately communicated. |
 | "Done" as phase label | `web/utils.js:283` (`SESSION_PHASE_LABELS_SHORT`) | ⚠️ Misleading — `refinement` maps to "Done" in the compact session switcher, but a session in `refinement` phase is actively being refined, not necessarily complete. |
 | "Custom" as phase label | `web/utils.js:277` | ⚠️ Ambiguous abbreviation — "Custom" for `customization` phase is compact but non-obvious to returning users. |
 | "↻" re-run icon | `web/workflow-steps.js:672-676` | ⚠️ Hidden by default — discoverable only via hover; not labelled. |
 | "Takeover" | `web/session-switcher-ui.js:180-183` | ✅ Clear — ownership conflict dialog explains the action. |
 | "Current tab" / "Owned by another tab" / "Unclaimed" | `web/session-manager.js:82-97` | ✅ Clear ownership terminology. |
-| `promptRenameCurrentSession()` uses `prompt()` | `web/session-manager.js:657` | ⚠️ Browser `prompt()` can be silently suppressed by "Prevent this page from creating additional dialogs" — inconsistent with the custom `confirmDialog()` used elsewhere. |
+| `promptRenameCurrentSession()` uses `prompt()` | `web/session-manager.js:737` | ⚠️ Browser `prompt()` can be silently suppressed by "Prevent this page from creating additional dialogs" — inconsistent with the custom `confirmDialog()` used elsewhere. |
+| "Move to Trash" in sessions modal has no confirmation | `web/session-switcher-ui.js:317-332` | ⚠️ `_deleteSessionFromModal()` calls `fetch('/api/delete-session', …)` directly with no `confirmDialog()`. The action is reversible via Trash, but users receive no in-app confirmation before the session disappears from the list. |
 
 ---
 
@@ -114,28 +119,31 @@ The returning user persona does not directly evaluate generated CV files; the re
 After session restore, there is no human-readable summary of what was recovered (e.g. "4 experiences selected, 12 skills, 7 rewrites approved"). The user must navigate to each tab individually to verify their prior work.
 > Proposed story: "As a returning user, I want a brief summary of my restored session decisions so that I can quickly verify my prior work is intact before continuing."
 
-**GAP-R2 (HIGH) — "Delete" button label misrepresents Trash behavior**
-The "Delete" action in the sessions modal is labelled "Delete" but performs a soft-delete to Trash (`web/session-switcher-ui.js:85`, `/api/delete-session`). A user who "deletes" a session may not realize it is recoverable from Trash.
-> Proposed story: "As a returning user, I want the session delete action to clearly indicate whether deletion is permanent or reversible so that I do not accidentally lose work."
+**GAP-R2 (RESOLVED ✅) — "Delete" label corrected to "Move to Trash"**
+Previously flagged as HIGH. The button at `web/session-switcher-ui.js:85` was relabelled from "Delete" to "Move to Trash" since the 2026-04-20 review. The `title` attribute also reads "Move session to Trash". The Trash view with Restore and Delete Forever actions provides the full recovery path. No further action needed on this specific gap.
+
+**GAP-R2b (LOW) — "Move to Trash" executes without confirmation**
+The `_deleteSessionFromModal()` function (`web/session-switcher-ui.js:317`) calls the API directly with no `confirmDialog()`. While the action is reversible (session goes to Trash), a click on the red "Move to Trash" button immediately removes the session from the list with no "Are you sure?" step. Compare: "Delete Forever" (`web/session-switcher-ui.js:454`) and "Empty Trash" (`web/session-switcher-ui.js:471`) both use `confirmDialog()` before proceeding.
+> Proposed fix: Add a `confirmDialog('Move this session to Trash? You can restore it from the Trash view.')` before the API call in `_deleteSessionFromModal()`.
 
 **GAP-R3 (MEDIUM) — ↻ re-run icon is invisible until hover; not keyboard-accessible**
 The ↻ re-run button is `opacity:0` by default and reveals only on hover (`web/workflow-steps.js:686-691`). Keyboard and touch users cannot discover it. Returning users who want to re-run a stage cannot find the action without prior knowledge.
 > Proposed story: "As a returning user, I want re-run actions on completed steps to be persistently visible (or discoverable via keyboard) so that I can re-run a stage without needing to know to hover."
 
-**GAP-R4 (MEDIUM) — No explanation of step-click (view) vs. ↻ (re-run) distinction**
-`handleStepClick` (`web/workflow-steps.js:712`) switches the view tab without showing any contextual explanation. A returning user who clicks a completed step expecting to "go back and change things" may be confused when changes require the ↻ action.
-> Proposed story: "As a returning user, I want a tooltip or inline hint explaining that clicking a completed step shows the previous output (view-only navigation) while ↻ re-runs the LLM computation."
+**GAP-R4 (MEDIUM, partially addressed) — Step-click vs. ↻ distinction now conveyed via hover tooltip only**
+`handleStepClick` (`web/workflow-steps.js:712`) switches the view tab without showing any modal or banner. Since the 2026-04-20 review, Bootstrap tooltips via `_getStepTooltip()` / `_updateViewingIndicator()` now show `'Click to view'` and `'Click ↻ to rerun from here'` on completed step pills. This is an improvement, but the tooltip is hover-only — keyboard and touch users still receive no explanation, and there is no persistent on-screen label differentiating the two actions.
+> Remaining gap: "As a returning user who uses a keyboard or touch device, I want the distinction between view-navigation and re-run to be discoverable without hover so that I can find the re-run action without prior knowledge."
 
 **GAP-R5 (MEDIUM) — Abbreviated phase labels may be opaque to returning users**
 `SESSION_PHASE_LABELS_SHORT` (`web/utils.js:274-285`) maps `refinement` → "Done" (misleading if work is ongoing) and `customization` → "Custom" (non-obvious). These labels appear in the session switcher header and the sessions modal.
 > Proposed story: "As a returning user, I want session phase labels in the session switcher to be human-readable so that I can immediately understand where a prior session was left off."
 
 **GAP-R6 (LOW) — No session duplicate/copy action**
-The sessions modal offers Load, Rename, and Delete, but no Duplicate. A returning user who wants to try a different approach cannot easily create a copy of an existing session.
+The sessions modal offers Load, Rename, and Move to Trash, but no Duplicate. A returning user who wants to try a different approach cannot easily create a copy of an existing session.
 > Proposed story: "As a returning user, I want to duplicate an existing session so that I can explore an alternative customization without risking my prior decisions."
 
 **GAP-R7 (LOW) — Session rename uses browser `prompt()` rather than in-app modal**
-`promptRenameCurrentSession()` (`web/session-manager.js:657`) uses `window.prompt()`, which browsers can block. The sessions modal already provides inline rename (`web/session-switcher-ui.js:294-315`), but the header rename button takes a different (fragile) path.
+`promptRenameCurrentSession()` (`web/session-manager.js:735`) uses `window.prompt()` (`web/session-manager.js:737`), which browsers can block. The sessions modal already provides inline rename (`web/session-switcher-ui.js:294-315`), but the header rename button ✏️ (visible next to the position title bar) takes a different (fragile) path.
 > Proposed fix: Replace `promptRenameCurrentSession()` with an in-app modal consistent with `confirmDialog()`.
 
 ---
@@ -181,8 +189,9 @@ The sessions modal offers Load, Rename, and Delete, but no Duplicate. A returnin
 - `web/session-manager.js:225-249` — `_resolveRestoredPhase` (phase guard)
 - `web/session-manager.js:351-395` — `_hydrateStatusDerivedState` (decision rehydration)
 - `web/session-manager.js:646-659` — rewrite panel pre-population
-- `web/session-manager.js:657` — `promptRenameCurrentSession` uses `prompt()`
-- `web/session-switcher-ui.js:85` — "Delete" label for soft-delete action
+- `web/session-manager.js:735,737` — `promptRenameCurrentSession` uses `prompt()`
+- `web/session-switcher-ui.js:85` — "Move to Trash" button label (fixed from prior "Delete")
+- `web/session-switcher-ui.js:317-332` — `_deleteSessionFromModal` (no `confirmDialog` before API call)
 - `web/workflow-steps.js:129` — `_showReRunConfirmModal` (confirmation modal)
 - `web/workflow-steps.js:182` — `confirmReRunPhase` (↻ path)
 - `web/workflow-steps.js:686-691` — ↻ hidden until hover
@@ -192,19 +201,3 @@ The sessions modal offers Load, Rename, and Delete, but no Duplicate. A returnin
 - `web/styles.css:118-119,153-154` — stale/critical badge styling
 
 **Evidence standard:** Every conclusion is supported by source file references with line numbers from the files listed above.
-| US-S1 | 1 | 0 | 0 | 0 | 0 |
-| US-S2 | 0 | 1 | 0 | 0 | 0 |
-| US-S3 | 0 | 1 | 0 | 0 | 0 |
-
-- US-S1: ✅ Pass. Returning users get immediate job/session context through the session switcher label, phase label, and the implemented resume/session-loading workflow documented in the current workflow description. Evidence: web/session-manager.js:36-70, tasks/current-implemented-workflow.md:69-87.
-- US-S2: ⚠️ Partial. The app has explicit back-to-phase and re-run flows plus a downstream-effects confirmation modal, but the language still groups several different consequences under one confirmation pattern, which makes safe re-entry understandable but not especially crisp. Evidence: web/workflow-steps.js:17-117.
-- US-S3: ⚠️ Partial. Session state retains rewrites, skill decisions, achievements, publications, summaries, and generation state in `conversation.state`, which is a strong continuity foundation, but the UI does not expose a visible rerun/version history when a user iterates after returning. Evidence: scripts/utils/conversation_manager.py:45-79, web/workflow-steps.js:141-182.
-
-## Generated Materials Evaluation
-
-⚠️ Partial. Returning users can regenerate and revisit output stages, but the current surfaces do not provide a clear before/after version trail for generated materials across reruns, so continuity depends on memory more than explicit artifact history. Evidence: web/workflow-steps.js:141-182, tasks/current-implemented-workflow.md:163-214.
-
-## Additional Story Gaps / Proposed Story Items
-
-- Differentiate simple back-navigation from full recomputation more explicitly in the confirmation copy. Evidence: web/workflow-steps.js:74-117.
-- Add visible rerun timestamps or artifact-version labels for generated outputs after resumed sessions. Evidence: web/workflow-steps.js:141-182, web/finalise.js:25-56.

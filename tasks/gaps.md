@@ -1,14 +1,22 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-04-20
+**Generated:** 2026-03-06 | **Last updated:** 2026-04-22
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-20
-- independent heuristic UX evaluation (2026-04-20)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22
+- independent heuristic UX evaluation (2026-04-22)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed 17-persona review set against the current implementation. The April 2026 cycle added GAP-25 through GAP-71 from newly discovered issues.
+This document tracks the gaps that still remain after reconciling the refreshed full 14-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123 from newly discovered issues and resolved/updated GAP-08, GAP-28, GAP-30, GAP-37, GAP-38, and GAP-45.
+
+## 2026-04-22 Reconciliation Notes
+
+- **6 gaps resolved or partially updated this cycle:** GAP-08 (spell audit write-back, RESOLVED), GAP-28 (publications heading, RESOLVED), GAP-30 (cover letter opening, RESOLVED), GAP-38 (Delete→Move to Trash, RESOLVED), GAP-37 (welcome modal partial, now tracked as GAP-76/77), GAP-45 (submission gating partial, structural bypass remains).
+- **52 new gaps added:** GAP-72 through GAP-123, spanning accessibility (GAP-72–75), first-time user (GAP-76–79), graphical designer (GAP-80), hiring manager (GAP-81–86), HR/ATS (GAP-87–90), master CV curator (GAP-91–94), persuasion expert (GAP-95–97), power user (GAP-98–101), recruiter-ops (GAP-102–106), resume expert (GAP-107–109), returning user (GAP-110–114), trust/compliance (GAP-115–119), UX expert (GAP-120–123).
+- **Strongest progress this cycle:** Spell-check end-to-end (GAP-08), cover letter opening styles (GAP-30), venue-warning wiring in publications (GAP-HM-05), page-count warning in Download tab (GAP-HM-02).
+- **Most critical open gaps:** GAP-120 (keyboard tab accessibility — WCAG Level A), GAP-36 (FileNotFoundError on first run — crash), GAP-41 (no pre-job master CV editor entry point), GAP-25 (Layout Undo non-functional stub).
+- The prior April 2026 cycle added GAP-25 through GAP-71.
 
 ## 2026-03-23 Reconciliation Notes
 
@@ -85,7 +93,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A4b, US-R7
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; applicant and resume reviews confirmed spell-check endpoints and audit persistence exist, but skill-name review, edit-in-place correction, blocking on unresolved flags, and write-back of accepted corrections into generated output are incomplete.
+**Status:** RESOLVED - confirmed 2026-04-22; resume expert review verified end-to-end spell correction flow: `submitSpellCheckDecisions` sends `_spellSugMap` entries to `/api/spell-check-complete`, backend stores them in `state['spell_audit']`, and `cv_orchestrator.apply_accepted_spell_fixes` applies span-precise corrections before generation (`cv_orchestrator.py:1501–1706`, `web/spell-check.js:376–399`). Six of seven US-R7 acceptance criteria now pass.
 **Description:** Spell check is implemented as a workflow step, but it does not yet behave like a reliable last-mile quality gate. The current flow can auto-ignore unresolved items, lacks a real edit path, does not emit `skill_name` review sections, and does not source-verify that accepted fixes alter the actual generated CV text.
 **Recommended resolution:** Add skill-name sections, force explicit resolution of flagged items, apply accepted corrections directly to the generated text span they govern, and keep the spell audit synchronized with the resulting output.
 
@@ -278,7 +286,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** CRITICAL
 **Affected stories:** US-P3, US-P5
-**Status:** OPEN - discovered 2026-04-20; persuasion expert review confirmed the cover letter generation prompt hardwires "Dear [name]," as the opening salutation. This prevents any pattern-interrupt opener (a persuasion technique), blocks all story acceptance criteria for cover letter openings, and makes all generated cover letters structurally identical.
+**Status:** RESOLVED - confirmed 2026-04-22; persuasion expert review confirmed the cover letter opening style is now user-selectable (formal/hook/narrative), commit `a5fc40a`. The hardwired "Dear [name]," constraint is removed. Client-side word count ceiling remains open under GAP-95.
 **Description:** A hardwired "Dear [name]," opener is the weakest possible cover letter opening from a persuasion perspective. The story spec requires an opening that captures attention, establishes a specific connection, or uses a hook — none of which are possible with a forced salutation.
 **Recommended resolution:** Remove the hardwired salutation from the cover letter prompt. Allow the LLM to generate a configurable opening (salutation, hook, or pattern-interrupt) based on user preference and job context. Add a cover letter opening style option (formal/attention-grabbing/narrative) to the session configuration.
 
@@ -286,7 +294,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-P5
-**Status:** OPEN - discovered 2026-04-20; persuasion expert review found the cover letter generation prompt uses a 400-word ceiling, while the persuasion story spec requires ≤300 words for optimal recruiter review.
+**Status:** PARTIAL - updated 2026-04-22; the LLM generation prompt has been tightened to ~250–300 words (commit `e0212e3`), but client-side validation in the cover letter UI still allows 400 words. The server-side prompt fix is confirmed; the client-side ceiling mismatch is tracked as GAP-95.
 **Description:** The 400-word ceiling produces cover letters that are too long for most recruiter review contexts, which typically allow 200–300 words per the story spec.
 **Recommended resolution:** Reduce the cover letter word count target to 300 words maximum in the generation prompt.
 
@@ -334,7 +342,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-F1
-**Status:** OPEN - discovered 2026-04-20; first-time user review found that the first visible content on a no-session visit is the Sessions modal showing "Select a Session" with subtext "Each browser tab now works against its own URL-scoped session" — technical architecture copy, not user orientation. The application has no welcome screen, app description, or "get started" path.
+**Status:** PARTIAL - updated 2026-04-22; first-time user review confirmed the welcome/onboarding modal is now implemented (`session-manager.js:155–179`, `index.html:258–325`). The modal provides an app description and a "Get Started" button. Remaining issues: LLM provider setup is never mentioned as a prerequisite; the "Get Started" button closes the modal but does NOT navigate to the Job tab; the modal cannot be re-opened from anywhere in the UI. These remaining issues are tracked as GAP-76, GAP-77.
 **Description:** First-time users cannot identify what the application does, what prerequisites exist, or how to start without external documentation. Undefined terms ("ATS," "Harvest," "Master CV," "Customise") appear immediately in the tab bar.
 **Recommended resolution:** Add a first-visit welcome screen that explains the application's purpose in one sentence, lists the two prerequisites (Master CV file and LLM provider), and provides a clear "Get started" CTA. Add inline definitions or tooltips for jargon terms ("ATS," "Harvest") on first encounter.
 
@@ -342,7 +350,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-S3
-**Status:** OPEN - discovered 2026-04-20; returning user review confirmed that the session delete button soft-deletes to a Trash view (recoverable), but the button label says "Delete," implying permanent deletion. Users who intend to recover a session may believe it is permanently gone.
+**Status:** RESOLVED - confirmed 2026-04-22; returning user review confirmed the button at `web/session-switcher-ui.js:85` was relabelled from "Delete" to "Move to Trash" and the `title` attribute also reads "Move session to Trash". The Trash view with Restore and Delete Forever actions provides the full recovery path. Note: the action still executes without a confirmation dialog — tracked as GAP-111.
 **Description:** Label-behavior mismatch erodes trust. Soft-delete actions should be labeled "Move to Trash" or "Archive" to distinguish them from permanent deletion.
 **Recommended resolution:** Rename the session delete button to "Move to Trash" and update any confirmation dialogs accordingly.
 
@@ -398,7 +406,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-C2, US-P3
-**Status:** OPEN - discovered 2026-04-20; trust and compliance review confirmed that the "Acknowledged" button for persuasion warnings in the rewrite review surface lives inside the collapsible warning panel (`rewrite-review.js:85,92–96`). Users can collapse the warning panel and proceed to submit all rewrite decisions without ever reading or acknowledging the warning.
+**Status:** PARTIAL - updated 2026-04-22; submission gating was added (commit `732a431`) — `submitBtn.disabled` is true while `persuasionWarningsAcknowledged === false`. However, the warning panel is collapsed by default (`rewrite-review.js:85`, `style="display:none"`) and the "✓ Acknowledged" button lives inside the collapsed section (`rewrite-review.js:92–96`). Users can trigger the acknowledgement by clicking the toggle without reading the warning content. The structural bypass remains open.
 **Description:** The persuasion warning system is present but easily bypassed by collapsing the panel. This violates the trust and compliance story requirement that users must acknowledge warnings before submitting rewrite decisions.
 **Recommended resolution:** Gate the rewrite decision submission button on at least one of: (a) the warning panel being expanded, or (b) the "Acknowledged" button having been clicked. Store the acknowledgement in session state to persist across page refreshes.
 
@@ -609,3 +617,420 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 **Status:** OPEN - discovered 2026-04-20; CI/CD review found GitHub Actions uses pip-only installs from `scripts/requirements.txt`, while repo guidance emphasizes the local `cvgen` environment.
 **Description:** CI and local development use different environment construction paths, increasing the chance of environment-specific failures.
 **Recommended resolution:** Either narrow the gap between CI and local environment setup or document and validate the supported differences explicitly.
+
+---
+
+## April 2026 Full-Cycle Additions (GAP-72 through GAP-121)
+
+*Discovered during the 14-persona + heuristic full-cycle review completed 2026-04-22. All prior GAP IDs (01–71) are unchanged except for status updates above.*
+
+---
+
+## GAP-72: Workflow Step Pills Have No `tabindex` — Keyboard Navigation Blocked
+
+**Severity:** HIGH
+**Affected stories:** US-X1, US-U7
+**Status:** OPEN - discovered 2026-04-22; accessibility and UX expert reviews confirmed all 8 workflow step pills are `<div>` elements with `onclick` handlers but no `tabindex="0"` or `keydown` handlers (`web/workflow-steps.js:666–670`). Keyboard users cannot focus or activate any step pill.
+**Description:** The workflow step bar is the primary navigation affordance for the entire application. Without keyboard access, keyboard-only users cannot navigate between stages, trigger back-navigation, or discover the ↻ re-run action.
+**Recommended resolution:** Add `tabindex="0"` and `Enter`/`Space` `keydown` event handlers to all step pill elements. Ensure the ↻ re-run icon within each pill is separately reachable. Apply the ARIA `tablist` pattern.
+
+## GAP-73: `.workflow` Container Has No `aria-live` — Stage Changes Not Announced
+
+**Severity:** HIGH
+**Affected stories:** US-X1, US-U7
+**Status:** OPEN - discovered 2026-04-22; accessibility specialist review found the `.workflow` div has no `aria-live` attribute. When the active stage changes, screen readers receive no notification.
+**Description:** Stage transitions are the most significant navigation events in the workflow. Without an `aria-live` region, screen reader users cannot detect when the application has advanced to a new stage.
+**Recommended resolution:** Add `aria-live="polite"` and `aria-atomic="true"` to a designated status region that announces stage changes (e.g., "Now at step 3: Customise").
+
+## GAP-74: `aria-invalid` Never Set Dynamically Despite CSS Rule Existing
+
+**Severity:** MEDIUM
+**Affected stories:** US-X3
+**Status:** OPEN - discovered 2026-04-22; accessibility specialist review found a CSS rule for `[aria-invalid="true"]` exists in `web/styles.css` but `aria-invalid` is never set dynamically by any JavaScript code. Form validation errors are communicated via CSS class changes only.
+**Description:** Screen readers use `aria-invalid` to announce validation errors. Without it, users relying on assistive technology receive no error announcement beyond visual styling.
+**Recommended resolution:** In all form validation handlers, set `element.setAttribute('aria-invalid', 'true')` on error and `element.removeAttribute('aria-invalid')` on correction. The CSS rule already handles the visual response.
+
+## GAP-75: `#session-conflict-banner` Has No `role="alert"` or `aria-live`
+
+**Severity:** HIGH
+**Affected stories:** US-X3, US-U7
+**Status:** OPEN - discovered 2026-04-22; accessibility specialist review found the session conflict banner (`index.html`) has no `role="alert"` or `aria-live` attribute. Screen reader users are not notified of session conflicts.
+**Description:** Session conflict banners alert the user to an important application-state problem. Without `role="alert"`, a screen reader user will not be informed of the conflict unless they explicitly move focus to the banner.
+**Recommended resolution:** Add `role="alert"` to the `#session-conflict-banner` element, or use `aria-live="assertive"` so the announcement interrupts the current screen reader context.
+
+## GAP-76: LLM Provider Prerequisites Not Mentioned in Welcome Onboarding Modal
+
+**Severity:** HIGH
+**Affected stories:** US-F1, US-F2
+**Status:** OPEN - discovered 2026-04-22; first-time user review confirmed the welcome modal (`index.html:258–325`) introduces the application but makes no mention of the LLM provider setup prerequisite. Users who have not configured a provider encounter an auth failure mid-workflow with no contextual guidance.
+**Description:** The LLM provider is required for every analysis, rewrite, and generation action. Without guidance at onboarding, first-time users who have not configured a provider will start a job session and receive a cryptic authentication error after minutes of effort.
+**Recommended resolution:** Add a "Prerequisites" list to the welcome modal noting: (1) a `Master_CV_Data.json` file is needed and (2) an LLM provider must be configured via the LLM settings button. Link or highlight the LLM wizard button.
+
+## GAP-77: Welcome Modal "Get Started" Button Doesn't Navigate to Job Tab
+
+**Severity:** MEDIUM
+**Affected stories:** US-F1, US-U1
+**Status:** OPEN - discovered 2026-04-22; first-time user review found the "✕ Get Started" button (`session-manager.js:155–179`) dismisses the welcome modal but does not navigate to the Job Input tab or trigger the New Session flow. Users are left on the default blank state.
+**Description:** After reading the welcome modal, a first-time user expects to be directed to the next action. Closing the modal and remaining on a blank screen provides no momentum.
+**Recommended resolution:** After dismissing the welcome modal via "Get Started", programmatically navigate to the Job Input tab (or trigger the New Session flow) so users immediately see their starting point.
+
+## GAP-78: CV Jargon Terms Undefined on First Encounter
+
+**Severity:** MEDIUM
+**Affected stories:** US-F1, US-F2
+**Status:** OPEN - discovered 2026-04-22; first-time user and heuristic reviews found no inline definitions or tooltips for "ATS", "Harvest", "Master CV", or "Session" on any first-encounter screen.
+**Description:** Key terms — particularly "ATS" (Applicant Tracking System) and "Harvest improvements" — have no definition on first encounter. Users unfamiliar with recruitment technology cannot determine their meaning from context.
+**Recommended resolution:** Add glossary tooltips or `title` attributes with one-sentence definitions for: ATS, Harvest, Master CV, Session. Alternatively, add a "?" help icon adjacent to each jargon term.
+
+## GAP-79: Preview vs Final Generation Pipeline Distinction Unexplained
+
+**Severity:** HIGH
+**Affected stories:** US-F3, US-U6
+**Status:** OPEN - discovered 2026-04-22; first-time user and UX expert reviews found no explanation of the staged generation pipeline: HTML preview → layout confirmation → final file generation. Users who click "Generate CV" do not know whether they are producing a draft preview or final submission-ready files.
+**Description:** The distinction between the HTML preview, layout-reviewed output, and final generation is not communicated. First-time users face three generation-related actions with overlapping terminology and no explanation of the sequence.
+**Recommended resolution:** Add an informational banner or tooltip before the Generate step explaining the three-stage pipeline. Update action button labels to include stage context (e.g., "Generate Preview", "Confirm Layout", "Generate Final Files").
+
+## GAP-80: Button Style Inconsistency — Layout Tab Uses Bootstrap 5 While Other Tabs Use `.action-btn`
+
+**Severity:** MEDIUM
+**Affected stories:** US-G2, H4
+**Status:** OPEN - discovered 2026-04-22; graphical designer review found the Layout tab uses Bootstrap 5 button classes (`btn btn-primary`, `btn btn-warning`, etc.) while all other workflow tabs use the custom `.action-btn` / `.action-btn-secondary` CSS class system. This creates a ~2–4px height mismatch and visual inconsistency between tabs.
+**Description:** Users navigating from the Customise or Rewrite tab to the Layout tab see a different visual language for action buttons. The inconsistency reflects the Layout tab being implemented later with Bootstrap 5 while earlier tabs used the custom system.
+**Recommended resolution:** Align the Layout tab buttons with the `.action-btn` system used throughout the rest of the application. Alternatively document a decision to migrate all tabs to Bootstrap 5 and execute it consistently.
+
+## GAP-81: No Minimum Bullet Count Check Before Generation
+
+**Severity:** MEDIUM
+**Affected stories:** US-M2
+**Status:** OPEN - discovered 2026-04-22; hiring manager review found no validation check enforcing a minimum number of bullets per experience entry. Experience entries with 0 or 1 bullets can be included in the final CV without warning.
+**Description:** CVs with single-bullet or empty experience entries signal rushed preparation and are unprofessional. The pre-generation validation does not detect this condition.
+**Recommended resolution:** Add a validation check that flags experience entries with fewer than 2 bullets and surfaces a blocking or warning message in the ATS validation report.
+
+## GAP-82: Cover Letter Tone Not Auto-Inferred from Job Analysis
+
+**Severity:** MEDIUM
+**Affected stories:** US-M6, US-P5
+**Status:** OPEN - discovered 2026-04-22; hiring manager review found the cover letter generation prompt uses a fixed tone regardless of job analysis results. Culture indicators and company communication style identified in the analysis are not used to adjust cover letter formality.
+**Description:** A cover letter for a startup engineering role should differ tonally from one for a pharmaceutical director role. The analysis data necessary to make this inference is available but unused.
+**Recommended resolution:** Include `culture_indicators` and `communication_style` fields from the job analysis in the cover letter generation prompt. Add a tone preference override in the cover letter settings.
+
+## GAP-83: Page Count Warning Not Shown During Layout Review — Only at Download
+
+**Severity:** MEDIUM
+**Affected stories:** US-M4
+**Status:** OPEN - discovered 2026-04-22; hiring manager review found the page count warning is wired to the Download tab (`web/download-tab.js`) but not shown during the Layout Review stage where the user is actively adjusting layout.
+**Description:** The ideal time to inform users about page count problems is during Layout Review, when they can still make adjustments. Showing the warning only at Download forces an additional round-trip through the layout flow.
+**Recommended resolution:** Surface the page count validation result in the Layout Review tab header or beside the preview iframe. Update the layout freshness system to include a page-count-over-limit warning state.
+
+## GAP-84: Cover Letter Named-Achievement Check Absent
+
+**Severity:** MEDIUM
+**Affected stories:** US-M6, US-P5
+**Status:** OPEN - discovered 2026-04-22; hiring manager review found no validation check that the cover letter body references at least one specific named achievement from the CV. Cover letters can pass all other validations while being generic and achievement-free.
+**Description:** The most persuasive cover letters reference concrete achievements. The existing cover letter validation checks word count, company name, and CTA, but not whether specific achievements are cited.
+**Recommended resolution:** Add a cover letter body validation rule that checks for the presence of at least one quantified or named achievement (pattern: numbers, percentages, named project, "successfully", etc.) and warns if absent.
+
+## GAP-85: No Bullet Line-Length or Word-Count Check
+
+**Severity:** LOW
+**Affected stories:** US-M2, US-R2
+**Status:** OPEN - discovered 2026-04-22; hiring manager review found no validation check for overly long bullet points (> 2 lines or > 35 words). Long bullets reduce scannability.
+**Description:** Best-practice CV bullets are 1–2 lines (15–30 words). The current pipeline has no check that flags bullets exceeding a reasonable length threshold.
+**Recommended resolution:** Add a bullet length check to the pre-generation or ATS validation step that warns when any bullet exceeds a configurable word-count threshold (e.g., 35 words).
+
+## GAP-86: Skill Category Ordering Not Derived from Job Analysis
+
+**Severity:** LOW
+**Affected stories:** US-M3, US-R5
+**Status:** OPEN - discovered 2026-04-22; hiring manager review found skill categories are ordered by the user's existing master data category order, not by relevance to the target role. The most relevant skill category for a given role may appear last.
+**Description:** Job analysis identifies which skills are most important for a role. This ranking is not used to re-order skill categories in the generated CV or in the skill review table.
+**Recommended resolution:** After job analysis, compute a per-category relevance score based on how many required/preferred skills belong to each category. Use this to suggest a re-ordered category display in the skills review tab and in the generated CV.
+
+## GAP-87: Font Compliance Validation Absent from ATS Output
+
+**Severity:** MEDIUM
+**Affected stories:** US-H1, US-H6
+**Status:** OPEN - discovered 2026-04-22; HR/ATS review found no validation check confirming the ATS PDF uses a standard ATS-safe font. Non-standard fonts can cause ATS character mis-parsing.
+**Description:** Some ATS platforms reject or misread PDFs with decorative or non-standard fonts. The ATS validation report checks structure, keywords, and contact fields but not font embedding or font family compliance.
+**Recommended resolution:** Add a font-family compliance check to ATS validation that reads the embedded font list from the generated ATS PDF and warns if non-standard fonts are detected.
+
+## GAP-88: Year-Only Date Entries Not Rejected During Validation
+
+**Severity:** MEDIUM
+**Affected stories:** US-H5
+**Status:** OPEN - discovered 2026-04-22; HR/ATS review found experience entries with year-only dates (e.g., "2020–2022") pass ATS date validation. Many ATS platforms require month/year format for accurate tenure calculation.
+**Description:** Year-only dates are ambiguous for employment duration calculation. ATS systems often parse this as invalid or estimate incorrectly.
+**Recommended resolution:** Add a date-format validation check that flags year-only date entries and recommends month/year format for all experience start and end dates.
+
+## GAP-89: `skill_type` Field Not Persisted to Master CV via Harvest
+
+**Severity:** HIGH
+**Affected stories:** US-H8, US-R5
+**Status:** OPEN - discovered 2026-04-22; HR/ATS review found that even when the LLM classifies skills as hard or soft during the session, the `skill_type` classification is not written back to `Master_CV_Data.json` via the harvest flow. Classifications are ephemeral session-only data.
+**Description:** Hard/soft skill classification affects ATS output structure and section labeling. Without persisting this, every session must reclassify from scratch.
+**Recommended resolution:** Add `skill_type` as a harvest-eligible field. Include skill type overrides in the harvest candidates panel and write them to `Master_CV_Data.json` when the user applies harvest.
+
+## GAP-90: Synonym Normalization Absent from ATS Validation Report
+
+**Severity:** MEDIUM
+**Affected stories:** US-H4, US-R1
+**Status:** OPEN - discovered 2026-04-22; HR/ATS and resume expert reviews found that while the synonym map (`scripts/data/synonym_map.json`) is used for ATS score computation, the validation report does not show synonym grouping. Users see separate entries for "ML" and "Machine Learning" without grouping.
+**Description:** Without synonym grouping in the validation report, users cannot verify that their synonym-matched keywords are being counted correctly or identify which canonical term to use for maximum ATS compatibility.
+**Recommended resolution:** Update the ATS validation report and analysis tab keyword display to group synonym pairs, showing the canonical term with aliases. Mark each keyword as "matched via synonym" or "exact match".
+
+## GAP-91: No Backup History/Restore UI Despite Backend Support
+
+**Severity:** HIGH
+**Affected stories:** US-M1, US-A10
+**Status:** OPEN - discovered 2026-04-22; master CV curator review confirmed the backend creates timestamped backup files before every `_save_master` write, but no UI surfaces the backup list or allows the user to restore a prior version.
+**Description:** The safety net for master data modifications exists but is invisible. Users who accidentally overwrite or corrupt their master CV data have no way to restore a backup without directly accessing the filesystem.
+**Recommended resolution:** Add a "Backup history" section to the Master CV tab (or a dedicated modal) that lists all available backups with timestamps and provides a "Restore this version" action. The restore action should create a new backup of the current state before restoring.
+
+## GAP-92: `publication_count` Stat Card Reads from JSON Not BibTeX
+
+**Severity:** MEDIUM
+**Affected stories:** US-M4, US-M7
+**Status:** OPEN - discovered 2026-04-22; master CV curator review found the publications stat card in the Master CV overview reads `publication_count` from `Master_CV_Data.json` rather than `publications.bib`. Users who maintain their bibliography exclusively in BibTeX see a count of 0.
+**Description:** The application is designed to support BibTeX as the primary bibliography format. The stat card should reflect this by counting from the BibTeX source.
+**Recommended resolution:** Update the publications count stat card to call a route that counts entries from `publications.bib` when it exists, falling back to `Master_CV_Data.json`.
+
+## GAP-93: Phase-Enforcement 409 Response Misidentified as Session Conflict in UI
+
+**Severity:** MEDIUM
+**Affected stories:** US-M1, US-M3
+**Status:** OPEN - discovered 2026-04-22; master CV curator review found that when the backend returns a `409 Conflict` response to enforce phase restrictions, the UI displays a generic "session conflict" error message rather than a phase-appropriate explanation.
+**Description:** A `409` during phase enforcement and a `409` during session-ownership conflict are distinct situations with very different user implications. The current UI handling does not distinguish them.
+**Recommended resolution:** Add a `conflict_type` field (e.g., `phase_enforcement` vs `session_ownership`) to 409 responses and update the UI error handler to display phase-appropriate messaging.
+
+## GAP-94: Summary Variant Format Inconsistency After Harvest
+
+**Severity:** MEDIUM
+**Affected stories:** US-M2, US-A11
+**Status:** OPEN - discovered 2026-04-22; master CV curator review found that summary variants stored in `Master_CV_Data.json` can exist as a list (string array) in the original format but may be written back as a dict (keyed variants) after harvest. This inconsistency can cause rendering failures in the Summary review tab for sessions opened after harvest.
+**Description:** The `summaries` field in master data has two valid formats (list vs dict), and the harvest write-back may produce a different format than was originally present.
+**Recommended resolution:** Standardize the `summaries` field to a single canonical format in `MASTER_CV_DATA_SPECIFICATION.md` and `master_data_validator.py`, then update the harvest write-back and all read paths to use that format consistently.
+
+## GAP-95: Cover Letter Client-Side Validation Still Allows 400 Words
+
+**Severity:** MEDIUM
+**Affected stories:** US-P5
+**Status:** OPEN - discovered 2026-04-22; persuasion expert review found that while the LLM cover letter generation prompt was tightened to ~250–300 words (commit `e0212e3`), the client-side word count validation still accepts cover letters up to 400 words without warning. The LLM prompt and client validator are out of sync.
+**Description:** A cover letter generated at the prompt's 250–300 word target will pass validation. But if a user manually edits a cover letter up to 400 words, no warning is shown.
+**Recommended resolution:** Update the client-side cover letter word count threshold from 400 to 300 to match the prompt's target. Display a warning (not blocking) when the cover letter exceeds 300 words.
+
+## GAP-96: Cover Letter CTA Validation Accepts Passive Closings
+
+**Severity:** MEDIUM
+**Affected stories:** US-P5
+**Status:** OPEN - discovered 2026-04-22; persuasion expert review found the cover letter CTA (call-to-action) validator accepts passive closings such as "I look forward to hearing from you" without flagging them as weak. Persuasion best practice requires an active, initiative-taking closing.
+**Description:** Passive closings put the burden of action on the hiring manager. Active closings imply the applicant will follow up (e.g., "I will follow up on [date]").
+**Recommended resolution:** Update the CTA validation heuristic to flag passive constructions ("I look forward to hearing", "Please feel free to contact me") and suggest an active alternative.
+
+## GAP-97: No Positive-Sum Metric Framing Preference in CV Writing Guidance
+
+**Severity:** LOW
+**Affected stories:** US-P3
+**Status:** OPEN - discovered 2026-04-22; persuasion expert review found no guidance or validation rule encouraging positive-sum framing of metrics. The persuasion check suite covers action verbs and CAR structure but not framing polarity.
+**Description:** Negative-framing metrics (cuts, reductions, eliminations) can create unfavorable impressions even when the underlying achievement is positive. Persuasion-optimal CVs frame all quantified outcomes in additive, growth-oriented terms.
+**Recommended resolution:** Add a positive-sum framing check to the persuasion heuristic suite. Flag bullets where a quantified negative outcome (reduced, cut, eliminated, decreased) appears without a corresponding positive consequence.
+
+## GAP-98: No Keyboard Shortcuts for Workflow Navigation
+
+**Severity:** HIGH
+**Affected stories:** US-W1, US-W3, US-U7
+**Status:** OPEN - discovered 2026-04-22; power user review found no keyboard accelerators for any workflow step, action button, or review operation. High-throughput users who process multiple CVs per day must use a mouse for every navigation and decision action.
+**Description:** The absence of any keyboard shortcut support creates a speed bottleneck for power users and an access barrier for users with motor impairments.
+**Recommended resolution:** Implement keyboard shortcuts for: advance to next step (`Ctrl+→`), trigger action button (`Ctrl+Enter`), accept current item (`A`), reject current item (`R`), and navigate between review cards (`↑`/`↓`). Publish shortcuts in a keyboard shortcut reference panel.
+
+## GAP-99: No Bulk Accept/Reject for Rewrites
+
+**Severity:** MEDIUM
+**Affected stories:** US-W1, US-U5
+**Status:** OPEN - discovered 2026-04-22; power user and UX expert reviews found no bulk accept/reject control for the rewrite review panel. Bulk-accept exists for experience, skills, and achievements but not for rewrites. Sessions with 15–20 rewrite proposals require individual card-by-card attention.
+**Description:** The absence of bulk-accept for rewrites is the most significant workflow bottleneck for power users after keyboard shortcuts.
+**Recommended resolution:** Add "Accept All Recommended" and "Reject All" buttons to the rewrite review panel header, consistent with the pattern used in the skills review panel (`web/skills-review.js:941`). These should respect existing persuasion-warning gating.
+
+## GAP-100: No Bulk Toolbar for Publications
+
+**Severity:** LOW
+**Affected stories:** US-W1
+**Status:** OPEN - discovered 2026-04-22; power user review found no bulk accept/reject for the publications review table. Each publication must be individually toggled. Publications tables can contain 20–30 entries.
+**Recommended resolution:** Add bulk-accept (accept all recommended) and bulk-reject (reject all non-recommended) controls to the publications review table header.
+
+## GAP-101: No Forward Stage Skip Mechanism
+
+**Severity:** MEDIUM
+**Affected stories:** US-W1, US-W3
+**Status:** OPEN - discovered 2026-04-22; power user review found no mechanism to skip forward from a completed stage to a non-adjacent later stage. Users who want to jump from Customise directly to Spell Check must proceed through the normal sequential workflow.
+**Description:** Power users iterating on a specific aspect of their CV need to jump stages. The current workflow forces sequential progression even when intermediate stages are already completed.
+**Recommended resolution:** Allow forward-skip navigation when all intermediate stages have been previously completed. Guard forward-skip with a lightweight confirmation if any intermediate stage data may be stale.
+
+## GAP-102: Application Submission Status Not Visible in Session List
+
+**Severity:** HIGH
+**Affected stories:** US-O2
+**Status:** OPEN - discovered 2026-04-22; recruiter-ops review found the session switcher shows position name, phase label, created date, and last-modified date — but not `application_status` from `metadata.json`. Users managing multiple applications cannot see which packages are sent, ready, or draft without opening each session.
+**Description:** For a user tracking 5–10 active applications, the inability to see submission status in the session list forces them to open and close each session individually.
+**Recommended resolution:** Update `GET /api/sessions/list` to include `application_status` from each session's `metadata.json`. Render the status as a badge (Draft / Ready / Sent) in each session row.
+
+## GAP-103: No Post-Archive Metadata Update Endpoint or UI
+
+**Severity:** MEDIUM
+**Affected stories:** US-O2
+**Status:** OPEN - discovered 2026-04-22; recruiter-ops review found no route or UI to update `application_status` or `notes` after a session has been archived. Users who want to update status from "Sent" to "Interview" must reload the entire session into the active workflow.
+**Recommended resolution:** Add a `PATCH /api/sessions/{id}/metadata` endpoint that accepts `application_status` and `notes` updates. Surface a lightweight "Update status" UI in the session list row.
+
+## GAP-104: "Done" Phase Label Misleading for Active-Refinement Sessions
+
+**Severity:** LOW
+**Affected stories:** US-S1, US-O2
+**Status:** OPEN - discovered 2026-04-22; recruiter-ops and returning user reviews found `SESSION_PHASE_LABELS_SHORT.refinement = 'Done'` (`web/utils.js:282`). Sessions in `refinement` phase are actively being refined, not necessarily complete. A session that reached the finalise step but was never submitted also shows "Done".
+**Recommended resolution:** Replace "Done" with "Finalise" or "Refine" for sessions in `refinement` phase without an `application_status`. For sessions with `application_status = 'sent'`, show "Sent". Consider a compound status badge.
+
+## GAP-105: No Cross-Application Summary/Pipeline Dashboard View
+
+**Severity:** MEDIUM
+**Affected stories:** US-O4
+**Status:** OPEN - discovered 2026-04-22; recruiter-ops review found the session list is the only multi-application surface, showing only position name, phase, and timestamps with no ATS score, status, or action summary.
+**Description:** A user managing 5–10 simultaneous applications needs a consolidated pipeline view to track progress, identify actions needed, and assess overall campaign health.
+**Recommended resolution:** Add an "Applications" dashboard view that shows all sessions with columns for: company, role title, application status, ATS score, date last modified, and a quick-action button.
+
+## GAP-106: No Generation Timestamp Shown in File List
+
+**Severity:** MEDIUM
+**Affected stories:** US-O3, US-S3
+**Status:** OPEN - discovered 2026-04-22; recruiter-ops review found `populateDownloadTab` (`web/download-tab.js:276–325`) renders no "generated at" timestamp alongside file names. After a back-to-phase re-run, users cannot confirm that displayed files reflect the current review decisions.
+**Description:** Multiple generation passes within a session produce files with the same date-stamped naming pattern. Without a visible "generated at" timestamp, users cannot confirm currency after re-generation.
+**Recommended resolution:** Include a `generatedAt` timestamp in the `cvData.files` response and render it alongside each file in the download grid.
+
+## GAP-107: Synonym Grouping Absent from Analysis UI
+
+**Severity:** HIGH
+**Affected stories:** US-R1, US-H4
+**Status:** OPEN - discovered 2026-04-22; resume expert and HR/ATS reviews confirmed the synonym map (`scripts/data/synonym_map.json`) is used for ATS scoring but the analysis UI displays each keyword variant separately. Users see "ML" and "Machine Learning" as distinct entries without any grouping or annotation.
+**Description:** Without synonym grouping in the analysis display, users cannot determine which keyword variants are being resolved together and cannot make informed decisions about which form to use in their CV text.
+**Recommended resolution:** Update `populateAnalysisTab` (`web/review-table-base.js`) to group canonical keywords with their synonym aliases. Mark each keyword as "exact match", "synonym match", or "partial match".
+
+## GAP-108: Default Experience Sort Is Recency-Biased, Not Relevance-Based
+
+**Severity:** HIGH
+**Affected stories:** US-R2, US-U4
+**Status:** OPEN - discovered 2026-04-22; resume expert review found `buildExperienceReviewTable` (`web/experience-review.js:83–89`) sorts experiences by `start_date` descending on first load. The LLM recommendation provides relevance signal, but the visual default privileges recency.
+**Description:** For career-changers or those with highly relevant older roles, the recency-biased default sort means the most relevant experience may appear at the bottom of the review table.
+**Recommended resolution:** Change the default sort order on first load to order by LLM recommendation strength (Emphasize > Include > De-emphasize > Omit) as the primary key, with recency as a secondary key. Show a "Sorted by relevance" label and allow users to switch to recency sort.
+
+## GAP-109: Domain Inference Confidence Not Surfaced
+
+**Severity:** MEDIUM
+**Affected stories:** US-R1
+**Status:** OPEN - discovered 2026-04-22; resume expert review found the domain badge in the analysis tab shows only the inferred value with no confidence level or disambiguation pathway. Ambiguous domain inferences are silently applied.
+**Description:** The analysis prompt infers a technical domain that affects keyword weighting and skill ordering. When this inference is ambiguous or wrong, users have no signal to challenge it and no mechanism to override it.
+**Recommended resolution:** Include a `domain_confidence` field (High/Medium/Low) in the job analysis response and display it alongside the domain badge. For Low confidence, add an inline "Is this correct?" override that lets users select from alternatives or enter a custom domain.
+
+## GAP-110: No Restored-Decisions Summary on Session Return
+
+**Severity:** HIGH
+**Affected stories:** US-S1, US-S3
+**Status:** OPEN - discovered 2026-04-22; returning user review found that after session restore, there is no human-readable summary of what was recovered. The user must navigate to every review tab individually to verify that prior decisions (experiences selected, skills, approved rewrites) are intact.
+**Description:** A returning user's first question after re-opening a session is "where did I leave off?" The current restore message answers "what stage" but not "what did I decide".
+**Recommended resolution:** After session restore, display a brief "Restored decisions" summary panel showing: N experiences selected (N recommended), N skills included, N/M rewrites approved, last activity timestamp. The panel should appear for the first visit after restoration and be dismissible.
+
+## GAP-111: "Move to Trash" Executes Without Confirmation Dialog
+
+**Severity:** LOW
+**Affected stories:** US-S3
+**Status:** OPEN - discovered 2026-04-22; returning user review found `_deleteSessionFromModal()` (`web/session-switcher-ui.js:317`) calls the delete API directly with no `confirmDialog()`. While the action is reversible (session goes to Trash), the red "Move to Trash" button immediately removes the session from the active list without user confirmation.
+**Description:** Both "Delete Forever" and "Empty Trash" use `confirmDialog()` before proceeding. "Move to Trash" does not, creating an inconsistent behavior pattern.
+**Recommended resolution:** Add a `confirmDialog('Move this session to Trash? You can restore it from the Trash view.')` before the API call in `_deleteSessionFromModal()`.
+
+## GAP-112: Abbreviated Phase Labels Opaque to Returning Users
+
+**Severity:** MEDIUM
+**Affected stories:** US-S1, US-O2
+**Status:** OPEN - discovered 2026-04-22; returning user and recruiter-ops reviews found `SESSION_PHASE_LABELS_SHORT` (`web/utils.js:274–285`) maps phase values to abbreviated labels: `customization` → "Custom", `rewrite_review` → "Rewrites", `refinement` → "Done". These appear in the session switcher header and session modal rows. "Custom" is non-obvious; "Done" is misleading for active-refinement sessions.
+**Recommended resolution:** Expand `SESSION_PHASE_LABELS_SHORT` to use more descriptive labels: "Customising", "Reviewing rewrites", "Finalising", "Generated". Update "Done" for `refinement` to "Finalise" or a phase-appropriate label.
+
+## GAP-113: No Session Duplicate/Copy Action
+
+**Severity:** LOW
+**Affected stories:** US-W3, US-S3
+**Status:** OPEN - discovered 2026-04-22; returning user review found the sessions modal offers Load, Rename, and Move to Trash but no Duplicate. Users who want to try a different customization approach cannot create a copy without starting a new session from scratch.
+**Recommended resolution:** Add a "Duplicate session" action to the sessions modal row that creates a deep copy of the session directory and state file under a new session ID and name.
+
+## GAP-114: Session Rename Uses `window.prompt()` Instead of In-App Modal
+
+**Severity:** LOW
+**Affected stories:** US-S3, H4
+**Status:** OPEN - discovered 2026-04-22; returning user review found `promptRenameCurrentSession()` (`web/session-manager.js:735`) uses `window.prompt()` for the header rename button. This can be blocked by browsers, fails screen readers, and is inconsistent with the application's custom `confirmDialog()` and `showAlertModal()` patterns.
+**Recommended resolution:** Replace `promptRenameCurrentSession()` with an in-app modal using the existing `confirmDialog()` infrastructure. Alternatively, wire the header ✏️ button to open the sessions modal with the rename field pre-focused.
+
+## GAP-115: Persistent Non-Confidential LLM Provider Warning Absent After Setup
+
+**Severity:** HIGH
+**Affected stories:** US-C1, US-C3
+**Status:** OPEN - discovered 2026-04-22; trust and compliance review found that providers marked `confidential: False` in `provider_registry.py` (Gemini free-tier and Groq) only show data-retention disclosures during the LLM wizard setup popover. After the wizard is closed, no persistent indicator warns the user that CV content is being transmitted to a non-confidential provider.
+**Description:** A user who configured Gemini free-tier at startup and never re-opened the wizard has no ongoing reminder that their CV and job description content may be reviewed by Google. The header pill shows only model name and auth status.
+**Recommended resolution:** Add a persistent visual indicator (e.g., an amber "⚠ Non-confidential" badge in the header LLM pill) when the active provider has `confidential: False`. The indicator should link to the provider privacy policy.
+
+## GAP-116: Per-Item Decision Gate Absent from Customization Stages
+
+**Severity:** MEDIUM
+**Affected stories:** US-C2, US-A3
+**Status:** OPEN - discovered 2026-04-22; trust and compliance review confirmed that the experience, skill, and achievement review panels allow users to proceed to generation without making explicit decisions on any individual item. Undecided items silently default to the LLM's `recommendation` field without user confirmation.
+**Description:** The rewrite review panel requires explicit per-item decisions before submission is enabled. The customization stage has no equivalent gate. This asymmetry means users can produce a final CV where all customization decisions were made by the LLM without any user review.
+**Recommended resolution:** Add a soft gate to the Generate action that warns when any customization section has items that have never been individually reviewed. Display a count: "3 experience recommendations not reviewed — proceed anyway?" The rewrite panel's existing gate pattern is the reference implementation.
+
+## GAP-117: AI-Generated Summary Variants Have No AI-Proposal Label
+
+**Severity:** MEDIUM
+**Affected stories:** US-C1, US-C3
+**Status:** OPEN - discovered 2026-04-22; trust and compliance review found that when the LLM proposes a professional summary variant, the variant is presented in the Summary review tab without any "AI-proposed" label distinguishing it from user-authored summaries stored in `Master_CV_Data.json`.
+**Description:** Users cannot distinguish between summaries they wrote and summaries the AI generated. This undermines the transparency model that the rest of the review flow (word-level diffs, confidence badges) is designed to enforce.
+**Recommended resolution:** Label AI-generated summary variants with an "🤖 AI-proposed" badge. User-authored summaries from master data should be labeled "📄 From your Master CV".
+
+## GAP-118: No Session Audit Panel Accessible from Finalise Tab
+
+**Severity:** MEDIUM
+**Affected stories:** US-C3
+**Status:** OPEN - discovered 2026-04-22; trust and compliance review found that `rewrite_audit` is persisted to `session.json` (`conversation_manager.py:920`) but is not exposed in any UI tab. Users who want to review the full record of what was proposed, accepted, edited, or rejected have no way to do so without inspecting `session.json` directly.
+**Description:** For compliance use cases (confirming what AI changes were accepted before submitting a CV to a regulated employer), the absence of an audit view is a gap. The data exists but is inaccessible through the UI.
+**Recommended resolution:** Add a collapsible "Rewrite audit log" section to the Finalise tab that renders the `rewrite_audit` array in a readable table: proposal, original text, final text, outcome (accepted/edited/rejected), timestamp.
+
+## GAP-119: AI Attribution Option Absent from Generated Files
+
+**Severity:** LOW
+**Affected stories:** US-C3
+**Status:** OPEN - discovered 2026-04-22; trust and compliance review found the generated CV files contain no metadata, footer, or header indicating AI assistance. For contexts where AI-assisted content authorship requires disclosure (academic submissions, grant applications, some government roles), users have no opt-in mechanism.
+**Recommended resolution:** Add an optional "AI-assisted" disclosure setting (default off). When enabled, include a document property and optionally a footer note in generated PDF/DOCX files noting that AI assistance was used.
+
+## GAP-120: Tab `<div>` Elements Keyboard-Inaccessible — CRITICAL
+
+**Severity:** CRITICAL
+**Affected stories:** US-U7, US-X1, and all workflow stories
+**Status:** OPEN - discovered 2026-04-22; UX expert and accessibility reviews confirmed all viewer tabs (`web/index.html:177–197`) are `<div role="tab">` elements with no `tabindex="0"` and click-only event wiring (`web/app.js:122–125`). Keyboard-only users cannot activate any viewer tab in the entire application.
+**Description:** This is a blocking accessibility failure. The viewer tab bar contains all content tabs (Analysis, Experiences, Skills, Achievements, Publications, Rewrites, Spell Check, Generated CV, Layout, File Review, Finalise, Master, Cover Letter, Screening). Every one of these is inaccessible without a mouse. This is a WCAG 2.1 Level A requirement.
+**Recommended resolution:** For each `.tab` element: (1) add `tabindex="0"`, (2) add an `Enter`/`Space` `keydown` handler that calls `switchTab(tab.dataset.tab)`, (3) implement `ArrowLeft`/`ArrowRight` navigation between tabs within the tab bar per the ARIA `tablist` pattern.
+
+## GAP-121: Layout Clarification Uses `window.prompt()` — Accessibility Anti-Pattern
+
+**Severity:** MEDIUM
+**Affected stories:** US-U9, US-X2
+**Status:** OPEN - discovered 2026-04-22; UX expert review found `showClarificationDialog()` (`web/layout-instruction.js:842–851`) uses `window.prompt()` (native browser dialog) to request clarification when a layout instruction is ambiguous. This breaks screen reader context and may be blocked by browser security policies.
+**Description:** `window.prompt()` is inconsistent with the application's custom modal infrastructure (`confirmDialog()`, `showAlertModal()`, `trapFocus()`). It cannot be styled and breaks the keyboard focus chain.
+**Recommended resolution:** Replace `showClarificationDialog()` with an inline clarification input rendered within the layout pane — a text input field that appears below the instruction textarea with a "Submit clarification" button, using the application's existing `trapFocus()` infrastructure.
+
+## GAP-122: Workflow Bar Overflow at 1280px Viewport Width
+
+**Severity:** MEDIUM
+**Affected stories:** US-U8, H8
+**Status:** OPEN - discovered 2026-04-22; UX expert review found `web/styles.css:146` defines `.workflow-steps { display: flex; gap: 32px; }` without `flex-wrap: wrap`. With 8 step pills and 7 arrows at 32px gap, the workflow bar risks horizontal overflow on 1280px viewport widths.
+**Description:** At 1280px, the 8-step workflow bar may truncate or overflow without wrapping, hiding step pills from view. This creates an inconsistent experience for users on smaller laptop displays.
+**Recommended resolution:** Add `flex-wrap: wrap` or reduce `gap` to 16px at viewports ≤1400px via a media query. Alternatively, introduce abbreviated step labels at narrow widths.
+
+## GAP-123: `#layout-freshness-chip` Button Has Empty `aria-label=""`
+
+**Severity:** HIGH
+**Affected stories:** US-U7, US-X2
+**Status:** OPEN - discovered 2026-04-22; UX expert review found `web/index.html:87` — `<button id="layout-freshness-chip" ... aria-label="">`. An explicitly empty `aria-label` on a focusable interactive element causes screen readers to announce the button with no accessible name. This is a WCAG 2.1 Level A failure.
+**Description:** The layout freshness chip is a focusable button that communicates layout currency state. Screen reader users navigating by Tab reach this button and hear nothing — the button has no announced purpose or label.
+**Recommended resolution:** Set `aria-label` to a meaningful value that includes the current freshness state, e.g., `aria-label="Layout freshness — layout is current"`. Update the label dynamically as freshness state changes.

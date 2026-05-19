@@ -37,6 +37,7 @@ import * as UiHelpers             from '../ui-helpers.js';
 // ── Tier 1 ────────────────────────────────────────────────────────────────────
 import * as FetchUtils   from '../fetch-utils.js';
 import * as MessageQueue from '../message-queue.js';
+import * as LlmLog       from '../llm-log.js';
 
 // ── Tier 2 ────────────────────────────────────────────────────────────────────
 import * as AuthProvider   from '../auth-provider.js';
@@ -46,6 +47,7 @@ import * as SessionActions from '../session-actions.js';
 import * as JobAnalysis    from '../job-analysis.js';
 
 // ── Tier 3 ────────────────────────────────────────────────────────────────────
+import * as Goals           from '../goals.js';
 import * as SessionManager  from '../session-manager.js';
 import * as JobInput        from '../job-input.js';
 import * as MessageDispatch from '../message-dispatch.js';
@@ -82,8 +84,9 @@ import * as SessionSwitcherUi from '../session-switcher-ui.js';
 Object.assign(globalThis,
   Logger, Utils, ApiClient, State, ProviderInfo, UiCore, LayoutInstruction,
   Validators, RecommendationHelpers, UiHelpers,
-  FetchUtils, MessageQueue,
+  FetchUtils, MessageQueue, LlmLog,
   AuthProvider, AtsRefinement, AtsModals, SessionActions, JobAnalysis,
+  Goals,
   SessionManager, JobInput, MessageDispatch, QuestionsPanel,
   ReviewTableBase,
   ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview, ReviewIcons,

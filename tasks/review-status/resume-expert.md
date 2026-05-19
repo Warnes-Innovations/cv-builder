@@ -10,25 +10,25 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Resume Expert Review Status
 
-**Last Updated:** 2026-04-20 17:30 ET
+**Last Updated:** 2026-04-22 16:30 ET
 
-**Executive Summary:** Source-verified review against all resume-expert acceptance criteria. Three formerly-failing stories (US-R3, US-R4, US-R7) are elevated to Partial due to confirmed implementations of word-level diff rendering, AI summary generation with refinement, and full LanguageTool pipeline. All seven stories remain Partial — no story has reached full Pass. Primary blockers: no synonym grouping in analysis UI, default experience display is recency-ordered (not relevance-ordered), no batch-level terminology consistency enforcement, no automated rewrite-audit closed-loop verification, and uncertain spell-audit write-back to final generated content.
+**Executive Summary:** Source-verified review against all resume-expert acceptance criteria. US-R7 (Spell & Grammar Check Quality) is substantially upgraded this cycle: five criteria previously marked Not Implemented are now confirmed Pass after verifying `scripts/utils/spell_checker.py`, `scripts/routes/review_routes.py`, and `scripts/utils/cv_orchestrator.py`. GAP-08 (spell-audit write-back key mismatch) is confirmed resolved — spell corrections flow end-to-end into generated content. US-R1 through US-R6 are unchanged from the previous review; primary open gaps remain synonym grouping in analysis UI, recency-biased default experience sort, batch-level terminology consistency, and rewrite-audit closed-loop verification.
 
 ---
 
 ## Application Evaluation
 
-**Reviewed against:** web/app.js, web/review-table-base.js, web/ats-modals.js, web/experience-review.js, web/skills-review.js, web/achievements-review.js, web/summary-review.js, web/publications-review.js, web/rewrite-review.js, web/spell-check.js, web/finalise.js, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/cv_orchestrator.py, scripts/routes/review_routes.py, tasks/current-implemented-workflow.md
+**Reviewed against:** web/app.js, web/review-table-base.js, web/ats-modals.js, web/experience-review.js, web/skills-review.js, web/achievements-review.js, web/summary-review.js, web/publications-review.js, web/rewrite-review.js, web/spell-check.js, web/finalise.js, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/cv_orchestrator.py, scripts/routes/review_routes.py, scripts/utils/spell_checker.py, tasks/current-implemented-workflow.md
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 | ------- | --------- | ----------- | -------- | ------------ | ------- |
 | US-R1 | 0 | 3 | 0 | 1 | 0 |
-| US-R2 | 0 | 5 | 0 | 1 | 0 |
+| US-R2 | 0 | 4 | 0 | 2 | 0 |
 | US-R3 | 0 | 3 | 0 | 3 | 0 |
 | US-R4 | 0 | 2 | 0 | 3 | 0 |
 | US-R5 | 0 | 3 | 0 | 2 | 0 |
 | US-R6 | 0 | 3 | 0 | 1 | 0 |
-| US-R7 | 0 | 4 | 0 | 3 | 0 |
+| US-R7 | 6 | 1 | 0 | 0 | 0 |
 
 ### US-R1: Job Description Analysis Quality
 
@@ -104,38 +104,37 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 ### US-R7: Spell & Grammar Check Quality
 
-- ✅ **LanguageTool checking with context**: `populateSpellCheckTab` iterates sections, sends `{ text, context }` per section to `/api/spell-check` (web/spell-check.js:64–73). Context type is included so backend can apply context-specific rules.
-- ✅ **Custom dictionary in use**: `custom_dict_size` returned in responses; custom dictionary terms contribute to suppressions. Stats summary shows "custom dictionary matches" count.
-- ⚠️ **Fragment suppression in bullet context**: Context type `bullet` is defined in the applicant story and sent in section payloads, but backend enforcement of "no sentence-fragment warnings for bullet context" is not confirmed from available route source. `tasks/user-story-applicant.md:199` specifies the behaviour; backend implementation unverified in this review pass.
-- ⚠️ **Proper-noun / technical-term seeding**: Custom dictionary exists; whether it is pre-seeded from `Master_CV_Data.json` (candidate name, company names, technical terms) on first run is not confirmed from available route source.
-- ⚠️ **Severity calibration**: Stats summary (section count, word count, unknown words, grammar issues) is rendered; individual suggestions are rendered in order received from LanguageTool. No explicit re-sort by severity before display. Evidence: web/spell-check.js `renderSpellSuggestions`.
-- 🔲 **skill_name context: spelling only, no grammar rules**: Context type `skill_name` defined in applicant story; backend enforcement of "grammar rules suppressed for skill_name" unverified in this review pass.
-- 🔲 **Accepted corrections change only flagged span**: Accepted corrections update the section text; no evidence of span-precise write-back isolating exactly the flagged character range.
-- 🔲 **Custom dictionary deduplication on write**: Not confirmed in available source.
+- ✅ **LanguageTool checking with context**: `populateSpellCheckTab` iterates sections, sends `{ text, context }` per section to `/api/spell-check` (web/spell-check.js:64–73). Context type is included so backend applies context-specific rules.
+- ✅ **Fragment tolerance in bullet context**: `SUPPRESSED_BULLET_RULES` frozenset in `scripts/utils/spell_checker.py:30–35` includes `SENTENCE_FRAGMENT`, `PUNCTUATION_PARAGRAPH`, `UPPERCASE_SENTENCE_START`, `WORD_CONTAINS_UNDERSCORE`, and `EN_UNPAIRED_BRACKETS`. Applied at `spell_checker.py:202`: `if context == 'bullet' and rule_id in self.SUPPRESSED_BULLET_RULES: continue`. Experience achievement bullets are given `context='bullet'` in `review_routes.py` (~line 1860).
+- ✅ **skill context: grammar rules suppressed**: `spell_checker.py:207–208` applies `if context == 'skill' and not self._is_spelling_rule(m): continue`. All skill, education, certification, language, award, and publication sections receive `context='skill'` from `review_routes.py:1678`.
+- ✅ **Custom dictionary pre-seeded from Master_CV_Data.json**: `_prepopulate_spell_dict()` at `review_routes.py:79–154` collects candidate name, title, company names, job titles, education institutions, degree fields, award titles, certification names/issuers, language names, and skill names, then calls `_spell_checker.prepopulate_from_skills(all_names)` before building sections. Called on every `GET /api/spell-check-sections` request.
+- ✅ **Custom dictionary deduplication on write**: `spell_checker.py:84–88` — `add_word()` builds a lowercase set of existing words and skips adding if the lowercased candidate is already present.
+- ✅ **Accepted corrections change exactly and only the flagged span**: `cv_orchestrator._apply_spell_fixes_to_text()` at `cv_orchestrator.py:1686–1706` processes fixes in reverse offset order, validates `current_span == original` before applying, and replaces exactly `updated[offset:offset + length]`.
+- ⚠️ **Severity calibration**: `stats` summary (section count, word count, unknown words, grammar issues) is rendered; individual suggestions are rendered in the order received from LanguageTool. No explicit re-sort by severity is applied before display in `renderSpellSuggestions` (web/spell-check.js:167–240). Critical misspellings are not guaranteed to surface before minor stylistic suggestions.
 
-**Story verdict: ⚠️ Partial** — LanguageTool pipeline ✅; fragment/skill_name context enforcement and span-precise write-back unverified.
+**Story verdict: ⚠️ Partial** — six of seven acceptance criteria now confirmed Pass; severity calibration (sort by severity before display) remains missing.
 
 ---
 
 ## Generated Materials Evaluation
 
-⚠️ Partial. Generated CVs benefit from ranked publication curation, experience bullet reordering, candidate_to_confirm exclusion from output, and audit-based rewrite tracking. However, summary output quality (opening-line structure, anti-fluff, length) is not validated post-generation; spell-audit write-back to final content is uncertain (known GAP-08/issue #49); and no automated post-generation audit verifies that generated text matches accepted rewrite decisions. Evidence: web/publications-review.js, web/summary-review.js, web/spell-check.js, scripts/utils/cv_orchestrator.py, tasks/ui-gap-implementation-plan.md:204.
+⚠️ Partial. Generated CVs benefit from ranked publication curation, experience bullet reordering, `candidate_to_confirm` exclusion from output, audit-based rewrite tracking, and — as of this review cycle — confirmed end-to-end spell-correction write-back. The formerly-open GAP-08 (spell-audit key mismatch) is resolved: `submitSpellCheckDecisions` sends `_spellSugMap` entries to `/api/spell-check-complete`, backend stores them in `state['spell_audit']`, and `cv_orchestrator.apply_accepted_spell_fixes` applies span-precise corrections before generation (evidence: web/spell-check.js:376–399, cv_orchestrator.py:1501–1706). Remaining gaps: summary output quality (opening-line structure, anti-fluff phrases, length) is not validated post-generation; no automated post-generation audit verifies that generated text matches accepted rewrite decisions; severity calibration in spell suggestions is absent.
 
 ---
 
 ## Additional Story Gaps / Proposed Story Items
 
-- **GAP (HIGH)**: Spell-audit write-back to generated content is unreliable — preview generation may read a stale session key (`state.spell_check.audit`) rather than the completed `state.spell_audit` (tasks/ui-gap-implementation-plan.md:204, GAP-08/issue #49). Add a regression test that verifies accepted spell corrections appear in the final rendered HTML.
-- **GAP (HIGH)**: Synonym grouping absent from analysis UI — synonyms are resolved internally for ATS scoring but users see "ML" and "Machine Learning" as two separate items in the keyword display. Add a grouped display with canonical ↔ alias annotation.
-- **GAP (HIGH)**: Default experience sort is recency, not relevance. Consider displaying a relevance-ordered view as an option alongside the recency-ordered view, or promote the LLM recommendation strength as a secondary sort key.
-- **GAP (MEDIUM)**: Domain inference confidence not surfaced. Add a confidence chip next to the domain badge; when confidence is below a threshold (e.g., < 0.6), prompt the user to confirm or correct the inferred domain before recommendations are generated.
-- **GAP (MEDIUM)**: Rewrite audit closed-loop verification absent. Post-generation, compare generated CV text against `rewrite_audit[*].final` to confirm zero unexplained changes. Add this as a background consistency check that surfaces in the finalise tab.
+- **GAP (HIGH) — OPEN**: Synonym grouping absent from analysis UI — synonyms are resolved internally for ATS scoring but users see "ML" and "Machine Learning" as two separate items in the keyword display. Add a grouped display with canonical ↔ alias annotation in `populateAnalysisTab` (web/review-table-base.js:210+).
+- **GAP (HIGH) — OPEN**: Default experience sort is recency, not relevance (`experience-review.js:87–92`). Consider displaying a relevance-ordered view alongside the recency-ordered view, or promote LLM recommendation strength as a secondary sort key.
+- **GAP (MEDIUM) — OPEN**: Domain inference confidence not surfaced. The domain badge shows only the inferred value (`web/review-table-base.js:241`); no confidence score or "ambiguous domain → prompt user" pathway exists.
+- **GAP (MEDIUM) — OPEN**: Rewrite audit closed-loop verification absent. Post-generation, no code compares generated CV text against `rewrite_audit[*].final` to confirm zero unexplained changes.
+- **GAP (LOW) — RESOLVED**: Spell-audit write-back to final generated content (formerly GAP-08/issue #49). Confirmed resolved: span-precise `apply_accepted_spell_fixes` flows through generation pipeline (cv_orchestrator.py:1501–1706, web/spell-check.js:345–399).
 - **Proposed story US-R8**: Summary output quality gate — before advancing from summary review, validate that the accepted summary is 4–6 lines, does not contain banned filler phrases ("results-driven", "passionate about"), and contains at least 3 of the top-5 ATS keywords.
-- **Proposed story US-R9**: Skill evidence display — for every `skill_add` rewrite proposal, display the cited experience IDs and their titles so the reviewer can confirm the evidence is credible before accepting.
+- **Proposed story US-R9**: Skill evidence display — for every `skill_add` rewrite proposal, display the cited experience IDs and their titles so the reviewer can confirm the evidence is credible before accepting. (Evidence field in rewrite card at web/rewrite-review.js:254 shows `r.evidence` text but not structured experience IDs.)
 
 ---
 
-**Reviewed against:** web/app.js, web/ats-modals.js, web/experience-review.js, web/skills-review.js, web/achievements-review.js, web/summary-review.js, web/publications-review.js, web/rewrite-review.js, web/spell-check.js, web/finalise.js, web/review-table-base.js, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/cv_orchestrator.py, scripts/routes/review_routes.py, scripts/data/synonym_map.json, tasks/current-implemented-workflow.md, tasks/user-story-resume-expert.md
+**Reviewed against:** web/app.js, web/ats-modals.js, web/experience-review.js, web/skills-review.js, web/achievements-review.js, web/summary-review.js, web/publications-review.js, web/rewrite-review.js, web/spell-check.js, web/finalise.js, web/review-table-base.js, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/cv_orchestrator.py, scripts/routes/review_routes.py, scripts/utils/spell_checker.py, scripts/data/synonym_map.json, tasks/current-implemented-workflow.md, tasks/user-story-resume-expert.md
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 | ------- | --------- | ----------- | -------- | ------------ | ------- |
@@ -145,19 +144,26 @@ For commercial licensing, contact greg@warnes-innovations.com
 | US-R4 | 0 | 2 | 0 | 3 | 0 |
 | US-R5 | 0 | 3 | 0 | 2 | 0 |
 | US-R6 | 0 | 3 | 0 | 1 | 0 |
-| US-R7 | 0 | 3 | 0 | 4 | 0 |
+| US-R7 | 6 | 1 | 0 | 0 | 0 |
 
 **Key evidence references:**
-- web/review-table-base.js `populateAnalysisTab` — required/preferred split, keyword rank badges
+- web/review-table-base.js `populateAnalysisTab` — required/preferred split, keyword rank badges, domain badge (no confidence)
 - web/ats-modals.js `_renderAnalysisIntoEl` — modal view of required/preferred/keywords
-- web/experience-review.js:83–89 — recency-based default sort (first load)
+- web/experience-review.js:87–92 — recency-based default sort (first load)
 - web/publications-review.js — ranked publication table with relevance_score, confidence, rationale
-- web/rewrite-review.js:138–220 — word-level LCS diff; keyword pills; weak-badge for skill_add
-- web/summary-review.js — AI-generated summary + refinement + stored variants
-- web/spell-check.js — LanguageTool pipeline, context field, custom_dict_size stats
-- scripts/data/synonym_map.json — synonym resolution exists in backend, not exposed in analysis UI
-- scripts/utils/cv_orchestrator.py:1486 — candidate_to_confirm flag, excluded from output per PROJECT_SPECIFICATION.md:725
+- web/rewrite-review.js:219–254 — word-level LCS diff; keyword pills; weak-badge for skill_add; r.evidence text shown but not structured experience IDs
+- web/summary-review.js — AI-generated summary + refinement + stored variants; no quality gate
+- web/spell-check.js:64–73 — context-aware LanguageTool invocation per section
+- web/spell-check.js:376–399 — `submitSpellCheckDecisions` sends `_spellSugMap` to `/api/spell-check-complete`
+- scripts/utils/spell_checker.py:30–35 — `SUPPRESSED_BULLET_RULES` frozenset (SENTENCE_FRAGMENT etc.)
+- scripts/utils/spell_checker.py:207–208 — skill context: grammar rules suppressed
+- scripts/utils/spell_checker.py:84–88 — `add_word()` lowercase deduplication
+- scripts/utils/spell_checker.py:92–100 — `prepopulate_from_skills()` method
+- scripts/routes/review_routes.py:79–154 — `_prepopulate_spell_dict()` populates dict from master data (name, companies, skills, institutions, certs, languages)
+- scripts/routes/review_routes.py:1666–1900 — `spell_check_sections` assigns correct context per section type (`'bullet'` for achievements, `'skill'` for everything else)
+- scripts/utils/cv_orchestrator.py:1501–1706 — `apply_accepted_spell_fixes` + `_apply_spell_fixes_to_text`: span-precise, reverse-order, original-validation corrections
+- scripts/utils/cv_orchestrator.py:1486 — `candidate_to_confirm` flag; excluded from output
 - .github/copilot-instructions.md:88 — rewrite audit field is `final` in code (not `final_text`)
-- tasks/ui-gap-implementation-plan.md:204 — spell-audit key mismatch (GAP-08/issue #49)
+- scripts/data/synonym_map.json — synonym resolution exists in backend, not exposed in analysis UI
 
-**Evidence standard:** Every conclusion supported by source evidence above.
+**Evidence standard:** Every conclusion is supported by evidence sufficient for another reviewer to verify it independently.

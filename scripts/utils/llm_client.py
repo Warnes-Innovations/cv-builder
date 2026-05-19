@@ -17,9 +17,11 @@ Supports:
 """
 
 import asyncio
+import functools
 import logging
 import os
 import json
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Type, TypeVar
 from abc import ABC, abstractmethod
 
@@ -200,6 +202,55 @@ class LLMClient(ABC):
     # OpenAI/Groq/GitHub: .prompt_tokens/.completion_tokens
     # Anthropic: .input_tokens/.output_tokens
     last_usage: Any = None
+
+    # Trivial probe patterns to exclude from the interaction log.
+    _TRIVIAL_PATTERNS: List[str] = [
+        'reply with one word',
+        'respond with only the word',
+        'reply only with',
+    ]
+
+    @classmethod
+    def _is_trivial_messages(cls, messages: List[Dict]) -> bool:
+        """Return True when messages represent a trivial heartbeat/probe call."""
+        for msg in messages:
+            content = (msg.get('content') or '').lower()
+            if any(p in content for p in cls._TRIVIAL_PATTERNS):
+                return True
+        return False
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if 'chat' in cls.__dict__ and not getattr(cls.__dict__['chat'], '__isabstractmethod__', False):
+            original_chat = cls.__dict__['chat']
+
+            @functools.wraps(original_chat)
+            def _logged_chat(self, messages, *args, **kw):  # type: ignore[override]
+                response = original_chat(self, messages, *args, **kw)
+                self._record_interaction(messages, response)
+                return response
+
+            cls.chat = _logged_chat
+
+    def _record_interaction(self, messages: List[Dict], response: str) -> None:
+        """Append a logged interaction unless it is a trivial probe call."""
+        if self._is_trivial_messages(messages):
+            return
+        if not hasattr(self, '_interaction_log'):
+            self._interaction_log: List[Dict] = []
+        self._interaction_log.append({
+            'messages': messages,
+            'response': response,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+        })
+
+    def get_interaction_log(self, since: int = 0) -> List[Dict]:
+        """Return logged interactions starting from index *since*."""
+        return getattr(self, '_interaction_log', [])[since:]
+
+    def get_interaction_log_length(self) -> int:
+        """Return the total number of logged interactions."""
+        return len(getattr(self, '_interaction_log', []))
 
     @abstractmethod
     def chat(

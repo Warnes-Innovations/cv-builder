@@ -29,6 +29,18 @@
 		},
 		{
 			"path": "../linkedown"
+		},
+		{
+			"path": "../specstory"
+		},
+		{
+			"path": "../specstoryai"
+		},
+		{
+			"path": "../flow-guard"
+		},
+		{
+			"path": "../OpenSpace"
 		}
 	],
 	"settings": {

@@ -262,7 +262,7 @@ describe('renderSpellCheckZeroState', () => {
   it('renders an explicit continue button instead of auto-generating', () => {
     renderSpellCheckZeroState('Spell check passed — no issues found.')
 
-    expect(document.getElementById('document-content').textContent).toContain('Continue to Generate CV')
+    expect(document.getElementById('document-content').textContent).toContain('Done — Generate CV →')
     expect(globalThis.sendAction).not.toHaveBeenCalled()
   })
 })
@@ -296,6 +296,8 @@ describe('submitEmptySpellCheck', () => {
 describe('populateSpellCheckTab', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="document-content"></div>'
+    // Clear the spell-check cache between tests to prevent result bleed.
+    window._spellCheckCache = null
   })
 
   it('renders a zero-state review panel when there are no sections', async () => {
@@ -308,7 +310,7 @@ describe('populateSpellCheckTab', () => {
 
     expect(globalThis.sendAction).not.toHaveBeenCalled()
     expect(document.getElementById('document-content').textContent).toContain('No CV sections are available to check.')
-    expect(document.getElementById('document-content').textContent).toContain('Continue to Generate CV')
+    expect(document.getElementById('document-content').textContent).toContain('Done — Generate CV →')
   })
 
   it('renders a zero-state review panel when checks find no issues', async () => {
@@ -331,6 +333,6 @@ describe('populateSpellCheckTab', () => {
 
     expect(globalThis.sendAction).not.toHaveBeenCalled()
     expect(document.getElementById('document-content').textContent).toContain('Spell check passed — no issues found.')
-    expect(document.getElementById('document-content').textContent).toContain('Continue to Generate CV')
+    expect(document.getElementById('document-content').textContent).toContain('Done — Generate CV →')
   })
 })

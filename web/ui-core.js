@@ -1824,6 +1824,42 @@ async function refreshModelPricing() {
   }
 }
 
+
+// Helper: update workflow step bar clickable state
+function updateWorkflowStepsClickable(currentPhase) {
+  // List of workflow step IDs in order
+  const stepOrder = [
+    'step-job',
+    'step-analysis',
+    'step-customizations',
+    'step-rewrite',
+    'step-spell',
+    'step-generate',
+    'step-layout',
+    'step-finalise',
+  ];
+  const phaseToIndex = {
+    job: 0,
+    analysis: 1,
+    customizations: 2,
+    rewrite: 3,
+    spell: 4,
+    generate: 5,
+    layout: 6,
+    finalise: 7,
+  };
+  const currentIdx = phaseToIndex[currentPhase] ?? 0;
+  stepOrder.forEach((id, idx) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (idx <= currentIdx) {
+      el.classList.add('clickable');
+    } else {
+      el.classList.remove('clickable');
+    }
+  });
+}
+
 // Initialize on page load — delegates to app.js init() which is loaded after this file
 document.addEventListener('DOMContentLoaded', () => {
   loadModelSelector();
@@ -1841,6 +1877,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Show only the Job tab until fetchStatus resolves the actual stage
   updateTabBarForStage('job');
+  updateWorkflowStepsClickable('job');
+
+  // Listen for phase changes to update clickable steps
+  if (typeof stateManager?.onPhaseChange === 'function') {
+    stateManager.onPhaseChange((phase) => {
+      updateWorkflowStepsClickable(phase);
+    });
+  }
 
   if (typeof init === 'function') init();
 });

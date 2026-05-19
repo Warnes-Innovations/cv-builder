@@ -313,7 +313,7 @@ async function populateAtsScoreTab() {
     return;
   }
 
-  content.innerHTML = '<div class="empty-state"><div class="icon">📊</div><h3>ATS Score</h3><p>Complete job analysis and skills review to see your ATS score</p><button class="btn btn-primary" onclick="refreshAtsScore(\'review_checkpoint\').then(()=>populateAtsScoreTab())">Compute ATS Score</button></div>';
+  content.innerHTML = '<div class="empty-state"><div class="icon">📊</div><h3>ATS Score</h3><p>Complete job analysis and skills review to see your ATS score</p><button class="btn-primary" onclick="refreshAtsScore(\'review_checkpoint\').then(()=>populateAtsScoreTab())">Compute ATS Score</button></div>';
 }
 
 // ---------------------------------------------------------------------------

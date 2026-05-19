@@ -8,7 +8,7 @@ import sys
 import tempfile
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -2027,5 +2027,258 @@ def create_blueprint(deps):
                 })
             except Exception:
                 return _internal_server_error('Failed to apply harvested updates.')
+
+    # ------------------------------------------------------------------
+    # Content proposal (layout-phase text edits)
+    # ------------------------------------------------------------------
+
+    @bp.post("/api/cv/propose-content-change")
+    def propose_cv_content_change():
+        """Ask the LLM to propose targeted text changes for the current CV content."""
+        # duckflow:
+        #   id: generation_api_propose_content_change_live
+        #   kind: api
+        #   timestamp: "2026-07-14T00:00:00Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/cv/propose-content-change"
+        #   calls:
+        #     - "orchestrator:propose_content_change"
+        #   reads:
+        #     - "request:POST /api/cv/propose-content-change.instruction"
+        #     - "state:approved_rewrites"
+        #     - "state:spell_audit"
+        #     - "state:job_analysis"
+        #     - "state:customizations"
+        #   returns:
+        #     - "response:POST /api/cv/propose-content-change.proposals"
+        #   notes: "Builds render-ready content from session state, asks the LLM to propose minimal text edits matching the instruction, and returns the proposals without applying them."
+        entry = get_session()
+        validate_owner(entry)
+        conv = entry.manager
+
+        body = request.get_json(force=True) or {}
+        instruction_text = (body.get("instruction") or "").strip()
+        if not instruction_text:
+            return jsonify({"error": "Missing instruction text."}), 400
+
+        inputs = _collect_render_snapshot_inputs(conv)
+
+        try:
+            content = conv.orchestrator.build_render_ready_content(
+                inputs['job_analysis'],
+                inputs['materialized_customizations'],
+                approved_rewrites=inputs['approved_rewrites'],
+                spell_audit=inputs['spell_audit'],
+                max_skills=inputs['max_skills'],
+            )
+        except Exception as exc:
+            current_app.logger.exception("propose-content-change: failed to build content")
+            return jsonify({"error": f"Failed to build CV content: {exc}"}), 500
+
+        result = conv.orchestrator.propose_content_change(instruction_text, content)
+
+        if result.get('error'):
+            return jsonify({"ok": False, "error": result["error"], "proposals": []}), 200
+
+        return jsonify({"ok": True, "proposals": result.get("proposals") or []})
+
+    @bp.post("/api/cv/apply-content-changes")
+    def apply_cv_content_changes():
+        """Persist accepted content proposals to session state and mark affected phases dirty."""
+        # duckflow:
+        #   id: generation_api_apply_content_changes_live
+        #   kind: api
+        #   timestamp: "2026-07-14T00:00:00Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/cv/apply-content-changes"
+        #   reads:
+        #     - "request:POST /api/cv/apply-content-changes.accepted"
+        #   writes:
+        #     - "state:approved_rewrites"
+        #     - "state:layout_content_edits"
+        #     - "state:generation_state.dirty_phases"
+        #     - "state:generation_state.earliest_dirty_step"
+        #   returns:
+        #     - "response:POST /api/cv/apply-content-changes.ok"
+        #     - "response:POST /api/cv/apply-content-changes.applied_count"
+        #     - "response:POST /api/cv/apply-content-changes.dirty_phases"
+        #     - "response:POST /api/cv/apply-content-changes.earliest_dirty_step"
+        #   notes: "Appends accepted proposals to approved_rewrites and a separate layout_content_edits tracking list, then marks the generate and layout phases as dirty so the frontend can prompt the user to rerun from the correct stage."
+        entry = get_session()
+        validate_owner(entry)
+        conv = entry.manager
+
+        body = request.get_json(force=True) or {}
+        accepted = body.get("accepted") or []
+        if not isinstance(accepted, list):
+            return jsonify({"error": "accepted must be a list."}), 400
+
+        dirty_phases       = ["generate", "layout"]
+        earliest_dirty_step = "generate"
+
+        with entry.lock:
+            state = conv.state
+
+            # Append to approved_rewrites (so generate-preview and generate-final
+            # will pick them up automatically via build_render_ready_content).
+            existing_rewrites = state.setdefault("approved_rewrites", [])
+            existing_rewrites.extend(accepted)
+
+            # Also keep a separate audit list for layout-phase edits.
+            layout_edits = state.setdefault("layout_content_edits", [])
+            layout_edits.extend(accepted)
+
+            # Mark generation state dirty so the frontend can warn the user.
+            gen = state.setdefault("generation_state", {})
+            gen["dirty_phases"]        = dirty_phases
+            gen["earliest_dirty_step"] = earliest_dirty_step
+            gen["layout_confirmed"]    = False
+
+            conv._save_session()
+
+        return jsonify({
+            "ok":                  True,
+            "applied_count":       len(accepted),
+            "dirty_phases":        dirty_phases,
+            "earliest_dirty_step": earliest_dirty_step,
+        })
+
+    @bp.post("/api/cv/smart-instruction")
+    def smart_cv_instruction():
+        """Classify a free-text CV instruction as layout or content, then delegate.
+
+        The LLM determines whether the instruction targets structural presentation
+        (layout) or text content (content), then routes to the appropriate handler.
+
+        Body: ``{"instruction": "<text>"}``
+
+        Returns layout response (same shape as /api/cv/layout-refine) with an
+        extra ``"instruction_type": "layout"`` field, or content proposals (same
+        shape as /api/cv/propose-content-change) with ``"instruction_type":
+        "content"``.
+        """
+        # duckflow:
+        #   id: generation_api_smart_instruction_live
+        #   kind: api
+        #   timestamp: "2026-05-18T20:00:00Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/cv/smart-instruction"
+        #   calls:
+        #     - "orchestrator:classify_instruction"
+        #     - "orchestrator:apply_layout_instruction"
+        #     - "orchestrator:propose_content_change"
+        #   reads:
+        #     - "request:POST /api/cv/smart-instruction.instruction"
+        #     - "state:generation_state.preview_html"
+        #   returns:
+        #     - "response:POST /api/cv/smart-instruction.instruction_type"
+        #     - "response:POST /api/cv/smart-instruction.ok"
+        #   notes: "Classifies the instruction via LLM, then delegates to the layout or content handler."
+        entry = get_session()
+        validate_owner(entry)
+        conv = entry.manager
+
+        body = request.get_json(force=True) or {}
+        instruction_text = (body.get("instruction") or "").strip()
+        if not instruction_text:
+            return jsonify({"error": "Missing instruction text."}), 400
+
+        instruction_type = conv.orchestrator.classify_instruction(instruction_text)
+
+        if instruction_type == "content":
+            inputs = _collect_render_snapshot_inputs(conv)
+            try:
+                content = conv.orchestrator.build_render_ready_content(
+                    inputs['job_analysis'],
+                    inputs['materialized_customizations'],
+                    approved_rewrites=inputs['approved_rewrites'],
+                    spell_audit=inputs['spell_audit'],
+                    max_skills=inputs['max_skills'],
+                )
+            except Exception as exc:
+                current_app.logger.exception("smart-instruction: failed to build content")
+                return jsonify({"error": f"Failed to build CV content: {exc}"}), 500
+
+            result = conv.orchestrator.propose_content_change(instruction_text, content)
+            if result.get('error'):
+                return jsonify({
+                    "ok": False,
+                    "instruction_type": "content",
+                    "error": result["error"],
+                    "proposals": [],
+                }), 200
+            return jsonify({
+                "ok": True,
+                "instruction_type": "content",
+                "proposals": result.get("proposals") or [],
+            })
+
+        # --- layout branch (default) ---
+        with entry.lock:
+            gen_state = conv.state.get("generation_state", {})
+            current_html = gen_state.get("preview_html") or ""
+            prior_instructions = gen_state.get("layout_instructions") or []
+
+        if not current_html:
+            return jsonify({
+                "ok": False,
+                "instruction_type": "layout",
+                "error": "No preview HTML available. Generate a preview first.",
+            }), 400
+
+        result = conv.orchestrator.apply_layout_instruction(
+            instruction_text=instruction_text,
+            current_html=current_html,
+            prior_instructions=prior_instructions,
+        )
+
+        if result.get("error"):
+            safety_alert = None
+            if "safety" in result:
+                s = result["safety"]
+                findings = s.get("findings") or []
+                safety_alert = {"flagged": bool(findings), "issues": findings, "message": ""}
+            response_body = {
+                "ok": False,
+                "instruction_type": "layout",
+                "error": result["error"],
+                "details": result.get("details", ""),
+            }
+            if result.get("error") == "clarify":
+                response_body["question"] = result.get("clarification_question", "")
+            if "raw_response" in result:
+                response_body["raw_response"] = result["raw_response"]
+            if safety_alert:
+                response_body["safety_alert"] = safety_alert
+            return jsonify(response_body), 200
+
+        new_html = result.get("html", "")
+        safety = result.get("safety") or {}
+        safety_findings = safety.get("findings") or []
+        safety_alert = {"flagged": bool(safety_findings), "issues": safety_findings, "message": ""} if safety_findings else None
+
+        with entry.lock:
+            gen = conv.state.setdefault("generation_state", {})
+            gen["preview_html"] = new_html
+            instructions_list = gen.setdefault("layout_instructions", [])
+            instructions_list.append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "instruction_text": instruction_text,
+                "change_summary": result.get("summary", ""),
+                "confirmation": True,
+            })
+            conv._save_session()
+
+        return jsonify({
+            "ok": True,
+            "instruction_type": "layout",
+            "html": new_html,
+            "summary": result.get("summary", "Layout updated"),
+            "confidence": result.get("confidence", 1.0),
+            "safety_alert": safety_alert,
+        })
 
     return bp

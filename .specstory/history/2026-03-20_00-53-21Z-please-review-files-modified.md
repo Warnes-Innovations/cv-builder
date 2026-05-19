@@ -4673,4 +4673,4 @@ Done. Summary:
 
 The archive is ready for your instruction optimization analysis.
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->
+<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder/tasks/multi-session-implementation-plan.md`" -->

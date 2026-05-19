@@ -170,6 +170,7 @@ async function analyzeJob() {
       updatePositionTitle(latestStatus);
     }
   } catch (_e) { /* non-fatal */ }
+  if (typeof fetchAndDisplayLlmLog === 'function') fetchAndDisplayLlmLog();
 }
 
 // ── ES module exports ──────────────────────────────────────────────────────

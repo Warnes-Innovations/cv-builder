@@ -208,6 +208,11 @@ async function fetchStatus() {
     globalThis.updateAuthBadge(status?.copilot_auth || {}, provider);
   }
 
+  // Update workflow step bar (clickable/completed/active state) on every status fetch.
+  if (typeof globalThis.updateWorkflowSteps === 'function' && status && !status._error) {
+    globalThis.updateWorkflowSteps(status);
+  }
+
   return status;
 }
 

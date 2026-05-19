@@ -96,6 +96,7 @@ async function sendAction(action) {
 
   setLoading(false);
   await fetchStatus();
+  if (typeof fetchAndDisplayLlmLog === 'function') fetchAndDisplayLlmLog();
 }
 
 async function saveSession() {

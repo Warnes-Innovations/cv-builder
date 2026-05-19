@@ -113,7 +113,12 @@ function appendLayoutSafetyAlert(safetyAlert) {
   }
 
   const issues = (safetyAlert.issues || [])
-    .map(issue => `<li>${escapeHtml(issue)}</li>`)
+    .map(issue => {
+      const text = typeof issue === 'string'
+        ? issue
+        : (issue?.detail || issue?.issue || JSON.stringify(issue));
+      return `<li>${escapeHtml(text)}</li>`;
+    })
     .join('');
 
   appendMessageHtml(
@@ -222,7 +227,6 @@ function refreshLayoutReviewState() {
   const freshness = stateManager.getLayoutFreshness();
   const generationState = stateManager.getGenerationState();
   const confirmBtn  = document.getElementById('confirm-layout-btn');
-  const confirmBtn2 = document.getElementById('confirm-layout-btn-2');
   const finalBtn = document.getElementById('proceed-to-finalise-btn');
 
   renderLayoutPreviewStatus();
@@ -237,7 +241,6 @@ function refreshLayoutReviewState() {
     : 'none';
 
   if (confirmBtn)  confirmBtn.style.display  = showConfirm;
-  if (confirmBtn2) confirmBtn2.style.display = showConfirm;
 
   if (finalBtn) {
     finalBtn.style.display = generationState.previewAvailable
@@ -295,7 +298,7 @@ async function initiateLayoutInstructions() {
             <div id="preview-output-status" class="preview-output-status"></div>
           </div>
 
-          <div class="layout-settings-row" style="display:flex; align-items:center; gap:10px; margin-bottom:14px; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;">
+          <div class="layout-settings-row" style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:14px; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;">
             <label for="base-font-size-input" style="font-size:0.85em; font-weight:600; color:#475569; white-space:nowrap;">Base font size:</label>
             <input
               id="base-font-size-input"
@@ -347,10 +350,6 @@ async function initiateLayoutInstructions() {
             </h4>
             <div id="instruction-history" class="instruction-history-list"></div>
           </div>
-
-          <button id="confirm-layout-btn-2" class="continue-btn layout-action-btn" style="display:none;">
-            Confirm Layout
-          </button>
 
           <button id="proceed-to-finalise-btn" class="continue-btn layout-action-btn" style="display: none;">
             Generate Final Files
@@ -421,7 +420,6 @@ async function initiateLayoutInstructions() {
 function setupLayoutInstructionListeners() {
   const applyBtn          = document.getElementById('apply-instruction-btn');
   const confirmBtn        = document.getElementById('confirm-layout-btn');
-  const confirmBtn2       = document.getElementById('confirm-layout-btn-2');
   const proceedBtn        = document.getElementById('proceed-to-finalise-btn');
   const regenerateBtn     = document.getElementById('regenerate-layout-preview-btn');
   const dismissCalloutBtn = document.getElementById('dismiss-layout-stale-btn');
@@ -461,10 +459,6 @@ function setupLayoutInstructionListeners() {
 
   if (confirmBtn) {
     confirmBtn.addEventListener('click', confirmLayoutReview);
-  }
-
-  if (confirmBtn2) {
-    confirmBtn2.addEventListener('click', confirmLayoutReview);
   }
 
   if (proceedBtn) {

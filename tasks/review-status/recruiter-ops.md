@@ -8,6 +8,222 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Recruiter-Ops Review Status
 
+**Last Updated:** 2026-04-22 10:00 ET
+
+**Executive Summary:** The application provides a functional archive step (status, notes, git commit) and a file-review tab with ATS validation and per-format downloads, satisfying the core submission-readiness and file-review criteria. However, no multi-application overview or cross-session summary exists: the session switcher is the only way to navigate between applications, there is no package-readiness checklist before archiving, and the archive confirmation surface does not surface ATS score or file completeness in a persistent way. Output file naming is job-relevant, but the archive metadata summary is not retrievable after the finalise flow closes — there is no read-back UI for an archived application's status, notes, or ATS score without reloading the session.
+
+---
+
+## Application Evaluation
+
+### US-O1: Submission Readiness Clarity
+
+**Criterion 1 — Final outputs are clearly visible and distinguishable**
+
+⚠️ **Partial** — The File Review tab (`web/download-tab.js:276`, `populateDownloadTab`) lists every generated file with format-specific icons (🤖 for ATS PDF, 📄 for human PDF, 📝 for DOCX, 🌐 for HTML), ATS validation status per format, and download buttons that are greyed-out when ATS checks fail. File descriptions distinguish ATS-optimised from human-readable variants. However, all files — CV PDF, ATS PDF, DOCX, HTML, cover letter DOCX, screening-responses DOCX, job_description.txt — appear in a single flat grid with no grouping headers separating core CV deliverables from supplementary materials (`web/download-tab.js:56–64`). There is also no "total package completeness" indicator — no badge or check that confirms "3 of 4 required files present." The finalise tab shows a flat `<ul>` of bare file paths with no file-type icons or visual distinction (`web/finalise.js:85–87`).
+
+*Evidence:*
+- `web/download-tab.js:21–70` — `_collectDownloadableFiles()` aggregates all file types; no grouping logic
+- `web/download-tab.js:156–200` — `_renderDownloadGrid()` flat grid, blocked/unblocked per format
+- `web/finalise.js:75–91` — File list rendered as bare `<code>` elements inside `<li>` items
+
+**Criterion 2 — UI makes clear which files are available and current**
+
+⚠️ **Partial** — The File Review tab runs ATS validation on load and greys out downloads for failing formats, providing currency signals indirectly. The layout-freshness system adds an "Outdated" badge to the generate/download/finalise tab labels when the layout snapshot is stale (`web/workflow-steps.js:66–83`). However, no explicit "last generated at" timestamp is shown alongside the file list, and multiple generation passes are not disambiguated — the file list always reflects the most recent generation state without stating when it was produced or whether it matches the current review decisions.
+
+*Evidence:*
+- `web/workflow-steps.js:66–83` — `applyLayoutFreshnessNavigationState()` adds `tab-stale` CSS class to tab labels only
+- `web/download-tab.js:276–325` — No generation timestamp rendered in file list
+- `web/finalise.js:46–55` — Fetches `/api/status` for `generated_files` but does not display a generation timestamp
+
+**Criterion 3 — Finalise/archive actions clearly separated from earlier preview steps**
+
+✅ **Pass** — The workflow step bar has a dedicated "✅ Finalise" step (`web/index.html:119`) that is only reachable after the layout/generation phase. The finalise-stage tabs (`web/ui-core.js:358`: `['download', 'finalise', 'master', 'cover-letter', 'screening']`) are only shown in the `finalise` stage. The archive button inside the Finalise tab sits behind a status-select and notes textarea, visually separated from the File Review/download flow. The `POST /api/finalise` endpoint guards against calling it before CV generation (`scripts/routes/generation_routes.py:1793–1796`).
+
+*Evidence:*
+- `web/index.html:119` — Step bar "✅ Finalise" element, `id="step-finalise"`
+- `web/ui-core.js:358` — `STAGE_TABS.finalise` restricts tab set to post-generation tabs
+- `web/finalise.js:105–116` — Status select and notes textarea precede archive button
+- `scripts/routes/generation_routes.py:1793–1796` — `400` guard if no `generated_files`
+
+**Acceptance criteria verdict:**
+
+- *"Final-stage UI supports a confident determination of package readiness"* — ⚠️ Partial. There is no pre-archive readiness checklist (see `tasks/gaps.md:362`, GAP-48). The user must manually inspect the file list and ATS report to judge readiness.
+- *"User can identify the current set of deliverables before finalising"* — ⚠️ Partial. File list is shown in both the File Review tab and the Finalise tab, but no completeness count or generation timestamp is surfaced.
+
+---
+
+### US-O2: Application Metadata and Tracking
+
+**Criterion 1 — Status values are understandable and actionable**
+
+⚠️ **Partial** — The status dropdown offers three clearly labelled values: `Draft — not yet sent`, `Ready to send`, `Sent` (`web/finalise.js:109–114`). These cover the core pre-submission states. However, there is no `Rejected`, `Interview`, `Offer`, or `Closed` status, limiting post-submission tracking to a single state. More critically, the status is stored in `metadata.json:application_status` (`scripts/routes/generation_routes.py:1808`) but is never surfaced again in the session list, session switcher, or any other UI — it cannot be read back, edited, or used to filter applications.
+
+*Evidence:*
+- `web/finalise.js:108–114` — Three-option `<select id="finalise-status">`
+- `scripts/routes/generation_routes.py:1800, 1808` — Validates and writes `metadata.application_status`
+- `scripts/routes/session_routes.py:106–122` — `list_sessions` does not read `metadata.application_status`
+- `web/session-switcher-ui.js:_renderSavedSessionRows` — Displays `position_name`, `phase`, timestamps only
+
+**Criterion 2 — Notes are captured at the point of finalisation**
+
+✅ **Pass** — A `<textarea id="finalise-notes">` with the placeholder text "Recruiter name, salary info, follow-up date, interview notes…" is rendered in the Finalise tab (`web/finalise.js:116–124`). The value is submitted with `POST /api/finalise` and written to `metadata.json:notes` (`scripts/routes/generation_routes.py:1809`). The success confirmation banner shows "Status: `<value>`" and includes approved rewrites and ATS score, confirming the archive succeeded.
+
+*Evidence:*
+- `web/finalise.js:116–124` — Textarea with recruiter-relevant placeholder
+- `scripts/routes/generation_routes.py:1802, 1809` — `notes = body.get('notes', '')` → `metadata['notes'] = notes`
+
+**Criterion 3 — Archive behavior preserves context needed for later follow-up**
+
+⚠️ **Partial** — The archive writes a comprehensive set of fields to `metadata.json`: `application_status`, `notes`, `finalised_at`, `clarification_answers`, `spell_audit`, `layout_instructions`, `validation_results`, `ats_score`, plus a git commit (`scripts/routes/generation_routes.py:1807–1833`). The technical context is preserved. However, follow-up context (interview dates, outcome, recruiter contacts) cannot be added after archiving — there is no update-metadata route or UI for an already-archived application.
+
+*Evidence:*
+- `scripts/routes/generation_routes.py:1807–1829` — Full metadata write set
+- No `PUT /api/finalise` or metadata-update route exists in `scripts/routes/`
+
+**Acceptance criteria verdict:**
+
+- *"Finalise flow supports storing practical application-tracking metadata"* — ✅ at point of finalise; ⚠️ for post-archive updates.
+- *"Workflow makes clear when metadata becomes part of the archived session"* — ✅ The success banner (`web/finalise.js:171–188`) shows status, ATS score, approved rewrites, and git commit hash, making the archive moment explicit.
+
+---
+
+### US-O3: File Naming and Package Hygiene
+
+**Criterion 1 — Generated files use job-relevant naming**
+
+✅ **Pass** — The CV orchestrator constructs filenames as `CV_{Company}_{RoleTruncated}_{YYYY-MM-DD}` (`scripts/utils/cv_orchestrator.py:1145–1148`). Session directories are renamed to `{Company}_{RoleSlug}_{date}` when intake is confirmed (`scripts/utils/conversation_manager.py:1671–1682`). Filenames are derived from LLM-extracted `company` and `title` from the job analysis, making them job-specific.
+
+*Evidence:*
+- `scripts/utils/cv_orchestrator.py:1145–1148` — `filename_base = f"CV_{company}_{role}_{timestamp}"`
+- `scripts/utils/conversation_manager.py:1671–1682` — `apply_confirmed_intake()` renames session dir
+
+**Criterion 2 — File review surfaces present outputs in a manageable way**
+
+⚠️ **Partial** — The File Review tab renders a grid of files with format-specific icons, ATS pass/fail per format, and individual Download buttons (`web/download-tab.js:156–200`). Per-file blocking for ATS failures is clear. However, all file types (CV PDF, ATS PDF, DOCX, HTML, cover letter, screening responses, job_description.txt) appear in a single flat grid with no grouping headers. For a full application package, this grid can contain 6–7 items of mixed importance.
+
+*Evidence:*
+- `web/download-tab.js:156–200` — Single flat `download-grid` div, no section headers
+- `web/download-tab.js:21–70` — All file types processed in a single pass; no grouping logic
+
+**Criterion 3 — Multiple generation passes do not obscure which output is current**
+
+❌ **Fail** — `populateDownloadTab` takes `cvData` from `stateManager.getTabData('cv')`, which reflects the most recent generation result in memory. However, if CV generation is re-run (via back-to-phase then regenerate), the file list always shows the current in-memory state without any timestamp, run-count, or "replaced previous output" notification. There is no `generatedAt` label displayed in the download grid. The layout-staleness tab badge (`web/workflow-steps.js:66–83`) addresses layout freshness but not the question of whether on-disk files match the current review state.
+
+*Evidence:*
+- `web/download-tab.js:276–325` — `populateDownloadTab()` renders no generation timestamp
+- `web/download-tab.js:21–24` — `cvData.files` array contains only filenames, no date metadata
+- `web/workflow-steps.js:66–83` — Stale badge in tab labels only; not inside the file list
+
+**Acceptance criteria verdict:**
+
+- *"Output presentation and naming support practical handling outside the UI"* — ✅ for naming; ⚠️ for presentation (no grouping); ❌ for multi-pass disambiguation.
+
+---
+
+## Generated Materials Evaluation
+
+### Output Directory Organization
+
+✅ **Pass** — Session directories are named `{Company}_{RoleSlug}_{date}` on disk, making the folder structure identifiable outside the UI. CV files follow `CV_{Company}_{Role}_{date}.*` naming. Cover letter and screening-response files use distinct filename prefixes (`CoverLetter_`, `Screening_Responses_`). All artifacts are co-located in the same session output directory.
+
+*Evidence:*
+- `scripts/utils/cv_orchestrator.py:1145–1148` — CV file naming pattern
+- `scripts/utils/conversation_manager.py:1671–1682` — Session directory naming
+
+### Output Completeness Signals
+
+⚠️ **Partial** — The download-tab ATS validation run (`web/download-tab.js:292–302`) surfaces format-level pass/fail and blocks downloads for failing formats. However, there is no "all required formats generated" checklist — the user must visually count files. ATS score is shown in the finalise success banner (`web/finalise.js:168–183`) but only once, in an ephemeral result `<div>` that is not persisted or re-surfaced later. Cover letter and screening-response files are listed alongside CV files with no "optional/required" classification.
+
+*Evidence:*
+- `web/download-tab.js:276–325` — No completeness summary; only per-file ATS pass/fail
+- `web/finalise.js:168–183` — ATS score in success banner, ephemeral `<div id="finalise-result">`
+- `tasks/gaps.md:362` — GAP-48: missing pre-archive checklist
+
+### Post-Archive Retrievability
+
+🔲 **Not Implemented** — After archiving, there is no route to return to a read-only "archived application summary" view within the UI. The archived `metadata.json` contains status, notes, ATS score, and file list, but no UI endpoint reads and displays it. To review an archived application's status or notes, the user must either reload the session (placing it back in the active workflow) or inspect the filesystem directly.
+
+*Evidence:*
+- No `GET /api/archived-application/<id>` or `GET /api/metadata` route in `scripts/routes/`
+- `scripts/routes/session_routes.py:106–122` — `list_sessions` reads only `state.phase`, `state.position_name`, `has_job`, `has_analysis`, `has_customizations` — not `metadata.application_status` or `metadata.notes`
+
+---
+
+## Additional Story Gaps / Proposed Story Items
+
+### GAP-RO1: Application Status Not Visible in Session List
+The session switcher (`web/session-switcher-ui.js:_renderSavedSessionRows`) shows position name, phase label, created date, and last-modified date — but not `application_status` from `metadata.json`. A recruiter scanning multiple applications cannot see which packages are `sent`, `ready`, or `draft` from the session list.
+
+**Proposed story:** *As a recruiter-ops user, I want to see each application's submission status (draft/ready/sent) in the session list so I can quickly identify which packages need action.*
+
+### GAP-RO2: No Post-Archive Metadata Update
+After archiving, `application_status` and `notes` are frozen in `metadata.json`. There is no mechanism to update status from `sent` to `interview`, add follow-up notes, or mark an application as closed without re-entering the finalise flow (which advances phase to `refinement` and re-triggers the harvest section).
+
+**Proposed story:** *As a recruiter-ops user, I want to update the application status and add follow-up notes after archiving without re-running the full finalise workflow.*
+
+### GAP-RO3: "Done" Phase Label Does Not Reflect Archive State
+The session switcher shows `Done` for the `refinement` phase (`web/utils.js:282`). This does not indicate whether the application was archived and sent, or only generated. A recruiter-ops user cannot distinguish an archived application from one that reached the finalise step but was never submitted.
+
+*Evidence:* `web/utils.js:282` — `SESSION_PHASE_LABELS_SHORT.refinement = 'Done'`
+
+### GAP-RO4: No Cross-Application Summary View
+The session list is the only multi-application surface, capped at 20 entries, showing only position name, phase, and timestamps. There is no dashboard summarising company, role, submission status, ATS score, and date across all applications.
+
+**Proposed story:** *As a recruiter-ops user managing multiple applications, I want a summary list showing each application's company, role, submission status, ATS score, and date so I can track my pipeline in one place.*
+
+### GAP-RO5: No Generation Timestamp in File List
+The File Review tab renders no "generated at" timestamp alongside file names. This means users cannot confirm files are current after a back-to-phase re-run, and cannot audit which generation pass produced the displayed files.
+
+*Evidence:* `web/download-tab.js:276–325` — `populateDownloadTab()` renders no generation metadata
+
+---
+
+## Terminology Review
+
+| Term | Context | Clarity Assessment |
+|------|---------|-------------------|
+| **Session** | "Select a Session", Sessions modal, session switcher | Ambiguous from an application-ops perspective. A recruiter expects "Application" or "Job Application." The mismatch is felt on every multi-application task. |
+| **Application** | "Application archived!" in finalise success banner | Clear and correct in this context. |
+| **Archive** | "✅ Finalise & Archive" button and success message | Reasonably clear — implies permanent record creation. Relationship to "save" not explained. |
+| **Finalise** | Step bar label, tab label, button label | Accurately signals workflow end, but does not communicate "this creates the submission package." Difficult to distinguish from "Generate CV" for a new user. |
+| **Ready to send / Sent / Draft** | Status dropdown, Finalise tab | Clear, recruiter-appropriate pre-submission labels. Post-submission states (Interview, Offer, Rejected) are absent. |
+| **Done** | Compact session-switcher label for `refinement` phase | Ambiguous — does not distinguish archived/sent from merely reached-finalise. Should be "Archived" or show `application_status`. |
+| **File Review** | Tab label `⬇️ File Review` | Unusual for a download tab — "Download Files" or "Deliverables" would be more intuitive. |
+
+---
+
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, web/session-manager.js, web/session-switcher-ui.js, web/workflow-steps.js, web/finalise.js, web/download-tab.js, scripts/web_app.py, scripts/routes/generation_routes.py, scripts/routes/session_routes.py, scripts/utils/conversation_manager.py, scripts/utils/cv_orchestrator.py
+
+| Story  | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
+|--------|---------|-----------|--------|------------|-------|
+| US-O1.1 (Final outputs visible/distinguishable) | | ⚠️ | | | |
+| US-O1.2 (Which files are available/current) | | ⚠️ | | | |
+| US-O1.3 (Finalise separated from preview) | ✅ | | | | |
+| US-O2.1 (Status values understandable) | | ⚠️ | | | |
+| US-O2.2 (Notes captured at finalisation) | ✅ | | | | |
+| US-O2.3 (Archive preserves follow-up context) | | ⚠️ | | | |
+| US-O3.1 (Job-relevant file naming) | ✅ | | | | |
+| US-O3.2 (File review manageable) | | ⚠️ | | | |
+| US-O3.3 (Multi-pass disambiguation) | | | ❌ | | |
+| Post-archive retrievability | | | | 🔲 | |
+
+**Key evidence references:**
+
+- US-O1.1 (file distinction) → `web/download-tab.js:21–70`, `web/finalise.js:75–91`
+- US-O1.2 (currency) → `web/workflow-steps.js:66–83`, `web/download-tab.js:276–325`
+- US-O1.3 (finalise separation) → `web/index.html:119`, `web/ui-core.js:358`, `scripts/routes/generation_routes.py:1793–1796`
+- US-O2.1 (status values) → `web/finalise.js:108–114`, `scripts/routes/generation_routes.py:1800, 1808`, `scripts/routes/session_routes.py:106–122`
+- US-O2.2 (notes) → `web/finalise.js:116–124`, `scripts/routes/generation_routes.py:1802, 1809`
+- US-O2.3 (archive context) → `scripts/routes/generation_routes.py:1807–1829`
+- US-O3.1 (file naming) → `scripts/utils/cv_orchestrator.py:1145–1148`
+- US-O3.2 (file review) → `web/download-tab.js:156–200`
+- US-O3.3 (multi-pass) → `web/download-tab.js:276–325` (no generation timestamp)
+- GAP-RO1 (status in session list) → `scripts/routes/session_routes.py:106–122`
+- GAP-RO3 (phase label) → `web/utils.js:282`
+
+**Evidence standard:** Every conclusion is supported by source evidence. No inferences drawn from documentation.
+
 **Last Updated:** 2026-04-20 17:30 ET
 **Executive Summary:** The application delivers solid single-document package preparation: job-relevant file naming, clear ATS/format distinction in the File Review tab, and practical finalisation with status/notes/git archiving. The primary gaps are package incompleteness — the cover letter DOCX and screening responses DOCX are saved to disk but excluded from the File Review and Finalise file lists — and the absence of a cross-component submission readiness checklist, leaving the recruiter-ops user to verify completeness mentally.
 
