@@ -162,4 +162,4 @@ _**Agent (copilot/auto)**_
 
 The user wants to push the commits to the remote. Let me use the gitkraken git push tool.
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->

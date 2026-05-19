@@ -151,4 +151,4 @@ Natural next steps:
 1. I can prepare a clean follow-up commit plan for the remaining unrelated local changes.
 2. I can review PR 43 one more time for merge readiness.
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->
