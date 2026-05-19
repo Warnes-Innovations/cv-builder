@@ -2,7 +2,7 @@
 
 # 2026-04-17 19:53:35Z
 
-<!-- VS Code Copilot IDE Session 9647b683-296c-4fdb-8b86-b948f8eebba4 (2026-04-17 19:53:35Z) -->
+<!-- copilotide Session 9647b683-296c-4fdb-8b86-b948f8eebba4 (2026-04-17 19:53:35Z) -->
 
 _**User (2026-04-17 19:53:35Z)**_
 
@@ -443,4 +443,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user is approving the commit. I need to execute `git add -A && git commit` with the proposed message. Per the shell patterns memory, I should write the commit message to a temp file first, then use `git commit -F`.
 
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->

@@ -95,4 +95,4 @@ _**Agent (copilot/gpt-5-mini)**_
 
 I need to start my process with a message: "I'll accept origin/devel for the conflicts and then finish the merge locally." After that, I'll push to the main branch and update the PR. I also have to update the statuses of my todo list tasks. I’ll use the manage_todo_list tool again to mark the merge as completed, even though I've used it earlier. So, I’ll proceed with that!
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->
