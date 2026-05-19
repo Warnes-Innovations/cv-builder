@@ -61,6 +61,7 @@ import * as ReviewTableBase from '../review-table-base.js';
 import * as ExperienceReview   from '../experience-review.js';
 import * as SkillsReview       from '../skills-review.js';
 import * as AchievementsReview from '../achievements-review.js';
+import * as TaglineReview      from '../tagline-review.js';
 import * as SummaryReview      from '../summary-review.js';
 import * as PublicationsReview from '../publications-review.js';
 
@@ -89,7 +90,7 @@ Object.assign(globalThis,
   Goals,
   SessionManager, JobInput, MessageDispatch, QuestionsPanel,
   ReviewTableBase,
-  ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview, ReviewIcons,
+  ExperienceReview, SkillsReview, AchievementsReview, TaglineReview, SummaryReview, PublicationsReview, ReviewIcons,
   RewriteReview, SpellCheck, DownloadTab, WorkflowSteps, MasterCv,
   CoverLetter, ScreeningQuestions, Finalise,
   SessionSwitcherUi,

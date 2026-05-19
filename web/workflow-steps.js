@@ -30,11 +30,11 @@ function _findExperienceRecommendationRecord(expId) {
 
 // ── Step-order constants ─────────────────────────────────────────────────────
 
-const _STEP_ORDER = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise'];
+const _STEP_ORDER = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'final_generate', 'finalise'];
 const _STEP_DISPLAY = {
   job: 'Job Input', analysis: 'Job Analysis', customizations: 'Customisations',
-  rewrite: 'Rewrite Review', spell: 'Spell Check', generate: 'Generate CV',
-  layout: 'Layout Review', finalise: 'Finalise',
+  rewrite: 'Rewrite Review', spell: 'Spell Check', generate: 'Preview CV',
+  layout: 'Layout Review', final_generate: 'Generate', finalise: 'Finalise',
 };
 const _ACTION_LABELS = {
   recommend_customizations: 'Selecting experiences & skills…',
@@ -204,15 +204,17 @@ function _getStepTooltip(step, isActive, isViewing, isBrowsingAway, isCompleted,
  */
 function _updateViewingIndicator(tabName) {
   const tabToStep = {
-    'job':        'job',
-    'analysis':   'analysis',
-    'questions':  'analysis',
-    'exp-review': 'customizations',
-    'rewrite':    'rewrite',
-    'spell':      'spell',
-    'generate':   'generate',
-    'layout':     'layout',
-    'finalise':   'finalise',
+    'job':           'job',
+    'analysis':      'analysis',
+    'questions':     'analysis',
+    'exp-review':    'customizations',
+    'rewrite':       'rewrite',
+    'spell':         'spell',
+    'generate':      'generate',
+    'layout':        'layout',
+    'download':      'final_generate',
+    'final_generate':'final_generate',
+    'finalise':      'finalise',
   };
   const viewedStep = tabToStep[tabName] || null;
 
@@ -597,8 +599,8 @@ async function resetBulletOrder(expId) {
 // ── Workflow step bar ─────────────────────────────────────────────────────────
 
 function updateWorkflowSteps(status) {
-  // 8-step workflow bar: Job Input → Analysis → Customise → Rewrites →
-  //                      Spell Check → Generate → Layout (upcoming) → Finalise
+  // 9-step workflow bar: Job Input → Analysis → Customise → Rewrites →
+  //                      Spell Check → Preview → Layout Review → Generate → Finalise
   //
   const UPCOMING = new Set();
 
@@ -612,8 +614,9 @@ function updateWorkflowSteps(status) {
     customizations: '⚙️ Customise',
     rewrite:        '✏️ Rewrites',
     spell:          '🔤 Spell Check',
-    generate:       '📄 Generate',
+    generate:       '📄 Preview',
     layout:         '🎨 Layout Review',
+    final_generate: '📄 Generate',
     finalise:       '✅ Finalise',
   };
 
@@ -624,22 +627,26 @@ function updateWorkflowSteps(status) {
     analysis:       !!status.job_analysis,
     customizations: !!status.customizations,
     rewrite:        phase !== PHASES.REWRITE_REVIEW && (!!status.customizations),
-    spell:          phase === PHASES.GENERATION || phase === PHASES.REFINEMENT,
-    generate:       !!status.generated_files,
-    layout:         phase === PHASES.REFINEMENT && !!status.generated_files,
+    spell:          phase === PHASES.GENERATION || phase === PHASES.LAYOUT_REVIEW ||
+                    phase === PHASES.FINAL_GENERATION || phase === PHASES.REFINEMENT,
+    generate:       phase === PHASES.LAYOUT_REVIEW || phase === PHASES.FINAL_GENERATION ||
+                    phase === PHASES.REFINEMENT || !!status.generated_files,
+    layout:         phase === PHASES.FINAL_GENERATION || phase === PHASES.REFINEMENT,
+    final_generate: phase === PHASES.REFINEMENT,
     finalise:       phase === PHASES.REFINEMENT && !!status.generated_files,
   };
 
   // Determine the active step from the backend phase string.
   const phaseToStep = {
-    'init':          'job',
-    'job_analysis':  'analysis',
-    'customization': 'customizations',
-    'rewrite_review':'rewrite',
-    'spell_check':   'spell',
-    'generation':    'generate',
-    'layout_review': 'layout',
-    'refinement':    'finalise',
+    'init':             'job',
+    'job_analysis':     'analysis',
+    'customization':    'customizations',
+    'rewrite_review':   'rewrite',
+    'spell_check':      'spell',
+    'generation':       'generate',
+    'layout_review':    'layout',
+    'final_generation': 'final_generate',
+    'refinement':       'finalise',
   };
   const activeStep = phaseToStep[phase] || 'job';
 
@@ -649,7 +656,7 @@ function updateWorkflowSteps(status) {
     ? (_phaseToStep2[status.reentry_phase] || status.reentry_phase || null)
     : null;
 
-  const stepIds = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise'];
+  const stepIds = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'final_generate', 'finalise'];
   const staleSteps = new Set(status.stale_steps || []);
   stepIds.forEach(step => {
     const el = document.getElementById(`step-${step}`);

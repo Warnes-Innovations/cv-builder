@@ -13,7 +13,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CV - {{ personal_info.name }}</title>
     <meta name="author"      content="{{ personal_info.name }}">
-    <meta name="description" content="{{ personal_info.name }} – {{ template_metadata.job_title }}">
+    <meta name="description" content="{{ personal_info.name }} – {{ template_metadata.applicant_tagline }}">
     <!-- Schema.org/Person structured data for ATS parsers -->
     <script type="application/ld+json">
 {{ json_ld_str | json_script }}
@@ -589,7 +589,7 @@
             <main class="right-col">
                 <header class="header">
                     <h1 class="name">{{ personal_info.name }}</h1>
-                    <div class="job-title">{{ template_metadata.job_title }}</div>
+                    <div class="job-title">{{ template_metadata.applicant_tagline }}</div>
                 </header>
 
                 <section class="section">

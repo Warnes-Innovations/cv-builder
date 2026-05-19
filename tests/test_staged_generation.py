@@ -1293,10 +1293,9 @@ class TestGenerateFinalEndpoint(unittest.TestCase):
         entry = self.app.session_registry.get(self.session_id)
         self.assertEqual(entry.manager.state['generated_files']['final_html'], final_paths['html'])
         self.assertEqual(entry.manager.state['generated_files']['final_pdf'], final_paths['pdf'])
-        self.assertEqual(
-            entry.manager.state['generated_files']['files'],
-            [final_paths['html'], final_paths['pdf']],
-        )
+        # files list starts with html + pdf; may also include ats_docx / human_docx
+        files = entry.manager.state['generated_files']['files']
+        self.assertEqual(files[:2], [final_paths['html'], final_paths['pdf']])
 
     def test_orchestrator_failure_returns_500(self):
         self._seed_confirmed_layout()

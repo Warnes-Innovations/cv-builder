@@ -38,14 +38,15 @@ logger = logging.getLogger(__name__)
 # SOURCE OF TRUTH for workflow phase names.
 # The JS mirror is PHASES in web/state-manager.js — update both files together.
 class Phase(str, Enum):
-    INIT          = 'init'
-    JOB_ANALYSIS  = 'job_analysis'
-    CUSTOMIZATION = 'customization'
-    REWRITE_REVIEW = 'rewrite_review'
-    SPELL_CHECK   = 'spell_check'
-    GENERATION    = 'generation'
-    LAYOUT_REVIEW = 'layout_review'
-    REFINEMENT    = 'refinement'
+    INIT             = 'init'
+    JOB_ANALYSIS     = 'job_analysis'
+    CUSTOMIZATION    = 'customization'
+    REWRITE_REVIEW   = 'rewrite_review'
+    SPELL_CHECK      = 'spell_check'
+    GENERATION       = 'generation'
+    LAYOUT_REVIEW    = 'layout_review'
+    FINAL_GENERATION = 'final_generation'
+    REFINEMENT       = 'refinement'
 
 
 class ConversationManager:
@@ -878,11 +879,12 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                     k.strip() for k in rejected_str.split(',') if k.strip()
                 ]
 
-            print("\n🔄 Generating CV files...")
+            print("\n🔄 Generating CV preview (HTML only)...")
             try:
                 result = self.generate_cv_from_session_state(
                     output_dir=self.session_dir,
                     allow_llm_recommendations=True,
+                    html_preview_only=True,
                 )
             except ValueError as exc:
                 return f"❌ {exc}"
@@ -977,23 +979,40 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         }
 
     def complete_layout_review(self, layout_instructions: list) -> Dict:
-        """Record layout instruction outcomes and advance phase to *refinement* (finalise).
+        """Record layout instruction outcomes and advance phase to *final_generation*.
+
+        The user has reviewed the layout preview and clicked "Generate Final Files".
+        Phase advances to FINAL_GENERATION (step 8) rather than directly to REFINEMENT,
+        so the download tab can show the generate-final action before finalise.
 
         Args:
             layout_instructions: List of instruction entries. Each entry should have keys:
                 ``timestamp, instruction_text, change_summary, confirmation``.
 
         Returns:
-            ``{"instructions_applied": int, "phase": "refinement"}``
+            ``{"instructions_applied": int, "phase": "final_generation"}``
         """
         self.state['layout_instructions'] = layout_instructions or []
-        self.state['phase'] = Phase.REFINEMENT
+        self.state['phase'] = Phase.FINAL_GENERATION
         self._save_session()
         instructions_applied = len(layout_instructions or [])
         return {
             'instructions_applied': instructions_applied,
-            'phase': 'refinement',
+            'phase': 'final_generation',
         }
+
+    def complete_final_generation(self) -> Dict:
+        """Advance phase from *final_generation* to *refinement* (finalise).
+
+        Called after the user has reviewed the generated files on the download tab
+        and clicked "Proceed to Finalise".
+
+        Returns:
+            ``{"phase": "refinement"}``
+        """
+        self.state['phase'] = Phase.REFINEMENT
+        self._save_session()
+        return {'phase': 'refinement'}
 
     def run_persuasion_checks(
         self,
@@ -1915,6 +1934,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         self,
         output_dir: Optional[Path] = None,
         allow_llm_recommendations: bool = True,
+        html_preview_only: bool = False,
     ) -> Dict:
         """Generate CV artifacts from the currently loaded session state.
 
@@ -1922,6 +1942,15 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         action flow. It reuses recorded job analysis, customizations, and review
         decisions, optionally refusing to call the LLM when a session is missing
         stored customizations.
+
+        Args:
+            output_dir: Directory to write CV files into (default: session_dir).
+            allow_llm_recommendations: When True, call LLM to generate
+                customizations if session has decisions but no customizations.
+            html_preview_only: When True, generate only the preview HTML file
+                (no PDF, no ATS DOCX, no human DOCX).  Used by the Alt-A
+                workflow step 6 (Preview).  Final format generation happens
+                at step 8 via POST /api/cv/generate-final.
         """
         has_customizations = bool(self.state.get('customizations'))
         has_decisions = bool(
@@ -2111,6 +2140,10 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 if value in (False, 'reject', 0)
             ]
 
+        tagline_override = self.state.get('tagline_override')
+        if tagline_override:
+            customizations['tagline_override'] = tagline_override
+
         post_answers = self.state.get('post_analysis_answers') or {}
         accepted_str = post_answers.get('publication_accepted', '')
         rejected_str = post_answers.get('publication_rejected', '')
@@ -2122,15 +2155,25 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 key.strip() for key in rejected_str.split(',') if key.strip()
             ]
 
-        result = self.orchestrator.generate_cv(
-            job_analysis,
-            customizations,
-            output_dir=output_dir or self.session_dir,
-            approved_rewrites=self.state.get('approved_rewrites') or [],
-            rewrite_audit=self.state.get('rewrite_audit') or [],
-            spell_audit=self.state.get('spell_audit') or [],
-            max_skills=self.state.get('max_skills'),
-        )
+        if html_preview_only:
+            result = self.orchestrator.generate_preview_html_only(
+                job_analysis,
+                customizations,
+                output_dir=output_dir or self.session_dir,
+                approved_rewrites=self.state.get('approved_rewrites') or [],
+                spell_audit=self.state.get('spell_audit') or [],
+                max_skills=self.state.get('max_skills'),
+            )
+        else:
+            result = self.orchestrator.generate_cv(
+                job_analysis,
+                customizations,
+                output_dir=output_dir or self.session_dir,
+                approved_rewrites=self.state.get('approved_rewrites') or [],
+                rewrite_audit=self.state.get('rewrite_audit') or [],
+                spell_audit=self.state.get('spell_audit') or [],
+                max_skills=self.state.get('max_skills'),
+            )
         self.state['generated_files'] = result
         self.state['generation_progress'] = result.get('generation_progress', [])
         self.state['phase'] = Phase.LAYOUT_REVIEW

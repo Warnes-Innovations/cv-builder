@@ -187,6 +187,7 @@ describe('submitSpellCheckDecisions', () => {
 
   it('calls sendAction generate_cv on success', async () => {
     window._spellSugMap = {}
+    globalThis.fetchStatus = vi.fn(async () => ({ decisions_confirmed: { tagline: true } }))
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true, json: async () => ({ ok: true }),
     })
@@ -269,6 +270,7 @@ describe('renderSpellCheckZeroState', () => {
 
 describe('submitEmptySpellCheck', () => {
   it('persists an empty audit and then generates', async () => {
+    globalThis.fetchStatus = vi.fn(async () => ({ decisions_confirmed: { tagline: true } }))
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ ok: true }),

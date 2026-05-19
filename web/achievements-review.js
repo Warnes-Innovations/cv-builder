@@ -411,7 +411,7 @@ async function submitAchievementDecisions() {
         window._savedDecisions.accepted_suggested_achievements = acceptedSuggestions;
       }
       if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
-      switchTab('summary-review');
+      switchTab('tagline-review');
     } else {
       const err = await response.json();
       showToast(`Error: ${err.error || 'Failed to save selections'}`, 'error');

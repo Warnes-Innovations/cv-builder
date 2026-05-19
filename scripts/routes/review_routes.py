@@ -227,7 +227,7 @@ def create_blueprint(deps):
         # duckflow:
         #   id: review_api_decisions_live
         #   kind: api
-        #   timestamp: "2026-03-27T02:07:47Z"
+        #   timestamp: "2026-05-19T00:00:00Z"
         #   status: live
         #   handles:
         #     - "POST /api/review-decisions"
@@ -248,12 +248,15 @@ def create_blueprint(deps):
         #     - "state:accepted_suggested_achievements"
         #     - "state:publication_decisions"
         #     - "state:summary_focus_override"
+        #     - "state:tagline_override"
+        #     - "state:decisions_confirmed"
         #   returns:
         #     - "response:POST /api/review-decisions.success"
         #   notes:
         #     "Persists per-surface review decisions in session state;
         #     skill decisions also update session customizations so
-        #     downstream generation can materialize the same choices."
+        #     downstream generation can materialize the same choices.
+        #     All types also set decisions_confirmed[type]=True."
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -266,7 +269,9 @@ def create_blueprint(deps):
         decision_type = data.get('type')
         decisions = data.get('decisions', {})
 
-        if not decision_type or not decisions:
+        if not decision_type or (not decisions and decision_type != 'tagline'):
+            return jsonify({"error": "Missing type or decisions"}), 400
+        if decision_type == 'tagline' and decisions is None:
             return jsonify({"error": "Missing type or decisions"}), 400
 
         try:
@@ -378,10 +383,32 @@ def create_blueprint(deps):
                     session_summaries[decisions] = summary_text
                     conversation.state['session_summaries'] = session_summaries
                 message = "Saved summary focus preference"
+            elif decision_type == 'tagline':
+                # duckflow:
+                #   id: tagline_api_review_decision_live
+                #   kind: api
+                #   timestamp: "2026-05-19T00:00:00Z"
+                #   status: live
+                #   handles:
+                #     - "POST /api/review-decisions"
+                #   reads:
+                #     - "request:POST /api/review-decisions.decisions"
+                #   writes:
+                #     - "state:tagline_override"
+                #   notes:
+                #     "Persists the user-confirmed applicant tagline in session state;
+                #     overrides the LLM-proposed applicant_tagline during CV generation."
+                conversation.state['tagline_override'] = decisions
+                message = "Saved tagline"
             else:
                 return jsonify(
                     {"error": f"Invalid type: {decision_type}"},
                 ), 400
+
+            # Track which decision types have been explicitly confirmed by the user.
+            confirmed = conversation.state.get('decisions_confirmed') or {}
+            confirmed[decision_type] = True
+            conversation.state['decisions_confirmed'] = confirmed
 
             conversation._save_session()
             current_app.logger.debug("Saved %s decisions", decision_type)

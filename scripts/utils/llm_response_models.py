@@ -115,6 +115,7 @@ class CustomizationResult(BaseModel):
     recommended_achievements:    list[str]                       = Field(default_factory=list)
     suggested_achievements:      list[SuggestedAchievement]      = Field(default_factory=list)
     summary_focus:               str                             = ""
+    applicant_tagline:           str                             = ""
     reasoning:                   str                             = ""
 
 

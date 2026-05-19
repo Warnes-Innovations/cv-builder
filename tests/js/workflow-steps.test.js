@@ -51,10 +51,10 @@ afterEach(() => {
 // ── Constants ─────────────────────────────────────────────────────────────
 
 describe('_STEP_ORDER', () => {
-  it('has 8 steps in the correct order', () => {
+  it('has 9 steps in the correct order', () => {
     expect(_STEP_ORDER).toEqual([
       'job', 'analysis', 'customizations', 'rewrite', 'spell',
-      'generate', 'layout', 'finalise',
+      'generate', 'layout', 'final_generate', 'finalise',
     ])
   })
 })

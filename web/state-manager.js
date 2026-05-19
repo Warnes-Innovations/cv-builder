@@ -21,25 +21,27 @@ import { StorageKeys } from './api-client.js';
  * or renaming a phase.
  */
 const PHASES = {
-  INIT:           'init',
-  JOB_ANALYSIS:   'job_analysis',
-  CUSTOMIZATION:  'customization',
-  REWRITE_REVIEW: 'rewrite_review',
-  SPELL_CHECK:    'spell_check',
-  GENERATION:     'generation',
-  LAYOUT_REVIEW:  'layout_review',
-  REFINEMENT:     'refinement',
+  INIT:             'init',
+  JOB_ANALYSIS:     'job_analysis',
+  CUSTOMIZATION:    'customization',
+  REWRITE_REVIEW:   'rewrite_review',
+  SPELL_CHECK:      'spell_check',
+  GENERATION:       'generation',
+  LAYOUT_REVIEW:    'layout_review',
+  FINAL_GENERATION: 'final_generation',
+  REFINEMENT:       'refinement',
 };
 
 const PHASE_TO_STEP = {
-  [PHASES.INIT]:           'job',
-  [PHASES.JOB_ANALYSIS]:   'analysis',
-  [PHASES.CUSTOMIZATION]:  'customizations',
-  [PHASES.REWRITE_REVIEW]: 'rewrite',
-  [PHASES.SPELL_CHECK]:    'spell',
-  [PHASES.GENERATION]:     'generate',
-  [PHASES.LAYOUT_REVIEW]:  'layout',
-  [PHASES.REFINEMENT]:     'finalise',
+  [PHASES.INIT]:             'job',
+  [PHASES.JOB_ANALYSIS]:     'analysis',
+  [PHASES.CUSTOMIZATION]:    'customizations',
+  [PHASES.REWRITE_REVIEW]:   'rewrite',
+  [PHASES.SPELL_CHECK]:      'spell',
+  [PHASES.GENERATION]:       'generate',
+  [PHASES.LAYOUT_REVIEW]:    'layout',
+  [PHASES.FINAL_GENERATION]: 'final_generate',
+  [PHASES.REFINEMENT]:       'finalise',
 };
 
 function getWorkflowStepForPhase(phase) {

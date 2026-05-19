@@ -752,6 +752,8 @@ def create_blueprint(deps):
             achievement_decisions=conversation.state.get("achievement_decisions")   or {},
             publication_decisions=conversation.state.get("publication_decisions")   or {},
             summary_focus_override=conversation.state.get("summary_focus_override"),
+            tagline_override=conversation.state.get("tagline_override"),
+            decisions_confirmed=conversation.state.get("decisions_confirmed") or {},
             extra_skills=conversation.state.get("extra_skills")            or [],
             extra_skill_matches=conversation.state.get("extra_skill_matches") or {},
             session_file=str(getattr(conversation, "session_file", "") or ""),

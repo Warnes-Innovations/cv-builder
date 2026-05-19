@@ -102,7 +102,7 @@ async function buildSummaryFocusSection() {
       </details>
     </div>
     <div class="nav-buttons" style="margin-top:16px;">
-      <button class="back-btn" onclick="switchTab('achievements-review')">← Back to Achievements</button>
+      <button class="back-btn" onclick="switchTab('tagline-review')">← Back to Tagline</button>
       <button class="continue-btn" onclick="submitSummaryFocusDecision()">Continue to Publications →</button>
     </div>`;
 

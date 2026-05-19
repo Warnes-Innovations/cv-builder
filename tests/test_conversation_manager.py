@@ -345,7 +345,7 @@ class TestGenerateCVSummarySelection(unittest.TestCase):
             'targeted': 'Targeted summary from session.',
         }
         self.cm.state['summary_focus_override'] = 'targeted'
-        self.cm.orchestrator.generate_cv.return_value = {
+        self.cm.orchestrator.generate_preview_html_only.return_value = {
             'output_dir': str(self.tmp),
             'files': [],
             'generation_progress': [],
@@ -354,7 +354,7 @@ class TestGenerateCVSummarySelection(unittest.TestCase):
     def test_generate_cv_materializes_summary_without_table_decisions(self):
         self.cm._execute_action({'action': 'generate_cv'})
 
-        _, customizations_arg = self.cm.orchestrator.generate_cv.call_args.args[:2]
+        _, customizations_arg = self.cm.orchestrator.generate_preview_html_only.call_args.args[:2]
         self.assertEqual(customizations_arg['summary_focus'], 'targeted')
         self.assertEqual(
             customizations_arg['selected_summary'],
@@ -761,7 +761,7 @@ class TestCompleteLayoutReview(unittest.TestCase):
 
     def test_phase_advances_to_refinement(self):
         self.cm.complete_layout_review([])
-        self.assertEqual(self.cm.state['phase'], 'refinement')
+        self.assertEqual(self.cm.state['phase'], 'final_generation')
 
     def test_empty_instructions_stored(self):
         self.cm.complete_layout_review([])
@@ -784,7 +784,7 @@ class TestCompleteLayoutReview(unittest.TestCase):
         ]
         result = self.cm.complete_layout_review(instructions)
         self.assertEqual(result['instructions_applied'], 2)
-        self.assertEqual(result['phase'], 'refinement')
+        self.assertEqual(result['phase'], 'final_generation')
 
     def test_none_instructions_treated_as_empty(self):
         self.cm.complete_layout_review(None)

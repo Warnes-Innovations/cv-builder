@@ -354,6 +354,15 @@ async function addSpellWord(word, sugId) {
 // ── Pre-generation confirmation ─────────────────────────────────────────────
 
 async function _confirmProceedToGenerate() {
+  // Gate: tagline must be explicitly confirmed before generating
+  const status = await fetchStatus().catch(() => ({}));
+  if (!status?.decisions_confirmed?.tagline) {
+    await showAlertModal(
+      '⚠ Tagline Not Confirmed',
+      'You must confirm your applicant tagline before generating.\n\nGo to the 🏷️ Tagline tab in Customizations to confirm it.'
+    );
+    return false;
+  }
   const atsScore = stateManager.getAtsScore();
   const freshness = stateManager.getLayoutFreshness();
   const lines = ['Your CV is ready to generate.'];

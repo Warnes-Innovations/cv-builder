@@ -5357,5 +5357,3 @@ Done. PDF created at:
 `~/Library/CloudStorage/GoogleDrive-greg@warnes.net/My Drive/CV/diabetic_neuropathy_knowledge_system.pdf` (128 KB)
 
 Used `~/src/mckwco/gtrader-devel/scripts/md2pdf.py` — it found no Mermaid blocks (as expected, since all diagrams are Unicode text), and rendered via pandoc + wkhtmltopdf with TOC, numbered sections, 1-inch margins, 11pt Arial.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/.specstory/history/2026-04-14_17-27-03Z-update-users-warnes-library.md" -->

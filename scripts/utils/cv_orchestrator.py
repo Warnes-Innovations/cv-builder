@@ -221,6 +221,12 @@ class CVOrchestrator:
             'variant': template_variant,
             'generated_date': datetime.now().isoformat(),
             'job_title': job_analysis.get('title', ''),
+            'applicant_tagline': (
+                customizations.get('tagline_override')
+                or customizations.get('tagline')
+                or customizations.get('applicant_tagline')
+                or job_analysis.get('title', '')
+            ) if isinstance(customizations, dict) else job_analysis.get('title', ''),
             'company': job_analysis.get('company', ''),
             'total_publications_count': len(self.publications) if self.publications else 0,
             'skills_section_title': 'Skills',
@@ -1901,6 +1907,88 @@ For manual generation:
             'files': files_created,
             'metadata': metadata,
             'generation_progress': generation_progress,
+        }
+
+    def generate_preview_html_only(
+        self,
+        job_analysis: Dict,
+        customizations: Dict,
+        output_dir: Optional[Path] = None,
+        approved_rewrites: Optional[List[Dict]] = None,
+        spell_audit: Optional[List[Dict]] = None,
+        max_skills: Optional[int] = None,
+    ) -> Dict:
+        """Generate HTML preview only — no PDF, no DOCX.
+
+        Used by the Alt-A workflow (Phase 6 preview step).  Creates the output
+        directory and renders the CV Jinja2 template to an HTML file.  PDF and
+        DOCX generation are deferred to :meth:`generate_final_from_confirmed_html`
+        (Phase 8, via ``POST /api/cv/generate-final``).
+
+        Returns
+        -------
+        Dict with output_dir, files (list with one HTML filename),
+        html_path, and generation_progress.
+        """
+        company   = job_analysis.get('company', 'Company')
+        role      = job_analysis.get('title', 'Role')
+        role_slug = role.replace(' ', '')[:20]
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+
+        if output_dir is not None:
+            job_output_dir = Path(output_dir)
+        else:
+            output_name    = f"{company}_{role_slug}_{timestamp}"
+            job_output_dir = self.output_dir / output_name
+        job_output_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info("Output directory (preview-only): %s", job_output_dir)
+
+        selected_content = self.build_render_ready_content(
+            job_analysis,
+            customizations,
+            approved_rewrites=approved_rewrites,
+            spell_audit=spell_audit,
+            max_skills=max_skills,
+        )
+
+        cv_data = self._prepare_cv_data_for_template(
+            selected_content,
+            job_analysis,
+            base_font_size=customizations.get('base_font_size'),
+            customizations=customizations,
+        )
+        cv_data['achievements']   = selected_content.get('achievements', [])
+        cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
+        cv_data['template_metadata']['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
+        cv_data['base_font_size'] = customizations.get(
+            'base_font_size',
+            get_config().get('generation.base_font_size', cv_data.get('base_font_size', '13px')),
+        )
+        cv_data['page_margin']    = customizations.get(
+            'page_margin',
+            get_config().get('generation.page_margin', '0.5in'),
+        )
+
+        # Render HTML template (no PDF conversion)
+        template_dir  = Path(__file__).parent.parent.parent / 'templates'
+        template_file = template_dir / 'cv-template.html'
+        if not template_file.exists():
+            raise FileNotFoundError(f"HTML template not found: {template_file}")
+
+        from .template_renderer import load_template, render_template
+        template      = load_template(str(template_file))
+        rendered_html = render_template(template, cv_data)
+
+        filename_base = f"CV_{company}_{role_slug}_{timestamp}_preview"
+        html_path     = job_output_dir / f"{filename_base}.html"
+        html_path.write_text(rendered_html, encoding='utf-8')
+
+        return {
+            'output_dir':          str(job_output_dir),
+            'files':               [html_path.name],
+            'html_path':           str(html_path),
+            'generation_progress': [{'step': 'rendering_html', 'status': 'complete'}],
         }
 
     def build_render_ready_content(

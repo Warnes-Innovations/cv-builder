@@ -127,6 +127,8 @@ class StatusResponse:
     achievement_decisions: Dict[str, Any]
     publication_decisions: Dict[str, Any]
     summary_focus_override: Optional[str]
+    tagline_override: Optional[str]
+    decisions_confirmed: Dict[str, bool]
     extra_skills: List[Any]
     extra_skill_matches: Dict[str, List[str]]
     session_file: str

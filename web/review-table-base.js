@@ -241,6 +241,9 @@ async function loadTabContent(tab) {
     case 'achievements-review':
       await populateReviewTab('achievements');
       break;
+    case 'tagline-review':
+      await populateTaglineReviewTab();
+      break;
     case 'summary-review':
       await populateReviewTab('summary');
       break;
@@ -571,7 +574,7 @@ async function populateReviewTab(pane) {
   const navContinue = {
     experiences:  `<button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Experience Bullets →</button>`,
     skills:       `<button class="continue-btn" onclick="submitSkillDecisions()">Continue to Achievements →</button>`,
-    achievements: `<button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Summary →</button>`,
+    achievements: `<button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Tagline →</button>`,
     publications: `<button class="continue-btn" onclick="submitPublicationDecisions()">Continue to Rewrite →</button>`,
   };
   const navHtml = pane === 'summary' ? '' : `
@@ -859,6 +862,20 @@ function _resolvedSkillAction(skillName, data) {
   return 'exclude';
 }
 
+// ── Tagline review tab ────────────────────────────────────────────────────
+
+async function populateTaglineReviewTab() {
+  const content = document.getElementById('document-content');
+  if (!content) return;
+  content.innerHTML = `
+    <h2 style="margin:0 0 16px;">🏷️ Applicant Tagline</h2>
+    <div id="tagline-review-container"></div>
+  `;
+  if (typeof buildTaglineReviewSection === 'function') {
+    await buildTaglineReviewSection();
+  }
+}
+
 // ── Exports ───────────────────────────────────────────────────────────────
 
 export {
@@ -870,6 +887,7 @@ export {
   handleCustomizationResponse,
   showTableBasedReview,
   populateReviewTab,
+  populateTaglineReviewTab,
   switchReviewSubtab,
   _loadReviewPane,
   _updatePageEstimate,

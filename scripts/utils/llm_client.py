@@ -556,6 +556,7 @@ Return ONLY a JSON object — no prose, no markdown fences:
     }}
   ],
   "summary_focus": "What to emphasise in the professional summary (incorporate culture_indicators where relevant)",
+  "applicant_tagline": "One-line professional summary of the applicant tailored to this role (NOT the job title; describes who the applicant is, e.g. 'Senior Data Scientist specialising in biostatistics and ML')",
   "reasoning":     "Overall CV customisation strategy for this role"
 }}
 
@@ -612,6 +613,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             "recommended_achievements":    [],
             "suggested_achievements":      [],
             "summary_focus":               "general",
+            "applicant_tagline":           "",
             "reasoning":                   "Failed to parse LLM response",
         }
 

@@ -11324,5 +11324,3 @@ Make install.sh executable
 
 `chmod +x /Users/warnes/src/md2pdf/install.sh`
 </details></tool-use>
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/.specstory/history/2026-04-14_17-27-03Z-update-users-warnes-library.md" -->

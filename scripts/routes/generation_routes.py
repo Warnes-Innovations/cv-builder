@@ -1654,34 +1654,42 @@ def create_blueprint(deps):
 
     @bp.post("/api/cv/generate-final")
     def generate_cv_final():
-        """Regenerate human-readable HTML+PDF from the confirmed preview; mark final_complete."""
+        """Regenerate human-readable HTML+PDF+DOCX from confirmed preview; advance to final_generation."""
         # duckflow:
         #   id: generation_api_final_live
         #   kind: api
-        #   timestamp: "2026-03-27T02:07:47Z"
+        #   timestamp: "2026-05-28T00:00:00Z"
         #   status: live
         #   handles:
         #     - "POST /api/cv/generate-final"
         #   calls:
         #     - "orchestrator:generate_final_from_confirmed_html"
+        #     - "orchestrator:build_render_ready_content"
+        #     - "orchestrator:_generate_ats_docx"
+        #     - "orchestrator:_generate_human_docx"
         #     - "state:generation_state.baseline_layout_digest"
         #   reads:
         #     - "state:generation_state.layout_confirmed"
         #     - "state:generation_state.preview_html"
         #     - "state:generated_files.output_dir"
+        #     - "state:job_analysis"
+        #     - "state:customizations"
         #   writes:
         #     - "state:generation_state.phase"
         #     - "state:generation_state.final_generated_at"
         #     - "state:generation_state.final_output_paths"
         #     - "state:generated_files.final_html"
         #     - "state:generated_files.final_pdf"
+        #     - "state:generated_files.ats_docx"
+        #     - "state:generated_files.human_docx"
         #     - "state:generated_files.files"
+        #     - "state:phase"
         #     - "state:generation_state.baseline_layout_digest"
         #   returns:
         #     - "response:POST /api/cv/generate-final.outputs"
         #     - "response:POST /api/cv/generate-final.generated_at"
         #     - "response:POST /api/cv/generate-final.page_count_exact"
-        #   notes: "Converts the confirmed preview HTML into final human-readable artifacts and updates both generation_state and generated_files with the final output paths."
+        #   notes: "Converts the confirmed preview HTML into final human-readable artifacts (HTML+PDF+ATS DOCX+human DOCX), updates generation_state and generated_files, and advances main phase to FINAL_GENERATION."
         entry = get_session()
         conv  = entry.manager
         gen   = conv.state.get("generation_state") or {}
@@ -1706,6 +1714,31 @@ def create_blueprint(deps):
         except Exception:
             return _internal_server_error('Final generation failed.')
 
+        # Also generate ATS DOCX and human DOCX from session content.
+        from utils.conversation_manager import Phase as _Phase
+        job_analysis   = conv.state.get('job_analysis') or {}
+        customizations = conv.state.get('customizations') or {}
+        ats_file    = None
+        human_docx  = None
+        try:
+            selected_content = conv.orchestrator.build_render_ready_content(
+                job_analysis,
+                customizations,
+                approved_rewrites=conv.state.get('approved_rewrites') or [],
+                spell_audit=conv.state.get('spell_audit') or [],
+                max_skills=conv.state.get('max_skills'),
+            )
+            selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
+            ats_file = conv.orchestrator._generate_ats_docx(
+                selected_content, job_analysis, output_dir,
+            )
+            human_docx = conv.orchestrator._generate_human_docx(
+                selected_content, job_analysis, output_dir,
+                skills_heading=conv.orchestrator._resolve_human_skills_title(customizations),
+            )
+        except Exception:
+            logger.exception('ATS DOCX / human DOCX generation failed in generate_cv_final')
+
         now = datetime.now().isoformat()
         gen = conv.state.setdefault("generation_state", {})
         gen.update({
@@ -1723,14 +1756,21 @@ def create_blueprint(deps):
             final_html,
             source='generate_final',
         )
+        files_list = [final_paths["html"], final_paths["pdf"]]
+        if ats_file:
+            files_list.append(str(ats_file))
+        if human_docx:
+            files_list.append(str(human_docx))
         generated.update({
-            "final_html": final_paths["html"],
-            "final_pdf": final_paths["pdf"],
-            "files": [
-                final_paths["html"],
-                final_paths["pdf"],
-            ],
+            "final_html":  final_paths["html"],
+            "final_pdf":   final_paths["pdf"],
+            "ats_docx":    str(ats_file)   if ats_file   else generated.get("ats_docx"),
+            "human_docx":  str(human_docx) if human_docx else generated.get("human_docx"),
+            "files":       files_list,
         })
+
+        # Advance main workflow phase to FINAL_GENERATION (step 8).
+        conv.state['phase'] = _Phase.FINAL_GENERATION
         conv._save_session()
 
         outputs = dict(generated)
@@ -1741,6 +1781,35 @@ def create_blueprint(deps):
             "page_count_exact": baseline.get('page_count'),
             "page_count_estimate": gen.get("page_count_estimate"),
         })
+
+    # ------------------------------------------------------------------
+    # Final generation complete (FINAL_GENERATION → REFINEMENT)
+    # ------------------------------------------------------------------
+
+    @bp.post("/api/final-generation-complete")
+    def final_generation_complete():
+        """Advance main phase from FINAL_GENERATION to REFINEMENT (finalise step).
+
+        Called from the download tab when the user clicks 'Proceed to Finalise'.
+        """
+        # duckflow:
+        #   id: generation_api_final_generation_complete_live
+        #   kind: api
+        #   timestamp: "2026-05-28T00:00:00Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/final-generation-complete"
+        #   calls:
+        #     - "manager:complete_final_generation"
+        #   writes:
+        #     - "state:phase"
+        #   returns:
+        #     - "response:POST /api/final-generation-complete.phase"
+        #   notes: "Advances main workflow phase from FINAL_GENERATION to REFINEMENT."
+        entry = get_session()
+        conv  = entry.manager
+        result = conv.complete_final_generation()
+        return jsonify({"ok": True, **result})
 
     # ------------------------------------------------------------------
     # Finalise
