@@ -2133,6 +2133,45 @@ def create_blueprint(deps):
         except Exception:
             return _internal_server_error('Failed to complete layout review.')
 
+    @bp.post("/api/generation-goals")
+    def update_generation_goals():
+        """Persist generation goal settings to session state."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        try:
+            body = request.get_json(force=True) or {}
+            goals: dict = {}
+            if 'max_pdf_pages' in body:
+                val = int(body['max_pdf_pages'])
+                if not (1 <= val <= 10):
+                    return jsonify({'error': 'max_pdf_pages must be 1–10'}), 400
+                goals['max_pdf_pages'] = val
+            if 'max_ats_pages' in body:
+                val = int(body['max_ats_pages'])
+                if not (1 <= val <= 5):
+                    return jsonify({'error': 'max_ats_pages must be 1–5'}), 400
+                goals['max_ats_pages'] = val
+            if 'max_ats_chars' in body:
+                val = int(body['max_ats_chars'])
+                if not (500 <= val <= 20000):
+                    return jsonify({'error': 'max_ats_chars must be 500–20000'}), 400
+                goals['max_ats_chars'] = val
+            if not goals:
+                return jsonify({'error': 'No valid goal fields provided'}), 400
+            with entry.lock:
+                existing = dict(conversation.state.get('generation_goals') or {})
+                existing.update(goals)
+                conversation.state['generation_goals'] = existing
+                conversation._save_session()
+            session_registry.touch(sid)
+            return jsonify({'ok': True, 'saved': list(goals.keys())})
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Goal values must be integers'}), 400
+        except Exception:
+            return _internal_server_error('Failed to update generation goals.')
+
     @bp.post("/api/layout-settings")
     def update_layout_settings():
         """Persist layout display settings to session state."""

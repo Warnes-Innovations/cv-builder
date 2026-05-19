@@ -81,6 +81,8 @@ function createDefaultGenerationState() {
     contentRevision: 0,
     lastPreviewContentRevision: null,
     lastFinalContentRevision: null,
+    dirtyPhases: [],
+    earliestDirtyStep: null,
   };
 }
 
@@ -203,6 +205,7 @@ let interactiveState = {
 let sessionId = null;
 let lastKnownPhase = PHASES.INIT;
 let isReconnecting = false;
+const _phaseChangeListeners = [];
 // Current model/provider selection (persisted to localStorage)
 let currentModelProvider = null;
 let currentModelName = null;
@@ -309,7 +312,12 @@ const stateManager = {
 
   // Phase tracking
   getPhase: () => lastKnownPhase,
-  setPhase: (phase) => { lastKnownPhase = phase; saveStateToLocalStorage(); },
+  setPhase: (phase) => {
+    lastKnownPhase = phase;
+    saveStateToLocalStorage();
+    _phaseChangeListeners.forEach(fn => { try { fn(phase); } catch (e) { /* ignore */ } });
+  },
+  onPhaseChange: (fn) => { if (typeof fn === 'function') _phaseChangeListeners.push(fn); },
   getWorkflowStep: () => getWorkflowStepForPhase(lastKnownPhase),
 
   // Post-analysis questions
@@ -386,6 +394,26 @@ const stateManager = {
     saveStateToLocalStorage();
     emitGenerationStateChanged();
   },
+  setDirtyPhases: (phases, earliestStep) => {
+    generationState = {
+      ...generationState,
+      dirtyPhases:       Array.isArray(phases) ? phases : [],
+      earliestDirtyStep: earliestStep || null,
+    };
+    saveStateToLocalStorage();
+    emitGenerationStateChanged();
+  },
+  clearDirtyPhases: () => {
+    generationState = {
+      ...generationState,
+      dirtyPhases:       [],
+      earliestDirtyStep: null,
+    };
+    saveStateToLocalStorage();
+    emitGenerationStateChanged();
+  },
+  getDirtyPhases:       () => generationState.dirtyPhases || [],
+  getEarliestDirtyStep: () => generationState.earliestDirtyStep || null,
 };
 
 /**

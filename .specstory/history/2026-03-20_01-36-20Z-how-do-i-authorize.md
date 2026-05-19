@@ -4261,4 +4261,4 @@ _**Agent (claude-sonnet-4-6 2026-03-20 01:40:56Z)**_
 
 Done. Replaced the 4 individual `mcp__obo-mcp__*` entries with a single `"mcp__obo-mcp__*"` wildcard, which covers all obo-mcp tools (including `obo_next`, `obo_get_item`, `obo_session_status`, etc. that weren't previously authorized).
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->
+<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/.claude/settings.local.json" -->

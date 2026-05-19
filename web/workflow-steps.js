@@ -280,6 +280,10 @@ async function reRunPhase(step) {
     appendMessage('assistant', `✅ ${step} re-run complete. Review the updated results — changed items are highlighted.`);
     await fetchStatus();
 
+    // Clear per-phase caches so back-navigation fetches fresh results
+    if (step === 'spell')   window._spellCheckCache  = null;
+    if (step === 'rewrite') window._rewritePanelCache = null;
+
     // Navigate to the step's viewer tab
     const tabMap = {
       analysis:       'analysis',
@@ -703,6 +707,35 @@ function updateWorkflowSteps(status) {
 
 if (typeof window !== 'undefined') {
   window.addEventListener(GENERATION_STATE_EVENT, applyLayoutFreshnessNavigationState);
+  window.addEventListener(GENERATION_STATE_EVENT, applyDirtyPhaseNavigationState);
+}
+
+/**
+ * Mark or unmark workflow step pills as stale based on dirty phases set by
+ * layout-phase content edits (POST /api/cv/apply-content-changes).
+ *
+ * Only affects steps listed in stateManager.getDirtyPhases() that are NOT
+ * already handled by applyLayoutFreshnessNavigationState (i.e. not 'layout').
+ */
+function applyDirtyPhaseNavigationState() {
+  const dirtyPhases = stateManager.getDirtyPhases();
+  const stepsToClear = ['generate'];    // steps we manage here (not 'layout')
+
+  stepsToClear.forEach(step => {
+    const el = document.getElementById(`step-${step}`);
+    if (!el) return;
+
+    const isDirty = dirtyPhases.includes(step);
+    el.classList.toggle('stale', isDirty);
+
+    // Preserve existing rerun button markup, update text + badge
+    const rerunHtml = el.querySelector('.step-rerun')?.outerHTML || '';
+    const label     = _STEP_DISPLAY[step] || step;
+    const badge     = isDirty
+      ? ' <span class="step-inline-badge step-stale-badge">Content changed</span>'
+      : '';
+    el.innerHTML = `${label}${badge}${rerunHtml ? ` ${rerunHtml}` : ''}`;
+  });
 }
 
 // ── Step click (back-nav) ─────────────────────────────────────────────────────
@@ -771,6 +804,7 @@ export {
   _highlightChangedItems,
   _markChanged,
   applyLayoutFreshnessNavigationState,
+  applyDirtyPhaseNavigationState,
   showBulletReorder,
   _applyBulletOrder,
   moveBullet,

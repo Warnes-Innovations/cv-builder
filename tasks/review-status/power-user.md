@@ -10,8 +10,8 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Power User Review Status
 
-**Last Updated:** 2026-04-20 18:30 EDT
-**Executive Summary:** US-W2 (session switching) and US-W3 (efficient iteration) both pass — session ownership metadata is precise, and re-run/back-nav preserve full downstream context. US-W1 (high-throughput workflow) is partial: bulk toolbars cover experience and skills review but are absent for rewrites, spell-check, publications, and achievements, and there are no keyboard shortcuts for any workflow navigation. Four gaps are immediately addressable without backend changes.
+**Last Updated:** 2026-04-22 10:30 ET
+**Executive Summary:** US-W2 (session switching) passes cleanly — session ownership metadata is precise and the active session is always visible. US-W3 (efficient iteration) passes for context preservation (criterion 2) but is partial on discoverability (the ↻ re-run icon is opacity:0 until hover). US-W1 (high-throughput workflow) is partial: bulk toolbars now cover experience, skills, and achievements, but are absent for rewrites, spell-check, and publications, and there are no keyboard shortcuts for any workflow navigation.
 
 ---
 
@@ -22,15 +22,16 @@ For commercial licensing, contact greg@warnes-innovations.com
 **Criterion 1 — Frequent actions without excessive pointer travel**
 ⚠️ Bulk action toolbars exist for the Experiences pane (`web/experience-review.js:228–231`: "✨ Accept All Recommended", "➕ Emphasize All", "✓ Include All", "👁 Exclude All") and the Skills pane (`web/skills-review.js:938–944`: same four bulk buttons). Both toolbars apply to DataTable-filtered rows via `bulkAction()` in `web/review-table-base.js:689+`, so DataTable search narrows the affected set — a useful power-user affordance.
 
+**Achievements** also has a full bulk toolbar (Accept All Recommended, Emphasize All, Include All, Exclude All — `web/achievements-review.js:309–312`).
+
 However, bulk actions are absent for:
-- Rewrites: each card requires an individual Accept / Edit / Reject click (`web/rewrite-review.js`)
+- Rewrites: each card requires an individual Accept / Edit / Reject click (`web/rewrite-review.js:257, 259`)
 - Spell-check: each flag must be individually resolved
-- Publications: per-row Accept / Reject, no bulk toolbar
-- Achievements: per-row Include / Omit, no bulk toolbar
+- Publications: per-row include/exclude, no bulk toolbar (`web/publications-review.js` — no bulk match)
 
 No keyboard shortcuts are available for any workflow navigation; only Enter (send message / apply spell-check) and Escape (modal dismiss) are bound.
 
-**Gap:** Bulk review coverage is limited to 2 of 5 customisation panes; the two stages most likely to have many items for a power user (rewrites, publications) have no bulk path.
+**Gap:** Bulk review coverage is limited to 3 of 5 customisation panes; the two most likely to have many items for a frequent applicant (rewrites, publications) have no bulk path.
 
 ---
 
@@ -72,7 +73,9 @@ A takeover confirmation dialog fires when another tab already holds the claim (`
 ### US-W3: Efficient Iteration
 
 **Criterion 1 — Re-run affordances discoverable**
-✅ Completed step pills in the workflow progress bar display a ↻ re-run icon. Clicking it triggers `_showReRunConfirmModal()` in `web/workflow-steps.js:131–183`, which shows a titled confirmation listing all downstream stages that will be marked stale. The modal confirms: "All existing approvals and rewrites are preserved as context." Re-run is available on: Analysis, Customisations, Rewrites. Back-navigation is available on all stages up to and including Layout via `backToPhase()`.
+⚠️ Completed step pills in the workflow progress bar have a ↻ re-run span injected for supported stages (analysis, customizations, rewrite, spell, generate — `web/workflow-steps.js:671–676`). However, that span is **opacity:0 by default** and becomes visible only on CSS `:hover` of the parent step pill (workflow-steps.js:690: `.step.completed:hover .step-rerun { opacity: 1 !important; }`). A power user who has not hovered each completed step will not discover re-run exists. Clicking the ↻ triggers `_showReRunConfirmModal()` in `web/workflow-steps.js:131–183`, which lists downstream stages and confirms: "All existing approvals and rewrites are preserved as context."
+
+Back-navigation is available on all stages up to and including Layout via `backToPhase()` (`web/workflow-steps.js:88`). The layout stage additionally shows a prominent stale callout banner when content has changed since the preview (`web/layout-instruction.js:199–207`), which is a more discoverable affordance than the hover-triggered ↻.
 
 ---
 
@@ -104,9 +107,11 @@ A takeover confirmation dialog fires when another tab already holds the claim (`
 | Bulk accept/reject rewrites | ❌ None   | `web/rewrite-review.js` — per-card buttons only; no bulk toolbar                      |
 | Bulk accept/reject spell   | ❌ None    | Spell-check flags resolved individually; no "Accept All" button                        |
 | Bulk experience/skills     | ✅ Full    | `web/experience-review.js:228–231`, `web/skills-review.js:938–944` — 4 bulk buttons   |
-| Bulk achievements/pubs     | ❌ None    | `web/review-table-base.js` — no bulk toolbar rendered for these panes                 |
+| Bulk achievements          | ✅ Full    | `web/achievements-review.js:309–312` — 4 bulk buttons (Accept All Recommended, Emphasize All, Include All, Exclude All) |
+| Bulk publications          | ❌ None    | `web/publications-review.js` — no bulk toolbar; per-row include/exclude only          |
 | Forward stage skip         | ❌ None    | Phases must traverse in order; no skip-to-generate affordance                         |
 | Back-nav (all stages)      | ✅ Full    | `back_to_phase()` covers job → layout; state preserved                                |
+| Re-run affordance (visible) | ⚠️ Hover-only | `web/workflow-steps.js:690` — ↻ icon is opacity:0 at rest, visible only on :hover |
 | Settings modal             | ✅ Full    | `web/ui-core.js` — LLM provider/model, temperature, retry policy, output formats      |
 | Generation settings panel  | ✅ Full    | `web/review-table-base.js:562–595` — max-skills slider, skills-section-title select   |
 | Layout fine controls       | ✅ Full    | `web/layout-instruction.js` — font size and page margin numeric inputs                |
@@ -131,9 +136,9 @@ A takeover confirmation dialog fires when another tab already holds the claim (`
 
 | Story | Result     | Summary                                                                                   |
 | ----- | ---------- | ----------------------------------------------------------------------------------------- |
-| US-W1 | ⚠️ Partial | Bulk covers experience/skills only; no keyboard shortcuts; sequential pane-only navigation |
+| US-W1 | ⚠️ Partial | Bulk covers experience/skills/achievements; absent for rewrites/publications/spell; no keyboard shortcuts; sequential pane-only navigation |
 | US-W2 | ✅ Pass    | Session labels, ownership metadata, and position bar meet all three criteria              |
-| US-W3 | ✅ Pass    | Re-run with context preservation, stale chips, and layout freshness all work correctly    |
+| US-W3 | ⚠️ Partial | Re-run context preservation ✅; re-run affordance discoverability ⚠️ (hover-only ↻)     |
 
 ---
 
@@ -143,11 +148,13 @@ A takeover confirmation dialog fires when another tab already holds the claim (`
 
 2. **No bulk accept/reject for rewrites** (Medium severity) — The rewrite stage can surface 10–30 individual proposals. Each requires an explicit Accept / Edit / Reject click. There is no "Accept All", "Reject All", or filter-based bulk path. Evidence: `web/rewrite-review.js` — per-card buttons only; no `.bulk-toolbar` rendered.
 
-3. **No forward stage skip** (Medium severity) — Users who trust the AI recommendations or who are iterating quickly cannot jump directly from Job Input to Generate. All 5 customisation panes plus Rewrites and Spell Check must be traversed in order. `_STEP_TO_PHASE` in `conversation_manager.py` maps all steps including `generate`, but no frontend route exposes forward-jump. Evidence: `web/review-table-base.js:626–641`, `web/app.js`.
+3. **Re-run affordance is hover-only and not visible at rest** (Medium severity) — The ↻ icon injected into completed step pills is `opacity:0` until the user hovers the pill (workflow-steps.js:690). A power user processing many sessions back-to-back will not reliably discover re-run exists without prior knowledge. The layout stage is the exception — it has a persistent stale callout banner — but all other stages depend on accidental discovery via hover.
 
-4. **Bulk toolbar absent for publications and achievements** (Low-Medium severity) — Publications and Achievements panes have per-row Accept/Reject or Include/Omit buttons with no bulk toolbar, inconsistent with the Experience and Skills panes. A researcher or academic user may have 20–50 publications to review. Evidence: `web/review-table-base.js` pane configs — no `.bulk-toolbar` injection for `publications-table-container` or `achievements-table-container`.
+4. **No forward stage skip** (Medium severity) — Users who trust the AI recommendations cannot jump directly from Job Input to Generate. All panes and Spell Check must be traversed in order. Evidence: `web/review-table-base.js:626–641`, `web/app.js`.
 
-5. **No custom prompt injection surface** (Low severity) — There is no freeform "instructions to AI" field that power users can use to guide LLM behaviour (e.g., "avoid first-person phrasing", "do not include management experience", "emphasise Python over R"). The Settings modal exposes model/temperature/token controls but not user-controlled system-prompt context. Evidence: `web/ui-core.js:saveSettingsModal()` — no prompt-injection field in the form.
+5. **Bulk toolbar absent for publications** (Low-Medium severity) — Publications pane has per-row include/exclude buttons with no bulk toolbar, inconsistent with the Experience, Skills, and Achievements panes. A researcher or academic user may have 20–50 publications to review individually. Evidence: `web/publications-review.js` — no `.bulk-toolbar` rendered.
+
+6. **No custom prompt injection surface** (Low severity) — There is no freeform "instructions to AI" field that power users can use to guide LLM behaviour (e.g., "avoid first-person phrasing", "do not include management experience"). The Settings modal exposes model/temperature/token controls but not user-controlled system-prompt context. Evidence: `web/ui-core.js:saveSettingsModal()` — no prompt-injection field in the form.
 
 ---
 
@@ -159,4 +166,10 @@ A takeover confirmation dialog fires when another tab already holds the claim (`
 
 - **US-W6: Stage gating override** — Power users can advance past optional stages (Questions, Spell Check, Layout) without completing them via a "Skip stage →" affordance, recording the skip in the session audit trail. The re-run confirm modal offers a "Don't ask again this session" option.
 
-- **US-W7: Custom prompt context injection** — A collapsible "Instructions to AI" textarea in the Generation Settings panel (or a dedicated Settings modal field) appends freeform user context to the LLM system prompt for customisations and rewrites. Content is stored in session state and displayed in the finalise audit summary.
+- **US-W8: Persistent hover-bypass for re-run** — Power users can pin the ↻ re-run icon to be visible at rest on completed step pills (via a preference toggle in Settings), rather than requiring a hover interaction to discover. As a minimum: add a persistent tooltip or step-tooltip that mentions "hover to re-run" as onboarding text.
+
+---
+
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, web/workflow-steps.js, web/layout-instruction.js, web/master-cv.js, web/session-manager.js, web/session-switcher-ui.js, web/experience-review.js, web/skills-review.js, web/achievements-review.js, web/rewrite-review.js, web/publications-review.js, scripts/web_app.py, scripts/utils/conversation_manager.py
+
+**Evidence standard:** Every conclusion is supported by source evidence. No documentation or prior review documents were used as inputs for factual claims.

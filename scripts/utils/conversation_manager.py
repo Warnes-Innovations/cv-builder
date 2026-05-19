@@ -443,6 +443,24 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
                 "about the existing proposals."
             )
 
+        goals = self.state.get('generation_goals')
+        if goals:
+            base_prompt += "\n\nGeneration Goals (user-specified length constraints):\n"
+            if goals.get('max_pdf_pages'):
+                base_prompt += f"- Maximum PDF length: {goals['max_pdf_pages']} page(s)\n"
+            if goals.get('max_ats_pages'):
+                base_prompt += f"- Maximum ATS plain-text length: {goals['max_ats_pages']} page(s)\n"
+            if goals.get('max_ats_chars'):
+                base_prompt += (
+                    f"- Maximum ATS character count (including spaces): "
+                    f"{goals['max_ats_chars']:,} characters\n"
+                )
+            base_prompt += (
+                "When selecting and editing content, respect these constraints. "
+                "Prefer concise, high-impact language. Omit or condense low-relevance "
+                "material to stay within the specified limits."
+            )
+
         return base_prompt
     
     def _parse_action_from_response(self, response: str) -> Optional[Dict]:

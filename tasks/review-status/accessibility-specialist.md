@@ -8,7 +8,7 @@
 
 # Accessibility Specialist Review Status
 
-**Last Updated:** 2026-04-20 17:30 ET
+**Last Updated:** 2026-04-22 10:00 ET
 
 **Executive Summary:** The modal and dialog layer is well-structured with focus management, ARIA roles, and Escape-key handling, but the workflow step bar and second-level tab bar are built from non-interactive `<div>` elements with no `tabindex`, making the primary navigation unreachable by keyboard. Several compounding gaps — a labelless message input, an ARIA-free confirm dialog, and missing programmatic state announcements on workflow steps — place US-X1 at a critical fail level.
 
@@ -65,9 +65,9 @@ The `.workflow` div has no `aria-live` attribute. `updateWorkflowSteps()` mutate
 
 #### Criterion 1 — Opening a modal moves focus into it
 
-✅ **Pass** — `web/ui-core.js:239–245`, `1493–1497`
+⚠️ **Partial** — `web/ui-core.js:239–245`, `1458–1460`; `web/session-switcher-ui.js:199–213`
 
-`openSettingsModal()`, `openModelModal()`, and `openSessionsModal()` all call `setInitialFocus(modalId)` immediately after showing the modal, focusing the first text input or button within a 50 ms delay. `_focusedElementBeforeModal = document.activeElement` is captured before each open.
+`openSettingsModal()` (`ui-core.js:243–245`) and `openModelModal()` (`ui-core.js:1458–1460`) both call `setInitialFocus(modalId)` and save `_focusedElementBeforeModal`. `openSessionsModal()` (`session-switcher-ui.js:199–213`) saves focus and calls `trapFocus()` but **omits** `setInitialFocus()` — focus is captured but not moved into the modal. The `confirmDialog()` helper (`ui-core.js:364`) never captures or redirects focus at all.
 
 #### Criterion 2 — Focus is trapped inside the modal while open
 
@@ -205,7 +205,7 @@ No user stories cover the accessibility or readability of the generated CV artif
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 |-------|---------|-----------|--------|------------|-------|
 | US-X1 Workflow Navigation | 0 | 2 (crit 2, 3) | 2 (crit 1, 4) | 0 | 0 |
-| US-X2 Modal & Dialog | 3 (crit 1, 2, 3 — main modals) | 1 (crit 4 — gaps) | 1 (confirmDialog) | 0 | 0 |
+| US-X2 Modal & Dialog | 2 (crit 2, 3 — main modals) | 2 (crit 1 sessions modal; crit 4 gaps) | 1 (confirmDialog) | 0 | 0 |
 | US-X3 Forms, Errors, Review | 1 (crit 4 — live regions) | 3 (crit 1, 2, 3) | 0 | 0 | 0 |
 | US-X4 (proposed) | — | — | — | 🔲 | — |
 | US-X5 (proposed) | — | — | — | 🔲 | — |

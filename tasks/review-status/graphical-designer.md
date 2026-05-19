@@ -8,9 +8,9 @@
 
 # Graphical Designer Review Status
 
-**Last Updated:** 2026-04-20 17:30 ET
+**Last Updated:** 2026-04-22 10:00 ET
 
-**Executive Summary:** The application has a clean, coherent visual foundation built on a professional slate/blue palette with appropriate semantic color states; all three US-G stories pass at the criteria level with two partial gaps — button-class mixing between Bootstrap 5 and the custom `action-btn` system on the Layout tab, and a small set of designer-facing terminology issues in the layout controls.
+**Executive Summary:** The application's visual system is functionally coherent — a consistent Tailwind-inspired blue/grey palette, well-structured workflow navigation, and a clean two-panel layout deliver a usable and professional experience. The generated CV template (`cv-template.html`) is the genuine design highlight: a sophisticated two-column layout with a professional Inter/Merriweather font pairing, user-adjustable base typography via rem, and careful print/page-break controls. Primary design debt is in the app layer: no CSS design-token system (all hex values hardcoded), system-emoji navigation icons that render inconsistently across OS/browser, multiple inline-style overrides in `index.html` that bypass the CSS class system, Bootstrap-vs-custom button mixing on the Layout tab, and no user control over CV template font family or colour theme.
 
 ---
 

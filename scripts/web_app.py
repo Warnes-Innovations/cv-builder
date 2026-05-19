@@ -144,6 +144,7 @@ class StatusResponse:
     intake: Dict[str, Any]
     stale_steps: List[str]
     job_url: Optional[str]
+    generation_goals: Optional[Dict[str, Any]]
 
 
 @dataclass

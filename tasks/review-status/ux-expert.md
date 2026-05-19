@@ -10,8 +10,8 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # UX Expert Review Status
 
-**Last Updated:** 2026-04-20 17:30 ET
-**Executive Summary:** The application has strong structural foundations — a persistent 8-step progress bar, word-level inline diffs, contextual protected-site guidance, and thorough modal focus management — but four high-severity usability gaps prevent full story compliance: keyboard-only navigation is blocked by non-interactive `<div>` tabs, extracted job metadata fields are not inline-editable, layout-review Undo controls are non-functional stubs, and there is no sequential review flow for rewrite cards.
+**Last Updated:** 2026-04-22 16:00 ET
+**Executive Summary:** The application has strong structural foundations — a persistent 8-step progress bar, word-level inline diffs, contextual protected-site guidance, and thorough modal focus management — but six UX gaps prevent full story compliance: keyboard-only navigation is blocked by non-interactive `<div>` tabs; extracted job metadata fields are not inline-editable; layout-review Undo controls are non-functional stubs; there is no sequential review flow for rewrite cards; the workflow step re-run icon is hover-only and keyboard-inaccessible; and the `#layout-freshness-chip` button carries an empty `aria-label` that screen readers cannot announce.
 
 ---
 
@@ -27,6 +27,11 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 **Criterion 3 — Back-navigation safety**
 ✅ `web/workflow-steps.js:131–183` implements `_showReRunConfirmModal()` which fires before any back-nav or rerun. The modal lists downstream completed stages and shows the note: "All existing approvals and rewrites are preserved as context." `backToPhase()` calls `POST /api/back-to-phase`.
+
+**Criterion 3b — Re-run icon keyboard accessibility**
+❌ `web/workflow-steps.js:666–670` — the `↻` re-run icon on each step pill is displayed only on CSS `:hover`. No `tabindex="0"` or `keydown` event handler is attached. Keyboard-only users cannot trigger a step re-run from the step bar.
+
+**Gap:** Add `tabindex="0"` and an `Enter`/`Space` `keydown` handler to the re-run icon; or surface the re-run action via a menu reachable by keyboard.
 
 **Criterion 4 — Session restoration context**
 ⚠️ Session restoration does navigate to the correct tab for the stored phase (`web/session-manager.js:222–237`). However, the confirmation message at `web/session-manager.js:608` reads:
@@ -85,7 +90,7 @@ Source files for the experience, skills, achievements, and publications review t
 ⚠️ `web/review-table-base.js:40–58` shows inclusion count badges update per tab (e.g., "📊 Experiences (5)"). Specific toggle style (size, contrast, state affordance) cannot be confirmed without reading the table-rendering modules.
 
 **Criterion 4 — Bulk actions**
-⚠️ No evidence of "Select All / Deselect All" controls was found in the reviewed source files.
+⚠️ `web/skills-review.js:941` provides "✨ Accept All Recommended" bulk action for skills, confirming at least one bulk path exists. However, no "Select All / Deselect All" toggle for experience, achievement, or publication tables was found.
 
 **Criterion 6 — Relevance score meaning**
 ⚠️ Whether scores render as "Relevance: 92 / 100" or raw floats cannot be confirmed without `web/exp-review.js`.
@@ -144,6 +149,9 @@ Keyboard-only users cannot activate any workflow tab. Workflow step pills simila
 
 **Criterion 4 — ARIA labels**
 ✅ `web/index.html:78` — `aria-label="ATS match score"` on ATS badge. Scroll buttons at `index.html:175,199` have `aria-label="Scroll tabs left/right"`. Tab bar at `index.html:176` has `aria-label="Application workflow tabs"`. All modals have `role="dialog" aria-modal="true" aria-labelledby` (`index.html:217, 242, 256, 273, 433, 544, 560`). Model wizard has `role="status" aria-live="polite"` at `index.html:287`.
+
+**Criterion 4b — Empty `aria-label` on layout freshness chip**
+❌ `web/index.html:87` — `<button id="layout-freshness-chip" ... aria-label="">`. An explicitly empty `aria-label` on a focusable button causes screen readers to announce the button with no name. This must be set to a meaningful label (e.g. `"Layout freshness — click to review"`) before the chip is shown.
 
 **Criterion 5 — Colour independence**
 ⚠️ Rewrite card state (accepted = green background + border, rejected = red + opacity reduction, `styles.css:1083–1084`) is communicated by colour change only in the card border/background area. The Accept/Reject button active-class change provides a secondary indicator, but there is no text label (e.g., "✓ Accepted") within the card body to communicate state independent of colour.
@@ -260,13 +268,13 @@ Evidence: `web/styles.css:146`. 8 steps + 7 arrows at `gap: 32px` without `flex-
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 |-------|---------|-----------|--------|------------|-------|
-| US-U1 | 3       | 1         | 0      | 0          | 0     |
+| US-U1 | 3       | 1         | 1      | 0          | 0     |
 | US-U2 | 3       | 0         | 1      | 0          | 0     |
 | US-U3 | 2       | 3         | 0      | 0          | 0     |
-| US-U4 | 0       | 3         | 0      | 0          | 2     |
+| US-U4 | 0       | 4         | 0      | 0          | 1     |
 | US-U5 | 4       | 0         | 1      | 0          | 0     |
 | US-U6 | 0       | 2         | 0      | 0          | 3     |
-| US-U7 | 3       | 2         | 1      | 0          | 0     |
+| US-U7 | 3       | 2         | 2      | 0          | 0     |
 | US-U8 | 0       | 1         | 0      | 0          | 4     |
 | US-U9 | 3       | 1         | 0      | 1          | 0     |
 
@@ -285,5 +293,8 @@ Evidence: `web/styles.css:146`. 8 steps + 7 arrows at `gap: 32px` without `flex-
 - `web/layout-instruction.js:842–865` — `window.prompt()` clarification + non-functional Undo stub
 - `web/layout-instruction.js:755–772` — instruction history with Undo buttons
 - `web/styles.css:146` — workflow-steps flex without wrap
+- `web/workflow-steps.js:666–670` — re-run icon hover-only, no keyboard handler
+- `web/index.html:87` — empty `aria-label=""` on `#layout-freshness-chip`
+- `web/skills-review.js:941` — "Accept All Recommended" bulk action confirmed
 
 **Evidence standard:** Every conclusion is supported by cited source file and line number. Criteria marked — (N/A) indicate source files were not in the review set for this pass; they are not asserted as failing.

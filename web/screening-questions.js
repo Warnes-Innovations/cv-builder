@@ -33,11 +33,11 @@ async function populateScreeningTab() {
       <p class="sc-intro">Paste one or more screening questions below — one per line, or separated by blank lines. Click <strong>Parse Questions</strong> to generate tailored draft responses.</p>
       <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:20px;">
         <textarea id="sc-input" rows="6" style="flex:1;padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.93em;resize:vertical;" placeholder="Paste screening questions here…&#10;&#10;E.g.&#10;Describe a time you led a cross-functional project.&#10;&#10;How do you handle tight deadlines?"></textarea>
-        <button class="btn btn-primary" onclick="parseScreeningQuestions()">Parse Questions</button>
+        <button class="btn-primary" onclick="parseScreeningQuestions()">Parse Questions</button>
       </div>
       <div id="sc-questions-container"></div>
       <div class="sc-save-bar" id="sc-save-bar" style="display:none;">
-        <button class="btn btn-success" id="sc-save-btn" onclick="saveScreeningResponses()">💾 Save All Responses</button>
+        <button class="continue-btn" id="sc-save-btn" onclick="saveScreeningResponses()">💾 Save All Responses</button>
       </div>
     </div>`;
 
@@ -95,7 +95,7 @@ function renderQuestionBlock(question, idx) {
           ${['direct','star','technical'].map(f => `
             <button class="sc-format-btn${f === 'direct' ? ' active' : ''}" data-fmt="${f}" onclick="selectFormat(${idx},'${f}',this)">${_fmtLabel(f)}</button>`).join('')}
         </div>
-        <button class="btn btn-primary btn-sm" id="sc-gen-btn-${idx}" onclick="generateScreeningResponse(${idx})">✨ Generate Draft</button>
+        <button class="btn-primary" id="sc-gen-btn-${idx}" onclick="generateScreeningResponse(${idx})">✨ Generate Draft</button>
         <div id="sc-result-${idx}" style="margin-top:12px;"></div>
         <div class="sc-topic-row" id="sc-topic-row-${idx}" style="display:none;">
           <label for="sc-topic-${idx}">Topic tag:</label>

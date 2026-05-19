@@ -1950,4 +1950,4 @@ Only the two planning docs were included:
 [tasks/ui-gap-implementation-plan.md](/Users/warnes/src/cv-builder/tasks/ui-gap-implementation-plan.md)
 [tasks/refactor-candidates-2026-03-18.md](/Users/warnes/src/cv-builder/tasks/refactor-candidates-2026-03-18.md)
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->
+<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder/codex-skills/implementation-planning/SKILL.md`" -->

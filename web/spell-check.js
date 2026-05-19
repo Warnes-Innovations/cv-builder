@@ -22,10 +22,29 @@ import { stateManager } from './state-manager.js';
 
 // Module-level state
 let spellAudit = [];
+let _spellCheckCache = null;
 
 // ── Populate spell-check tab ──────────────────────────────────────────────────
 
 async function populateSpellCheckTab() {
+  // If we have cached results from a previous run, re-render from cache
+  // instead of re-running LanguageTool on every back-navigation.
+  if (window._spellCheckCache) {
+    const c = window._spellCheckCache;
+    if (c.type === 'zero') {
+      renderSpellCheckZeroState(c.message, c.statsLine, c.customDictSize);
+    } else {
+      const content = document.getElementById('document-content');
+      content.innerHTML = `
+        <h1>🔤 Spell &amp; Grammar Check</h1>
+        <p style="color:#6b7280;margin-bottom:24px;">Review spelling and grammar suggestions.</p>
+        <div id="spell-results" style="display:none;"></div>
+      `;
+      renderSpellSuggestions(c.flaggedSections, c.totalSections, c.stats, c.customDictSize);
+    }
+    return;
+  }
+
   const content = document.getElementById('document-content');
   content.innerHTML = `
     <h1>🔤 Spell &amp; Grammar Check</h1>
@@ -114,6 +133,8 @@ async function populateSpellCheckTab() {
 // ── Zero-state spell stage ────────────────────────────────────────────────────
 
 function renderSpellCheckZeroState(message, statsLine = '', customDictSize = 0) {
+  window._spellCheckCache = { type: 'zero', message, statsLine, customDictSize };
+  _spellCheckCache = window._spellCheckCache;
   const content = document.getElementById('document-content');
   const statsParts = [];
   if (statsLine) statsParts.push(`<p style="color:#6b7280;font-size:0.95em;margin:8px 0 0;">${escapeHtml(statsLine)}</p>`);
@@ -124,29 +145,33 @@ function renderSpellCheckZeroState(message, statsLine = '', customDictSize = 0) 
       <h2 style="color:#166534;">${escapeHtml(message)}</h2>
       ${statsParts.join('\n')}
       <p style="color:#6b7280;margin:16px 0 24px;">Continue when you are ready to generate your CV.</p>
-      <button class="submit-btn" onclick="submitEmptySpellCheck()">Continue to Generate CV</button>
+      <button class="submit-btn" onclick="submitEmptySpellCheck()">Done — Generate CV →</button>
     </div>
   `;
 }
 
 async function submitEmptySpellCheck() {
-  const res  = await fetch('/api/spell-check-complete', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ spell_audit: [] })
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    showAlertModal('❌ Error', `Failed to save spell check: ${data.error || 'Unknown error'}`);
-    return;
+  try {
+    const res  = await fetch('/api/spell-check-complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spell_audit: [] })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showAlertModal('❌ Error', `Failed to save spell check: ${data.error || 'Unknown error'}`);
+      return;
+    }
+    const proceed = await _confirmProceedToGenerate();
+    if (!proceed) return;
+    stateManager.markContentChanged();
+    appendMessage('assistant', '✅ Spell check complete — no issues required changes. Generating your CV…');
+    scheduleAtsRefresh('review_checkpoint');
+    await fetchStatus();
+    await sendAction('generate_cv');
+  } catch (err) {
+    showAlertModal('❌ Error', `Spell check error: ${err.message}`);
   }
-  const proceed = await _confirmProceedToGenerate();
-  if (!proceed) return;
-  stateManager.markContentChanged();
-  appendMessage('assistant', '✅ Spell check complete — no issues required changes. Generating your CV…');
-  scheduleAtsRefresh('review_checkpoint');
-  await fetchStatus();
-  await sendAction('generate_cv');
 }
 
 // ── Stats summary ─────────────────────────────────────────────────────────────
@@ -165,6 +190,8 @@ function buildSpellStatsSummary(stats = {}) {
 // ── Render suggestions panel ──────────────────────────────────────────────────
 
 function renderSpellSuggestions(flaggedSections, totalSections, stats = {}, customDictSize = 0) {
+  window._spellCheckCache = { type: 'suggestions', flaggedSections, totalSections, stats, customDictSize };
+  _spellCheckCache = window._spellCheckCache;
   const results = document.getElementById('spell-results');
   results.style.display = '';
   const statsLine = buildSpellStatsSummary(stats);
@@ -241,7 +268,7 @@ function renderSpellSuggestions(flaggedSections, totalSections, stats = {}, cust
 
   html += `
     <div class="nav-buttons" style="margin:24px 0;">
-      <button class="submit-btn" onclick="submitSpellCheckDecisions()">Done — Generate CV</button>
+      <button class="submit-btn" onclick="submitSpellCheckDecisions()">Done — Generate CV →</button>
     </div>
   `;
   results.innerHTML = html;
@@ -330,8 +357,8 @@ async function _confirmProceedToGenerate() {
   const atsScore = stateManager.getAtsScore();
   const freshness = stateManager.getLayoutFreshness();
   const lines = ['Your CV is ready to generate.'];
-  if (atsScore !== null && atsScore !== undefined) {
-    lines.push(`Current ATS score: ${atsScore}%`);
+  if (atsScore !== null && atsScore !== undefined && typeof atsScore.overall === 'number') {
+    lines.push(`Current ATS score: ${Math.round(atsScore.overall)}%`);
   }
   if (freshness.isStale) {
     lines.push(`⚠ ${freshness.ariaLabel}`);

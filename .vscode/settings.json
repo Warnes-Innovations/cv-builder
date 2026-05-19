@@ -13,5 +13,6 @@
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
-    "vitest.rootConfig": "vitest.config.mjs"
+    "vitest.rootConfig": "vitest.config.mjs",
+    "specstory.cloudSync.enabled": "never"
 }

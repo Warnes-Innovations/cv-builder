@@ -8432,4 +8432,4 @@ _**Agent (<synthetic> 2026-03-20 01:50:55Z)**_
 
 You've hit your limit · resets 12am (America/New_York)
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->
+<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/tasks/multi-session-implementation-plan.md" -->

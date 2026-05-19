@@ -8,10 +8,10 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # First-Time User Review Status
 
-**Last Updated:** 2026-04-20 17:30 ET
+**Last Updated:** 2026-04-22 10:00 ET
 **Persona:** A capable professional using CV Builder for the first time with no prior knowledge of its workflow or terminology.
 
-**Executive Summary:** The job-application workflow (US-F1 through US-F3) is functionally correct for a returning user but presents a steep orientation problem for first-time users: there is no welcome screen, no explanation of what the app does, the LLM must be configured before anything works but is not prominently surfaced, and the "Master CV" prerequisite is never explained. US-F4 (onboarding for a missing master CV) is entirely unimplemented — the backend raises a raw `FileNotFoundError` with a developer message, and no creation wizard, import path, or guidance exists in the UI.
+**Executive Summary:** Since the previous review (2026-04-20) a welcome/onboarding modal has been implemented (`session-manager.js:155–179`, `index.html:258–325`) that correctly branches on master-CV presence, provides a 3-step workflow summary, and includes a missing-master-CV path with "Create empty profile." This substantially addresses the critical GAP-FU-2 from the prior review. However, the modal's "Get Started" button closes without navigating to the Job tab, no "start here" message appears in the conversation panel after dismissal, LLM setup is still not mentioned in the welcome flow, and the generate → layout → finalise pipeline remains unexplained — a user cannot tell the difference between a preview and final output anywhere in the source. The previous review's assessment that "FileNotFoundError is raised with no UI intercept" is no longer accurate; `showOnboardingModal()` is now wired to the session-creation path.
 
 ---
 
@@ -19,151 +19,187 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 ### US-F1 — First-Run Orientation
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| 1. Entry screen explains first required action clearly | ⚠️ Partial | `job-input.js:showLoadJobPanel()` renders "📥 Add Job Description" with paste/URL/file tabs — the immediate action is findable, but the screen title "CV Customizer" (`index.html:32`) and the app itself are never explained. No introductory copy tells a first-time user what the application does or why they need a job description. |
-| 2. Key workflow concepts understandable without prior knowledge | ❌ Fail | Tab bar exposes "📚 Master CV," "📊 ATS Score," "✏️ Rewrites," "🏆 Achievements," and "🔤 Spell Check" from session start (`index.html:117–144`). "Master CV," "ATS," and "Harvest" (in Finalise) are undefined terms not glossed anywhere in the UI. |
-| 3. First stage makes clear what data is needed and why | ⚠️ Partial | The job input panel says "Paste the job description here…" (`job-input.js:112`), which tells you *what* to paste but not *why*. The prerequisite that `Master_CV_Data.json` must already exist is never stated. |
+#### Criterion 1 — Entry screen explains the first required action clearly
 
-**Acceptance criterion: new user can identify first step without external help** — ⚠️ Partial. First step is discoverable; application purpose is not.
+**⚠️ Partial**
 
-**Acceptance criterion: stage names and action labels are understandable** — ❌ Fail. "Customise," "Rewrites," "ATS Score," "Harvest" have no first-time-user context.
+`maybeShowWelcomeModal()` runs on every startup until dismissed (`session-manager.js:155–179`). For users whose master CV is present, the modal shows: "**Next:** switch to the **Job** tab, provide a job description, and click **Analyze Job**." (`index.html:295–297`) — explicit and accurate.
 
-**Failure mode — users dropped into complex screen with no clear primary action** — ⚠️ Partially triggered. On first visit with no session URL parameter, `ensureSessionContext()` (`session-manager.js:271–279`) renders a landing panel headlined "Select a Session" with subtext "Each browser tab now works against its own URL-scoped session" — technical architecture copy, not user orientation.
+However:
+- The "Get Started" button (`index.html:307`) calls only `closeWelcomeModal()` (`session-manager.js:183–189`); it does not navigate to the Job tab.
+- After modal dismissal the conversation area shows only "🔄 Connecting to CV Builder…" and "✅ Connection successful." (`app.js:62–68`). Neither message provides a "start here" prompt.
+- The LLM status pill shows "⚠️ Not ready" (`index.html:52–56`) when no provider is configured, but the welcome modal never mentions that LLM setup is required before any AI action.
 
-**Failure mode — terms like "rewrites," "customisations," "harvest" without context** — ❌ Confirmed. All appear in the persistent tab bar without definition.
+**What's missing:** Post-close navigation to the Job tab; a conversation-level orientation prompt; mention of LLM provider setup in the welcome flow.
+
+---
+
+#### Criterion 2 — Key workflow concepts are understandable without domain-specific prior knowledge
+
+**⚠️ Partial**
+
+- The 8-step workflow bar labels — Job Input, Analysis, Customise, Rewrites, Spell Check, Generate, Layout Review, Finalise (`index.html:115–130`, `workflow-steps.js:606–614`) — are broadly self-explanatory.
+- **"Harvest improvements"** (welcome modal step 3, `index.html:286–289`) is unexplained jargon. No tooltip or definition exists.
+- **"Master_CV_Data.json"** appears as a raw filename in the modal (`index.html:278`, `index.html:301–303`). A file extension is not meaningful to non-technical users.
+- **"ATS"** appears as a header badge (`index.html:91`), a dedicated tab (`index.html:194`), and in position-bar widgets with no first-run definition.
+- **"Session"** — the header shows "📂 Sessions" and "+ New Session" (`index.html:42–46`) with no explanation of what a session is or why multiple sessions exist.
+
+---
+
+#### Criterion 3 — The first stage makes clear what data is needed and why
+
+**⚠️ Partial**
+
+`showLoadJobPanel()` renders "📥 Add Job Description" with three input methods (paste, URL, file) (`job-input.js:100–155`). The *what* is clear. However:
+- No explanatory text in the job input panel explains *why* a job description is needed or how it will be used.
+- The welcome modal step 2 provides this context ("Provide a job description → AI analysis → review and refine…", `index.html:282–285`) but only while the modal is open; nothing persists in the Job tab after dismissal.
+- The URL method helpfully lists which sites work vs. require manual copy (`job-input.js:135–148`) — a good contextual touch to replicate elsewhere.
 
 ---
 
 ### US-F2 — Progressive Disclosure Through the Workflow
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| 1. UI reveals next decisions in a staged way | ✅ Pass | `STAGE_TABS` in `ui-core.js:343–354` maps each workflow step to a restricted set of second-level tabs; `updateTabBarForStage()` hides off-stage tabs dynamically. Only stage-appropriate tabs are visible at any time. |
-| 2. Each stage communicates its purpose before demanding action | ⚠️ Partial | Workflow bar shows step names with `title` tooltip attributes (e.g., `title="Job analysis"` — `index.html:79`). No stage-entry explanation panel, banner, or instructional copy is rendered when the user enters a new stage for the first time. |
-| 3. Transition from one stage to the next feels predictable | ⚠️ Partial | The Spell Check → Generate transition is automatic and invisible: after `submitSpellCheckDecisions()` completes, the frontend calls `generate_cv` directly (see `current-implemented-workflow.md` §5). User receives no "now generating" message before the tab switches. The Generate → Layout transition is explicit via "🎨 Open Layout Review →" button (`index.html:151`). |
+#### Criterion 1 — UI reveals decisions in a staged way rather than all at once
 
-**Acceptance criterion: workflow can be followed without guessing** — ✅ Pass. Top progress bar and primary action buttons (`_STAGE_BUTTON_MAP` in `ui-helpers.js:143–151`) enforce one primary action per stage.
+**⚠️ Partial**
 
-**Acceptance criterion: stage transitions include enough feedback** — ⚠️ Partial. Conversation panel messages help, but the Spell Check auto-advance to Generate is undisclosed.
+`STAGE_TABS` (`ui-core.js:350–360`) maps each workflow stage to a filtered set of second-bar tabs, enforced by `updateTabBarForStage()` (`ui-core.js:571–583`):
+
+| Stage | Tabs shown |
+|---|---|
+| `job` | job, master |
+| `analysis` | analysis, questions |
+| `customizations` | exp-review, ach-editor, skills-review, achievements-review, summary-review, publications-review, ats-score |
+| `rewrite` | rewrite |
+| `spell` | spell |
+| `generate` | generate |
+| `layout` | layout |
+| `finalise` | download, finalise, master, cover-letter, screening |
+
+Tab-bar disclosure is well-staged. **However:**
+- The **entire 8-step workflow bar** is rendered and visible from first load (`index.html:115–130`). No steps are hidden or locked.
+- The `customizations` stage exposes **7 tabs simultaneously** with no stage-intro explaining what those 7 sub-tasks involve.
+- The `finalise` stage exposes 5 tabs with no orientation for a first-time user.
+
+---
+
+#### Criterion 2 — Each stage communicates its purpose before demanding action
+
+**⚠️ Partial**
+
+- **Analysis stage:** LLM analysis text is appended to the conversation via `appendMessage('assistant', analysisText)` (`job-analysis.js:135`). Content is contextual but AI-generated, not a structured "here's what you got; here's what to do next."
+- **Job stage:** `showLoadJobPanel()` shows a panel heading with no purpose statement.
+- **All other stages:** No fixed stage-introduction message is injected when entering customizations, rewrite, spell, generate, layout, or finalise. Users must infer purpose from tab content and action button label alone.
+- Action buttons label the next action per stage (e.g., "⚙️ Recommend Customizations", "✏️ Review Rewrites") via `_STAGE_BUTTON_MAP` (`ui-helpers.js:138–148`) — helpful but terse.
+
+---
+
+#### Criterion 3 — Transitions from one stage to the next feel predictable
+
+**✅ Pass (with caveat)**
+
+- Workflow step bar updates on every `fetchStatus()` call via `updateWorkflowSteps()` (`workflow-steps.js:595`); active step is blue, completed steps are green (`styles.css:148–151`). ✅
+- Back-navigation from completed steps works via `handleStepClick()` (`workflow-steps.js:715+`). ✅
+- "↻ Refining" badge on active step when iterating (`workflow-steps.js:663`). ✅
+- **Caveat:** No "You've completed X. Next up: Y" message is injected at stage transitions. The user must read the action button to discover the next step.
 
 ---
 
 ### US-F3 — Confidence Before Finalisation
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| 1. System communicates whether key review steps are complete | ⚠️ Partial | Completed steps gain a `completed` CSS class in the top bar and become click-navigable (`workflow-steps.js:_STEP_ORDER`). There is no explicit checklist or "all required steps done" confirmation banner. |
-| 2. Relationship between generation, layout review, and finalisation is understandable | ❌ Fail | The layout-freshness chip (`state-manager.js:getLayoutFreshnessFromState()`) tracks file staleness, but the conceptual pipeline (preview → confirm → final PDF) is not explained anywhere in the UI. Four separate tabs — "📄 Generated CV," "🎨 Layout Review," "⬇️ File Review," "✅ Finalise" — appear with no bridging explanation. |
-| 3. Final stage distinguishes optional from required clearly | ❌ Fail | The Finalise stage exposes five tabs: File Review, Finalise, Master CV, Cover Letter, Screening (`ui-core.js:STAGE_TABS.finalise`). None is labeled optional or required. "Harvest" candidates appear after finalisation with no indication they are optional. The Cover Letter and Screening tabs alongside "✅ Finalise" imply additional required work. |
+#### Criterion 1 — System communicates whether key review steps are complete
 
-**Acceptance criterion: first-time user can tell when previewing, refining, finalising** — ⚠️ Partial. Stage names exist; preview-vs-final-PDF distinction is invisible.
+**⚠️ Partial**
 
-**Acceptance criterion: final stage distinguishes archive/finalise from optional follow-on** — ❌ Fail. No labeling, icon differentiation, or instructional copy distinguishes them.
+- Workflow step bar clearly shows completed (green) vs. active (blue) vs. pending (`styles.css:148–151`). ✅
+- Layout freshness chip displays "Layout current", "Layout outdated", "Files outdated" (`state-manager.js:120–145`). ✅
+- **Gap:** No pre-finalise checklist or "all required steps done" summary card exists. A first-time user cannot verify whether they have completed all recommended steps before clicking "✅ Finalise & Archive".
 
 ---
 
-### US-F4 — Onboarding: Creating the Master CV Before First Use
+#### Criterion 2 — The relationship between generation, layout review, and finalisation is understandable
 
-This story is almost entirely unimplemented.
+**❌ Fail**
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| 1. App detects missing master CV and explains what it is before job-application UI | ❌ Fail | `cv_orchestrator.py:130–133` raises `FileNotFoundError("Master data file not found: ... Please create Master_CV_Data.json first.")` when `master_data_path` is absent. This propagates to the session factory (`web_app.py:_build_objects_for_registry`) and would surface as a 500 error. No UI intercepts it; no onboarding redirect exists. |
-| 2. Creation paths (LinkedIn, resume, manual) clearly labelled | 🔲 Not Impl. | `master-cv.js:populateMasterTab()` renders the Master CV editor for an *existing* profile. The only import available is "⬆️ Import BibTeX" for publications. No LinkedIn-export importer, resume-to-JSON converter, or "build from scratch" wizard exists. |
-| 3. Partial import + manual additions explicitly supported | 🔲 Not Impl. | No partial-import workflow exists anywhere in the codebase. |
-| 4. Import and review feel like a guided setup wizard | 🔲 Not Impl. | A raw "⬇️ Export JSON" button and a governance warning ("Edits on this tab write directly to `Master_CV_Data.json`") at `master-cv.js:72` presuppose a file that already exists. No wizard flow is implemented. |
+This is the most critical gap for first-time users.
 
-**Acceptance criterion: first-time user with no `Master_CV_Data.json` is shown onboarding, not an error** — ❌ Fail. Raw `FileNotFoundError` would propagate.
-
-**Acceptance criterion: at least three distinct creation paths available and described** — ❌ Fail. Zero creation paths are implemented.
-
-**Acceptance criterion: user reaches job-application start screen without touching file system** — ❌ Fail. Requires manual creation of `Master_CV_Data.json`.
+- The **Generate step produces a preview**, not final output — but no label, tooltip, or inline text anywhere in the source says this. The "📄 Generated CV" tab label gives no indication.
+- The layout-confirm button cycles through: "✅ Confirm Layout" → "⬇️ Generate Final Files" → "↻ Regenerate Preview" (`ui-helpers.js:108–126`). The word "Preview" only appears when the layout is stale; there is no persistent "this is a preview" label.
+- `STAGE_TABS` separates `generate` from `layout` (`ui-core.js:353–358`), implying a sequence, but no text associates "generate" with "preview" and "layout confirm" with "final file production".
+- A first-time user who sees "📄 Generated CV" after clicking Generate may reasonably conclude they are done and skip directly to Finalise, missing the layout-confirm step entirely.
 
 ---
 
-## Onboarding and Discoverability
+#### Criterion 3 — The final stage distinguishes optional from required actions
 
-### Initial orientation
+**⚠️ Partial**
 
-- No welcome screen, splash screen, or app-description copy exists anywhere in `index.html` or the JS modules. The page title is "CV Generator — Professional Web UI" (`index.html:14`) but only visible in the browser tab.
-- First visible content for a no-session visit is the Sessions modal auto-opened over a panel reading "Select a Session" (`session-manager.js:204–219`). No "what is this app?" framing is present.
-
-### LLM configuration discoverability
-
-- The LLM status pill shows "⚠️ Not ready" on load (`index.html:50–57`). A first-time user may not recognize that clicking "LLM: Loading… ⚠ Not ready" opens the LLM Configuration Wizard — the affordance is a header pill with a chevron, not a prominent "Get Started" or "Configure now" CTA.
-- Clicking Analyze Job with an unconfigured LLM produces a silent failure. The wizard (`index.html:263–400`) is well-structured once found, but is not surfaced proactively.
-
-### Help text and empty states
-
-- The document area shows a generic empty state ("Select a tab to view content") before a session exists (`index.html:202–207`). No guidance for new users.
-- The Questions tab has a clear empty-state: "Run 'Analyze Job' first to generate clarifying questions" (`questions-panel.js:populateQuestionsTab()`). This is a positive example to replicate in other tabs.
-- The Master CV tab shows a governance warning but no "how to get started" for users who have no data yet.
-
-### Error recovery
-
-- Session claim conflicts show a well-designed three-button dialog (Load Different / New Session / Take Over) (`session-switcher-ui.js`). Good recovery UX.
-- Backend errors from a missing master CV file would appear as unhandled 500 responses with Python developer-facing text.
-
----
-
-## Terminology Clarity
-
-| Term | Where it appears | First-impression problem |
-|------|-----------------|--------------------------|
-| **Master CV** | Tab label, governance notice, error messages | Central concept never defined; sounds like a special file format |
-| **ATS** / **ATS Score** | Tab label `index.html:128`, position bar badge | Acronym undefined; "Applicant Tracking System" is HR jargon |
-| **Harvest** | Post-finalisation workflow | Appears only after finalisation with no prior mention; sounds like a data-extraction operation |
-| **Customise** | Workflow step name `index.html:82` | Vague: customise *what*? compared to what? |
-| **Rewrites** | Workflow step name `index.html:83` | Ambiguous: whose rewrites? what is being rewritten? |
-| **Refinement** | Backend phase name leaking into session-switcher labels | Internal implementation term, not user language |
-| **Session** | Landing panel headline `session-manager.js:207` | "Each browser tab works against its own URL-scoped session" is architecture copy, not user benefit |
-
----
-
-## Additional Story Gaps / Proposed Story Items
-
-### GAP-FU-1 (High): No welcome screen or application purpose statement
-
-There is no entry point that tells a new user what CV Builder does, what a "Master CV" is, or what the workflow produces.
-
-**Proposed story:** *As a first-time user, I want to see a brief explanation of what CV Builder does and what I need to get started, so that I can decide if I'm in the right place and know what to prepare.*
-
-### GAP-FU-2 (Critical): No master CV onboarding flow
-
-`FileNotFoundError` is raised when `Master_CV_Data.json` is absent. No UI intercepts this. This is a hard block for any new user.
-
-**Proposed story:** *As a first-time user without a Master_CV_Data.json, I want to be guided through creating one from my existing materials (LinkedIn export, resume file, or manual entry), so that I can start using CV Builder without touching the file system.*
-
-### GAP-FU-3 (Medium): LLM setup not proactively surfaced
-
-The "⚠️ Not ready" status pill is passive. A first-time user will click Analyze Job and receive a failure before realizing LLM configuration is required.
-
-**Proposed story:** *As a first-time user, if the LLM is not yet configured, I want to see a prominent "Set up your AI model" CTA before workflow actions, so that I can configure it before hitting a silent failure.*
-
-### GAP-FU-4 (Medium): Stage-entry orientation messaging absent
-
-No instructional copy appears when the user enters a new workflow stage for the first time.
-
-**Proposed story:** *As a first-time user, I want each workflow stage to show a one-sentence explanation of what I'm doing and why, so that I understand the purpose before taking action.*
-
-### GAP-FU-5 (Low): Domain terminology undefined throughout UI
-
-Terms like "ATS," "harvest," and "Master CV" appear without definition or tooltip.
-
-**Proposed story:** *As a first-time user, I want undefined domain terms to have a tooltip or brief inline explanation, so that I don't need external knowledge to interpret the UI.*
-
-### GAP-FU-6 (Low): Spell Check → Generate silent auto-advance
-
-The transition from Spell Check to Generate happens programmatically with no user-visible announcement, disorienting new users.
-
-**Proposed story:** *As a first-time user completing Spell Check, I want to see a "Generation starting…" message before the tab changes, so that I know my decisions were applied and CV generation is beginning.*
+- Finalise tab intro: "Archive this application to your CV history, update the response library, and **optionally** write any improvements back to Master CV Data." (`finalise.js:70–73`). The word "optionally" is present but buried in prose alongside actions that are not optional.
+- The Harvest section appears only **after** clicking "✅ Finalise & Archive" (`finalise.js:175` — `showHarvestSection()`), correctly framing it as post-finalise. ✅
+- **Gap:** The "Status" dropdown (Draft/Ready/Sent) and "Notes" textarea (`finalise.js:90–108`) render before the action button without indication of whether they are required or optional.
+- **Gap:** The path to download files (the "⬇️ File Review" tab) is not referenced from the Finalise tab. A user who wants the DOCX/PDF must discover the File Review tab independently.
 
 ---
 
 ## Generated Materials Evaluation
 
-— N/A. This persona does not reach the generation stage in the implemented workflow because the master CV prerequisite (US-F4) is unimplemented. Once US-F4 is addressed, a generated-materials review for this persona would be appropriate.
+**⚠️ Partial**
+
+- After generation the "📄 Generated CV" tab and "⬇️ File Review" tab provide output access.
+- Neither tab labels the output as a **preview** until the layout freshness chip changes or the layout-confirm button text changes to "⬇️ Generate Final Files" — both require the user to already understand the distinction.
+- A first-time user who generates output and downloads from "⬇️ File Review" may not realize they are downloading a preview that has not yet gone through layout confirmation. No warning distinguishes preview files from final files in the download UI.
+
+---
+
+## Additional Story Gaps / Proposed Story Items
+
+### GAP-FT-1 (Medium): LLM Provider Setup Is a Silent Prerequisite
+
+The welcome modal does not mention that an LLM provider must be configured before any AI action. The "⚠️ Not ready" pill (`index.html:52–56`) is passive and unexplained. A user following the welcome modal instruction ("click Analyze Job") with an unconfigured LLM will receive an authentication error with no contextual guidance.
+
+**Proposed story:** A first-time user who has not configured an LLM provider should receive an inline prompt or be directed to the LLM Configuration Wizard before the first AI action attempt.
+
+---
+
+### GAP-FT-2 (Low): "Don't Show Again" Is in the First Modal a New User Sees
+
+The "Don't show again" checkbox (`index.html:305`) appears in the welcome modal footer. A scanning user may check it before fully reading the modal, permanently disabling the only onboarding experience. There is no way to re-open it short of clearing localStorage.
+
+**Proposed story:** The "Don't show again" dismissal should require affirmative intent (default unchecked, positioned away from "Get Started"), or the onboarding modal should be re-accessible from the Settings or Help area.
+
+---
+
+### GAP-FT-3 (Medium): No Persistent Help Entry Point After Modal Dismissal
+
+Once the welcome modal is dismissed there is no "?" button or Help link in the UI. A first-time user who gets confused mid-workflow has no way to revisit the workflow explanation.
+
+**Proposed story:** A first-time user should be able to access a brief workflow overview from the header at any time, not only during the initial welcome modal.
+
+---
+
+### GAP-FT-4 (High): "Preview vs Final" Is Not Explained in the Generate or Layout Tab
+
+The generate → layout confirm → final files pipeline requires understanding that "Generate" produces a preview. No label, tooltip, or description communicates this. See US-F3 Criterion 2.
+
+**Proposed story:** The Generated CV tab and the Layout Review tab should each include a brief contextual label indicating where the user is in the preview-to-final pipeline.
+
+---
+
+### GAP-FT-5 (Low): Session Concept Is Not Introduced
+
+The header displays "📂 Sessions" and "+ New Session" from first load (`index.html:42–46`). The welcome modal does not explain what a session is, why multiple sessions exist, or that one session = one job application.
+
+**Proposed story:** A first-time user should understand from the onboarding flow that one session equals one job application and that sessions persist work for later review.
+
+---
+
+### GAP-FT-6 (Low): Terminology — "ATS", "Harvest", and "CV" Undefined
+
+- **ATS** — shown in header badge, dedicated tab, and workflow summary; "Applicant Tracking System" is never written out.
+- **Harvest** — used in welcome modal step 3 and Finalise tab without explanation.
+- **CV** — app title and all labels use "CV"; US/Canadian users may expect "resume".
+
+**Proposed story:** First-run users should encounter tooltips or inline definitions for "ATS", "Harvest", and "CV" the first time these terms appear.
 
 ---
 
@@ -171,41 +207,31 @@ The transition from Spell Check to Generate happens programmatically with no use
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 |-------|---------|-----------|--------|------------|-------|
-| US-F1 First-Run Orientation | — | C1, C3 | C2 | — | — |
-| US-F2 Progressive Disclosure | C1 | C2, C3 | — | — | — |
-| US-F3 Confidence Before Finalisation | — | C1 | C2, C3 | — | — |
-| US-F4 Master CV Onboarding | — | — | C1 | C2, C3, C4 | — |
+| US-F1.1 Entry screen first action | | ⚠️ | | | |
+| US-F1.2 Concepts understandable | | ⚠️ | | | |
+| US-F1.3 First stage explains data needed | | ⚠️ | | | |
+| US-F2.1 Staged revelation of decisions | | ⚠️ | | | |
+| US-F2.2 Stage purpose before action | | ⚠️ | | | |
+| US-F2.3 Predictable transitions | ✅ | | | | |
+| US-F3.1 Review completeness communicated | | ⚠️ | | | |
+| US-F3.2 Generation→layout→finalise pipeline | | | ❌ | | |
+| US-F3.3 Optional vs required in finalise | | ⚠️ | | | |
 
-**Story tally:** 1 criterion pass · 7 partial · 4 fail · 3 not implemented
-
----
-
-## Top 5 Gaps by Severity
-
-| # | Gap | Severity | Story |
-|---|-----|----------|-------|
-| 1 | No master CV onboarding; `FileNotFoundError` exposed to first-time users | **Critical** | US-F4 |
-| 2 | No welcome screen or app-purpose explanation at first visit | **High** | US-F1 |
-| 3 | LLM setup not proactively surfaced; silent failure before first Analyze | **Medium** | GAP-FU-3 |
-| 4 | Optional vs. required actions in Finalise stage not distinguished | **Medium** | US-F3 |
-| 5 | Domain terminology (ATS, Harvest, Master CV) undefined throughout UI | **Medium** | US-F1, US-F2 |
+**Story tally:** 1 criterion pass · 7 partial · 1 fail
 
 ---
 
-**Reviewed against:**
-- `web/index.html`
-- `web/app.js`
-- `web/ui-core.js`
-- `web/state-manager.js`
-- `web/session-manager.js`
-- `web/session-switcher-ui.js`
-- `web/job-input.js`
-- `web/workflow-steps.js`
-- `web/questions-panel.js`
-- `web/master-cv.js`
-- `scripts/web_app.py`
-- `scripts/utils/cv_orchestrator.py`
-- `tasks/user-story-first-time-user.md`
-- `tasks/current-implemented-workflow.md`
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, web/workflow-steps.js, web/session-manager.js, web/job-input.js, web/job-analysis.js, web/message-dispatch.js, web/finalise.js, web/ui-helpers.js, scripts/web_app.py, scripts/utils/conversation_manager.py
 
-**Evidence standard:** Every conclusion supported by source file and line number citation.
+**Key evidence references:**
+- US-F1.1 welcome modal instruction → `index.html:295–297`; modal close without navigation → `session-manager.js:183–189`; post-init conversation messages → `app.js:62–68`
+- US-F1.2 "Harvest" unexplained → `index.html:286–289`; "ATS" unlabeled → `index.html:91,194`; "Master_CV_Data.json" jargon → `index.html:278,301–303`
+- US-F1.3 job input panel (no "why") → `job-input.js:100–105`
+- US-F2.1 STAGE_TABS → `ui-core.js:350–360`; full 8-step bar from load → `index.html:115–130`
+- US-F2.2 no stage-intro messages → `job-analysis.js:135`; action button as sole stage signal → `ui-helpers.js:138–148`
+- US-F2.3 step completion styling → `styles.css:148–151`; updateWorkflowSteps → `workflow-steps.js:595`
+- US-F3.1 layout freshness chip → `state-manager.js:120–145`; no pre-finalise checklist → `finalise.js:42–84`
+- US-F3.2 "preview" concept absent from tab UI → `ui-core.js:350–360`; layout button labels → `ui-helpers.js:108–126`
+- US-F3.3 "optionally" in prose → `finalise.js:70–73`; harvest post-finalise → `finalise.js:175`
+- GAP-FT-1 LLM pill → `index.html:52–56`; welcome modal has no LLM mention → `index.html:258–325`
+- Welcome modal now implemented (supersedes prior GAP-FU-2 critical) → `session-manager.js:140–229`, `index.html:258–325`

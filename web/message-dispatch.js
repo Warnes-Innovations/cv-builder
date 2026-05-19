@@ -334,6 +334,7 @@ async function _handleLLMMessage(text) {
   if (terminalState) {
     _setLiveLlmState(terminalState.kind, terminalState.text, terminalState.icon, terminalState.tooltip);
   }
+  if (typeof fetchAndDisplayLlmLog === 'function') fetchAndDisplayLlmLog();
 }
 
 // ---------------------------------------------------------------------------

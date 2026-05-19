@@ -761,6 +761,7 @@ def create_blueprint(deps):
             intake=conversation.state.get("intake")                             or {},
             stale_steps=list(conversation.state.get("stale_steps") or []),
             job_url=conversation.state.get("job_url"),
+            generation_goals=conversation.state.get("generation_goals") or None,
         )))
 
     @bp.get("/api/context-stats")

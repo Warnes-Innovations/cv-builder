@@ -2327,6 +2327,179 @@ If you need clarification, return:
                 'details': f'Failed to apply layout instruction: {str(e)}'
             }
 
+    def classify_instruction(self, instruction_text: str) -> str:
+        """Classify a user instruction as 'layout' or 'content' using the LLM.
+
+        Args:
+            instruction_text: The raw user instruction.
+
+        Returns:
+            'layout' if the instruction affects structure/presentation only,
+            'content' if it requests text edits. Defaults to 'layout' on failure.
+        """
+        prompt = (
+            f'Classify this CV editing instruction as either "layout" or "content".\n\n'
+            f'"layout" = structural changes only: section order, spacing, page breaks, '
+            f'font size, margins, moving sections.\n'
+            f'"content" = text edits: rewriting bullets, editing summary, changing wording.\n\n'
+            f'Instruction: "{instruction_text}"\n\n'
+            f'Reply with exactly one word: layout or content'
+        )
+        try:
+            response = self.llm.call_llm(
+                prompt=prompt,
+                system_prompt='Reply with exactly one word: layout or content',
+                temperature=0.0,
+            )
+            word = (response or '').strip().lower().split()[0] if response else ''
+            return 'content' if word == 'content' else 'layout'
+        except Exception:
+            return 'layout'
+
+    def propose_content_change(
+        self,
+        instruction_text: str,
+        content: Dict,
+    ) -> Dict:
+        """Propose targeted text content changes based on a natural-language instruction.
+
+        Unlike apply_layout_instruction, this method permits text content modifications.
+        Proposals are returned (not applied) in the approved_rewrites format so the user
+        can review each change before committing.
+
+        Args:
+            instruction_text: Plain-English description of the desired edit,
+                e.g. "Shorten the second bullet under Genentech to focus on impact".
+            content: Render-ready content dict with 'summary', 'experiences' (each
+                having 'id', 'title', 'company', 'achievements'), and 'skills'.
+
+        Returns:
+            {
+                'proposals': list of {type, location, original, proposed, reason, id},
+                'error': str or None,
+            }
+        """
+        import uuid as _u
+
+        # ── Build a structured text view of the content for the LLM ──────────
+        lines = []
+
+        summary_text = content.get('summary') or ''
+        lines.append(f'SUMMARY:\n"{summary_text}"\n')
+
+        lines.append('EXPERIENCES:')
+        for idx, exp in enumerate(content.get('experiences') or [], start=1):
+            exp_id   = exp.get('id') or f'exp_{idx:03d}'
+            company  = exp.get('company', '')
+            title    = exp.get('title', '')
+            lines.append(f'{idx}. {title} ({company}, id={exp_id})')
+            achievements = exp.get('achievements') or []
+            for i, ach in enumerate(achievements):
+                text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
+                lines.append(f'   [{i}] "{text}"')
+
+        content_summary = '\n'.join(lines)
+
+        prompt = f"""You are a CV content editor. A user wants to make a targeted text change to their CV.
+
+CURRENT CV CONTENT:
+{content_summary}
+
+USER INSTRUCTION:
+"{instruction_text}"
+
+YOUR TASK:
+Identify the minimal set of text changes that fulfil the instruction and return them as JSON.
+Each change must reference a specific piece of text by its exact location.
+
+Return ONLY valid JSON (no markdown, no extra text):
+
+{{
+  "proposals": [
+    {{
+      "type": "bullet",
+      "location": "exp_001.achievements[2]",
+      "original": "exact original text",
+      "proposed": "new text",
+      "reason": "brief rationale"
+    }}
+  ]
+}}
+
+Location format:
+- Bullet point: "exp_ID.achievements[N]"  (use the id= value shown above, e.g. exp_001)
+- Summary paragraph: "summary"
+
+CONSTRAINTS (must follow all):
+- Only modify existing text; do NOT add new achievements, skills, or sections.
+- Preserve all proper nouns, numbers, dates, and technical terms exactly.
+- Proposed text must be a complete, grammatically correct replacement.
+- Return at most 5 proposals.
+- If the instruction is ambiguous or impossible to fulfil safely, return an empty proposals list.
+"""
+
+        response = ''
+        try:
+            response = self.llm.call_llm(
+                prompt=prompt,
+                system_prompt=(
+                    'You are an expert CV content editor. You propose precise, minimal text '
+                    'improvements without inventing facts or altering meaning.'
+                ),
+                temperature=0.3,
+            )
+
+            if not response or not response.strip():
+                return {'proposals': [], 'error': 'LLM returned an empty response'}
+
+            try:
+                result = json.loads(response)
+            except json.JSONDecodeError:
+                result = self.llm._parse_json_response(response)
+
+            raw_proposals = result.get('proposals') or []
+            validated: list = []
+            for p in raw_proposals:
+                if not isinstance(p, dict):
+                    continue
+                p_type     = str(p.get('type') or '').strip()
+                p_location = str(p.get('location') or '').strip()
+                p_original = str(p.get('original') or '').strip()
+                p_proposed = str(p.get('proposed') or '').strip()
+                p_reason   = str(p.get('reason') or '').strip()
+                if p_type not in ('bullet', 'summary') or not p_location or not p_original or not p_proposed:
+                    continue
+                validated.append({
+                    'type':     p_type,
+                    'location': p_location,
+                    'original': p_original,
+                    'proposed': p_proposed,
+                    'reason':   p_reason,
+                    'id':       f'cp_{_u.uuid4().hex[:12]}',
+                })
+
+            return {'proposals': validated, 'error': None}
+
+        except (json.JSONDecodeError, ValueError) as e:
+            return {'proposals': [], 'error': f'LLM response was not valid JSON: {e}'}
+        except Exception as e:
+            error_type = type(e).__name__.lower()
+            error_text = str(e).lower()
+            if (
+                isinstance(e, TimeoutError)
+                or 'timeout' in error_type
+                or 'time out' in error_text
+                or 'timed out' in error_text
+            ):
+                return {
+                    'proposals': [],
+                    'error': (
+                        'Content proposal request timed out. Try a more specific '
+                        'instruction targeting a single bullet or section.'
+                    ),
+                }
+            return {'proposals': [], 'error': f'Failed to generate content proposals: {e}'}
+
     def _select_content_hybrid(
         self,
         job_analysis: Dict,

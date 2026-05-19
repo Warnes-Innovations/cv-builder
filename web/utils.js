@@ -115,6 +115,8 @@ function extractFirstJsonObject(text) {
  * Converts: & < > " '
  */
 function escapeHtml(text) {
+  if (text == null) return '';
+  if (typeof text !== 'string') return escapeHtml(String(text));
   const map = {
     '&': '&amp;',
     '<': '&lt;',

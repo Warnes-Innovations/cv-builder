@@ -3122,4 +3122,4 @@ _**Agent (claude-haiku-4-5-20251001 2026-03-18 14:51:17Z)**_
 
 All changes maintain backward compatibility while improving robustness and accuracy of CV analysis.
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder reason="already in correct repo" -->
+<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/.github/copilot-instructions.md" -->
