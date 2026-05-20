@@ -573,6 +573,13 @@ async function restoreBackendState() {
             previewGeneratedAt: generationData.preview_generated_at || null,
             previewRequestId: generationData.preview_request_id || null,
             confirmedAt: generationData.confirmed_at || null,
+            // Optional server-provided revision metadata (if backend exposes them)
+            contentRevision: (function() {
+              const v = generationData.content_revision ?? generationData.contentRevision;
+              return (v === undefined || v === null) ? 0 : (Number.isFinite(Number(v)) ? Number(v) : 0);
+            })(),
+            lastPreviewContentRevision: generationData.last_preview_content_revision ?? generationData.lastPreviewContentRevision ?? null,
+            lastFinalContentRevision: generationData.last_final_content_revision ?? generationData.lastFinalContentRevision ?? null,
           });
 
           if (hasCachedAtsScore) {

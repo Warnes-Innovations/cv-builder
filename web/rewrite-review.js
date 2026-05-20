@@ -355,7 +355,12 @@ function updateRewriteTally() {
   if (pendingEl) pendingEl.textContent  = pending;
 
   const submitBtn = document.getElementById('submit-rewrites-btn');
-  if (submitBtn) submitBtn.disabled = (pending > 0);
+  if (submitBtn) {
+    // Enable Submit button once there are no pending cards; keep persuasion
+    // checks blocking on actual submit (submitRewriteDecisions()) so users
+    // can review and see the button enabled when all items are actioned.
+    submitBtn.disabled = (pending > 0);
+  }
 }
 
 async function submitRewriteDecisions() {

@@ -411,7 +411,9 @@ def _install_mock_routes(
 
 
 def _wait_for_ui_ready(page: Page) -> None:
-    """Wait until app init exposes stage/tab helpers used by tests."""
+    """Wait until app init exposes stage/tab helpers used by tests and
+    remove any onboarding modal that might block interactions.
+    """
     page.wait_for_function(
         """
         () => typeof updateActionButtons === 'function'
@@ -419,6 +421,11 @@ def _wait_for_ui_ready(page: Page) -> None:
             && document.readyState === 'complete'
         """
     )
+    # Remove or disable onboarding overlay if present and observe future inserts
+    try:
+        page.evaluate("() => { const remove = () => { const el = document.getElementById('onboarding-modal-overlay'); if (el) el.remove(); }; remove(); const mo = new MutationObserver(remove); mo.observe(document.documentElement, { childList: true, subtree: true }); }")
+    except Exception:
+        pass
 
 
 def _setup_global_state(page: Page, phase: str = 'customization') -> None:
