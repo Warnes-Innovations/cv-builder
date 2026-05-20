@@ -1153,7 +1153,8 @@ async function generateFinalOutputs() {
 
     scheduleAtsRefresh('post_generation');
 
-    await advanceLayoutToRefinement();
+    stateManager.setPhase('final_generation');
+    switchTab('final_generate');
     appendMessage('assistant', '✅ Final files generated from the confirmed layout.');
   } catch (error) {
     appendMessage('system', `❌ Failed to generate final files: ${error.message}`);

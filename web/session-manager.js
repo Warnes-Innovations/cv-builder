@@ -87,7 +87,7 @@ function getActiveSessionOwnershipMeta(session, {
   const isCurrentSession = Boolean(currentSessionId) && session.session_id === currentSessionId;
   const sameOwner = Boolean(session.owned_by_requester);
 
-  if (isCurrentSession && sameOwner) {
+  if (isCurrentSession) {
     return { label: 'Current tab', className: 'session-status-current', isCurrent: true };
   }
   if (sameOwner) {
