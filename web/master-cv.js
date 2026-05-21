@@ -17,6 +17,10 @@
 
 let _masterChangeNotice = '';
 
+// Tracks the active render target: modal body div when opened from header,
+// null when rendered into the normal tab viewer.
+let _masterCvActiveContainer = null;
+
 function _setMasterChangeNotice(section, action) {
   const cleanSection = String(section || 'Master CV').trim();
   const cleanAction = String(action || 'updated').trim();
@@ -32,8 +36,9 @@ function _renderMasterChangeNotice() {
   `;
 }
 
-async function populateMasterTab() {
-  const content = document.getElementById('document-content');
+async function populateMasterTab(container = null) {
+  if (container !== null) _masterCvActiveContainer = container;
+  const content = _masterCvActiveContainer || document.getElementById('document-content');
   content.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading master CV data…</p></div>';
 
   let overview = {};
@@ -2456,8 +2461,26 @@ async function deleteMasterSummary(key) {
   );
 }
 
+function openMasterCvModal() {
+  const overlay = document.getElementById('master-cv-modal-overlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  const container = document.getElementById('master-cv-modal-body');
+  populateMasterTab(container);
+}
+
+function closeMasterCvModal() {
+  const overlay = document.getElementById('master-cv-modal-overlay');
+  if (overlay) overlay.style.display = 'none';
+  _masterCvActiveContainer = null;
+  document.body.style.overflow = '';
+}
+
 export {
   populateMasterTab,
+  openMasterCvModal,
+  closeMasterCvModal,
   _renderPersonalInfoCard,
   _renderExperiencesList,
   _renderSkillsSection,

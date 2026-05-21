@@ -84,8 +84,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .position-bar-row { background: #fff; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .position-bar { padding: 16px 24px; display: flex; align-items: center; flex: 1 1 auto; }
 .position-title { font-size: 24px; font-weight: 700; color: #1e293b; }
+.position-subtitle { font-size: 13px; font-weight: 400; color: #64748b; }
 
 .position-bar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 8px 16px 8px 0; flex-wrap: wrap; }
+.position-actions-divider { width: 1px; height: 32px; background: #e2e8f0; flex-shrink: 0; margin: 0 2px; }
 
 .ats-score-header { display: flex; align-items: center; gap: 10px; }
 
@@ -133,9 +135,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
   .position-bar-row { flex-direction: column; align-items: stretch; }
   .position-bar { width: 100%; padding-bottom: 8px; }
   .position-bar-actions { width: 100%; padding: 0 24px 12px; justify-content: space-between; }
+  .position-actions-divider { display: none; }
   .ats-score-header { align-items: flex-start; }
   .ats-score-summary { align-items: flex-start; }
-  .ats-score-summary-detail { max-width: 100%; text-align: left; }
 }
 .step.clickable { cursor: pointer; }
 .step.clickable:hover { filter: brightness(0.93); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }

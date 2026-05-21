@@ -115,12 +115,28 @@ async function saveSession() {
   }
 }
 
+function _formatBarDate(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const [year, month, day] = text.split('-');
+    return `${month}/${day}/${year}`;
+  }
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+  return text;
+}
+
 function updatePositionTitle(status = {}) {
   const positionEl = document.getElementById('position-title');
   if (!positionEl) return;
 
   const fallbackBrowserTitle = 'CV Generator — Professional Web UI';
   let label = (status.position_name || '').toString().trim();
+  let company = '';
+  let dateApplied = '';
 
   if (!label && status.job_analysis) {
     try {
@@ -129,6 +145,8 @@ function updatePositionTitle(status = {}) {
         : status.job_analysis;
       const title = analysis?.job_title || analysis?.title || analysis?.position_name || '';
       label = normalizePositionLabel(title, analysis?.company);
+      company = (analysis?.company_name || analysis?.company || '').trim();
+      dateApplied = _formatBarDate(analysis?.date_applied || analysis?.application_date || '');
     } catch (error) {
       log.warn('Failed to parse job_analysis for title:', error);
     }
@@ -137,10 +155,22 @@ function updatePositionTitle(status = {}) {
   if (!label && status.job_description_text) {
     const parsed = extractTitleAndCompanyFromJobText(status.job_description_text);
     label = normalizePositionLabel(parsed.title, parsed.company);
+    if (!company) company = (parsed.company || '').trim();
   }
 
   positionEl.textContent = label;
   document.title = label ? `${label} — AI CV Customizer` : fallbackBrowserTitle;
+
+  const positionCompanyEl = document.getElementById('position-company');
+  if (positionCompanyEl) {
+    const intake = window._statusIntake || {};
+    const finalCompany = (intake.company || '').trim() || company;
+    const finalDate = dateApplied || _formatBarDate(intake.date_applied || '');
+    const subtitle = [finalCompany, finalDate].filter(Boolean).join('  ·  ');
+    positionCompanyEl.textContent = subtitle;
+    positionCompanyEl.style.display = subtitle ? '' : 'none';
+  }
+
   const renameBtn = document.getElementById('rename-session-btn');
   if (renameBtn) renameBtn.style.display = label ? '' : 'none';
   if (typeof _updateSessionSwitcherHeader === 'function') {

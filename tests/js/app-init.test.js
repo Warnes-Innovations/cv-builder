@@ -241,6 +241,12 @@ describe('Tier 6 — MasterCv', () => {
   it('exports populateMasterTab', () => {
     expect(typeof MasterCv.populateMasterTab).toBe('function')
   })
+  it('exports openMasterCvModal', () => {
+    expect(typeof MasterCv.openMasterCvModal).toBe('function')
+  })
+  it('exports closeMasterCvModal', () => {
+    expect(typeof MasterCv.closeMasterCvModal).toBe('function')
+  })
 })
 
 describe('Tier 6 — CoverLetter', () => {
