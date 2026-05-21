@@ -69,6 +69,7 @@ import * as PublicationsReview from '../publications-review.js';
 import * as RewriteReview      from '../rewrite-review.js';
 import * as SpellCheck         from '../spell-check.js';
 import * as DownloadTab        from '../download-tab.js';
+import * as FinalGenerate      from '../final-generate.js';
 import * as WorkflowSteps      from '../workflow-steps.js';
 import * as MasterCv           from '../master-cv.js';
 import * as CoverLetter        from '../cover-letter.js';
@@ -91,7 +92,7 @@ Object.assign(globalThis,
   SessionManager, JobInput, MessageDispatch, QuestionsPanel,
   ReviewTableBase,
   ExperienceReview, SkillsReview, AchievementsReview, TaglineReview, SummaryReview, PublicationsReview, ReviewIcons,
-  RewriteReview, SpellCheck, DownloadTab, WorkflowSteps, MasterCv,
+  RewriteReview, SpellCheck, DownloadTab, FinalGenerate, WorkflowSteps, MasterCv,
   CoverLetter, ScreeningQuestions, Finalise,
   SessionSwitcherUi,
 );

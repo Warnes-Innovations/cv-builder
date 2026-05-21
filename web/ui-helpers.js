@@ -130,7 +130,7 @@ function handleLayoutFreshnessChipClick() {
 const _STAGE_BUTTONS = [
   'analyze-btn', 'recommend-btn', 'generate-btn',
   'rewrite-btn', 'spell-btn', 'generate-proceed-btn',
-  'layout-btn', 'finalise-action-btn',
+  'layout-btn', 'final-generate-proceed-btn', 'finalise-action-btn',
 ];
 
 /** Maps each workflow stage to its one primary action button. */
@@ -142,6 +142,7 @@ const _STAGE_BUTTON_MAP = {
   spell:          'spell-btn',
   generate:       'generate-proceed-btn',
   layout:         'layout-btn',
+  final_generate: 'final-generate-proceed-btn',
   finalise:       'finalise-action-btn',
 };
 

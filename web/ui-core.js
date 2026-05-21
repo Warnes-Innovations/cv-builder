@@ -355,6 +355,7 @@ const STAGE_TABS = {
   spell:          ['spell'],
   generate:       ['generate'],
   layout:         ['layout'],
+  final_generate: ['final_generate'],
   finalise:       ['download', 'finalise', 'master', 'cover-letter', 'screening'],
 };
 
@@ -619,6 +620,14 @@ async function loadTabContent(tab) {
           await populateDownloadTab(stateManager.getTabData('cv'));
         } else {
           content.innerHTML = '<p style="padding: 20px; color: #666;">Generate a CV first to download.</p>';
+        }
+        break;
+
+      case 'final_generate':
+        if (typeof populateFinalGenerateTab === 'function' && stateManager.getTabData('cv')) {
+          await populateFinalGenerateTab(stateManager.getTabData('cv'));
+        } else {
+          content.innerHTML = '<p style="padding: 20px; color: #666;">Generate final CV files to see downloads.</p>';
         }
         break;
 
@@ -1836,17 +1845,19 @@ function updateWorkflowStepsClickable(currentPhase) {
     'step-spell',
     'step-generate',
     'step-layout',
+    'step-final_generate',
     'step-finalise',
   ];
   const phaseToIndex = {
-    job: 0,
-    analysis: 1,
+    job:            0,
+    analysis:       1,
     customizations: 2,
-    rewrite: 3,
-    spell: 4,
-    generate: 5,
-    layout: 6,
-    finalise: 7,
+    rewrite:        3,
+    spell:          4,
+    generate:       5,
+    layout:         6,
+    final_generate: 7,
+    finalise:       8,
   };
   const currentIdx = phaseToIndex[currentPhase] ?? 0;
   stepOrder.forEach((id, idx) => {

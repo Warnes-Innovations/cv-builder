@@ -226,6 +226,16 @@ describe('getActiveSessionOwnershipMeta', () => {
     expect(meta.className).toBe('session-status-current')
   })
 
+  it('returns "Current tab" when session is current but unclaimed', () => {
+    const meta = getActiveSessionOwnershipMeta(
+      { session_id: 'abc', owned_by_requester: false, claimed: false },
+      { currentSessionId: 'abc' }
+    )
+    expect(meta.label).toBe('Current tab')
+    expect(meta.isCurrent).toBe(true)
+    expect(meta.className).toBe('session-status-current')
+  })
+
   it('returns "Owned by this tab" when owned by requester but different session', () => {
     const meta = getActiveSessionOwnershipMeta(
       { session_id: 'other', owned_by_requester: true },

@@ -23,6 +23,16 @@ const _conflictRetryQueue = [];
 let _conflictTimerId  = null;
 let _conflictCountdown = 0;
 
+// ── Sort state & session cache ────────────────────────────────────────────────
+const _SM_STORAGE_KEY = 'cv_sm_sort_key';
+const _SM_STORAGE_DIR = 'cv_sm_sort_dir';
+
+let _smSortKey = (() => { try { return localStorage.getItem(_SM_STORAGE_KEY) || 'lastModified'; } catch (_) { return 'lastModified'; } })();
+let _smSortDir = (() => { try { return localStorage.getItem(_SM_STORAGE_DIR) || 'desc';         } catch (_) { return 'desc';         } })();
+
+let _smActiveCache = [];
+let _smSavedCache  = [];
+
 // ── Render helpers ────────────────────────────────────────────────────────────
 
 function _renderActiveSessionRows(activeSessions) {
@@ -194,6 +204,242 @@ function closeOwnershipConflictDialog(choice = 'different') {
   return choice;
 }
 
+// ── Session file-browser table helpers ───────────────────────────────────────
+
+function _setSmSort(key) {
+  if (_smSortKey === key) {
+    _smSortDir = _smSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _smSortKey = key;
+    _smSortDir = key === 'lastModified' ? 'desc' : 'asc';
+  }
+  try {
+    localStorage.setItem(_SM_STORAGE_KEY, _smSortKey);
+    localStorage.setItem(_SM_STORAGE_DIR, _smSortDir);
+  } catch (_) { /* storage unavailable */ }
+  _renderSessionTableFromCache();
+}
+
+function _createdIsoFromSessionPath(sessionPath) {
+  if (!sessionPath) return '';
+  const pathText = String(sessionPath);
+  const parts    = pathText.split(/[\\/]/).filter(Boolean);
+  if (parts.length < 2) return '';
+  const dirName  = parts[parts.length - 2];
+  const match    = dirName.match(/(\d{4})(\d{2})(\d{2})[_-]?(\d{2})(\d{2})(\d{2})/);
+  if (!match) return '';
+  const [, year, month, day, hour, minute, second] = match;
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
+}
+
+function _normalizeSessionsForTable(activeSessions, savedSessions) {
+  const currentSessionId = _getCurrentSessionIdValue();
+  const rows = [];
+
+  for (const s of activeSessions) {
+    const ownership = getActiveSessionOwnershipMeta(s, { currentSessionId });
+    rows.push({
+      type:         'active',
+      name:          s.position_name || 'Untitled',
+      phase:         s.phase         || '',
+      lastModified:  s.last_modified  ? new Date(s.last_modified) : null,
+      created:       s.created        ? new Date(s.created)       : null,
+      ownership,
+      sessionId:     s.session_id,
+      path:          null,
+      idx:           null,
+    });
+  }
+
+  savedSessions.forEach((s, idx) => {
+    const createdIso = _createdIsoFromSessionPath(s.path);
+    rows.push({
+      type:         'saved',
+      name:          s.position_name || 'Untitled',
+      phase:         s.phase         || '',
+      lastModified:  s.timestamp  ? new Date(s.timestamp)  : null,
+      created:       createdIso   ? new Date(createdIso)   : null,
+      ownership:     null,
+      sessionId:     null,
+      path:          s.path,
+      idx,
+    });
+  });
+
+  return rows;
+}
+
+function _sortSessionRows(rows, key, dir) {
+  return [...rows].sort((a, b) => {
+    let av, bv;
+    switch (key) {
+      case 'name':
+        av = (a.name || '').toLowerCase();
+        bv = (b.name || '').toLowerCase();
+        return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+      case 'status': {
+        const rank = r => r.type === 'active' ? (r.ownership?.isCurrent ? 0 : 1) : 2;
+        av = rank(a); bv = rank(b);
+        return dir === 'asc' ? av - bv : bv - av;
+      }
+      case 'phase':
+        av = (a.phase || '').toLowerCase();
+        bv = (b.phase || '').toLowerCase();
+        return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+      case 'lastModified':
+      default:
+        av = a.lastModified ? a.lastModified.getTime() : 0;
+        bv = b.lastModified ? b.lastModified.getTime() : 0;
+        return dir === 'asc' ? av - bv : bv - av;
+    }
+  });
+}
+
+function _renderSessionTableHeader() {
+  const cols = [
+    { key: 'name',         label: 'Name'     },
+    { key: 'status',       label: 'Status'   },
+    { key: 'phase',        label: 'Phase'    },
+    { key: 'lastModified', label: 'Modified' },
+  ];
+  const cells = cols.map(({ key, label }) => {
+    const active = _smSortKey === key;
+    const icon   = active ? (_smSortDir === 'asc' ? '\u25b2' : '\u25bc') : '\u21c5';
+    return `<span class="sm-th${active ? ' sm-th-sorted' : ''}" data-sm-sort="${key}" role="button" tabindex="0" title="Sort by ${label}">${escapeHtml(label)} <span class="sm-sort-icon${active ? ' sm-sort-active' : ''}">${icon}</span></span>`;
+  });
+  return `<div class="sm-thead">${cells.join('')}<span class="sm-th sm-th-actions">Actions</span></div>`;
+}
+
+function _fmtDateCompact(d) {
+  if (!d) return '\u2014';
+  try {
+    return d.toLocaleString('en-US', {
+      month: 'numeric', day: 'numeric', year: '2-digit',
+      hour: 'numeric', minute: '2-digit',
+    });
+  } catch (_) { return '\u2014'; }
+}
+
+function _renderSessionTableRow(row) {
+  const phaseLabel = escapeHtml(formatSessionPhaseLabel(row.phase));
+  const modLabel   = escapeHtml(_fmtDateCompact(row.lastModified));
+
+  const statusPill = row.type === 'active'
+    ? `<span class="session-status-pill ${row.ownership.className}"><span class="session-status-dot"></span>${escapeHtml(row.ownership.label)}</span>`
+    : `<span class="session-status-pill session-status-saved"><span class="session-status-dot"></span>Saved</span>`;
+
+  let actionHtml;
+  if (row.type === 'active') {
+    const href = `/?session=${encodeURIComponent(row.sessionId || '')}`;
+    actionHtml = row.ownership.isCurrent
+      ? '<span class="sm-btn sm-btn-disabled" aria-disabled="true">Current</span>'
+      : `<a class="sm-btn sm-btn-open" href="${href}">Open</a>`;
+  } else {
+    const ep  = escapeHtml(row.path || '');
+    const idx = row.idx;
+    actionHtml =
+      `<button data-sm-action="load"   data-sm-path="${ep}" class="sm-btn sm-btn-open sm-btn-icon" title="Load session"><i class="fa-solid fa-folder-open" aria-hidden="true"></i></button>` +
+      `<button data-sm-action="rename" data-sm-path="${ep}" data-sm-idx="${idx}" class="sm-btn sm-btn-icon" title="Rename session"><i class="fa-solid fa-pencil" aria-hidden="true"></i></button>` +
+      `<button data-sm-action="delete" data-sm-path="${ep}" class="sm-btn sm-btn-danger sm-btn-icon" title="Move to Trash"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>`;
+  }
+
+  const rowClass = (row.type === 'active' && row.ownership.isCurrent) ? 'sm-tr sm-tr-current' : 'sm-tr';
+
+  const nameCell = row.type === 'saved'
+    ? `<span id="sm-name-${row.idx}">${escapeHtml(row.name)}</span>` +
+      `<span id="sm-rename-${row.idx}" style="display:none;align-items:center;gap:4px;margin-top:3px;">` +
+        `<input id="sm-input-${row.idx}" type="text" value="${escapeHtml(row.name)}" class="sm-key-input"` +
+          ` data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}"` +
+          ` style="border:1px solid #3b82f6;border-radius:4px;padding:3px 8px;font-size:12px;flex:1;min-width:60px;">` +
+        `<button data-sm-action="submit-rename" data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}" class="sm-btn" title="Save">\u2713</button>` +
+        `<button data-sm-action="cancel-rename" data-sm-idx="${row.idx}" class="sm-btn" title="Cancel">\u2715</button>` +
+      `</span>`
+    : `<span>${escapeHtml(row.name)}</span>`;
+
+  return `<div class="${rowClass}">` +
+    `<span class="sm-td sm-td-name">${nameCell}</span>` +
+    `<span class="sm-td sm-td-status">${statusPill}</span>` +
+    `<span class="sm-td sm-td-phase">${phaseLabel}</span>` +
+    `<span class="sm-td sm-td-date">${modLabel}</span>` +
+    `<span class="sm-td sm-td-actions">${actionHtml}</span>` +
+    `</div>`;
+}
+
+function _renderRecentsStrip(recentRows) {
+  if (!recentRows.length) return '';
+  const items = recentRows.map(row => {
+    const label    = escapeHtml(row.name);
+    const dotClass = row.type === 'active'
+      ? (row.ownership.isCurrent ? 'sm-recent-dot-current' : 'sm-recent-dot-other')
+      : 'sm-recent-dot-saved';
+    const dot = `<span class="sm-recent-dot ${dotClass}"></span>`;
+    if (row.type === 'active') {
+      const href  = `/?session=${encodeURIComponent(row.sessionId || '')}`;
+      const extra = row.ownership.isCurrent ? ' sm-recent-current' : '';
+      return `<a class="sm-recent-item${extra}" href="${href}">${dot}${label}</a>`;
+    }
+    return `<button class="sm-recent-item" data-sm-action="load" data-sm-path="${escapeHtml(row.path || '')}">${dot}${label}</button>`;
+  }).join('');
+  return `<div class="sm-recents"><div class="sm-recents-label">Recent</div><div class="sm-recents-list">${items}</div></div>`;
+}
+
+function _renderSessionTableFromCache() {
+  const body = document.getElementById('sessions-modal-body');
+  if (!body) return;
+
+  const rows   = _normalizeSessionsForTable(_smActiveCache, _smSavedCache);
+  const byDate = _sortSessionRows(rows, 'lastModified', 'desc');
+  const sorted = _sortSessionRows(rows, _smSortKey, _smSortDir);
+
+  if (sorted.length === 0) {
+    body.innerHTML = '<p class="session-switcher-empty" style="padding:24px 16px;">No sessions found. Create one to get started.</p>';
+    return;
+  }
+
+  const parts = [
+    _smActiveCache.length ? `${_smActiveCache.length} active` : '',
+    _smSavedCache.length  ? `${_smSavedCache.length} saved`   : '',
+  ].filter(Boolean);
+
+  body.innerHTML =
+    _renderRecentsStrip(byDate.slice(0, 5)) +
+    `<div class="sm-table-wrap">` +
+      `<div class="sm-table-info">${parts.join(' \u00b7 ')}</div>` +
+      _renderSessionTableHeader() +
+      `<div class="sm-tbody">${sorted.map(_renderSessionTableRow).join('')}</div>` +
+    `</div>`;
+}
+
+function _handleSessionModalClick(e) {
+  const sortBtn = e.target.closest('[data-sm-sort]');
+  if (sortBtn) { _setSmSort(sortBtn.dataset.smSort); return; }
+
+  const btn = e.target.closest('[data-sm-action]');
+  if (!btn) return;
+  const path   = btn.dataset.smPath;
+  const idx    = parseInt(btn.dataset.smIdx ?? '-1', 10);
+  const action = btn.dataset.smAction;
+  if      (action === 'rename')        startSessionModalRename(path, idx);
+  else if (action === 'submit-rename') submitSessionModalRename(path, idx);
+  else if (action === 'cancel-rename') cancelSessionModalRename(idx);
+  else if (action === 'load')          loadSessionAndCloseModal(path);
+  else if (action === 'delete')        _deleteSessionFromModal(path, e);
+}
+
+function _handleSessionModalKeydown(e) {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('[data-sm-sort]')) {
+    e.preventDefault();
+    _setSmSort(e.target.closest('[data-sm-sort]').dataset.smSort);
+    return;
+  }
+  const input = e.target.closest('.sm-key-input');
+  if (!input) return;
+  const path = input.dataset.smPath;
+  const idx  = parseInt(input.dataset.smIdx, 10);
+  if      (e.key === 'Enter')  submitSessionModalRename(path, idx);
+  else if (e.key === 'Escape') cancelSessionModalRename(idx);
+}
+
 // ── Sessions modal ────────────────────────────────────────────────────────────
 
 async function openSessionsModal({ required = false } = {}) {
@@ -222,48 +468,26 @@ function closeSessionsModal() {
 async function _renderSessionsModalBody() {
   const body = document.getElementById('sessions-modal-body');
   if (!body) return;
-  body.innerHTML = '<div style="padding:24px;display:flex;align-items:center;justify-content:center;gap:10px;color:#6b7280;"><span class="loading-spinner"></span> Loading sessions…</div>';
-  let activeSessions = [];
-  let sessions = [];
+  body.innerHTML = '<div style="padding:24px;display:flex;align-items:center;justify-content:center;gap:10px;color:#6b7280;"><span class="loading-spinner"></span> Loading sessions\u2026</div>';
   try {
     const [activeRes, savedRes] = await Promise.all([
       fetch('/api/sessions/active'),
       fetch('/api/sessions'),
     ]);
-    activeSessions = activeRes.ok ? ((await activeRes.json()).sessions || []) : [];
+    _smActiveCache = activeRes.ok ? ((await activeRes.json()).sessions || []) : [];
     const savedData = savedRes.ok ? parseSessionListResponse(await savedRes.json()) : { sessions: [] };
-    sessions = savedData.sessions || [];
+    _smSavedCache   = savedData.sessions || [];
   } catch (e) {
     body.innerHTML = `<p style="padding:20px;color:#ef4444;">Could not load sessions: ${escapeHtml(e.message)}</p>`;
     return;
   }
-  const html = _renderSessionSwitcherSections(activeSessions, sessions, { includeSavedManagement: true });
-  // Wrap in a single-use div so listeners are destroyed when replaced on next render
-  const smWrapper = document.createElement('div');
-  smWrapper.innerHTML = html;
-  body.innerHTML = '';
-  body.appendChild(smWrapper);
-  // Wire up session-modal action buttons via event delegation
-  smWrapper.addEventListener('click', e => {
-    const btn = e.target.closest('[data-sm-action]');
-    if (!btn) return;
-    const path   = btn.dataset.smPath;
-    const idx    = parseInt(btn.dataset.smIdx ?? '-1', 10);
-    const action = btn.dataset.smAction;
-    if      (action === 'rename')        startSessionModalRename(path, idx);
-    else if (action === 'submit-rename') submitSessionModalRename(path, idx);
-    else if (action === 'cancel-rename') cancelSessionModalRename(idx);
-    else if (action === 'load')          loadSessionAndCloseModal(path);
-    else if (action === 'delete')        _deleteSessionFromModal(path, e);
-  });
-  smWrapper.querySelectorAll('.sm-key-input').forEach(input => {
-    input.addEventListener('keydown', e => {
-      const path = input.dataset.smPath;
-      const idx  = parseInt(input.dataset.smIdx, 10);
-      if (e.key === 'Enter') submitSessionModalRename(path, idx);
-      else if (e.key === 'Escape') cancelSessionModalRename(idx);
-    });
-  });
+  // Wire event delegation once; persists across re-renders since body element is stable
+  if (!body._smListenerAttached) {
+    body._smListenerAttached = true;
+    body.addEventListener('click',   _handleSessionModalClick);
+    body.addEventListener('keydown', _handleSessionModalKeydown);
+  }
+  _renderSessionTableFromCache();
 }
 
 async function loadSessionAndCloseModal(path) {
@@ -281,15 +505,19 @@ async function newSessionFromModal() {
 }
 
 function startSessionModalRename(path, idx) {
-  const form = document.getElementById(`sm-rename-${idx}`);
-  if (form) form.style.display = 'flex';
+  const nameEl = document.getElementById(`sm-name-${idx}`);
+  const form   = document.getElementById(`sm-rename-${idx}`);
+  if (nameEl) nameEl.style.display = 'none';
+  if (form)   form.style.display   = 'flex';
   const input = document.getElementById(`sm-input-${idx}`);
   if (input) { input.focus(); input.select(); }
 }
 
 function cancelSessionModalRename(idx) {
-  const form = document.getElementById(`sm-rename-${idx}`);
-  if (form) form.style.display = 'none';
+  const nameEl = document.getElementById(`sm-name-${idx}`);
+  const form   = document.getElementById(`sm-rename-${idx}`);
+  if (form)   form.style.display   = 'none';
+  if (nameEl) nameEl.style.display = '';
 }
 
 async function submitSessionModalRename(path, idx) {

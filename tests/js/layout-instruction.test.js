@@ -129,7 +129,9 @@ describe('staged layout regressions', () => {
 
     await completeLayoutReview()
 
-    expect(apiCall).toHaveBeenCalledWith('POST', '/api/cv/confirm-layout', {})
+    expect(apiCall).toHaveBeenCalledWith('POST', '/api/cv/confirm-layout', {
+      content_revision: 0,
+    })
     expect(apiCall).not.toHaveBeenCalledWith('POST', '/api/cv/generate-final', {})
     expect(apiCall).not.toHaveBeenCalledWith('POST', '/api/layout-complete', expect.anything())
     expect(stateManager.markLayoutConfirmed).toHaveBeenCalled()

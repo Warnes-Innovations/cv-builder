@@ -224,6 +224,105 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
   .session-switcher-btn { flex: 1; text-align: center; justify-content: center; }
 }
 
+/* ── Session file-browser table ─────────────────────────────────────────────── */
+.sm-table-wrap { }
+.sm-table-info { padding: 6px 16px; font-size: 13px; color: #64748b; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+.sm-thead,
+.sm-tr {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 120px 100px 140px auto;
+  align-items: center;
+}
+.sm-thead { background: #f1f5f9; border-bottom: 2px solid #cbd5e1; position: sticky; top: 0; z-index: 1; }
+.sm-tr { border-bottom: 1px solid #f1f5f9; }
+.sm-tr:last-child { border-bottom: none; }
+.sm-tr:hover { background: #f8fafc; }
+.sm-tr-current { background: #f0fdf4; }
+.sm-tr-current:hover { background: #dcfce7; }
+.sm-th {
+  padding: 9px 8px 9px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  background: none;
+  border: none;
+}
+.sm-th:not(.sm-th-actions):hover { color: #1e293b; background: #e2e8f0; }
+.sm-th:focus-visible { outline: 2px solid #3b82f6; outline-offset: -2px; }
+.sm-th-sorted { color: #1d4ed8; }
+.sm-th-actions { cursor: default; pointer-events: none; }
+.sm-sort-icon { font-size: 10px; opacity: 0.35; line-height: 1; }
+.sm-sort-active { opacity: 1; }
+.sm-td {
+  padding: 10px 8px 10px 14px;
+  font-size: 15px;
+  color: #334155;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+.sm-td-name    { flex-direction: column; align-items: flex-start; overflow: visible; white-space: normal; gap: 0; }
+.sm-td-status  { overflow: visible; }
+.sm-td-phase   { font-size: 14px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sm-td-date    { font-size: 14px; color: #64748b; white-space: nowrap; }
+.sm-td-actions { gap: 5px; overflow: visible; padding-right: 12px; }
+.sm-btn {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  background: #fff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  text-decoration: none;
+  line-height: 1.4;
+}
+.sm-btn:hover { background: #f8fafc; }
+.sm-btn-open { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.sm-btn-open:hover { background: #dbeafe; }
+.sm-btn-danger { background: #fff1f2; color: #be123c; border-color: #fecdd3; }
+.sm-btn-danger:hover { background: #ffe4e6; }
+.sm-btn-disabled { background: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; cursor: default; pointer-events: none; }
+.sm-btn-icon { padding: 6px 9px; font-size: 14px; line-height: 1; }
+/* Recents strip */
+.sm-recents { padding: 10px 14px 12px; border-bottom: 2px solid #e2e8f0; background: #fff; }
+.sm-recents-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 7px; }
+.sm-recents-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.sm-recent-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 20px;
+  border: 1px solid #e2e8f0; background: #f8fafc;
+  font-size: 14px; color: #334155; text-decoration: none;
+  cursor: pointer; white-space: nowrap; line-height: 1.4;
+  font-family: inherit;
+}
+.sm-recent-item:hover { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.sm-recent-current { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.sm-recent-current:hover { background: #dcfce7; border-color: #86efac; color: #14532d; }
+.sm-recent-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.sm-recent-dot-current { background: #22c55e; }
+.sm-recent-dot-other   { background: #94a3b8; }
+.sm-recent-dot-saved   { background: #818cf8; }
+@media (max-width: 700px) {
+  .sm-thead { display: none; }
+  .sm-tr { grid-template-columns: 1fr; border-bottom: 1px solid #e2e8f0; }
+  .sm-td { padding: 4px 14px; white-space: normal; overflow: visible; }
+  .sm-td-actions { flex-wrap: wrap; }
+}
+
 /* ===== MAIN LAYOUT ===== */
 .main-container { display: flex; height: calc(100vh - 210px); gap: 0; min-height: 500px; }
 

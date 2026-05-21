@@ -2140,10 +2140,6 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 if value in (False, 'reject', 0)
             ]
 
-        tagline_override = self.state.get('tagline_override')
-        if tagline_override:
-            customizations['tagline_override'] = tagline_override
-
         post_answers = self.state.get('post_analysis_answers') or {}
         accepted_str = post_answers.get('publication_accepted', '')
         rejected_str = post_answers.get('publication_rejected', '')
