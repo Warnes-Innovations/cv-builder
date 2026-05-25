@@ -348,15 +348,18 @@ function restoreFocus() {
 
 /** Maps each workflow stage (top bar) to the tabs shown in the second nav bar. */
 const STAGE_TABS = {
-  job:            ['job', 'master'],
-  analysis:       ['analysis', 'questions'],
-  customizations: ['exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'tagline-review', 'summary-review', 'publications-review', 'ats-score'],
+  job:            ['job'],
+  analysis:       ['analysis'],
+  customizations: ['goals', 'questions', 'exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'tagline-review', 'summary-review', 'publications-review', 'ats-score'],
   rewrite:        ['rewrite'],
   spell:          ['spell'],
-  generate:       ['generate'],
   layout:         ['layout'],
-  final_generate: ['final_generate'],
-  finalise:       ['download', 'finalise', 'master', 'cover-letter', 'screening'],
+  download:       ['final_generate', 'download'],
+  cover_letter:   ['cover-letter'],
+  screening:      ['screening'],
+  interview_prep: ['interview-prep'],
+  thank_you:      ['thank-you'],
+  harvest:        ['harvest'],
 };
 
 /**
@@ -1836,34 +1839,57 @@ async function refreshModelPricing() {
 
 // Helper: update workflow step bar clickable state
 function updateWorkflowStepsClickable(currentPhase) {
-  // List of workflow step IDs in order
-  const stepOrder = [
+  // Sequential pre-layout steps unlock one-by-one as the user progresses.
+  const sequentialSteps = [
     'step-job',
     'step-analysis',
     'step-customizations',
     'step-rewrite',
     'step-spell',
-    'step-generate',
     'step-layout',
-    'step-final_generate',
-    'step-finalise',
   ];
+  // Post-layout steps all unlock simultaneously once layout is confirmed.
+  const postLayoutSteps = [
+    'step-download',
+    'step-cover_letter',
+    'step-screening',
+    'step-interview_prep',
+    'step-thank_you',
+    'step-harvest',
+  ];
+  // Map backend phase strings to how many sequential steps are unlocked (0-based index).
   const phaseToIndex = {
-    job:            0,
-    analysis:       1,
-    customizations: 2,
-    rewrite:        3,
-    spell:          4,
-    generate:       5,
-    layout:         6,
-    final_generate: 7,
-    finalise:       8,
+    'init':             0,
+    'job_analysis':     1,
+    'customization':    2,
+    'rewrite_review':   3,
+    'spell_check':      4,
+    'generation':       5,
+    'layout_review':    5,
+    'final_generation': 5,
+    'refinement':       5,
+    // Legacy fallbacks (step names sometimes passed on DOMContentLoaded)
+    'job':              0,
+    'layout':           5,
+    'finalise':         5,
   };
+  const postLayoutUnlocked = ['final_generation', 'refinement'].includes(currentPhase);
   const currentIdx = phaseToIndex[currentPhase] ?? 0;
-  stepOrder.forEach((id, idx) => {
+
+  sequentialSteps.forEach((id, idx) => {
     const el = document.getElementById(id);
     if (!el) return;
-    if (idx <= currentIdx) {
+    if (idx <= currentIdx || postLayoutUnlocked) {
+      el.classList.add('clickable');
+    } else {
+      el.classList.remove('clickable');
+    }
+  });
+
+  postLayoutSteps.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (postLayoutUnlocked) {
       el.classList.add('clickable');
     } else {
       el.classList.remove('clickable');

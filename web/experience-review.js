@@ -67,10 +67,12 @@ async function buildExperienceReviewTable() {
   container.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading experience recommendations…</p></div>';
 
   let allExperienceIds = [];
+  let savedRowOrder = [];
   try {
     const statusRes = await fetch('/api/status');
     const statusData = parseStatusResponse(await statusRes.json());
     allExperienceIds = statusData.all_experience_ids || data.recommended_experiences || [];
+    savedRowOrder    = Array.isArray(statusData.experience_row_order) ? statusData.experience_row_order : [];
   } catch (error) {
     allExperienceIds = data.recommended_experiences || [];
   }
@@ -84,13 +86,28 @@ async function buildExperienceReviewTable() {
     experiencesWithDetails.push({ id: expId, details });
   }
 
-  // On first load: sort by start date (most recent first); on re-render preserve user order
+  // On first load: restore user's saved order if present; otherwise default-sort
+  // with present/current positions first, then reverse-chronological by end date.
+  // On re-render, preserve the in-memory user order.
   if (!window._experiencesOrdered) {
-    experiencesWithDetails.sort((a, b) => {
-      const aStart = a.details?.start_date || '0';
-      const bStart = b.details?.start_date || '0';
-      return bStart.localeCompare(aStart);
-    });
+    if (savedRowOrder.length > 0) {
+      // Restore user's explicitly saved ordering from the session
+      const orderMap = Object.fromEntries(savedRowOrder.map((id, i) => [id, i]));
+      experiencesWithDetails.sort((a, b) => {
+        const ai = orderMap[a.id] ?? savedRowOrder.length;
+        const bi = orderMap[b.id] ?? savedRowOrder.length;
+        return ai - bi;
+      });
+    } else {
+      // Default: present/current positions first, then reverse-chronological
+      const _parseEndKey = (exp) => {
+        const raw = (exp.details?.end_date || exp.details?.end || '').trim().toLowerCase();
+        if (!raw || ['present', 'current', 'now', 'ongoing'].includes(raw)) return '9999-12';
+        if (/^\d{4}$/.test(raw)) return raw + '-12';
+        return raw;
+      };
+      experiencesWithDetails.sort((a, b) => _parseEndKey(b).localeCompare(_parseEndKey(a)));
+    }
     window._experiencesOrdered = experiencesWithDetails;
   } else {
     // Merge any newly discovered experiences into the cached order

@@ -6,9 +6,9 @@
 
 /**
  * web/final-generate.js
- * "Generate" step (step 8 of 9): shows download links for the final generated
- * files (PDF, ATS DOCX, human DOCX) and a "Proceed to Finalise →" button that
- * advances the workflow to the refinement (Finalise) step.
+ * Final generation step: shows download links for the generated files
+ * (PDF, ATS DOCX, human DOCX) and a "Proceed to Download Review →" button
+ * that advances the workflow to the download step.
  *
  * Dependencies (resolved through globalThis at runtime):
  *   apiCall, appendMessage, escapeHtml, stateManager, switchTab
@@ -142,7 +142,7 @@ async function populateFinalGenerateTab(cvData = {}) {
       <button class="continue-btn" id="final-generate-continue-btn"
               onclick="finalGenerationComplete()"
               style="font-size:1em;padding:10px 24px;">
-        ✅ Proceed to Finalise →
+        ✅ Proceed to Download Review →
       </button>
     </div>`;
 

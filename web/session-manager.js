@@ -336,14 +336,15 @@ function showSessionsLandingPanel(message = '') {
 
 function _restoreTabForPhase(sessionPhase) {
   const phaseTabMap = {
-    [PHASES.INIT]: 'job',
-    [PHASES.JOB_ANALYSIS]: 'analysis',
-    [PHASES.CUSTOMIZATION]: 'exp-review',
-    [PHASES.REWRITE_REVIEW]: 'rewrite',
-    [PHASES.SPELL_CHECK]: 'spell',
-    [PHASES.GENERATION]: 'generate',
-    [PHASES.LAYOUT_REVIEW]: 'layout',
-    [PHASES.REFINEMENT]: 'finalise',
+    [PHASES.INIT]:             'job',
+    [PHASES.JOB_ANALYSIS]:     'analysis',
+    [PHASES.CUSTOMIZATION]:    'exp-review',
+    [PHASES.REWRITE_REVIEW]:   'rewrite',
+    [PHASES.SPELL_CHECK]:      'spell',
+    [PHASES.GENERATION]:       'layout',
+    [PHASES.LAYOUT_REVIEW]:    'layout',
+    [PHASES.FINAL_GENERATION]: 'final_generate',
+    [PHASES.REFINEMENT]:       'download',
   };
   const targetTab = phaseTabMap[sessionPhase] || 'job';
 
@@ -688,20 +689,21 @@ async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
     // Rehydrate tabData and switch to the correct tab for the restored phase
     const sessionPhase = data.phase || PHASES.INIT;
     const phaseTabMap = {
-      [PHASES.INIT]:           'job',
-      [PHASES.JOB_ANALYSIS]:   'analysis',
-      [PHASES.CUSTOMIZATION]:  'exp-review',
-      [PHASES.REWRITE_REVIEW]: 'rewrite',
-      [PHASES.SPELL_CHECK]:    'spell',
-      [PHASES.GENERATION]:     'generate',
-      [PHASES.LAYOUT_REVIEW]:  'layout',
-      [PHASES.REFINEMENT]:     'finalise',
+      [PHASES.INIT]:             'job',
+      [PHASES.JOB_ANALYSIS]:     'analysis',
+      [PHASES.CUSTOMIZATION]:    'exp-review',
+      [PHASES.REWRITE_REVIEW]:   'rewrite',
+      [PHASES.SPELL_CHECK]:      'spell',
+      [PHASES.GENERATION]:       'layout',
+      [PHASES.LAYOUT_REVIEW]:    'layout',
+      [PHASES.FINAL_GENERATION]: 'final_generate',
+      [PHASES.REFINEMENT]:       'download',
     };
     const targetTab = phaseTabMap[sessionPhase] || 'job';
 
     const customizationPhases = [
       PHASES.CUSTOMIZATION, PHASES.REWRITE_REVIEW, PHASES.SPELL_CHECK,
-      PHASES.GENERATION, PHASES.LAYOUT_REVIEW, PHASES.REFINEMENT,
+      PHASES.GENERATION, PHASES.LAYOUT_REVIEW, PHASES.FINAL_GENERATION, PHASES.REFINEMENT,
     ];
     if (customizationPhases.includes(sessionPhase)) {
       try {

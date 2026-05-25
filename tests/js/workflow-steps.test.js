@@ -51,10 +51,10 @@ afterEach(() => {
 // ── Constants ─────────────────────────────────────────────────────────────
 
 describe('_STEP_ORDER', () => {
-  it('has 9 steps in the correct order', () => {
+  it('has 12 steps in the correct order', () => {
     expect(_STEP_ORDER).toEqual([
       'job', 'analysis', 'customizations', 'rewrite', 'spell',
-      'generate', 'layout', 'final_generate', 'finalise',
+      'layout', 'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'harvest',
     ])
   })
 })
@@ -399,7 +399,7 @@ describe('_getStepTooltip', () => {
 
 describe('_updateViewingIndicator', () => {
   function makeStepPills(activeStep) {
-    const steps = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise']
+    const steps = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'layout', 'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'harvest']
     document.body.innerHTML = steps.map(s => {
       const classes = s === activeStep ? 'step active' : 'step completed'
       return `<div id="step-${s}" class="${classes}"></div>`

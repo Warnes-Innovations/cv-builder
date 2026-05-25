@@ -1611,7 +1611,8 @@ Return ONLY a JSON array — no prose, no markdown fences.
             elif pub.get('booktitle'):
                 authority_signals.append(f"conference: {pub['booktitle']}")
             # Venue warning
-            has_venue = bool(pub.get('journal') or pub.get('booktitle'))
+            is_software = pub.get('fields', {}).get('type') == 'software'
+            has_venue = bool(pub.get('journal') or pub.get('booktitle') or is_software)
             venue_warning = '' if has_venue else 'No journal or conference name found in BibTeX entry'
             # Formatted citation (use bibtex_parser if available, else basic)
             try:
@@ -1767,6 +1768,14 @@ Return ONLY a JSON array — no prose, no markdown fences.
             "4. Only substitute terminology — do NOT fabricate experience, "
             "achievements, or roles\n"
             "5. Keep rewrites concise and professional\n\n"
+            "QUALITY CRITERIA — the proposed text should satisfy as many of these as possible:\n"
+            "- Open with a strong action verb (e.g. 'Developed', 'Led', 'Delivered') — "
+            "not 'Responsible for', 'Helped', 'Assisted', or 'Worked on'\n"
+            "- Use active voice — avoid 'was responsible for', 'were involved in'\n"
+            "- Include a quantified result or metric where the original already has one "
+            "(preserve it) or where one can be naturally inferred\n"
+            "- Avoid hedging language ('tried to', 'helped with', 'contributed to')\n"
+            "- Keep bullet text under 30 words\n\n"
             f"JOB KEYWORDS TO INTRODUCE: {keywords_str}\n\n"
             f"PROFESSIONAL SUMMARY:\n{summary or '(none)'}\n\n"
             f"EXPERIENCE BULLETS (id.achievements[index]: text):\n{bullets_section}\n\n"
@@ -1784,7 +1793,10 @@ Return ONLY a JSON array — no prose, no markdown fences.
             '  "keywords_introduced": ["<kw1>", "<kw2>"],\n'
             '  "evidence":            "<comma-separated exp IDs, skill_add only>",\n'
             '  "evidence_strength":   "strong" | "weak",\n'
-            '  "rationale":           "<one sentence explaining the ATS improvement>"\n'
+            '  "rationale":           "<one sentence covering: (1) the ATS keyword(s) '
+            'introduced and (2) how the proposed wording satisfies or trades off the '
+            'quality criteria above — e.g. \'Replaces passive phrase with active verb '
+            '\\\"Led\\\"; introduces keyword \\\"bioinformatics\\\">"\n'
             '}\n\n'
             'Only propose rewrites where keyword alignment genuinely improves ATS '
             'scoring.  Return [] if no meaningful changes are needed.\n'

@@ -1,0 +1,29 @@
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
+[build-system]
+requires      = ["setuptools>=61"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name            = "cv-builder"
+version         = "0.1.0"
+description     = "AI-assisted CV customization tool"
+readme          = "README.md"
+requires-python = ">=3.9"
+license         = { text = "AGPL-3.0-or-later" }
+dependencies = [
+    "click>=8.0",
+    "mcp>=1.8",
+]
+
+[project.scripts]
+cv-cli = "scripts.cli:main"
+cv-mcp = "scripts.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["scripts*"]

@@ -446,21 +446,44 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
 
         goals = self.state.get('generation_goals')
         if goals:
-            base_prompt += "\n\nGeneration Goals (user-specified length constraints):\n"
-            if goals.get('max_pdf_pages'):
-                base_prompt += f"- Maximum PDF length: {goals['max_pdf_pages']} page(s)\n"
-            if goals.get('max_ats_pages'):
-                base_prompt += f"- Maximum ATS plain-text length: {goals['max_ats_pages']} page(s)\n"
-            if goals.get('max_ats_chars'):
-                base_prompt += (
+            goal_lines: list[str] = []
+
+            # PDF page length
+            if goals.get('pdf_pages_enabled', True):
+                mode = goals.get('max_pdf_pages_mode', 'combined')
+                if mode == 'split':
+                    resume_pages = goals.get('max_pdf_resume_pages')
+                    cv_pages     = goals.get('max_pdf_cv_pages')
+                    if resume_pages:
+                        goal_lines.append(f"- Maximum PDF resume-portion length: {resume_pages} page(s)")
+                    if cv_pages:
+                        goal_lines.append(f"- Maximum PDF CV/publications portion length: {cv_pages} page(s)")
+                else:
+                    combined = goals.get('max_pdf_pages')
+                    if combined:
+                        goal_lines.append(
+                            f"- Maximum PDF length: {combined} page(s) (including publications/citations)"
+                        )
+
+            # ATS page length
+            if goals.get('ats_pages_enabled', True) and goals.get('max_ats_pages'):
+                goal_lines.append(f"- Maximum ATS plain-text length: {goals['max_ats_pages']} page(s)")
+
+            # ATS character count (optional, disabled by default)
+            if goals.get('ats_chars_enabled', False) and goals.get('max_ats_chars'):
+                goal_lines.append(
                     f"- Maximum ATS character count (including spaces): "
-                    f"{goals['max_ats_chars']:,} characters\n"
+                    f"{goals['max_ats_chars']:,} characters"
                 )
-            base_prompt += (
-                "When selecting and editing content, respect these constraints. "
-                "Prefer concise, high-impact language. Omit or condense low-relevance "
-                "material to stay within the specified limits."
-            )
+
+            if goal_lines:
+                base_prompt += "\n\nGeneration Goals (user-specified length constraints):\n"
+                base_prompt += "\n".join(goal_lines) + "\n"
+                base_prompt += (
+                    "When selecting and editing content, respect these constraints. "
+                    "Prefer concise, high-impact language. Omit or condense low-relevance "
+                    "material to stay within the specified limits."
+                )
 
         return base_prompt
     
@@ -1935,6 +1958,9 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         output_dir: Optional[Path] = None,
         allow_llm_recommendations: bool = True,
         html_preview_only: bool = False,
+        max_skills: Optional[int] = None,
+        max_achievements: Optional[int] = None,
+        max_publications: Optional[int] = None,
     ) -> Dict:
         """Generate CV artifacts from the currently loaded session state.
 
@@ -2151,6 +2177,10 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 key.strip() for key in rejected_str.split(',') if key.strip()
             ]
 
+        tagline_override = str(self.state.get('tagline_override') or '').strip()
+        if tagline_override:
+            customizations['tagline_override'] = tagline_override
+
         if html_preview_only:
             result = self.orchestrator.generate_preview_html_only(
                 job_analysis,
@@ -2158,7 +2188,9 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 output_dir=output_dir or self.session_dir,
                 approved_rewrites=self.state.get('approved_rewrites') or [],
                 spell_audit=self.state.get('spell_audit') or [],
-                max_skills=self.state.get('max_skills'),
+                max_skills=max_skills if max_skills is not None else self.state.get('max_skills'),
+                max_achievements=max_achievements,
+                max_publications=max_publications,
             )
         else:
             result = self.orchestrator.generate_cv(
@@ -2168,7 +2200,9 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 approved_rewrites=self.state.get('approved_rewrites') or [],
                 rewrite_audit=self.state.get('rewrite_audit') or [],
                 spell_audit=self.state.get('spell_audit') or [],
-                max_skills=self.state.get('max_skills'),
+                max_skills=max_skills if max_skills is not None else self.state.get('max_skills'),
+                max_achievements=max_achievements,
+                max_publications=max_publications,
             )
         self.state['generated_files'] = result
         self.state['generation_progress'] = result.get('generation_progress', [])

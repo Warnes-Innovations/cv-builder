@@ -179,6 +179,9 @@ Slash commands are available from the shared prompt set in `~/src/vscode-config/
 - **Always run `npm run build` before committing** when `web/src/` files have changed, so `web/bundle.js` is up-to-date and included in the commit.
 - Never add copyright/SPDX headers to generated or vendor artifacts (for example: `web/bundle.js`, `htmlcov/`, `test_output/`, caches). Headers apply to maintained source/docs files only.
 - Validate changes by running targeted tests first (category or file-level), then broader test runs as needed.
+- **Always validate JSON from LLM agents at CLI/MCP boundaries.** All `*_submit` tools, `inject_llm_result`, and any CLI command that accepts LLM-provided JSON must parse and validate compliance before storing, raising a clear `InvalidResultError` / HTTP 400 rather than propagating a confusing downstream failure.
+  - ✅ CORRECT: `result = validate_agent_json(raw, schema=JobAnalysisResponse); session.inject_llm_result(op, result)`
+  - ❌ INCORRECT: `session.state['analysis'] = json.loads(raw)` — bypasses schema check, silently stores malformed data
 
 
 - Begin every multi-step or code-change response by stating which copilot-instructions.md sections apply and which Agent Skills apply

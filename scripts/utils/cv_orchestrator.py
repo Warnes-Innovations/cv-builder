@@ -204,9 +204,45 @@ class CVOrchestrator:
             copy.deepcopy(selected_content.get('achievements', []))
         )
 
+        publications_start_new_page = False
+        if isinstance(customizations, dict):
+            raw_publications_page_break = customizations.get(
+                'publications_start_new_page',
+                customizations.get(
+                    'publications_page_break',
+                    customizations.get('start_publications_on_new_page', False),
+                ),
+            )
+            if isinstance(raw_publications_page_break, str):
+                publications_start_new_page = raw_publications_page_break.strip().lower() in {
+                    '1',
+                    'true',
+                    'yes',
+                    'on',
+                }
+            else:
+                publications_start_new_page = bool(raw_publications_page_break)
+
+        skills_show_experience = 'individual'
+        if isinstance(customizations, dict):
+            raw_skills_exp = customizations.get(
+                'skills_show_experience',
+                customizations.get('show_skill_experience', 'individual'),
+            )
+            if (
+                isinstance(raw_skills_exp, str)
+                and raw_skills_exp.strip().lower() in {'always', 'never', 'individual'}
+            ):
+                skills_show_experience = raw_skills_exp.strip().lower()
+
         # Get awards and certifications
         awards = selected_content.get('awards', [])
         certifications = selected_content.get('certifications', [])
+        applicant_tagline = self._resolve_applicant_tagline(
+            customizations=customizations,
+            personal_info=personal_info,
+            job_analysis=job_analysis,
+        )
         
         # Add template metadata
         # duckflow:
@@ -221,15 +257,12 @@ class CVOrchestrator:
             'variant': template_variant,
             'generated_date': datetime.now().isoformat(),
             'job_title': job_analysis.get('title', ''),
-            'applicant_tagline': (
-                customizations.get('tagline_override')
-                or customizations.get('tagline')
-                or customizations.get('applicant_tagline')
-                or job_analysis.get('title', '')
-            ) if isinstance(customizations, dict) else job_analysis.get('title', ''),
+            'applicant_tagline': applicant_tagline,
             'company': job_analysis.get('company', ''),
             'total_publications_count': len(self.publications) if self.publications else 0,
             'skills_section_title': 'Skills',
+            'publications_start_new_page': publications_start_new_page,
+            'skills_show_experience': skills_show_experience,
         }
         human_skills_title = self._resolve_human_skills_title(customizations)
         
@@ -249,6 +282,48 @@ class CVOrchestrator:
         }
 
         return cv_data
+
+    @staticmethod
+    def _resolve_applicant_tagline(
+        customizations: Optional[Dict],
+        personal_info: Optional[Dict],
+        job_analysis: Optional[Dict],
+    ) -> str:
+        """Resolve a non-placeholder applicant tagline for resume headers."""
+        job_title = str((job_analysis or {}).get('title') or '').strip().lower()
+
+        candidates: List[Any] = []
+        if isinstance(customizations, dict):
+            candidates.extend([
+                customizations.get('tagline_override'),
+                customizations.get('tagline'),
+                customizations.get('applicant_tagline'),
+            ])
+
+        if isinstance(personal_info, dict):
+            candidates.extend([
+                personal_info.get('applicant_tagline'),
+                personal_info.get('tagline'),
+                personal_info.get('headline'),
+                personal_info.get('professional_headline'),
+                personal_info.get('professional_title'),
+                personal_info.get('title'),
+            ])
+
+        for candidate in candidates:
+            text = str(candidate or '').strip()
+            if not text:
+                continue
+
+            normalized = re.sub(r'\s+', ' ', text).strip()
+            lowered = normalized.lower()
+            if lowered == job_title:
+                continue
+            if lowered == 'debug resume render':
+                continue
+            return normalized
+
+        return ''
 
     @staticmethod
     def _resolve_human_skills_title(customizations: Optional[Dict]) -> str:
@@ -595,6 +670,67 @@ class CVOrchestrator:
                 normalized.pop('sub_skills', None)
         return normalized
 
+    @staticmethod
+    def _publication_year_value(pub: Dict[str, Any]) -> Optional[int]:
+        """Return a parsed publication year from explicit fields or cite key."""
+        year_sources = [
+            pub.get('year'),
+            (pub.get('fields') or {}).get('year') if isinstance(pub.get('fields'), dict) else None,
+        ]
+        for source in year_sources:
+            text = str(source or '').strip()
+            if not text:
+                continue
+            match = re.search(r'(19|20)\d{2}', text)
+            if match:
+                return int(match.group(0))
+
+        key_text = str(pub.get('key') or '').strip()
+        key_match = re.search(r'(19|20)\d{2}', key_text)
+        if key_match:
+            return int(key_match.group(0))
+
+        return None
+
+    def _sort_selected_publications(
+        self,
+        publications: List[Dict[str, Any]],
+        customizations: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Sort selected publications unless the user has explicitly ordered them."""
+        if not publications:
+            return []
+
+        # Explicit row order from UI/session takes precedence.
+        explicit_order = (
+            customizations.get('publication_row_order')
+            or customizations.get('publication_order')
+            or []
+        )
+        if explicit_order:
+            order_map = {str(key): idx for idx, key in enumerate(explicit_order)}
+            return sorted(
+                publications,
+                key=lambda pub: order_map.get(str(pub.get('key') or ''), len(order_map)),
+            )
+
+        sort_pref = str(
+            customizations.get('publication_sort_order')
+            or customizations.get('publication_sort')
+            or ''
+        ).strip().lower()
+
+        # Default: newest first (descending).
+        descending = sort_pref not in {'asc', 'ascending', 'oldest', 'oldest_first', 'chronological_asc'}
+
+        def _sort_key(pub: Dict[str, Any]) -> tuple:
+            parsed_year = self._publication_year_value(pub)
+            normalized_year = parsed_year if parsed_year is not None else -1
+            title = str(pub.get('title') or '').lower()
+            return (normalized_year, title)
+
+        return sorted(publications, key=_sort_key, reverse=descending)
+
     def _format_publications(self, publications: List) -> List[Dict]:
         """Format publications for template consumption."""
         owner_name = self.master_data.get('personal_info', {}).get('name', '') if self.master_data else ''
@@ -608,17 +744,111 @@ class CVOrchestrator:
         for pub in publications:
             if isinstance(pub, dict):
                 entry: Dict[str, Any] = {}
+                fields = pub.get('fields', {}) if isinstance(pub.get('fields'), dict) else {}
+                note_text = str(pub.get('note') or fields.get('note') or '').strip()
+                url_text = str(pub.get('url') or fields.get('url') or '').strip()
+                formatted_text = str(pub.get('formatted') or '').strip()
+                title_text = str(pub.get('title') or '').strip()
+
+                combined_text = ' '.join(
+                    [
+                        note_text,
+                        url_text,
+                        formatted_text,
+                        title_text,
+                    ]
+                ).lower()
+                is_r_package = (
+                    'r package' in combined_text
+                    or 'cran.r-project.org' in combined_text
+                    or ' bioconductor' in combined_text
+                    or 'bioconductor.org' in combined_text
+                )
+
+                entry_type = str(pub.get('type') or fields.get('ENTRYTYPE') or '').lower()
+                is_software_entry = (
+                    fields.get('type') == 'software'
+                    or pub.get('type') == 'software'
+                    or is_r_package
+                )
+                is_patent = (
+                    entry_type in ('patent', 'patents')
+                    or 'patent' in str(pub.get('title', '')).lower()
+                    or 'patent' in str(fields.get('note', '')).lower()
+                )
+
+                venue_text = (
+                    pub.get('journal')
+                    or pub.get('booktitle')
+                    or pub.get('institution')
+                    or pub.get('school')
+                    or pub.get('publisher')
+                    or pub.get('organization')
+                    or fields.get('journal')
+                    or fields.get('booktitle')
+                    or fields.get('institution')
+                    or fields.get('school')
+                    or fields.get('publisher')
+                    or fields.get('organization')
+                    or fields.get('howpublished')
+                    or fields.get('series')
+                    or (fields.get('note') if not is_software_entry else '')
+                    or ''
+                )
+                venue_text = str(venue_text).strip()
+                if not venue_text and is_r_package:
+                    venue_text = (
+                        'Bioconductor R package'
+                        if 'bioconductor' in combined_text
+                        else 'CRAN R package'
+                    )
+
+                publication_url = ''
+                doi_value = str(pub.get('doi') or fields.get('doi') or '').strip()
+                if doi_value:
+                    doi_clean = re.sub(r'^https?://(dx\.)?doi\.org/', '', doi_value, flags=re.I)
+                    doi_clean = re.sub(r'^doi:\s*', '', doi_clean, flags=re.I)
+                    publication_url = safe_url(f"https://doi.org/{doi_clean.lstrip('/')}" )
+
+                if not publication_url:
+                    raw_url = str(pub.get('url') or fields.get('url') or '').strip()
+                    if raw_url and not re.match(r'^[a-z][a-z0-9+.-]*://', raw_url, flags=re.I):
+                        if raw_url.lower().startswith('doi.org/'):
+                            raw_url = f'https://{raw_url}'
+                        elif raw_url.startswith('www.'):
+                            raw_url = f'https://{raw_url}'
+                    publication_url = safe_url(raw_url)
+
                 if 'formatted' in pub:
-                    entry['formatted_citation'] = pub['formatted']
+                    formatted = str(pub.get('formatted', '')).strip()
+                    if (
+                        venue_text
+                        and venue_text.lower() not in formatted.lower()
+                        and not is_software_entry
+                    ):
+                        formatted = f"{formatted.rstrip('.')} {venue_text}.".strip()
+                    entry['formatted_citation'] = formatted
                 elif 'title' in pub:
                     authors = pub.get('authors', 'Unknown')
                     title = pub.get('title', '')
-                    journal = pub.get('journal', '')
                     year = pub.get('year', '')
-                    citation = f"{authors}. {title}. {journal} ({year}).".strip()
+                    citation = f"{authors}. {title}. {venue_text} ({year}).".strip()
                     entry['formatted_citation'] = citation
                 else:
                     continue
+
+                citation_title = title_text.replace('{', '').replace('}', '').strip()
+                entry['title'] = citation_title
+                entry['citation_prefix'] = ''
+                entry['citation_title'] = ''
+                entry['citation_suffix'] = ''
+                if citation_title and citation_title in entry['formatted_citation']:
+                    prefix, suffix = entry['formatted_citation'].split(citation_title, 1)
+                    entry['citation_prefix'] = prefix
+                    entry['citation_title'] = citation_title
+                    entry['citation_suffix'] = suffix
+
+                entry['publication_url'] = publication_url
 
                 # Detect first authorship: compare owner last name against leading author token
                 if owner_last:
@@ -629,7 +859,7 @@ class CVOrchestrator:
                     entry['is_first_author'] = False
 
                 # Flag entries with no venue so the template can render a warning icon
-                has_venue = bool(pub.get('journal') or pub.get('booktitle'))
+                has_venue = bool(venue_text or is_software_entry or is_patent)
                 entry['venue_warning'] = '' if has_venue else 'No journal or conference name found in BibTeX entry'
 
                 formatted_pubs.append(entry)
@@ -1724,6 +1954,8 @@ For manual generation:
         rewrite_audit: Optional[List[Dict]] = None,
         spell_audit: Optional[List[Dict]] = None,
         max_skills: Optional[int] = None,
+        max_achievements: Optional[int] = None,
+        max_publications: Optional[int] = None,
     ) -> Dict:
         """
         Generate CV files based on LLM analysis and recommendations.
@@ -1775,6 +2007,8 @@ For manual generation:
             approved_rewrites=approved_rewrites,
             spell_audit=spell_audit,
             max_skills=max_skills,
+            max_achievements=max_achievements,
+            max_publications=max_publications,
         )
 
         # Prepare template data once — shared by all format generators.
@@ -1864,7 +2098,7 @@ For manual generation:
             'start_time': time.time()
         }
         human_docx = self._generate_human_docx(
-            selected_content,
+            cv_data,
             job_analysis,
             job_output_dir,
             skills_heading=self._resolve_human_skills_title(customizations),
@@ -1917,6 +2151,8 @@ For manual generation:
         approved_rewrites: Optional[List[Dict]] = None,
         spell_audit: Optional[List[Dict]] = None,
         max_skills: Optional[int] = None,
+        max_achievements: Optional[int] = None,
+        max_publications: Optional[int] = None,
     ) -> Dict:
         """Generate HTML preview only — no PDF, no DOCX.
 
@@ -1950,6 +2186,8 @@ For manual generation:
             approved_rewrites=approved_rewrites,
             spell_audit=spell_audit,
             max_skills=max_skills,
+            max_achievements=max_achievements,
+            max_publications=max_publications,
         )
 
         cv_data = self._prepare_cv_data_for_template(
@@ -1998,6 +2236,8 @@ For manual generation:
         approved_rewrites: Optional[List[Dict]] = None,
         spell_audit: Optional[List[Dict]] = None,
         max_skills: Optional[int] = None,
+        max_achievements: Optional[int] = None,
+        max_publications: Optional[int] = None,
         use_semantic_match: bool = True,
     ) -> Dict:
         """Build the selected content exactly as it will be rendered."""
@@ -2005,6 +2245,8 @@ For manual generation:
             job_analysis,
             customizations,
             max_skills=max_skills,
+            max_achievements=max_achievements,
+            max_publications=max_publications,
             use_semantic_match=use_semantic_match,
         )
         selected_content = self._apply_session_achievement_edits(
@@ -2588,11 +2830,151 @@ CONSTRAINTS (must follow all):
                 }
             return {'proposals': [], 'error': f'Failed to generate content proposals: {e}'}
 
+    def analyze_harvest_candidates(
+        self,
+        candidates: List[Dict[str, Any]],
+        job_analysis: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Use the LLM to evaluate whether each harvest candidate should be promoted to master CV.
+
+        Args:
+            candidates: List of harvest candidates from _compile_harvest_candidates().
+            job_analysis: The session's job analysis dict (for context).
+
+        Returns:
+            {
+                'analyses': [{'id', 'recommendation', 'confidence', 'reasoning'}, ...],
+                'error': str or None,
+            }
+        """
+        if not self.llm:
+            return {'analyses': [], 'error': 'No LLM configured'}
+
+        if not candidates:
+            return {'analyses': [], 'error': None}
+
+        job_title   = (job_analysis or {}).get('title', 'Unknown Role')
+        job_company = (job_analysis or {}).get('company', 'Unknown Company')
+        requirements = (job_analysis or {}).get('required_skills') or []
+        requirements_text = ', '.join(str(r) for r in requirements[:20]) if requirements else 'Not specified'
+
+        cand_lines = []
+        for c in candidates:
+            ctype     = c.get('type', 'unknown')
+            cid       = c.get('id', '')
+            label     = c.get('label', '')
+            original  = c.get('original', '')
+            proposed  = c.get('proposed', '')
+            rationale = c.get('rationale', '')
+            cand_lines.append(
+                f'- id: {cid}\n'
+                f'  type: {ctype}\n'
+                f'  label: {label}\n'
+                f'  original: {original!r}\n'
+                f'  proposed: {proposed!r}\n'
+                f'  rationale: {rationale}'
+            )
+        candidates_text = '\n'.join(cand_lines)
+
+        prompt = f"""You are a CV master-data curator. You are reviewing candidate improvements generated during a job application for:
+  Job: {job_title} at {job_company}
+  Key requirements: {requirements_text}
+
+These candidates were generated during the application session and are being considered for permanent promotion to the user's master CV.
+
+CANDIDATES:
+{candidates_text}
+
+YOUR TASK:
+For each candidate, evaluate whether it should be permanently added to the user's master CV.
+
+Promotion criteria by type:
+- improved_bullet: Promote if the rewrite adds job-neutral improvements (metrics, specificity, clearer impact). Skip if it is tailored only to this job or degrades the original.
+- new_skill: Promote if the skill likely reflects genuine ongoing expertise. Skip if it was added solely to match this job description with no other evidence.
+- skill_gap_confirmed: Promote if the user's confirmation is credible and the skill is absent from master. Be slightly more skeptical — answers to clarifying questions can be aspirational.
+- summary_variant: Promote if it is clearly stronger and more broadly applicable. Skip if it is very company-specific or similar to the original.
+
+Return ONLY a valid JSON array, no markdown, no extra text:
+[
+  {{
+    "id": "<candidate id>",
+    "recommendation": "promote" or "skip",
+    "confidence": "high" or "medium" or "low",
+    "reasoning": "One to two sentence explanation focused on long-term CV value, not this specific job."
+  }}
+]
+
+Include one entry per candidate. Do not omit any candidate."""
+
+        response = ''
+        try:
+            response = self.llm.call_llm(
+                prompt=prompt,
+                system_prompt=(
+                    'You are a professional CV curator. Evaluate whether generated improvements '
+                    'have long-term value for a master CV, not just for one specific job application. '
+                    'Return ONLY a valid JSON array.'
+                ),
+                temperature=0.3,
+            )
+
+            if not response or not response.strip():
+                return {'analyses': [], 'error': 'LLM returned an empty response'}
+
+            try:
+                raw = json.loads(response)
+            except json.JSONDecodeError:
+                raw = self.llm._parse_json_response(response)
+
+            if not isinstance(raw, list):
+                return {'analyses': [], 'error': 'LLM response was not a JSON array'}
+
+            valid_recs  = {'promote', 'skip'}
+            valid_confs = {'high', 'medium', 'low'}
+            analyses: list = []
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                rec       = str(item.get('recommendation') or '').strip().lower()
+                conf      = str(item.get('confidence') or '').strip().lower()
+                cid       = str(item.get('id') or '').strip()
+                reasoning = str(item.get('reasoning') or '').strip()
+                if not cid or rec not in valid_recs or conf not in valid_confs:
+                    continue
+                analyses.append({
+                    'id':             cid,
+                    'recommendation': rec,
+                    'confidence':     conf,
+                    'reasoning':      reasoning,
+                })
+            return {'analyses': analyses, 'error': None}
+
+        except (json.JSONDecodeError, ValueError) as e:
+            return {'analyses': [], 'error': f'LLM response was not valid JSON: {e}'}
+        except Exception as e:
+            error_type = type(e).__name__.lower()
+            error_text = str(e).lower()
+            if (
+                isinstance(e, TimeoutError)
+                or 'timeout' in error_type
+                or 'time out' in error_text
+                or 'timed out' in error_text
+            ):
+                return {
+                    'analyses': [],
+                    'error': (
+                        'Harvest analysis timed out. You can retry or proceed with manual selection.'
+                    ),
+                }
+            return {'analyses': [], 'error': f'Failed to analyze harvest candidates: {e}'}
+
     def _select_content_hybrid(
         self,
         job_analysis: Dict,
         customizations: Dict,
         max_skills: Optional[int] = None,
+        max_achievements: Optional[int] = None,
+        max_publications: Optional[int] = None,
         use_semantic_match: bool = True,
     ) -> Dict:
         """
@@ -2653,8 +3035,17 @@ CONSTRAINTS (must follow all):
         )
         domain = job_analysis.get('domain', '')
         cfg    = get_config()
-        max_ach    = cfg.get('generation.max_achievements', 5)
+        max_ach = (
+            max_achievements
+            if max_achievements is not None
+            else cfg.get('generation.max_achievements', 5)
+        )
         max_skills = max_skills if max_skills is not None else cfg.get('generation.max_skills', 20)
+        max_pubs = (
+            max_publications
+            if max_publications is not None
+            else cfg.get('generation.max_publications', 10)
+        )
 
         # ── Experiences ───────────────────────────────────────────────────────
         # Include ALL experiences; only exclude those explicitly omitted.
@@ -2931,17 +3322,28 @@ CONSTRAINTS (must follow all):
         rejected_pubs = set(customizations.get('rejected_publications') or [])
 
         if accepted_pubs is not None:
-            # User has explicitly selected publications — use their ordered list
+            # User has explicitly selected publications — preserve membership.
+            # Display order is applied below (default: newest first, unless
+            # an explicit publication order override is provided).
             accepted_set = set(accepted_pubs)
             pub_by_key = {}
             for pub in self._select_publications(job_analysis, max_count=len(self.publications) if self.publications else 50):
                 key = pub.get('key', '') or ''
                 if key in accepted_set and key not in rejected_pubs:
                     pub_by_key[key] = pub
-            # Preserve the user's explicit ordering from accepted_pubs
-            selected_publications = [pub_by_key[k] for k in accepted_pubs if k in pub_by_key][:15]
+            selected_publications = [
+                pub_by_key[k] for k in accepted_pubs if k in pub_by_key
+            ][:max_pubs]
         else:
-            selected_publications = self._select_publications(job_analysis, max_count=10)
+            selected_publications = self._select_publications(
+                job_analysis,
+                max_count=max_pubs,
+            )
+
+        selected_publications = self._sort_selected_publications(
+            selected_publications,
+            customizations,
+        )
         
         return {
             'personal_info': self.master_data.get('personal_info', {}),
@@ -2969,16 +3371,14 @@ CONSTRAINTS (must follow all):
             score = 0.0
 
             # Recent publications score higher
-            try:
-                year = int(pub['year'])
+            year = self._publication_year_value(pub)
+            if year is not None:
                 if year >= 2020:
                     score += 30
                 elif year >= 2015:
                     score += 20
                 elif year >= 2010:
                     score += 10
-            except (ValueError, KeyError):
-                pass
 
             # Type bonus
             if pub['type'] == 'article':
@@ -3003,12 +3403,23 @@ CONSTRAINTS (must follow all):
 
         selected = []
         for key, pub, score in scored_pubs[:max_count]:
-            formatted = format_publication(pub, style='brief')
+            formatted = format_publication(pub, style='apa')
+            year_value = pub.get('year', '')
+            if not str(year_value or '').strip():
+                parsed_year = self._publication_year_value(pub)
+                year_value = str(parsed_year) if parsed_year is not None else ''
             selected.append({
                 'key': key,
                 'formatted': formatted,
-                'year': pub['year'],
-                'type': pub['type']
+                'year': year_value,
+                'type': pub['type'],
+                'authors': pub.get('authors', ''),
+                'title': pub.get('title', ''),
+                'journal': pub.get('journal', ''),
+                'booktitle': pub.get('booktitle', ''),
+                'institution': pub.get('institution', ''),
+                'school': pub.get('school', ''),
+                'fields': pub.get('fields', {}),
             })
 
         return selected
@@ -3296,7 +3707,8 @@ CONSTRAINTS (must follow all):
             return achievement
 
         text = achievement.strip()
-        if text.split()[0].lower() not in self._STRONG_VERBS_LOWER if text.split() else True:
+        first_word = self._opening_word_for_verb_check(text)
+        if not first_word or first_word.lower() not in self._STRONG_VERBS_LOWER:
             logger.warning(
                 "_enhance_achievement_for_ats: bullet does not start with a strong action verb: %r",
                 text[:60]
@@ -3308,13 +3720,17 @@ CONSTRAINTS (must follow all):
 
     _STRONG_VERBS: frozenset = frozenset({
         'Accelerated', 'Achieved', 'Architected', 'Automated', 'Built',
-        'Championed', 'Consolidated', 'Created', 'Cut', 'Delivered',
-        'Deployed', 'Designed', 'Developed', 'Directed', 'Doubled',
+        'Championed', 'Coined', 'Conceived', 'Conducted', 'Consolidated',
+        'Created', 'Cut', 'Delivered', 'Demonstrated', 'Deployed',
+        'Designed', 'Developed', 'Directed', 'Doubled',
         'Drove', 'Enabled', 'Established', 'Expanded', 'Generated',
-        'Grew', 'Improved', 'Implemented', 'Increased', 'Launched',
-        'Led', 'Managed', 'Optimized', 'Pioneered', 'Published',
-        'Raised', 'Reduced', 'Refactored', 'Scaled', 'Shipped',
-        'Spearheaded', 'Streamlined', 'Transformed', 'Tripled',
+        'Grew', 'Improved', 'Implemented', 'Increased', 'Integrated',
+        'Invented', 'Launched', 'Led', 'Managed', 'Optimized', 'Pioneered',
+        'Published',
+        'Provided', 'Raised', 'Reduced', 'Refactored', 'Scaled', 'Shipped',
+        'Secured', 'Spearheaded', 'Streamlined', 'Taught',
+        'Transformed', 'Translated', 'Tripled',
+        'Founded',
     })
     _STRONG_VERBS_LOWER: frozenset = frozenset(v.lower() for v in _STRONG_VERBS)
 
@@ -3343,6 +3759,44 @@ CONSTRAINTS (must follow all):
         r'\b(' + '|'.join(re.escape(phrase) for phrase in _VAGUE_PHRASES) + r')\b',
         re.IGNORECASE,
     )
+
+    @classmethod
+    def _opening_text_for_verb_check(cls, text: str) -> str:
+        """Return text with an optional leading descriptor label removed.
+
+        Example: "Statistical Genomics: Developed ..." -> "Developed ..."
+        """
+        stripped = (text or '').strip()
+        if not stripped:
+            return stripped
+
+        first_word = stripped.split()[0].lower() if stripped.split() else ''
+        if first_word in cls._STRONG_VERBS_LOWER or first_word in cls._WEAK_VERB_FIRST_WORDS_LOWER:
+            return stripped
+
+        if ':' not in stripped:
+            return stripped
+
+        prefix, remainder = stripped.split(':', 1)
+        prefix_words = [w for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9'&/.-]*", prefix) if w]
+        if not remainder.strip() or not prefix_words:
+            return stripped
+
+        if len(prefix_words) > 6:
+            return stripped
+
+        # Heuristic: descriptor labels are usually title-case/all-caps noun phrases.
+        if all(w.isupper() or w[:1].isupper() or any(ch.isdigit() for ch in w) for w in prefix_words):
+            return remainder.strip()
+
+        return stripped
+
+    @classmethod
+    def _opening_word_for_verb_check(cls, text: str) -> str:
+        """Return the first meaningful opening word for verb checks."""
+        normalized = cls._opening_text_for_verb_check(text)
+        match = re.search(r"[A-Za-z][A-Za-z'/-]*", normalized)
+        return match.group(0) if match else ''
 
     _METRIC_RE = re.compile(
         r'(?!(?:19|20)\d{2}(?:[–\-]\d{4})?)'  # negative lookahead: exclude year patterns like 2020-2024
@@ -3432,7 +3886,7 @@ CONSTRAINTS (must follow all):
                     continue
                 total_bullets += 1
                 issues = []
-                first_word = text.split()[0] if text.split() else ''
+                first_word = self._opening_word_for_verb_check(text)
 
                 # Weak opening verb — exact first-word match (no prefix collisions)
                 if first_word.lower() in self._WEAK_VERB_FIRST_WORDS_LOWER:
@@ -3635,6 +4089,7 @@ CONSTRAINTS (must follow all):
         from docx import Document
         from docx.shared import Pt, RGBColor, Inches
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.opc.constants import RELATIONSHIP_TYPE
         from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
 
@@ -3701,6 +4156,33 @@ CONSTRAINTS (must follow all):
             p.add_run(text)
             return p
 
+        def _add_hyperlink(paragraph, text: str, url: str, size: int = 10):
+            rel_id = paragraph.part.relate_to(url, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+            hyperlink = OxmlElement('w:hyperlink')
+            hyperlink.set(qn('r:id'), rel_id)
+
+            run = OxmlElement('w:r')
+            run_props = OxmlElement('w:rPr')
+
+            color = OxmlElement('w:color')
+            color.set(qn('w:val'), '2980B9')
+            run_props.append(color)
+
+            underline = OxmlElement('w:u')
+            underline.set(qn('w:val'), 'single')
+            run_props.append(underline)
+
+            size_el = OxmlElement('w:sz')
+            size_el.set(qn('w:val'), str(size * 2))
+            run_props.append(size_el)
+
+            run.append(run_props)
+            text_el = OxmlElement('w:t')
+            text_el.text = text
+            run.append(text_el)
+            hyperlink.append(run)
+            paragraph._p.append(hyperlink)
+
         # ── Name ─────────────────────────────────────────────────────────────
         personal_info = content.get('personal_info', {})
         name_para = doc.add_paragraph()
@@ -3712,12 +4194,16 @@ CONSTRAINTS (must follow all):
         name_para.paragraph_format.space_after = Pt(2)
 
         # Job title line
-        title_para = doc.add_paragraph()
-        title_run  = title_para.add_run(job_analysis.get('title', ''))
-        title_run.italic    = True
-        title_run.font.size = Pt(12)
-        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        title_para.paragraph_format.space_after = Pt(4)
+        applicant_tagline = str(
+            (content.get('template_metadata') or {}).get('applicant_tagline') or ''
+        ).strip()
+        if applicant_tagline:
+            title_para = doc.add_paragraph()
+            title_run  = title_para.add_run(applicant_tagline)
+            title_run.italic    = True
+            title_run.font.size = Pt(12)
+            title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            title_para.paragraph_format.space_after = Pt(4)
 
         # ── Contact ──────────────────────────────────────────────────────────
         contact = personal_info.get('contact', {})
@@ -3844,12 +4330,12 @@ CONSTRAINTS (must follow all):
                     p = doc.add_paragraph(style='List Number')
                     p.paragraph_format.space_after  = Pt(2)
                     p.paragraph_format.left_indent  = Inches(0.25)
-                    run = p.add_run(citation)
-                    run.font.size = Pt(10)
-                    if pub.get('venue_warning'):
-                        warn_run = p.add_run('  ⚠')
-                        warn_run.font.size  = Pt(9)
-                        warn_run.font.color.rgb = RGBColor(0xDC, 0x79, 0x00)
+                    citation_url = safe_url(pub.get('publication_url', ''))
+                    if citation_url:
+                        _add_hyperlink(p, citation, citation_url, size=10)
+                    else:
+                        run = p.add_run(citation)
+                        run.font.size = Pt(10)
 
         doc.save(str(filepath))
         logger.info("Human DOCX: %s", filename)

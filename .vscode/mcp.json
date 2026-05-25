@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "cv-builder": {
+      "command": "conda",
+      "args": [
+        "run",
+        "-n",
+        "cvgen",
+        "--no-capture-output",
+        "python",
+        "scripts/mcp_server.py"
+      ],
+      "type": "stdio"
+    }
+  }
+}

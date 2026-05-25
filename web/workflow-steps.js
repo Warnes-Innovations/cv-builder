@@ -30,11 +30,23 @@ function _findExperienceRecommendationRecord(expId) {
 
 // ── Step-order constants ─────────────────────────────────────────────────────
 
-const _STEP_ORDER = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'final_generate', 'finalise'];
+const _STEP_ORDER = [
+  'job', 'analysis', 'customizations', 'rewrite', 'spell', 'layout',
+  'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'harvest',
+];
 const _STEP_DISPLAY = {
-  job: 'Job Input', analysis: 'Job Analysis', customizations: 'Customisations',
-  rewrite: 'Rewrite Review', spell: 'Spell Check', generate: 'Preview CV',
-  layout: 'Layout Review', final_generate: 'Generate', finalise: 'Finalise',
+  job:            'Job Input',
+  analysis:       'Job Analysis',
+  customizations: 'Customisations',
+  rewrite:        'Rewrite Review',
+  spell:          'Spell Check',
+  layout:         'Layout Review',
+  download:       'Download Files',
+  cover_letter:   'Cover Letter',
+  screening:      'Screening',
+  interview_prep: 'Interview Prep',
+  thank_you:      'Thank You',
+  harvest:        'Harvest',
 };
 const _ACTION_LABELS = {
   recommend_customizations: 'Selecting experiences & skills…',
@@ -42,9 +54,7 @@ const _ACTION_LABELS = {
 };
 
 const _NAV_TAB_LABELS = {
-  generate: '📄 Generated CV',
-  download: '⬇️ File Review',
-  finalise: '✅ Finalise',
+  download: '⬇️ Download Files',
 };
 
 function applyLayoutFreshnessNavigationState() {
@@ -106,10 +116,9 @@ async function backToPhase(step, feedback) {
     const tabMap = {
       job:            null,
       analysis:       'analysis',
-      customizations: 'exp-review',
+      customizations: 'goals',
       rewrite:        'rewrite',
       spell:          'spell',
-      generate:       'generate',
     };
     const resolvedTab = tabMap[step] || tabMap[data.phase] || null;
     if (resolvedTab) switchTab(resolvedTab);
@@ -210,11 +219,14 @@ function _updateViewingIndicator(tabName) {
     'exp-review':    'customizations',
     'rewrite':       'rewrite',
     'spell':         'spell',
-    'generate':      'generate',
     'layout':        'layout',
-    'download':      'final_generate',
-    'final_generate':'final_generate',
-    'finalise':      'finalise',
+    'final_generate':'download',
+    'download':      'download',
+    'cover-letter':  'cover_letter',
+    'screening':     'screening',
+    'interview-prep':'interview_prep',
+    'thank-you':     'thank_you',
+    'harvest':       'harvest',
   };
   const viewedStep = tabToStep[tabName] || null;
 
@@ -289,10 +301,9 @@ async function reRunPhase(step) {
     // Navigate to the step's viewer tab
     const tabMap = {
       analysis:       'analysis',
-      customizations: 'exp-review',
+      customizations: 'goals',
       rewrite:        'rewrite',
       spell:          'spell',
-      generate:       'generate',
     };
     if (tabMap[step]) switchTab(tabMap[step]);
 
@@ -599,13 +610,14 @@ async function resetBulletOrder(expId) {
 // ── Workflow step bar ─────────────────────────────────────────────────────────
 
 function updateWorkflowSteps(status) {
-  // 9-step workflow bar: Job Input → Analysis → Customise → Rewrites →
-  //                      Spell Check → Preview → Layout Review → Generate → Finalise
+  // 12-step workflow bar: Job Input → Analysis → Customise → Rewrites →
+  //   Spell Check → Layout Review → Download → Cover Letter → Screening →
+  //   Interview Prep → Thank You → Harvest
   //
   const UPCOMING = new Set();
 
   // Steps that support LLM re-execution via /api/re-run-phase
-  const RE_RUN_STEPS = new Set(['analysis', 'customizations', 'rewrite', 'spell', 'generate']);
+  const RE_RUN_STEPS = new Set(['analysis', 'customizations', 'rewrite', 'spell']);
 
   // Base label for each step (used when injecting ↻ button)
   const STEP_LABELS = {
@@ -614,14 +626,19 @@ function updateWorkflowSteps(status) {
     customizations: '⚙️ Customise',
     rewrite:        '✏️ Rewrites',
     spell:          '🔤 Spell Check',
-    generate:       '📄 Preview',
     layout:         '🎨 Layout Review',
-    final_generate: '📄 Generate',
-    finalise:       '✅ Finalise',
+    download:       '⬇️ Download Files',
+    cover_letter:   '📩 Cover Letter',
+    screening:      '📋 Screening',
+    interview_prep: '🎤 Interview Prep',
+    thank_you:      '🙏 Thank You',
+    harvest:        '🌾 Harvest',
   };
 
   // Determine which steps are done based on session state fields.
   const phase = status.phase || '';
+  // All post-layout phases unlock simultaneously once layout is confirmed.
+  const postLayout = phase === PHASES.FINAL_GENERATION || phase === PHASES.REFINEMENT;
   const done = {
     job:            !!status.job_description,
     analysis:       !!status.job_analysis,
@@ -629,11 +646,13 @@ function updateWorkflowSteps(status) {
     rewrite:        phase !== PHASES.REWRITE_REVIEW && (!!status.customizations),
     spell:          phase === PHASES.GENERATION || phase === PHASES.LAYOUT_REVIEW ||
                     phase === PHASES.FINAL_GENERATION || phase === PHASES.REFINEMENT,
-    generate:       phase === PHASES.LAYOUT_REVIEW || phase === PHASES.FINAL_GENERATION ||
-                    phase === PHASES.REFINEMENT || !!status.generated_files,
-    layout:         phase === PHASES.FINAL_GENERATION || phase === PHASES.REFINEMENT,
-    final_generate: phase === PHASES.REFINEMENT,
-    finalise:       phase === PHASES.REFINEMENT && !!status.generated_files,
+    layout:         postLayout,
+    download:       postLayout,
+    cover_letter:   postLayout,
+    screening:      postLayout,
+    interview_prep: postLayout,
+    thank_you:      postLayout,
+    harvest:        postLayout,
   };
 
   // Determine the active step from the backend phase string.
@@ -643,10 +662,10 @@ function updateWorkflowSteps(status) {
     'customization':    'customizations',
     'rewrite_review':   'rewrite',
     'spell_check':      'spell',
-    'generation':       'generate',
+    'generation':       'layout',
     'layout_review':    'layout',
-    'final_generation': 'final_generate',
-    'refinement':       'finalise',
+    'final_generation': 'download',
+    'refinement':       'download',
   };
   const activeStep = phaseToStep[phase] || 'job';
 
@@ -656,7 +675,10 @@ function updateWorkflowSteps(status) {
     ? (_phaseToStep2[status.reentry_phase] || status.reentry_phase || null)
     : null;
 
-  const stepIds = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'final_generate', 'finalise'];
+  const stepIds = [
+    'job', 'analysis', 'customizations', 'rewrite', 'spell', 'layout',
+    'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'harvest',
+  ];
   const staleSteps = new Set(status.stale_steps || []);
   stepIds.forEach(step => {
     const el = document.getElementById(`step-${step}`);
@@ -726,7 +748,7 @@ if (typeof window !== 'undefined') {
  */
 function applyDirtyPhaseNavigationState() {
   const dirtyPhases = stateManager.getDirtyPhases();
-  const stepsToClear = ['generate'];    // steps we manage here (not 'layout')
+  const stepsToClear = [];    // steps we manage here (not 'layout')
 
   stepsToClear.forEach(step => {
     const el = document.getElementById(`step-${step}`);
@@ -780,12 +802,16 @@ function handleStepClick(step) {
 
   const stepToTab = {
     analysis:       hasUnansweredPostAnalysisQuestions() ? 'questions' : 'analysis',
-    customizations: 'exp-review',
+    customizations: 'goals',
     rewrite:        'rewrite',
     spell:          'spell',
-    generate:       'generate',
     layout:         'layout',
-    finalise:       'finalise',
+    download:       'final_generate',
+    cover_letter:   'cover-letter',
+    screening:      'screening',
+    interview_prep: 'interview-prep',
+    thank_you:      'thank-you',
+    harvest:        'harvest',
   };
   const tabName = stepToTab[step];
   if (tabName) {

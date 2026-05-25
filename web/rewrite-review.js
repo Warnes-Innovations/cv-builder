@@ -21,6 +21,7 @@ import { stateManager } from './state-manager.js';
 let rewriteDecisions = {};
 let _rewritePanelCache = null;
 let persuasionWarningsAcknowledged = false;
+let _warningsByRewriteId = {};  // Map from rewrite id → warning list (Path 1)
 
 function syncRewriteGlobals() {
   if (typeof window === 'undefined') {
@@ -28,6 +29,8 @@ function syncRewriteGlobals() {
   }
   window.rewriteDecisions = rewriteDecisions;
   window._rewritePanelCache = _rewritePanelCache;
+  window.acceptAllRewrites = acceptAllRewrites;
+  window.rejectAllRewrites = rejectAllRewrites;
 }
 
 async function fetchAndReviewRewrites() {
@@ -59,9 +62,9 @@ async function fetchAndReviewRewrites() {
     switchTab('rewrite');
     const n = rewrites.length;
     if (n === 0) {
-      appendMessage('assistant', '✏️ No rewrite suggestions were needed. The **Rewrites** tab is still available so you can confirm and continue to **Spell Check** when ready.');
+      appendMessage('assistant', '✏️ No rewrite suggestions were needed — your selected content already uses the job\'s terminology well. The **Rewrites** tab is still available so you can confirm and continue to **Spell Check** when ready.');
     } else {
-      appendMessage('assistant', `✏️ I found **${n}** text improvement${n > 1 ? 's' : ''} to review. Look over each suggestion in the **Rewrites** tab, then accept, edit, or reject each one before continuing to spell check.`);
+      appendMessage('assistant', `✏️ You've confirmed your experience, skill, and achievement selections. Here are the AI's **${n}** text improvement suggestion${n > 1 ? 's' : ''} for the included bullets — each one introduces job-relevant keywords while preserving your facts. Review each suggestion in the **Rewrites** tab, then accept, edit, or reject before continuing to spell check.`);
     }
   } catch (err) {
     removeLoadingMessage(loadingMsg);
@@ -72,6 +75,12 @@ async function fetchAndReviewRewrites() {
 
 function renderRewritePanel(rewrites, warnings = []) {
   _rewritePanelCache = { rewrites, warnings };
+  // Build per-card warning index for Path 1 badges
+  _warningsByRewriteId = {};
+  for (const w of warnings) {
+    if (!_warningsByRewriteId[w.id]) _warningsByRewriteId[w.id] = [];
+    _warningsByRewriteId[w.id].push(w);
+  }
   syncRewriteGlobals();
   const content = document.getElementById('document-content');
   const hasRewrites = rewrites.length > 0;
@@ -122,12 +131,14 @@ function renderRewritePanel(rewrites, warnings = []) {
         <span class="tally-accepted">✓ Accepted: <strong id="tally-accepted">0</strong></span>
         <span class="tally-rejected">✗ Rejected: <strong id="tally-rejected">0</strong></span>
         <span class="tally-pending">⏳ Pending: <strong id="tally-pending">${rewrites.length}</strong></span>
+        <button class="rw-bulk-btn" onclick="acceptAllRewrites()" title="Accept all pending suggestions">✓ Accept All</button>
+        <button class="rw-bulk-btn rw-bulk-reject" onclick="rejectAllRewrites()" title="Reject all pending suggestions">✗ Reject All</button>
         <button class="submit-rewrites-btn" id="submit-rewrites-btn" disabled
                 onclick="submitRewriteDecisions()">Submit All Decisions</button>
       </div>
       <div id="rewrite-cards">
         ${hasRewrites
-    ? rewrites.map(r => renderRewriteCard(r)).join('')
+    ? rewrites.map(r => renderRewriteCard(r, _warningsByRewriteId[r.id] || [])).join('')
     : `
           <div class="empty-state" style="margin-top:24px;">
             <div class="icon">✏️</div>
@@ -215,7 +226,7 @@ function renderDiffHtml(tokens) {
   }).join('');
 }
 
-function renderRewriteCard(r) {
+function renderRewriteCard(r, cardWarnings = []) {
   const isWeakSkillAdd = r.type === 'skill_add' && r.evidence_strength === 'weak';
   const weakBadge     = isWeakSkillAdd
     ? `<span class="weak-badge">⚠ Candidate to confirm</span>`
@@ -253,7 +264,12 @@ function renderRewriteCard(r) {
           <p style="margin:6px 0 0;">${escapeHtml(r.rationale)}</p>
           ${r.evidence ? `<p style="color:#9ca3af;font-size:0.85em;margin:4px 0 0;">${escapeHtml(r.evidence)}</p>` : ''}
         </details>` : ''}
+        ${cardWarnings.length > 0 ? `
+        <div class="rewrite-persuasion-badges">
+          ${cardWarnings.map(w => `<span class="persuasion-badge persuasion-badge--${w.severity}" title="${escapeHtml(w.details)}">⚠ ${escapeHtml(w.flag_type.replace(/_/g, ' '))}</span>`).join('')}
+        </div>` : ''}
         <div class="rewrite-actions">
+          <a class="rw-back-link" href="#" onclick="event.preventDefault(); switchTab('customizations')" title="Go back to Customise to reconsider whether to include this content">↩ Reconsider inclusion</a>
           <button class="rw-btn accept" id="rw-accept-${cardId}" onclick="applyRewriteAction('${cardId}', 'accept')">✓ Accept</button>
           <button class="rw-btn edit"   id="rw-edit-${cardId}"   onclick="applyRewriteAction('${cardId}', 'edit')">✎ Edit</button>
           <button class="rw-btn reject" id="rw-reject-${cardId}" onclick="applyRewriteAction('${cardId}', 'reject')">✗ Reject</button>
@@ -429,6 +445,24 @@ function setPersuasionWarningsAcknowledged(value) {
   persuasionWarningsAcknowledged = value;
 }
 
+/** Bulk-accept all pending rewrite cards. */
+function acceptAllRewrites() {
+  document.querySelectorAll('.rewrite-card').forEach(card => {
+    const id = card.id.replace('rw-card-', '');
+    if (!rewriteDecisions[id]) applyRewriteAction(id, 'accept');
+  });
+  updateRewriteTally();
+}
+
+/** Bulk-reject all pending rewrite cards. */
+function rejectAllRewrites() {
+  document.querySelectorAll('.rewrite-card').forEach(card => {
+    const id = card.id.replace('rw-card-', '');
+    if (!rewriteDecisions[id]) applyRewriteAction(id, 'reject');
+  });
+  updateRewriteTally();
+}
+
 export {
   rewriteDecisions,
   _rewritePanelCache,
@@ -443,6 +477,8 @@ export {
   saveRewriteEdit,
   updateRewriteTally,
   submitRewriteDecisions,
+  acceptAllRewrites,
+  rejectAllRewrites,
 };
 
 syncRewriteGlobals();

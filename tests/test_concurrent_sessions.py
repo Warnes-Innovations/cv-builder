@@ -2999,14 +2999,17 @@ def test_layout_settings_route_normalizes_layout_settings_and_history(build_app)
                 "session_id": session_id,
                 "base_font_size": "10",
                 "page_margin": "0.5",
+                "publications_start_new_page": True,
             },
         )
         assert updated.status_code == 200
         assert updated.get_json() == {"ok": True}
         assert manager.state["base_font_size"] == "10px"
         assert manager.state["page_margin"] == "0.5in"
+        assert manager.state["publications_start_new_page"] is True
         assert manager.state["customizations"]["base_font_size"] == "10px"
         assert manager.state["customizations"]["page_margin"] == "0.5in"
+        assert manager.state["customizations"]["publications_start_new_page"] is True
         assert manager.save_calls == 1
 
         history = client.get(
@@ -3035,14 +3038,17 @@ def test_layout_settings_route_normalizes_layout_settings_and_history(build_app)
                 "owner_token": "owner-a",
                 "base_font_size": "11px",
                 "page_margin": "0.75in",
+                "publications_start_new_page": "false",
             },
         )
         assert owned_update.status_code == 200
         assert owned_update.get_json() == {"ok": True}
         assert manager.state["base_font_size"] == "11px"
         assert manager.state["page_margin"] == "0.75in"
+        assert manager.state["publications_start_new_page"] is False
         assert manager.state["customizations"]["base_font_size"] == "11px"
         assert manager.state["customizations"]["page_margin"] == "0.75in"
+        assert manager.state["customizations"]["publications_start_new_page"] is False
         assert manager.save_calls == 2
 
 

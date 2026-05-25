@@ -15,10 +15,11 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader, Template, select_autoescape
-from markupsafe import Markup
+from markupsafe import Markup, escape
 
 
 _SAFE_CSS_SIZE_RE = re.compile(r'^\d+(?:\.\d+)?(?:px|pt|rem|em|%)$')
+_MD_ITALIC_RE = re.compile(r'\*([^*]+)\*')
 
 
 def json_script(value: Any) -> Markup:
@@ -68,6 +69,13 @@ def safe_css_size(value: Any, default: str = '10px') -> str:
     return default
 
 
+def citation_markdown_to_html(value: Any) -> Markup:
+    """Render markdown-style *italic* spans safely for citation strings."""
+    escaped_text = str(escape(str(value or '')))
+    rendered = _MD_ITALIC_RE.sub(r'<em>\1</em>', escaped_text)
+    return Markup(rendered)
+
+
 def load_template(template_path: str) -> Template:
     """
     Load a Jinja2 template from file.
@@ -98,6 +106,7 @@ def load_template(template_path: str) -> Template:
     env.filters['json_script'] = json_script
     env.filters['safe_url'] = safe_url
     env.filters['safe_css_size'] = safe_css_size
+    env.filters['citation_markdown_to_html'] = citation_markdown_to_html
 
     return env.get_template(template_name)
 

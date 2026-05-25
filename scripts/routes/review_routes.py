@@ -1387,6 +1387,7 @@ def create_blueprint(deps):
                             if (
                                 pub.get('journal')
                                 or pub.get('booktitle')
+                                or pub.get('fields', {}).get('type') == 'software'
                             )
                             else 'No venue found'
                         ),
@@ -1439,6 +1440,7 @@ def create_blueprint(deps):
                             if (
                                 pub.get('journal')
                                 or pub.get('booktitle')
+                                or pub.get('fields', {}).get('type') == 'software'
                             )
                             else 'No venue found'
                         ),
@@ -2170,11 +2172,38 @@ def create_blueprint(deps):
         try:
             body = request.get_json(force=True) or {}
             goals: dict = {}
+
+            # Enabled/disabled flags
+            for flag in ('pdf_pages_enabled', 'ats_pages_enabled', 'ats_chars_enabled'):
+                if flag in body:
+                    goals[flag] = bool(body[flag])
+
+            # PDF page mode
+            if 'max_pdf_pages_mode' in body:
+                mode = str(body['max_pdf_pages_mode'])
+                if mode not in ('combined', 'split'):
+                    return jsonify({'error': 'max_pdf_pages_mode must be "combined" or "split"'}), 400
+                goals['max_pdf_pages_mode'] = mode
+
+            # PDF pages — combined
             if 'max_pdf_pages' in body:
                 val = int(body['max_pdf_pages'])
                 if not (1 <= val <= 10):
                     return jsonify({'error': 'max_pdf_pages must be 1–10'}), 400
                 goals['max_pdf_pages'] = val
+
+            # PDF pages — split
+            if 'max_pdf_resume_pages' in body:
+                val = int(body['max_pdf_resume_pages'])
+                if not (1 <= val <= 10):
+                    return jsonify({'error': 'max_pdf_resume_pages must be 1–10'}), 400
+                goals['max_pdf_resume_pages'] = val
+            if 'max_pdf_cv_pages' in body:
+                val = int(body['max_pdf_cv_pages'])
+                if not (1 <= val <= 10):
+                    return jsonify({'error': 'max_pdf_cv_pages must be 1–10'}), 400
+                goals['max_pdf_cv_pages'] = val
+
             if 'max_ats_pages' in body:
                 val = int(body['max_ats_pages'])
                 if not (1 <= val <= 5):
@@ -2185,6 +2214,7 @@ def create_blueprint(deps):
                 if not (500 <= val <= 20000):
                     return jsonify({'error': 'max_ats_chars must be 500–20000'}), 400
                 goals['max_ats_chars'] = val
+
             if not goals:
                 return jsonify({'error': 'No valid goal fields provided'}), 400
             with entry.lock:
@@ -2209,24 +2239,36 @@ def create_blueprint(deps):
         try:
             body = request.get_json(force=True) or {}
             with entry.lock:
+                customizations = conversation.state.get('customizations')
+                if not isinstance(customizations, dict):
+                    customizations = {}
+                    conversation.state['customizations'] = customizations
+
                 if 'base_font_size' in body:
                     raw = str(body['base_font_size']).strip()
                     if not raw.endswith('px'):
                         raw = raw + 'px'
                     conversation.state['base_font_size'] = raw
-                    if 'customizations' in conversation.state:
-                        conversation.state['customizations'][
-                            'base_font_size'
-                        ] = raw
+                    customizations['base_font_size'] = raw
                 if 'page_margin' in body:
                     raw = str(body['page_margin']).strip()
                     if raw and raw.replace('.', '', 1).isdigit():
                         raw = raw + 'in'
                     conversation.state['page_margin'] = raw
-                    if 'customizations' in conversation.state:
-                        conversation.state['customizations'][
-                            'page_margin'
-                        ] = raw
+                    customizations['page_margin'] = raw
+                if 'publications_start_new_page' in body:
+                    raw = body['publications_start_new_page']
+                    if isinstance(raw, str):
+                        raw = raw.strip().lower() in {'1', 'true', 'yes', 'on'}
+                    else:
+                        raw = bool(raw)
+                    conversation.state['publications_start_new_page'] = raw
+                    customizations['publications_start_new_page'] = raw
+                if 'skills_show_experience' in body:
+                    raw = str(body['skills_show_experience']).strip().lower()
+                    if raw in {'always', 'never', 'individual'}:
+                        conversation.state['skills_show_experience'] = raw
+                        customizations['skills_show_experience'] = raw
                 conversation._save_session()
             _trigger_render_snapshot_refresh(
                 conversation,

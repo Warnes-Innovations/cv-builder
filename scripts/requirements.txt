@@ -49,5 +49,9 @@ requests>=2.31.0
 # Web UI
 flask>=2.3.0
 
+# CLI & MCP
+click>=8.0
+mcp>=1.8
+
 # Environment
 python-dotenv>=1.0.0

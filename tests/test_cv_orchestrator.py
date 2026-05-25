@@ -246,6 +246,97 @@ class TestFormatPublications(unittest.TestCase):
         result = self.orc._format_publications(pubs)
         self.assertIn("formatted_citation", result[0])
 
+    def test_publication_url_prefers_doi_when_available(self):
+        pubs = [
+            {
+                "formatted": "Doe et al. (2024). Example.",
+                "doi": "10.1000/xyz123",
+                "url": "https://example.com/paper",
+            }
+        ]
+        result = self.orc._format_publications(pubs)
+        self.assertEqual(result[0]["publication_url"], "https://doi.org/10.1000/xyz123")
+
+    def test_publication_url_uses_http_url_when_no_doi(self):
+        pubs = [
+            {
+                "formatted": "Doe et al. (2024). Example.",
+                "url": "https://example.com/paper",
+            }
+        ]
+        result = self.orc._format_publications(pubs)
+        self.assertEqual(result[0]["publication_url"], "https://example.com/paper")
+
+    def test_citation_title_split_fields_populated_for_title_only_linking(self):
+        pubs = [
+            {
+                "formatted": "Doe, J. (2024) Example Study. Journal X.",
+                "title": "Example Study",
+            }
+        ]
+        result = self.orc._format_publications(pubs)
+        self.assertEqual(result[0]["citation_title"], "Example Study")
+        self.assertIn("(2024)", result[0]["citation_prefix"])
+        self.assertIn("Journal X", result[0]["citation_suffix"])
+
+    def test_software_entries_do_not_append_redundant_note_text(self):
+        pubs = [
+            {
+                "formatted": "Warnes, G. (2007). DEDiscover. Open-Source Software Library.",
+                "type": "software",
+                "title": "DEDiscover",
+                "note": "Software tool",
+            },
+            {
+                "formatted": "Warnes, G. (2005). gplots. CRAN R package.",
+                "type": "software",
+                "title": "gplots",
+                "note": "R package version 3.3.0",
+            },
+        ]
+
+        result = self.orc._format_publications(pubs)
+
+        self.assertEqual(
+            result[0]["formatted_citation"],
+            "Warnes, G. (2007). DEDiscover. Open-Source Software Library.",
+        )
+        self.assertEqual(
+            result[1]["formatted_citation"],
+            "Warnes, G. (2005). gplots. CRAN R package.",
+        )
+
+
+class TestPublicationOrdering(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_default_sort_is_recent_first(self):
+        pubs = [
+            {"key": "a", "year": "2019", "title": "A"},
+            {"key": "b", "year": "2024", "title": "B"},
+            {"key": "c", "year": "2021", "title": "C"},
+        ]
+        sorted_pubs = self.orc._sort_selected_publications(pubs, {})
+        self.assertEqual([p["key"] for p in sorted_pubs], ["b", "c", "a"])
+
+    def test_ascending_sort_order_override(self):
+        pubs = [
+            {"key": "a", "year": "2019", "title": "A"},
+            {"key": "b", "year": "2024", "title": "B"},
+            {"key": "c", "year": "2021", "title": "C"},
+        ]
+        sorted_pubs = self.orc._sort_selected_publications(
+            pubs,
+            {"publication_sort_order": "ascending"},
+        )
+        self.assertEqual([p["key"] for p in sorted_pubs], ["a", "c", "b"])
+
 
 # ---------------------------------------------------------------------------
 # apply_accepted_spell_fixes
@@ -403,8 +494,62 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
             self._selected(), self._job()
         )
         meta = result["template_metadata"]
-        for key in ("variant", "generated_date", "job_title", "company", "skills_section_title"):
+        for key in (
+            "variant",
+            "generated_date",
+            "job_title",
+            "company",
+            "skills_section_title",
+            "publications_start_new_page",
+            "skills_show_experience",
+        ):
             self.assertIn(key, meta, f"Missing metadata key: {key}")
+
+    def test_publications_start_new_page_defaults_false(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+        )
+        self.assertFalse(result["template_metadata"]["publications_start_new_page"])
+
+    def test_publications_start_new_page_true_when_customized(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            customizations={"publications_start_new_page": True},
+        )
+        self.assertTrue(result["template_metadata"]["publications_start_new_page"])
+
+    def test_skills_show_experience_defaults_to_individual(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+        )
+        self.assertEqual(result["template_metadata"]["skills_show_experience"], "individual")
+
+    def test_skills_show_experience_always(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            customizations={"skills_show_experience": "always"},
+        )
+        self.assertEqual(result["template_metadata"]["skills_show_experience"], "always")
+
+    def test_skills_show_experience_never(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            customizations={"skills_show_experience": "never"},
+        )
+        self.assertEqual(result["template_metadata"]["skills_show_experience"], "never")
+
+    def test_skills_show_experience_rejects_invalid_value(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            customizations={"skills_show_experience": "bogus"},
+        )
+        self.assertEqual(result["template_metadata"]["skills_show_experience"], "individual")
 
     def test_template_metadata_skills_section_title_default(self):
         result = self.orc._prepare_cv_data_for_template(
@@ -425,6 +570,35 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
             self._selected(), self._job()
         )
         self.assertEqual(result["template_metadata"]["company"], "Acme Corp")
+
+    def test_applicant_tagline_uses_personal_info_headline(self):
+        sel = self._selected()
+        sel["personal_info"]["headline"] = "Principal Biostatistician and ML Leader"
+        result = self.orc._prepare_cv_data_for_template(sel, self._job())
+        self.assertEqual(
+            result["template_metadata"]["applicant_tagline"],
+            "Principal Biostatistician and ML Leader",
+        )
+
+    def test_applicant_tagline_does_not_fallback_to_job_title(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+        )
+        self.assertEqual(result["template_metadata"]["applicant_tagline"], "")
+
+    def test_applicant_tagline_prefers_customization_override(self):
+        sel = self._selected()
+        sel["personal_info"]["headline"] = "Master CV Headline"
+        result = self.orc._prepare_cv_data_for_template(
+            sel,
+            self._job(),
+            customizations={"tagline_override": "User Confirmed Tagline"},
+        )
+        self.assertEqual(
+            result["template_metadata"]["applicant_tagline"],
+            "User Confirmed Tagline",
+        )
 
     def test_empty_summary_gets_default(self):
         sel = self._selected({"summary": ""})
@@ -1923,6 +2097,52 @@ class TestCheckPersuasion(unittest.TestCase):
             [issue["type"] for issue in finding["issues"]],
             ["no_strong_verb", "too_short"],
         )
+
+    def test_descriptor_prefix_is_ignored_for_opening_verb_check(self):
+        experiences = [
+            {
+                "id": "exp-4",
+                "achievements": [
+                    (
+                        "Statistical Genomics: Provided expert consulting "
+                        "that reduced assay rework by 18%."
+                    ),
+                ],
+            }
+        ]
+
+        result = self.orc.check_persuasion(experiences)
+
+        self.assertEqual(result["summary"]["total_bullets"], 1)
+        self.assertEqual(result["summary"]["flagged"], 0)
+        self.assertEqual(result["summary"]["strong_count"], 1)
+        self.assertEqual(result["findings"], [])
+
+    def test_opening_word_helper_strips_short_descriptor_block(self):
+        opening = self.orc._opening_word_for_verb_check(
+            "Broadband Analyzer: Designed and deployed a scalable pipeline.",
+        )
+        self.assertEqual(opening, "Designed")
+
+    def test_expanded_strong_verbs_are_recognized(self):
+        samples = [
+            "Integrated machine learning models into production SaaS platforms.",
+            "Translated customer challenges into actionable requirements.",
+            "Founded and managed a university analytics center.",
+            "Secured more than $10 million in gifts and grants.",
+            "Taught graduate courses in statistical computing.",
+            "Conceived and drove a commercial R initiative.",
+            "Coined the name REvolution Computing.",
+            "Conducted advanced biostatistical research in oncology.",
+            "Demonstrated critical impact by improving release quality.",
+            "Provided expert consulting on experimental design.",
+            "Invented and implemented a predictive maintenance system.",
+        ]
+
+        for text in samples:
+            with self.subTest(text=text):
+                opening = self.orc._opening_word_for_verb_check(text)
+                self.assertIn(opening.lower(), self.orc._STRONG_VERBS_LOWER)
 
 
 if __name__ == "__main__":

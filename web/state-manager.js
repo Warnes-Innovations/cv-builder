@@ -38,10 +38,10 @@ const PHASE_TO_STEP = {
   [PHASES.CUSTOMIZATION]:    'customizations',
   [PHASES.REWRITE_REVIEW]:   'rewrite',
   [PHASES.SPELL_CHECK]:      'spell',
-  [PHASES.GENERATION]:       'generate',
+  [PHASES.GENERATION]:       'layout',
   [PHASES.LAYOUT_REVIEW]:    'layout',
-  [PHASES.FINAL_GENERATION]: 'final_generate',
-  [PHASES.REFINEMENT]:       'finalise',
+  [PHASES.FINAL_GENERATION]: 'download',
+  [PHASES.REFINEMENT]:       'download',
 };
 
 function getWorkflowStepForPhase(phase) {

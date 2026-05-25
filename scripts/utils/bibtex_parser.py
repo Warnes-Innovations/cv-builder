@@ -124,7 +124,7 @@ def _entry_to_publication(entry: Dict[str, str]) -> Dict[str, Dict | str]:
         publication["number"] = fields.get("number", "")
     elif entry_type == "phdthesis":
         publication["school"] = fields.get("school", "")
-    elif entry_type == "misc":
+    elif entry_type in ("misc", "manual"):
         publication["note"] = fields.get("note", "")
         publication["url"] = fields.get("url", "")
 
@@ -199,6 +199,60 @@ def _format_authors(authors: str | List[str] | None) -> str:
         return author_names[0]
 
 
+def _is_software_pkg(pub: Dict) -> bool:
+    """Return True when the entry is a software/R package."""
+    if pub.get("type") not in ("misc", "manual"):
+        return False
+    return (
+        pub.get("fields", {}).get("type") == "software"
+        or "package" in pub.get("note", "").lower()
+    )
+
+
+def _pkg_label(pub: Dict) -> str:
+    """Return a canonical software label from note/title/url hints."""
+    note = str(pub.get("note", "") or "")
+    url = _pkg_url(pub)
+    title = str(pub.get("title", "") or "")
+    fields = pub.get("fields", {}) or {}
+    misc_text = " ".join(
+        [
+            note,
+            url,
+            title,
+            str(fields.get("howpublished", "") or ""),
+        ]
+    ).lower()
+
+    # Preserve existing R-package labels with source-specific provenance.
+    if "r package" in note.lower() or "cran.r-project.org" in misc_text or "bioconductor.org" in misc_text:
+        if "cran.r-project.org" in misc_text:
+            return "CRAN R package"
+        if "bioconductor.org" in misc_text:
+            return "Bioconductor R package"
+        if "github.com" in misc_text:
+            return "R package (GitHub)"
+        return "R package"
+
+    if "java" in misc_text:
+        return "Open-Source Java Library"
+    if "python" in misc_text or "pypi" in misc_text:
+        return "Open-Source Python Library"
+    if "javascript" in misc_text or "node.js" in misc_text or "nodejs" in misc_text:
+        return "Open-Source JavaScript Library"
+
+    return "Open-Source Software Library"
+
+
+def _pkg_url(pub: Dict) -> str:
+    """Return the canonical URL for a software entry, preferring the url field."""
+    return (
+        pub.get("url")
+        or pub.get("fields", {}).get("url", "")
+        or ""
+    )
+
+
 def format_publication(pub: Dict, style: str = "apa") -> str:
     """
     Format a publication entry for display in CV.
@@ -239,6 +293,8 @@ def _format_brief(pub: Dict) -> str:
         parts.append(f"{pub['booktitle']}.")
     elif pub["type"] == "techreport" and "institution" in pub:
         parts.append(f"{pub['institution']}.")
+    elif _is_software_pkg(pub):
+        parts.append(f"{_pkg_label(pub)}.")
 
     return " ".join(parts)
 
@@ -254,22 +310,33 @@ def _format_apa(pub: Dict) -> str:
     if pub["year"]:
         parts.append(f"({pub['year']}).")
 
-    # Title
+    # Title — software entries append the label in brackets; others plain.
     if pub["title"]:
         title = pub["title"].replace("{", "").replace("}", "")
-        parts.append(f"{title}.")
+        if _is_software_pkg(pub):
+            parts.append(f"{title} [{_pkg_label(pub)}].")
+        else:
+            parts.append(f"{title}.")
 
     # Publication venue
     if pub["type"] == "article":
-        venue_parts = []
-        if "journal" in pub:
-            venue_parts.append(f"*{pub['journal']}*")
-        if "volume" in pub:
-            venue_parts.append(pub["volume"])
-        if "pages" in pub:
-            venue_parts.append(pub["pages"])
-        if venue_parts:
-            parts.append(", ".join(venue_parts) + ".")
+        journal = str(pub.get("journal", "") or "").strip()
+        volume = str(pub.get("volume", "") or "").strip()
+        pages = str(pub.get("pages", "") or "").strip()
+
+        venue_text = ""
+        if journal and volume:
+            venue_text = f"*{journal}, {volume}*"
+        elif journal:
+            venue_text = f"*{journal}*"
+        elif volume:
+            venue_text = f"*{volume}*"
+
+        if pages:
+            venue_text = f"{venue_text}, {pages}" if venue_text else pages
+
+        if venue_text:
+            parts.append(f"{venue_text}.")
 
     elif pub["type"] in ["inproceedings", "conference"]:
         if "booktitle" in pub:
@@ -285,8 +352,12 @@ def _format_apa(pub: Dict) -> str:
         if "school" in pub:
             parts.append(f"Doctoral dissertation, {pub['school']}.")
 
-    elif pub["type"] == "misc":
-        if "note" in pub:
+    elif pub["type"] in ("misc", "manual"):
+        if _is_software_pkg(pub):
+            url = _pkg_url(pub)
+            if url:
+                parts.append(url)
+        elif "note" in pub:
             parts.append(f"{pub['note']}.")
 
     return " ".join(parts)
@@ -322,6 +393,12 @@ def _format_ieee(pub: Dict) -> str:
         if "year" in pub:
             venue += f", {pub['year']}"
         parts.append(venue + ".")
+
+    elif _is_software_pkg(pub):
+        parts.append(f"{_pkg_label(pub)}, {pub['year']}.")
+        url = _pkg_url(pub)
+        if url:
+            parts.append(url)
 
     else:
         if "year" in pub:
@@ -382,7 +459,7 @@ def get_software_publications(
     return {
         key: pub
         for key, pub in publications.items()
-        if pub["type"] == "misc" and "package" in pub.get("note", "").lower()
+        if pub["type"] in ("misc", "manual") and "package" in pub.get("note", "").lower()
     }
 
 

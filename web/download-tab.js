@@ -321,7 +321,11 @@ async function populateDownloadTab(cvData) {
   content.innerHTML = `${html}<p style="color:#6b7280;margin-top:16px;font-size:0.9em;">Analysing bullet persuasiveness…</p>`;
   html += await _fetchPersuasionHtml();
   html += _renderRefinementPanel();
-  html += '<div class="nav-buttons nav-end" style="margin-top:16px;"><button class="continue-btn" onclick="switchTab(\'layout\')">Open Layout Review →</button></div>';
+  html += `<div class="nav-buttons nav-end" style="margin-top:16px;">
+    <button class="continue-btn" onclick="handleStepClick('cover_letter')">
+      📩 Proceed to Cover Letter →
+    </button>
+  </div>`;
   content.innerHTML = html;
 }
 

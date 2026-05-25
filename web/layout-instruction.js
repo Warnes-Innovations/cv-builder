@@ -34,6 +34,17 @@ export function pxToPt(px) {
   return Math.round(px * 0.75 * 10) / 10;
 }
 
+function coerceBoolean(value, defaultValue = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  }
+  if (value == null) return defaultValue;
+  return Boolean(value);
+}
+
 // Undo stack — each entry is { html, instructions } snapshotted before a
 // layout instruction is applied.  Cap at 20 entries to bound memory.
 const _layoutUndoStack = [];
@@ -318,6 +329,20 @@ async function initiateLayoutInstructions() {
               style="width:72px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
               title="Controls the print page margins for all PDF pages."
             />
+            <label for="publications-start-new-page-input" style="display:inline-flex; align-items:center; gap:6px; font-size:0.83em; color:#334155; margin-left:8px;">
+              <input id="publications-start-new-page-input" type="checkbox" />
+              Start Publications on new page
+            </label>
+            <label for="skills-show-experience-select" style="font-size:0.85em; font-weight:600; color:#475569; white-space:nowrap; margin-left:8px;">Skill experience level:</label>
+            <select
+              id="skills-show-experience-select"
+              style="padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
+              title="Controls whether years of experience are shown next to each skill."
+            >
+              <option value="individual">Individual setting</option>
+              <option value="always">Always</option>
+              <option value="never">Never</option>
+            </select>
             <button id="apply-layout-settings-btn" class="btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
             <span id="layout-settings-status" style="font-size:0.8em; color:#64748b;"></span>
           </div>
@@ -395,6 +420,31 @@ async function initiateLayoutInstructions() {
     const input = document.getElementById('page-margin-input');
     if (input) input.value = parseFloat(savedPageMargin) || 0.5;
   }
+  const publicationsStartInput = document.getElementById('publications-start-new-page-input');
+  if (publicationsStartInput) {
+    const sessionState = stateManager?.getSessionState?.() || {};
+    const customizationState = stateManager?.getTabData?.('customizations') || {};
+    const savedPublicationsStart =
+      sessionState.publications_start_new_page
+      ?? sessionState?.customizations?.publications_start_new_page
+      ?? customizationState.publications_start_new_page
+      ?? customizationState.publications_page_break
+      ?? customizationState.start_publications_on_new_page
+      ?? false;
+    publicationsStartInput.checked = coerceBoolean(savedPublicationsStart, false);
+  }
+  const skillsShowExperienceSelect = document.getElementById('skills-show-experience-select');
+  if (skillsShowExperienceSelect) {
+    const sessionState = stateManager?.getSessionState?.() || {};
+    const customizationState = stateManager?.getTabData?.('customizations') || {};
+    const savedSkillsExp =
+      sessionState.skills_show_experience
+      ?? sessionState?.customizations?.skills_show_experience
+      ?? customizationState.skills_show_experience
+      ?? 'individual';
+    const valid = ['always', 'never', 'individual'];
+    skillsShowExperienceSelect.value = valid.includes(savedSkillsExp) ? savedSkillsExp : 'individual';
+  }
 
   renderPreviewOutputStatus(getPreviewOutputs());
 
@@ -428,9 +478,19 @@ function setupLayoutInstructionListeners() {
   const applySettingsBtn  = document.getElementById('apply-layout-settings-btn');
   const fontSizeInput     = document.getElementById('base-font-size-input');
   const pageMarginInput   = document.getElementById('page-margin-input');
+  const publicationsStartInput = document.getElementById('publications-start-new-page-input');
+  const skillsShowExperienceSelect = document.getElementById('skills-show-experience-select');
 
-  if (applySettingsBtn && fontSizeInput && pageMarginInput) {
-    applySettingsBtn.addEventListener('click', () => applyLayoutSettings(fontSizeInput.value, pageMarginInput.value));
+  if (applySettingsBtn && fontSizeInput && pageMarginInput && publicationsStartInput) {
+    applySettingsBtn.addEventListener(
+      'click',
+      () => applyLayoutSettings(
+        fontSizeInput.value,
+        pageMarginInput.value,
+        publicationsStartInput.checked,
+        skillsShowExperienceSelect?.value || 'individual',
+      ),
+    );
     fontSizeInput.addEventListener('input', () => {
       const ptDisplay = document.getElementById('font-size-pt-display');
       if (ptDisplay) {
@@ -439,10 +499,24 @@ function setupLayoutInstructionListeners() {
       }
     });
     fontSizeInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') applyLayoutSettings(fontSizeInput.value, pageMarginInput.value);
+      if (e.key === 'Enter') {
+        applyLayoutSettings(
+          fontSizeInput.value,
+          pageMarginInput.value,
+          publicationsStartInput.checked,
+          skillsShowExperienceSelect?.value || 'individual',
+        );
+      }
     });
     pageMarginInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') applyLayoutSettings(fontSizeInput.value, pageMarginInput.value);
+      if (e.key === 'Enter') {
+        applyLayoutSettings(
+          fontSizeInput.value,
+          pageMarginInput.value,
+          publicationsStartInput.checked,
+          skillsShowExperienceSelect?.value || 'individual',
+        );
+      }
     });
   }
 
@@ -515,7 +589,7 @@ function setupLayoutInstructionListeners() {
 /**
  * Save layout display settings to session state, then re-render the preview.
  */
-async function applyLayoutSettings(fontSizeValue, pageMarginValue) {
+async function applyLayoutSettings(fontSizeValue, pageMarginValue, publicationsStartNewPage = false, skillsShowExperience = 'individual') {
   const statusEl = document.getElementById('layout-settings-status');
   const parsedFontSize = parseFloat(fontSizeValue);
   const parsedPageMargin = parseFloat(pageMarginValue);
@@ -532,6 +606,8 @@ async function applyLayoutSettings(fontSizeValue, pageMarginValue) {
     const saveRes = await apiCall('POST', '/api/layout-settings', {
       base_font_size: `${parsedFontSize}px`,
       page_margin: `${parsedPageMargin}in`,
+      publications_start_new_page: Boolean(publicationsStartNewPage),
+      skills_show_experience: skillsShowExperience,
     });
     if (!saveRes.ok) throw new Error(saveRes.error || 'save failed');
 
@@ -1087,25 +1163,6 @@ async function confirmLayoutReview() {
   } finally {
     showProcessing(false);
   }
-}
-
-async function advanceLayoutToRefinement() {
-  let layoutInstructions = window.layoutInstructions || [];
-  if (layoutInstructions.length === 0) {
-    layoutInstructions = await loadLayoutInstructionHistory();
-    window.layoutInstructions = layoutInstructions;
-    renderInstructionHistory();
-  }
-
-  const response = await apiCall('POST', '/api/layout-complete', {
-    layout_instructions: layoutInstructions,
-  });
-  if (!response.ok) {
-    throw new Error(response.error || 'Failed to advance to final review.');
-  }
-
-  stateManager.setPhase('refinement');
-  switchTab('download');
 }
 
 async function generateFinalOutputs() {

@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1761,6 +1762,7 @@ def create_blueprint(deps):
                 approved_rewrites=conv.state.get('approved_rewrites') or [],
                 spell_audit=conv.state.get('spell_audit') or [],
                 max_skills=conv.state.get('max_skills'),
+                use_semantic_match=False,  # Skip LLM scoring — content already ranked upstream
             )
             selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
             ats_file = conv.orchestrator._generate_ats_docx(
@@ -2015,6 +2017,53 @@ def create_blueprint(deps):
         except Exception:
             return _internal_server_error('Failed to load harvest candidates.')
 
+    @bp.post("/api/harvest/analyze")
+    def harvest_analyze():
+        """LLM evaluation of harvest candidates: recommendation, confidence, reasoning."""
+        # duckflow:
+        #   id: generation_api_harvest_analyze_live
+        #   kind: api
+        #   timestamp: "2026-05-21T00:00:00Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/harvest/analyze"
+        #   reads:
+        #     - "state:harvest_analysis"
+        #     - "state:approved_rewrites"
+        #     - "state:customizations"
+        #     - "state:job_analysis"
+        #   writes:
+        #     - "state:harvest_analysis"
+        #   returns:
+        #     - "response:POST /api/harvest/analyze.analyses"
+        entry = get_session()
+        conversation = entry.manager
+        body = request.get_json(silent=True) or {}
+        force_refresh = bool(body.get('force_refresh'))
+
+        if not force_refresh:
+            cached = conversation.state.get('harvest_analysis')
+            if cached:
+                return jsonify({'ok': True, 'analyses': cached, 'cached': True})
+
+        try:
+            candidates = _compile_harvest_candidates(conversation)
+            if not candidates:
+                return jsonify({'ok': True, 'analyses': [], 'cached': False})
+
+            job_analysis = conversation.state.get('job_analysis') or {}
+            result = conversation.orchestrator.analyze_harvest_candidates(candidates, job_analysis)
+            if result.get('error'):
+                return jsonify({'ok': False, 'error': result['error'], 'analyses': []}), 200
+
+            analyses = result.get('analyses') or []
+            conversation.state['harvest_analysis'] = analyses
+            conversation.save_session()
+
+            return jsonify({'ok': True, 'analyses': analyses, 'cached': False})
+        except Exception:
+            return _internal_server_error('Failed to analyze harvest candidates.')
+
     @bp.post("/api/harvest/apply")
     def harvest_apply():
         """Write selected harvest candidates back to Master_CV_Data.json and git commit."""
@@ -2076,6 +2125,18 @@ def create_blueprint(deps):
                             'label':   cand['label'],
                         })
 
+                # Write a timestamped backup before modifying master (Phase B safety)
+                backup_path = None
+                try:
+                    backup_dir = master_path.parent / 'backups'
+                    backup_dir.mkdir(exist_ok=True)
+                    backup_ts   = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    backup_path = backup_dir / f"Master_CV_Data_{backup_ts}.json"
+                    shutil.copy2(master_path, backup_path)
+                except Exception as backup_err:
+                    current_app.logger.warning("Harvest backup failed: %s", backup_err)
+                    backup_path = None
+
                 if callable(save_master):
                     save_master(master, master_path)
                 else:
@@ -2083,8 +2144,6 @@ def create_blueprint(deps):
                         json.dump(master, f, indent=2)
 
                 conversation.orchestrator.master_data = master
-
-                job_analysis = conversation.state.get('job_analysis') or {}
                 company  = (job_analysis.get('company') or 'Unknown').replace(' ', '_')
                 role     = (job_analysis.get('title') or 'Role').replace(' ', '_')
                 date_str = datetime.now().strftime('%Y-%m-%d')
@@ -2121,12 +2180,13 @@ def create_blueprint(deps):
                 written_count = sum(1 for d in diff_summary if d.get('applied'))
                 session_registry.touch(sid)
                 return jsonify({
-                    'ok':           True,
-                    'written_count': written_count,
-                    'diff_summary': diff_summary,
-                    'commit_hash':  commit_hash,
-                    'git_error':    git_error,
-                    'push_error':   push_error,
+                    'ok':            True,
+                    'written_count':  written_count,
+                    'diff_summary':  diff_summary,
+                    'commit_hash':   commit_hash,
+                    'git_error':     git_error,
+                    'push_error':    push_error,
+                    'backup_path':   str(backup_path) if backup_path else None,
                 })
             except Exception:
                 return _internal_server_error('Failed to apply harvested updates.')
@@ -2174,6 +2234,7 @@ def create_blueprint(deps):
                 approved_rewrites=inputs['approved_rewrites'],
                 spell_audit=inputs['spell_audit'],
                 max_skills=inputs['max_skills'],
+                use_semantic_match=False,
             )
         except Exception as exc:
             current_app.logger.exception("propose-content-change: failed to build content")

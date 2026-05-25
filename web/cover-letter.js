@@ -151,6 +151,10 @@ async function populateCoverLetterTab() {
         <div id="cl-checks-container"></div>
       </div>
     </div>
+
+    <div class="nav-buttons nav-end" style="margin-top:24px;">
+      <button class="continue-btn" onclick="handleStepClick('screening')">📋 Proceed to Screening →</button>
+    </div>
   `;
 
   // Restore saved form state and wire up save-on-change listeners.

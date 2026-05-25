@@ -269,6 +269,10 @@ class TestFormatPublication(unittest.TestCase):
         result = format_publication(self.article, style="apa")
         self.assertIn("2024", result)
 
+    def test_apa_uses_italic_journal_marker(self):
+        result = format_publication(self.article, style="apa")
+        self.assertIn("*Bioinformatics", result)
+
     def test_ieee_style(self):
         result = format_publication(self.article, style="ieee")
         self.assertIsInstance(result, str)
@@ -283,6 +287,44 @@ class TestFormatPublication(unittest.TestCase):
         proc = self.pubs["warnes2023nlp"]
         result = format_publication(proc, style="apa")
         self.assertIn("2023", result)
+
+    def test_brief_non_r_java_software_uses_open_source_java_label(self):
+        java_pub = {
+            "type": "misc",
+            "authors": "Warnes, Gregory R.",
+            "year": "2000",
+            "title": "DistLib: Statistical Distribution Library for Java",
+            "note": "Java library",
+            "fields": {"type": "software"},
+        }
+        result = format_publication(java_pub, style="brief")
+        self.assertIn("Open-Source Java Library.", result)
+        self.assertNotIn("Software Java library", result)
+
+    def test_brief_non_r_python_software_uses_open_source_python_label(self):
+        py_pub = {
+            "type": "misc",
+            "authors": "Warnes, Gregory R.",
+            "year": "2003",
+            "title": "fpconst: IEEE 754 Floating Point Special Values",
+            "note": "Python library",
+            "fields": {"type": "software"},
+        }
+        result = format_publication(py_pub, style="brief")
+        self.assertIn("Open-Source Python Library.", result)
+
+    def test_brief_generic_software_uses_open_source_software_label(self):
+        generic_pub = {
+            "type": "misc",
+            "authors": "Warnes, Gregory R.",
+            "year": "2002",
+            "title": "HYDRA: Platform-Neutral MCMC Library",
+            "note": "Software library",
+            "fields": {"type": "software"},
+        }
+        result = format_publication(generic_pub, style="brief")
+        self.assertIn("Open-Source Software Library.", result)
+        self.assertNotIn("Software Software", result)
 
 
 # ---------------------------------------------------------------------------
