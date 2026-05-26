@@ -143,5 +143,3 @@ Looking at the last terminal commands:
 - The edits I made were to the job routes, web app, and concurrent sessions test files
 
 Now I need to check what's staged and unstaged in the main repo to see what's ready to commit.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->

@@ -2,7 +2,7 @@
 
 # 2026-02-19 14:27:30Z
 
-<!-- copilotide Session 941921b4-75c6-4336-bbc3-00df958e77b6 (2026-02-19 14:27:30Z) -->
+<!-- VS Code Copilot IDE Session 941921b4-75c6-4336-bbc3-00df958e77b6 (2026-02-19 14:27:30Z) -->
 
 _**User (2026-02-19 14:27:30Z)**_
 
@@ -777,5 +777,3 @@ I found the information in CV-Warnes-Gregory_bPrescient_Computational_Biology:
 _**User (2026-02-19 18:01:38Z)**_
 
 For 2, add that the primary context was opthamology trials.
-
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder-prod target=cv-builder-prod reason="already in correct repo" -->

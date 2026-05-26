@@ -427,5 +427,3 @@ First, let me read the code-review skill, and simultaneously gather information 
 _**User (2026-03-11 23:19:18Z)**_
 
 Yes, fix.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->

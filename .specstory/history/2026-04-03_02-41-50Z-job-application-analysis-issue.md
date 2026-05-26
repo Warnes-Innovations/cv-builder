@@ -519,5 +519,3 @@ Let me check the current state first.
 _**User (2026-04-06 19:47:34Z)**_
 
 Please remove the other outdated worktree folders and branches.  Note that `wizard-api-keys` is new and in use.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/worktrees/fix-questions-skipped`" -->

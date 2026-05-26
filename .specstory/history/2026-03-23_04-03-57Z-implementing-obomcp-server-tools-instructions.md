@@ -13,5 +13,3 @@ Ensure that the new instructions about "Prefer the `obo-mcp` MCP server tools" a
 _**Agent (copilot/gpt-5.4)**_
 
 Dr. Greg, applicable instructions are the mandatory pre-flight, the vscode-config source-of-truth and immediate push rule, and the cv-builder instruction to begin code-change work by identifying applicable sections and skills. Relevant skills here are `copilot-preflight`, `agent-customization`, `copilot-instructions-bridge`, `markdown-formatting`, and `code-review`; I’m loading those first, then I’ll trace where OBO guidance exists for each supported agent and patch the gaps.
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

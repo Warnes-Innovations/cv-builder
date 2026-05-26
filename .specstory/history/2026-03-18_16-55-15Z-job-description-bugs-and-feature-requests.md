@@ -280,5 +280,3 @@ _**User (2026-03-18 18:01:15Z)**_
 _**Agent (copilot/auto)**_
 
 The test passes, and I’m now doing a quick cleanup tweak to silence the expected console warning in this test so test output stays clean and focused.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/scripts/web_app.py`" -->

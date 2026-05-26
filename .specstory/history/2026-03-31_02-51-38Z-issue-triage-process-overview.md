@@ -22927,5 +22927,3 @@ The user wants to merge the `feat/issue-81-llm-config-wizard` branch into `devel
 Wait, let me re-read. The previous push was `git push origin feat/issue-81-llm-config-wizard:devel` which pushes the local branch to the remote `devel` branch. But we also did a merge of `origin/devel` into our local branch first.
  
 Actually, I'm realizing the state is a bit confusing. We pushed the feature branch directly to the
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder/worktrees/fix-issue54" -->

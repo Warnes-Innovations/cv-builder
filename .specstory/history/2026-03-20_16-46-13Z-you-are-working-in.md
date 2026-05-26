@@ -7633,5 +7633,3 @@ EOF
 _**Agent (claude-sonnet-4-6 2026-03-20 17:12:51Z)**_
 
 Committed as `a66e20b`.
-
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder-prod target=cv-builder-prod reason="already in correct repo" -->

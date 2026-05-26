@@ -1416,5 +1416,3 @@ Applicable instruction sections: the data-protection rules, mandatory pre-flight
 _**User (2026-03-24 01:34:37Z)**_
 
 Confirm that PR #52 has been merged, and the remote branch deleted.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder/worktrees/coverage-plan-top5-inrepo](/Users/warnes/src/cv-builder/worktrees/coverage-plan-top5-inrepo)," -->

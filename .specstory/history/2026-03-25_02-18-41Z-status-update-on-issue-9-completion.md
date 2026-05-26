@@ -371,5 +371,3 @@ The sidebar page background color is still not properly positions for chrome and
 _**User (2026-03-25 19:28:07Z)**_
 
 Are you there?
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

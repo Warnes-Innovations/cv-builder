@@ -685,5 +685,3 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to resume the OBO session. Let me read the SKILL.md for one-by-one first, then check the current session file state.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/scripts/utils/cv_orchestrator.py`" -->

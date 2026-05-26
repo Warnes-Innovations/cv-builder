@@ -263,5 +263,3 @@ From my review:
    
 2. In `_validateCoverLetter()` / `_getCompanyNameForCL()`:
    - `companyName` is used in detail strings without escapeHtml()
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

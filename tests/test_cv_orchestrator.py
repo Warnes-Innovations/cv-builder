@@ -2038,6 +2038,100 @@ class TestCheckPersuasion(unittest.TestCase):
         self.assertEqual(result["summary"]["flagged"], 0)
         self.assertEqual(result["summary"]["strong_count"], 1)
 
+
+class TestCvBodyPageCap(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_cap_cv_body_to_pages_reduces_character_estimate(self):
+        summary = " ".join(["summary"] * 220)
+        experiences = [
+            {
+                "id": f"exp_{i}",
+                "title": "Senior Scientist",
+                "company": "Acme",
+                "start_date": "2019",
+                "end_date": "Present",
+                "ordered_achievements": [
+                    {"text": " ".join(["impact"] * 45)} for _ in range(5)
+                ],
+            }
+            for i in range(6)
+        ]
+        achievements = [{"text": " ".join(["achievement"] * 30)} for _ in range(8)]
+        skills = [{"name": f"Skill {i}"} for i in range(30)]
+
+        before = self.orc._estimate_cv_body_chars(summary, experiences, achievements, skills)
+        capped = self.orc._cap_cv_body_to_pages(
+            summary,
+            experiences,
+            achievements,
+            skills,
+            max_pages=2,
+            chars_per_page=800,
+        )
+        after = self.orc._estimate_cv_body_chars(*capped)
+
+        self.assertGreater(before, 1600)
+        self.assertLessEqual(after, before)
+        self.assertLess(after, int(before * 0.6))
+
+    def test_select_content_hybrid_applies_max_cv_pages_cap(self):
+        self.orc.master_data["experience"] = [
+            {
+                "id": f"exp_{i}",
+                "title": "Data Scientist",
+                "company": "Acme",
+                "start_date": "2018",
+                "end_date": "Present",
+                "achievements": [
+                    {"text": " ".join(["pipeline"] * 36)} for _ in range(5)
+                ],
+            }
+            for i in range(8)
+        ]
+        self.orc.master_data["selected_achievements"] = [
+            {"id": f"sa_{i}", "text": " ".join(["impact"] * 30)}
+            for i in range(8)
+        ]
+        self.orc.master_data["skills"] = [
+            {"name": f"Skill {i}", "category": "General"}
+            for i in range(40)
+        ]
+        self.orc.llm.semantic_match.return_value = 0.0
+
+        job = {
+            "ats_keywords": ["pipeline", "modeling", "statistics"],
+            "required_skills": [],
+            "must_have_requirements": [],
+            "nice_to_have_requirements": [],
+            "domain": "",
+        }
+
+        uncapped = self.orc._select_content_hybrid(job, {})
+        capped = self.orc._select_content_hybrid(job, {"max_cv_pages": 1})
+
+        uncapped_chars = self.orc._estimate_cv_body_chars(
+            uncapped["summary"],
+            uncapped["experiences"],
+            uncapped["achievements"],
+            uncapped["skills"],
+        )
+        capped_chars = self.orc._estimate_cv_body_chars(
+            capped["summary"],
+            capped["experiences"],
+            capped["achievements"],
+            capped["skills"],
+        )
+
+        self.assertLess(capped_chars, uncapped_chars)
+        self.assertLessEqual(capped_chars, 2500)
+
     def test_ordered_achievements_take_precedence_and_flag_warning_issues(
         self,
     ):

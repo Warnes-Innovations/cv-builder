@@ -1029,27 +1029,24 @@ Job Description (excerpt):
                 if loaded:
                     print(f"✓ Restored previous session for: {position_name}")
                 else:
-                    _preload_conv.conversation_history.append({
-                        "role": "system",
-                        "content": (
-                            f"Job description loaded: {job_text.split(chr(10))[0]} at "
-                            + (job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company')
-                        ),
-                    })
+                    _preload_conv.add_to_history(
+                        "system",
+                        f"Job description loaded: {job_text.split(chr(10))[0]} at "
+                        + (job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company'),
+                    )
             except Exception as e:
                 print(f"⚠ Could not load previous session: {e}")
-                _preload_conv.conversation_history.append({
-                    "role": "system",
-                    "content": (
-                        f"Job description loaded: {job_text.split(chr(10))[0]} at "
-                        + (job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company')
-                    ),
-                })
+                _preload_conv.add_to_history(
+                    "system",
+                    f"Job description loaded: {job_text.split(chr(10))[0]} at "
+                    + (job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company'),
+                )
             session_registry.touch(_preload_sid)
 
     from routes.auth_routes import create_blueprint as create_auth_blueprint
     from routes.generation_routes import create_blueprint as create_generation_blueprint
     from routes.job_routes import create_blueprint as create_job_blueprint
+    from routes.llm_routes import create_blueprint as create_llm_blueprint
     from routes.master_data_routes import create_blueprint as create_master_data_blueprint
     from routes.review_routes import create_blueprint as create_review_blueprint
     from routes.session_routes import create_blueprint as create_session_blueprint
@@ -1098,6 +1095,7 @@ Job Description (excerpt):
     app.register_blueprint(create_auth_blueprint(deps))
     app.register_blueprint(create_master_data_blueprint(deps))
     app.register_blueprint(create_static_blueprint(deps))
+    app.register_blueprint(create_llm_blueprint(deps))
 
     # Return JSON (not HTML) for all HTTP errors on /api/ routes.
     # Without this, flask.abort(400/403/404) sends an HTML error page, which

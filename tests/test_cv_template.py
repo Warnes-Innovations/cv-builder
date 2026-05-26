@@ -254,7 +254,12 @@ class TestOptionalSidebarFields(unittest.TestCase):
     def test_print_sidebar_background_is_painted_on_page_columns(self):
         html = _render()
         self.assertIn('@page {', html)
-        self.assertIn('background-color: var(--sidebar-bg) !important;', html)
+        # Sidebar is painted via faux-column gradient on #cv-body (not via
+        # background-color on .left-col) so the gradient must be present and
+        # the left-col must be transparent to let the parent gradient show through.
+        self.assertIn('linear-gradient(', html)
+        self.assertIn('#eef2f5', html)   # sidebar-bg literal (var() not used in print)
+        self.assertIn('background-color: transparent !important;', html)
         self.assertIn('#cv-body .left-col {', html)
         self.assertIn('box-decoration-break: clone;', html)
         self.assertIn('background: white !important;', html)

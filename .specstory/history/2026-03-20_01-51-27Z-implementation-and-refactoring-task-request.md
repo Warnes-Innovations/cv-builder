@@ -785,5 +785,3 @@ Add a comment linking issue #4, then merge.
 _**User (2026-03-20 17:58:57Z)**_
 
 Add a comment linking issue #4, then merge.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder/scripts/" -->

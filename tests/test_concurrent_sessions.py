@@ -203,6 +203,9 @@ class FakeConversationManager:
             self.job_barrier.wait(timeout=2)
         self.state["job_description"] = job_text
 
+    def add_to_history(self, role: str, content: str) -> None:
+        self.conversation_history.append({"role": role, "content": content})
+
     def normalize_skills_data(self, skills_data: Any) -> list[dict[str, Any]]:
         if isinstance(skills_data, list):
             return list(skills_data)

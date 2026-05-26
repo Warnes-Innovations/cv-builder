@@ -16,10 +16,15 @@ implements the "passthrough" mechanism:
     ``recommend_customizations``, …) call ``self.chat()`` internally, so they
     transparently become passthrough-capable with zero changes to
     ``llm_client.py``.
-3.  The caller (MCP tool or CLI command) catches :class:`PromptBundleReady`,
-    serialises the :class:`PromptBundle` as JSON, returns it to the agent,
-    receives the agent's response, then calls ``HeadlessSession.inject_llm_result``
-    to validate and store the result.
+3.  The caller (MCP tool or CLI command) obtains the :class:`PromptBundle`,
+    serialises it as JSON, returns it to the agent, receives the agent's
+    response, then calls ``HeadlessSession.inject_llm_result`` to validate
+    and store the result.
+    Use :meth:`PassthroughLLMClient.capture` to avoid bare exception handling::
+
+        with client.capture() as cap:
+            client.analyze_job_description(job_text, master_data)
+        bundle = cap.bundle   # always set after the with-block
 
 JSON compliance rule
 --------------------
@@ -31,11 +36,12 @@ from a probabilistic model causes silent state corruption deep in the workflow
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Generator, List, Optional, Union
 
 from .llm_client import LLMClient
 
@@ -355,13 +361,30 @@ def validate_agent_json(
     # Parse if string
     if isinstance(raw, str):
         raw = raw.strip()
-        # Strip markdown code fences if present
+        # Strip markdown code fences if present.
+        # Handles ```json language hints and partial blocks (no closing fence).
+        # Uses first-newline / last-fence extraction to avoid corrupting JSON
+        # string values that happen to contain backtick sequences.
         if raw.startswith("```"):
-            lines = raw.splitlines()
-            raw = "\n".join(
-                line for line in lines
-                if not line.startswith("```")
-            ).strip()
+            first_newline = raw.find("\n")
+            if first_newline == -1:
+                # Degenerate single-line fence — strip all backtick fences.
+                raw = raw.replace("```", "").strip()
+            else:
+                content_start = first_newline + 1
+                # Find last closing fence at start of a line.
+                last_fence = raw.rfind("\n```")
+                if last_fence != -1 and last_fence >= content_start:
+                    content = raw[content_start:last_fence].strip()
+                else:
+                    # No closing fence — use everything after the opening line.
+                    content = raw[content_start:].strip()
+                if content.startswith("```"):
+                    logger.warning(
+                        "validate_agent_json: multiple code fence blocks detected "
+                        "in agent output; parsed JSON may be incomplete"
+                    )
+                raw = content
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -387,6 +410,16 @@ def validate_agent_json(
 
 
 # ---------------------------------------------------------------------------
+# Bundle capture helper
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _BundleCapture:
+    """Mutable container yielded by :meth:`PassthroughLLMClient.capture`."""
+    bundle: Optional[PromptBundle] = None
+
+
+# ---------------------------------------------------------------------------
 # PassthroughLLMClient
 # ---------------------------------------------------------------------------
 
@@ -398,17 +431,23 @@ class PassthroughLLMClient(LLMClient):
     ``self.chat()`` internally, so they transparently become
     passthrough-capable via this subclass.
 
-    Usage::
+    Preferred usage — :meth:`capture` context manager::
 
         client = PassthroughLLMClient()
         client.set_context(
             OperationType.JOB_ANALYSIS,
             context_hint="Analyze senior data scientist role",
         )
+        with client.capture() as cap:
+            client.analyze_job_description(job_text, master_data)
+        bundle = cap.bundle   # always set; serialize and return to the calling agent
+
+    Legacy exception-based usage (still supported)::
+
         try:
             client.analyze_job_description(job_text, master_data)
         except PromptBundleReady as exc:
-            bundle = exc.bundle   # serialize and return to the calling agent
+            bundle = exc.bundle
     """
 
     model      = "passthrough"
@@ -417,6 +456,7 @@ class PassthroughLLMClient(LLMClient):
     def __init__(self) -> None:
         self._current_operation: OperationType = OperationType.CHAT
         self._context_hint: str = ""
+        self._pending_bundle: Optional[PromptBundle] = None
 
     def set_context(
         self,
@@ -426,6 +466,36 @@ class PassthroughLLMClient(LLMClient):
         """Set the operation type and context hint before triggering a call."""
         self._current_operation = operation
         self._context_hint = context_hint
+
+    @contextlib.contextmanager
+    def capture(self) -> Generator["_BundleCapture", None, None]:
+        """Context manager that captures the :class:`PromptBundle` without propagating the exception.
+
+        Yields a :class:`_BundleCapture` whose ``bundle`` attribute is set to
+        the captured :class:`PromptBundle` after the managed block exits.
+
+        Raises
+        ------
+        RuntimeError
+            If the managed block exits without producing a bundle (i.e. the
+            triggered method did not call ``chat()``).
+
+        Example::
+
+            with client.capture() as cap:
+                client.analyze_job_description(job_text, master_data)
+            bundle = cap.bundle
+        """
+        cap = _BundleCapture()
+        try:
+            yield cap
+        except PromptBundleReady as exc:
+            cap.bundle = exc.bundle
+        if cap.bundle is None:
+            raise RuntimeError(
+                "capture() exited without a PromptBundle — "
+                "the triggered method did not call chat()"
+            )
 
     def chat(
         self,
@@ -442,6 +512,7 @@ class PassthroughLLMClient(LLMClient):
             instructions=_INSTRUCTIONS.get(self._current_operation, ""),
             context_hint=self._context_hint,
         )
+        self._pending_bundle = bundle
         raise PromptBundleReady(bundle)
 
     def propose_rewrites(
@@ -451,34 +522,16 @@ class PassthroughLLMClient(LLMClient):
         conversation_history: Optional[List[Dict]] = None,
         user_preferences: Optional[Dict] = None,
     ) -> List[Dict]:
-        """Raise :class:`PromptBundleReady` with a synthetic rewrite prompt."""
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert CV writer.  Propose targeted rewrites that "
-                    "align the CV's terminology with the job posting's keywords.  "
-                    "Preserve all numbers, dates, and proper names."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"CV content to rewrite:\n{json.dumps(content, indent=2)}\n\n"
-                    f"Job analysis:\n{json.dumps(job_analysis, indent=2)}\n\n"
-                    "Propose rewrites that introduce the job's ATS keywords "
-                    "naturally.  Return a JSON array matching the output_schema."
-                ),
-            },
-        ]
-        if conversation_history:
-            messages = messages[:1] + conversation_history[-6:] + messages[1:]
+        """Raise :class:`PromptBundleReady` using shared rewrite prompt logic.
 
-        bundle = PromptBundle(
-            operation=OperationType.REWRITE,
-            messages=messages,
-            output_schema=_SCHEMAS.get(OperationType.REWRITE, {}),
-            instructions=_INSTRUCTIONS[OperationType.REWRITE],
-            context_hint=self._context_hint or "Propose targeted CV text rewrites",
+        Delegates to :meth:`LLMClient._propose_rewrites_via_chat` so that the
+        prompt construction matches the real provider implementations.
+        :meth:`chat` is overridden to raise :class:`PromptBundleReady`, so the
+        shared helper triggers the passthrough mechanism automatically.
+        """
+        self._current_operation = OperationType.REWRITE
+        if not self._context_hint:
+            self._context_hint = "Propose targeted CV text rewrites"
+        return self._propose_rewrites_via_chat(
+            content, job_analysis, conversation_history, user_preferences
         )
-        raise PromptBundleReady(bundle)

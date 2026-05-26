@@ -230,5 +230,3 @@ Merged.
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user says PR #90 has been merged (feat/structured-json-output → devel). I should update the local devel branch and clean up the worktree.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/worktrees/structured-json-output`" -->

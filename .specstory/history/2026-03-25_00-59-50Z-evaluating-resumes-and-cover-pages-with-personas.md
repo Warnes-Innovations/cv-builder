@@ -437,5 +437,3 @@ Applicable instructions: MANDATORY PRE-FLIGHT, user-level Git Commits, and the r
 _**User (2026-03-25 20:19:48Z)**_
 
 What approach will make it simplest to merge all of the current worktree branches into `devel`?
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/scripts/cv-preview.py" -->

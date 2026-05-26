@@ -20,6 +20,8 @@ generation:
   max_skills: 20
   max_achievements: 5
   max_publications: 10
+  max_publication_pages: null          # page-based cap; overrides count limit when set
+  publication_chars_per_page: 1500     # calibration: ~10 citations ≈ 4 pages
   page_margin: 0.5in
   page_count:
     warn_single: true

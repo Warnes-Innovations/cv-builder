@@ -909,5 +909,3 @@ Use it as a link for `position-title` div  (the larger text in the image) AND in
 _**User (2026-04-07 22:35:23Z)**_
 
 Please merge into `devel`.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/worktrees/wizard-api-keys/web/ui-core.js`" -->

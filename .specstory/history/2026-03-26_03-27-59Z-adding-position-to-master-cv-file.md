@@ -63,5 +63,3 @@ I laid the foundations for the 2012 HSCCI / Blue Gene/Q launch, even though I le
 _**Agent (copilot/gpt-5.4)**_
 
 Applicable sections are data protection, Master CV handling, and final review. Relevant skills are `copilot-preflight`, `cv-builder-patterns`, and `code-review`; I’m updating the Rochester role to reflect that you laid the groundwork for HSCCI and the later Blue Gene/Q launch without misdating your tenure.
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

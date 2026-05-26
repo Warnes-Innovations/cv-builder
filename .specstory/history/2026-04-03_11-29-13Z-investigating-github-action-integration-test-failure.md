@@ -183,5 +183,3 @@ The worktree is at `/Users/warnes/src/cv-builder/worktrees/fix-codeql` on branch
 
 
 So I need to remove the worktree itself, delete the local branch, and verify there's no remote branch to clean up since the push went directly to devel rather than creating a separate remote branch.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->

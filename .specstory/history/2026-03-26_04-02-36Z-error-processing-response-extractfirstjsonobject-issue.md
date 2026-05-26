@@ -304,5 +304,3 @@ _**Agent (copilot/gpt-5.4)**_
 **Reviewing git status**
 
 I think it’s important to check the changed files or use git status to avoid any surprises. Doing a quick status check alongside reviewing changed files seems wise before committing. I'll want a preamble before batching anything. I’m considering whether managing my to-do list is necessary, but maybe I should at least update it. I also want to make sure to read through the skills to stay on track.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/worktrees/port-issue61-live-layout-devel" -->

@@ -38,12 +38,15 @@ Or after ``pip install -e .``::
     conda run -n cvgen cv-mcp
 """
 
+import collections
 import json
 import logging
 import os
 import sys
+import threading
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 # Ensure the scripts/ directory is importable
 sys.path.insert(0, str(Path(__file__).parent))
@@ -76,12 +79,87 @@ logger = logging.getLogger("cv_mcp")
 
 mcp = FastMCP("cv-builder")
 
-# In-process session cache (session_id → HeadlessSession)
-_sessions: Dict[str, HeadlessSession] = {}
+# ---------------------------------------------------------------------------
+# In-process session cache — LRU with TTL
+# ---------------------------------------------------------------------------
 
-# Optional provider/model overrides set via CLI args on server startup
+_SESSION_CACHE_MAX  = 1_000   # max live entries
+_SESSION_CACHE_TTL  = 86_400  # seconds (24 h)
+
+
+class _SessionCache:
+    """Thread-safe LRU cache with per-entry TTL for HeadlessSession objects.
+
+    When the cache is full, the least-recently-used entry is evicted first.
+    Entries older than ``ttl`` seconds are also evicted on access.
+    """
+
+    def __init__(self, maxsize: int = _SESSION_CACHE_MAX, ttl: float = _SESSION_CACHE_TTL) -> None:
+        self._maxsize  = maxsize
+        self._ttl      = ttl
+        self._lock     = threading.RLock()
+        # OrderedDict keeps insertion/access order for LRU eviction
+        self._cache: collections.OrderedDict = collections.OrderedDict()
+        # timestamps[session_id] = time of last access
+        self._timestamps: Dict[str, float] = {}
+
+    def __contains__(self, session_id: str) -> bool:
+        with self._lock:
+            if session_id not in self._cache:
+                return False
+            if time.monotonic() - self._timestamps[session_id] > self._ttl:
+                self._evict(session_id)
+                return False
+            return True
+
+    def get(self, session_id: str) -> Optional["HeadlessSession"]:
+        with self._lock:
+            if session_id not in self._cache:
+                return None
+            age = time.monotonic() - self._timestamps[session_id]
+            if age > self._ttl:
+                self._evict(session_id)
+                return None
+            # Move to end (most recently used)
+            self._cache.move_to_end(session_id)
+            self._timestamps[session_id] = time.monotonic()
+            return self._cache[session_id]
+
+    def put(self, session_id: str, session: "HeadlessSession") -> None:
+        with self._lock:
+            if session_id in self._cache:
+                self._cache.move_to_end(session_id)
+            else:
+                if len(self._cache) >= self._maxsize:
+                    # Evict least-recently-used entry
+                    oldest_id, _ = next(iter(self._cache.items()))
+                    self._evict(oldest_id)
+                self._cache[session_id] = session
+            self._timestamps[session_id] = time.monotonic()
+
+    def _evict(self, session_id: str) -> None:
+        """Remove an entry (caller must hold lock)."""
+        self._cache.pop(session_id, None)
+        self._timestamps.pop(session_id, None)
+
+
+_sessions = _SessionCache()
+
+# Optional provider/model overrides set via CLI args on server startup.
+# When None, _effective_provider()/_effective_model() fall back to config.yaml
+# at call time so live changes to config.yaml take effect without a restart.
 _DEFAULT_PROVIDER: Optional[str] = None
 _DEFAULT_MODEL:    Optional[str] = None
+
+
+def _effective_provider() -> Optional[str]:
+    """CLI-arg provider override, or config.yaml default read lazily at call time."""
+    return _DEFAULT_PROVIDER or get_config().llm_provider
+
+
+def _effective_model() -> Optional[str]:
+    """CLI-arg model override, or config.yaml default read lazily at call time."""
+    return _DEFAULT_MODEL or get_config().llm_model
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +178,14 @@ def _locate_session_file(session_id: str) -> Optional[Path]:
                 data = json.load(f)
             if data.get("session_id") == session_id:
                 return sf
-        except Exception:
+        except (FileNotFoundError, json.JSONDecodeError):
+            # Race condition (file deleted) or malformed JSON — skip silently.
+            continue
+        except PermissionError as exc:
+            logger.warning("_locate_session_file: permission denied reading %s: %s", sf, exc)
+            continue
+        except Exception as exc:
+            logger.warning("_locate_session_file: unexpected error reading %s: %s", sf, exc)
             continue
     return None
 
@@ -113,27 +198,30 @@ def _get_session(session_id: str) -> HeadlessSession:
     ValueError
         If the session cannot be found on disk.
     """
-    if session_id not in _sessions:
-        sf = _locate_session_file(session_id)
-        if sf is None:
-            raise ValueError(
-                f"Session '{session_id}' not found.  "
-                "Use session_new to create one or session_list to see available sessions."
-            )
-        _sessions[session_id] = HeadlessSession(
-            session_file=str(sf),
-            provider=_DEFAULT_PROVIDER,
-            model=_DEFAULT_MODEL,
+    cached = _sessions.get(session_id)
+    if cached is not None:
+        return cached
+    sf = _locate_session_file(session_id)
+    if sf is None:
+        raise ValueError(
+            f"Session '{session_id}' not found.  "
+            "Use session_new to create one or session_list to see available sessions."
         )
-    return _sessions[session_id]
+    session = HeadlessSession(
+        session_file=str(sf),
+        provider=_effective_provider(),
+        model=_effective_model(),
+    )
+    _sessions.put(session_id, session)
+    return session
 
 
 def _bundle_to_dict(bundle: PromptBundle) -> Dict[str, Any]:
     return bundle.to_dict()
 
 
-def _error(msg: str) -> Dict[str, Any]:
-    return {"ok": False, "error": msg}
+def _error(msg: str, *, error_code: str = "internal_error") -> Dict[str, Any]:
+    return {"ok": False, "error": msg, "error_code": error_code}
 
 
 # ---------------------------------------------------------------------------
@@ -149,10 +237,10 @@ def session_new() -> Dict[str, Any]:
     dict
         ``{"session_id": str, "phase": "init", "session_file": str|null}``
     """
-    session = HeadlessSession(provider=_DEFAULT_PROVIDER, model=_DEFAULT_MODEL)
+    session = HeadlessSession(provider=_effective_provider(), model=_effective_model())
     sf = session.save()
     if session.session_id:
-        _sessions[session.session_id] = session
+        _sessions.put(session.session_id, session)
     return {
         "ok":           True,
         "session_id":   session.session_id,
@@ -191,11 +279,11 @@ def session_load(session_file: str) -> Dict[str, Any]:
     try:
         session = HeadlessSession(
             session_file=session_file,
-            provider=_DEFAULT_PROVIDER,
-            model=_DEFAULT_MODEL,
+            provider=_effective_provider(),
+            model=_effective_model(),
         )
         if session.session_id:
-            _sessions[session.session_id] = session
+            _sessions.put(session.session_id, session)
         return {
             "ok":            True,
             "session_id":    session.session_id,
@@ -371,7 +459,7 @@ def analysis_prepare(session_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def analysis_submit(session_id: str, result: str) -> Dict[str, Any]:
+def analysis_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Submit fulfilled job analysis JSON.  Validates compliance and advances phase.
 
     Parameters
@@ -379,7 +467,7 @@ def analysis_submit(session_id: str, result: str) -> Dict[str, Any]:
     session_id:
         Session identifier.
     result:
-        Raw JSON string matching the ``output_schema`` from ``analysis_prepare``.
+        JSON string or decoded dict/list.
 
     Returns
     -------
@@ -396,7 +484,7 @@ def analysis_submit(session_id: str, result: str) -> Dict[str, Any]:
             "position_name": session.state.get("position_name"),
         }
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     except Exception as exc:
         return _error(str(exc))
 
@@ -428,7 +516,7 @@ def recommendations_prepare(
             try:
                 prefs = validate_agent_json(user_preferences)
             except InvalidResultError:
-                return _error("user_preferences is not valid JSON")
+                return _error("user_preferences is not valid JSON", error_code="invalid_result")
         bundle = session.prepare_llm_call(
             OperationType.RECOMMENDATIONS,
             user_preferences=prefs,
@@ -439,7 +527,7 @@ def recommendations_prepare(
 
 
 @mcp.tool()
-def recommendations_submit(session_id: str, result: str) -> Dict[str, Any]:
+def recommendations_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Submit fulfilled recommendations JSON.  Validates and stores customizations.
 
     Parameters
@@ -447,7 +535,7 @@ def recommendations_submit(session_id: str, result: str) -> Dict[str, Any]:
     session_id:
         Session identifier.
     result:
-        Raw JSON matching ``recommendations_prepare``'s ``output_schema``.
+        JSON string or decoded dict/list.
 
     Returns
     -------
@@ -460,7 +548,7 @@ def recommendations_submit(session_id: str, result: str) -> Dict[str, Any]:
         session.save()
         return {"ok": True, "phase": session.phase}
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     except Exception as exc:
         return _error(str(exc))
 
@@ -500,7 +588,7 @@ def summary_prepare(
 
 
 @mcp.tool()
-def summary_submit(session_id: str, result: str) -> Dict[str, Any]:
+def summary_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Submit a generated professional summary.
 
     Parameters
@@ -508,7 +596,7 @@ def summary_submit(session_id: str, result: str) -> Dict[str, Any]:
     session_id:
         Session identifier.
     result:
-        JSON string: ``{"summary": "..."}``.
+        JSON string or decoded dict/list.
 
     Returns
     -------
@@ -521,7 +609,7 @@ def summary_submit(session_id: str, result: str) -> Dict[str, Any]:
         session.save()
         return {"ok": True}
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     except Exception as exc:
         return _error(str(exc))
 
@@ -549,7 +637,7 @@ def questions_prepare(session_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def questions_submit(session_id: str, result: str) -> Dict[str, Any]:
+def questions_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Submit post-analysis questions from the agent.
 
     Parameters
@@ -557,7 +645,7 @@ def questions_submit(session_id: str, result: str) -> Dict[str, Any]:
     session_id:
         Session identifier.
     result:
-        JSON string: ``{"intro": "...", "questions": [...]}``.
+        JSON string or decoded dict/list.
 
     Returns
     -------
@@ -571,7 +659,7 @@ def questions_submit(session_id: str, result: str) -> Dict[str, Any]:
         q_count = len(session.state.get("post_analysis_questions") or [])
         return {"ok": True, "question_count": q_count}
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     except Exception as exc:
         return _error(str(exc))
 
@@ -599,7 +687,7 @@ def rewrites_prepare(session_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def rewrites_submit(session_id: str, result: str) -> Dict[str, Any]:
+def rewrites_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Submit rewrite proposals from the agent.
 
     Parameters
@@ -607,7 +695,7 @@ def rewrites_submit(session_id: str, result: str) -> Dict[str, Any]:
     session_id:
         Session identifier.
     result:
-        JSON array of rewrite proposal objects.
+        JSON string or decoded dict/list.
 
     Returns
     -------
@@ -625,7 +713,7 @@ def rewrites_submit(session_id: str, result: str) -> Dict[str, Any]:
             "phase":          session.phase,
         }
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     except Exception as exc:
         return _error(str(exc))
 
@@ -656,7 +744,7 @@ def rewrites_approve(session_id: str, approved_ids: str) -> Dict[str, Any]:
         session.save()
         return {"ok": True, **counts}
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     except Exception as exc:
         return _error(str(exc))
 
@@ -686,7 +774,7 @@ def spell_check_prepare(session_id: str, text: Optional[str] = None) -> Dict[str
 
 
 @mcp.tool()
-def spell_check_submit(session_id: str, result: str) -> Dict[str, Any]:
+def spell_check_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Submit spell-check corrections.
 
     Parameters
@@ -694,7 +782,12 @@ def spell_check_submit(session_id: str, result: str) -> Dict[str, Any]:
     session_id:
         Session identifier.
     result:
-        JSON string: ``{"corrections": [...]}``.
+        JSON string or decoded dict/list.
+
+    Returns
+    -------
+    dict
+        ``{"ok": bool, "correction_count": int}``
 
     Returns
     -------
@@ -708,7 +801,7 @@ def spell_check_submit(session_id: str, result: str) -> Dict[str, Any]:
         corrections = session.state.get("spell_check_results") or []
         return {"ok": True, "correction_count": len(corrections)}
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     except Exception as exc:
         return _error(str(exc))
 
@@ -741,7 +834,7 @@ def persuasion_check_prepare(
 
 
 @mcp.tool()
-def persuasion_check_submit(session_id: str, result: str) -> Dict[str, Any]:
+def persuasion_check_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Submit persuasion-quality warnings.
 
     Parameters
@@ -749,7 +842,12 @@ def persuasion_check_submit(session_id: str, result: str) -> Dict[str, Any]:
     session_id:
         Session identifier.
     result:
-        JSON string: ``{"warnings": [...]}``.
+        JSON string or decoded dict/list.
+
+    Returns
+    -------
+    dict
+        ``{"ok": bool, "warning_count": int}``
 
     Returns
     -------
@@ -763,7 +861,7 @@ def persuasion_check_submit(session_id: str, result: str) -> Dict[str, Any]:
         warnings = session.state.get("persuasion_warnings") or []
         return {"ok": True, "warning_count": len(warnings)}
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     except Exception as exc:
         return _error(str(exc))
 
@@ -791,7 +889,7 @@ def interview_prep_prepare(session_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def interview_prep_submit(session_id: str, result: str) -> Dict[str, Any]:
+def interview_prep_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Submit interview preparation questions.
 
     Parameters
@@ -799,7 +897,7 @@ def interview_prep_submit(session_id: str, result: str) -> Dict[str, Any]:
     session_id:
         Session identifier.
     result:
-        JSON string: ``{"questions": [...]}``.
+        JSON string or decoded dict/list.
 
     Returns
     -------
@@ -813,7 +911,7 @@ def interview_prep_submit(session_id: str, result: str) -> Dict[str, Any]:
         questions = session.state.get("interview_prep") or []
         return {"ok": True, "question_count": len(questions)}
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     except Exception as exc:
         return _error(str(exc))
 
@@ -853,7 +951,7 @@ def cover_letter_prepare(
 
 
 @mcp.tool()
-def cover_letter_submit(session_id: str, result: str) -> Dict[str, Any]:
+def cover_letter_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Submit a generated cover letter.
 
     Parameters
@@ -861,7 +959,7 @@ def cover_letter_submit(session_id: str, result: str) -> Dict[str, Any]:
     session_id:
         Session identifier.
     result:
-        JSON string: ``{"cover_letter": "..."}``.
+        JSON string or decoded dict/list.
 
     Returns
     -------
@@ -874,7 +972,7 @@ def cover_letter_submit(session_id: str, result: str) -> Dict[str, Any]:
         session.save()
         return {"ok": True}
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     except Exception as exc:
         return _error(str(exc))
 
@@ -904,7 +1002,7 @@ def chat_prepare(session_id: str, message: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def chat_submit(session_id: str, user_message: str, result: str) -> Dict[str, Any]:
+def chat_submit(session_id: str, user_message: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Store a chat exchange (user message + agent response).
 
     Parameters
@@ -914,7 +1012,12 @@ def chat_submit(session_id: str, user_message: str, result: str) -> Dict[str, An
     user_message:
         The user's message (appended to conversation history).
     result:
-        JSON string: ``{"response": "..."}``.
+        JSON string or decoded dict/list.
+
+    Returns
+    -------
+    dict
+        ``{"ok": bool, "response": str}``
 
     Returns
     -------
@@ -926,9 +1029,7 @@ def chat_submit(session_id: str, user_message: str, result: str) -> Dict[str, An
         session.state  # ensure session loaded
 
         # Store user message
-        session.conversation_history.append(
-            {"role": "user", "content": user_message}
-        )
+        session.add_to_history("user", user_message)
 
         # Validate and store assistant response
         session.inject_llm_result(OperationType.CHAT, result)
@@ -937,7 +1038,7 @@ def chat_submit(session_id: str, user_message: str, result: str) -> Dict[str, An
         last = session.conversation_history[-1]
         return {"ok": True, "response": last.get("content", "")}
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     except Exception as exc:
         return _error(str(exc))
 
@@ -1005,7 +1106,7 @@ def run_recommendations(
             try:
                 prefs = validate_agent_json(user_preferences)
             except InvalidResultError:
-                return _error("user_preferences is not valid JSON")
+                return _error("user_preferences is not valid JSON", error_code="invalid_result")
         session = _get_session(session_id)
         recs    = session.run_with_llm(OperationType.RECOMMENDATIONS, user_preferences=prefs)
         session.save()
@@ -1071,7 +1172,7 @@ def decisions_submit(
             pub_d   = _parse_opt(publication_decisions)
             ex_sk   = _parse_opt(extra_skills)
         except InvalidResultError as exc:
-            return _error(f"Invalid JSON in decisions: {exc}")
+            return _error(f"Invalid JSON in decisions: {exc}", error_code="invalid_result")
 
         session.apply_decisions(
             experience_decisions=exp_d,
@@ -1199,7 +1300,7 @@ def master_data_update_section(
     try:
         parsed = validate_agent_json(data)
     except InvalidResultError as exc:
-        return _error(f"Invalid JSON: {exc}")
+        return _error(f"Invalid JSON: {exc}", error_code="invalid_result")
     try:
         session = _get_session(session_id)
         session.update_master_section(section, parsed)

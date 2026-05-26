@@ -328,6 +328,7 @@ Return ONLY a JSON object — no prose, no markdown fences:
         master_data: Dict,
         user_preferences: Dict = None,
         conversation_history: List[Dict] = None,
+        page_budget: Dict = None,
     ) -> Dict:
         """Recommend CV customisations for a specific job using the LLM.
 
@@ -362,6 +363,38 @@ Return ONLY a JSON object — no prose, no markdown fences:
                 "=" * 72 + "\n",
             ]
             prefs_block = "\n".join(lines) + "\n\n"
+
+        # ── Page budget block ─────────────────────────────────────────────────
+        page_budget_block = ""
+        if page_budget:
+            cv_pages  = page_budget.get('max_cv_pages')
+            pub_pages = page_budget.get('max_publication_pages')
+            if cv_pages or pub_pages:
+                lines = ["PAGE BUDGET (hard constraints — calibrate Include/Emphasize count accordingly):"]
+                if cv_pages:
+                    lines.append(
+                        f"  • CV body (summary, experiences, achievements, skills, education): "
+                        f"{cv_pages} pages"
+                    )
+                if pub_pages:
+                    lines.append(
+                        f"  • Publications section: {pub_pages} pages"
+                    )
+                if cv_pages and pub_pages:
+                    lines.append(f"  • Total: {int(cv_pages) + int(pub_pages)} pages")
+                lines += [
+                    "",
+                    "Calibration (letter paper, 0.5\" margins, 13 pt font):",
+                    "  • One experience with 3-4 bullets ≈ 0.3 pages",
+                    "  • One selected achievement ≈ 0.1 pages",
+                    "  • Skills + Education sections ≈ 0.5 pages combined",
+                    "  • Summary paragraph ≈ 0.15 pages",
+                    "",
+                    "Adjust your Include/Emphasize mix so total estimated content fits the budget.",
+                    "Prefer fewer, stronger inclusions over padding to the limit.",
+                    "",
+                ]
+                page_budget_block = "\n".join(lines) + "\n\n"
 
         # ── Conversation history block ─────────────────────────────────────────
         history_block = ""
@@ -447,7 +480,7 @@ Return ONLY a JSON object — no prose, no markdown fences:
         n_ach = len(master_data.get('selected_achievements', []))
         n_skills = len(skill_lines_list)
 
-        prompt = f"""{prefs_block}{history_block}Job Analysis:
+        prompt = f"""{prefs_block}{page_budget_block}{history_block}Job Analysis:
 {json.dumps(job_summary, indent=2)}
 
 Available Experiences ({n_exp} total):

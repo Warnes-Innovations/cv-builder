@@ -83,6 +83,39 @@ class HeadlessSession:
         LLM model name.  Passed to ``get_llm_provider`` when *provider* is set.
     """
 
+    @classmethod
+    def from_conversation_manager(
+        cls,
+        manager: "ConversationManager",
+        orchestrator: "CVOrchestrator",
+    ) -> "HeadlessSession":
+        """Create a :class:`HeadlessSession` facade over an existing manager pair.
+
+        Used by the Flask HTTP LLM-passthrough routes to wrap a
+        :class:`~utils.session_registry.SessionEntry`'s ``manager`` and
+        ``orchestrator`` without constructing new underlying objects.
+
+        Parameters
+        ----------
+        manager:
+            An already-initialised :class:`ConversationManager`.
+        orchestrator:
+            An already-initialised :class:`CVOrchestrator`.
+
+        Returns
+        -------
+        HeadlessSession
+            A fully functional facade that shares state with *manager* and
+            *orchestrator*; no new LLM client is created.
+        """
+        obj = object.__new__(cls)
+        obj.config        = getattr(manager, "config", None)
+        obj._provider     = None
+        obj._model        = None
+        obj._manager      = manager
+        obj._orchestrator = orchestrator
+        return obj
+
     def __init__(
         self,
         config=None,
@@ -143,8 +176,18 @@ class HeadlessSession:
 
     @property
     def conversation_history(self) -> list:
-        """The underlying conversation turn list (read-write)."""
+        """A read-only copy of the conversation turn list.
+
+        Use :meth:`add_to_history` to append validated entries.
+        """
         return self._manager.conversation_history
+
+    def add_to_history(self, role: str, content: str) -> None:
+        """Append a validated turn to the conversation history.
+
+        Delegates to :meth:`ConversationManager.add_to_history`.
+        """
+        self._manager.add_to_history(role, content)
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
@@ -184,9 +227,9 @@ class HeadlessSession:
         """Return a :class:`~utils.agent_bridge.PromptBundle` for external fulfillment.
 
         Temporarily swaps the LLM client to :class:`PassthroughLLMClient`,
-        triggers the appropriate high-level method, catches the resulting
-        :class:`~utils.agent_bridge.PromptBundleReady` exception, and returns
-        the bundle.  The original LLM client is always restored.
+        triggers the appropriate high-level method, and returns the captured
+        bundle via :meth:`~utils.agent_bridge.PassthroughLLMClient.capture`.
+        The original LLM client is always restored.
 
         Parameters
         ----------
@@ -228,19 +271,13 @@ class HeadlessSession:
         self._orchestrator.llm = passthrough
 
         try:
-            self._trigger_llm_operation(operation, passthrough, **kwargs)
-        except PromptBundleReady as exc:
-            return exc.bundle
-        except Exception:
-            raise
+            with passthrough.capture() as cap:
+                self._trigger_llm_operation(operation, passthrough, **kwargs)
         finally:
             self._manager.llm      = original_mgr_llm
             self._orchestrator.llm = original_orch_llm
 
-        raise RuntimeError(
-            f"prepare_llm_call: operation {operation.value!r} did not call "
-            "chat() — no PromptBundle produced"
-        )
+        return cap.bundle
 
     def _trigger_llm_operation(
         self,
@@ -250,8 +287,10 @@ class HeadlessSession:
     ) -> None:
         """Invoke the correct high-level LLM method for *operation*.
 
-        This method always raises either :class:`PromptBundleReady` (from the
-        passthrough client) or a plain :class:`Exception` on bad state.
+        This method always raises :class:`~utils.agent_bridge.PromptBundleReady`
+        (from the passthrough client) or a plain :class:`Exception` on bad state.
+        The :meth:`prepare_llm_call` caller captures the bundle via
+        :meth:`~utils.agent_bridge.PassthroughLLMClient.capture`.
         """
         state = self._manager.state
 
@@ -534,9 +573,7 @@ class HeadlessSession:
                 if isinstance(parsed, dict)
                 else str(parsed)
             )
-            self._manager.conversation_history.append(
-                {"role": "assistant", "content": response_text}
-            )
+            self._manager.add_to_history("assistant", response_text)
             logger.info("inject_llm_result: CHAT response stored")
 
         elif operation == OperationType.INTERVIEW_PREP:
@@ -548,11 +585,10 @@ class HeadlessSession:
             logger.info("inject_llm_result: COVER_LETTER stored")
 
         else:
-            logger.warning(
-                "inject_llm_result: unhandled operation %s — stored in state['last_llm_result']",
-                operation,
+            raise ValueError(
+                f"inject_llm_result: unhandled OperationType {operation!r}. "
+                "Add a handler branch for this operation."
             )
-            state["last_llm_result"] = parsed
 
     # ── Internal-LLM execution ─────────────────────────────────────────────────
 
@@ -560,11 +596,11 @@ class HeadlessSession:
         """Run an operation end-to-end using the configured LLM provider.
 
         Only available when *provider* was set at construction time.  Raises
-        :class:`RuntimeError` if the session was created without a provider
+        :class:`ValueError` if the session was created without a provider
         (passthrough mode).
         """
         if self._provider is None:
-            raise RuntimeError(
+            raise ValueError(
                 "run_with_llm requires a provider.  Create HeadlessSession with "
                 "provider='github' (or similar), or use prepare_llm_call() + "
                 "inject_llm_result() for agent-mode operation."
@@ -665,10 +701,22 @@ class HeadlessSession:
         -------
         dict
             ``{"approved": <count>, "rejected": <count>}``
+
+        Raises
+        ------
+        ValueError
+            If any ID in *rewrite_ids* does not match a pending rewrite.
         """
         state = self._manager.state
         pending = state.get("pending_rewrites") or []
         id_set = set(rewrite_ids)
+        known_ids = {rw.get("id") for rw in pending}
+        unknown_ids = id_set - known_ids
+        if unknown_ids:
+            raise ValueError(
+                f"approve_rewrites: unknown rewrite ID(s): {sorted(unknown_ids)}. "
+                f"Known IDs: {sorted(known_ids)}"
+            )
         approved, rejected = [], []
         for rw in pending:
             if rw.get("id") in id_set:

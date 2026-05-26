@@ -17687,7 +17687,7 @@ Would you like me to help set up Ollama locally, or help you configure OpenAI/An
 
 _**User (2026-01-15 07:56:35Z)**_
 
-Let's try Google Gemini.  Here's my API key: `[REDACTED-GOOGLE-API-KEY]`
+Let's try Google Gemini.  Here's my API key: `AIzaSyC0Da1-x18EZRCyywC35GeA2D15fvoAgaU`
 
 ---
 
@@ -17904,7 +17904,7 @@ Let me first check the llm_client.py to see the structure and add a Gemini clien
 
 _**User (2026-01-15 08:00:29Z)**_
 
-And here's my Groq API KEY: `[REDACTED-GROQ-API-KEY]`
+And here's my Groq API KEY: `REDACTED_GROQ_API_KEY`
 
 ---
 
@@ -18095,11 +18095,11 @@ ANTHROPIC_API_KEY=
 
 # Google Gemini (Alternative - Generous free tier)
 # Get key from: https://makersuite.google.com/app/apikey
-GEMINI_API_KEY="[REDACTED-GOOGLE-API-KEY]"
+GEMINI_API_KEY="AIzaSyC0Da1-x18EZRCyywC35GeA2D15fvoAgaU"
 
 # Groq (Alternative - Fast inference with free tier)
 # Get key from: https://console.groq.com/
-GROQ_API_KEY="[REDACTED-GROQ-API-KEY]"
+GROQ_API_KEY="REDACTED_GROQ_API_KEY"
 
 # Optional: Override config.yaml settings via environment variables
 ```
@@ -18122,8 +18122,8 @@ _**Agent (copilot/claude-sonnet-4.5)**_
 The user wants me to add both the Gemini and Groq API keys to the .env file. Let me add them to the existing file.
 
 The keys are:
-- Gemini: [REDACTED-GOOGLE-API-KEY]
-- Groq: [REDACTED-GROQ-API-KEY]
+- Gemini: AIzaSyC0Da1-x18EZRCyywC35GeA2D15fvoAgaU
+- Groq: REDACTED_GROQ_API_KEY
 
 ---
 
@@ -22566,5 +22566,3 @@ _**Agent (copilot/claude-opus-4.5)**_
 _**Agent (copilot/claude-opus-4.5)**_
 
 The user wants me to review the CV Builder project and ask clarifying questions to understand its fundamental purpose and priorities. They want me to think broadly without being constrained by current implementation decisions. Let me first explore the project structure and documentation to understand what exists.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->

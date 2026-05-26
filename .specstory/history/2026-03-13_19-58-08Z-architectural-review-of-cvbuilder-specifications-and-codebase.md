@@ -504,5 +504,3 @@ The user wants me to use `/commit` which refers to the `/commitMessage` prompt t
 However, since the user said "another agent was fixing a couple of other issues" and now we should commit, I think they want me to directly commit with the prepared message.
 
 Let me try a simpler approach - just create a file with the commit message and use git commit with that file.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->

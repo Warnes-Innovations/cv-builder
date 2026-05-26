@@ -2,7 +2,7 @@
 
 # 2026-03-06 20:34:31Z
 
-<!-- copilotide Session 1320021d-3de5-4939-a860-a7ac62672d4e (2026-03-06 20:34:31Z) -->
+<!-- VS Code Copilot IDE Session 1320021d-3de5-4939-a860-a7ac62672d4e (2026-03-06 20:34:31Z) -->
 
 _**User (2026-03-06 20:34:31Z)**_
 
@@ -438,5 +438,3 @@ Approve.
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 User approved item 4. Mark it complete and advance to item 5.
-
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->

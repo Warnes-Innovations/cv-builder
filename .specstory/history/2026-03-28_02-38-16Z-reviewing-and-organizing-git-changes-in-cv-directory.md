@@ -459,5 +459,3 @@ Why isn't oboe-mcp running?
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user is asking why the oboe-mcp MCP server isn't running. Let me check the MCP configuration to understand how it's supposed to be set up and then check if it's actually running.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/.github/obo_sessions" -->

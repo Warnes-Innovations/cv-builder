@@ -398,5 +398,3 @@ _**Agent (copilot/gpt-5-mini)**_
 **Planning test adjustments**
 
 The user highlighted that tests should not run against port 5001, as that’s where the production server operates. I need to change things to ensure tests target a different port. I'll follow a multi-step approach, using the todo list tool to manage tasks. My steps include searching the tests/config for port 5001’s usage, updating the tests or configuration, running the tests to verify changes, and then committing those changes or informing the user. I'll start by searching for occurrences of ":5001" across the workspace.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/web/app.js" -->

@@ -508,5 +508,3 @@ The user is likely asking about the two issues I found:
 2. Integration tests lack `pytest.skip` guard for missing server
 
 Let me check the current state of these files.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder/_test_draft.py`" -->

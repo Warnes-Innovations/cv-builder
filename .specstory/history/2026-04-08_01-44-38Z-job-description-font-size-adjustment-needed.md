@@ -111,5 +111,3 @@ Check the session file to see what is stored in the job description object.
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants me to check the session file to see what's stored in the job description object. Let me find the session files directory and look at the current session.
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

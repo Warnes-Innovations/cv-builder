@@ -1235,5 +1235,3 @@ Push, then create a PR to merge `devel` into `main`.
 _**User (2026-03-23 20:47:15Z)**_
 
 Are there any incomplete requests or tasks in this agent session?
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/tasks/current-implemented-workflow.md" -->

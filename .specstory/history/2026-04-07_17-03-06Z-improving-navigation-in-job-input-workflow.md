@@ -312,5 +312,3 @@ Create a PR and check for any merge conflicts.
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to create a PR for the `feat/step-pill-nav-state` branch and check for merge conflicts. Let me load the git-workflow skill first, then proceed.
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

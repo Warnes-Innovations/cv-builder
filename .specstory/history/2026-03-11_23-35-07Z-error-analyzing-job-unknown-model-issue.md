@@ -812,5 +812,3 @@ Dr. Greg, applying Item 3 now: I’ll remove the pypi.org auto-approval entry fr
 _**User (2026-03-12 03:53:55Z)**_
 
 It looks like the https://github.com/github/copilot-sdk / https://pypi.org/project/github-copilot-sdk/ provides a 'list_models' call that can be used to list the available models including `id: str  # Model identifier (e.g., "claude-sonnet-4.5")`.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/scripts/anyllm_probe_current_models.py`" -->

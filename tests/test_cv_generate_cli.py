@@ -15,6 +15,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import requests
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = REPO_ROOT / "scripts" / "cv_generate_cli.py"
 
@@ -28,6 +30,43 @@ _spec.loader.exec_module(cv_cli)  # type: ignore[union-attr]
 # Fixture helpers
 # ---------------------------------------------------------------------------
 
+# Stable symbolic IDs used by fixture and assertions — update here if schema changes.
+_EXP1_ID  = "exp_001"
+_ACH1A_ID = "ach_001_a"
+_ACH1B_ID = "ach_001_b"
+_EXP2_ID  = "exp_002"
+_ACH2A_ID = "ach_002_a"
+
+
+def _achievement(ach_id: str, importance: int) -> dict:
+    """Build a minimal achievement dict."""
+    return {"id": ach_id, "importance": importance}
+
+
+def _experience(exp_id: str, achievements: list) -> dict:
+    """Build a minimal experience dict."""
+    return {"id": exp_id, "achievements": achievements}
+
+
+class MasterDataBuilder:
+    """Factory for building valid-but-flexible master CV test data."""
+
+    def __init__(self) -> None:
+        self._experiences: list = []
+        self._skills: object = []
+
+    def with_experiences(self, *experiences: dict) -> "MasterDataBuilder":
+        self._experiences.extend(experiences)
+        return self
+
+    def with_skills(self, skills: object) -> "MasterDataBuilder":
+        self._skills = skills
+        return self
+
+    def build(self) -> dict:
+        return {"skills": self._skills, "experience": self._experiences}
+
+
 def _master(skills_format: str = "list") -> dict:
     """Minimal master CV dict that exercises both skills formats."""
     if skills_format == "list":
@@ -37,24 +76,20 @@ def _master(skills_format: str = "list") -> dict:
             "programming": {"category": "Programming", "skills": [{"name": "Python"}, {"name": "R"}]},
             "databases": [{"name": "SQL"}, "NoSQL"],
         }
-    return {
-        "skills": skills,
-        "experience": [
-            {
-                "id": "exp_001",
-                "achievements": [
-                    {"id": "ach_001_a", "importance": 9},
-                    {"id": "ach_001_b", "importance": 7},
-                ],
-            },
-            {
-                "id": "exp_002",
-                "achievements": [
-                    {"id": "ach_002_a", "importance": 8},
-                ],
-            },
-        ],
-    }
+    return (
+        MasterDataBuilder()
+        .with_experiences(
+            _experience(_EXP1_ID, [
+                _achievement(_ACH1A_ID, importance=9),
+                _achievement(_ACH1B_ID, importance=7),
+            ]),
+            _experience(_EXP2_ID, [
+                _achievement(_ACH2A_ID, importance=8),
+            ]),
+        )
+        .with_skills(skills)
+        .build()
+    )
 
 
 def _write_master(data: dict) -> tempfile.NamedTemporaryFile:
@@ -72,7 +107,7 @@ class TestAllAchievementIds(unittest.TestCase):
 
     def test_extracts_all_ids(self):
         ids = cv_cli._all_achievement_ids(_master())
-        self.assertEqual(ids, ["ach_001_a", "ach_001_b", "ach_002_a"])
+        self.assertEqual(ids, [_ACH1A_ID, _ACH1B_ID, _ACH2A_ID])
 
     def test_empty_experience(self):
         self.assertEqual(cv_cli._all_achievement_ids({"experience": []}), [])
@@ -83,16 +118,13 @@ class TestAllAchievementIds(unittest.TestCase):
     def test_achievement_without_id_is_skipped(self):
         master = {
             "experience": [
-                {
-                    "id": "exp_001",
-                    "achievements": [
-                        {"importance": 8},            # no id — skip
-                        {"id": "ach_001_a"},           # has id — keep
-                    ],
-                }
+                _experience(_EXP1_ID, [
+                    {"importance": 8},          # no id — skip
+                    _achievement(_ACH1A_ID, 5), # has id — keep
+                ])
             ]
         }
-        self.assertEqual(cv_cli._all_achievement_ids(master), ["ach_001_a"])
+        self.assertEqual(cv_cli._all_achievement_ids(master), [_ACH1A_ID])
 
 
 # ---------------------------------------------------------------------------
@@ -127,30 +159,30 @@ class TestBuildAchievementDecisions(unittest.TestCase):
 
     def test_comprehensive_includes_all_achievements(self):
         decisions = cv_cli._build_achievement_decisions(_master(), "comprehensive")
-        self.assertIn("ach_001_a", decisions)
-        self.assertIn("ach_001_b", decisions)
-        self.assertIn("ach_002_a", decisions)
+        self.assertIn(_ACH1A_ID, decisions)
+        self.assertIn(_ACH1B_ID, decisions)
+        self.assertIn(_ACH2A_ID, decisions)
         self.assertNotIn("exclude", decisions.values())
 
     def test_comprehensive_emphasizes_importance_9(self):
         decisions = cv_cli._build_achievement_decisions(_master(), "comprehensive")
-        self.assertEqual(decisions["ach_001_a"], "emphasize")  # importance=9
-        self.assertEqual(decisions["ach_001_b"], "include")    # importance=7
-        self.assertEqual(decisions["ach_002_a"], "include")    # importance=8
+        self.assertEqual(decisions[_ACH1A_ID], "emphasize")  # importance=9
+        self.assertEqual(decisions[_ACH1B_ID], "include")    # importance=7
+        self.assertEqual(decisions[_ACH2A_ID], "include")    # importance=8
 
     def test_focused_excludes_achievements_from_excluded_experiences(self):
         # exp_001 is "exclude" in focused mode
         decisions = cv_cli._build_achievement_decisions(_master(), "focused")
-        self.assertEqual(decisions["ach_001_a"], "exclude")
-        self.assertEqual(decisions["ach_001_b"], "exclude")
+        self.assertEqual(decisions[_ACH1A_ID], "exclude")
+        self.assertEqual(decisions[_ACH1B_ID], "exclude")
 
     def test_focused_keeps_achievements_from_non_excluded_experiences(self):
         # exp_002 is "emphasize" in focused mode
         decisions = cv_cli._build_achievement_decisions(_master(), "focused")
-        self.assertNotEqual(decisions["ach_002_a"], "exclude")
+        self.assertNotEqual(decisions[_ACH2A_ID], "exclude")
 
     def test_no_achievements_returns_empty_dict(self):
-        master = {"experience": [{"id": "exp_001", "achievements": []}]}
+        master = {"experience": [_experience(_EXP1_ID, [])]}
         self.assertEqual(cv_cli._build_achievement_decisions(master, "comprehensive"), {})
 
 
@@ -359,11 +391,33 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
     def _post_side_effect(self, url: str, json: dict = None, timeout: int = None) -> MagicMock:  # type: ignore[assignment]
         resp = MagicMock()
         resp.status_code = 200
+        payload: dict = json or {}
         if url.endswith("/api/sessions/new"):
             resp.json.return_value = {"session_id": "test-sid-001"}
+        elif url.endswith("/api/job"):
+            assert "session_id" in payload, f"/api/job missing session_id; got {list(payload)}"
+            assert "job_text" in payload, f"/api/job missing job_text; got {list(payload)}"
+            assert isinstance(payload["job_text"], str), "/api/job: job_text must be str"
+            resp.json.return_value = {"ok": True}
+        elif url.endswith("/api/action"):
+            assert "session_id" in payload, f"/api/action missing session_id; got {list(payload)}"
+            assert "action" in payload, f"/api/action missing action; got {list(payload)}"
+            assert isinstance(payload["action"], str), "/api/action: action must be str"
+            resp.json.return_value = {"phase": "review", "result": {"text": ""}}
+        elif url.endswith("/api/review-decisions"):
+            assert "session_id" in payload, f"/api/review-decisions missing session_id; got {list(payload)}"
+            assert "type" in payload, f"/api/review-decisions missing type; got {list(payload)}"
+            assert "decisions" in payload, f"/api/review-decisions missing decisions; got {list(payload)}"
+            assert isinstance(payload["type"], str), "/api/review-decisions: type must be str"
+            resp.json.return_value = {"ok": True}
         elif url.endswith("/api/cv/generate-preview"):
+            assert "session_id" in payload, f"/api/cv/generate-preview missing session_id; got {list(payload)}"
             resp.json.return_value = {"page_count_exact": 2}
+        elif url.endswith("/api/cv/confirm-layout"):
+            assert "session_id" in payload, f"/api/cv/confirm-layout missing session_id; got {list(payload)}"
+            resp.json.return_value = {"ok": True}
         elif url.endswith("/api/cv/generate-final"):
+            assert "session_id" in payload, f"/api/cv/generate-final missing session_id; got {list(payload)}"
             resp.json.return_value = {
                 "outputs": {"final_html": "/tmp/cv.html"},
                 "page_count_exact": 2,
@@ -420,6 +474,59 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
                 dry_run=False,
             )
         self.assertTrue(calls[-1].endswith("/api/cv/generate-final"), f"Last call was {calls[-1]}")
+
+    def test_run_generation_requires_provider_when_not_dry_run(self):
+        """run_generation raises APIError when app is unreachable (e.g. not started with --llm-provider)."""
+        with patch("requests.post", side_effect=requests.ConnectionError("Connection refused")):
+            with self.assertRaises(cv_cli.APIError):
+                cv_cli.run_generation(
+                    base_url="http://localhost:5001",
+                    mode="comprehensive",
+                    job_text="Some job",
+                    master_cv_path=self._f.name,
+                    publications_path="/nonexistent/publications.bib",
+                    dry_run=False,
+                )
+
+    def test_api_returns_500(self):
+        """run_generation raises APIError when the server returns HTTP 500."""
+        def _side_500(url: str, json: dict = None, timeout: int = None) -> MagicMock:  # type: ignore[assignment]
+            resp = MagicMock()
+            resp.status_code = 500
+            resp.json.return_value = {"error": "Internal Server Error"}
+            resp.text = "Internal Server Error"
+            return resp
+
+        with patch("requests.post", side_effect=_side_500):
+            with self.assertRaises(cv_cli.APIError):
+                cv_cli.run_generation(
+                    base_url="http://localhost:5001",
+                    mode="comprehensive",
+                    job_text="Some job",
+                    master_cv_path=self._f.name,
+                    publications_path="/nonexistent/publications.bib",
+                    dry_run=False,
+                )
+
+    def test_api_returns_invalid_json(self):
+        """run_generation raises APIError when the server returns non-JSON body."""
+        def _side_bad_json(url: str, json: dict = None, timeout: int = None) -> MagicMock:  # type: ignore[assignment]
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json.side_effect = ValueError("No JSON object could be decoded")
+            resp.text = "<html>Unexpected error</html>"
+            return resp
+
+        with patch("requests.post", side_effect=_side_bad_json):
+            with self.assertRaises(cv_cli.APIError):
+                cv_cli.run_generation(
+                    base_url="http://localhost:5001",
+                    mode="comprehensive",
+                    job_text="Some job",
+                    master_cv_path=self._f.name,
+                    publications_path="/nonexistent/publications.bib",
+                    dry_run=False,
+                )
 
 
 if __name__ == "__main__":

@@ -1693,7 +1693,7 @@ def create_blueprint(deps):
         # duckflow:
         #   id: generation_api_final_live
         #   kind: api
-        #   timestamp: "2026-05-28T00:00:00Z"
+        #   timestamp: "2026-05-30T00:00:00Z"
         #   status: live
         #   handles:
         #     - "POST /api/cv/generate-final"
@@ -1724,7 +1724,7 @@ def create_blueprint(deps):
         #     - "response:POST /api/cv/generate-final.outputs"
         #     - "response:POST /api/cv/generate-final.generated_at"
         #     - "response:POST /api/cv/generate-final.page_count_exact"
-        #   notes: "Converts the confirmed preview HTML into final human-readable artifacts (HTML+PDF+ATS DOCX+human DOCX), updates generation_state and generated_files, and advances main phase to FINAL_GENERATION."
+        #   notes: "Converts the confirmed preview HTML into final human-readable artifacts (HTML+PDF+ATS DOCX+human DOCX) named CV_{company}_{role}_{date}.*; updates generation_state and generated_files; advances main phase to FINAL_GENERATION."
         entry = get_session()
         conv  = entry.manager
         gen   = conv.state.get("generation_state") or {}
@@ -1740,18 +1740,26 @@ def create_blueprint(deps):
             return jsonify({"error": "No generated files — complete workflow first."}), 404
 
         output_dir = Path(generated["output_dir"])
+
+        # Build a meaningful filename (same convention as _generate_pdf) so
+        # generate-final never creates anonymous CV_final.* artifacts.
+        job_analysis   = conv.state.get('job_analysis') or {}
+        company        = job_analysis.get('company', 'Company').replace(' ', '')
+        role           = job_analysis.get('title', 'Role').replace(' ', '')[:20]
+        _ts            = datetime.now().strftime("%Y-%m-%d")
+        filename_base  = f"CV_{company}_{role}_{_ts}"
+
         try:
             final_paths = conv.orchestrator.generate_final_from_confirmed_html(
                 confirmed_html=confirmed_html,
                 output_dir=output_dir,
-                filename_base="CV_final",
+                filename_base=filename_base,
             )
         except Exception:
             return _internal_server_error('Final generation failed.')
 
         # Also generate ATS DOCX and human DOCX from session content.
         from utils.conversation_manager import Phase as _Phase
-        job_analysis   = conv.state.get('job_analysis') or {}
         customizations = conv.state.get('customizations') or {}
         ats_file    = None
         human_docx  = None
@@ -2144,6 +2152,7 @@ def create_blueprint(deps):
                         json.dump(master, f, indent=2)
 
                 conversation.orchestrator.master_data = master
+                job_analysis = conversation.state.get('job_analysis') or {}
                 company  = (job_analysis.get('company') or 'Unknown').replace(' ', '_')
                 role     = (job_analysis.get('title') or 'Role').replace(' ', '_')
                 date_str = datetime.now().strftime('%Y-%m-%d')

@@ -302,5 +302,3 @@ update the duckflow-cleanup branch and PR to use that repo-based wording.
 _**Agent (copilot/gpt-5.4)**_
 
 Applicable instruction sections: `Project-specific patterns and gotchas`, `When modifying code`, and `Duckflow Annotations`. Applicable skills: `agent-customization`, `copilot-preflight`, `cv-builder-patterns`, `code-review`, and `git-workflow`. I’m updating the two instruction files on `duckflow-cleanup` to use repo-based wording, then I’ll review, commit, push, and refresh the PR text to match.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path ~/src/cv-builder" -->

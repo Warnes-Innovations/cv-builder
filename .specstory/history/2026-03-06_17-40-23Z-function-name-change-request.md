@@ -324,5 +324,3 @@ In VS Code, when a background agent task is started, you can find it in the GitH
 _**User (2026-03-06 20:06:33Z)**_
 
 Yes, start working through rewrite-feature.md now, beginning with Phase 1 (llm_client.py)
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/scripts/utils/cv_orchestrator.py`" -->

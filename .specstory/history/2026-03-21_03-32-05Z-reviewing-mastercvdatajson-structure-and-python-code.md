@@ -2,7 +2,7 @@
 
 # 2026-03-21 03:33:03Z
 
-<!-- copilotide Session cd7d8cc2-0ee5-48d8-9198-807a93f70dc3 (2026-03-21 03:33:03Z) -->
+<!-- VS Code Copilot IDE Session cd7d8cc2-0ee5-48d8-9198-807a93f70dc3 (2026-03-21 03:33:03Z) -->
 
 _**User (2026-03-21 03:33:03Z)**_
 
@@ -161,5 +161,3 @@ Push
 _**Agent (copilot/auto)**_
 
 The user wants to push the commits to the remote. Let me use the gitkraken git push tool.
-
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->

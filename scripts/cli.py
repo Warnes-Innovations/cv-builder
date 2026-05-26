@@ -41,7 +41,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, NoReturn, Optional
 
 import click
 
@@ -60,52 +60,80 @@ from utils.headless_session import HeadlessSession
 # Output helpers
 # ---------------------------------------------------------------------------
 
+class CLIError(click.ClickException):
+    """Raised on CLI user errors; rendered as a JSON error object on stderr."""
+
+    exit_code = 1
+
+    def show(self, file=None) -> None:  # type: ignore[override]
+        click.echo(json.dumps({"ok": False, "error": self.format_message()}), err=True)
+
+
 def _out(data: Any, pretty: bool = False) -> None:
     """Print *data* as JSON to stdout."""
     indent = 2 if pretty else None
     click.echo(json.dumps(data, indent=indent, default=str))
 
 
-def _err(msg: str) -> None:
-    click.echo(json.dumps({"ok": False, "error": msg}), err=True)
-    sys.exit(1)
+def _err(msg: str) -> NoReturn:
+    raise CLIError(msg)
 
 
-def _read_result(ctx_obj: Dict[str, Any], result_file: Optional[str]) -> str:
+def _read_result(
+    ctx_obj: Dict[str, Any],
+    result_file: Optional[str],
+    *,
+    validate: bool = True,
+) -> Any:
     """Read LLM result from file or stdin.
 
     In agent mode with no --result-file, reads from stdin.
+
+    When *validate* is ``True`` (default) the raw text is parsed as JSON at
+    the I/O boundary and the decoded object is returned.  Malformed JSON is
+    reported immediately via :func:`_err` rather than propagating silently
+    into session state downstream.
     """
     if result_file:
-        return Path(result_file).expanduser().read_text(encoding="utf-8")
-    if ctx_obj.get("agent_mode"):
-        return sys.stdin.read()
-    _err("--result-file required when not in --agent-mode")
-    return ""  # unreachable
+        raw = Path(result_file).expanduser().read_text(encoding="utf-8")
+    elif ctx_obj.get("agent_mode"):
+        raw = sys.stdin.read()
+    else:
+        _err("--result-file required when not in --agent-mode")
+
+    if validate:
+        try:
+            return validate_agent_json(raw)
+        except InvalidResultError as exc:
+            _err(f"Invalid result JSON: {exc}")
+
+    return raw
 
 
 # ---------------------------------------------------------------------------
 # Session loading helper
 # ---------------------------------------------------------------------------
 
-def _load_session(ctx_obj: Dict[str, Any]) -> HeadlessSession:
+def _load_session(
+    ctx_obj: Dict[str, Any],
+    session_factory: type = HeadlessSession,
+) -> HeadlessSession:
     session_id   = ctx_obj.get("session_id")
     session_file = ctx_obj.get("session_file")
     provider     = ctx_obj.get("provider")
     model        = ctx_obj.get("model")
 
     if session_file:
-        return HeadlessSession(session_file=session_file, provider=provider, model=model)
+        return session_factory(session_file=session_file, provider=provider, model=model)
 
     if session_id:
-        sessions = HeadlessSession.list_sessions()
+        sessions = session_factory.list_sessions()
         match = next((s for s in sessions if s["session_id"] == session_id), None)
         if not match:
             _err(f"Session '{session_id}' not found.  Use 'session list' to see available sessions.")
-        return HeadlessSession(session_file=match["session_file"], provider=provider, model=model)
+        return session_factory(session_file=match["session_file"], provider=provider, model=model)
 
     _err("Either --session-id or --session-file is required.")
-    raise SystemExit(1)  # unreachable
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +181,7 @@ def session_new(ctx, provider, model):
     m = model    or ctx.obj.get("model")
     session = HeadlessSession(provider=p, model=m)
     sf = session.save()
-    _out({"ok": True, "session_id": session.session_id, "session_file": sf}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase, "session_file": sf}, ctx.obj["pretty"])
 
 
 @session_grp.command("list")
@@ -170,6 +198,7 @@ def session_status(ctx):
     session = _load_session(ctx.obj)
     state   = session.state
     _out({
+        "ok":                   True,
         "session_id":           session.session_id,
         "phase":                session.phase,
         "position_name":        state.get("position_name"),
@@ -187,7 +216,7 @@ def session_save(ctx):
     """Save the current session to disk."""
     session = _load_session(ctx.obj)
     sf = session.save()
-    _out({"ok": True, "session_file": sf}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase, "session_file": sf}, ctx.obj["pretty"])
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +236,18 @@ def job_grp():
 def job_submit_text(ctx, text, text_file):
     """Submit a job description from text or a file."""
     if text_file:
-        job_text = Path(text_file).read_text(encoding="utf-8")
+        p = Path(text_file)
+        try:
+            size = p.stat().st_size
+            if size > 1_048_576:
+                _err(f"File too large ({size:,} bytes); 1 MB maximum.")
+            job_text = p.read_text(encoding="utf-8")
+        except PermissionError:
+            _err(f"Permission denied reading {text_file!r}.")
+        except UnicodeDecodeError:
+            _err(f"{text_file!r} is not valid UTF-8 text (binary file?).")
+        except OSError as exc:
+            _err(f"Cannot read {text_file!r}: {exc}")
     elif text:
         job_text = text
     else:
@@ -216,7 +256,7 @@ def job_submit_text(ctx, text, text_file):
     session = _load_session(ctx.obj)
     session.set_job_text(job_text)
     session.save()
-    _out({"ok": True, "phase": session.phase}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase}, ctx.obj["pretty"])
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +281,7 @@ def analyze_run(ctx):
             _err("--provider required for non-agent-mode analysis.  Use --agent-mode to get PromptBundle.")
         session.run_with_llm(OperationType.JOB_ANALYSIS)
         session.save()
-        _out({"ok": True, "phase": session.phase, "position_name": session.state.get("position_name")},
+        _out({"ok": True, "session_id": session.session_id, "phase": session.phase, "position_name": session.state.get("position_name")},
              ctx.obj["pretty"])
 
 
@@ -258,7 +298,7 @@ def analyze_submit(ctx, result_file):
     except InvalidResultError as exc:
         _err(f"Invalid result JSON: {exc}")
     session.save()
-    _out({"ok": True, "phase": session.phase, "position_name": session.state.get("position_name")},
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase, "position_name": session.state.get("position_name")},
          ctx.obj["pretty"])
 
 
@@ -296,7 +336,7 @@ def customize_run(ctx, prefs):
             _err("--provider required.  Use --agent-mode to get PromptBundle.")
         session.run_with_llm(OperationType.RECOMMENDATIONS, user_preferences=user_prefs)
         session.save()
-        _out({"ok": True, "phase": session.phase}, ctx.obj["pretty"])
+        _out({"ok": True, "session_id": session.session_id, "phase": session.phase}, ctx.obj["pretty"])
 
 
 @customize_grp.command("submit")
@@ -311,7 +351,7 @@ def customize_submit(ctx, result_file):
     except InvalidResultError as exc:
         _err(f"Invalid result JSON: {exc}")
     session.save()
-    _out({"ok": True, "phase": session.phase}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase}, ctx.obj["pretty"])
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +391,7 @@ def rewrites_submit(ctx, result_file):
         _err(f"Invalid result JSON: {exc}")
     session.save()
     count = len(session.state.get("pending_rewrites") or [])
-    _out({"ok": True, "proposal_count": count, "phase": session.phase}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "proposal_count": count, "phase": session.phase}, ctx.obj["pretty"])
 
 
 @rewrites_grp.command("approve")
@@ -369,7 +409,7 @@ def rewrites_approve(ctx, ids):
     session = _load_session(ctx.obj)
     counts  = session.approve_rewrites(id_list)
     session.save()
-    _out({"ok": True, **counts}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase, **counts}, ctx.obj["pretty"])
 
 
 @rewrites_grp.command("list")
@@ -378,7 +418,7 @@ def rewrites_list(ctx):
     """Print pending rewrite proposals."""
     session = _load_session(ctx.obj)
     pending = session.state.get("pending_rewrites") or []
-    _out({"ok": True, "pending_rewrites": pending}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase, "pending_rewrites": pending}, ctx.obj["pretty"])
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +460,7 @@ def decisions_submit(ctx, decisions_file):
         summary_focus_override = data.get("summary_focus_override"),
     )
     session.save()
-    _out({"ok": True}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase}, ctx.obj["pretty"])
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +475,7 @@ def generate(ctx, html_only):
     session = _load_session(ctx.obj)
     result  = session.generate_cv(html_preview_only=html_only)
     session.save()
-    _out({"ok": True, "generated_files": result}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase, "generated_files": result}, ctx.obj["pretty"])
 
 
 # ---------------------------------------------------------------------------
@@ -452,16 +492,14 @@ def master_grp():
 @click.pass_context
 def master_get(ctx, section):
     """Print master CV data as JSON."""
-    from utils.config import get_config as _cfg
-    import json as _json
-    config = _cfg()
-    path   = Path(config.master_cv_path).expanduser()
+    from utils.master_data_manager import MasterDataManager
+    mgr = MasterDataManager()
     try:
-        with open(path, encoding="utf-8") as f:
-            master = _json.load(f)
+        data = mgr.read(section)
     except FileNotFoundError:
-        _err(f"Master CV data not found at {path}")
-    data = master.get(section, master) if section else master
+        _err(f"Master CV data not found at {mgr.path}")
+    except KeyError as exc:
+        _err(str(exc))
     _out({"ok": True, "data": data}, ctx.obj["pretty"])
 
 
@@ -485,7 +523,7 @@ def master_update_section(ctx, section, data_file):
         session.update_master_section(section, data)
     except ValueError as exc:
         _err(str(exc))
-    _out({"ok": True, "section": section}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase, "section": section}, ctx.obj["pretty"])
 
 
 # ---------------------------------------------------------------------------
@@ -527,7 +565,7 @@ def spell_check_submit(ctx, result_file):
         _err(f"Invalid result JSON: {exc}")
     session.save()
     count = len(session.state.get("spell_check_results") or [])
-    _out({"ok": True, "correction_count": count}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase, "correction_count": count}, ctx.obj["pretty"])
 
 
 @quality_grp.command("persuasion-check")
@@ -557,7 +595,7 @@ def persuasion_check_submit(ctx, result_file):
         _err(f"Invalid result JSON: {exc}")
     session.save()
     count = len(session.state.get("persuasion_warnings") or [])
-    _out({"ok": True, "warning_count": count}, ctx.obj["pretty"])
+    _out({"ok": True, "session_id": session.session_id, "phase": session.phase, "warning_count": count}, ctx.obj["pretty"])
 
 
 # ---------------------------------------------------------------------------
@@ -580,16 +618,14 @@ def chat(ctx, message, result_file):
         # Submit mode
         raw = _read_result(ctx.obj, result_file)
         if message:
-            session.conversation_history.append(
-                {"role": "user", "content": message}
-            )
+            session.add_to_history("user", message)
         try:
             session.inject_llm_result(OperationType.CHAT, raw)
         except InvalidResultError as exc:
             _err(f"Invalid result JSON: {exc}")
         session.save()
         last = session.conversation_history[-1] if session.conversation_history else {}
-        _out({"ok": True, "response": last.get("content", "")}, ctx.obj["pretty"])
+        _out({"ok": True, "session_id": session.session_id, "phase": session.phase, "response": last.get("content", "")}, ctx.obj["pretty"])
     else:
         if not message:
             _err("MESSAGE required for agent-mode chat bundle generation.")

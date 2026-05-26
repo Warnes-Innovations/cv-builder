@@ -255,5 +255,3 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 The user wants to align the sidebar (left-col) and main content (right-col) top padding. From the flush review, I noted that left-col uses `padding: 30px 20px` and right-col uses `padding: 40px 30px`, creating a 10px misalignment at the top.
 
 Let me find the exact CSS in the template to fix this.
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="https://github.com/Warnes-Innovations/cv-builder" -->

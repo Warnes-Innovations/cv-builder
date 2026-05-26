@@ -374,5 +374,3 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user is asking about how to merge the changes from the `fix/new-session-always-returns-genentech` branch into `devel`. Let me check the current git state to understand the relationship between the branches.
-
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder/worktrees/fix-new-session" -->

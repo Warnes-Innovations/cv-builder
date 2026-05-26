@@ -76,5 +76,3 @@ Update the existing PR branch.
 _**User (2026-04-08 18:28:09Z)**_
 
 Do we need to do anything to pick up the changes in `cv-builder`?
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

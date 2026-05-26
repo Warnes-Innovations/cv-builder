@@ -689,6 +689,65 @@ class TestAnalyzeQuestionExtraction(unittest.TestCase):
         )
 
 
+class TestRecommendationPageBudgetIteration(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm = _make_manager(self.tmp)
+        self.cm.state['job_analysis'] = {
+            'title': 'Senior Data Scientist',
+            'company': 'Acme',
+            'ats_keywords': [],
+        }
+        self.cm.state['customizations'] = {
+            'max_cv_pages': 2,
+        }
+
+    def test_retries_when_estimated_body_pages_too_high(self):
+        self.cm.llm.recommend_customizations.side_effect = [
+            {'recommended_experiences': [], 'recommended_skills': []},
+            {'recommended_experiences': ['exp_001'], 'recommended_skills': []},
+        ]
+
+        with patch.object(self.cm, '_estimate_cv_body_pages', side_effect=[2.8, 1.9]):
+            with patch.object(self.cm, '_all_available_cv_content_included', return_value=False):
+                self.cm._handle_recommend_customizations({'action': 'recommend_customizations'})
+
+        self.assertEqual(self.cm.llm.recommend_customizations.call_count, 2)
+        retry_call = self.cm.llm.recommend_customizations.call_args_list[1]
+        retry_prefs = retry_call.kwargs.get('user_preferences', {})
+        self.assertIn('page_count_feedback', retry_prefs)
+        self.assertIn('bring the total within budget', retry_prefs['page_count_feedback'])
+
+    def test_retries_when_estimated_body_pages_too_low_and_content_remains(self):
+        self.cm.llm.recommend_customizations.side_effect = [
+            {'recommended_experiences': [], 'recommended_skills': []},
+            {'recommended_experiences': ['exp_001'], 'recommended_skills': []},
+        ]
+
+        with patch.object(self.cm, '_estimate_cv_body_pages', side_effect=[1.0, 1.8]):
+            with patch.object(self.cm, '_all_available_cv_content_included', return_value=False):
+                self.cm._handle_recommend_customizations({'action': 'recommend_customizations'})
+
+        self.assertEqual(self.cm.llm.recommend_customizations.call_count, 2)
+        retry_call = self.cm.llm.recommend_customizations.call_args_list[1]
+        retry_prefs = retry_call.kwargs.get('user_preferences', {})
+        self.assertIn('page_count_feedback', retry_prefs)
+        self.assertIn('include additional relevant content', retry_prefs['page_count_feedback'])
+
+    def test_does_not_retry_low_estimate_when_all_content_is_included(self):
+        self.cm.llm.recommend_customizations.return_value = {
+            'recommended_experiences': ['exp_001'],
+            'recommended_skills': ['Python'],
+        }
+
+        with patch.object(self.cm, '_estimate_cv_body_pages', return_value=1.0):
+            with patch.object(self.cm, '_all_available_cv_content_included', return_value=True):
+                self.cm._handle_recommend_customizations({'action': 'recommend_customizations'})
+
+        self.assertEqual(self.cm.llm.recommend_customizations.call_count, 1)
+
+
 class TestBuildDownstreamContext(unittest.TestCase):
 
     def setUp(self):

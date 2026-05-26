@@ -107,8 +107,9 @@ def _ensure_destination_is_safe(output_dir: Path) -> None:
         if (output_dir / filename).exists()
     ]
     if collisions:
+        file_list = '\n  - '.join(sorted(collisions))
         raise FileExistsError(
-            'Destination already contains: ' + ', '.join(collisions)
+            f'Destination already contains:\n  - {file_list}\nUse --force to overwrite.'
         )
 
 

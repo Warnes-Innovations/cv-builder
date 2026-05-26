@@ -143,6 +143,8 @@ logging:
 - Copilot OAuth flow is exposed by `/api/copilot-auth/*` endpoints in `scripts/web_app.py` and uses `utils/copilot_auth.py` token caching.
 - URL ingestion in web flow includes protected-site handling (LinkedIn/Indeed/Glassdoor) with manual-copy fallback in `scripts/web_app.py`.
 - Document generation uses WeasyPrint (primary) and Chrome headless (fallback) for PDF output; do not assume Quarto is installed.
+- **Cached preview gotcha**: `POST /api/cv/generate-final` renders the PDF from the cached `preview_html` produced by the most recent `generate-preview` call. If customizations changed after that call (e.g. `tagline_override`, `selected_summary`, `skills_show_proficiency`), the PDF will be stale. Always call `generate-preview` → `confirm-layout` → `generate-final` in sequence when customizations may have changed. Reset `generation_state.layout_confirmed = false` in the session file to force a fresh preview on next load.
+- **`POST /api/load-session`** requires `{"path": "<path>"}` (not `session_file`). The path is resolved relative to `data.output_dir` from `config.yaml` and must not escape that directory. Returns `session_id` for subsequent `/api/cv/*` calls.
 
 ## Instructions hierarchy and user-level config
 - Respect VS Code **user-level** agent instructions/prompts/skills symlinked into:

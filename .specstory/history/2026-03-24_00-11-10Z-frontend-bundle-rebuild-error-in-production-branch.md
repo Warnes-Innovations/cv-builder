@@ -2,7 +2,7 @@
 
 # 2026-03-24 02:35:44Z
 
-<!-- copilotide Session 95a8a9db-6ca2-4eb1-a78b-b5bd860ec844 (2026-03-24 02:35:44Z) -->
+<!-- VS Code Copilot IDE Session 95a8a9db-6ca2-4eb1-a78b-b5bd860ec844 (2026-03-24 02:35:44Z) -->
 
 _**User (2026-03-24 02:35:44Z)**_
 
@@ -70,5 +70,3 @@ _**Agent (copilot/gpt-5.4)**_
 I’ve been working in [cv-builder-prod](/Users/warnes/src/cv-builder-prod).
 
 The last commands I ran for this issue were in that folder, specifically to verify the missing `loglevel` dependency and rebuild the frontend bundle.
-
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder-prod reason="first-path signal (signal2) points to cv-builder-prod" -->
