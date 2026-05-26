@@ -1,3 +1,7 @@
+<!--
+  Copyright (C) 2026 Gregory R. Warnes
+  SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 # cv-mcp-reference
 
 ## Description
@@ -137,15 +141,21 @@ Load this skill when you need to know:
 ```
 decisions_submit(
   session_id,
-  experience_decisions?: str,   # JSON object: {title: "include"|"exclude"}
-  skill_decisions?: str,        # JSON object: {skill: "include"|"exclude"}
-  achievement_decisions?: str,  # JSON object: {id: "include"|"exclude"}
-  publication_decisions?: str,  # JSON object: {key: "include"|"exclude"}
+  experience_decisions?: str,   # JSON object: {id: "emphasize"|"include"|"de-emphasize"|"omit"}
+  skill_decisions?: str,        # JSON object: {skill: "emphasize"|"include"|"de-emphasize"|"omit"}
+  achievement_decisions?: str,  # JSON object: {id: "emphasize"|"include"|"de-emphasize"|"omit"}
+  publication_decisions?: str,  # JSON object: {key: "emphasize"|"include"|"de-emphasize"|"omit"}
   extra_skills?: str,           # JSON array of skill strings to add
-  summary_focus_override?: str  # "ai_recommended"|"user_written"|key name
+  summary_focus_override?: str  # "ai_recommended"|"user_written"|<variant_key>
 )
 → {ok}
 ```
+
+Decision value meanings:
+- `"emphasize"` — feature prominently, move to top, expand bullets
+- `"include"` — include normally
+- `"de-emphasize"` — keep but reduce prominence
+- `"omit"` — exclude from this CV entirely
 
 ---
 

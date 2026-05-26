@@ -1,3 +1,7 @@
+<!--
+  Copyright (C) 2026 Gregory R. Warnes
+  SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 # cv-agent-workflows
 
 ## Description
@@ -32,15 +36,32 @@ Correct and retry — do not skip.
 
 ## Phase state machine
 
+Phase enum values and transitions (from `conversation_manager.py`):
+
 ```
 init
-  → (job_submit_text)  →  init (stays init until job is submitted)
-  → (analysis_submit)  →  job_analysis
-  → (recommendations_submit) → customization
-  → (rewrites_submit)  →  rewrite_review
-  → (generate_cv)      →  generation
-  → (generate_cv done) →  refinement
+  ↓  analysis_submit
+job_analysis
+  ↓  recommendations_submit
+customization
+  ↓  rewrites_submit
+rewrite_review
+  ↓  generate_cv (html_preview_only=false)
+generation  →  layout_review  →  final_generation
+  ↓
+refinement
 ```
+
+Optional side paths (available after `job_analysis`):
+- `questions_prepare/submit` — clarifying questions
+- `summary_prepare/submit` — custom professional summary
+- `interview_prep_prepare/submit` — interview questions
+- `cover_letter_prepare/submit` — cover letter
+- `chat_prepare/submit` — ad-hoc Q&A at any phase
+
+Optional side paths (available at `rewrite_review` or later):
+- `spell_check_prepare/submit`
+- `persuasion_check_prepare/submit`
 
 Always call `session_status` after any submit to confirm phase.
 
