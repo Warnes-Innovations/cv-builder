@@ -21,7 +21,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, date as _date
 import subprocess
 import weasyprint  # noqa: F401  -- kept for test mock path (patch cv_orchestrator.weasyprint.HTML)
@@ -41,6 +41,15 @@ from .prompt_safety import sanitize_instruction_text, scan_text_for_injection
 from .template_renderer import safe_css_size, safe_url
 
 logger = logging.getLogger(__name__)
+
+
+class PDFRendererNotFoundError(OSError):
+    """Raised when no supported PDF renderer (Chrome, WeasyPrint) is found."""
+
+
+class PDFRenderingError(RuntimeError):
+    """Raised when a PDF renderer is found but fails to produce output."""
+
 
 _LAYOUT_URL_ATTRS = ('href', 'src', 'srcset', 'poster', 'xlink:href')
 _LAYOUT_PRESERVED_HEAD_TAGS = {'link', 'script', 'meta', 'base'}
@@ -188,10 +197,18 @@ class CVOrchestrator:
             professional_summary = f"Experienced professional applying for {job_analysis.get('title', 'position')}"
         
         # Format skills by category
+        _show_proficiency = True
+        if isinstance(customizations, dict):
+            raw_show_prof = customizations.get('skills_show_proficiency', True)
+            if isinstance(raw_show_prof, bool):
+                _show_proficiency = raw_show_prof
+            elif isinstance(raw_show_prof, str):
+                _show_proficiency = raw_show_prof.strip().lower() not in {'false', '0', 'no', 'never'}
         skills_by_category = self._organize_skills_by_category(
             selected_content.get('skills', []),
             template_variant,
             selected_content.get('skill_category_order', []),
+            show_proficiency=_show_proficiency,
         )
         
         # Format publications
@@ -483,19 +500,8 @@ class CVOrchestrator:
                     normalized.append(text)
         return normalized
 
-    def _organize_skills_by_category(
-        self,
-        skills: List[Dict],
-        variant: str,
-        category_order: Optional[List[str]] = None,
-    ) -> List[Dict]:
-        """Organize skills by category, deduplicating by canonical synonym name."""
-        if not skills:
-            return []
-
-        # Deduplicate within the full list by canonical name.
-        # If 'ML' and 'Machine Learning' both appear, merge them: keep the one
-        # with more years and collect aliases from the other.
+    def _deduplicate_skills(self, skills: List[Dict]) -> List[Dict]:
+        """Deduplicate skills by canonical synonym name, merging aliases."""
         canonical_seen: Dict[str, Dict] = {}  # canonical_lower -> merged skill dict
         for skill in skills:
             name = skill.get('name', '')
@@ -522,54 +528,77 @@ class CVOrchestrator:
                     existing.setdefault('aliases', [])
                     if name and name not in existing['aliases'] and name != existing['name']:
                         existing['aliases'].append(name)
+        return list(canonical_seen.values())
 
-        deduped_skills = list(canonical_seen.values())
-
+    def _group_skills_by_category(self, skills: List[Dict]) -> Dict[str, List[Dict]]:
+        """Group a flat list of skills by their category field."""
         category_skills: Dict[str, List[Dict]] = defaultdict(list)
-        for skill in deduped_skills:
+        for skill in skills:
             category = skill.get('category', 'General')
             category_skills[category].append(skill)
+        return category_skills
 
+    def _sort_categories(
+        self,
+        category_skills: Dict[str, List[Dict]],
+        variant: str,
+        category_order: Optional[List[str]],
+        show_proficiency: bool,
+    ) -> List[Dict]:
+        """Sort skill categories by priority order and build the final sorted list."""
         custom_order = []
         for category in category_order or []:
             label = str(category or '').strip()
             if label and label not in custom_order:
                 custom_order.append(label)
 
-        # Define category priority
         priority_orders = {
             'standard': ['Core Expertise', 'Programming', 'Technical', 'Tools', 'General'],
             'technical': ['Programming', 'Technical', 'Tools', 'Core Expertise', 'General'],
             'academic': ['Research', 'Technical', 'Programming', 'Core Expertise', 'General']
         }
-
         priority_order = custom_order or priority_orders.get(variant, priority_orders['standard'])
 
         sorted_categories = []
-
-        # Add priority categories first
         for category in priority_order:
             if category in category_skills:
                 skills_list = sorted(category_skills[category],
                                      key=lambda x: (-x.get('years', 0), x.get('name', '')))
                 sorted_categories.append({
                     'category': category,
-                    'skills': self._group_inline_skills(skills_list)
+                    'skills': self._group_inline_skills(skills_list, show_proficiency=show_proficiency)
                 })
 
-        # Add remaining categories alphabetically
         remaining_categories = sorted(set(category_skills.keys()) - set(priority_order))
         for category in remaining_categories:
             skills_list = sorted(category_skills[category],
                                  key=lambda x: (-x.get('years', 0), x.get('name', '')))
             sorted_categories.append({
                 'category': category,
-                'skills': self._group_inline_skills(skills_list)
+                'skills': self._group_inline_skills(skills_list, show_proficiency=show_proficiency)
             })
 
         return sorted_categories
 
-    def _group_inline_skills(self, skills_list: List[Dict]) -> List[Dict]:
+    def _organize_skills_by_category(
+        self,
+        skills: List[Dict],
+        variant: str,
+        category_order: Optional[List[str]] = None,
+        show_proficiency: bool = True,
+    ) -> List[Dict]:
+        """Organize skills by category, deduplicating by canonical synonym name."""
+        if not skills:
+            return []
+        deduped = self._deduplicate_skills(skills)
+        grouped  = self._group_skills_by_category(deduped)
+        return self._sort_categories(grouped, variant, category_order, show_proficiency)
+
+    def _group_inline_skills(
+        self,
+        skills_list: List[Dict],
+        show_proficiency: bool = True,
+    ) -> List[Dict]:
         """Combine skills that share the same non-empty `group` key into a
         single inline entry.  The first member becomes the representative entry
         with an added `group_names` list.  Ungrouped skills pass through unchanged."""
@@ -591,18 +620,21 @@ class CVOrchestrator:
         for g, members in groups.items():
             primary = dict(members[0])
             primary['group_names'] = [m['name'] for m in members]
-            primary['group_display_names'] = [self._skill_inline_label(m) for m in members]
-            primary['display_name'] = self._skill_inline_label(primary)
+            primary['group_display_names'] = [self._skill_inline_label(m, show_proficiency=show_proficiency) for m in members]
+            primary['display_name'] = self._skill_inline_label(primary, show_proficiency=show_proficiency)
             result[group_insertion_idx[g]] = primary
 
         finalized = [s for s in result if s is not None]
         for skill in finalized:
             if isinstance(skill, dict) and 'display_name' not in skill:
-                skill['display_name'] = self._skill_inline_label(skill)
+                skill['display_name'] = self._skill_inline_label(skill, show_proficiency=show_proficiency)
         return finalized
 
     @staticmethod
-    def _skill_inline_label(skill: Dict[str, Any]) -> str:
+    def _skill_inline_label(
+        skill: Dict[str, Any],
+        show_proficiency: bool = True,
+    ) -> str:
         """Return a human-readable inline label for a skill entry."""
         name = str(skill.get('name') or '').strip()
         if not name:
@@ -613,9 +645,10 @@ class CVOrchestrator:
             return f"{name} ({parenthetical})"
 
         qualifier_parts = []
-        proficiency = str(skill.get('proficiency') or '').strip()
-        if proficiency:
-            qualifier_parts.append(proficiency[:1].upper() + proficiency[1:])
+        if show_proficiency:
+            proficiency = str(skill.get('proficiency') or '').strip()
+            if proficiency:
+                qualifier_parts.append(proficiency[:1].upper() + proficiency[1:])
 
         raw_subskills = skill.get('subskills', skill.get('sub_skills', []))
         if isinstance(raw_subskills, str):
@@ -1259,6 +1292,7 @@ class CVOrchestrator:
         html_url = html_file.as_uri()   # file:///absolute/path/to/file.html
         def _try_chrome() -> Dict[str, str]:
             chrome_err_local = None
+            chrome_exc_local = None
             for _chrome_bin in _chrome_candidates:
                 try:
                     subprocess.run(
@@ -1284,16 +1318,22 @@ class CVOrchestrator:
                     return {
                         'renderer': 'chrome',
                         'detail': str(_chrome_bin),
+                        'success': True,
+                        'error': None,
+                        'fallback_used': False,
                     }
                 except FileNotFoundError:
                     continue
                 except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
                     chrome_err_local = str(exc)
+                    chrome_exc_local = exc
                     break
 
             if chrome_err_local:
-                raise RuntimeError(chrome_err_local)
-            raise FileNotFoundError('Chrome/Chromium not found')
+                raise PDFRenderingError(
+                    f"Chrome headless failed: {chrome_err_local}"
+                ) from chrome_exc_local
+            raise PDFRendererNotFoundError('Chrome/Chromium not found')
 
         def _try_weasyprint() -> Dict[str, str]:
             wp_script = (
@@ -1310,13 +1350,16 @@ class CVOrchestrator:
                 return {
                     'renderer': 'weasyprint',
                     'detail': sys.executable,
+                    'success': True,
+                    'error': None,
+                    'fallback_used': False,
                 }
 
             wp_error_local = (
                 wp_result.stderr.decode(errors='replace').strip()
                 or f"exit {wp_result.returncode}"
             )
-            raise RuntimeError(wp_error_local)
+            raise PDFRenderingError(f"WeasyPrint failed: {wp_error_local}")
 
         chrome_err = None
         wp_error = None
@@ -1329,18 +1372,20 @@ class CVOrchestrator:
 
         try:
             return _try_chrome()
-        except (FileNotFoundError, RuntimeError) as exc:
+        except PDFRendererNotFoundError:
+            chrome_err = 'not found'
+            logger.warning("Chrome/Chromium not found, trying WeasyPrint...")
+        except PDFRenderingError as exc:
             chrome_err = str(exc)
-            if isinstance(exc, FileNotFoundError):
-                logger.warning("Chrome/Chromium not found, trying WeasyPrint...")
-            else:
-                logger.warning("Chrome headless failed (%s), trying WeasyPrint...", chrome_err)
+            logger.warning("Chrome headless failed (%s), trying WeasyPrint...", chrome_err)
+            logger.debug("Chrome headless full error:", exc_info=True)
 
         try:
             return _try_weasyprint()
-        except RuntimeError as exc:
+        except PDFRenderingError as exc:
             wp_error = str(exc)
             logger.warning("WeasyPrint also failed (%s)", wp_error)
+            logger.debug("WeasyPrint full error:", exc_info=True)
 
         # --- Plain-text fallback ---
         fallback_content = f"""PDF Generation Failed
@@ -1361,6 +1406,9 @@ The HTML file contains your formatted CV ready for conversion.
         return {
             'renderer': 'fallback-text',
             'detail': pdf_output.name,
+            'success': False,
+            'error': f"Chrome: {chrome_err or 'not found'}; WeasyPrint: {wp_error}",
+            'fallback_used': True,
         }
 
     def _generate_human_pdf(
@@ -1496,8 +1544,8 @@ For manual generation:
         same_as = [
             value
             for value in (
-                contact.get('linkedin_href') or safe_url(contact.get('linkedin')),
-                contact.get('website_href') or safe_url(contact.get('website')),
+                safe_url(contact.get('linkedin_href') or contact.get('linkedin', '')),
+                safe_url(contact.get('website_href') or contact.get('website', '')),
             )
             if value
         ]
@@ -1529,7 +1577,23 @@ For manual generation:
         if award_strings:
             json_ld['award'] = award_strings
 
+        self._validate_json_ld(json_ld)
         return json.dumps(json_ld, indent=2, ensure_ascii=False)
+
+    _JSON_LD_REQUIRED_FIELDS: List[str] = ['@context', '@type', 'name']
+
+    def _validate_json_ld(self, json_ld: Dict[str, Any]) -> None:
+        """Warn when *json_ld* is missing or has empty required Schema.org fields.
+
+        Logs a ``WARNING`` for each absent or empty required field so that
+        callers can detect silently-invalid structured-data output without
+        raising an exception at generation time.
+        """
+        for field in self._JSON_LD_REQUIRED_FIELDS:
+            if not json_ld.get(field):
+                logger.warning(
+                    "JSON-LD validation: required field %r is absent or empty.", field
+                )
 
     # ── Rewrite pipeline ─────────────────────────────────────────────────────
 
@@ -3317,9 +3381,38 @@ Include one entry per candidate. Do not omit any candidate."""
         #   notes: "Resolves the active summary text by overlaying session variants over master variants and selecting the requested key."
         selected_summary = summary_view.selected_summary()
 
+        # Apply an estimated page cap to body content (summary, experience,
+        # achievements, skills) before publications are considered.
+        max_cv_pages = customizations.get('max_cv_pages')
+        if max_cv_pages is None:
+            max_cv_pages = cfg.get('generation.max_cv_pages')
+        if max_cv_pages is not None:
+            chars_per_page = cfg.get('generation.cv_body_chars_per_page', 2500)
+            (
+                selected_summary,
+                selected_experiences,
+                selected_achievements,
+                selected_skills,
+            ) = self._cap_cv_body_to_pages(
+                selected_summary,
+                selected_experiences,
+                selected_achievements,
+                selected_skills,
+                float(max_cv_pages),
+                int(chars_per_page),
+            )
+
         # Select publications — honour user accept/reject decisions if present
         accepted_pubs = customizations.get('accepted_publications')  # list of cite_keys or None
         rejected_pubs = set(customizations.get('rejected_publications') or [])
+
+        # When a page-based publication cap is active, bypass the count limit —
+        # _cap_publications_to_pages() (called below) handles trimming instead.
+        _pub_page_cap_active = (
+            customizations.get('max_publication_pages') is not None
+            or cfg.get('generation.max_publication_pages') is not None
+        )
+        _pub_count_cap = None if _pub_page_cap_active else max_pubs
 
         if accepted_pubs is not None:
             # User has explicitly selected publications — preserve membership.
@@ -3333,18 +3426,29 @@ Include one entry per candidate. Do not omit any candidate."""
                     pub_by_key[key] = pub
             selected_publications = [
                 pub_by_key[k] for k in accepted_pubs if k in pub_by_key
-            ][:max_pubs]
+            ][:_pub_count_cap]
         else:
             selected_publications = self._select_publications(
                 job_analysis,
-                max_count=max_pubs,
+                max_count=_pub_count_cap,
             )
 
         selected_publications = self._sort_selected_publications(
             selected_publications,
             customizations,
         )
-        
+
+        # Apply page-based publication cap when set in session or config.
+        # Customizations take precedence; falls back to generation.max_publication_pages.
+        max_pub_pages = customizations.get('max_publication_pages')
+        if max_pub_pages is None:
+            max_pub_pages = cfg.get('generation.max_publication_pages')
+        if max_pub_pages is not None:
+            chars_per_page = cfg.get('generation.publication_chars_per_page', 1500)
+            selected_publications = self._cap_publications_to_pages(
+                selected_publications, float(max_pub_pages), int(chars_per_page)
+            )
+
         return {
             'personal_info': self.master_data.get('personal_info', {}),
             'summary': selected_summary,
@@ -3357,7 +3461,145 @@ Include one entry per candidate. Do not omit any candidate."""
             'publications': selected_publications,
             'awards': self.master_data.get('awards', [])
         }
+
+    @staticmethod
+    def _estimate_cv_body_chars(
+        summary: Any,
+        experiences: List[Dict],
+        achievements: List[Dict],
+        skills: List[Dict],
+    ) -> int:
+        """Estimate rendered body size using text length plus layout overhead."""
+        total = len(str(summary or '').strip())
+
+        for exp in experiences or []:
+            if not isinstance(exp, dict):
+                continue
+            total += 140  # entry-level layout overhead
+            total += len(str(exp.get('title') or ''))
+            total += len(str(exp.get('company') or ''))
+            total += len(str(exp.get('start_date') or exp.get('start') or ''))
+            total += len(str(exp.get('end_date') or exp.get('end') or ''))
+
+            bullets = exp.get('ordered_achievements')
+            if not isinstance(bullets, list):
+                bullets = exp.get('achievements') or []
+            for ach in bullets:
+                text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
+                total += max(len(str(text)), 24) + 36
+
+        for ach in achievements or []:
+            text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
+            total += max(len(str(text)), 20) + 28
+
+        for skill in skills or []:
+            name = skill.get('name', '') if isinstance(skill, dict) else str(skill)
+            total += max(len(str(name)), 6) + 10
+
+        return total
+
+    def _cap_cv_body_to_pages(
+        self,
+        summary: Any,
+        experiences: List[Dict],
+        achievements: List[Dict],
+        skills: List[Dict],
+        max_pages: float,
+        chars_per_page: int = 2500,
+    ) -> Tuple[Any, List[Dict], List[Dict], List[Dict]]:
+        """Trim body content until estimated size fits the requested page budget."""
+        if max_pages is None:
+            return summary, experiences, achievements, skills
+
+        budget = int(max_pages * chars_per_page)
+        if budget <= 0:
+            return '', [], [], []
+
+        out_summary = summary
+        out_experiences = [dict(exp) for exp in (experiences or []) if isinstance(exp, dict)]
+        out_achievements = list(achievements or [])
+        out_skills = list(skills or [])
+
+        def _current() -> int:
+            return self._estimate_cv_body_chars(
+                out_summary,
+                out_experiences,
+                out_achievements,
+                out_skills,
+            )
+
+        if _current() <= budget:
+            return out_summary, out_experiences, out_achievements, out_skills
+
+        # Remove less-critical sections in this order: skills, standalone
+        # achievements, then lower-priority experience bullets/entries.
+        while out_skills and _current() > budget:
+            out_skills.pop()
+
+        while out_achievements and _current() > budget:
+            out_achievements.pop()
+
+        while _current() > budget and out_experiences:
+            changed = False
+            for exp in reversed(out_experiences):
+                bullets = exp.get('ordered_achievements')
+                key = 'ordered_achievements'
+                if not isinstance(bullets, list):
+                    bullets = exp.get('achievements')
+                    key = 'achievements'
+                if isinstance(bullets, list) and len(bullets) > 1:
+                    bullets = list(bullets)
+                    bullets.pop()
+                    exp[key] = bullets
+                    changed = True
+                    if _current() <= budget:
+                        break
+            if not changed:
+                break
+
+        while len(out_experiences) > 1 and _current() > budget:
+            out_experiences.pop()
+
+        if _current() > budget:
+            summary_text = str(out_summary or '')
+            max_summary_len = max(200, budget // 6)
+            if len(summary_text) > max_summary_len:
+                out_summary = summary_text[:max_summary_len].rstrip() + '...'
+
+        return out_summary, out_experiences, out_achievements, out_skills
     
+    @staticmethod
+    def _cap_publications_to_pages(
+        pubs: List[Dict],
+        max_pages: float,
+        chars_per_page: int = 1500,
+    ) -> List[Dict]:
+        """Trim the publication list to fit within an estimated page budget.
+
+        Uses citation character length as a proxy for rendered height.
+        Reads ``formatted_citation`` when available (post-format), otherwise
+        falls back to ``formatted`` (raw value from ``_select_publications``).
+        The default chars_per_page (1500) is calibrated from observed output:
+        ~10 publications spanning ~4 pages at the standard 0.88 em font-size.
+
+        Always keeps at least one publication even if it alone exceeds the
+        budget.
+        """
+        if not pubs or max_pages is None:
+            return pubs
+        budget = max_pages * chars_per_page
+        cumulative = 0
+        for i, pub in enumerate(pubs):
+            # formatted_citation is available post-format; formatted is the raw
+            # value returned by _select_publications before _format_publications runs.
+            citation = pub.get('formatted_citation') or pub.get('formatted', '') or ''
+            # Minimum 80 chars accounts for formatting overhead even for
+            # very short citations (year, authors, title wrapper).
+            cumulative += max(len(citation), 80)
+            if cumulative > budget:
+                return pubs[:max(i, 1)]  # always include at least one entry
+        return pubs
+
     def _select_publications(self, job_analysis: Dict, max_count: int = 10) -> List[Dict]:
         """Select most relevant publications."""
         if not self.publications:
@@ -4336,6 +4578,16 @@ Include one entry per candidate. Do not omit any candidate."""
                     else:
                         run = p.add_run(citation)
                         run.font.size = Pt(10)
+
+        # ── Footer: generation timestamp ─────────────────────────────────────
+        for sec in doc.sections:
+            footer = sec.footer
+            fp = footer.paragraphs[0]
+            fp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            run = fp.add_run(f"Generated: {timestamp}")
+            run.font.size = Pt(8)
+            run.font.color.rgb = RGBColor(0xCC, 0xCC, 0xCC)
+            run.font.italic = True
 
         doc.save(str(filepath))
         logger.info("Human DOCX: %s", filename)
