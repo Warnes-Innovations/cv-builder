@@ -4584,7 +4584,7 @@ Include one entry per candidate. Do not omit any candidate."""
             footer = sec.footer
             fp = footer.paragraphs[0]
             fp.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            run = fp.add_run(f"Generated: {timestamp}")
+            run = fp.add_run(f"{timestamp}")
             run.font.size = Pt(8)
             run.font.color.rgb = RGBColor(0xCC, 0xCC, 0xCC)
             run.font.italic = True
