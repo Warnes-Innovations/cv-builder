@@ -31,6 +31,25 @@ _oauth = None           # authlib OAuth instance
 _auth_enabled = False   # True when KEYCLOAK_URL is configured
 
 
+def _read_secret(name: str) -> str:
+    """Read a secret from env var *name* or the file at *name*_FILE.
+
+    Docker Swarm mounts secrets as files; the stack passes their paths via
+    ``{VAR}_FILE`` env vars.  Direct ``{VAR}`` env vars take precedence so
+    local dev still works without Docker.
+    """
+    value = os.getenv(name, '')
+    if value:
+        return value
+    file_path = os.getenv(f'{name}_FILE', '')
+    if file_path:
+        try:
+            return Path(file_path).read_text().strip()
+        except OSError as exc:
+            logger.warning('Could not read secret file %s: %s', file_path, exc)
+    return ''
+
+
 def is_enabled() -> bool:
     """Return True when Keycloak auth is active."""
     return _auth_enabled
@@ -43,7 +62,7 @@ def init_auth(app: Flask) -> bool:
     keycloak_url = os.getenv('KEYCLOAK_URL', '').rstrip('/')
     realm = os.getenv('KEYCLOAK_REALM', '')
     client_id = os.getenv('KEYCLOAK_CLIENT_ID', '')
-    client_secret = os.getenv('KEYCLOAK_CLIENT_SECRET', '')
+    client_secret = _read_secret('KEYCLOAK_CLIENT_SECRET')
 
     if not keycloak_url:
         logger.info(
@@ -58,7 +77,7 @@ def init_auth(app: Flask) -> bool:
             '/ KEYCLOAK_CLIENT_SECRET are missing.'
         )
 
-    secret_key = os.getenv('CV_SECRET_KEY')
+    secret_key = _read_secret('CV_SECRET_KEY')
     if not secret_key:
         raise RuntimeError(
             'CV_SECRET_KEY must be set when Keycloak auth is enabled. '

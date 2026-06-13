@@ -221,9 +221,20 @@ class Config:
     @property
     def gemini_api_key(self) -> Optional[str]:
         """Google Gemini API key."""
+        def _file_fallback(name: str) -> Optional[str]:
+            v = os.getenv(name)
+            if v:
+                return v
+            fp = os.getenv(f'{name}_FILE')
+            if fp:
+                try:
+                    return Path(fp).read_text().strip() or None
+                except OSError:
+                    pass
+            return None
         return (
-            os.getenv('GEMINI_API_KEY')
-            or os.getenv('GOOGLE_API_KEY')
+            _file_fallback('GEMINI_API_KEY')
+            or _file_fallback('GOOGLE_API_KEY')
             or self.get('api_keys.gemini_api_key') or None
         )
 
