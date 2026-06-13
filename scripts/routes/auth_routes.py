@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
-from flask import Blueprint, jsonify, request
+from flask import (
+    Blueprint, g, jsonify, redirect, request, session, url_for,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -427,5 +429,60 @@ def create_blueprint(deps):
                 "provider": _provider_name,
                 "model":    _current_model,
             }), 200
+
+    # ── Keycloak OIDC routes (no-ops when auth is disabled) ──────────────────
+
+    import utils.auth as _auth_mod  # noqa: PLC0415
+
+    @bp.get('/login')
+    def login():
+        if not _auth_mod.is_enabled():
+            return redirect('/')
+        cb = url_for('auth.auth_callback', _external=True)
+        return _auth_mod._oauth.keycloak.authorize_redirect(cb)
+
+    @bp.get('/auth/callback')
+    def auth_callback():
+        if not _auth_mod.is_enabled():
+            return redirect('/')
+        token = _auth_mod._oauth.keycloak.authorize_access_token()
+        info = token.get('userinfo') or \
+            _auth_mod._oauth.keycloak.userinfo()
+        session['user_id'] = info['sub']
+        session['user_email'] = info.get('email', '')
+        session['user_name'] = info.get('name', '')
+        session.permanent = True
+        # Bootstrap per-user directories on first login
+        from utils.config import get_config  # noqa: PLC0415
+        paths = _auth_mod.user_data_paths(
+            info['sub'], get_config().data_root
+        )
+        _auth_mod.ensure_user_dirs(paths)
+        next_url = session.pop('next', None) or '/'
+        return redirect(next_url)
+
+    @bp.get('/logout')
+    def logout():
+        kc_url = os.getenv('KEYCLOAK_URL', '').rstrip('/')
+        realm = os.getenv('KEYCLOAK_REALM', '')
+        session.clear()
+        if kc_url and realm:
+            kc_logout = (
+                f'{kc_url}/realms/{realm}'
+                '/protocol/openid-connect/logout'
+                f'?redirect_uri={request.host_url}'
+            )
+            return redirect(kc_logout)
+        return redirect('/')
+
+    @bp.get('/api/auth/me')
+    def auth_me():
+        """Return current user info (or anonymous indicator)."""
+        return jsonify({
+            'authenticated': bool(g.get('user_id')),
+            'user_id': g.get('user_id'),
+            'email': g.get('user_email'),
+            'name': g.get('user_name'),
+        })
 
     return bp

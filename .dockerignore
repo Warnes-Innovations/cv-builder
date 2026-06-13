@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+htmlcov/
+coverage/
+.coverage
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+
+# Local dev artifacts
+.env
+*.log
+logs/
+tmp/
+test_output/
+worktrees/
+*.bak
+
+# Git
+.git/
+.gitignore
+
+# Conda
+__env@
+
+# IDE / OS
+.DS_Store
+.vscode/
+.specstory/

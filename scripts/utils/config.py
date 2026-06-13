@@ -121,19 +121,45 @@ class Config:
     
     # Data paths
     @property
+    def data_root(self) -> str:
+        """Base directory for all CV Builder data files.
+
+        Set CV_DATA_ROOT to relocate all data paths at once (e.g. to /data in
+        Docker).  Individual paths can still be overridden by their own env vars
+        or config.yaml entries.
+        """
+        root = os.getenv('CV_DATA_ROOT') or self.get('data.root', '~/CV')
+        return str(Path(root).expanduser())
+
+    @property
     def master_cv_path(self) -> str:
         """Path to Master_CV_Data.json."""
-        return os.getenv('CV_MASTER_DATA_PATH') or self.get('data.master_cv', 'Master_CV_Data.json')
-    
+        if env := os.getenv('CV_MASTER_DATA_PATH'):
+            return env
+        configured = self.get('data.master_cv')
+        if configured:
+            return str(Path(configured).expanduser())
+        return str(Path(self.data_root) / 'Master_CV_Data.json')
+
     @property
     def publications_path(self) -> str:
         """Path to publications.bib."""
-        return os.getenv('CV_PUBLICATIONS_PATH') or self.get('data.publications', 'publications.bib')
-    
+        if env := os.getenv('CV_PUBLICATIONS_PATH'):
+            return env
+        configured = self.get('data.publications')
+        if configured:
+            return str(Path(configured).expanduser())
+        return str(Path(self.data_root) / 'publications.bib')
+
     @property
     def output_dir(self) -> str:
         """Output directory for generated CVs."""
-        return os.getenv('CV_OUTPUT_DIR') or self.get('data.output_dir', 'files')
+        if env := os.getenv('CV_OUTPUT_DIR'):
+            return env
+        configured = self.get('data.output_dir')
+        if configured:
+            return str(Path(configured).expanduser())
+        return str(Path(self.data_root) / 'cv-builder')
     
     # LLM settings
     @property
@@ -240,7 +266,12 @@ class Config:
     @property
     def session_dir(self) -> str:
         """Session directory."""
-        return self.get('session.session_dir', 'files/sessions')
+        if env := os.getenv('CV_SESSION_DIR'):
+            return env
+        configured = self.get('session.session_dir')
+        if configured:
+            return str(Path(configured).expanduser())
+        return str(Path(self.output_dir) / 'sessions')
     
     @property
     def history_file(self) -> str:
@@ -304,7 +335,12 @@ class Config:
     @property
     def log_dir(self) -> str:
         """Log directory path."""
-        return os.getenv('CV_LOG_DIR') or self.get('logging.log_dir', './logs')
+        if env := os.getenv('CV_LOG_DIR'):
+            return env
+        configured = self.get('logging.log_dir')
+        if configured:
+            return str(Path(configured).expanduser())
+        return str(Path(self.output_dir) / 'logs')
 
 
 class ConfigurationError(Exception):

@@ -42,7 +42,10 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-from flask import Flask, jsonify, redirect, request, send_file, send_from_directory, url_for
+from flask import (
+    Flask, g, jsonify, redirect, request,
+    send_file, send_from_directory, session, url_for,
+)
 import requests
 from urllib.parse import urlparse
 import re
@@ -577,6 +580,27 @@ def _web_app_build_objects(args, auth_manager):
 def create_app(args) -> Flask:
     app = Flask(__name__, static_folder=None)
 
+    # ── Keycloak OIDC auth (enabled when KEYCLOAK_URL env var is set) ────────
+    from utils.auth import (  # noqa: PLC0415
+        init_auth, is_enabled as _kc_enabled,
+        is_exempt as _kc_exempt, load_user_from_session,
+    )
+    init_auth(app)
+
+    @app.before_request
+    def _load_user():
+        load_user_from_session()
+
+    @app.before_request
+    def _require_login():
+        if not _kc_enabled():
+            return
+        if _kc_exempt(request.path):
+            return
+        if not g.get('user_id'):
+            session['next'] = request.url
+            return redirect('/login')
+
     # Validate configuration before initializing dependencies.
     # Raises ConfigurationError with a clear message if no LLM provider is set.
     validate_config(provider=args.llm_provider)
@@ -641,7 +665,14 @@ def create_app(args) -> Flask:
     _app_config = get_config()
 
     def _build_objects_for_registry(_config_ignored):
-        """Factory passed to SessionRegistry; uses the current provider/model refs."""
+        """Factory passed to SessionRegistry; uses the current provider/model refs.
+
+        When Keycloak auth is active, paths are scoped to the current user
+        (read from flask.g, which is set by the before_request auth hook).
+        """
+        from utils.auth import (  # noqa: PLC0415
+            get_current_user_id, user_data_paths,
+        )
         session_provider = provider_name_ref["value"]
         session_model = current_model_ref["value"]
         session_llm_client = get_llm_provider(
@@ -649,10 +680,20 @@ def create_app(args) -> Flask:
             model=session_model,
             auth_manager=auth_manager,
         )
+        user_id = get_current_user_id()
+        if user_id:
+            paths = user_data_paths(user_id, _app_config.data_root)
+            master_data = paths['master_data']
+            publications = paths.get('publications', args.publications)
+            output_dir = paths['output_dir']
+        else:
+            master_data = args.master_data
+            publications = args.publications
+            output_dir = args.output_dir
         orchestrator = CVOrchestrator(
-            master_data_path=args.master_data,
-            publications_path=args.publications,
-            output_dir=args.output_dir,
+            master_data_path=master_data,
+            publications_path=publications,
+            output_dir=output_dir,
             llm_client=session_llm_client,
         )
         conversation = ConversationManager(
