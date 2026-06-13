@@ -402,8 +402,18 @@ def setup_logging(config: Optional[Config] = None) -> None:
     level_name = cfg.log_level.upper()
     level = getattr(logging, level_name, logging.INFO)
 
+    class _RequestContextFilter(logging.Filter):
+        """Inject flask.g.user_id into every log record (falls back to '-')."""
+        def filter(self, record):
+            try:
+                from flask import g  # noqa: PLC0415
+                record.user_id = g.get('user_id') or '-'
+            except RuntimeError:
+                record.user_id = '-'
+            return True
+
     fmt = logging.Formatter(
-        fmt="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
+        fmt="%(asctime)s  %(levelname)-8s  [%(user_id)s]  %(name)s — %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
     )
 
@@ -413,6 +423,7 @@ def setup_logging(config: Optional[Config] = None) -> None:
         return
 
     root.setLevel(level)
+    root.addFilter(_RequestContextFilter())
 
     # Always add a console handler.
     ch = logging.StreamHandler()
