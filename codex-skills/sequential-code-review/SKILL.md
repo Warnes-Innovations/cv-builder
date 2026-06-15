@@ -7,8 +7,8 @@ description: Run a systematic code review and present multiple findings one by o
 
 Adapted from:
 
-- `~/src/vscode-config/prompts/codeReview.prompt.md`
-- `~/src/vscode-config/skills/code-review/SKILL.md`
+- `~/src/agent-config/prompts/codeReview.prompt.md`
+- `~/src/agent-config/skills/code-review/SKILL.md`
 
 ## Workflow
 
