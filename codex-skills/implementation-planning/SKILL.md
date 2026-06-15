@@ -5,7 +5,7 @@ description: Create a structured implementation plan with explicit decisions, ri
 
 # Implementation Planning
 
-Adapted from `~/src/vscode-config/prompts/plan.prompt.md`.
+Adapted from `~/src/agent-config/prompts/plan.prompt.md`.
 
 ## Produce three things
 

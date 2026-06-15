@@ -5,7 +5,7 @@ description: Generate conventional commit messages with thematic grouping from c
 
 # Commit Message Generator
 
-Adapted from `~/src/vscode-config/prompts/commitMessage.prompt.md`.
+Adapted from `~/src/agent-config/prompts/commitMessage.prompt.md`.
 
 ## Workflow
 

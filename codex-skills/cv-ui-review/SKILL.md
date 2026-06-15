@@ -5,7 +5,7 @@ description: Review the cv-builder UI against user stories and UX heuristics usi
 
 # CV UI Review
 
-Adapted from `~/src/vscode-config/prompts/cvUiReview.prompt.md`.
+Adapted from `~/src/agent-config/prompts/cvUiReview.prompt.md`.
 
 ## Core rule
 
