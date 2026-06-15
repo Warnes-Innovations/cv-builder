@@ -5,7 +5,7 @@ description: Run the shared preflight workflow before substantial work in repos 
 
 # Copilot Preflight
 
-Adapted from `~/src/vscode-config/prompts/preflight.prompt.md`.
+Adapted from `~/src/agent-config/prompts/preflight.prompt.md`.
 
 ## When to use
 

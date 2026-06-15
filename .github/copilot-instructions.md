@@ -149,13 +149,13 @@ logging:
 ## Instructions hierarchy and user-level config
 - Respect VS Code **user-level** agent instructions/prompts/skills symlinked into:
   - `~/Library/Application Support/Code/User/`
-  - Managed from `~/src/vscode-config` via `setup-symlinks.sh`.
+  - Managed from `~/src/agent-config` via `setup-symlinks.sh`.
 - Treat this file as project-specific guidance; user-level instructions still apply unless they conflict with explicit repo requirements.
-- Codex bridge: repo-local prompt-to-skill conversions live under `codex-skills/`; install them plus shared `~/src/vscode-config/skills` into `~/.codex/skills` with `bash scripts/install_codex_skills.sh`.
+- Codex bridge: repo-local prompt-to-skill conversions live under `codex-skills/`; install them plus shared `~/src/agent-config/skills` into `~/.codex/skills` with `bash scripts/install_codex_skills.sh`.
 
 ## Available Slash Commands
 
-Slash commands are available from the shared prompt set in `~/src/vscode-config/.github/prompts/` and repo-local prompts in `.github/prompts/`. The most relevant:
+Slash commands are available from the shared prompt set in `~/src/agent-config/.github/prompts/` and repo-local prompts in `.github/prompts/`. The most relevant:
 
 | Command | Purpose |
 |---------|---------|

@@ -10,7 +10,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 TARGET_DIR="$CODEX_HOME/skills"
-VSCODE_SKILLS_DIR="$HOME/src/vscode-config/skills"
+AGENT_SKILLS_DIR="$HOME/src/agent-config/skills"
 LOCAL_SKILLS_DIR="$REPO_ROOT/codex-skills"
 
 mkdir -p "$TARGET_DIR"
@@ -34,8 +34,8 @@ link_skill_dir() {
   echo "Installed $name -> $source_dir"
 }
 
-if [[ -d "$VSCODE_SKILLS_DIR" ]]; then
-  for dir in "$VSCODE_SKILLS_DIR"/*; do
+if [[ -d "$AGENT_SKILLS_DIR" ]]; then
+  for dir in "$AGENT_SKILLS_DIR"/*; do
     [[ -d "$dir" ]] || continue
     link_skill_dir "$dir"
   done
