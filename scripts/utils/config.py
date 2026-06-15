@@ -386,15 +386,36 @@ def validate_config(provider: Optional[str] = None) -> None:
     values are accepted even when config.yaml is sparse.
 
     Raises:
-        ConfigurationError: if no LLM provider is configured from any source.
+        ConfigurationError: if no LLM provider is configured from any source,
+                            or if no data path has been explicitly configured.
     """
-    effective_provider = provider or get_config().llm_provider
+    cfg = get_config()
+
+    # ── LLM provider ─────────────────────────────────────────────────────────
+    effective_provider = provider or cfg.llm_provider
     if not effective_provider or not str(effective_provider).strip():
         raise ConfigurationError(
             "No LLM provider configured. "
             "Set `llm.default_provider` in config.yaml or pass `--llm-provider` "
             "on the command line. "
             "Valid values: copilot-oauth, copilot, github, openai, anthropic, gemini, groq, local, copilot-sdk."
+        )
+
+    # ── Data root / master CV path ────────────────────────────────────────────
+    # Require at least one explicit source (env var or config.yaml).
+    # Falling back to the built-in ~/CV default without any configuration is
+    # almost always a misconfiguration, especially in Docker.
+    data_explicitly_configured = bool(
+        os.getenv('CV_DATA_ROOT')
+        or os.getenv('CV_MASTER_DATA_PATH')
+        or cfg.get('data.root')
+        or cfg.get('data.master_cv')
+    )
+    if not data_explicitly_configured:
+        raise ConfigurationError(
+            "No data path configured. "
+            "Set CV_DATA_ROOT (e.g. CV_DATA_ROOT=~/CV) or add "
+            "'data.root' / 'data.master_cv' to config.yaml."
         )
 
 

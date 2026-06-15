@@ -126,7 +126,10 @@ def load_user_from_session() -> None:
 
 def get_current_user_id() -> Optional[str]:
     """Return the authenticated user's Keycloak ``sub``, or None."""
-    return getattr(g, 'user_id', None)
+    try:
+        return getattr(g, 'user_id', None)
+    except RuntimeError:
+        return None
 
 
 # --------------------------------------------------------------------------
@@ -148,7 +151,7 @@ def is_exempt(path: str) -> bool:
 
 
 def login_required(f):
-    """Decorator: redirect to /login when auth is enabled and user is absent."""
+    """Redirect to /login when auth is enabled and user is absent."""
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         if _auth_enabled and not g.get('user_id'):
