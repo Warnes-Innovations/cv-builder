@@ -7,7 +7,7 @@ local operation requires no configuration changes.
 
 Environment variables (all required when auth is enabled):
     KEYCLOAK_URL            Base URL of the Keycloak server
-                            e.g. https://auth.cv-builder.cc
+                            e.g. https://auth.cvbuilder.cc
     KEYCLOAK_REALM          Realm name, e.g. cvbuilder
     KEYCLOAK_CLIENT_ID      OIDC client ID, e.g. cv-builder-app
     KEYCLOAK_CLIENT_SECRET  OIDC client secret (from Keycloak admin)
