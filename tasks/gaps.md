@@ -282,6 +282,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 **Status:** CLOSED - fixed 2026-04-21 (commit ad9edf0, amended). Template logic corrected.
 **Description:** The publications section heading did not correctly signal whether a subset or the full list was rendered.
 **Resolution:** `cv-template.html` now renders the heading conditionally:
+
 - **"Selected Publications"** — when `template_metadata.total_publications_count` exceeds the number of rendered publications (i.e., a subset is shown).
 - **"Publications"** — when all publications are shown or when no count metadata is available.
 - The publication count is **never** shown in generated documents.
@@ -1078,10 +1079,11 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 ## GAP-127: `candidate_to_confirm` Skills Not Rendered in Review UI and Not Excluded from Output
 
 **Priority:** HIGH
-**Status:** Open
+**Status:** PARTIAL — UI fixed 2026-06-18; output exclusion pending (design decision)
 **Found:** 2026-06-18 cvUiReview
 `scripts/utils/cv_orchestrator.py:1779` sets a `candidate_to_confirm` flag on skill additions that have weak evidence. However, `web/` has zero references to `candidate_to_confirm` in any rendering code — the flag is never displayed to the user in the skills review tab. Furthermore, no output rendering code checks this flag before including the skill in generated PDF/DOCX/HTML. Skills with unconfirmed evidence are indistinguishable from confirmed skills in both the review UI and the generated artefacts.
-**Source evidence:** `scripts/utils/cv_orchestrator.py:1779`; `web/skills-review.js` (no reference to flag); resume-expert.md 2026-06-18.
+**Partial fix:** `web/skills-review.js` now reads `skill.candidate_to_confirm` and renders a `⚠ Verify evidence` badge (dark red, with explanatory tooltip) next to the skill name in the review table. Users can now visually identify and remove weak-evidence skills before generating output. Output-side exclusion not implemented — this is a design question (auto-exclude vs. show-and-let-user-decide); current behavior allows inclusion.
+**Source evidence:** `scripts/utils/cv_orchestrator.py:1779`; `web/skills-review.js`; resume-expert.md 2026-06-18.
 
 ## GAP-128: Rejected Rewrites Absent from `rewrite_audit`
 

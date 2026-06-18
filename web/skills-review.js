@@ -628,9 +628,10 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   };
 
   skills.forEach((skill, rowIdx) => {
-    const skillName      = typeof skill === 'string' ? skill : skill.name || skill;
-    const isNew          = (skill._isNew === true);
-    const isRecommended  = recommendedSet.has(skillName);
+    const skillName            = typeof skill === 'string' ? skill : skill.name || skill;
+    const isNew                = (skill._isNew === true);
+    const isCandidateToConfirm = typeof skill === 'object' && skill.candidate_to_confirm === true;
+    const isRecommended        = recommendedSet.has(skillName);
     const recommendation = getSkillRecommendation(skillName, data);
     const confidence     = getSkillConfidence(skillName, data);
     const reasoning      = getSkillReasoning(skillName, data);
@@ -658,6 +659,9 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
       ? (skill._isUserCreated
         ? '<span title="Added for this session only" style="margin-left:6px;font-size:10px;color:#0f766e;border:1px solid #0f766e;border-radius:3px;padding:1px 5px;cursor:help;">Session only</span>'
         : '<span title="AI suggested — not yet in CV profile" style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>')
+      : '';
+    const candidateBadge = isCandidateToConfirm
+      ? '<span title="Weak evidence — confirm this skill is genuinely demonstrated in your experience before including it" style="margin-left:6px;font-size:10px;color:#9f1239;border:1px solid #9f1239;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Verify evidence</span>'
       : '';
     const skillNameLower  = skillName.toLowerCase();
     const skillTypeBadge  = hardSkillSet.has(skillNameLower)
@@ -695,7 +699,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
 
     tableHTML += `
       <tr data-skill="${skillNameEsc}" style="${rowStyle}">
-        <td><strong>${skillNameEsc}</strong>${skillTypeBadge}${newBadge}</td>
+        <td><strong>${skillNameEsc}</strong>${skillTypeBadge}${newBadge}${candidateBadge}</td>
         <td style="min-width:140px;">
           <input type="text" class="skill-category-input" data-skill="${skillNameEsc}"
             value="${escapeHtml(categoryKey)}"
