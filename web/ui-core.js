@@ -690,6 +690,12 @@ function toggleChat() {
     if (viewerArea) {
       viewerArea.style.flex = isCollapsed ? '1 1 100%' : '0 1 60%';
     }
+    // Keep aria-label and aria-expanded in sync with collapsed state
+    const toggleBtn = document.getElementById('toggle-chat');
+    if (toggleBtn) {
+      toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
+      toggleBtn.setAttribute('aria-label', isCollapsed ? 'Expand chat panel' : 'Collapse chat panel');
+    }
     try {
       localStorage.setItem(StorageKeys.CHAT_COLLAPSED, isCollapsed);
     } catch (e) {

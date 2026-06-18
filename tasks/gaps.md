@@ -1104,9 +1104,10 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 ## GAP-130: Persuasion Warning Panel Collapsed by Default — Bypass Possible
 
 **Priority:** MED
-**Status:** Open
+**Status:** RESOLVED — already fixed (confirmed 2026-06-18 code check)
 **Found:** 2026-06-18 cvUiReview
 `web/rewrite-review.js:107` initialises the persuasion warnings panel in a collapsed state. The "Acknowledged" button is rendered inside the collapsed section (`rewrite-review.js:114`). A user can click "Proceed anyway?" (line 383–389) to bypass the entire warning panel without expanding it or reading any individual warning. This violates the trust requirement that persuasion warnings must be reviewed before proceeding.
+**Resolution:** The panel already defaults to `display:block` at `rewrite-review.js:107`. This was fixed as part of GAP-45 resolution (persuasion gate hardening). No further change needed.
 **Source evidence:** `web/rewrite-review.js:107, 114, 383–389`; trust-compliance.md 2026-06-18.
 
 ## GAP-131: No Blocking Gate at Customise Stage
@@ -1184,9 +1185,10 @@ Clarification answers (`post_analysis_answers`) are injected into the cover lett
 ## GAP-140: Icon-Only Controls Missing `aria-label`
 
 **Priority:** HIGH
-**Status:** Open
+**Status:** RESOLVED 2026-06-18
 **Found:** 2026-06-18 cvUiReview
 Two always-visible interactive elements in the header have no accessible name: (1) `#toggle-chat` (`web/index.html:149`) — the ◀/▶ panel collapse button; (2) `#rename-session-btn` (`web/index.html:76–79`) — the ✏️ rename button. Additionally, multiple modal close `×` buttons across the application use `title` attribute only (not reliably announced by screen readers) with no `aria-label`. This is a WCAG 2.1 Level A failure for each of these elements.
+**Fix:** Added `aria-label` and `aria-expanded` to `#toggle-chat`; `toggleChat()` in `web/ui-core.js` updates both attributes on each toggle. Added `aria-label` to `#rename-session-btn`. Added specific `aria-label` values to all 6 modal close `×` buttons in `web/index.html`.
 **Source evidence:** `web/index.html:76–79, 149`; accessibility-specialist.md 2026-06-18.
 
 ## GAP-141: BibTeX CRUD Modal Converts `editor` Field to `author` on Save

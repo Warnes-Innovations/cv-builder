@@ -74,7 +74,7 @@
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="position-title" id="position-title"></div>
           <button id="rename-session-btn" onclick="promptRenameCurrentSession()"
-            title="Rename this session"
+            title="Rename this session" aria-label="Rename this session"
             style="display:none;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:1.1em;padding:2px 4px;line-height:1;">✏️</button>
         </div>
         <div class="position-subtitle" id="position-company" style="display:none;"></div>
@@ -110,7 +110,7 @@
   <div id="session-conflict-banner">
     <span id="conflict-banner-text"></span><span id="conflict-countdown"></span>
     <button id="conflict-retry-btn" onclick="conflictRetryNow()" title="Retry now" style="margin-left:10px;">↺ Retry Now</button>
-    <button onclick="conflictDismiss()" title="Dismiss">✕</button>
+    <button onclick="conflictDismiss()" title="Dismiss" aria-label="Dismiss notification">✕</button>
   </div>
 
   <!-- Workflow Steps -->
@@ -146,7 +146,7 @@
   <div class="main-container">
     <!-- Interaction Area -->
     <div class="interaction-area" id="chat-area">
-      <button class="toggle-chat" id="toggle-chat" onclick="toggleChat()">◀</button>
+      <button class="toggle-chat" id="toggle-chat" onclick="toggleChat()" aria-label="Collapse chat panel" aria-expanded="true">◀</button>
 
       <!-- LLM busy overlay — covers the chat panel while an LLM call is in flight -->
       <div id="llm-busy-overlay">
@@ -246,7 +246,7 @@
     <div class="modal" style="max-width: 980px; width: 95%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2 id="sessions-modal-title" style="margin:0;">📂 Sessions</h2>
-        <button id="sessions-modal-close-x" onclick="closeSessionsModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+        <button id="sessions-modal-close-x" onclick="closeSessionsModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close" aria-label="Close sessions panel">&times;</button>
       </div>
       <div class="modal-body" id="sessions-modal-body" style="padding:0; max-height:68vh; overflow-y:auto;">
         <p style="padding:24px;text-align:center;color:#6b7280;">Loading sessions…</p>
@@ -268,7 +268,7 @@
     <div class="modal" style="max-width: 1280px; width: 98%; max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; position: relative; top: auto; left: auto; transform: none; margin: auto;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
         <h2 id="master-cv-modal-title" style="margin:0;">📚 Master CV Profile</h2>
-        <button class="modal-close-btn" onclick="closeMasterCvModal()" title="Close">&times;</button>
+        <button class="modal-close-btn" onclick="closeMasterCvModal()" title="Close" aria-label="Close Master CV editor">&times;</button>
       </div>
       <div id="master-cv-modal-body" class="modal-body" style="padding: 0; flex: 1; overflow-y: auto; max-height: none;">
         <p style="padding:24px;text-align:center;color:#6b7280;">Loading…</p>
@@ -399,7 +399,7 @@
     <div class="modal" style="max-width: 1020px; width: 95%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2 id="model-modal-title" style="margin:0;">LLM Configuration Wizard</h2>
-        <button class="modal-close-btn" onclick="closeModelModal()" title="Close">&times;</button>
+        <button class="modal-close-btn" onclick="closeModelModal()" title="Close" aria-label="Close model selector">&times;</button>
       </div>
       <div class="modal-body model-wizard-body" style="padding: 0; position: relative;">
         <div id="model-wizard-busy-overlay" class="wizard-busy-overlay" style="display:none;">
@@ -559,7 +559,7 @@
     <div class="modal" style="max-width: 760px; width: 94%;">
       <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center;">
         <h2 id="settings-modal-title" style="margin:0;">⚙️ Settings</h2>
-        <button onclick="closeSettingsModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+        <button onclick="closeSettingsModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close" aria-label="Close settings">&times;</button>
       </div>
       <div class="modal-body" style="max-height:65vh; overflow-y:auto; padding: 12px 4px;">
         <div id="settings-status-msg" style="display:none; margin:0 10px 12px; padding:8px 10px; border-radius:6px; font-size:0.9em;"></div>
@@ -670,7 +670,7 @@
     <div class="modal" style="max-width: 720px; width: 92%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2 id="ats-report-modal-title" style="margin:0;">📊 ATS Report</h2>
-        <button onclick="closeAtsReportModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+        <button onclick="closeAtsReportModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close" aria-label="Close ATS report">&times;</button>
       </div>
       <div class="modal-body" id="ats-report-modal-body" style="max-height: 560px; overflow-y: auto;">
         <p style="padding:24px;text-align:center;color:#6b7280;">Loading ATS report…</p>
@@ -686,7 +686,7 @@
     <div class="modal" style="max-width: 720px; width: 92%;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2 id="job-analysis-modal-title" style="margin:0;">🔍 Job Analysis</h2>
-        <button onclick="closeJobAnalysisModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close">&times;</button>
+        <button onclick="closeJobAnalysisModal()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;" title="Close" aria-label="Close job analysis">&times;</button>
       </div>
       <div class="modal-body" id="job-analysis-modal-body" style="max-height: 560px; overflow-y: auto;">
         <p style="padding:24px;text-align:center;color:#6b7280;">Loading job analysis…</p>
