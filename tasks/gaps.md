@@ -1021,9 +1021,9 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** CRITICAL
 **Affected stories:** US-U7, US-X1, and all workflow stories
-**Status:** OPEN - discovered 2026-04-22; UX expert and accessibility reviews confirmed all viewer tabs (`web/index.html:177–197`) are `<div role="tab">` elements with no `tabindex="0"` and click-only event wiring (`web/app.js:122–125`). Keyboard-only users cannot activate any viewer tab in the entire application.
-**Description:** This is a blocking accessibility failure. The viewer tab bar contains all content tabs (Analysis, Experiences, Skills, Achievements, Publications, Rewrites, Spell Check, Generated CV, Layout, File Review, Finalise, Master, Cover Letter, Screening). Every one of these is inaccessible without a mouse. This is a WCAG 2.1 Level A requirement.
-**Recommended resolution:** For each `.tab` element: (1) add `tabindex="0"`, (2) add an `Enter`/`Space` `keydown` handler that calls `switchTab(tab.dataset.tab)`, (3) implement `ArrowLeft`/`ArrowRight` navigation between tabs within the tab bar per the ARIA `tablist` pattern.
+**Status:** RESOLVED 2026-06-18
+**Description:** All viewer tab `<div role="tab">` elements were missing `tabindex`, making them unreachable by keyboard. Arrow-key keydown handlers existed but could never fire without initial keyboard reachability.
+**Fix:** Added `tabindex="0"` to the initial active tab (`tab-job`) and `tabindex="-1"` to all other tabs in `web/index.html`. Added Enter/Space key activation to the `keydown` handler in `web/ui-core.js`. Updated `switchTab()` in `web/review-table-base.js` to maintain roving tabindex — sets `tabindex="-1"` on all tabs then `tabindex="0"` on the newly active tab. All 22 tabs now reachable via Tab then Arrow keys per WCAG 2.1 Level A tablist pattern.
 
 ## GAP-121: Layout Clarification Uses `window.prompt()` — Accessibility Anti-Pattern
 

@@ -118,15 +118,17 @@ function switchTab(tab) {
     updateWorkflowStepsClickable(stateManager.getPhase());
   }
 
-  // Update active tab and ARIA state
+  // Update active tab, ARIA state, and roving tabindex (WCAG 2.1 tablist pattern)
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.remove('active');
     t.setAttribute('aria-selected', 'false');
+    t.setAttribute('tabindex', '-1');
   });
   const activeTab = document.getElementById(`tab-${tab}`);
   if (activeTab) {
     activeTab.classList.add('active');
     activeTab.setAttribute('aria-selected', 'true');
+    activeTab.setAttribute('tabindex', '0');
   }
   stateManager.setCurrentTab(tab);
 

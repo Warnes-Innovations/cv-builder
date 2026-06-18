@@ -512,8 +512,15 @@ function setupEventListeners() {
       switchTab(tabName);
     });
 
-    // Add arrow key navigation for tabs (WCAG 2.1 AA Tabs pattern)
+    // Keyboard navigation for tabs (WCAG 2.1 AA tablist pattern)
     tab.addEventListener('keydown', (e) => {
+      // Enter/Space activate the focused tab
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.target.click();
+        return;
+      }
+      // Arrow/Home/End navigate and activate
       if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
         e.preventDefault();
         const tabs = Array.from(document.querySelectorAll('.tab:not([style*="display: none"])'));
@@ -528,7 +535,7 @@ function setupEventListeners() {
 
         if (nextTab) {
           nextTab.focus();
-          nextTab.click(); // Activate the tab
+          nextTab.click();
         }
       }
     });
