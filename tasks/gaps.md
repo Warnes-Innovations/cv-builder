@@ -677,7 +677,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-X3, US-U7
-**Status:** OPEN - discovered 2026-04-22; accessibility specialist review found the session conflict banner (`index.html`) has no `role="alert"` or `aria-live` attribute. Screen reader users are not notified of session conflicts.
+**Status:** RESOLVED 2026-06-18 — Added `role="alert"` to `#session-conflict-banner` in `web/index.html:110`. Previously discovered 2026-04-22; accessibility specialist review found the session conflict banner (`index.html`) has no `role="alert"` or `aria-live` attribute. Screen reader users are not notified of session conflicts.
 **Description:** Session conflict banners alert the user to an important application-state problem. Without `role="alert"`, a screen reader user will not be informed of the conflict unless they explicitly move focus to the banner.
 **Recommended resolution:** Add `role="alert"` to the `#session-conflict-banner` element, or use `aria-live="assertive"` so the announcement interrupts the current screen reader context.
 
@@ -1054,7 +1054,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-U7, US-X2
-**Status:** OPEN - discovered 2026-04-22; UX expert review found `web/index.html:87` — `<button id="layout-freshness-chip" ... aria-label="">`. An explicitly empty `aria-label` on a focusable interactive element causes screen readers to announce the button with no accessible name. This is a WCAG 2.1 Level A failure.
+**Status:** RESOLVED 2026-06-18 — Changed initial `aria-label=""` to `aria-label="Layout freshness"` in `web/index.html:95`. `refreshLayoutStatusUI()` continues to update the label dynamically when freshness state changes. Previously discovered 2026-04-22; UX expert review found `web/index.html:87` — `<button id="layout-freshness-chip" ... aria-label="">`. An explicitly empty `aria-label` on a focusable interactive element causes screen readers to announce the button with no accessible name. This is a WCAG 2.1 Level A failure.
 **Description:** The layout freshness chip is a focusable button that communicates layout currency state. Screen reader users navigating by Tab reach this button and hear nothing — the button has no announced purpose or label.
 **Recommended resolution:** Set `aria-label` to a meaningful value that includes the current freshness state, e.g., `aria-label="Layout freshness — layout is current"`. Update the label dynamically as freshness state changes.
 
@@ -1271,7 +1271,7 @@ Cover letter files are named `CoverLetter_{company}_{date}.docx` and screening r
 ## GAP-148: Workflow Step Pills Missing `cursor:pointer` — Non-Clickable Appearance
 
 **Priority:** MEDIUM
-**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Status:** RESOLVED 2026-06-18 — Added `cursor: pointer` to `.step.stale` and `.step.stale-critical` in `web/styles.css`. All navigable states (active, completed, stale, stale-critical) now have pointer cursor; `.step.clickable` on step-job covers the always-navigable initial state. Previously discovered 2026-06-18 (cycle 3)
 **Affected stories:** US-U1, US-A12
 Only `step-job` (the first pill) has `class="clickable"` which applies `cursor:pointer`. The remaining navigable pills (analysis, customizations, rewrite, etc.) have `onclick` handlers but no visual affordance indicating they are interactive. Users who have completed an earlier stage see pills that look like static status indicators rather than clickable re-entry points.
 **Recommended resolution:** Add `class="clickable"` (or equivalent `cursor:pointer` CSS) to all step pill elements that have `onclick` handlers and are in a navigable state. This is a companion to GAP-72 (keyboard access).
@@ -1303,7 +1303,7 @@ The `STANDARD` frozenset in `validate_ats_report` (`scripts/utils/cv_orchestrato
 ## GAP-152: `showConfirmModal` and `openAtsReportModal` Missing Full Focus Trap
 
 **Priority:** HIGH
-**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Status:** RESOLVED 2026-06-18 — `showConfirmModal` now calls `trapFocus('confirm-modal-overlay')` and `closeConfirmModal` calls `restoreFocus()` to release the trap. `openAtsReportModal` now calls `trapFocus('ats-report-modal-overlay')` and `closeAtsReportModal` calls `restoreFocus()`. Previously discovered 2026-06-18 (cycle 3)
 **Affected stories:** US-X2, US-X3
 Both `showConfirmModal` (`web/ui-helpers.js`) and `openAtsReportModal` (`web/ats-modals.js`) now correctly save focus and move it to the first actionable button on open (GAP-143 and GAP-129 fixes). However, neither calls `trapFocus()`. Pressing Tab from the last focusable element exits the modal into background content, allowing keyboard users to interact with the page behind the modal.
 **Recommended resolution:** Call `trapFocus(modalElement)` after opening each modal. The `trapFocus()` implementation already exists in `web/ui-core.js` and is used by `confirmDialog()`. Add a corresponding `releaseFocus()` call in the close handlers.
@@ -1311,7 +1311,7 @@ Both `showConfirmModal` (`web/ui-helpers.js`) and `openAtsReportModal` (`web/ats
 ## GAP-153: Dynamic Status Message Elements Lack `aria-live` or `role="alert"`
 
 **Priority:** HIGH
-**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Status:** RESOLVED 2026-06-18 — Added `aria-live="polite"` to `#onboarding-modal-status` and `#settings-status-msg`; added `role="alert"` to `#model-auth-key-status`. Previously discovered 2026-06-18 (cycle 3)
 **Affected stories:** US-X3, US-U7
 Three elements display status messages dynamically but have no `aria-live` attribute or `role="alert"`: `#settings-status-msg` (LLM settings save confirmation), `#onboarding-modal-status` (onboarding progress), and `#model-auth-key-status` (API key validation feedback). Screen reader users navigating the UI receive no audible notification when these status elements are updated.
 **Recommended resolution:** Add `aria-live="polite"` to `#settings-status-msg` and `#onboarding-modal-status`. Add `role="alert"` (or `aria-live="assertive"`) to `#model-auth-key-status` since API key validation feedback is time-sensitive. Note: `#session-conflict-banner` is tracked separately under GAP-75.
@@ -1319,7 +1319,7 @@ Three elements display status messages dynamically but have no `aria-live` attri
 ## GAP-154: `.message-input { outline: none }` Set Unconditionally — Keyboard Focus Invisible
 
 **Priority:** HIGH
-**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Status:** RESOLVED 2026-06-18 — Moved `outline: none` from `.message-input` base rule into `.message-input:focus` in `web/styles.css`. Previously discovered 2026-06-18 (cycle 3)
 **Affected stories:** US-X1, US-U7
 `web/styles.css` sets `outline: none` on `.message-input` unconditionally (not inside a `:focus` rule). This removes the browser's default keyboard focus indicator from the chat message input for all users at all times, including keyboard-only users. This is a WCAG 2.1 SC 2.4.7 (Focus Visible — Level AA) failure and a WCAG 2.4.11 (Focus Appearance — Level AA) failure.
 **Recommended resolution:** Remove the unconditional `outline: none`. If a custom focus style is desired, apply it as `.message-input:focus { outline: 2px solid #2980b9; }` rather than suppressing the outline entirely. Also see GAP-35 for the companion issue of the missing accessible label on this element.
