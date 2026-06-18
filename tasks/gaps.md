@@ -1229,7 +1229,8 @@ The publication CRUD modal in `web/master-cv.js` loads the `editor` BibTeX field
 ## GAP-145: Cover Letter and Screening DOCX Filenames Omit Role Token
 
 **Priority:** LOW
-**Status:** Open
+**Status:** RESOLVED 2026-06-18
 **Found:** 2026-06-18 cvUiReview (cycle 2)
 Cover letter files are named `CoverLetter_{company}_{date}.docx` and screening responses are named `Screening_Responses_{date}.docx` (no company for screening). Neither includes the role/position token used in CV filenames (`CV_{company}_{role}_{date}.*`). For same-company same-day applications (e.g., two different roles at the same firm), cover letter files will collide and the second will silently overwrite the first.
+**Fix:** Cover letter filename is now `CoverLetter_{company}_{role}_{date}.docx`; screening filename is now `Screening_{company}_{role}_{date}.docx`. Both read role from `job_analysis.title`. `scripts/routes/master_data_routes.py:1638, 1869`.
 **Source evidence:** `scripts/routes/master_data_routes.py:1638, 1869`; recruiter-ops.md 2026-06-18 (cycle 2).

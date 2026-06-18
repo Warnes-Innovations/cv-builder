@@ -1634,8 +1634,9 @@ Close professionally with a call to action.
                 output_dir   = Path(generated['output_dir'])
                 job_analysis = conversation.state.get('job_analysis') or {}
                 company      = (job_analysis.get('company') or 'Company').replace(' ', '_')
+                role         = (job_analysis.get('title') or 'Role').replace(' ', '_')
                 date_str     = datetime.now().strftime('%Y-%m-%d')
-                filename     = f'CoverLetter_{company}_{date_str}.docx'
+                filename     = f'CoverLetter_{company}_{role}_{date_str}.docx'
                 docx_path    = output_dir / filename
 
                 doc = Document()
@@ -1865,9 +1866,12 @@ Close professionally with a call to action.
                     para.style.font.size = _Pt(11)
                     doc.add_paragraph()
 
-                date_str = datetime.now().strftime('%Y-%m-%d')
-                filename = f'Screening_Responses_{date_str}.docx'
-                doc_path = output_dir / filename
+                job_analysis_s = conversation.state.get('job_analysis') or {}
+                company_s      = (job_analysis_s.get('company') or 'Company').replace(' ', '_')
+                role_s         = (job_analysis_s.get('title') or 'Role').replace(' ', '_')
+                date_str       = datetime.now().strftime('%Y-%m-%d')
+                filename       = f'Screening_{company_s}_{role_s}_{date_str}.docx'
+                doc_path       = output_dir / filename
                 doc.save(str(doc_path))
 
                 # Update metadata.json
