@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(conda info *)",
+      "Bash(codespell README.md launchd/install-service.sh)"
+    ]
+  }
+}
