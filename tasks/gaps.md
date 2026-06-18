@@ -1,14 +1,20 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-04-22
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-18
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22
-- independent heuristic UX evaluation (2026-04-22)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22 and 2026-06-18
+- independent heuristic UX evaluation (2026-04-22 and 2026-06-18)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 14-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123 from newly discovered issues and resolved/updated GAP-08, GAP-28, GAP-30, GAP-37, GAP-38, and GAP-45.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123 from newly discovered issues and resolved/updated GAP-08, GAP-28, GAP-30, GAP-37, GAP-38, and GAP-45. The 2026-06-18 cycle added GAP-124 through GAP-142.
+
+## 2026-06-18 Reconciliation Notes
+
+- **0 gaps resolved this cycle:** No source-code evidence confirmed fixes for any open gap in this review pass. All prior open items remain open.
+- **19 new gaps added:** GAP-124 through GAP-142, spanning returning-user (GAP-124), UX expert (GAP-125, GAP-135), hiring manager (GAP-126), resume expert (GAP-127, GAP-128), accessibility (GAP-129, GAP-140), trust/compliance (GAP-130, GAP-131), graphical designer (GAP-132, GAP-133), applicant (GAP-134), persuasion expert (GAP-136, GAP-137, GAP-138, GAP-139), and master CV curator (GAP-141, GAP-142).
+- **Most critical open gaps this cycle:** GAP-120 (keyboard tabs WCAG Level A), GAP-124 (`final_generation` missing from phase labels), GAP-127 (`candidate_to_confirm` not rendered/excluded), GAP-128 (rejected rewrites not audited), GAP-132 (two divergent CV templates), GAP-36 (FileNotFoundError first run), GAP-41 (no pre-job master CV editor).
 
 ## 2026-04-22 Reconciliation Notes
 
@@ -1034,3 +1040,155 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 **Status:** OPEN - discovered 2026-04-22; UX expert review found `web/index.html:87` — `<button id="layout-freshness-chip" ... aria-label="">`. An explicitly empty `aria-label` on a focusable interactive element causes screen readers to announce the button with no accessible name. This is a WCAG 2.1 Level A failure.
 **Description:** The layout freshness chip is a focusable button that communicates layout currency state. Screen reader users navigating by Tab reach this button and hear nothing — the button has no announced purpose or label.
 **Recommended resolution:** Set `aria-label` to a meaningful value that includes the current freshness state, e.g., `aria-label="Layout freshness — layout is current"`. Update the label dynamically as freshness state changes.
+
+## GAP-124: `final_generation` Missing from SESSION_PHASE_LABELS
+
+**Priority:** HIGH
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+`web/utils.js:262–285` defines `SESSION_PHASE_LABELS` and `SESSION_PHASE_LABELS_SHORT` but omits the `final_generation` phase key. Sessions in the `FINAL_GENERATION` phase display the raw Python string "final generation" (lowercase, with space) in the session switcher instead of a human-readable label.
+**Source evidence:** `web/utils.js:262–285`; returning-user persona review 2026-06-18.
+
+## GAP-125: Layout Scope Label Invites Text Changes
+
+**Priority:** HIGH
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+`web/layout-instruction.js:293` renders the placeholder/label "Describe a layout or text change — the AI will determine the right approach." This directly contradicts US-U9 AC 1 and AC 7, which require that only layout changes are accepted at this stage and that approved text is never modified. The label actively encourages users to request text changes that should be blocked.
+**Source evidence:** `web/layout-instruction.js:293`; ux-expert.md 2026-06-18.
+
+## GAP-126: Cover Letter Word Count Hardcoded for All Role Types
+
+**Priority:** HIGH
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+`scripts/routes/master_data_routes.py:1566` hard-codes the cover letter length target as `~250-300 words` regardless of role type. US-M6 requires: 300–400w for standard roles, 400–500w for executive roles, 500–600w for research/academic roles. The current prompt will underdeliver for executive and academic candidates.
+**Source evidence:** `scripts/routes/master_data_routes.py:1566`; hiring-manager.md 2026-06-18.
+
+## GAP-127: `candidate_to_confirm` Skills Not Rendered in Review UI and Not Excluded from Output
+
+**Priority:** HIGH
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+`scripts/utils/cv_orchestrator.py:1779` sets a `candidate_to_confirm` flag on skill additions that have weak evidence. However, `web/` has zero references to `candidate_to_confirm` in any rendering code — the flag is never displayed to the user in the skills review tab. Furthermore, no output rendering code checks this flag before including the skill in generated PDF/DOCX/HTML. Skills with unconfirmed evidence are indistinguishable from confirmed skills in both the review UI and the generated artefacts.
+**Source evidence:** `scripts/utils/cv_orchestrator.py:1779`; `web/skills-review.js` (no reference to flag); resume-expert.md 2026-06-18.
+
+## GAP-128: Rejected Rewrites Absent from `rewrite_audit`
+
+**Priority:** HIGH
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+`web/rewrite-review.js:361` records accepted proposals to `rewrite_audit` but does not record rejected proposals. If a user rejects all rewrites, `rewrite_audit` in `metadata.json` is empty. US-R6 AC3 requires an audit entry for every proposal regardless of outcome (accepted, edited, or rejected) so the full review history is preserved.
+**Source evidence:** `web/rewrite-review.js:361`; `scripts/utils/conversation_manager.py`; resume-expert.md 2026-06-18.
+
+## GAP-129: ATS Report Modal Lacks Focus Management
+
+**Priority:** HIGH
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+`web/ats-modals.js:112–141` opens the ATS Report modal with `style.display = 'flex'` but does not call `setInitialFocus()`, `trapFocus()`, or `restoreFocus()`. On close, keyboard focus returns to `<body>` rather than the triggering element. Screen reader and keyboard users cannot use this modal reliably.
+**Source evidence:** `web/ats-modals.js:112`; accessibility-specialist.md 2026-06-18.
+
+## GAP-130: Persuasion Warning Panel Collapsed by Default — Bypass Possible
+
+**Priority:** MED
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+`web/rewrite-review.js:107` initialises the persuasion warnings panel in a collapsed state. The "Acknowledged" button is rendered inside the collapsed section (`rewrite-review.js:114`). A user can click "Proceed anyway?" (line 383–389) to bypass the entire warning panel without expanding it or reading any individual warning. This violates the trust requirement that persuasion warnings must be reviewed before proceeding.
+**Source evidence:** `web/rewrite-review.js:107, 114, 383–389`; trust-compliance.md 2026-06-18.
+
+## GAP-131: No Blocking Gate at Customise Stage
+
+**Priority:** MED
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+Users can proceed from the Customise stage to CV generation without visiting or making any decision on experience, skill, or achievement items. All customisation decisions silently inherit LLM defaults. There is no progress gate or minimum-decision requirement (e.g., "Review at least one experience item") before the Generate button becomes active at the Customise stage.
+**Source evidence:** `web/app.js:123–130`; trust-compliance.md 2026-06-18.
+
+## GAP-132: Two Divergent CV Output Templates with Different Visual Identities
+
+**Priority:** HIGH
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+The application ships two CV output templates with different visual identities that produce visually inconsistent output for the same session: (1) `templates/cv-template.html` — uses Inter font family, `rem` units, CSS custom properties, `#2980b9` blue, flex `32% / 68%` two-column layout; (2) `templates/cv-style.css` / layout preview — uses Segoe UI/Arial, `pt` units, no CSS custom properties, `#2c5aa0` blue, grid `2.8fr / 1.2fr`. A user reviewing the HTML preview sees a different visual product than what appears in the DOCX download.
+**Source evidence:** `templates/cv-template.html`; `templates/cv-style.css`; graphical-designer.md 2026-06-18.
+
+## GAP-133: No CSS Design Token Layer
+
+**Priority:** MED
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+`web/styles.css` contains approximately 50 hard-coded hex colour literals scattered across rules. `web/index.html` contains approximately 216 inline `style=""` attributes. No `:root {}` CSS custom properties block exists. Any colour, spacing, or typography change requires grep-and-replace across multiple files with high risk of missed instances, and brand changes are impractical to apply consistently.
+**Source evidence:** `web/styles.css` (no `:root {}`); `web/index.html` (~216 inline styles); graphical-designer.md 2026-06-18.
+
+## GAP-134: No "Queued" Session Status in Schema
+
+**Priority:** LOW
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+The session status schema accepts only `draft`, `ready`, and `sent`. US-A1 implies a `queued` or `parked` state for sessions where intake is complete but the user has deliberately set them aside for later. Without this state, users have no way to mark sessions as intentionally pending.
+**Source evidence:** `scripts/routes/session_routes.py` (status enum); applicant.md 2026-06-18.
+
+## GAP-135: Intake Confirmation Fields Not Inline-Editable
+
+**Priority:** MED
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+After URL fetch populates the job intake confirmation card (company, role, date, location, salary fields), those fields are displayed as read-only text. US-U2 AC4 requires that these extracted fields be inline-editable so the user can correct extraction errors without re-fetching. `web/job-input.js:49–84` and `web/review-table-base.js:222–248` show no inline edit mechanism for the confirmation card fields.
+**Source evidence:** `web/job-input.js:49–84`; ux-expert.md 2026-06-18.
+
+## GAP-136: No Post-Generation Cover Letter Word Count Enforcement
+
+**Priority:** MED
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+US-P5 AC3 requires a programmatic check that the generated cover letter falls within the target word count range for the role type. Currently, the only mechanism is the LLM prompt instruction (`master_data_routes.py:1566`). No post-generation validation counts words and warns or blocks if the output is outside range. LLMs routinely deviate from length instructions.
+**Source evidence:** `scripts/routes/master_data_routes.py:1566`; persuasion-expert.md 2026-06-18.
+
+## GAP-137: Cover Letter CTA Check Accepts Passive Closings
+
+**Priority:** MED
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+US-P5 AC4 requires the cover letter to contain a specific, active call-to-action (e.g., "I will follow up on [date]" rather than "I look forward to hearing from you"). No post-generation pattern check distinguishes passive from active CTAs. The LLM prompt mentions "call to action" but does not enforce the active/specific requirement with a verifiable rule.
+**Source evidence:** `scripts/routes/master_data_routes.py:1570`; persuasion-expert.md 2026-06-18.
+
+## GAP-138: Professional Summary Prompt Uses Title-First Opener (Not Value-Identity-First)
+
+**Priority:** MED
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+US-P1 AC1 requires the summary to open with a value-identity-first framing (e.g., "Scaling ML inference pipelines…") rather than a title-and-tenure opener (e.g., "Senior ML Engineer with 8 years of experience…"). `scripts/utils/llm_client.py:850` instructs the LLM with a title-first opener pattern, producing summaries that fail the persuasion expert's value-identity requirement.
+**Source evidence:** `scripts/utils/llm_client.py:850`; persuasion-expert.md 2026-06-18.
+
+## GAP-139: `post_analysis_answers` Not Passed to `generate_professional_summary`
+
+**Priority:** MED
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+Clarification answers (`post_analysis_answers`) are injected into the cover letter and screening question prompts but are absent from the `generate_professional_summary` call at `scripts/utils/llm_client.py:754`. The summary LLM therefore lacks the user's clarification context (e.g., "I led the team during the reorg") that was provided during the analysis phase. This context is material to producing a personalised, accurate summary.
+**Source evidence:** `scripts/utils/llm_client.py:754`; persuasion-expert.md 2026-06-18.
+
+## GAP-140: Icon-Only Controls Missing `aria-label`
+
+**Priority:** HIGH
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+Two always-visible interactive elements in the header have no accessible name: (1) `#toggle-chat` (`web/index.html:149`) — the ◀/▶ panel collapse button; (2) `#rename-session-btn` (`web/index.html:76–79`) — the ✏️ rename button. Additionally, multiple modal close `×` buttons across the application use `title` attribute only (not reliably announced by screen readers) with no `aria-label`. This is a WCAG 2.1 Level A failure for each of these elements.
+**Source evidence:** `web/index.html:76–79, 149`; accessibility-specialist.md 2026-06-18.
+
+## GAP-141: BibTeX CRUD Modal Converts `editor` Field to `author` on Save
+
+**Priority:** MED
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+The publication CRUD modal in `web/master-cv.js` loads the `editor` BibTeX field into the `author` input field (`master-cv.js:1448`) and always saves the result back as `fields.author` (`master-cv.js:1498`). For edited volumes and book chapters where the BibTeX entry has an `editor` field but no `author` field, one CRUD modal save silently converts the `editor` to `author`, corrupting the BibTeX entry and breaking citation formatting.
+**Source evidence:** `web/master-cv.js:1448, 1498`; master-cv-curator.md 2026-06-18.
+
+## GAP-142: Bulk BibTeX Import Skips Per-Entry Required-Field Validation
+
+**Priority:** MED
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview
+`POST /api/master-data/publications/import` at `scripts/routes/master_data_routes.py:1375–1415` validates that the uploaded file parses as valid BibTeX but does not validate required fields (title, year, author or editor) on a per-entry basis. Entries missing required fields are imported silently and may produce malformed citations in the generated CV.
+**Source evidence:** `scripts/routes/master_data_routes.py:1375–1415`; master-cv-curator.md 2026-06-18.

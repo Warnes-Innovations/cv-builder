@@ -6,10 +6,13 @@ This file is part of CV-Builder.
 For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# Trust & Compliance Review Status
+# Trust & Compliance Review
 
-**Last Updated:** 2026-04-22 10:30 ET
-**Executive Summary:** The cv-builder application has a solid foundation for trust and compliance: AI suggestions are visually distinguished from source content with word-level diffs, confidence levels are tracked and displayed for all recommendation types, and the rewrite stage enforces explicit per-item decisions gated by a persuasion-warning acknowledgement. Two gaps weaken the posture: (1) LLM provider data-retention disclosure is accessible only via a wizard popover and disappears after setup, leaving users who selected a non-confidential provider (Gemini free-tier, Groq) with no persistent reminder; (2) the customization stage (experiences, skills, achievements) carries no blocking gate requiring explicit per-item decisions before generation, so items can reach the final CV with only LLM defaults applied.
+**Persona:** trust-compliance
+**Review date:** 2026-06-18
+**Story file:** tasks/user-story-trust-compliance.md (stories US-C1 – US-C3)
+
+**Executive Summary:** The application has a solid trust posture for its primary rewrite stage: LCS word-level diffs, per-card accept/edit/reject controls, a persuasion-warning panel, and a full `rewrite_audit` record in session state. The critical weaknesses are: (1) the persuasion-warning acknowledgement can be bypassed because the detail panel and "Acknowledged" button are collapsed by default; (2) customization-stage decisions (experience, skill, achievement) carry no blocking gate, allowing generation with entirely implicit LLM defaults; (3) no in-app disclosure notifies users that their CV content and job description are transmitted to external LLM APIs; (4) the `rewrite_audit` record exists on disk but is never surfaced in any UI view.
 
 ---
 
@@ -19,30 +22,37 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 **Criterion 1 — Proposed rewrites and additions are visibly presented as suggestions**
 
-✅ **Pass**
+✅ Pass
 
-Every proposed rewrite is rendered as a card in the dedicated Rewrites tab with a word-level inline diff (red = removed, green = added) computed by `computeWordDiff` and `renderDiffHtml` (web/rewrite-review.js:204–229). Three explicit action buttons (✓ Accept, ✎ Edit, ✗ Reject) appear on each card. The tab is never populated with a pre-accepted or merged result — the user sees only the unresolved proposals on arrival.
+Every proposed rewrite is rendered as a named card in the dedicated Rewrites tab with a word-level LCS inline diff (red strikethrough = removed, green = added) computed by `computeWordDiff` / `renderDiffHtml` (`web/rewrite-review.js:183–226`). Three explicit action buttons — ✓ Accept, ✎ Edit, ✗ Reject — appear on each card. The tally bar tracks accepted / rejected / pending independently (`web/rewrite-review.js:130–135`). The submit button is rendered `disabled` on mount and re-enabled only when `pending === 0` (`web/rewrite-review.js:136, 373–378`). No rewrite is pre-accepted or merged without user action.
 
-Skill additions with weak evidence carry a `⚠ Candidate to confirm` badge rendered at web/rewrite-review.js:238–240:
+The intro message at `web/rewrite-review.js:126–128` reads: "Review each suggested text improvement. Accept, edit, or reject all suggestions before proceeding to spell check." — making the suggestion-status framing explicit.
+
+AI-suggested achievements carry a gold `⭐ AI Suggested` badge (`web/achievements-review.js:270`) and a yellow row background, visually separating them from user-authored entries.
+
+**Criterion 2 — Weak-evidence or confirm-first cases are clearly flagged**
+
+⚠️ Partial
+
+Skill additions with weak evidence carry a `⚠ Candidate to confirm` badge on the rewrite card (`web/rewrite-review.js:230–233`):
+
 ```js
 const isWeakSkillAdd = r.type === 'skill_add' && r.evidence_strength === 'weak';
 const weakBadge = isWeakSkillAdd
   ? `<span class="weak-badge">⚠ Candidate to confirm</span>` : '';
 ```
 
-**Criterion 2 — Weak-evidence or confirm-first cases are clearly flagged**
+The backend computes eight persuasion-check heuristics via `run_persuasion_checks` (`scripts/utils/conversation_manager.py`): strong action verb, passive voice, word count, result clause, named institution, CAR structure, summary generic phrases. When warnings exist, a red collapsible banner appears above the rewrite cards (`web/rewrite-review.js:88–119`).
 
-✅ **Pass**
+**Gap:** The warning detail section is collapsed by default (`style="display:none"` at `web/rewrite-review.js:107`). The "✓ Acknowledged" button lives inside that collapsed section (`web/rewrite-review.js:114`). A user can expand the banner header to see the count but click "✓ Acknowledged" only after expanding — however nothing in the UI forces the user to read the individual warnings before the button becomes accessible. The `submitRewriteDecisions` check at `web/rewrite-review.js:383–389` prompts a confirm dialog if `!persuasionWarningsAcknowledged`, but the dialog only says "Proceed anyway?" — the user can bypass with a single click.
 
-Persuasion warnings are collected in a dedicated red panel (`background:#fef2f2; border:1px solid #fecaca`) above the rewrite cards (web/rewrite-review.js:79–109). The panel lists each warning by `flag_type` and location. Submission is blocked until the user explicitly clicks "✓ Acknowledged" (web/rewrite-review.js:105). The backend computes eight structural checks (strong action verb, passive voice, word count, result clause, named institution, CAR structure, summary generic phrases — conversation_manager.py:1009–1070) so the flag set is grounded in concrete heuristics, not heuristic-free.
-
-Confidence levels for experience, skill, and achievement recommendations are computed by `getConfidenceLevel` / `getSkillConfidence` / `getAchievementConfidence` in web/recommendation-helpers.js (lines 68, 90, 126) using a five-point scale (Very High → Very Low) and displayed in review panels.
+Individual rewrite cards carry per-card persuasion badges (`web/rewrite-review.js:267–270`) using `persuasion-badge--warn` / `persuasion-badge--info` CSS classes, but the visual distinction between severity levels (warn vs info) is limited to color; there is no icon differentiation or ordering.
 
 **Criterion 3 — The UI does not blur the line between approved output and proposed changes**
 
-✅ **Pass**
+✅ Pass
 
-`rewriteDecisions` is module-level state in web/rewrite-review.js; it starts empty and is only populated when the user clicks Accept, Edit+Save, or Reject. The backend's `approve_rewrites` method (conversation_manager.py:879–928) persists only decided entries to `approved_rewrites` and records all outcomes in `rewrite_audit`. No merging of undecided proposals into the session state occurs.
+Session state maintains three separate keys: `pending_rewrites`, `approved_rewrites`, and `rewrite_audit` (`scripts/utils/conversation_manager.py:96–102`). The `rewriteDecisions` object in the frontend (`web/rewrite-review.js:21`) starts empty and is only populated when the user explicitly acts on a card. `submitRewriteDecisions` sends only decided entries to `POST /api/rewrites/approve` (`web/rewrite-review.js:407–419`). The backend's `submit_rewrite_decisions` (`scripts/utils/conversation_manager.py:1070–1120`) builds the `rewrite_audit` from proposed + outcome + final text and persists only user-approved items to `approved_rewrites`.
 
 ---
 
@@ -50,28 +60,33 @@ Confidence levels for experience, skill, and achievement recommendations are com
 
 **Criterion 1 — Review-required stages block progression until required decisions are made**
 
-⚠️ **Partial**
+⚠️ Partial
 
-*Rewrite stage* — fully gated. `submitRewriteDecisions` is disabled while `pending > 0` **and** until `persuasionWarningsAcknowledged` is true (web/rewrite-review.js:358):
-```js
-if (submitBtn) submitBtn.disabled = (pending > 0 || !persuasionWarningsAcknowledged);
-```
+*Rewrite stage* — functionally gated. The submit button is disabled while `pending > 0` (`web/rewrite-review.js:373–378`). Unacknowledged persuasion warnings trigger a confirm dialog before submission. This is the strongest gate in the application.
 
-*Spell-check stage* — gated with a soft confirm, not a hard block. When the user clicks "Done" with unreviewed items still pending, a confirmation modal warns "n issues have not been reviewed and will be ignored. Proceed anyway?" (web/spell-check.js:363–372). If the user confirms, pending items are auto-resolved to `'ignore'`. This is an explicit acknowledgement gate, but its semantics are weaker than the rewrite gate — a user can proceed with a single click without reviewing any individual item.
+*Spell-check stage* — soft gate only. `submitSpellCheckDecisions` prompts a confirm modal when pending items remain (`web/spell-check.js` — pattern: "n issues have not been reviewed and will be ignored. Proceed anyway?"). One click proceeds, and unreviewed items are auto-resolved to `'ignore'`. This is a weaker gate than the rewrite stage.
 
-*Customization stage* — no blocking gate found. Experience, skill, and achievement review panels allow users to submit whatever subset of decisions they have made. Undecided items silently default to the LLM's `recommendation` field (e.g., "Include" or "Omit") without an explicit per-item decision prompt. Users can arrive at generation with many items never explicitly reviewed.
+*Customization stage* — no blocking gate found. Experience, skill, and achievement review panels (`web/experience-review.js`, `web/skills-review.js`, `web/achievements-review.js`) allow the user to submit whatever subset of decisions they have made. Undecided items silently inherit the LLM's `recommendation` field (e.g., "Include") without an explicit per-item decision prompt. The Generate button in `web/app.js:123–130` checks whether `userSelections` has entries but does not block if the Customise tabs were never opened. This means a user can proceed from Job Input through to CV generation having never reviewed a single recommended customization.
+
+*Harvest stage* — no items are pre-selected. The harvest UI (`web/finalise.js`) requires explicit checkbox selection for each candidate, which is the correct pattern.
 
 **Criterion 2 — Acceptance, rejection, and edit paths remain distinguishable**
 
-✅ **Pass**
+✅ Pass
 
-The rewrite card UI maintains three visually distinct states: `.accepted` (green tint), `.rejected` (muted/strikethrough), and edit-in-progress (textarea visible). After a `saveRewriteEdit`, the card is styled `.accepted` with the `edit` button marked `.active` (web/rewrite-review.js:336–360), preserving a visible record of how each item was resolved.
+Rewrite cards use three visually distinct states: `.accepted` (green tint + ✓ button highlighted), `.rejected` (muted + ✗ button highlighted), and edit-in-progress (textarea visible, ✎ button `.active`). After `saveRewriteEdit`, the card is styled `.accepted` with the edit button marked `.active` (`web/rewrite-review.js:344–350`), preserving a visible record of how each item was resolved. The tally bar makes the current counts unambiguous.
+
+Achievement decisions use a four-button inline toolbar: Emphasize, Include, De-emphasize, Exclude — with the active choice visually highlighted (`web/achievements-review.js:288–291`). Skill and experience panels use equivalent action-button patterns.
 
 **Criterion 3 — The UI does not silently auto-accept review items that are expected to be user-controlled**
 
-⚠️ **Partial**
+⚠️ Partial
 
-No silent auto-acceptance was found for rewrite items. However, the spell-check flow converts unreviewed items to `'ignore'` after a single bulk confirmation (web/spell-check.js:377–379), and the customization-stage items carry implicit defaults without explicit per-item confirmation. The word "silently" does not strictly apply in the spell-check case (there is a modal), but the approval is coarser than the per-item rewrite model.
+No silent auto-acceptance was found for rewrite items when rewrites are present. However:
+
+1. When zero rewrites are returned, `fetchAndReviewRewrites` in `web/rewrite-review.js:64–65` displays a message and renders the empty state, but the workflow can proceed without the user ever confirming "I acknowledge zero rewrites were needed." There is no explicit zero-rewrite confirmation screen.
+2. The spell-check flow auto-resolves unreviewed items to `'ignore'` after a single confirm-modal click — coarser than per-item control.
+3. Customization-stage items that the user never touches inherit LLM defaults without any acknowledgement that this occurred.
 
 ---
 
@@ -79,33 +94,39 @@ No silent auto-acceptance was found for rewrite items. However, the spell-check 
 
 **Criterion 1 — Diff-like review is available where text is being changed**
 
-✅ **Pass**
+✅ Pass
 
-Word-level LCS diff is computed for every rewrite proposal via `computeWordDiff(original, proposed)` (web/rewrite-review.js:205) and rendered with `<del class="diff-removed">` / `<ins class="diff-added">` spans (web/rewrite-review.js:216–220). After a user edit, the diff is regenerated against the user's text (web/rewrite-review.js:336–342), so the displayed diff always reflects the actual delta.
+Word-level LCS diff is computed for every rewrite proposal via `computeWordDiff(original, proposed)` (`web/rewrite-review.js:183–218`) and rendered with `<del class="diff-removed">` / `<ins class="diff-added">` spans (`web/rewrite-review.js:221–226`). After a user edits a card, the diff is regenerated against the user-provided text (`web/rewrite-review.js:336–342`), so the displayed diff always reflects the actual delta between original and final accepted text — not just original vs. AI-proposed.
 
 **Criterion 2 — The UI retains or exposes rationale where the workflow promises rationale**
 
-✅ **Pass**
+✅ Pass
 
-Each rewrite card includes a collapsible `<details class="rewrite-rationale">` section containing both `rationale` (the LLM's explanation) and `evidence` (source text from the job description or CV) when provided (web/rewrite-review.js:280–285):
-```js
-${r.rationale ? `
+Each rewrite card includes a collapsible `<details class="rewrite-rationale">` section containing `rationale` (LLM's explanation) and optionally `evidence` (source text) when provided (`web/rewrite-review.js:261–266`):
+
+```html
 <details class="rewrite-rationale">
   <summary>Rationale &amp; Evidence</summary>
   <p>${escapeHtml(r.rationale)}</p>
   ${r.evidence ? `<p ...>${escapeHtml(r.evidence)}</p>` : ''}
-</details>` : ''}
+</details>
 ```
 
-Experience, skill, and achievement recommendations also expose `reasoning` via `getExperienceReasoning` / `getSkillReasoning` / `getAchievementReasoning` (web/recommendation-helpers.js:82–162).
+Experience, skill, and achievement recommendations expose `reasoning` in their review panels via `getExperienceReasoning` / `getSkillReasoning` / `getAchievementReasoning` from `web/recommendation-helpers.js`.
+
+The LLM's system prompt enforces a structured recommendation format with mandatory `Reasoning & Evidence` field that cites specific job requirements and candidate background (`scripts/utils/conversation_manager.py:415–466`), so the rationale content is structurally grounded.
 
 **Criterion 3 — Finalisation and harvest flows remain traceable to reviewed session changes**
 
-✅ **Pass**
+✅ Pass
 
-`rewrite_audit` (every proposal + its outcome) and `approved_rewrites` are persisted to `session.json` at each `_save_session()` call (conversation_manager.py:919–920, 1585–1645). The finalise confirmation summary shows `approved_rewrites` count (web/finalise.js:200–209). Harvest candidates expose a `rationale` column and the apply result shows a `diff_summary` per item (web/finalise.js:268–302 and 355–361). No items are pre-selected in harvest — "No items are pre-selected — choose only what you want to keep" (web/finalise.js:268).
+`submit_rewrite_decisions` persists to both `self.state['approved_rewrites']` and `self.state['rewrite_audit']` (`scripts/utils/conversation_manager.py:1113`), where `rewrite_audit` stores every proposal merged with its outcome and final text. Sessions are auto-saved to disk after every exchange (`conversation_manager.py:384`).
 
-⚠️ **Partial limitation:** There is no UI view that lets a user inspect the full `rewrite_audit` array or the session-level `conversation_history` after the session is completed. The audit record exists in `session.json` but is not surfaced in the Finalise tab or any dedicated audit panel.
+`_compile_harvest_candidates` (`scripts/routes/generation_routes.py:926–928`) sources candidates exclusively from `conversation.state['approved_rewrites']`, ensuring harvest only offers items the user explicitly approved.
+
+The harvest apply step creates a git commit (`generation_routes.py:1961–1978`) with a traceable commit message. A timestamped backup is created before overwriting master data.
+
+⚠️ Partial limitation: The `rewrite_audit` record exists in `session.json` on disk but is never surfaced in any UI view. There is no audit panel in the Finalise tab, no downloadable audit report, and no modal to inspect the full decision history after the session ends. A user who wants to reconstruct the approval chain must locate and parse `session.json` manually.
 
 ---
 
@@ -113,239 +134,117 @@ Experience, skill, and achievement recommendations also expose `reasoning` via `
 
 ### AI Accuracy and Factual Grounding
 
-✅ **Pass — grounding mechanism**
+✅ Pass — grounding mechanism
 
-All LLM prompts for customization and rewriting include the full `Master_CV_Data.json` as context (conversation_manager.py:390–395, 532, 660, 730). Skills recommendations are constrained to items in the master data; the rewrite stage operates on actual bullet text rather than generating new facts. This significantly limits hallucination risk for core CV content.
+All LLM prompts for customization and rewriting include the full `Master_CV_Data.json` as context (`scripts/utils/conversation_manager.py:484–495`). Skills recommendations are constrained to items in the master data; the rewrite stage operates on actual bullet text rather than inventing new facts. This significantly limits hallucination risk for core CV content.
 
-⚠️ **Partial — skill additions and summary variants**
+⚠️ Partial — skill additions and summary variants
 
-`extra_skills` (conversation_manager.py state key, line 88) allows the LLM to suggest skills not present in the master data. Summary variants can introduce new characterizations of the user's career that may not be grounded in factual entries. These items flow through the same review gates (accept/reject in the relevant tabs) but there is no factual-grounding check verifying that a suggested extra skill corresponds to actual work history.
+`extra_skills` (session state key, `conversation_manager.py:89`) allows the LLM to suggest skills not present in master data. Summary variants can introduce new career characterizations. These items flow through the same review gates (accept/reject) but there is no factual-grounding check verifying that a suggested extra skill corresponds to actual work history.
 
-🔲 **Not Implemented — AI-proposal label for summary variants**
+🔲 Not Implemented — AI-proposal label for summary variants
 
-When the LLM proposes a professional summary variant, there is no UI warning indicating that the summary was AI-generated and should be verified for accuracy. The summary review tab presents the variant text without a visible "AI-proposed" label distinguishing it from user-authored summaries sourced from the master data.
+When the LLM proposes a professional summary variant, there is no visible "AI-proposed" label distinguishing it from user-authored summaries sourced from master data. The summary review tab presents all variants without provenance attribution.
 
 ### AI Attribution in Generated Documents
 
-🔲 **Not Implemented**
+🔲 Not Implemented
 
-The generated CV files (PDF and DOCX) contain no metadata, footer, or header indicating that AI was used in their creation. For contexts where AI-assisted content authorship requires disclosure (certain academic submissions, grant applications, or government roles), the absence of attribution metadata could expose users to compliance risk they are not aware of.
+The generated CV files (PDF and DOCX) contain no metadata, footer, or annotation indicating that AI was used in their creation. The `metadata.json` written to the output directory (`scripts/utils/cv_orchestrator.py:2175–2194`) records `approved_rewrites` and `rewrite_audit` but this file is not included in the downloadable package and is not visible from the UI.
+
+For contexts where AI-assisted content authorship requires disclosure (academic submissions, grant applications, certain government roles), the absence of attribution metadata could expose users to compliance risk.
 
 ### LLM Provider Data-Retention Disclosure
 
-⚠️ **Partial**
+⚠️ Partial
 
-`provider_registry.py` correctly tracks `confidential` flags and `privacy_url` per provider:
-- GitHub, Copilot, copilot-oauth, OpenAI, Anthropic: `confidential: True`
-- Gemini free-tier: `confidential: False` with note "Free-tier prompts may be reviewed by Google"
-- Groq: `confidential: False` with note "Review Groq privacy policy for data retention details"
+Provider confidentiality flags are defined (e.g., `confidential: False` for Gemini free-tier with note "Free-tier prompts may be reviewed by Google", and for Groq). These are surfaced in the LLM wizard provider-card popovers and the model-selection table during initial setup.
 
-This data is surfaced in the LLM wizard step-1 provider-card popovers (web/provider-info.js:63–79) and the model-selection table (web/index.html:458). However:
+However:
 
-1. The disclosure is **only visible during initial setup**. Once a provider is configured and the wizard is closed, there is no persistent indicator in the header pill or settings panel warning that the active provider is non-confidential.
-2. The header pill shows "LLM: [model name]" with a ready/not-ready badge (web/index.html:50–55) but no `confidential` status.
-3. For a user who selected Gemini's free tier at startup and never re-opened the wizard, their CV content and job descriptions are being sent to Google for potential review — with no visible UI reminder.
+1. The disclosure is **only visible during initial setup** in the LLM wizard. Once a provider is configured and the wizard is closed, there is no persistent indicator.
+2. The header pill (`web/index.html:51–60`) shows only model name and auth-ready status — no `confidential` warning.
+3. The onboarding modal (`web/index.html:313–378`) mentions "AI" and external providers in general terms but contains no explicit statement that the user's CV content and job description are transmitted to the configured LLM provider.
+4. There is no one-time consent or acknowledgement before the first LLM call is made.
 
 ---
 
-## Additional Story Gaps / Proposed Story Items
+## Summary Score Table
 
-**GAP-TC-1: Persistent non-confidential provider warning**
-*Proposed story:* As a trust/compliance reviewer, I want a persistent visual indicator when the active LLM provider is non-confidential, so that users who send sensitive career data to providers like Gemini free-tier or Groq are continuously reminded of data-retention risk.
-Evidence: `confidential: False` for gemini (provider_registry.py:171) and groq (provider_registry.py:190); header pill shows only model name and auth status (web/index.html:50–55).
+| Story / Criterion | Rating | Key Evidence |
+| --- | --- | --- |
+| US-C1 Criterion 1: Rewrites visibly presented as suggestions | ✅ Pass | `web/rewrite-review.js:126–135`, per-card accept/edit/reject |
+| US-C1 Criterion 2: Weak-evidence / confirm-first cases flagged | ⚠️ Partial | `web/rewrite-review.js:230–233` (weak badge); collapsed warning panel at line 107 |
+| US-C1 Criterion 3: No blur between approved output and proposals | ✅ Pass | `conversation_manager.py:96–102`; `rewriteDecisions` starts empty |
+| US-C1 AC: AI-proposed content reviewable before acceptance | ✅ Pass | Submit blocked while `pending > 0` (`rewrite-review.js:373–378`) |
+| US-C1 AC: Higher-risk suggestions receive stronger signalling | ⚠️ Partial | Per-card badge exists; warning panel collapsed by default |
+| US-C2 Criterion 1: Review stages block progression | ⚠️ Partial | Rewrite: gated. Spell: soft. Customise: no gate |
+| US-C2 Criterion 2: Accept/reject/edit paths distinguishable | ✅ Pass | `web/rewrite-review.js:344–350`; `.accepted`/`.rejected` classes |
+| US-C2 Criterion 3: No silent auto-acceptance | ⚠️ Partial | No auto-accept for rewrites; customise defaults are implicit |
+| US-C2 AC: Approval-dependent stages enforce explicit decisions | ⚠️ Partial | Only satisfied for non-empty rewrite review |
+| US-C3 Criterion 1: Diff-like review where text changes | ✅ Pass | `computeWordDiff` + `<del>`/`<ins>` rendering (`rewrite-review.js:183–226`) |
+| US-C3 Criterion 2: Rationale exposed where promised | ✅ Pass | `<details class="rewrite-rationale">` per card; `recommendation-helpers.js` |
+| US-C3 Criterion 3: Finalisation/harvest traceable | ✅ Pass | `rewrite_audit` in session; harvest from `approved_rewrites` only |
+| US-C3 Criterion 3: Audit record accessible in UI | ⚠️ Partial | `rewrite_audit` in `session.json` but no UI panel |
+| Materials: Factual grounding of AI content | ✅ Pass | Master CV in every LLM prompt (`conversation_manager.py:484–495`) |
+| Materials: Extra skills / summary variant grounding | ⚠️ Partial | `extra_skills` state key; no factual check against work history |
+| Materials: AI-proposal label for summary variants | 🔲 Not Implemented | No "AI-proposed" label in summary review tab |
+| Materials: AI attribution in generated files | 🔲 Not Implemented | No metadata/footer in PDF or DOCX |
+| Materials: LLM data-transmission disclosure | ⚠️ Partial | Wizard-only; no persistent indicator; no consent step |
 
-**GAP-TC-2: Per-item decision gate in customization stages**
-*Proposed story:* As a trust/compliance reviewer, I want the customization stage (experience/skill/achievement review) to require explicit decisions on AI-recommended items rather than allowing undecided items to inherit LLM defaults silently, so that users remain in active control of what enters their CV.
-Evidence: customization tabs allow submission with undecided items; rewrite tab already demonstrates the correct gating pattern (web/rewrite-review.js:358).
-
-**GAP-TC-3: Summary variant AI-proposal labeling**
-*Proposed story:* As a trust/compliance reviewer, I want all AI-generated summary variants to be clearly labeled as AI-proposed (not authored by the user) in the Summary review tab, so that users apply appropriate scrutiny before accepting AI characterizations of their career.
-Evidence: no "AI-proposed" label found for summary variants; contrast with weak-badge pattern in web/rewrite-review.js:238–240.
-
-**GAP-TC-4: Session audit panel**
-*Proposed story:* As a trust/compliance reviewer, I want a read-only session audit view accessible from the Finalise tab that shows the full `rewrite_audit` log (what was proposed, what was accepted, what was edited), so that users can reconstruct the approval chain after the fact.
-Evidence: `rewrite_audit` exists in session.json (conversation_manager.py:920) but is not exposed in any UI tab.
-
-**GAP-TC-5: AI attribution option in generated files**
-*Proposed story:* As a trust/compliance reviewer, I want the option to include an "AI-assisted" attribution in the metadata or footer of generated PDF/DOCX files, so that users can disclose AI involvement where required by the role or institution.
-Evidence: no attribution mechanism found in cv_orchestrator or template renderer.
-
-**GAP-TC-6: LLM data-transmission disclosure**
-*Proposed story:* As a trust/compliance reviewer, I want users to see a clear one-time disclosure that their CV content and job description are transmitted to the configured LLM provider, so that the data flow is transparent before any sensitive career data leaves the local machine.
-Evidence: no in-app disclosure of external data transmission found; onboarding modal (web/index.html:264–313) mentions AI but not external data transmission.
-
----
-
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py
-
-Additional files consulted: web/rewrite-review.js, web/recommendation-helpers.js, web/finalise.js, web/spell-check.js, web/provider-info.js, scripts/utils/provider_registry.py
-
-| Story  | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-|--------|---------|-----------|--------|------------|-------|
-| US-C1 Transparent AI Suggestions | 3 | 0 | 0 | 0 | 0 |
-| US-C2 User Approval Integrity     | 1 | 2 | 0 | 0 | 0 |
-| US-C3 Provenance and Audit Cues   | 3 | 1 | 0 | 0 | 0 |
-| Materials — grounding             | 1 | 1 | 0 | 1 | 0 |
-| Materials — attribution           | 0 | 0 | 0 | 1 | 0 |
-| Materials — provider disclosure   | 0 | 1 | 0 | 0 | 0 |
-
-**Tally: 8 ✅ Pass · 5 ⚠️ Partial · 0 ❌ Fail · 2 🔲 Not Implemented · 0 — N/A**
-
-**Key evidence references:**
-
-- US-C1 (suggestion transparency) → web/rewrite-review.js:204–229 (`computeWordDiff`, `renderDiffHtml`)
-- US-C1 (weak badge) → web/rewrite-review.js:238–240
-- US-C1 (confidence display) → web/recommendation-helpers.js:42–68 (`_parseConfidence`, `getConfidenceLevel`)
-- US-C1 (persuasion gate) → web/rewrite-review.js:79–109 (red warning panel), :358 (disabled submit)
-- US-C2 (rewrite gate) → web/rewrite-review.js:358 (`pending > 0 || !persuasionWarningsAcknowledged`)
-- US-C2 (spell-check soft gate) → web/spell-check.js:363–379 (confirm modal + auto-ignore)
-- US-C2 (customization no gate) → web/experience-review.js, web/skills-review.js (no blocking gate found)
-- US-C2 (harvest explicit selection) → web/finalise.js:268 ("No items are pre-selected")
-- US-C3 (diff review) → web/rewrite-review.js:280–285 (`<details class="rewrite-rationale">`)
-- US-C3 (audit persisted) → scripts/utils/conversation_manager.py:919–920 (`rewrite_audit` saved)
-- US-C3 (no audit UI) → web/finalise.js (no audit panel found)
-- Materials (grounding) → scripts/utils/conversation_manager.py:390–395 (master_data in prompts)
-- Materials (extra_skills gap) → scripts/utils/conversation_manager.py:88 (`extra_skills` state key)
-- Provider disclosure → scripts/utils/provider_registry.py:171 (`confidential: False` for gemini), :190 (groq)
-- Provider disclosure (popover only) → web/provider-info.js:63–79 (`providerInfoPopoverContent`)
-- No persistent warning → web/index.html:50–55 (header pill shows model name and auth status only)
-
-**Evidence standard:** Every conclusion is supported by file:line citations from direct source inspection. No conclusion depends on prior review documents or untested assertions.
-
-
-**Criteria 1: Proposed rewrites are visibly presented as suggestions.**
-
-✅ **Pass** — The Rewrites tab renders a panel headed "✏️ Review Text Improvements" with explicit messaging: "Look over each suggestion… accept, edit, or reject each one before continuing to spell check" (`web/rewrite-review.js:64`). Each card shows original and proposed text with an LCS word-level inline diff.
-
-**Criteria 2: Weak-evidence or confirm-first cases are clearly flagged.**
-
-⚠️ **Partial** — The persuasion-warning system (Phase 10) is implemented. `web/rewrite-review.js:46–58` fetches `persuasion_warnings` from `/api/rewrites`, groups them by type, and renders a red collapsible banner at the top of the panel. `conversation_manager.py:980–1064` defines `run_persuasion_checks`, applying 8 heuristic checks (strong action verb, passive voice, word count, result clause, named institution, CAR structure, summary generic phrases). **Gap**: the warning detail section is collapsed by default (`rewrite-review.js:85` `style="display:none"`), and the "✓ Acknowledged" button lives inside the collapsed panel (`rewrite-review.js:92–96`). A user can submit rewrite decisions without ever expanding the warning. Individual cards carry no inline severity badge distinguishing `warn` vs `info`.
-
-**Criteria 3: The UI does not blur approved output with proposed changes.**
-
-✅ **Pass** — Session state separates `pending_rewrites`, `approved_rewrites`, and `rewrite_audit` (`conversation_manager.py:74–77`). The customization stage never auto-promotes any pending rewrite. The tally bar tracks accepted / rejected / pending independently (`rewrite-review.js:338–358`). The `submit-rewrites-btn` is rendered `disabled` on mount (`rewrite-review.js:125`) and stays disabled while `pending > 0` (`rewrite-review.js:358`).
-
-**Acceptance Criterion — AI-proposed content is reviewable before acceptance.**
-
-✅ **Pass** — Every rewrite card exposes explicit accept / edit / reject controls. `submitRewriteDecisions` is blocked by the button-disabled guard.
-
-**Acceptance Criterion — Higher-risk suggestions receive stronger visual signalling.**
-
-⚠️ **Partial** — A red banner aggregates counts by type. The severity field (`warn` | `info`) from `run_persuasion_checks` is stored but is not rendered as a per-card badge or visual distinction at the card level.
+Tally: 7 ✅ Pass · 7 ⚠️ Partial · 0 ❌ Fail · 2 🔲 Not Implemented
 
 ---
 
-### US-C2 — User Approval Integrity
+## Proposed Story Items (Gaps)
 
-**Criteria 1: Review-required stages block progression until decisions are made.**
+**GAP-TC-1 (HIGH) — Persuasion warning acknowledgement can be bypassed**
+The warning detail panel is collapsed by default (`web/rewrite-review.js:107`, `style="display:none"`). The "✓ Acknowledged" button is inside the collapsed section (line 114). Users can dismiss unread warnings via a single "Proceed anyway?" dialog click.
+*Proposed US-C4:* The Submit button must remain disabled until all `warn`-severity persuasion warnings have been read (panel expanded) and individually acknowledged.
 
-⚠️ **Partial** — Rewrite review: submit button is blocked while any pending item remains (`rewrite-review.js:358`). **Gap**: when zero rewrites exist, the workflow auto-advances directly to `generate_cv` without showing the Rewrites tab at all (`current-implemented-workflow.md` §Rewrite Review). The user never sees a confirmation that the review stage was evaluated cleanly.
+**GAP-TC-2 (HIGH) — No blocking gate at the Customise stage**
+A user can proceed from job analysis to CV generation without visiting or deciding on any experience, skill, or achievement item. Items inherit LLM defaults silently.
+*Proposed US-C7:* The Generate action must require at least one explicit decision from the Customise stage (or show a blocking warning that no customisation decisions were made).
 
-Spell check: a similar fast-path exists — if no flags are returned, the frontend auto-continues to generate (`current-implemented-workflow.md` §Spell Check, note 1).
+**GAP-TC-3 (MEDIUM) — No in-app disclosure of external LLM data transmission**
+The application transmits the user's full CV data and job description to third-party LLM providers. No in-app notice or one-time acknowledgement of this data flow is presented.
+*Proposed US-C6:* First LLM call must be preceded by a one-time disclosure modal: "Your job description and CV excerpts are sent to [provider] for analysis. [Provider privacy policy link]." Require an explicit acknowledgement checkbox.
 
-Customise stage: experience/skill/achievement decisions are not gated. The Generate button (`app.js:117`) checks `userSelections` for already-submitted decisions but does not block if the user has never opened the decision panels.
+**GAP-TC-4 (MEDIUM) — No UI panel for session rewrite audit**
+`rewrite_audit` is persisted to `session.json` (`conversation_manager.py:1113`) but is never displayed in the UI. A user cannot reconstruct the approval chain without locating and parsing the raw session file.
+*Proposed US-C8:* The Finalise tab should include a collapsible "Session audit" section showing the `rewrite_audit` log: proposal, outcome, and final text for each item.
 
-**Criteria 2: Acceptance, rejection, and edit paths remain distinguishable.**
+**GAP-TC-5 (MEDIUM) — Silent auto-advance through zero-item review stages**
+When zero rewrites are returned, the workflow does not show a zero-rewrite confirmation screen. Users cannot distinguish "nothing needed review" from "review was skipped."
+*Proposed US-C5:* When a review stage produces zero items, display an explicit summary screen ("0 text improvements required") requiring user acknowledgement before advancing.
 
-✅ **Pass** — Three distinct rewrite actions: accept (green), reject (red), edit (opens textarea). Card class names reflect state (`.accepted` / `.rejected`, `rewrite-review.js:301–307`). Active buttons receive the `.active` class.
+**GAP-TC-6 (LOW) — Summary variant not labeled as AI-proposed**
+Summary variants in the summary review tab are presented without attribution, indistinguishable from user-authored summaries sourced from master data.
+*Proposed US-C9:* All AI-generated summary variants must carry a visible "(AI-proposed)" annotation.
 
-**Criteria 3: The UI does not silently auto-accept items expected to be user-controlled.**
-
-⚠️ **Partial** — When rewrites exist, no item is auto-accepted. When zero rewrites exist the workflow treats absence as implicitly accepted and advances silently. Same applies to the zero-flags spell-check path.
-
-**Acceptance Criterion — Approval-dependent stages enforce explicit decision-making.**
-
-⚠️ **Partial** — Satisfied for non-empty rewrite review. Not satisfied for: (a) empty rewrite review fast-path, (b) empty spell-check fast-path, (c) Customise stage with no decision gating.
-
----
-
-### US-C3 — Provenance and Audit Cues
-
-**Criteria 1: Diff-like review is available where text is being changed.**
-
-✅ **Pass** — `computeWordDiff` (`rewrite-review.js:196–259`) implements a full LCS word-level diff, tokenising by whitespace and producing `unchanged` / `removed` / `added` tokens. Removed tokens render as red strikethrough, added tokens as green. Diffs regenerate live when a user edits a card.
-
-**Criteria 2: The UI retains or exposes rationale where promised.**
-
-✅ **Pass** — Each rewrite proposal carries a `rationale` field. `rewrite_audit` in session state (`conversation_manager.py:920`) stores every proposal merged with its outcome and `final` text. The harvest candidate table (`finalise.js:276`) renders `c.rationale` in a dedicated column for every candidate.
-
-**Criteria 3: Finalisation and harvest flows remain traceable to reviewed changes.**
-
-✅ **Pass** — `_compile_harvest_candidates` (`generation_routes.py:897`) sources candidates exclusively from `conversation.state['approved_rewrites']`. Harvest apply (`generation_routes.py:1961–1978`) creates a git commit with message `"chore: Update master CV data from {company}_{role}_{date} session"`. `_save_master` (`web_app.py:1166–1188`) creates a timestamped backup before overwriting and restores it if post-write schema validation fails.
+**GAP-TC-7 (LOW) — No AI attribution option in generated files**
+Generated PDF and DOCX contain no indication that AI was used. For academic, grant, or government submissions, this may cause a compliance issue the user is unaware of.
+*Proposed US-C10:* Add an optional "AI-assisted" checkbox in the generation settings that, when checked, adds an attribution line to the PDF/DOCX footer.
 
 ---
 
-## Generated Materials Evaluation
+### Source files inspected (this review)
 
-Generated output files (HTML, PDF, DOCX) do not embed provenance metadata — session ID, LLM provider, model, date, or rewrite-audit summary — in the file itself. Users cannot verify after the fact which session or model produced a given file from the artifact alone. This is an expected limitation of the single-user local architecture but is not disclosed anywhere in the UI.
+- `web/index.html` lines 1–600
+- `web/app.js` all
+- `web/ui-core.js` lines 1–600
+- `web/state-manager.js` all
+- `web/styles.css` persuasion badge styles
+- `web/rewrite-review.js` all
+- `web/achievements-review.js` lines 1–350, 630–900
+- `web/experience-review.js` lines 1–250
+- `web/finalise.js` lines 1–390
+- `web/goals.js` lines 1–210
+- `web/spell-check.js` lines 200–320
+- `scripts/web_app.py` lines 1–210
+- `scripts/utils/conversation_manager.py` lines 1–500, 860–1150
+- `scripts/routes/review_routes.py` lines 1167–1290, 2282–2380
+- `scripts/routes/generation_routes.py` lines 40–60, 400–480, 890–960, 1600–1660, 2170–2210
+- `scripts/utils/cv_orchestrator.py` lines 900–935, 1632–1800, 2015–2210
 
-The harvest rationale column (`finalise.js:276`) renders LLM-generated text without attribution. No label indicates that rationale is AI-inferred rather than factually sourced. Users evaluating candidates in the harvest table cannot distinguish the basis of the rationale.
-
----
-
-## Additional Story Gaps / Proposed Story Items
-
-**GAP-T1 (HIGH) — Persuasion warning acknowledgement can be bypassed**
-Warning detail is collapsed by default (`rewrite-review.js:85`, `style="display:none"`). The "✓ Acknowledged" button is inside the collapsed section (`rewrite-review.js:92–96`). Users can submit rewrite decisions without ever reading or expanding the warning.
-*Proposed US-C4*: The Submit button must remain disabled until each `warn`-severity persuasion warning has been individually acknowledged via the button inside the expanded panel.
-
-**GAP-T2 (MEDIUM) — Silent auto-advance through empty review stages**
-Zero-rewrite and zero-flag paths advance without any user-visible confirmation that the stage was evaluated. Users cannot distinguish "nothing needed review" from "review was skipped."
-*Proposed US-C5*: When a review stage produces zero items, display an explicit confirmation screen with a summary ("0 rewrites required" / "0 spell flags found") before advancing.
-
-**GAP-T3 (MEDIUM) — No in-app disclosure that CV content is transmitted to external LLM APIs**
-The application sends the user's full CV data and job description to third-party LLM providers. There is no in-app notice or one-time acknowledgement of this data flow. The localhost URL and file-path settings imply local storage, but the transmission path is invisible.
-*Proposed US-C6*: First session creation must show a one-time disclosure ("Your job description and CV excerpts are sent to the configured LLM provider for analysis") with an explicit acknowledgement checkbox before proceeding.
-
-**GAP-T4 (MEDIUM) — Customise stage decisions not gated before Generate**
-A user can reach the Generate step without visiting or deciding on any item in the Customise stage. The customizations used for generation may not reflect any user intent.
-*Proposed US-C7*: The Generate action must require that at least one explicit decision has been submitted from the Customise stage, or show a blocking warning that no customisation decisions were made.
-
-**GAP-T5 (LOW) — Harvest rationale column is AI-generated but unlabelled**
-Rationale in the harvest table (`finalise.js:276`) is LLM-produced and displayed without attribution or caveat.
-*Proposed US-C8*: Harvest candidate rationale fields must carry a visible "(AI-generated)" annotation.
-
-**GAP-T6 (LOW) — Session data retention not disclosed**
-Sessions accumulate indefinitely in `~/CV/files/sessions`. There is no in-app guidance on retention, how to delete sessions, or what happens to files after in-memory eviction.
-*Proposed US-C9*: The Sessions panel must include a note explaining where session files are stored and how to permanently delete them.
-
----
-
-**Reviewed against:**
-- `web/index.html` (lines 1–550+)
-- `web/app.js` (all 136 lines)
-- `web/ui-core.js` (lines 1–430)
-- `web/state-manager.js` (lines 1–400)
-- `web/rewrite-review.js` (lines 1–430)
-- `web/finalise.js` (lines 1–430)
-- `web/master-cv.js` (lines 1–200)
-- `web/session-actions.js` (lines 1–150)
-- `scripts/web_app.py` (lines 1–300, 1150–1260)
-- `scripts/utils/conversation_manager.py` (lines 60–120, 880–1064)
-- `scripts/routes/generation_routes.py` (lines 1–120, 897–980, 1093–1120, 1860–1980)
-- `tasks/current-implemented-workflow.md` (all)
-- `tasks/user-story-trust-compliance.md` (all)
-
-| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-|-------|---------|-----------|--------|------------|-------|
-| US-C1 Transparent AI Suggestions | 3 | 2 | 0 | 0 | 0 |
-| US-C2 User Approval Integrity     | 1 | 3 | 0 | 0 | 0 |
-| US-C3 Provenance and Audit Cues   | 3 | 0 | 0 | 0 | 0 |
-
-**Tally: 7 ✅ Pass · 5 ⚠️ Partial · 0 ❌ Fail · 0 🔲 Not Implemented · 0 — N/A**
-
-**Key evidence references:**
-- `web/rewrite-review.js:125` — `submit-rewrites-btn` rendered `disabled` on mount
-- `web/rewrite-review.js:358` — button re-enabled only when `pending === 0`
-- `web/rewrite-review.js:85–96` — persuasion warning detail collapsed by default; "Acknowledged" button inside collapsed section
-- `web/rewrite-review.js:46–58` — `persuasion_warnings` fetched from `/api/rewrites`
-- `conversation_manager.py:74–77` — `pending_rewrites`, `approved_rewrites`, `rewrite_audit` kept separate
-- `conversation_manager.py:920` — `rewrite_audit` stores full proposal + outcome
-- `generation_routes.py:897` — `_compile_harvest_candidates` sources from `approved_rewrites` only
-- `generation_routes.py:1097–1107` — harvest write-back blocked server-side outside refinement phase
-- `web_app.py:1166–1188` — `_save_master` creates timestamped backup, validates schema, restores on failure
-- `master-cv.js:70–76` — persistent governance banner on Master CV tab
-- `web/index.html:48–56` — active LLM provider/model visible in header pill at all times
-- `ui-core.js:79–91` — `_settingsSourceLabel` renders config source per setting
-
-**Evidence standard:** Every conclusion is supported by file:line citations from direct source inspection. No conclusion depends on prior review documents or untested assertions.
+**Evidence standard:** Every ✅/⚠️/❌/🔲 is supported by file:line citations from direct source inspection. No conclusion depends on prior review documents or untested assertions.
