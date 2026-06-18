@@ -371,6 +371,8 @@ const STAGE_TABS = {
  */
 function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false } = {}) {
   return new Promise(resolve => {
+    const previousFocus = document.activeElement;
+
     // Reuse or create the shared overlay element
     let overlay = document.getElementById('confirm-dialog-overlay');
     if (!overlay) {
@@ -380,7 +382,9 @@ function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', d
         'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999;' +
         'align-items:center; justify-content:center;';
       overlay.innerHTML =
-        '<div id="confirm-dialog-box" style="background:#fff; border-radius:8px; padding:24px 28px;' +
+        '<div id="confirm-dialog-box" role="dialog" aria-modal="true"' +
+        ' aria-labelledby="confirm-dialog-msg"' +
+        ' style="background:#fff; border-radius:8px; padding:24px 28px;' +
         'max-width:400px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.18); font-family:inherit;">' +
         '<p id="confirm-dialog-msg" style="margin:0 0 20px; font-size:0.95em; color:#1e293b; white-space:pre-wrap;"></p>' +
         '<div style="display:flex; gap:8px; justify-content:flex-end;">' +
@@ -402,14 +406,35 @@ function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', d
     okBtn.style.background     = danger ? '#dc2626' : '#3b82f6';
 
     overlay.style.display = 'flex';
+    okBtn.focus();
+
+    // Focus trap — keep Tab/Shift+Tab inside the two buttons
+    const trapFocus = (e) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      const focused = document.activeElement;
+      if (e.shiftKey) {
+        (focused === cancelBtn ? okBtn : cancelBtn).focus();
+      } else {
+        (focused === okBtn ? cancelBtn : okBtn).focus();
+      }
+    };
+    overlay.addEventListener('keydown', trapFocus);
 
     const finish = (result) => {
       overlay.style.display = 'none';
+      overlay.removeEventListener('keydown', trapFocus);
       // Remove listeners to avoid stacking handlers
       okBtn.replaceWith(okBtn.cloneNode(true));
       cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+      if (previousFocus && typeof previousFocus.focus === 'function') {
+        previousFocus.focus();
+      }
       resolve(result);
     };
+
+    // Escape key cancels
+    overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') finish(false); }, { once: true });
 
     // Rebind cloned buttons
     document.getElementById('confirm-dialog-ok').addEventListener('click',     () => finish(true),  { once: true });

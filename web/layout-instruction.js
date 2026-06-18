@@ -290,7 +290,7 @@ async function initiateLayoutInstructions() {
 
         <div class="layout-input-pane">
           <h3>Layout Review</h3>
-          <p class="layout-scope-label">💡 Describe a layout or text change — the AI will determine the right approach.</p>
+          <p class="layout-scope-label">💡 Describe a layout change (spacing, margins, column widths, section order). Text content is finalised — content edits are not applied here.</p>
 
           <div id="layout-stale-callout" class="layout-stale-callout" style="display:none;">
             <h4>Layout preview is out of date</h4>

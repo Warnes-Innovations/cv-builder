@@ -332,9 +332,9 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-X2
-**Status:** OPEN - discovered 2026-04-20; accessibility specialist review confirmed `confirmDialog()` (wherever it is used as a generic confirmation prompt) lacks `role="dialog"`, a `tabindex="-1"` container for focus trap, and a `restoreFocus` call on close.
-**Description:** The native-style confirmation dialogs are not accessible to keyboard and screen reader users. Users who cannot use a mouse cannot access or dismiss these dialogs.
-**Recommended resolution:** Refactor `confirmDialog()` and all modal dialogs to include `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, a focus trap that restricts Tab/Shift-Tab to the dialog, and a `restoreFocus()` call on close that returns focus to the triggering element.
+**Status:** RESOLVED 2026-06-18
+**Description:** The native-style confirmation dialogs were not accessible to keyboard and screen reader users. Users who cannot use a mouse could not access or dismiss these dialogs.
+**Fix:** `confirmDialog()` in `web/ui-core.js` now adds `role="dialog"`, `aria-modal="true"`, `aria-labelledby="confirm-dialog-msg"` to the dialog box; moves focus to the OK button on open; traps Tab/Shift-Tab within the two buttons; handles Escape to cancel; restores focus to the previous element on close.
 
 ## GAP-35: Message Input Has No Accessible Label
 
@@ -1061,9 +1061,10 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 ## GAP-125: Layout Scope Label Invites Text Changes
 
 **Priority:** HIGH
-**Status:** Open
+**Status:** RESOLVED 2026-06-18
 **Found:** 2026-06-18 cvUiReview
 `web/layout-instruction.js:293` renders the placeholder/label "Describe a layout or text change — the AI will determine the right approach." This directly contradicts US-U9 AC 1 and AC 7, which require that only layout changes are accepted at this stage and that approved text is never modified. The label actively encourages users to request text changes that should be blocked.
+**Fix:** Label updated to "Describe a layout change (spacing, margins, column widths, section order). Text content is finalised — content edits are not applied here." `web/layout-instruction.js:293`.
 **Source evidence:** `web/layout-instruction.js:293`; ux-expert.md 2026-06-18.
 
 ## GAP-126: Cover Letter Word Count Hardcoded for All Role Types
