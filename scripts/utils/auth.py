@@ -178,11 +178,15 @@ def user_data_paths(user_id: str, data_root: str) -> dict:
     }
 
 
-def ensure_master_cv_exists(master_data_path: str) -> None:
+def ensure_master_cv_exists(master_data_path: Optional[str]) -> None:
     """Create a blank Master_CV_Data.json skeleton at *master_data_path* if absent.
 
-    Safe to call on every startup — it is a no-op when the file already exists.
+    Safe to call on every startup — it is a no-op when the file already exists
+    or when *master_data_path* is None/empty (e.g. in test setups that mock the
+    orchestrator directly).
     """
+    if not master_data_path:
+        return
     p = Path(master_data_path).expanduser()
     if not p.exists():
         p.parent.mkdir(parents=True, exist_ok=True)
