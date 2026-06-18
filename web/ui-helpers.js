@@ -47,11 +47,13 @@ function showConfirmModal(title, message, okLabel = 'OK') {
   if (okBtn) okBtn.textContent = okLabel;
   document.getElementById('confirm-modal-overlay').style.display = 'block';
   if (okBtn) okBtn.focus();
+  if (typeof trapFocus === 'function') trapFocus('confirm-modal-overlay');
   return new Promise(resolve => { _confirmResolve = resolve; });
 }
 
 function closeConfirmModal(result) {
   document.getElementById('confirm-modal-overlay').style.display = 'none';
+  if (typeof restoreFocus === 'function') restoreFocus();
   if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
   if (_confirmPreviousFocus && typeof _confirmPreviousFocus.focus === 'function') {
     _confirmPreviousFocus.focus();

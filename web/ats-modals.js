@@ -123,6 +123,7 @@ async function openAtsReportModal() {
   // Move focus to the Close button in the modal footer
   const closeBtn = overlay.querySelector('.modal-footer .action-btn');
   if (closeBtn) closeBtn.focus();
+  if (typeof trapFocus === 'function') trapFocus('ats-report-modal-overlay');
   const body = document.getElementById('ats-report-modal-body');
 
   const cached = stateManager?.getAtsScore?.();
@@ -155,6 +156,7 @@ async function openAtsReportModal() {
 function closeAtsReportModal() {
   document.getElementById('ats-report-modal-overlay').style.display = 'none';
   document.removeEventListener('keydown', _atsEscapeHandler);
+  if (typeof restoreFocus === 'function') restoreFocus();
   if (_atsModalPreviousFocus && typeof _atsModalPreviousFocus.focus === 'function') {
     _atsModalPreviousFocus.focus();
   }
