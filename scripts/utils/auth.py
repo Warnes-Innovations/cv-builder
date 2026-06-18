@@ -178,15 +178,21 @@ def user_data_paths(user_id: str, data_root: str) -> dict:
     }
 
 
+def ensure_master_cv_exists(master_data_path: str) -> None:
+    """Create a blank Master_CV_Data.json skeleton at *master_data_path* if absent.
+
+    Safe to call on every startup — it is a no-op when the file already exists.
+    """
+    p = Path(master_data_path).expanduser()
+    if not p.exists():
+        p.parent.mkdir(parents=True, exist_ok=True)
+        _write_blank_master_cv(p)
+
+
 def ensure_user_dirs(paths: dict) -> None:
     """Create per-user directories if they don't exist."""
     Path(paths['output_dir']).mkdir(parents=True, exist_ok=True)
-
-    master = Path(paths['master_data'])
-    if not master.exists():
-        # Bootstrap empty Master CV so the app starts without crashing.
-        master.parent.mkdir(parents=True, exist_ok=True)
-        _write_blank_master_cv(master)
+    ensure_master_cv_exists(paths['master_data'])
 
 
 def _write_blank_master_cv(dest: Path) -> None:

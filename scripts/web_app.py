@@ -671,7 +671,7 @@ def create_app(args) -> Flask:
         (read from flask.g, which is set by the before_request auth hook).
         """
         from utils.auth import (  # noqa: PLC0415
-            get_current_user_id, user_data_paths,
+            ensure_master_cv_exists, get_current_user_id, user_data_paths,
         )
         session_provider = provider_name_ref["value"]
         session_model = current_model_ref["value"]
@@ -690,6 +690,7 @@ def create_app(args) -> Flask:
             master_data = args.master_data
             publications = args.publications
             output_dir = args.output_dir
+            ensure_master_cv_exists(master_data)
         orchestrator = CVOrchestrator(
             master_data_path=master_data,
             publications_path=publications,
