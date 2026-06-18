@@ -1194,9 +1194,10 @@ Two always-visible interactive elements in the header have no accessible name: (
 ## GAP-141: BibTeX CRUD Modal Converts `editor` Field to `author` on Save
 
 **Priority:** MED
-**Status:** Open
+**Status:** RESOLVED 2026-06-18
 **Found:** 2026-06-18 cvUiReview
 The publication CRUD modal in `web/master-cv.js` loads the `editor` BibTeX field into the `author` input field (`master-cv.js:1448`) and always saves the result back as `fields.author` (`master-cv.js:1498`). For edited volumes and book chapters where the BibTeX entry has an `editor` field but no `author` field, one CRUD modal save silently converts the `editor` to `author`, corrupting the BibTeX entry and breaking citation formatting.
+**Fix:** Added `_pubModalUsesEditorField` flag. `editMasterPublication()` sets the flag when the entry has `editor` but no `author`, and updates the label to "Editor(s)". `saveMasterPublication()` saves as `fields.editor` when the flag is true. `showAddPublicationModal()` resets the flag. `web/master-cv.js`.
 **Source evidence:** `web/master-cv.js:1448, 1498`; master-cv-curator.md 2026-06-18.
 
 ## GAP-142: Bulk BibTeX Import Skips Per-Entry Required-Field Validation

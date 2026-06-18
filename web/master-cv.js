@@ -314,7 +314,7 @@ async function populateMasterTab(container = null) {
             </select>
           </div>
           <div style="margin-bottom:12px;">
-            <label for="pub-modal-author" style="display:block;font-weight:600;margin-bottom:4px;">Author / Editor <span aria-hidden="true">*</span></label>
+            <label id="pub-modal-author-label" for="pub-modal-author" style="display:block;font-weight:600;margin-bottom:4px;">Author(s) <span aria-hidden="true">*</span></label>
             <input type="text" id="pub-modal-author" class="edit-input" style="width:100%;"
                 placeholder="Last, First and Last2, First2" />
           </div>
@@ -991,6 +991,8 @@ function _renderEducationList(education) {
 let _pubViewMode = 'crud';
 let _pubSortMode = 'year_desc';
 let _pubGroupMode = 'none';
+/** True when the entry being edited had an `editor` field but no `author`. */
+let _pubModalUsesEditorField = false;
 
 function togglePublicationsView() {
   _pubViewMode = _pubViewMode === 'crud' ? 'raw' : 'crud';
@@ -1430,9 +1432,12 @@ async function importConvertedPublicationText() {
 // ---- Publication add/edit modal ----
 
 function showAddPublicationModal() {
+  _pubModalUsesEditorField = false;
   document.getElementById('pub-modal-key').value    = '';
   document.getElementById('pub-modal-type').value   = 'article';
   document.getElementById('pub-modal-author').value = '';
+  const authorLabel = document.getElementById('pub-modal-author-label');
+  if (authorLabel) authorLabel.textContent = 'Author(s)';
   document.getElementById('pub-modal-title').value  = '';
   document.getElementById('pub-modal-year').value   = '';
   document.getElementById('pub-modal-journal').value = '';
@@ -1448,9 +1453,14 @@ function showAddPublicationModal() {
 
 function editMasterPublication(pub) {
   const fields = pub.fields || {};
+  // Track whether this entry uses `editor` so we preserve it on save
+  _pubModalUsesEditorField = !fields.author && !!fields.editor;
   document.getElementById('pub-modal-key').value     = pub.key || '';
   document.getElementById('pub-modal-type').value    = pub.type || 'article';
   document.getElementById('pub-modal-author').value  = fields.author || fields.editor || '';
+  // Update the Author/Editor label so the user knows which field is being edited
+  const authorLabel = document.getElementById('pub-modal-author-label');
+  if (authorLabel) authorLabel.textContent = _pubModalUsesEditorField ? 'Editor(s)' : 'Author(s)';
   document.getElementById('pub-modal-title').value   = fields.title || '';
   document.getElementById('pub-modal-year').value    = fields.year || '';
   document.getElementById('pub-modal-journal').value = fields.journal || fields.booktitle || '';
@@ -1487,7 +1497,8 @@ async function saveMasterPublication() {
   if (!title)  { showAlertModal('⚠️ Validation', 'Title is required.'); return; }
   if (!year)   { showAlertModal('⚠️ Validation', 'Year is required.'); return; }
   if (!author) { showAlertModal('⚠️ Validation', 'Author or editor is required.'); return; }
-  const fields = { author, title, year };
+  // Preserve the original field name: editor entries must not be saved as author
+  const fields = _pubModalUsesEditorField ? { editor: author, title, year } : { author, title, year };
   const journal = document.getElementById('pub-modal-journal').value.trim();
   if (journal) {
     fields[type === 'inproceedings' ? 'booktitle' : 'journal'] = journal;
