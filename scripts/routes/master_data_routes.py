@@ -1515,8 +1515,18 @@ def create_blueprint(deps):
             else:
                 summary_text = master.get('summary', '')
 
-            achievements   = master.get('selected_achievements', [])
-            top_ach_titles = '\n'.join(f'- {a.get("title", "")}' for a in achievements[:4]) or '(see CV)'
+            achievements = master.get('selected_achievements', [])
+            ach_parts = []
+            for a in achievements[:4]:
+                title = a.get('title', '').strip()
+                description = a.get('description', '').strip()
+                if title and description:
+                    ach_parts.append(f'- {title}: {description}')
+                elif title:
+                    ach_parts.append(f'- {title}')
+                elif description:
+                    ach_parts.append(f'- {description}')
+            top_ach_titles = '\n'.join(ach_parts) or '(see CV)'
 
             answers_snippet = ''
             answers = conversation.state.get('post_analysis_answers') or {}

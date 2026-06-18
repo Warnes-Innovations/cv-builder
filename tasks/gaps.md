@@ -1263,7 +1263,7 @@ Cover letter files are named `CoverLetter_{company}_{date}.docx` and screening r
 ## GAP-147: First-Time User: `ensure_master_cv_exists()` Shows "Profile Ready" for Empty Skeleton
 
 **Priority:** HIGH
-**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Status:** RESOLVED 2026-06-18 — `/api/setup/master-cv-status` now returns `is_empty:true` for empty skeletons. Welcome modal shows distinct "empty skeleton" warning with guidance to fill in Master CV before starting a job application. `web/session-manager.js` + `web/index.html`. Previously discovered 2026-06-18 (cycle 3)
 **Affected stories:** US-F1, US-F4
 `ensure_master_cv_exists()` creates a blank skeleton `Master_CV_Data.json` on first run and displays a "Your master profile is ready" success message to the user. However, the skeleton is completely empty (no experiences, skills, education, publications, or personal info). The success message implies the profile has been set up, causing first-time users to proceed into job analysis with an empty master data file, leading to poor AI outputs.
 **Recommended resolution:** Change the "profile ready" message to "A blank master profile was created — please fill in your profile before starting a job application." Add a redirect or modal directing the user to the Master CV editor. Alternatively, suppress the success state and show an onboarding prompt instead.
@@ -1279,7 +1279,7 @@ Only `step-job` (the first pill) has `class="clickable"` which applies `cursor:p
 ## GAP-149: Generic Professional Summary Fallback Reaches Generated PDF Without UI Warning
 
 **Priority:** HIGH
-**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Status:** RESOLVED 2026-06-18 — `_collect_render_snapshot_inputs` detects empty summary and returns a `content_warnings` entry. `/api/cv/generate-preview` now includes `content_warnings` in its response. Layout tab shows a toast warning when this condition is detected before the user downloads. `scripts/routes/generation_routes.py` + `web/layout-instruction.js`. Previously discovered 2026-06-18 (cycle 3)
 **Affected stories:** US-M1, US-R2
 `cv_orchestrator.py:197` substitutes `"Experienced professional applying for {position}"` when the session's professional summary field is empty. This generic placeholder is silently included in the generated PDF, HTML, and ATS DOCX output. No UI warning is shown before generation to alert the user that a fallback summary is in use.
 **Recommended resolution:** Before generating output, check whether the selected summary is the fallback placeholder. If so, surface a blocking or prominent warning in the layout review or final generate step: "No professional summary selected — the generated CV will include a generic placeholder." Add a link to the Summary review tab.
@@ -1287,7 +1287,7 @@ Only `step-job` (the first pill) has `class="clickable"` which applies `cursor:p
 ## GAP-150: Cover Letter LLM Receives Only Achievement Titles, Not Bullet Body Text
 
 **Priority:** MEDIUM
-**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Status:** RESOLVED 2026-06-18 — Cover letter prompt now passes `title: description` for each achievement, giving the LLM full quantified accomplishment text. `scripts/routes/master_data_routes.py`. Previously discovered 2026-06-18 (cycle 3)
 **Affected stories:** US-M6, US-P5
 The cover letter generation prompt passes achievement `title` fields from the session's approved achievements list but not the full bullet body text. The LLM can only reference achievement titles (which are often generic — e.g., "Revenue Growth") rather than the specific quantified accomplishments in the body (e.g., "grew ARR from $2M to $8M in 18 months"). This produces cover letters with generic achievement references instead of concrete named citations.
 **Recommended resolution:** Update the cover letter prompt context to include both achievement title and body text for each approved achievement. The body text is available in the session state alongside the title.
@@ -1295,7 +1295,7 @@ The cover letter generation prompt passes achievement `title` fields from the se
 ## GAP-151: ATS Validator `STANDARD` Frozenset Includes Rejected Heading Labels
 
 **Priority:** LOW
-**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Status:** RESOLVED 2026-06-18 — Removed `'career history'` and `'selected publications'` from the `STANDARD` frozenset in `cv_orchestrator.py`. Previously discovered 2026-06-18 (cycle 3)
 **Affected stories:** US-H2, US-H6
 The `STANDARD` frozenset in `validate_ats_report` (`scripts/utils/cv_orchestrator.py:4785–4792`) includes `'career history'` and `'selected publications'`, both of which are explicitly listed as rejected heading labels in US-H2. The ATS DOCX generator does not currently produce these headings, so there is no active bug. However, if generation code changes, the validator would silently pass these rejected labels.
 **Recommended resolution:** Remove `'career history'` and `'selected publications'` from the `STANDARD` frozenset. If these need to be tracked for detection purposes, move them to a separate `REJECTED_LABELS` set that the validator flags as failures.

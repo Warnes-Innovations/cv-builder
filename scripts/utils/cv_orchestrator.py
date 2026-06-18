@@ -4786,8 +4786,8 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 'experience', 'education', 'skills', 'summary', 'publications',
                 'certifications', 'achievements', 'awards', 'objective',
                 'work experience', 'professional experience', 'technical skills',
-                'professional summary', 'selected publications', 'publications', 'contact',
-                'portfolio', 'languages', 'volunteering', 'projects', 'career history',
+                'professional summary', 'contact',
+                'portfolio', 'languages', 'volunteering', 'projects',
                 'core competencies',
             })
             heading_paras = [p for p in paragraphs if p.style.name.startswith('Heading')]
