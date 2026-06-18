@@ -3415,9 +3415,9 @@ Include one entry per candidate. Do not omit any candidate."""
         _pub_count_cap = None if _pub_page_cap_active else max_pubs
 
         if accepted_pubs is not None:
-            # User has explicitly selected publications — preserve membership.
-            # Display order is applied below (default: newest first, unless
-            # an explicit publication order override is provided).
+            # User has explicitly selected publications — preserve membership
+            # and respect their count exactly (no automatic cap).
+            # _pub_count_cap still applies to the fallback path below.
             accepted_set = set(accepted_pubs)
             pub_by_key = {}
             for pub in self._select_publications(job_analysis, max_count=len(self.publications) if self.publications else 50):
@@ -3426,7 +3426,7 @@ Include one entry per candidate. Do not omit any candidate."""
                     pub_by_key[key] = pub
             selected_publications = [
                 pub_by_key[k] for k in accepted_pubs if k in pub_by_key
-            ][:_pub_count_cap]
+            ]
         else:
             selected_publications = self._select_publications(
                 job_analysis,
