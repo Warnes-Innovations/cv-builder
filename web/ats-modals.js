@@ -105,12 +105,24 @@ function _renderKeywordGroup(title, keywords) {
 // ATS Report Modal
 // ---------------------------------------------------------------------------
 
+let _atsModalPreviousFocus = null;
+
 /**
  * Open the ATS Report modal. Renders the cached ATS score from state, or
  * fetches a fresh score if none is cached.
  */
+function _atsEscapeHandler(e) {
+  if (e.key === 'Escape') closeAtsReportModal();
+}
+
 async function openAtsReportModal() {
-  document.getElementById('ats-report-modal-overlay').style.display = 'flex';
+  _atsModalPreviousFocus = document.activeElement;
+  const overlay = document.getElementById('ats-report-modal-overlay');
+  overlay.style.display = 'flex';
+  document.addEventListener('keydown', _atsEscapeHandler);
+  // Move focus to the Close button in the modal footer
+  const closeBtn = overlay.querySelector('.modal-footer .action-btn');
+  if (closeBtn) closeBtn.focus();
   const body = document.getElementById('ats-report-modal-body');
 
   const cached = stateManager?.getAtsScore?.();
@@ -142,6 +154,11 @@ async function openAtsReportModal() {
 
 function closeAtsReportModal() {
   document.getElementById('ats-report-modal-overlay').style.display = 'none';
+  document.removeEventListener('keydown', _atsEscapeHandler);
+  if (_atsModalPreviousFocus && typeof _atsModalPreviousFocus.focus === 'function') {
+    _atsModalPreviousFocus.focus();
+  }
+  _atsModalPreviousFocus = null;
 }
 
 /**

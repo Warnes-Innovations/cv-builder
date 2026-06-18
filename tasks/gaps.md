@@ -1086,17 +1086,17 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 ## GAP-128: Rejected Rewrites Absent from `rewrite_audit`
 
 **Priority:** HIGH
-**Status:** Open
+**Status:** FALSE POSITIVE — CLOSED 2026-06-18
 **Found:** 2026-06-18 cvUiReview
-`web/rewrite-review.js:361` records accepted proposals to `rewrite_audit` but does not record rejected proposals. If a user rejects all rewrites, `rewrite_audit` in `metadata.json` is empty. US-R6 AC3 requires an audit entry for every proposal regardless of outcome (accepted, edited, or rejected) so the full review history is preserved.
-**Source evidence:** `web/rewrite-review.js:361`; `scripts/utils/conversation_manager.py`; resume-expert.md 2026-06-18.
+`web/rewrite-review.js:361` was misidentified as the audit-recording code — it is actually `updateRewriteTally()`, which counts accepted/rejected/pending proposals for the UI counter display. The actual audit recording is in `scripts/utils/conversation_manager.py:submit_rewrite_decisions()` (lines 1100–1104), which appends EVERY decision (including `outcome='reject'`) to `audit`, then stores it as `state['rewrite_audit']`. The submit button is also gated on `pending === 0` (line 376), ensuring all proposals have a decision before submission. No code change required.
 
 ## GAP-129: ATS Report Modal Lacks Focus Management
 
 **Priority:** HIGH
-**Status:** Open
+**Status:** RESOLVED 2026-06-18
 **Found:** 2026-06-18 cvUiReview
 `web/ats-modals.js:112–141` opens the ATS Report modal with `style.display = 'flex'` but does not call `setInitialFocus()`, `trapFocus()`, or `restoreFocus()`. On close, keyboard focus returns to `<body>` rather than the triggering element. Screen reader and keyboard users cannot use this modal reliably.
+**Fix:** `openAtsReportModal()` now saves `document.activeElement`, moves focus to the Close button, and registers an Escape key listener. `closeAtsReportModal()` removes the listener and restores focus to the saved element. `web/ats-modals.js`.
 **Source evidence:** `web/ats-modals.js:112`; accessibility-specialist.md 2026-06-18.
 
 ## GAP-130: Persuasion Warning Panel Collapsed by Default — Bypass Possible
