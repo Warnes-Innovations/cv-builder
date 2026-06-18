@@ -104,7 +104,7 @@ function renderRewritePanel(rewrites, warnings = []) {
           <strong style="color:#991b1b;">Persuasion checks: ${warningCounts}</strong>
           <span style="margin-left:auto;color:#7f1d1d;">▼</span>
         </div>
-        <div id="warnings-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #fecaca;">
+        <div id="warnings-detail" style="display:block;margin-top:10px;padding-top:10px;border-top:1px solid #fecaca;">
           ${warnings.map(w => `
             <div style="padding:8px;margin-bottom:8px;background:#fff7ed;border-left:3px solid #f97316;border-radius:4px;font-size:0.9em;">
               <strong>${w.flag_type.replace(/_/g, ' ')}</strong> at ${w.location}<br>
@@ -372,10 +372,11 @@ function updateRewriteTally() {
 
   const submitBtn = document.getElementById('submit-rewrites-btn');
   if (submitBtn) {
-    // Enable Submit button once there are no pending cards; keep persuasion
-    // checks blocking on actual submit (submitRewriteDecisions()) so users
-    // can review and see the button enabled when all items are actioned.
-    submitBtn.disabled = (pending > 0);
+    const needsAck = !persuasionWarningsAcknowledged;
+    submitBtn.disabled = (pending > 0) || needsAck;
+    submitBtn.title = needsAck
+      ? 'Acknowledge the persuasion warnings above before submitting'
+      : '';
   }
 }
 

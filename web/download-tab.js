@@ -326,6 +326,18 @@ async function populateDownloadTab(cvData) {
   const files = _collectDownloadableFiles(cvData);
   let html = '<h1>⬇️ Download Generated Files</h1>';
   html += _renderValidationSummary(checks, summary, pageCount, atsError);
+
+  const overlapWarnings = (cvData.date_overlap_warnings || []);
+  if (overlapWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Employment date overlaps detected (${overlapWarnings.length}):</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;">
+        ${overlapWarnings.map(w => `<li><strong>${escapeHtml(w.entry_a)}</strong> overlaps with <strong>${escapeHtml(w.entry_b)}</strong><br><small style="color:#92400e;">${escapeHtml(w.overlap_description)}</small></li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">Review these entries in the Experience tab before submitting your application.</p>
+    </div>`;
+  }
+
   html += _renderDownloadGrid(files, checks, summary);
 
   if (cvData.output_dir) {

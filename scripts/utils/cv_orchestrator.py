@@ -2075,6 +2075,18 @@ For manual generation:
             max_publications=max_publications,
         )
 
+        date_overlap_warnings = self._detect_date_overlaps(
+            selected_content.get('experiences', [])
+        )
+        if date_overlap_warnings:
+            logger.warning(
+                "Employment date overlaps detected (%d): %s",
+                len(date_overlap_warnings),
+                '; '.join(
+                    f"{w['entry_a']} / {w['entry_b']}" for w in date_overlap_warnings
+                ),
+            )
+
         # Prepare template data once — shared by all format generators.
         # JSON-LD is built here and embedded directly in cv-template.html,
         # so the single HTML output is both ATS-compatible and print-ready.
@@ -2186,9 +2198,10 @@ For manual generation:
                 'skills_count': len(selected_content['skills']),
                 'achievements_count': len(selected_content['achievements'])
             },
-            'files_generated': files_created
+            'files_generated': files_created,
+            'date_overlap_warnings': date_overlap_warnings,
         }
-        
+
         metadata_file = job_output_dir / 'metadata.json'
         with open(metadata_file, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2)
@@ -4592,6 +4605,79 @@ Include one entry per candidate. Do not omit any candidate."""
         doc.save(str(filepath))
         logger.info("Human DOCX: %s", filename)
         return filepath
+
+    # ── Pre-generation validation ─────────────────────────────────────────────
+
+    @staticmethod
+    def _detect_date_overlaps(experiences: List[Dict]) -> List[Dict]:
+        """Return a list of overlap warnings for experience entries with overlapping date ranges.
+
+        Each warning is a dict: {entry_a, entry_b, overlap_description}.
+        Only checks entries where both start and end dates can be parsed.
+        Overlapping roles at the same company (e.g. promotion) are excluded.
+        """
+        from datetime import date as _date  # noqa: PLC0415 (already imported at module level)
+
+        _today = _date.today()
+
+        def _parse_date(raw: str, end_of_period: bool = False) -> Optional[_date]:
+            raw = (raw or '').strip()
+            if not raw or raw.lower() in ('current', 'present', 'now', 'ongoing'):
+                return _today if end_of_period else None
+            for fmt in ('%Y-%m-%d', '%B %Y', '%b %Y', '%Y-%m', '%Y'):
+                try:
+                    d = datetime.strptime(raw, fmt).date()
+                    # For end dates use last day of the parsed month/year
+                    if end_of_period and fmt in ('%B %Y', '%b %Y', '%Y-%m', '%Y'):
+                        import calendar  # noqa: PLC0415
+                        if fmt == '%Y':
+                            d = _date(d.year, 12, 31)
+                        else:
+                            last_day = calendar.monthrange(d.year, d.month)[1]
+                            d = _date(d.year, d.month, last_day)
+                    return d
+                except ValueError:
+                    pass
+            m = re.search(r'\b(\d{4})\b', raw)
+            if m:
+                yr = int(m.group(1))
+                return _date(yr, 12, 31) if end_of_period else _date(yr, 1, 1)
+            return None
+
+        parsed = []
+        for exp in experiences:
+            start = _parse_date(str(exp.get('start_date') or exp.get('start') or ''))
+            end   = _parse_date(str(exp.get('end_date') or exp.get('end') or ''), end_of_period=True)
+            if start and end:
+                parsed.append({
+                    'exp': exp,
+                    'start': start,
+                    'end': end,
+                    'company': (exp.get('company') or '').strip().lower(),
+                })
+
+        warnings: List[Dict] = []
+        for i in range(len(parsed)):
+            for j in range(i + 1, len(parsed)):
+                a, b = parsed[i], parsed[j]
+                # Skip same-company overlaps (promotions, parallel roles)
+                if a['company'] and b['company'] and a['company'] == b['company']:
+                    continue
+                # Overlap when one range starts before the other ends
+                if a['start'] <= b['end'] and b['start'] <= a['end']:
+                    def _fmt(exp_entry: Dict) -> str:
+                        title   = exp_entry.get('title') or exp_entry.get('role', 'Unknown role')
+                        company = exp_entry.get('company', '')
+                        return f"{title} at {company}" if company else title
+
+                    warnings.append({
+                        'entry_a': _fmt(a['exp']),
+                        'entry_b': _fmt(b['exp']),
+                        'overlap_description': (
+                            f"{a['start']} – {a['end']} overlaps with {b['start']} – {b['end']}"
+                        ),
+                    })
+        return warnings
 
 
 # ── Module-level ATS validation ──────────────────────────────────────────────
