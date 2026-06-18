@@ -746,18 +746,63 @@ async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
 // ---------------------------------------------------------------------------
 
 async function promptRenameCurrentSession() {
-  const current = (document.getElementById('position-title')?.textContent || '').trim();
-  const newName = prompt('Rename session:', current);
-  if (!newName || !newName.trim() || newName.trim() === current) return;
-  try {
-    const res  = await fetch('/api/rename-current-session', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ new_name: newName.trim() }),
-    });
-    const data = await res.json();
-    if (data.ok) await fetchStatus();
-    else alert(`Rename failed: ${data.error}`);
-  } catch (e) { alert(`Rename error: ${e.message}`); }
+  const titleEl = document.getElementById('position-title');
+  const renameBtn = document.getElementById('rename-session-btn');
+  const current = (titleEl?.textContent || '').trim();
+
+  // Build inline input widget so we never call window.prompt()
+  const wrapper = document.createElement('span');
+  wrapper.style.cssText = 'display:inline-flex;align-items:center;gap:4px;';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = current;
+  input.setAttribute('aria-label', 'New session name');
+  input.style.cssText = 'font-size:inherit;padding:1px 4px;border:1px solid #94a3b8;border-radius:3px;width:220px;';
+  const okBtn = document.createElement('button');
+  okBtn.textContent = '✓';
+  okBtn.title = 'Save rename';
+  okBtn.style.cssText = 'background:#10b981;color:#fff;border:none;border-radius:3px;cursor:pointer;padding:1px 6px;font-size:1em;';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = '✕';
+  cancelBtn.title = 'Cancel';
+  cancelBtn.style.cssText = 'background:#6b7280;color:#fff;border:none;border-radius:3px;cursor:pointer;padding:1px 6px;font-size:1em;';
+  wrapper.append(input, okBtn, cancelBtn);
+
+  if (titleEl) titleEl.style.display = 'none';
+  if (renameBtn) renameBtn.style.display = 'none';
+  titleEl?.parentElement?.insertBefore(wrapper, titleEl);
+  input.focus();
+  input.select();
+
+  async function doRename() {
+    const newName = input.value.trim();
+    cleanup();
+    if (!newName || newName === current) return;
+    try {
+      const res  = await fetch('/api/rename-current-session', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_name: newName }),
+      });
+      const data = await res.json();
+      if (data.ok) await fetchStatus();
+      else if (typeof showToast === 'function') showToast(`Rename failed: ${data.error}`, 'error');
+    } catch (e) {
+      if (typeof showToast === 'function') showToast(`Rename error: ${e.message}`, 'error');
+    }
+  }
+
+  function cleanup() {
+    wrapper.remove();
+    if (titleEl) titleEl.style.display = '';
+    if (renameBtn) renameBtn.style.display = '';
+  }
+
+  okBtn.addEventListener('click', doRename);
+  cancelBtn.addEventListener('click', cleanup);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doRename();
+    if (e.key === 'Escape') cleanup();
+  });
 }
 
 function saveTabData() {

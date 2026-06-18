@@ -453,7 +453,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-U4
-**Status:** OPEN - discovered 2026-04-20; heuristic evaluation (H4: Consistency and Standards) found both `ui-core.js` and `ui-helpers.js` define `showAlertModal` / `closeAlertModal`. The `ui-helpers.js` comment explicitly notes the duplication. The active implementation depends on module-load order and may produce inconsistent behavior (one version has focus-trap capability; the other does not).
+**Status:** RESOLVED 2026-06-18 — `showAlertModal` / `closeAlertModal` exist only in `ui-helpers.js` now; `ui-core.js` no longer contains these definitions. Duplicate was already removed in a prior commit. Previously discovered 2026-04-20.
 **Description:** Duplicate implementations of the same UI primitive create an undefined contract. Alert dialogs may or may not trap focus depending on which module wins the global assignment. Any bug fix in one implementation will not apply to the other.
 **Recommended resolution:** Remove the duplicate in `ui-helpers.js` and use the single canonical version from `ui-core.js` throughout. Audit all call sites to ensure they use the focus-trap-capable version.
 
@@ -984,7 +984,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** US-S3, H4
-**Status:** OPEN - discovered 2026-04-22; returning user review found `promptRenameCurrentSession()` (`web/session-manager.js:735`) uses `window.prompt()` for the header rename button. This can be blocked by browsers, fails screen readers, and is inconsistent with the application's custom `confirmDialog()` and `showAlertModal()` patterns.
+**Status:** RESOLVED 2026-06-18 — `promptRenameCurrentSession()` now shows an inline `<input>` field with ✓/✕ buttons directly in the header, using `showToast()` for errors. No `window.prompt()` or `alert()` calls remain. `web/session-manager.js`. Previously discovered 2026-04-22.
 **Recommended resolution:** Replace `promptRenameCurrentSession()` with an in-app modal using the existing `confirmDialog()` infrastructure. Alternatively, wire the header ✏️ button to open the sessions modal with the rename field pre-focused.
 
 ## GAP-115: Persistent Non-Confidential LLM Provider Warning Absent After Setup
