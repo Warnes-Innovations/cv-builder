@@ -123,12 +123,15 @@ const _WELCOME_DISMISSED_KEY = 'cv-builder-welcome-dismissed';
  */
 function _setWelcomeSection(section) {
   const sPresent = document.getElementById('welcome-section-present');
+  const sEmpty   = document.getElementById('welcome-section-empty');
   const sMissing = document.getElementById('welcome-section-missing');
   const fPresent = document.getElementById('welcome-footer-present');
   const fMissing = document.getElementById('welcome-footer-missing');
   if (sPresent) sPresent.style.display = section === 'present' ? '' : 'none';
+  if (sEmpty)   sEmpty.style.display   = section === 'empty'   ? '' : 'none';
   if (sMissing) sMissing.style.display = section === 'missing' ? '' : 'none';
-  if (fPresent) fPresent.style.display = section === 'present' ? 'flex' : 'none';
+  // Empty skeleton: show "present" footer (Close/dismiss) not "missing" footer (Create/Reload)
+  if (fPresent) fPresent.style.display = (section === 'present' || section === 'empty') ? 'flex' : 'none';
   if (fMissing) fMissing.style.display = section === 'missing' ? 'flex' : 'none';
 }
 
@@ -162,10 +165,11 @@ async function maybeShowWelcomeModal() {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       if (!data.exists) {
-        // Let the missing-CV flow handle the path display
         const pathEl = document.getElementById('onboarding-master-cv-path');
         if (pathEl) pathEl.textContent = data.path || '(unknown)';
         section = 'missing';
+      } else if (data.is_empty) {
+        section = 'empty';
       }
     }
   } catch (_) {}

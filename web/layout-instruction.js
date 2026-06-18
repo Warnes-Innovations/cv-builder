@@ -904,6 +904,9 @@ async function _fetchAndDisplayLayoutPreview() {
           stateManager?.markPreviewGenerated?.(_buildPreviewPayload(data));
           renderPreviewOutputStatus(data.preview_outputs || null);
           refreshLayoutReviewState();
+          (data.content_warnings || []).forEach(w => {
+            if (typeof showToast === 'function') showToast(w.message, 'warning', 8000);
+          });
           return;
         }
       } catch (_e) {

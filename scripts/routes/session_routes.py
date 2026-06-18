@@ -497,10 +497,28 @@ def create_blueprint(deps):
     def setup_master_cv_status():
         """Return whether Master_CV_Data.json exists at the configured path.
 
+        Also returns ``is_empty`` — True when the file exists but has no name,
+        no experiences, no skills, and no education (i.e. a blank skeleton).
+
         Session-free endpoint — safe to call before any session is created.
         """
         p = Path(_app_config.master_cv_path).expanduser()
-        return jsonify({"exists": p.exists(), "path": str(p)})
+        exists = p.exists()
+        is_empty = False
+        if exists:
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                name = (data.get("personal_info") or {}).get("name", "").strip()
+                has_content = (
+                    bool(name)
+                    or bool(data.get("experience") or data.get("work_experience"))
+                    or bool(data.get("skills"))
+                    or bool(data.get("education"))
+                )
+                is_empty = not has_content
+            except Exception:
+                is_empty = True
+        return jsonify({"exists": exists, "is_empty": is_empty, "path": str(p)})
 
     @bp.post("/api/setup/create-master-cv")
     def setup_create_master_cv():

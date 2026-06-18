@@ -441,12 +441,25 @@ def _collect_render_snapshot_inputs(
     if not materialized:
         return None
 
+    content_warnings = []
+    if not summary_view.selected_summary():
+        content_warnings.append({
+            'code': 'generic_summary_fallback',
+            'severity': 'warning',
+            'message': (
+                'No professional summary is set in your master profile or customizations. '
+                'A generic placeholder will appear in the generated CV — '
+                'please add a summary in the Master CV tab before downloading.'
+            ),
+        })
+
     return {
         'job_analysis': job_analysis,
         'materialized_customizations': materialized,
         'approved_rewrites': state.get('approved_rewrites') or [],
         'spell_audit': _get_spell_audit_from_state(state),
         'max_skills': state.get('max_skills'),
+        'content_warnings': content_warnings,
     }
 
 
@@ -477,6 +490,7 @@ def _persist_render_snapshot(
         use_semantic_match=False,
     )
 
+    content_warnings = snapshot_inputs.get('content_warnings') or []
     signature = _render_snapshot_signature(snapshot_inputs)
     now = datetime.now().isoformat()
     gen = conversation.state.setdefault('generation_state', {})
@@ -488,6 +502,7 @@ def _persist_render_snapshot(
         'render_snapshot_stale': False,
         'render_snapshot_stale_reason': None,
         'render_snapshot_regenerating': False,
+        'render_snapshot_content_warnings': content_warnings,
     })
     conversation._save_session()
 
@@ -496,6 +511,7 @@ def _persist_render_snapshot(
         'signature': signature,
         'generated_at': now,
         'source': source,
+        'content_warnings': content_warnings,
     }
 
 
@@ -530,6 +546,7 @@ def _ensure_render_snapshot(
             'signature': cached_signature,
             'generated_at': gen.get('render_snapshot_generated_at'),
             'source': gen.get('render_snapshot_source') or 'cache',
+            'content_warnings': gen.get('render_snapshot_content_warnings') or snapshot_inputs.get('content_warnings') or [],
             'reused': True,
         }
 
@@ -1375,6 +1392,7 @@ def create_blueprint(deps):
             "page_count_source":   gen.get("page_count_source"),
             "page_count_confidence": gen.get("page_count_confidence"),
             "page_length_warning": gen.get("page_length_warning", False),
+            "content_warnings":    gen.get("render_snapshot_content_warnings") or (snapshot.get('content_warnings') if snapshot else []) or [],
         })
 
     @bp.post("/api/cv/layout-estimate")

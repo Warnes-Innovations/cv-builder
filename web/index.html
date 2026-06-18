@@ -339,10 +339,17 @@
           <div style="color: #475569;"><strong style="color: #1e293b;">Harvest improvements</strong> — After reviewing the output, apply your customized improvements (refined bullets, new skills, summary variants) back to your master profile for future applications.</div>
         </div>
 
-        <!-- ── Shown when Master_CV_Data.json EXISTS ─────────────────────── -->
+        <!-- ── Shown when Master_CV_Data.json EXISTS and is populated ──── -->
         <div id="welcome-section-present" style="display: none;">
           <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 14px; color: #166534; font-size: 0.9em;">
             ✅ Your master profile is ready. <strong>Next:</strong> switch to the <strong>Job</strong> tab, provide a job description, and click <strong>Analyze Job</strong>.
+          </div>
+        </div>
+
+        <!-- ── Shown when Master_CV_Data.json EXISTS but is an empty skeleton ── -->
+        <div id="welcome-section-empty" style="display: none;">
+          <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 10px 14px; color: #9a3412; font-size: 0.9em;">
+            ⚠️ A blank master profile was created, but it has no content yet. <strong>Before starting a job application, go to the <strong>Master CV</strong> tab and fill in your work history, skills, and education</strong> — otherwise the AI will have no material to draw from.
           </div>
         </div>
 
