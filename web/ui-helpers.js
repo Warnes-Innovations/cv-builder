@@ -37,19 +37,26 @@ function closeAlertModal() {
 // ---------------------------------------------------------------------------
 
 let _confirmResolve = null;
+let _confirmPreviousFocus = null;
 
 function showConfirmModal(title, message, okLabel = 'OK') {
+  _confirmPreviousFocus = document.activeElement;
   document.getElementById('confirm-modal-title').textContent = title;
   document.getElementById('confirm-modal-message').innerHTML = message.replace(/\n/g, '<br>');
   const okBtn = document.getElementById('confirm-modal-ok');
   if (okBtn) okBtn.textContent = okLabel;
   document.getElementById('confirm-modal-overlay').style.display = 'block';
+  if (okBtn) okBtn.focus();
   return new Promise(resolve => { _confirmResolve = resolve; });
 }
 
 function closeConfirmModal(result) {
   document.getElementById('confirm-modal-overlay').style.display = 'none';
   if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
+  if (_confirmPreviousFocus && typeof _confirmPreviousFocus.focus === 'function') {
+    _confirmPreviousFocus.focus();
+  }
+  _confirmPreviousFocus = null;
 }
 
 // ---------------------------------------------------------------------------

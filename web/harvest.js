@@ -97,10 +97,12 @@ function sortedKeys(obj, configMap) {
 }
 
 // ── Pre-check logic ───────────────────────────────────────────────────────────
+// All harvest items start unchecked — master CV updates are opt-in only (US-A11).
+// Groups with high/medium confidence promotions are expanded so candidates are
+// prominent, but no checkbox is pre-selected.
 
-function shouldPreCheck(candidate) {
-  return candidate.recommendation === 'promote' &&
-         (candidate.confidence === 'high' || candidate.confidence === 'medium');
+function shouldPreCheck(_candidate) {
+  return false;
 }
 
 // ── Collapse default logic ────────────────────────────────────────────────────
@@ -288,8 +290,7 @@ function renderHarvestTabHtml(enriched, analysisOk, analysisError) {
     Object.entries(HARVEST_TYPE_CONFIG).map(([k, v]) => [v.displayType, v])
   ));
 
-  const preCheckedCount = enriched.filter(shouldPreCheck).length;
-  const totalCount      = enriched.length;
+  const totalCount = enriched.length;
 
   const analysisWarning = !analysisOk
     ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:0.87em;color:#92400e;">
@@ -308,7 +309,7 @@ function renderHarvestTabHtml(enriched, analysisOk, analysisError) {
     <h1>🌾 Harvest Improvements</h1>
     <p style="color:#6b7280;margin-bottom:8px;">
       Review LLM-scored candidates for promotion to your master CV.
-      Pre-selected: high/medium confidence promotions (${preCheckedCount} of ${totalCount}).
+      Check the items you want to apply (${totalCount} candidate${totalCount === 1 ? '' : 's'} found).
     </p>
     ${analysisWarning}
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">

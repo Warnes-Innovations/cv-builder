@@ -260,28 +260,30 @@ function ordinal(n) {
 
 // Full-length phase labels — used by workflow step display, status text, etc.
 const SESSION_PHASE_LABELS = {
-  init:           'Getting Started',
-  job_analysis:   'Job Analysis',
-  customization:  'Customisation',
-  rewrite_review: 'Rewrite Review',
-  spell_check:    'Spell Check',
-  generation:     'Generation',
-  layout_review:  'Layout Review',
-  refinement:     'Finalise',
+  init:             'Getting Started',
+  job_analysis:     'Job Analysis',
+  customization:    'Customisation',
+  rewrite_review:   'Rewrite Review',
+  spell_check:      'Spell Check',
+  generation:       'Generation',
+  layout_review:    'Layout Review',
+  refinement:       'Finalise',
+  final_generation: 'Final Generation',
 };
 
 // Abbreviated phase labels — used by the compact session-switcher UI.
 // Intentionally separate from SESSION_PHASE_LABELS: the two sets serve different
 // UI contexts (space-constrained header chip vs. full workflow step label).
 const SESSION_PHASE_LABELS_SHORT = {
-  init:           'Init',
-  job_analysis:   'Analysis',
-  customization:  'Custom',
-  rewrite_review: 'Rewrite',
-  spell_check:    'Spell',
-  generation:     'Generate',
-  layout_review:  'Layout',
-  refinement:     'Done',
+  init:             'Init',
+  job_analysis:     'Analysis',
+  customization:    'Custom',
+  rewrite_review:   'Rewrite',
+  spell_check:      'Spell',
+  generation:       'Generate',
+  layout_review:    'Layout',
+  refinement:       'Done',
+  final_generation: 'Final Gen',
 };
 
 /**

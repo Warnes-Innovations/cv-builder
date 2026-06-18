@@ -12,10 +12,11 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 ## 2026-06-18 (Cycle 2) Reconciliation Notes
 
-- **3 gaps resolved this cycle:** GAP-33 (employment date overlap detection — implemented), GAP-45 (persuasion warning bypass — hard-gated), GAP-36 (first-run blank Master CV — implemented).
-- **3 new gaps added:** GAP-143 (`showConfirmModal` missing focus management), GAP-144 (Harvest pre-selects high/medium confidence items violating opt-in requirement), GAP-145 (no session audit log panel in Finalise — already GAP-118, superseded by this entry's clarification).
+- **4 gaps resolved this cycle:** GAP-33 (employment date overlap detection — implemented), GAP-45 (persuasion warning bypass — hard-gated), GAP-36 (first-run blank Master CV — implemented), GAP-144 (harvest pre-selection removed — opt-in only).
+- **3 new gaps added:** GAP-143 (`showConfirmModal` missing focus management), GAP-144 (Harvest pre-selects high/medium confidence items violating opt-in requirement — resolved same cycle), GAP-145 (no session audit log panel in Finalise — already GAP-118, superseded by this entry's clarification).
 - **Confirmed resolved from last cycle:** GAP-103 (ATS advisory checks no longer block downloads), GAP-110 (date overlap detection implemented).
-- **Most critical open gaps this cycle:** GAP-120 (keyboard tabs WCAG Level A), GAP-127 (`candidate_to_confirm` not rendered/excluded), GAP-128 (rejected rewrites not audited), GAP-132 (two divergent CV templates), GAP-34 (`confirmDialog` missing ARIA), GAP-143 (`showConfirmModal` missing focus).
+- **Post-cycle resolutions (same commit):** GAP-124 (`final_generation` labels added), GAP-143 (`showConfirmModal` focus management added), GAP-144 (harvest pre-selection removed).
+- **Most critical open gaps:** GAP-120 (keyboard tabs WCAG Level A), GAP-127 (`candidate_to_confirm` not rendered/excluded), GAP-128 (rejected rewrites not audited), GAP-132 (two divergent CV templates), GAP-34 (`confirmDialog` missing ARIA).
 
 ## 2026-06-18 (Cycle 1) Reconciliation Notes
 
@@ -1051,9 +1052,10 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 ## GAP-124: `final_generation` Missing from SESSION_PHASE_LABELS
 
 **Priority:** HIGH
-**Status:** Open
+**Status:** RESOLVED 2026-06-18
 **Found:** 2026-06-18 cvUiReview
 `web/utils.js:262–285` defines `SESSION_PHASE_LABELS` and `SESSION_PHASE_LABELS_SHORT` but omits the `final_generation` phase key. Sessions in the `FINAL_GENERATION` phase display the raw Python string "final generation" (lowercase, with space) in the session switcher instead of a human-readable label.
+**Fix:** Added `final_generation: 'Final Generation'` to `SESSION_PHASE_LABELS` and `final_generation: 'Final Gen'` to `SESSION_PHASE_LABELS_SHORT` in `web/utils.js`.
 **Source evidence:** `web/utils.js:262–285`; returning-user persona review 2026-06-18.
 
 ## GAP-125: Layout Scope Label Invites Text Changes
@@ -1203,17 +1205,19 @@ The publication CRUD modal in `web/master-cv.js` loads the `editor` BibTeX field
 ## GAP-143: `showConfirmModal` Missing Focus Management
 
 **Priority:** HIGH
-**Status:** Open
+**Status:** RESOLVED 2026-06-18
 **Found:** 2026-06-18 cvUiReview (cycle 2)
 `showConfirmModal` in `web/ui-helpers.js:41–48` sets `display: block` on the confirm modal overlay with no `setInitialFocus`, no `trapFocus`, and `closeConfirmModal` calls no `restoreFocus`. This is a separate code path from `confirmDialog` (which is also deficient per GAP-34). Screen reader and keyboard users can tab out of the modal into the background, and focus is not returned to the triggering element on close. This affects all confirm dialogs triggered via `showConfirmModal` (cover letter generation, rewrite submission, etc.).
+**Fix:** `showConfirmModal` now saves `document.activeElement` and moves focus to the OK button on open; `closeConfirmModal` restores focus to the saved element on close. `web/ui-helpers.js`.
 **Source evidence:** `web/ui-helpers.js:41–53`; accessibility-specialist.md 2026-06-18 (cycle 2).
 
 ## GAP-144: Harvest Pre-Selects High/Medium Confidence Items by Default (Opt-In Violation)
 
 **Priority:** HIGH
-**Status:** Open
+**Status:** RESOLVED 2026-06-18
 **Found:** 2026-06-18 cvUiReview (cycle 2)
 `web/harvest.js:101–103` pre-checks all harvest candidates with `confidence === 'high' || confidence === 'medium'` on render. The applicant story (US-A11) requires that master CV updates are opt-in only — no candidate should be selected without explicit user action. Pre-selection biases users toward accepting every AI recommendation and can result in unintended master CV changes if the user clicks "Save Selected" without reviewing each item.
+**Fix:** `shouldPreCheck()` changed to always return `false`; `preCheckedCount` dead variable removed; UI text updated to describe opt-in behavior. `web/harvest.js`.
 **Source evidence:** `web/harvest.js:101–103`; applicant.md 2026-06-18 (cycle 2).
 
 ## GAP-145: Cover Letter and Screening DOCX Filenames Omit Role Token
