@@ -1061,6 +1061,21 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
     }
 
     @staticmethod
+    def _strip_intro_phrase(text: str) -> str:
+        """Strip a leading 'Label: ' intro phrase from a bullet.
+
+        Some bullets open with a named category or keyword followed by a
+        colon (e.g. 'Category Compass: Led the team to …').  Persuasion
+        checks should evaluate the substantive content after the colon, not
+        the label itself.  Only strips when the prefix is 1–5 words so
+        genuine sentence-initial colons (e.g. job titles with colons) are
+        left intact.
+        """
+        import re
+        m = re.match(r'^(?:\w+\s*){1,5}:\s+(.+)', text, re.DOTALL)
+        return m.group(1) if m else text
+
+    @staticmethod
     def check_strong_action_verb(text: str) -> Dict[str, Any]:
         """Check if bullet point opens with a strong action verb.
 
@@ -1079,6 +1094,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         if not text or not text.strip():
             return {'pass': True, 'flag_type': 'strong_action_verb', 'severity': 'info', 'details': ''}
 
+        text = LLMClient._strip_intro_phrase(text)
         # Extract first word
         words = re.findall(r'\b[a-zA-Z]+\b', text)
         if not words:
@@ -1157,6 +1173,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         if not text or not text.strip():
             return {'pass': True, 'flag_type': 'word_count', 'severity': 'info', 'details': ''}
 
+        text = LLMClient._strip_intro_phrase(text)
         word_count = len(text.split())
         if word_count <= max_words:
             return {'pass': True, 'flag_type': 'word_count', 'severity': 'info', 'details': ''}

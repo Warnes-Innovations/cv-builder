@@ -141,11 +141,27 @@ function _renderValidationSummary(checks, summary, pageCount, atsError) {
   return html;
 }
 
+// Checks that are advisory only — they warn but never block the download button.
+// Only genuinely critical failures (file not found, PDF unreadable, broken output)
+// should prevent a user from downloading.
+const _NON_BLOCKING_CHECKS = new Set([
+  'cv_page_count',               // advisory: page length outside ideal range
+  'pdf_us_letter',               // advisory: page size
+  'docx_zero_shapes',            // advisory: ATS formatting hint
+  'docx_standard_headings',      // advisory: ATS heading text
+  'docx_heading1_present',       // advisory: ATS heading style
+  'docx_date_format_consistent', // advisory: date format consistency
+  'docx_publications_heading',   // advisory: publications heading text
+  'html_jsonld_valid_person',    // advisory: JSON-LD schema type
+  'html_jsonld_knows_about',     // advisory: JSON-LD skills population
+]);
+
 function _renderDownloadGrid(files, checks, summary) {
   const keywordFail = checks.some((check) => check.name === 'ats_keyword_presence' && check.status === 'fail');
-  const blockDocx = keywordFail || checks.some((check) => check.format === 'docx' && check.status === 'fail');
-  const blockHtml = keywordFail || checks.some((check) => check.format === 'html' && check.status === 'fail');
-  const blockPdf = keywordFail || checks.some((check) => check.format === 'pdf' && check.status === 'fail');
+  const isCriticalFail = (check) => check.status === 'fail' && !_NON_BLOCKING_CHECKS.has(check.name);
+  const blockDocx = keywordFail || checks.some((check) => check.format === 'docx' && isCriticalFail(check));
+  const blockHtml = keywordFail || checks.some((check) => check.format === 'html' && isCriticalFail(check));
+  const blockPdf  = keywordFail || checks.some((check) => check.format === 'pdf'  && isCriticalFail(check));
 
   let html = '<div class="download-section"><div class="download-grid">';
   if (!files.length) {
@@ -162,7 +178,7 @@ function _renderDownloadGrid(files, checks, summary) {
       ? 'cursor:not-allowed;opacity:0.4;background:#9ca3af;border-color:#9ca3af;'
       : '';
     const blockedMessage = blocked
-      ? '<div style="font-size:0.78em;color:#dc2626;margin-top:4px;">⛔ Blocked — fix ATS failures first</div>'
+      ? '<div style="font-size:0.78em;color:#dc2626;margin-top:4px;">⛔ Blocked — output file could not be generated</div>'
       : '';
 
     html += `
