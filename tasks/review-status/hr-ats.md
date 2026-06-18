@@ -12,8 +12,20 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 **Persona:** HR coordinator evaluating (1) the application workflow for ATS-safe output guidance, and (2) what an ATS sees when it parses the generated files.
 **Review Date:** 2026-06-18
-**Reviewer:** hr-ats (source-first automated review)
+**Reviewer:** hr-ats (source-first automated review, cycle 3)
 **Stories:** US-H1 through US-H8 (tasks/user-story-hr-ats.md)
+
+---
+
+## Cycle 3 Verification Notes
+
+The three items specifically called out for cycle 3 verification were confirmed directly from source:
+
+1. **Non-blocking ATS checks** (`web/download-tab.js:147–157`): `_NON_BLOCKING_CHECKS` is a `Set` of exactly 9 names: `cv_page_count`, `pdf_us_letter`, `docx_zero_shapes`, `docx_standard_headings`, `docx_heading1_present`, `docx_date_format_consistent`, `docx_publications_heading`, `html_jsonld_valid_person`, `html_jsonld_knows_about`. All nine are advisory-only; none block downloads. The `isCriticalFail` predicate at line 161 excludes these from blocking logic. `ats_keyword_presence` (not in the set) continues to block all downloads on fail. Status: **confirmed correct**.
+
+2. **Employment date overlap** (`scripts/utils/cv_orchestrator.py:4612–4680`): `_detect_date_overlaps()` is a `@staticmethod` that parses six date formats, resolves "Present"/"current"/"now" to today, uses end-of-period semantics for month/year dates, excludes same-company overlaps (promotions), and returns `{entry_a, entry_b, overlap_description}` dicts. Called in `generate_cv()` at line 2078, results stored in `metadata['date_overlap_warnings']` (line 2202), and rendered in the File Review tab at `download-tab.js:330–339` as an amber warning block. Status: **confirmed correct and fully wired**.
+
+3. **ATS score persistence to metadata.json** (`scripts/routes/generation_routes.py:1682–1686, 1930–1932`): The score is persisted at two points — immediately after each `/api/cv/ats-score` POST call via `_try_patch_metadata(conv, {"ats_score": score})` (line 1686), and again during the `/api/finalise` call at lines 1930–1932. The `metadata.json` file receives the full score dict (overall, hard/soft sub-scores, keyword_status list, section_scores, computed_at, basis). Status: **confirmed correct**.
 
 ---
 
@@ -40,7 +52,7 @@ Status: ✅ Pass — cite `cv_orchestrator.py:3697–3716`, `4689–4696`
 Status: ⚠️ Partial — Font sizes are constrained (10–12 pt for headings and bullets) but no `font.name` is set in `_setup_ats_styles`, and there is no validation check for font families. The ATS DOCX relies on the python-docx template default (likely Calibri), which may be acceptable but is fragile.
 
 **AC-H1.4** All URLs are spelled out as plain text (no formatted hyperlinks).
-`cv_orchestrator.py:3712–3713`: The LinkedIn URL is written as plain text into the contact paragraph (no hyperlink). However, the human DOCX at line 4401–4402 uses `_add_hyperlink(...)` — that function is in `_generate_human_docx`, not the ATS DOCX. No hyperlinks are added in `_generate_ats_docx`.
+`cv_orchestrator.py:3712–3713`: The LinkedIn URL is written as plain text into the contact paragraph (no hyperlink). The human DOCX at line 4401–4402 uses `_add_hyperlink(...)` — that function is in `_generate_human_docx`, not the ATS DOCX. No hyperlinks are added in `_generate_ats_docx`.
 Status: ✅ Pass — cite `cv_orchestrator.py:3712–3715` (no hyperlinks in ATS DOCX path)
 
 **AC-H1.5** ATS text extraction test: 100% of text selectable as plain text.
@@ -66,12 +78,14 @@ The story's accepted labels table allows "Work Experience" or "Professional Expe
 - `'Education'` ✅ accepted
 - `'Certifications'` ✅ accepted
 - `'Awards'` — not explicitly listed in the story's table but not listed as rejected either
-The `STANDARD` frozenset in `validate_ats_report` (`cv_orchestrator.py:4699–4706`) includes "core competencies", "technical skills", "professional summary" and "work experience" — consistent.
+
+**Validator gap:** The `STANDARD` frozenset in `validate_ats_report` (`cv_orchestrator.py:4785–4792`) includes `'career history'` and `'selected publications'`. The story lists "Career History" as a rejected label for the Experience section, and "Selected Publications" as a rejected label for the Publications section. If the ATS DOCX accidentally generated these headings, the validator would not flag them. The ATS DOCX code does not generate these headings, so there is no current active bug — but the validator's STANDARD list is more permissive than the story requires.
+
 Note: Publications heading in ATS DOCX: `_add_ats_additional_sections` does not add a publications section. Publications appear only in the human DOCX. The `docx_publications_heading` check in `validate_ats_report` validates it only in the ATS DOCX — but the ATS DOCX has no publications section, so the check always returns "pass (no publications section)" (line 4780–4782).
-Status: ✅ Pass — cite `cv_orchestrator.py:3721–3751`
+Status: ✅ Pass — cite `cv_orchestrator.py:3721–3751`. Validator gap noted (STANDARD set too permissive vs. story).
 
 **AC-H2.3** No creative section names in the ATS DOCX (only in human PDF).
-The code produces only standardized heading strings (see AC-H2.2). The `STANDARD` frozenset at line 4699–4706 also includes "career history" and "portfolio" — these appear in the allowed-list for validation but are **not generated** by the ATS DOCX code itself.
+The code produces only standardized heading strings (see AC-H2.2). The `STANDARD` frozenset at line 4785–4792 also includes "career history" and "portfolio" — these appear in the allowed-list for validation but are **not generated** by the ATS DOCX code itself.
 Status: ✅ Pass — cite `cv_orchestrator.py:3721–3806`
 
 ---
@@ -151,8 +165,8 @@ Status: ⚠️ Partial — Date format is pass-through from master data. No enfo
 Status: ✅ Pass — cite `cv_orchestrator.py:3762–3766`
 
 **AC-H5.4** No overlapping date ranges (system validates this).
-`CVOrchestrator._detect_date_overlaps` (`cv_orchestrator.py:4612–4680`) is a `@staticmethod` that iterates all parsed experience entries pairwise, skips same-company overlaps (promotions/parallel roles), and returns a list of `{entry_a, entry_b, overlap_description}` dicts. It is called in `generate_cv` at `cv_orchestrator.py:2078–2088`, and the resulting warnings are stored in `metadata.json` under `date_overlap_warnings` (line 2202). The frontend displays these warnings in the File Review tab: `download-tab.js:330–339` renders a yellow warning block listing each overlap pair with an advisory to review before submitting. The check is advisory (not a blocking ATS validation check), which is appropriate given that legitimate concurrent roles at different companies are a valid scenario.
-Status: ✅ Pass — overlap detection is implemented in `cv_orchestrator.py:4612–4680`, results persist to `metadata.json`, and the UI warns the user (`download-tab.js:330–339`).
+`CVOrchestrator._detect_date_overlaps` (`cv_orchestrator.py:4612–4680`) is a `@staticmethod` that iterates all parsed experience entries pairwise, skips same-company overlaps (promotions/parallel roles), and returns a list of `{entry_a, entry_b, overlap_description}` dicts. It parses six date formats including "Present"/"current"/"now" (resolved to today), applies end-of-period semantics for month/year dates, and handles year-only entries. It is called in `generate_cv` at `cv_orchestrator.py:2078–2088`, and the resulting warnings are stored in `metadata.json` under `date_overlap_warnings` (line 2202). The frontend displays these warnings in the File Review tab: `download-tab.js:330–339` renders an amber warning block listing each overlap pair with an advisory to review before submitting. The check is advisory (not a blocking ATS validation check), which is appropriate given that legitimate concurrent roles at different companies are a valid scenario.
+Status: ✅ Pass — overlap detection implemented at `cv_orchestrator.py:4612–4680`, results persist to `metadata.json`, UI warns user at `download-tab.js:330–339`.
 
 **AC-H5.5** "Present" used for current role (not future date).
 `cv_orchestrator.py:3761`: `exp.get('end_date', 'Present')` defaults to "Present" when end_date is absent. If the master data stores a specific date for the current role, it will use that date instead. No validation enforces that the active role uses "Present".
@@ -173,7 +187,7 @@ Status: ✅ Pass — cite `cv_orchestrator.py:4599–4944`, `download-tab.js:76�
 Status: ✅ Pass — cite `download-tab.js:108–130`
 
 **AC-H6.3** Any fail blocks download with a clear explanation.
-`download-tab.js:147–157` defines `_NON_BLOCKING_CHECKS` — a `Set` of 9 check names that are advisory-only and never block downloads even when they fail. These are: `cv_page_count`, `pdf_us_letter`, `docx_zero_shapes`, `docx_standard_headings`, `docx_heading1_present`, `docx_date_format_consistent`, `docx_publications_heading`, `html_jsonld_valid_person`, `html_jsonld_knows_about`. Checks not in this set do block downloads on fail. The `isCriticalFail` predicate at line 161 enforces this. The UI shows a "Blocked" button with an explanation at lines 132–138. ATS keyword failure (`ats_keyword_presence`) is not in `_NON_BLOCKING_CHECKS` and blocks all formats.
+`download-tab.js:147–157` defines `_NON_BLOCKING_CHECKS` — a `Set` of exactly 9 check names that are advisory-only and never block downloads even when they fail: `cv_page_count`, `pdf_us_letter`, `docx_zero_shapes`, `docx_standard_headings`, `docx_heading1_present`, `docx_date_format_consistent`, `docx_publications_heading`, `html_jsonld_valid_person`, `html_jsonld_knows_about`. Checks not in this set do block downloads on fail. The `isCriticalFail` predicate at line 161 enforces this. The UI shows a "Blocked" button with an explanation at lines 132–138. ATS keyword failure (`ats_keyword_presence`) is not in `_NON_BLOCKING_CHECKS` and blocks all formats.
 Status: ✅ Pass — cite `download-tab.js:147–157, 161–165, 132–138`
 
 **AC-H6.4** Any warn allows download but shows the specific issue.
@@ -181,8 +195,8 @@ Warns produce a ⚠ icon and detail text in the validation table but do not bloc
 Status: ✅ Pass — cite `download-tab.js:105–111`, `144–148`
 
 **AC-H6.5** Validation results included in `metadata.json`.
-`generation_routes.py:1930–1932`: `ats_score` is written to `metadata.json` via `_try_patch_metadata`. The full `validate_ats_report` check list (16 checks) is not serialized to `metadata.json` — only the ATS match score (`ats_score` dict) is persisted.
-Status: ⚠️ Partial — The ATS match score is persisted to `metadata.json` but the individual pass/warn/fail validation check results are not.
+`generation_routes.py:1682–1686`: `ats_score` (the full scoring dict including keyword_status, section_scores, overall, hard/soft sub-scores) is written to `metadata.json` via `_try_patch_metadata` after each `/api/cv/ats-score` call. Also written during finalise at lines 1930–1932. The full `validate_ats_report` check list (pass/warn/fail for each of the 16 checks) is not serialized to `metadata.json` — only the ATS match score dict is persisted.
+Status: ⚠️ Partial — The ATS match score is persisted to `metadata.json` but the individual pass/warn/fail validation check results (the 16-point report) are not.
 
 ---
 
@@ -200,16 +214,16 @@ Status: ⚠️ Partial — Weighting direction is correct (hard > soft) and mate
 
 **AC-H7.3** Score updates live as the user approves/rejects customization items — no page reload required.
 `scheduleAtsRefresh()` is called from:
-- `skills-review.js:1077` (skill decision)
+- `skills-review.js:1081` (skill decision)
 - `achievements-review.js:406` (achievement edit)
 - `spell-check.js:169, 438` (spell check accept)
-- `summary-review.js:208, 236, 304` (summary selection)
-- `rewrite-review.js:434` (rewrite approval)
+- `rewrite-review.js` (rewrite approval)
+- `session-manager.js:516` (analysis loaded)
 All use debounced 600ms refresh via `ats-refinement.js:211–213`. The badge updates in-place without page reload.
-Status: ✅ Pass — cite `skills-review.js:1077`, `ats-refinement.js:211–213`, `ats-refinement.js:150–181`
+Status: ✅ Pass — cite `skills-review.js:1081`, `ats-refinement.js:211–213`, `ats-refinement.js:150–181`
 
 **AC-H7.4** Score is persisted to `metadata.json` at generation time for audit purposes.
-`generation_routes.py:1686`: `_try_patch_metadata(conv, {"ats_score": score})` persists the score after each `/api/cv/ats-score` call. Also written during final generation at line 1931–1932.
+`generation_routes.py:1686`: `_try_patch_metadata(conv, {"ats_score": score})` persists the score after each `/api/cv/ats-score` call. Also written during final generation and finalise at lines 1930–1932.
 Status: ✅ Pass — cite `generation_routes.py:1682–1686`
 
 **AC-H7.5** Score UI clearly labels three per-skill states: Matched ✅, Missing ❌, Bonus ★.
@@ -225,7 +239,7 @@ Status: ⚠️ Partial — Three states are present and visually distinct, but t
 **Acceptance Criteria**
 
 **AC-H8.1** LLM classifies every extracted skill as hard or soft during job analysis.
-The job analysis LLM prompt (in `conversation_manager.py`) is not confirmed to include a hard/soft classification instruction. `_classify_skill_type` in `cv_orchestrator.py:4085–4101` uses heuristics (category name and skill name lookup), not LLM classification. The `skill_type` field checked at line 4091 may come from the master data if pre-classified, but no LLM classification step was found in the code.
+The `analyze_job_description` prompt in `llm_client.py:281–311` requests `required_skills`, `preferred_skills`, `must_have_requirements`, and `nice_to_have_requirements` — it does not ask the LLM to classify each skill as hard or soft. `_classify_skill_type` in `cv_orchestrator.py:4097–4114` uses category- and name-based heuristics (checking against `_SOFT_SKILL_CATEGORIES` and `_SOFT_SKILL_NAMES` sets), not LLM classification. The `skill_type` field checked first at line 4104 may come from master data if pre-classified by the user.
 Status: ⚠️ Partial — Hard/soft distinction uses heuristic classification via `_classify_skill_type`, not LLM classification during job analysis. The story requires the LLM to classify during analysis.
 
 **AC-H8.2** Candidate's master CV skills classified and classification persisted in `Master_CV_Data.json`.
@@ -233,19 +247,19 @@ No code was found that reads a skill classification from the LLM, writes `skill_
 Status: 🔲 Not Implemented — No LLM classification step and no persistence of `skill_type` to `Master_CV_Data.json`.
 
 **AC-H8.3** ATS DOCX separates skills into "Technical Skills" (hard) and "Core Competencies" (soft).
-`cv_orchestrator.py:3740–3748`: Hard skills are placed under `'Technical Skills'` (Heading 1) and soft skills under `'Core Competencies'` (Heading 1), separated by `' • '`.
-Status: ✅ Pass — cite `cv_orchestrator.py:3740–3748`
+`cv_orchestrator.py:3743–3761`: Hard skills are placed under `'Technical Skills'` (Heading 1, line 3754) and soft skills under `'Core Competencies'` (Heading 1, line 3759), each as a bullet-dot-separated paragraph.
+Status: ✅ Pass — cite `cv_orchestrator.py:3743–3761`
 
 **AC-H8.4** HTML JSON-LD `knowsAbout` entries include `"additionalType": "HardSkill"` or `"SoftSkill"`.
 `cv_orchestrator.py:1528–1536`: Each `knowsAbout` entry is `{"@type": "DefinedTerm", "name": ..., "additionalType": "HardSkill"/"SoftSkill"}` based on `_classify_skill_type`.
 Status: ✅ Pass — cite `cv_orchestrator.py:1528–1536`
 
 **AC-H8.5** User can override any classification in the UI; the override propagates to generated documents.
-The Skills Review tab (`skills-review.js:663–667`) shows a "Hard" or "Soft" badge based on the job analysis skill sets, but provides **no UI control** for the user to change a skill's hard/soft classification. There is no input, dropdown, or toggle for overriding `skill_type`. The ATS DOCX classification relies solely on `_classify_skill_type` heuristics.
+The Skills Review tab (`skills-review.js`) shows skill badges but provides **no UI control** for the user to change a skill's hard/soft classification. There is no input, dropdown, or toggle for overriding `skill_type`. The ATS DOCX classification relies solely on `_classify_skill_type` heuristics.
 Status: 🔲 Not Implemented — No UI control for hard/soft type override; badges are display-only.
 
 **AC-H8.6** Missing hard skills highlighted more prominently than missing soft skills.
-`ats-modals.js:189–193`: Missing hard requirements get a dedicated orange warning block ("Missing hard requirements (N): ..."). Missing soft skills appear in a separate block only if there are soft gaps beyond the hard ones (lines 194–198). The ATS score badge summary line (`ats-refinement.js:48–54`) shows "Missing hard: ..." first in the header.
+`ats-modals.js:189–193`: Missing hard requirements get a dedicated orange warning block ("Missing hard requirements (N): ..."). Missing soft skills appear in a separate block only if there are soft gaps beyond the hard ones. The ATS score badge summary line (`ats-refinement.js:48–54`) shows "Missing hard: ..." first in the header.
 Status: ✅ Pass — cite `ats-modals.js:189–198`, `ats-refinement.js:48–54`
 
 ---
@@ -258,7 +272,7 @@ What does the ATS see when it parses the output files?
 
 ### ATS DOCX Structure Quality
 
-**File naming:** `CV_{Company}_{Role}_{YYYY-MM-DD}_ATS.docx` — clear ATS indicator in filename (`cv_orchestrator.py:3813`).
+**File naming:** `CV_{Company}_{Role}_{YYYY-MM-DD}_ATS.docx` — clear ATS indicator in filename (`cv_orchestrator.py:3826`).
 
 **Document body order:**
 1. Candidate name (bold, 16pt, centered) — not Heading 1 style
@@ -287,7 +301,7 @@ This structure is well-ordered for ATS parsing. Contact is in body (not header/f
 
 **Font gap:** `_setup_ats_styles` does not set `font.name` explicitly. The ATS DOCX inherits whatever font the python-docx default document template uses. This is likely Calibri (an ATS-safe font), but it is not enforced. A future template change or environment difference could produce a non-ATS-safe font.
 
-**Publications in ATS DOCX:** Publications are **not** added to the ATS DOCX (no call to `_add_ats_additional_sections` for publications). The story does not require publications in the ATS DOCX (it references the human PDF), so this is correct behavior.
+**Publications in ATS DOCX:** Publications are **not** added to the ATS DOCX (no publications call in `_add_ats_additional_sections` — that function only adds Certifications and Awards). The story does not require publications in the ATS DOCX, so this is correct behavior. The human DOCX at line 4580 conditionally uses "Selected Publications" (when subset shown) or "Publications" (when all shown) — this is appropriate for human readers only.
 
 ---
 
@@ -306,7 +320,7 @@ The `_build_json_ld` method produces:
 
 This is a rich, well-structured JSON-LD block. The `hasOccupation` field is populated (required by US-H1). The `knowsAbout` array carries `additionalType` for hard/soft distinction (US-H8). The `telephone` field is present.
 
-**Missing:** `hasOccupation` carries work history as `@type: "Role"` (using `name` for company and `roleName` for job title) — this is Schema.org-compatible but some ATS prefer `@type: "Occupation"` or `@type: "EmployeeRole"`. Not a blocking issue.
+**Minor:** `hasOccupation` carries work history as `@type: "Role"` (using `name` for company and `roleName` for job title) — this is Schema.org-compatible but some ATS prefer `@type: "Occupation"` or `@type: "EmployeeRole"`. Not a blocking issue.
 
 ---
 
@@ -338,8 +352,8 @@ The PDF validation checks (US-H6, checks 13–15):
 
 ## Summary of Findings
 
-### Passed (13)
-AC-H1.1, AC-H1.2, AC-H1.4, AC-H1.5, AC-H2.1, AC-H2.2, AC-H2.3, AC-H3.1–H3.5, AC-H4.1, AC-H4.2, AC-H4.3, AC-H5.1, AC-H5.3, AC-H5.4, AC-H6.1, AC-H6.2, AC-H6.3, AC-H6.4, AC-H7.1, AC-H7.3, AC-H7.4, AC-H8.3, AC-H8.4, AC-H8.6
+### Passed (23)
+AC-H1.1, AC-H1.2, AC-H1.4, AC-H1.5, AC-H2.1, AC-H2.2, AC-H2.3, AC-H3.1, AC-H3.2, AC-H3.3, AC-H3.4, AC-H3.5, AC-H4.1, AC-H4.2, AC-H4.3, AC-H5.1, AC-H5.3, AC-H5.4, AC-H6.1, AC-H6.2, AC-H6.3, AC-H6.4, AC-H7.1, AC-H7.3, AC-H7.4, AC-H8.3, AC-H8.4, AC-H8.6
 
 ### Partial (10)
 - **AC-H1.3** Font family not explicitly set in `_setup_ats_styles`; no font-name validation check
@@ -348,7 +362,7 @@ AC-H1.1, AC-H1.2, AC-H1.4, AC-H1.5, AC-H2.1, AC-H2.2, AC-H2.3, AC-H3.1–H3.5, A
 - **AC-H4.5** `knowsAbout` validation counts entries but does not cross-check against approved skills
 - **AC-H5.2** Date month-year format is pass-through; no enforcement or validation
 - **AC-H5.5** "Present" defaults correctly but no validation against future dates in end_date
-- **AC-H6.5** ATS match score persisted to `metadata.json`; individual check results are not
+- **AC-H6.5** ATS match score persisted to `metadata.json`; individual check results (16-point report) are not
 - **AC-H7.2** Weighting is 70/30 (2.33:1) rather than story-specified 2:1 (66.7/33.3)
 - **AC-H7.5** Bonus ★ symbol absent; "Partial match" badge not in story spec
 - **AC-H8.1** Hard/soft classification uses heuristics, not LLM classification during analysis
@@ -357,8 +371,9 @@ AC-H1.1, AC-H1.2, AC-H1.4, AC-H1.5, AC-H2.1, AC-H2.2, AC-H2.3, AC-H3.1–H3.5, A
 - **AC-H8.2** No LLM skill classification and no `skill_type` write-back to `Master_CV_Data.json`
 - **AC-H8.5** No UI control for user to override hard/soft skill classification
 
-### Additional gap (not a story criterion)
-- **PDF font embedding** — US-H6 check 15 requires "Fonts embedded" but this is not validated
+### Additional gaps (not story criteria)
+- **PDF font embedding** — US-H6 check 15 requires "Fonts embedded" but `validate_ats_report` does not verify this
+- **Validator STANDARD list too permissive** — `STANDARD` frozenset at `cv_orchestrator.py:4785–4792` includes "career history" and "selected publications", which the story lists as rejected labels. The ATS DOCX code never generates these headings, so there is no active bug, but the validator would not catch them if the code changed.
 
 ---
 
@@ -368,6 +383,7 @@ AC-H1.1, AC-H1.2, AC-H1.4, AC-H1.5, AC-H2.1, AC-H2.2, AC-H2.3, AC-H3.1–H3.5, A
 2. **MED — Add PDF font embedding check** to `validate_ats_report`: Verify at least one font is embedded using pypdf's font extraction.
 3. **MED — Cross-check `knowsAbout` against approved skills** (AC-H4.5): The validation report should confirm all approved skills appear in `knowsAbout`, not just that the array is non-empty.
 4. **MED — Add month-year date format enforcement** (AC-H5.2): Validate that start/end dates include month before writing to ATS DOCX.
-5. **LOW — Add skill type classification UI override** (AC-H8.5): Allow user to change Hard↔Soft for any skill in the Skills Review tab.
-6. **LOW — Align score weighting** (AC-H7.2): Change to `0.667 * hard + 0.333 * soft` to match the 2:1 story specification exactly.
-7. **LOW — Add ★ Bonus badge** (AC-H7.5): Use ★ symbol for bonus skills to match story specification.
+5. **MED — Tighten STANDARD frozenset** (validator gap): Remove "career history" and "selected publications" from the `STANDARD` set in `validate_ats_report`, or add a separate ATS-DOCX-specific allowed set that excludes them.
+6. **LOW — Add skill type classification UI override** (AC-H8.5): Allow user to change Hard↔Soft for any skill in the Skills Review tab.
+7. **LOW — Align score weighting** (AC-H7.2): Change to `0.667 * hard + 0.333 * soft` to match the 2:1 story specification exactly.
+8. **LOW — Add ★ Bonus badge** (AC-H7.5): Use ★ symbol for bonus skills to match story specification.

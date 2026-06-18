@@ -7,7 +7,7 @@
 # Resume Optimisation Expert Review
 
 **Persona:** Certified professional résumé writer / career strategist  
-**Date:** 2026-06-18  
+**Date:** 2026-06-18 (Cycle 3 update)  
 **Reviewer:** Claude Sonnet 4.6 (source-first analysis)  
 **Story file:** `tasks/user-story-resume-expert.md`  
 **Rating key:** ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Implemented | — N/A
@@ -116,7 +116,7 @@
 
 **AC4 — Candidate-to-confirm items clearly flagged in skills review UI; never appear in generated output**
 
-❌ Fail — The `candidate_to_confirm` flag is set in `cv_orchestrator.py:1779` for weak-evidence `skill_add` proposals. However, examining the skills review UI (`web/skills-review.js`) and the template rendering path, there is **no visual indicator** (asterisk, footnote, or distinct badge) for `candidate_to_confirm` skills in the review UI. Searching `web/` (excluding `bundle.js`) finds zero references to `candidate_to_confirm` in any rendering code. Furthermore, nothing in the template rendering or DOCX generation pipeline strips `candidate_to_confirm: True` entries from the output — the skill is added to `content['skills']` and processed identically to confirmed skills. Both the UI flag requirement and the output-exclusion requirement are unimplemented.
+⚠️ Partial — **Cycle 3 update (corrects prior ❌):** `web/skills-review.js:633` reads `isCandidateToConfirm = typeof skill === 'object' && skill.candidate_to_confirm === true`, and lines 663–665 render a `candidateBadge` — a distinct red-bordered `⚠ Verify evidence` span with a tooltip — in the skill name cell alongside the skill name. The UI flag requirement is now met. However, the generated-output exclusion requirement is still **not met**: `candidate_to_confirm: True` skills pass through `_organize_skills_by_category` and into the HTML template (`cv-template.html:628–629`) without any filtering. The template renders `skill.name` or `skill.display_name` directly, with no check for `candidate_to_confirm`. Weak-evidence skills approved through the review UI will appear unmarked in all generated PDF, DOCX, and HTML files. The output-exclusion half of this criterion remains a gap.
 
 ---
 
@@ -124,7 +124,7 @@
 
 **AC1 — `rewrite_audit` contains an entry for every proposal with `outcome` and `final` text**
 
-⚠️ Partial — `rewrite_audit` is persisted to `metadata.json` at generation time (`cv_orchestrator.py:2182`). The session state tracks `rewrite_audit` (`conversation_manager.py:101`). The spell-check module sets `entry.outcome = 'accept'` or `'reject'` (`spell-check.js:286, 306, 319`). The rewrite-review UI tracks `dec.outcome` (`rewrite-review.js:319`). However, the audit record is populated from `approved_rewrites` (accepted only) plus the session's `rewrite_audit` list. **Rejected proposals are not guaranteed to appear in `rewrite_audit`** — the `_handle_submit_rewrites` path records only `approved_count` and `rejected_count` totals, not individual rejected proposal records.
+✅ Pass — **Cycle 3 update (corrects prior ⚠️):** `conversation_manager.py:submit_rewrite_decisions()` (lines 1094–1122) iterates over every decision and appends ALL of them to the `audit` list at line 1100–1104 via `audit.append({**proposal, 'outcome': outcome, 'final': final})`. The check at line 1106 (`if outcome != 'reject'`) determines what goes into `approved_rewrites`, but the unconditional `audit.append` above means rejected proposals ARE included in `rewrite_audit` with `outcome: 'reject'` and `final: None`. This is confirmed: `self.state['rewrite_audit'] = audit` at line 1113 stores all entries. The submit gate in `rewrite-review.js:376` enforces `pending === 0` before submit, ensuring all proposals receive a decision before the audit is written.
 
 **AC2 — Diff between generated CV text and `rewrite_audit.final` values = zero unexplained changes**
 
@@ -132,7 +132,7 @@
 
 **AC3 — Audit non-empty even when all rewrites are rejected**
 
-❌ Fail — From `rewrite-review.js:361`, the count tracks accepted proposals. There is no code path that appends a rejected proposal to `rewrite_audit` with `outcome: 'reject'`. If a user rejects all proposals and proceeds to generation, `rewrite_audit` in `metadata.json` will be an empty list (`cv_orchestrator.py:2182` uses `rewrite_audit or []`), violating this acceptance criterion.
+✅ Pass — **Cycle 3 update (corrects prior ❌):** As established in AC1, `submit_rewrite_decisions` appends every proposal (including rejected ones) to `audit` unconditionally. If a user rejects all proposals, every proposal appears in `rewrite_audit` with `outcome: 'reject'` and `final: None`. The `rewrite-review.js:376` submit gate (`pending > 0` disables submit) ensures the user cannot proceed until all cards have a decision, so the audit is always populated when generation is permitted. This criterion is now confirmed passing.
 
 ---
 
@@ -170,7 +170,7 @@
 
 ### Skills section in generated output
 
-❌ Fail — `candidate_to_confirm: True` skills flow through `_organize_skills_by_category` and into the template without any filtering or notation. Weak-evidence skill additions approved by the user will appear identically to verified skills in the generated PDF, DOCX, and HTML. The story requires these to be excluded from all generated documents.
+❌ Fail — **Cycle 3 note:** While the skills review UI now flags `candidate_to_confirm` skills with a "⚠ Verify evidence" badge, the generated-output path remains unguarded. `candidate_to_confirm: True` skills flow through `_organize_skills_by_category` and into the template without any filtering or notation. Weak-evidence skill additions approved by the user will appear identically to verified skills in the generated PDF, DOCX, and HTML. The story requires these to be excluded from all generated documents. Only the output-exclusion portion of US-R5 AC4 remains failing.
 
 ### Publications in generated output
 
@@ -189,8 +189,8 @@
 | "Required Skills" (Analysis tab) | Clear — matches story intent |
 | "Preferred / Nice-to-Have" (Analysis tab) | Clear — distinct section, unambiguous |
 | "ATS Keywords" with rank badges | Appropriate — rank implies priority |
-| "Candidate to confirm" (internal state only) | **Never shown to user** — missing from UI entirely |
-| "Evidence" field in `skill_add` proposals | Not surfaced in the skills review UI |
+| "Candidate to confirm" / "⚠ Verify evidence" | **Cycle 3:** Badge now present in skills review UI (`skills-review.js:663–665`); still absent from generated documents |
+| "Evidence" field in `skill_add` proposals | Not surfaced in the skills review UI (only the badge, not the cited experience IDs) |
 | "Rationale" column in publications table | Clear and useful |
 | "Confidence" badge (High/Medium/Low) | Clear for publications; absent for domain inference |
 
@@ -220,16 +220,17 @@
 | US-R5 | Skills only from master or approved additions | ✅ |
 | US-R5 | Skills ordered by relevance within category | ⚠️ |
 | US-R5 | Extra skills Harvest-only write-back | ✅ |
-| US-R5 | Candidate-to-confirm flagged in UI + excluded from output | ❌ |
-| US-R6 | Audit contains all proposals with outcome | ⚠️ |
-| US-R6 | Audit non-empty when all rejected | ❌ |
+| US-R5 | Candidate-to-confirm flagged in UI + excluded from output | ⚠️ |
+| US-R6 | Audit contains all proposals with outcome | ✅ |
+| US-R6 | Audit non-empty when all rejected | ✅ |
 | US-R7 | Custom dict produces zero flags | ✅ |
 | US-R7 | Bullet fragment suppression | ✅ |
 | US-R7 | Skill context grammar suppression | ✅ |
 | US-R7 | Accepted correction changes exact span only | ✅ |
 | US-R7 | Dictionary deduplicated on write | ✅ |
 
-**Totals:** 14 ✅ Pass | 9 ⚠️ Partial | 4 ❌ Fail | 0 🔲 Not Implemented
+**Totals:** 16 ✅ Pass | 8 ⚠️ Partial | 2 ❌ Fail | 0 🔲 Not Implemented  
+*(Cycle 3: US-R6 AC1 ⚠️→✅, US-R6 AC3 ❌→✅, US-R5 AC4 ❌→⚠️)*
 
 ---
 
@@ -238,34 +239,32 @@
 ### 1. `candidate_to_confirm` skills appear unmarked in all generated output (US-R5 AC4)
 
 **Severity: High.**  
-Weak-evidence `skill_add` proposals flagged `candidate_to_confirm: True` in `cv_orchestrator.py:1779` flow through `_organize_skills_by_category` and into the generated PDF, DOCX, and HTML without any visual distinction or exclusion. The user story requires these to (a) be visually flagged in the review UI, and (b) never appear in generated documents. Neither requirement is met. A candidate who approves a suggested skill "for review purposes" will unknowingly send it in submitted materials.
+**Cycle 3 partial update:** The review UI flag is now confirmed present (`skills-review.js:663–665` renders a red `⚠ Verify evidence` badge). However, weak-evidence `skill_add` proposals flagged `candidate_to_confirm: True` in `cv_orchestrator.py:1779` still flow through `_organize_skills_by_category` and into the generated PDF, DOCX, and HTML without any filtering. The template (`cv-template.html:628–629`) renders `skill.name` or `skill.display_name` with no `candidate_to_confirm` guard. A candidate who approves a suggested skill "for review purposes" will unknowingly send it in submitted materials.
 
-**Fix needed:** In the skills review UI, add a `⚠*` badge for `candidate_to_confirm` entries with a tooltip/footnote explaining they need confirmation. In `build_render_ready_content`, filter `content['skills']` to exclude any entry where `candidate_to_confirm: True` before passing to the template renderer.
+**Fix needed:** In `build_render_ready_content` or `_select_content_hybrid`, filter `content['skills']` to exclude any entry where `candidate_to_confirm: True` before passing to the template renderer. The UI badge is already implemented.
 
-### 2. Rejected rewrites absent from `rewrite_audit` (US-R6 AC3)
-
-**Severity: High.**  
-The rewrite audit is incomplete — only accepted proposals are reliably recorded. If the user rejects all rewrites, `rewrite_audit` in `metadata.json` will be empty, making the output untraceable. The story requires an audit entry for every proposal regardless of outcome.
-
-**Fix needed:** In the rewrite-review submission handler, append every proposal to `rewrite_audit` with `outcome: 'accept'`, `'reject'`, or `'edit'` and the `final` text (original text for rejected, user-edited text for `edit`).
-
-### 3. No cross-rewrite terminology consistency enforcement (US-R3 AC4)
+### 2. No cross-rewrite terminology consistency enforcement (US-R3 AC4)
 
 **Severity: High.**  
 Rewrites are proposed and reviewed independently. There is no mechanism to ensure that an adopted keyword (e.g., `"MLOps"`) appears consistently across all proposals in the same batch. A summary rewrite and a bullet rewrite can use different phrasing for the same concept.
 
 **Fix needed:** After the LLM returns a batch of proposals, run a post-processing pass that extracts newly introduced terminology from accepted proposals and checks all other proposals in the batch for inconsistency. Alternatively, include the full accepted batch in a follow-up LLM terminology-normalisation pass before final generation.
 
-### 4. Keyword frequency weighting absent from job analysis (US-R1 AC4)
+### 3. Keyword frequency weighting absent from job analysis (US-R1 AC4)
 
 **Severity: Medium.**  
 The `ats_keywords` list is presented with positional rank badges but the rank is simply the LLM's list order, not a computed frequency/position weight. Keywords appearing in the job title or repeated multiple times in the posting are not systematically weighted higher.
 
 **Fix needed:** Add a preprocessing step after the raw job text is received — count keyword occurrences and detect title-line keywords. Pass these counts to the LLM prompt as a weighted frequency table, or post-process the LLM's keyword list by boosting items that appear in the job title or opening paragraph.
 
-### 5. Skills ordered by years-of-experience, not job relevance (US-R5 AC2)
+### 4. Skills ordered by years-of-experience, not job relevance (US-R5 AC2)
 
 **Severity: Medium.**  
 `_sort_categories` (`cv_orchestrator.py:564`) sorts within each category by `(-years, name)`. A candidate's longest-held skill (e.g., `"SAS"`, 20 years) will appear before a highly relevant newer skill (e.g., `"Python"`, 5 years) even when the target job is a Python role. The story requires relevance-to-target-role ordering within each category.
 
 **Fix needed:** Pass `job_analysis.required_skills` and `ats_keywords` into `_sort_categories` and boost skills that appear in those lists before non-matching skills. Years-of-experience can remain as a secondary tiebreaker within the matched set.
+
+### 5. Rewrite submit gate confirmed working (US-R6, cycle 3 verification)
+
+**Severity: None — confirmed pass.**  
+`rewrite-review.js:376` enforces `submitBtn.disabled = (pending > 0) || needsAck`, meaning the Submit button is disabled until every rewrite card has an outcome and all persuasion warnings are acknowledged. This is the gate that ensures `rewrite_audit` is always complete when written. The `acceptAllRewrites` / `rejectAllRewrites` bulk-action functions only operate on cards without an existing decision (`if (!rewriteDecisions[id])`), so they cannot re-open already-decided cards.

@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-18 (cycle 2)
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-18 (cycle 3)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,14 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123 from newly discovered issues and resolved/updated GAP-08, GAP-28, GAP-30, GAP-37, GAP-38, and GAP-45. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145.
+
+## 2026-06-18 (Cycle 3) Reconciliation Notes
+
+- **10 gaps closed this cycle:** GAP-120 (tab keyboard — WCAG Level A), GAP-124 (`final_generation` labels), GAP-125 (layout scope label), GAP-129 (ATS modal focus), GAP-34 (`confirmDialog` ARIA), GAP-143 (`showConfirmModal` focus), GAP-144 (harvest pre-selection), GAP-141 (BibTeX editor→author), GAP-128 (FALSE POSITIVE — `submit_rewrite_decisions()` always records all outcomes), GAP-130 (ALREADY RESOLVED).
+- **1 regression found and fixed same session:** GAP-146 — `toggleChat` from `ui-helpers.js` was exported into `globalThis` after `ui-core.js`, overwriting the ARIA-aware version and breaking `aria-label`/`aria-expanded` updates after first toggle. Fix: removed duplicate function and export from `web/ui-helpers.js`; rebuilt bundle.
+- **3 hiring-manager criteria upgraded:** US-M2f (weak-verb UI now visible in persuasion panel), US-M4b and US-M5b (sidebar background on pages 2+ fixed via `box-decoration-break: clone`).
+- **9 new gaps added (GAP-146 through GAP-154):** GAP-146 bundle toggle override (resolved), GAP-147 empty-skeleton "profile ready" mislead (first-time user), GAP-148 workflow pill missing pointer cursor, GAP-149 generic summary fallback reaches PDF, GAP-150 cover letter LLM missing bullet text, GAP-151 ATS STANDARD frozenset includes rejected labels, GAP-152 focus trap incomplete in two modal types, GAP-153 status elements lack aria-live, GAP-154 message-input outline stripped unconditionally.
+- **Most critical open gaps:** GAP-36 (first-run onboarding), GAP-41 (no pre-job Master CV entry), GAP-72 (step pill keyboard), GAP-73 (aria-live on workflow), GAP-123 (empty aria-label on freshness chip), GAP-132 (divergent CV templates), GAP-147 (empty-skeleton mislead), GAP-149 (generic summary in PDF), GAP-152 (focus trap).
 
 ## 2026-06-18 (Cycle 2) Reconciliation Notes
 
@@ -1232,5 +1240,86 @@ The publication CRUD modal in `web/master-cv.js` loads the `editor` BibTeX field
 **Status:** RESOLVED 2026-06-18
 **Found:** 2026-06-18 cvUiReview (cycle 2)
 Cover letter files are named `CoverLetter_{company}_{date}.docx` and screening responses are named `Screening_Responses_{date}.docx` (no company for screening). Neither includes the role/position token used in CV filenames (`CV_{company}_{role}_{date}.*`). For same-company same-day applications (e.g., two different roles at the same firm), cover letter files will collide and the second will silently overwrite the first.
-**Fix:** Cover letter filename is now `CoverLetter_{company}_{role}_{date}.docx`; screening filename is now `Screening_{company}_{role}_{date}.docx`. Both read role from `job_analysis.title`. `scripts/routes/master_data_routes.py:1638, 1869`.
-**Source evidence:** `scripts/routes/master_data_routes.py:1638, 1869`; recruiter-ops.md 2026-06-18 (cycle 2).
+**Fix:** Cover letter filename is now `CoverLetter_{company}_{role}_{date}.docx`; screening filename is now `Screening_{company}_{role}_{date}.docx`. Both read role from `job_analysis.title`. `scripts/routes/master_data_routes.py:1638, 1869`. Secondary fix: `web/download-tab.js:53` updated `startsWith('Screening_Responses_')` → `startsWith('Screening_')` to match the new prefix.
+**Source evidence:** `scripts/routes/master_data_routes.py:1638, 1869`; `web/download-tab.js:53`; recruiter-ops.md 2026-06-18 (cycle 2).
+
+---
+
+## 2026-06-18 (Cycle 3) New Gaps (GAP-146 through GAP-154)
+
+*Discovered during the 15-persona + heuristic review cycle 3, 2026-06-18.*
+
+---
+
+## GAP-146: `toggleChat` Duplicate in `ui-helpers.js` Overwrites ARIA-Aware Version in Bundle
+
+**Priority:** HIGH
+**Status:** RESOLVED 2026-06-18
+**Found:** 2026-06-18 cvUiReview cycle 3
+`web/ui-helpers.js` defined and exported a `toggleChat` function that only updated `textContent` on the toggle button. Because `ui_helpers_exports` is spread into `globalThis` AFTER `ui_core_exports` in `web/bundle.js`, this inferior version overwrote the correct ARIA-aware `toggleChat` from `web/ui-core.js:684–705` (which updates `aria-label` and `aria-expanded` on every toggle). After the first click, the `#toggle-chat` button announced wrong state to screen readers.
+**Fix:** Removed the duplicate `toggleChat` function definition and export from `web/ui-helpers.js`. `web/ui-core.js` version now exclusively controls the toggle. Bundle rebuilt.
+**Source evidence:** `web/ui-helpers.js:84–98` (removed); `web/ui-core.js:684–705`; `web/bundle.js` globalThis spread order; accessibility-specialist.md 2026-06-18 (cycle 3).
+
+## GAP-147: First-Time User: `ensure_master_cv_exists()` Shows "Profile Ready" for Empty Skeleton
+
+**Priority:** HIGH
+**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Affected stories:** US-F1, US-F4
+`ensure_master_cv_exists()` creates a blank skeleton `Master_CV_Data.json` on first run and displays a "Your master profile is ready" success message to the user. However, the skeleton is completely empty (no experiences, skills, education, publications, or personal info). The success message implies the profile has been set up, causing first-time users to proceed into job analysis with an empty master data file, leading to poor AI outputs.
+**Recommended resolution:** Change the "profile ready" message to "A blank master profile was created — please fill in your profile before starting a job application." Add a redirect or modal directing the user to the Master CV editor. Alternatively, suppress the success state and show an onboarding prompt instead.
+
+## GAP-148: Workflow Step Pills Missing `cursor:pointer` — Non-Clickable Appearance
+
+**Priority:** MEDIUM
+**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Affected stories:** US-U1, US-A12
+Only `step-job` (the first pill) has `class="clickable"` which applies `cursor:pointer`. The remaining navigable pills (analysis, customizations, rewrite, etc.) have `onclick` handlers but no visual affordance indicating they are interactive. Users who have completed an earlier stage see pills that look like static status indicators rather than clickable re-entry points.
+**Recommended resolution:** Add `class="clickable"` (or equivalent `cursor:pointer` CSS) to all step pill elements that have `onclick` handlers and are in a navigable state. This is a companion to GAP-72 (keyboard access).
+
+## GAP-149: Generic Professional Summary Fallback Reaches Generated PDF Without UI Warning
+
+**Priority:** HIGH
+**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Affected stories:** US-M1, US-R2
+`cv_orchestrator.py:197` substitutes `"Experienced professional applying for {position}"` when the session's professional summary field is empty. This generic placeholder is silently included in the generated PDF, HTML, and ATS DOCX output. No UI warning is shown before generation to alert the user that a fallback summary is in use.
+**Recommended resolution:** Before generating output, check whether the selected summary is the fallback placeholder. If so, surface a blocking or prominent warning in the layout review or final generate step: "No professional summary selected — the generated CV will include a generic placeholder." Add a link to the Summary review tab.
+
+## GAP-150: Cover Letter LLM Receives Only Achievement Titles, Not Bullet Body Text
+
+**Priority:** MEDIUM
+**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Affected stories:** US-M6, US-P5
+The cover letter generation prompt passes achievement `title` fields from the session's approved achievements list but not the full bullet body text. The LLM can only reference achievement titles (which are often generic — e.g., "Revenue Growth") rather than the specific quantified accomplishments in the body (e.g., "grew ARR from $2M to $8M in 18 months"). This produces cover letters with generic achievement references instead of concrete named citations.
+**Recommended resolution:** Update the cover letter prompt context to include both achievement title and body text for each approved achievement. The body text is available in the session state alongside the title.
+
+## GAP-151: ATS Validator `STANDARD` Frozenset Includes Rejected Heading Labels
+
+**Priority:** LOW
+**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Affected stories:** US-H2, US-H6
+The `STANDARD` frozenset in `validate_ats_report` (`scripts/utils/cv_orchestrator.py:4785–4792`) includes `'career history'` and `'selected publications'`, both of which are explicitly listed as rejected heading labels in US-H2. The ATS DOCX generator does not currently produce these headings, so there is no active bug. However, if generation code changes, the validator would silently pass these rejected labels.
+**Recommended resolution:** Remove `'career history'` and `'selected publications'` from the `STANDARD` frozenset. If these need to be tracked for detection purposes, move them to a separate `REJECTED_LABELS` set that the validator flags as failures.
+
+## GAP-152: `showConfirmModal` and `openAtsReportModal` Missing Full Focus Trap
+
+**Priority:** HIGH
+**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Affected stories:** US-X2, US-X3
+Both `showConfirmModal` (`web/ui-helpers.js`) and `openAtsReportModal` (`web/ats-modals.js`) now correctly save focus and move it to the first actionable button on open (GAP-143 and GAP-129 fixes). However, neither calls `trapFocus()`. Pressing Tab from the last focusable element exits the modal into background content, allowing keyboard users to interact with the page behind the modal.
+**Recommended resolution:** Call `trapFocus(modalElement)` after opening each modal. The `trapFocus()` implementation already exists in `web/ui-core.js` and is used by `confirmDialog()`. Add a corresponding `releaseFocus()` call in the close handlers.
+
+## GAP-153: Dynamic Status Message Elements Lack `aria-live` or `role="alert"`
+
+**Priority:** HIGH
+**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Affected stories:** US-X3, US-U7
+Three elements display status messages dynamically but have no `aria-live` attribute or `role="alert"`: `#settings-status-msg` (LLM settings save confirmation), `#onboarding-modal-status` (onboarding progress), and `#model-auth-key-status` (API key validation feedback). Screen reader users navigating the UI receive no audible notification when these status elements are updated.
+**Recommended resolution:** Add `aria-live="polite"` to `#settings-status-msg` and `#onboarding-modal-status`. Add `role="alert"` (or `aria-live="assertive"`) to `#model-auth-key-status` since API key validation feedback is time-sensitive. Note: `#session-conflict-banner` is tracked separately under GAP-75.
+
+## GAP-154: `.message-input { outline: none }` Set Unconditionally — Keyboard Focus Invisible
+
+**Priority:** HIGH
+**Status:** OPEN — discovered 2026-06-18 (cycle 3)
+**Affected stories:** US-X1, US-U7
+`web/styles.css` sets `outline: none` on `.message-input` unconditionally (not inside a `:focus` rule). This removes the browser's default keyboard focus indicator from the chat message input for all users at all times, including keyboard-only users. This is a WCAG 2.1 SC 2.4.7 (Focus Visible — Level AA) failure and a WCAG 2.4.11 (Focus Appearance — Level AA) failure.
+**Recommended resolution:** Remove the unconditional `outline: none`. If a custom focus style is desired, apply it as `.message-input:focus { outline: 2px solid #2980b9; }` rather than suppressing the outline entirely. Also see GAP-35 for the companion issue of the missing accessible label on this element.

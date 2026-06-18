@@ -6,537 +6,149 @@
   For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# UX Heuristic Evaluation
+# UX Heuristic Evaluation — Cycle 3
 
 **Date:** 2026-06-18
-**Evaluator perspective:** Senior UX and interaction designer
+**Evaluator:** Claude Code (source-code reading pass; no live session)
 **Sources read:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js,
-web/styles.css, web/rewrite-review.js, web/download-tab.js,
+web/styles.css, web/review-table-base.js, web/layout-instruction.js,
 scripts/web_app.py, scripts/utils/conversation_manager.py
 
 ---
 
-## Recent Improvements (noted before evaluation)
+## Cycle 3 Focus Areas
 
-The following improvements have been implemented and are reflected in this evaluation:
+The following specific changes were assessed this cycle:
 
-1. **Persuasion gate hard-blocks submit.** `updateRewriteTally()` in `rewrite-review.js:373-381`
-   disables the "Submit All Decisions" button when `!persuasionWarningsAcknowledged` and sets a
-   tooltip explaining the block. A fallback confirm dialog (`rewrite-review.js:385-391`) is still
-   shown if the gate is somehow bypassed.
-
-2. **Overlap warnings surfaced at download.** `download-tab.js:330-339` renders a prominent amber
-   callout listing all `date_overlap_warnings` with per-entry detail before the download grid, so
-   users see employment timeline conflicts before submitting their application.
-
-3. **Cover letter and screening in download tab.** `download-tab.js:51-58` recognises
-   `CoverLetter_` and `Screening_Responses_` prefixes in the file list and renders them with
-   appropriate descriptions inside the "File Review" tab, consolidating deliverables in one place.
+| Change | Assessment outcome |
+| ------ | ------------------ |
+| H5/H7 — tab keyboard access: tabindex + Enter/Space + roving tabindex in `switchTab` | Confirmed implemented — **full roving tabindex pattern** in `review-table-base.js:121-132`; ArrowLeft/Right/Home/End in `ui-core.js:524-540`. H7 upgrades from Minor to Good. |
+| H4 — `confirmDialog` now has `role="dialog"`, aria, focus management | Confirmed — `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, focus trap, Escape cancels, backdrop dismiss all present. H4 modal consistency improves. |
+| H2 — layout scope label now explicitly says "layout change only" | Confirmed — `layout-instruction.js:293` renders: "Describe a layout change (spacing, margins, column widths, section order). Text content is finalised — content edits are not applied here." |
+| H10 — no persistent help path | Still absent — no help page, no documentation link, no contextual help panel found in any source file. |
 
 ---
 
 ## Nielsen's 10 Heuristics
 
-| # | Heuristic | Rating | Evidence summary |
-| --- | --------- | ------ | --------------- |
-| H1 | Visibility of system status | 🟡 Minor | See detail below |
-| H2 | Match between system and the real world | 🟠 Major | See detail below |
-| H3 | User control and freedom | 🟡 Minor | See detail below |
-| H4 | Consistency and standards | 🟠 Major | See detail below |
-| H5 | Error prevention | 🟡 Minor | See detail below |
-| H6 | Recognition rather than recall | 🟠 Major | See detail below |
-| H7 | Flexibility and efficiency of use | 🟡 Minor | See detail below |
-| H8 | Aesthetic and minimalist design | 🟠 Major | See detail below |
-| H9 | Help users recognise, diagnose, and recover from errors | 🟡 Minor | See detail below |
-| H10 | Help and documentation | 🔴 Critical | See detail below |
-
----
-
-### H1 — Visibility of System Status 🟡 Minor
-
-**Strengths:**
-- LLM busy overlay (`index.html:152-159`, `styles.css:517-566`) shows a spinner, elapsed timer,
-  a step label ("Reasoning…"), and a "Stop" button. It covers the chat panel during in-flight
-  calls and degrades to a slow-state badge ("Taking longer than usual") at a configurable
-  threshold.
-- A secondary `#llm-status-bar` (`index.html:167-170`) with a thinking dot and elapsed counter
-  exists inside the chat area — dual-layer but not harmful.
-- The LLM status pill in the header (`index.html:54-60`) shows connectivity state (Not ready /
-  Connected / Auth required / Rate limited) with colour-coded CSS classes (`styles.css:36-61`).
-- The ATS score badge updates after key checkpoints (`stateManager.scheduleAtsRefresh`) and
-  displays colour-graded scores (high/medium/low, `styles.css:102-104`).
-- The layout freshness chip (`state-manager.js:120-178`) shows "Layout current", "Layout
-  outdated", or "Files outdated" with a pulsing animation on stale state.
-- Token count is shown in the conversation header (`index.html:163`).
-
-**Weaknesses:**
-- On initial page load, the workflow steps bar (`index.html:117-143`) renders all 13 steps
-  unstyled. The JS phase-to-step mapping fires only after `fetchStatus()` resolves; on slow
-  connections users see a blank, untimed workflow rail with no active step highlighted.
-- The distinction between the two LLM busy mechanisms is invisible to the user but means
-  implementation bugs could leave one showing and the other hidden — no single truth.
-- Phase transitions between steps are not announced to screen readers; `aria-live="polite"` is
-  on the document content area (`index.html:231`) but not on the workflow steps bar.
-- Within a complex phase like "Customise" (10 sub-tabs), there is no count of how many
-  decisions have been made vs. remain — the only progress indicator is the tally bar in the
-  Rewrite phase (`rewrite-review.js:130-138`), not replicated in Experiences/Skills/Achievements.
-
----
-
-### H2 — Match Between System and the Real World 🟠 Major
-
-**Strengths:**
-- Onboarding modal uses a 3-phase narrative (Build → Target → Harvest) that maps loosely to a
-  real job-application mental model.
-- File descriptions in the download tab use natural language: "ATS-optimised PDF — machine-
-  readable for automated screening" (`download-tab.js:45`).
-
-**Weaknesses:**
-- **"Harvest"** (`index.html:141`, `tab:225`) is an agricultural metaphor. The concept — saving
-  AI improvements back to the master profile — has no common term in job-seeking vocabulary.
-  It is explained only in the welcome modal, which can be permanently dismissed.
-- **"ATS"** appears in: the header badge, the position bar, the workflow steps, tabs, modals,
-  and the download tab — never expanded on first use in the main UI. A first-time user sees
-  "ATS 72" with no definition.
-- **"LLM"** appears in the header pill ("LLM: Loading…", `index.html:53`) and throughout
-  Settings ("LLM Defaults", "LLM Retry Policy", `index.html:568,630`). Job seekers do not
-  think in terms of LLMs.
-- **Settings parameters** — Temperature, Base Delay (ms), Maximum Delay (ms), Auto Retry
-  Attempts (`index.html:583-653`) — are ML and networking engineering concepts. They appear
-  in a user-facing Settings modal with no tooltip, help text, or plain-language explanation.
-- **Tab labels** mix informal and technical: "Experience Bullets" (`index.html:205`) uses
-  resume-builder jargon. "Tagline" (`index.html:208`) is ambiguous (it means professional
-  headline). "Screening" (`index.html:222`) is ambiguous without the word "Questions".
-- **Phase name "GENERATION"** in `state-manager.js:28` maps to the Layout Review step —
-  confusing because the word "generation" implies output, not review.
-- The action button label "Done — Generate CV →" (`index.html:186`) appears at the Spell Check
-  step, not the step that actually generates the CV; the CV is generated at the layout step.
-
----
-
-### H3 — User Control and Freedom 🟡 Minor
-
-**Strengths:**
-- ESC closes all open modals (`ui-core.js:525-529`).
-- Background-click dismisses most modals (`ui-core.js:532-539`).
-- "■ Stop" button aborts in-flight LLM calls (`index.html:159,169`).
-- Session switcher is always accessible from the header.
-- Iterative refinement panel in the download tab (`download-tab.js:211-230`) provides explicit
-  back-navigation to Customisations, Rewrite, or Analysis with `backToPhase()`.
-- "↩ Reconsider inclusion" link in each rewrite card (`rewrite-review.js:272`) lets users
-  return to the customise step without losing their other decisions.
-
-**Weaknesses:**
-- No undo for submitted rewrite decisions. Once `submitRewriteDecisions()` (`rewrite-review.js:383`)
-  is called, there is no "go back and change" path within the current session state; users must
-  use `backToPhase('rewrite')` which re-enters the entire phase.
-- Phase transitions in `conversation_manager.py:65-76` are gated with `_ALLOWED_TRANSITIONS`.
-  The user-facing consequence of this constraint — being unable to jump from Download back to
-  Analysis in a single click — is not communicated.
-- Several workflow step pills lack `onclick` handlers or are not styled with `.clickable`
-  (`styles.css:142`). Steps like "🔍 Analysis" and "⚙️ Customise" have onclick in the HTML
-  (`index.html:122,124`) but only "📥 Job Input" has the `clickable` class — all others rely
-  on `handleStepClick()` being wired to the element, but keyboard users cannot discover which
-  pills are interactive without trying them.
-- The chat input (`index.html:177`) is always enabled regardless of phase, allowing free-text
-  messages at any time. While this is flexible, the consequence of sending arbitrary text
-  mid-workflow is unpredictable and there is no "are you sure?" guard.
-
----
-
-### H4 — Consistency and Standards 🟠 Major
-
-**Strengths:**
-- The pill button style is used consistently across the header (`styles.css:64-66`).
-- Action buttons use a consistent `.action-btn` / `.action-btn.primary` pattern
-  (`styles.css:583-589`).
-- Modal structure (header / body / footer) is consistent across most modals.
-
-**Weaknesses:**
-- **Dual navigation with inconsistent naming.** The workflow steps bar uses one set of names
-  ("⬇️ Download") while the tab bar has "📄 Generated Files" and "⬇️ File Review" for the
-  same stage (`index.html:217-218`). The step "✏️ Rewrites" (`index.html:125`) maps to the
-  tab "✏️ Rewrites" — same name — but "⚙️ Customise" (`index.html:123`) maps to 10
-  differently-named tabs. No consistent visual grammar links step names to tab names.
-- **Three different modal close patterns.** Some modals use `onclick="closeXyzModal()"`,
-  some use `class="modal-close-btn"`, and some use bare `onclick="closeModal(id)"`. The
-  settings modal close button lacks a class entirely (`index.html:562`).
-- **Inline styles vs. CSS classes.** The Master CV modal overlay has 7 inline style
-  attributes (`index.html:268`). Hundreds of `style=""` attributes throughout the HTML
-  override or duplicate CSS rules, making visual updates brittle.
-- **Action button placement shifts per phase.** The eight action buttons in the chat panel
-  (`index.html:182-190`) appear and disappear as the workflow advances. No button has a fixed
-  position — the visible one shifts horizontally in the flex row depending on which siblings
-  are hidden. Users lose spatial memory of where to look.
-- **British vs. American English.** "Finalise" (`index.html:190,219`), "Customise"
-  (`index.html:123,353`) coexist with "Analyze" (`index.html:120`).
-- **Emoji inconsistency.** Step bar and tab bar use different emojis for the same content:
-  step "🔍 Analysis" → tab "🔍 Analysis" (consistent), but step "⚙️ Customise" →
-  tabs include "📊 Experiences", "✏️ Experience Bullets", "🛠️ Skills", "🏆 Achievements",
-  "🏷️ Tagline", "📝 Summary", "📄 Publications", "📊 ATS Score" — no unifying icon.
-
----
-
-### H5 — Error Prevention 🟡 Minor
-
-**Strengths:**
-- The persuasion gate now **hard-blocks** the "Submit All Decisions" button until warnings are
-  acknowledged (`rewrite-review.js:373-381`) — a deliberate improvement over a soft warning.
-- A custom confirm dialog (`ui-core.js:372-418`) replaces `window.confirm()` for destructive
-  actions, preventing accidental browser-level suppression.
-- Session conflict detection fires on any 409 response (`ui-core.js:424-441`), preventing
-  silent data overwrite across tabs.
-- Date overlap warnings appear prominently before the download grid (`download-tab.js:330-339`)
-  so users see timeline conflicts before submitting an application.
-
-**Weaknesses:**
-- The settings form (`index.html:570-656`) applies no input validation before `saveSettingsModal()`
-  sends the payload. A non-numeric Temperature or an empty Provider field is silently
-  transmitted to the backend.
-- Auto-analysis fires on load when a prior session's job description is found
-  (`app.js:89-95`), with no confirmation. A user opening a saved session to review it is
-  surprised by an LLM call starting automatically.
-- The free-text message input (`index.html:177`) has no phase-aware guard. At the Spell Check
-  phase, typing "analyze job" and pressing Enter would send a user message to the backend that
-  may trigger an out-of-sequence action. There is no visual indication of what the chat input
-  will do at any given phase.
-- The onboarding modal's "Create empty profile" button (`index.html:374`) triggers immediately
-  on click with no summary of what will be created or where.
-
----
-
-### H6 — Recognition Rather Than Recall 🟠 Major
-
-**Strengths:**
-- The workflow steps bar gives a persistent breadcrumb of all phases.
-- Rewrite cards display inline word-level diffs (`rewrite-review.js:183-227`) so users
-  can see exactly what changed without having to remember the original text.
-- The ATS score badge is persistent in the position bar after analysis runs.
-- The tally bar in the Rewrite panel counts accepted / rejected / pending decisions in
-  real-time (`rewrite-review.js:354-380`).
-
-**Weaknesses:**
-- The tab bar shows up to ~20 tabs (`index.html:200-226`), many hidden at any given phase.
-  Users cannot see or discover the full tab inventory; `updateTabBarForStage()` silently
-  hides tabs with `display:none`. No disclosure pattern (e.g., a "more" indicator) is used.
-- The `STAGE_TABS` mapping (`ui-core.js:350-363`) shows "customizations" owns 10 tabs.
-  Nothing in the UI summarises this: a user clicking "⚙️ Customise" in the steps bar has
-  no indication that 10 sub-tabs await, which ones are required, or how many they have visited.
-- Action button labels are phase-specific but give no count or completion state. "Continue to
-  Spell Check →" (`index.html:185`) appears without context about whether all customisation
-  decisions have been made.
-- The chat input placeholder (`index.html:177`) shows a single static example ("Type a message
-  (e.g., 'analyze job')") regardless of phase. At the Layout Review phase, there is no hint
-  that the user can type natural-language layout instructions.
-- Workflow steps not yet reachable look identical to completed steps before CSS classes are
-  applied (`upcoming` / `completed` / `active`, `styles.css:150-156`). On initial load
-  all steps render in the default unstyled state.
-- The LLM Configuration Wizard's step 3 shows a "quick list" of models and a hidden full
-  catalog (`index.html:496-522`). Users see only filtered quick-list models by default; the
-  existence of the full catalog requires clicking "Show Full Catalog" — this is a disclosure
-  that is easy to miss.
-
----
-
-### H7 — Flexibility and Efficiency of Use 🟡 Minor
-
-**Strengths:**
-- Tab bar supports keyboard navigation with Arrow Left/Right/Home/End (`ui-core.js:491-509`).
-- Enter key sends the message input (`ui-core.js:513-523`).
-- The rewrite panel has "✓ Accept All" and "✗ Reject All" bulk buttons
-  (`rewrite-review.js:134-135`, `acceptAllRewrites` / `rejectAllRewrites`), giving power
-  users a fast path through the rewrite phase.
-- Session switcher allows multi-job management without reloading the page.
-- The model selector wizard remembers recent models (`ui-core.js:768-774`).
-
-**Weaknesses:**
-- No keyboard shortcuts for triggering workflow actions (Analyze, Recommend, Generate) — these
-  require mouse clicks on the action buttons below the chat input.
-- No direct URL linkage to a specific session or tab — deep-linking is not supported; every
-  session starts at the root URL and state is restored from localStorage.
-- The "Show Full Catalog" model table is the only way to see all available models, but it
-  requires a two-step interaction (click "Show Full Catalog", then use the search box).
-  There is no typeahead or quick-filter on the initial quick-list.
-- Power users who have already set up the LLM cannot skip the 4-step wizard — "Close Wizard"
-  only appears at step 4 (`index.html:530`); intermediate steps force sequential progression.
-- There is no way to save and reuse a custom layout instruction set across sessions.
-
----
-
-### H8 — Aesthetic and Minimalist Design 🟠 Major
-
-**Strengths:**
-- The colour palette is consistent: slate blues for the header, white content areas, and
-  semantic colours for status states (green/amber/red, `styles.css:36-61,102-121`).
-- The workflow steps bar uses a clean pill pattern with minimal decoration.
-- The LLM busy overlay is unobtrusive — a frosted-glass card over the chat panel.
-
-**Weaknesses:**
-- **Header bar is overloaded.** Seven interactive elements in ~48px: logo, app title, session
-  name subtext, Sessions pill, New Session pill, LLM model/status pill (which itself contains
-  the model name, an auth badge, a test badge, and a chevron), and Settings. This is dense
-  enough to cause visual parsing failures on first encounter.
-- **Position bar row is overloaded.** Contains: job title (large, 24px bold), company
-  subtitle, rename pencil button, ATS score badge, ATS summary line, layout freshness chip,
-  divider, Master CV button, ATS Report button, and Job Analysis button — 10 distinct
-  elements on a single row (`index.html:69-107`, `styles.css:83-141`). Before analysis, most
-  are hidden, making the empty bar look broken.
-- **Settings exposes engineering internals.** The modal renders 12 technical parameters
-  ("Temperature", "Base Delay (ms)", "Maximum Delay (ms)", "Auto Retry Attempts", "Source:
-  environment variable", etc.) to end users. Each field shows a "Source: …" annotation
-  useful only to developers (`index.html:570-665`).
-- **Inline style proliferation.** Hundreds of `style=""` attributes throughout index.html
-  (e.g., the Master CV modal has 7 inline styles on its overlay div, `index.html:268`).
-  This creates visual inconsistency as inline styles override the structured CSS.
-- **Tab bar visual weight.** With up to 20 tabs (most hidden), the visible tabs are often
-  3–5 items with long emoji-prefixed labels that consume significant horizontal space. When
-  the "customizations" stage is active, 10 tabs appear simultaneously — too many choices
-  for a single visual row.
-- **Download tab mixes concerns.** The download page renders: page count badge, ATS report
-  table, overlap warnings, file download grid, persuasiveness check, refinement shortcuts,
-  and a "Proceed to Cover Letter" button — 7 distinct concerns on one screen
-  (`download-tab.js:295-358`).
-
----
-
-### H9 — Help Users Recognise, Diagnose, and Recover from Errors 🟡 Minor
-
-**Strengths:**
-- LLM error types (auth, rate-limit, context-length) are caught in `web_app.py:66` and
-  presumably return structured error responses the frontend surfaces as conversation messages.
-- The `appendRetryMessage()` function (used in `rewrite-review.js:45,71`) adds a retry button
-  inline in the conversation, giving users a direct recovery action after network failures.
-- The session conflict dialog (`index.html:381-395`) provides three explicit options: "Load
-  Different", "New Session", "Take Over".
-- The download tab ATS error renders a clear callout: "Fix required: Some checks failed.
-  Blocked formats are greyed out below." (`download-tab.js:133-139`).
-
-**Weaknesses:**
-- The initialisation error (`ui-core.js:475`) renders only the message: `"⚠️ Failed to
-  initialize: ${error.message}"` with no recovery action button. Users are left with a blank
-  application and no path forward.
-- Tab load errors (`ui-core.js:641-645`) render inline red text (`"Error loading content:
-  ${error.message}"`) with no retry affordance.
-- The `#llm-busy-state-badge` shows "Taking longer than usual" after a delay threshold
-  (`styles.css:536-537`) but provides no diagnosis (rate-limit? network? model overloaded?)
-  or action beyond "Stop".
-- Session conflict dialog gives three options ("Load Different", "New Session", "Take Over")
-  with no explanation of consequences — "Take Over" especially sounds alarming without
-  context. (`index.html:388-393`)
-- ATS keyword failure message in the download tab (`download-tab.js:135-138`) says
-  "re-run customisations to improve keyword coverage" but provides no button to do so;
-  the refinement panel below is separate and not visually linked.
-
----
-
-### H10 — Help and Documentation 🔴 Critical
-
-**Weaknesses (only):**
-- **No persistent help path exists.** The only onboarding is the welcome modal
-  (`index.html:313-379`). Once dismissed with "Don't show this again", there is no "?" button,
-  help link, glossary, or re-openable guide anywhere in the main UI. Searched all source files:
-  no help-trigger element found.
-- **Technical onboarding barrier.** The missing-profile variant of the welcome modal instructs
-  users to "place your `Master_CV_Data.json` to the path shown above" — a raw filesystem path
-  in a `<p>` tag (`index.html:354`). This requires technical comfort and is the first thing a
-  new user sees.
-- **No per-step guidance.** The 13-step workflow gives no indication, per step, of what inputs
-  are required, what will be produced, how long the LLM call might take, or what decisions are
-  expected. A user clicking "✏️ Rewrites" for the first time has no preview of what the rewrite
-  review entails.
-- **Technical settings have no tooltips.** "Temperature", "Base Delay (ms)", and "Auto Retry
-  Attempts" (`index.html:583-653`) have no `title`, `aria-describedby`, or explanatory text.
-- **Ambiguous terms are never explained in context.** "ATS", "LLM", "Harvest", "Tagline",
-  and "Experience Bullets" appear throughout the main workflow with no inline definition,
-  tooltip, or first-use expansion.
-- **The welcome modal contains no quick-start checklist.** It explains the 3-phase model
-  but gives no ordered task list ("Step 1: Fill in your work history. Step 2: …").
+| # | Heuristic | Rating | Key finding |
+| - | --------- | ------ | ----------- |
+| H1 | Visibility of system status | 🟡 Minor | Good busy overlay with spinner + elapsed timer + "Taking longer than usual" badge; LLM status pill in header with 8 distinct states. Gap: workflow step pills have no visual distinction between "locked/future" and "upcoming — clickable in theory." Only the `job` step has `class="clickable"` in HTML; other steps have `onclick` handlers but no visual affordance that they are interactive. |
+| H2 | Match between system and the real world | 🟡 Minor | Layout scope label is now explicit and well-worded. Remaining issue: developer-facing terminology leaks through — "ATS DOCX", "copilot multiplier", "session", "phase", "generation state", "harvest". None of these match job-seeker mental models. The Settings modal exposes LLM temperature (0–2 scale) to end-users with no plain-language explanation. |
+| H3 | User control and freedom | 🟠 Major | No undo/redo for any decision (experience include/exclude, skill selection, rewrite accept/reject). Once a rewrite decision is submitted, there is no "go back and change" path visible in the UI — users must know to re-click the workflow step. The chat collapse toggle (`◀`) has no discoverable affordance except hover; new users may collapse it accidentally and not know how to restore it. Escape closes all modals, which is correct. |
+| H4 | Consistency and standards | 🟡 Minor | `confirmDialog` in `ui-core.js` is now fully accessible with role, aria, focus trap. However, there are two separate confirm-modal patterns in the codebase: the static `#confirm-modal-overlay` in HTML (used for some flows) and the dynamically-created `#confirm-dialog-overlay` (used for destructive actions). They have different visual styles and slightly different keyboard behavior. Tab-bar items use `<div role="tab">` correctly, but the top workflow step bar uses plain `<div class="step">` with inline `onclick` — no role, no keyboard access, inconsistent with the WCAG tablist pattern used below. |
+| H5 | Error prevention | 🟡 Minor | Persuasion gate hard-blocks submit when warnings unacknowledged. Destructive actions (delete session, takeover) use `confirmDialog`. The ownership-conflict dialog is shown when a session is already open in another tab. Gap: the layout-freshness chip can show "Files outdated" without a clear path to regenerate — clicking it opens the Layout Review tab but no inline instruction explains what to do next to resolve the staleness. |
+| H6 | Recognition rather than recall | 🟠 Major | 20 tabs exist in the tab bar but are contextually filtered to the active workflow stage — this is the right approach. However, the tab labels rely heavily on recall of what each stage contains ("Goals", "Questions", "Experiences", "Experience Bullets", "Achievements", "Tagline", "Summary", "Publications" are all shown simultaneously during Customise). No empty-state instructional content guides users on which tab to visit first within a stage. The main action button area shows one primary button at a time (good) but secondary options like "ATS Report" and "Job Analysis" are small unlabeled bar buttons that appear only after analysis — users who don't notice them lose access to reference information. |
+| H7 | Flexibility and efficiency of use | 🟢 Good | Full keyboard tab navigation now implemented: Arrow keys, Home/End, Enter/Space all work correctly via `ui-core.js:515-541` with roving tabindex in `review-table-base.js:121-132`. Enter to send chat message works. LLM model "quick list" surfaces recently-used models. Session switcher has a recents strip. Power users can type commands directly into the chat input. |
+| H8 | Aesthetic and minimalist design | 🟠 Major | The workflow step bar lists 13 steps in a horizontal row with `gap: 32px` and no overflow handling — on a 1280px screen this almost certainly overflows or wraps awkwardly. No `overflow-x: auto` or scroll arrows are present on the workflow bar (unlike the tab bar which has scroll buttons). The header packs: logo + title + session name + Sessions button + New Session button + LLM status pill + Settings button — 6+ elements competing for attention. The position bar row has further competing elements: position title, rename button, ATS badge, keyword counts, layout-freshness chip, divider, 3 action buttons. |
+| H9 | Help users recognise, diagnose, and recover from errors | 🟡 Minor | API errors surface in the conversation panel as system messages (italic, gray). LLM connection failures show a "Connection failed" label with tooltip. The amber session-conflict banner is sticky and explains the problem. Gap: when the LLM request fails mid-workflow (e.g., timeout), the busy overlay disappears but the action button that triggered the request may not be re-enabled in all code paths, potentially leaving the user unable to retry without a page refresh. |
+| H10 | Help and documentation | 🔴 Critical | No help link, no documentation URL, no contextual help panel, no keyboard-shortcut reference, and no tooltips on workflow steps (beyond `title` attributes which are inaccessible on touch devices). The welcome/onboarding modal appears every startup (until dismissed) and provides a 3-step overview, but disappears permanently once the user checks "Don't show this again" with no way to re-open it. There is no `?` or help button anywhere in the persistent UI. |
 
 ---
 
 ## Additional UX Dimensions
 
-### Cognitive Load
-**Rating: 🟠 Major**
+### Cognitive Load — 🟠 Major
 
-Three simultaneous navigation layers: (1) the workflow steps bar with 13 steps
-(`index.html:119-141`), (2) the tab bar with up to 20 tabs (`index.html:200-226`), and
-(3) the chat/action area with phase-shifting primary buttons (`index.html:182-190`). Users
-must track position across all three. The "customizations" stage alone owns 10 sub-tabs
-(`ui-core.js:353`) with no summary. The conversation panel accumulates all messages
-indefinitely with no grouping, pagination, or summary, requiring scroll to recover prior
-decisions. The download tab renders 7 distinct content blocks on a single screen.
+The Customise stage exposes 10 sub-tabs simultaneously (Goals, Questions, Experiences, Experience Bullets, Skills, Achievements, Tagline, Summary, Publications, ATS Score). A first-time user has no ordering signal: all tabs appear equal, no sequence numbers, no "start here" affordance. The same issue appears in the main workflow: 13 steps but only "Job Input" is marked `class="clickable"` visually. This forces users to learn the ordering through trial and error or by reading the onboarding modal they may have dismissed.
 
-### Visual Hierarchy
-**Rating: 🟡 Minor**
+### Visual Hierarchy — 🟡 Minor
 
-Dark header creates a strong top anchor. Semantic colour for status states is consistent.
-However, the primary action button for the current workflow phase (e.g., "🔍 Analyze Job")
-lives at the bottom of the chat panel, below the conversation history, and is pushed off-
-screen as messages accumulate — the user's most important next action is least visible.
-Primary and secondary action buttons are visually near-identical; only `.primary` adds blue
-fill (`styles.css:587-588`), but size and weight are the same.
+Primary call-to-action buttons (one at a time in the chat panel) are styled correctly in blue. The workflow step bar and the tab bar serve different hierarchical levels but share similar visual weight (rounded pills, text labels, same color scheme). Users may not understand that the top bar is a macro-navigation and the lower bar is a micro-navigation within the active stage.
 
-### Information Architecture
-**Rating: 🟠 Major**
+### Information Architecture — 🟠 Major
 
-Two navigation systems exist with partially overlapping semantics. Clicking a workflow step
-pill and clicking a tab both navigate to content, but they operate independently — clicking
-"⚙️ Customise" in the step bar updates the active step highlight but the tab bar shows the
-sub-tabs for customise; no default sub-tab is auto-selected. The "Master CV" tab
-(`index.html:220`) is placed after Spell Check and Layout Review in the tab bar, despite being
-a prerequisite to the whole workflow. The post-generation steps (Cover Letter → Screening →
-Interview Prep → Thank You → Harvest) appear after Download in the steps bar with no visual
-separator indicating they form a distinct, optional post-generation phase.
+There are three navigation layers operating simultaneously:
 
-### Workflow Momentum
-**Rating: 🟠 Major**
+1. The workflow step bar (13 macro stages, top)
+2. The tab bar (up to 10 tabs per stage, middle)
+3. Chat action buttons (one primary action per phase, left panel)
 
-Auto-analysis on load (`app.js:89-95`) is the only autonomous forward momentum. All other
-phase transitions require explicit user action with no progress indicator within the phase.
-There is no indication of what "done" means for the Customise phase — which of the 10 sub-
-tabs must be visited, which are optional, and what threshold triggers the appearance of
-"Continue to Spell Check →". If an LLM call is aborted mid-phase, there is no UI guidance
-on how to resume or retry just that phase.
+These three layers drive the same underlying state machine but are not visually linked. Clicking a workflow step changes the tab bar contents; clicking a tab bar item may not update the workflow step highlight. Users may not understand which layer is authoritative or what order to follow. The pattern of the tab bar updating to show stage-specific tabs (via `updateTabBarForStage`) is correct architecturally but invisible to users — the tab bar simply changes contents with no animation or explanation.
 
-### Feedback Loops
-**Rating: 🟡 Minor**
+### Workflow Momentum — 🟡 Minor
 
-Immediate feedback for LLM calls (spinner, elapsed timer, step label) is well-implemented.
-The rewrite tally bar (`rewrite-review.js:130-138`) gives real-time accepted/rejected/pending
-counts. ATS score updates dynamically after key checkpoints. However: after rewrite
-submission, the user is auto-switched to the spell-check tab with a message "Rewrite
-decisions recorded: N accepted, M rejected" (`rewrite-review.js:434`) — no summary of what
-was changed. After saving settings, success feedback appears only within the modal, with no
-change reflected in the main UI.
+The action buttons in the chat panel provide clear forward momentum (one primary button per phase: "Analyze Job" → "Recommend Customizations" → "Review Rewrites" → etc.). The auto-analyze behavior on startup is helpful for returning users. Gap: after completing spell check, the next button reads "Done — Generate CV →" which implies CV generation happens immediately; in fact, it triggers layout review first. The label mismatch may cause confusion when users see a layout review screen instead of a download.
 
-### Error Recovery
-**Rating: 🟡 Minor**
+### Feedback Loops — 🟢 Good
 
-`conflictRetryNow()` button (`index.html:112`) allows manual retry on session conflicts.
-Welcome modal Reload button (`index.html:375`) handles missing master profile. The iterative
-refinement panel in the download tab (`download-tab.js:211-230`) gives explicit back-
-navigation buttons. However: there is no recovery path from a mid-workflow LLM failure that
-partially completed a phase. If `analyzeJob()` partially runs and fails, the phase state may
-be inconsistent with no user-visible path to retry or reset just that step. The initialisation
-failure path (`ui-core.js:472-476`) leaves users with a broken UI and no action.
+The LLM busy overlay provides a spinner, elapsed time counter, and a "Taking longer than usual" warning badge after a threshold. The ATS score badge in the position bar provides persistent score visibility. The layout-freshness chip pulses with CSS animation when stale. Toast notifications confirm saves. The session-conflict banner is sticky and immediately visible. These feedback mechanisms are well-implemented.
 
-### Affordance Clarity
-**Rating: 🟡 Minor**
+### Error Recovery — 🟡 Minor
 
-Toggle-chat "◀" button uses a reasonable collapse icon. Header pill buttons have chevrons
-indicating expandability. The rewrite card buttons (✓ Accept / ✎ Edit / ✗ Reject) are
-clearly labelled. However: workflow step pills are visually identical whether or not they
-are clickable — only some receive the `.clickable` class (`styles.css:142`). The rename
-pencil (`index.html:78`) is `display:none` by default and appears only after JS reveals it;
-users may not discover it. The toggle-chat button is positioned absolutely, overlapping the
-conversation header at small widths.
+The session trash/restore mechanism exists (visible in sessions modal). Rewrite decisions are not individually undoable but the whole rewrite phase can be re-entered by clicking the workflow step. Ownership-conflict resolution has three clear options (Load Different, New Session, Take Over). Gap: there is no "reset this phase" option exposed in the UI; users who want to restart spell check or layout review must know to click the step in the top workflow bar — no in-context recovery button exists.
 
-### Terminology Clarity
-**Rating: 🟠 Major**
+### Affordance Clarity — 🟠 Major
 
-| Label | Location | Issue |
-| ----- | -------- | ----- |
-| "Harvest" | index.html:141, 225 | Agricultural metaphor; not self-describing |
-| "ATS" | index.html:86-103, tab:211 | Acronym; never expanded in main UI |
-| "LLM" | index.html:53, settings modal | Developer term in user-facing UI |
-| "Temperature" | index.html:586-588 | ML hyperparameter |
-| "Base Delay (ms)" | index.html:634 | Engineering networking parameter |
-| "Maximum Delay (ms)" | index.html:638-639 | Engineering networking parameter |
-| "Experience Bullets" | index.html:205 | CV-builder internal jargon |
-| "Tagline" | index.html:208 | Ambiguous; means professional headline |
-| "Screening" | index.html:135, 222 | Ambiguous without "Questions" |
-| "GENERATION" phase | state-manager.js:28 | Maps to Layout Review — confusing naming |
-| "Finalise" | index.html:190 | British spelling, inconsistent with "Analyze" |
-| "Done — Generate CV →" | index.html:186 | Appears at Spell Check, not at CV generation |
+Workflow step pills: only `step-job` has `class="clickable"` with visible pointer cursor and hover shadow. All other step pills have `onclick="handleStepClick(...)"` in HTML but no CSS affordance (no cursor: pointer, no hover effect) — they look unclickable but may behave as navigable depending on application state. This is inconsistent and will cause users to under-use the step navigation.
+
+The chat collapse button (`◀`, top-right of chat panel) is blue and small — it does not look like a toggle, it looks like a navigation arrow. After collapse, the viewer panel expands but there is no visible indicator that the chat can be restored; the collapsed state shows a 50px strip with no label.
+
+### Terminology Clarity — 🟠 Major
+
+The application uses several terms that require domain knowledge:
+
+- "ATS" (not expanded anywhere in the persistent UI — only in the welcome modal body)
+- "Harvest" (the final workflow step — unusual metaphor with no explanation)
+- "Tagline" vs "Professional Summary" (two separate tabs with overlapping concepts)
+- "Experience Bullets" vs "Experiences" (two tabs whose distinction is non-obvious)
+- "copilot multiplier" (in the model catalog table header)
+- "Generation state" and "layout_confirmed" (internal state exposed in debug paths)
+- Settings modal labels: "Base Delay (ms)", "Maximum Delay (ms)", "Auto Retry Attempts" — technical LLM retry policy exposed to end-users without plain-language description of what these control
 
 ---
 
-## Top 5 UX Issues (by Friction / Abandonment Risk)
+## Top 5 UX Friction Points Most Likely to Cause Abandonment
 
-### 1. No Help System After Onboarding Dismissal (H10 — Critical)
+1. **Opacity of the Customise stage's 10 sub-tabs (🔴 Abandonment risk)**
+   New users entering the Customise stage see 10 unlabeled peer tabs with no ordering, no "start here" signal, and no explanation of what decisions are required vs optional. The most important work (experience selection, skills) is buried among tagline, publications, and ATS tabs. Users who are uncertain about what they are doing here will either skip tabs entirely (producing a suboptimal CV) or give up.
 
-Once the welcome modal is closed with "Don't show this again", there is no re-openable
-guide, help link, glossary, or contextual tooltip anywhere in the main UI. Users encountering
-"Harvest", "ATS", "Tagline", "Temperature", or the 10-tab Customise phase mid-workflow have
-no recourse. This is the single highest abandonment risk: a confused user with no recovery
-path will leave.
+2. **No help path after onboarding dismissal (🔴 H10)**
+   The only explanation of how the application works is in the welcome modal, which disappears permanently when dismissed. There is no help button, no documentation link, and no way to re-open the onboarding content. A user who forgets what "Harvest" means or why their files say "outdated" has nowhere to go for guidance except the chat input (which requires knowing what to type).
 
-**Evidence:** `index.html:313-379` is the only onboarding entry point; no help trigger
-exists in any reviewed source file.
+3. **Workflow step pills are not visually clickable (🟠 H5/Affordance)**
+   The top workflow bar is intended as a navigation shortcut for returning users, but only the Job Input step shows visual click affordance. All other steps look static. Users who want to jump back to a previous step (e.g., to change a skills selection) will not discover that the step pills are clickable, and may think they need to start over.
 
----
+4. **No undo for decisions within a phase (🟠 H3)**
+   The experience, skills, achievements, and rewrite review flows all collect binary decisions (include/exclude, accept/reject). Once submitted, there is no visible undo. The path to change a decision requires clicking the workflow step, which triggers a full reload of that phase — not obvious. Power users will manage, but first-time users who submit incorrect decisions are likely to abandon rather than work out how to retry.
 
-### 2. Dual Navigation Creates Orientation Failure (H4 / H8 / Cognitive Load — Major)
-
-Thirteen workflow step pills and up to 20 tab-bar tabs operate in parallel, with inconsistent
-naming (step "⬇️ Download" → tabs "📄 Generated Files" + "⬇️ File Review"), and no visual
-grammar linking them. Clicking "⚙️ Customise" reveals 10 sub-tabs with no summary. Users
-cannot map their location in the workflow to the content they are viewing.
-
-**Evidence:** `STAGE_TABS` (`ui-core.js:350-363`); `index.html:117-228`;
-`updateTabBarForStage()` (`ui-core.js:575-584`).
+5. **Dual busy-state indicators that conflict (🟡 H1/H8)**
+   The application has two overlapping loading indicators: the `#llm-busy-overlay` (full-panel overlay with spinner) and the `#llm-status-bar` (small banner with thinking dot and elapsed time). Both can be active simultaneously. The overlay is positioned over only the chat panel (left side), while the status bar sits above the chat. Users may find the dual indicators confusing and not know if the application is still processing or has completed a step.
 
 ---
 
-### 3. Primary Action Buttons Shift Unpredictably; No Within-Phase Completion Indicator (H6 / Workflow Momentum — Major)
+## Verified Improvements (Changes Assessed This Cycle)
 
-The chat panel's primary action buttons appear and disappear per phase (`index.html:182-190`),
-with no fixed spatial anchor. At the Customise phase — the most complex, with 10 sub-tabs
-covering Experiences, Skills, Achievements, Tagline, Summary, Publications, and ATS Score —
-there is no within-phase progress indicator, no list of required decisions, and no explanation
-of what triggers the appearance of the next action button.
-
-**Evidence:** `index.html:182-190`; `ui-core.js:353`; no completion counter found in
-customisation tab handlers.
-
----
-
-### 4. Developer-Centric Terminology Exposed Throughout the User Interface (H2 / Terminology — Major)
-
-"LLM", "ATS", "Temperature", "Base Delay (ms)", "Harvest", "Experience Bullets", and
-"Tagline" appear in primary UI surfaces without definition. The Settings modal renders 12
-engineering parameters (including "Source: environment variable") as user-facing controls.
-The onboarding modal's missing-profile path requires the user to locate and copy a JSON file
-at a raw filesystem path. This mismatches the mental model of the target user: a job seeker
-managing applications, not a developer configuring an AI pipeline.
-
-**Evidence:** `index.html:53,141,205,208,583-653`; `styles.css:568-665`.
+| Area | Status |
+| ---- | ------ |
+| Roving tabindex in tab bar (WCAG tablist) | CONFIRMED — fully implemented |
+| Enter/Space to activate tab from keyboard | CONFIRMED — `ui-core.js:517-522` |
+| Arrow key navigation in tab bar | CONFIRMED — `ui-core.js:523-540` |
+| `confirmDialog` role + aria + focus trap | CONFIRMED — `ui-core.js:385-444` |
+| Layout scope label "layout change only" | CONFIRMED — `layout-instruction.js:293` |
+| No persistent help path | CONFIRMED ABSENT — critical gap remains |
 
 ---
 
-### 5. Download Tab Overloaded; Post-Download Flow Has No Visual Separation (H8 / IA — Major)
+## Summary Ratings Table
 
-The "⬇️ File Review" tab renders: page count badge, full ATS validation table, overlap
-warnings, file download grid (with per-format block reasons), bullet persuasiveness panel,
-iterative refinement shortcuts, and "Proceed to Cover Letter" — 7 distinct concerns on one
-screen (`download-tab.js:295-358`). Immediately after, the workflow steps bar continues with
-Cover Letter → Screening → Interview Prep → Thank You → Harvest, with no visual grouping
-or separator to indicate these are a post-generation phase rather than prerequisites.
-
-**Evidence:** `download-tab.js:295-358`; `index.html:131-141`; `STAGE_TABS` in
-`ui-core.js:356-362`.
-
----
-
-## Key Evidence References
-
-| Finding | Location |
-| ------- | -------- |
-| Workflow steps bar (13 steps) | `web/index.html:117-143` |
-| Tab bar (up to 20 tabs) | `web/index.html:199-228` |
-| STAGE_TABS (10 tabs under customizations) | `web/ui-core.js:350-363` |
-| Phase-shifting action buttons | `web/index.html:182-190` |
-| LLM busy overlay | `web/index.html:151-159`, `web/styles.css:517-566` |
-| Settings panel (engineering params) | `web/index.html:557-665` |
-| Header / position bar overload | `web/index.html:34-107` |
-| Welcome modal (only onboarding) | `web/index.html:313-379` |
-| Phase names (developer-centric) | `web/state-manager.js:23-33`, `scripts/utils/conversation_manager.py:40-49` |
-| Auto-analysis on load | `web/app.js:89-95` |
-| Persuasion gate hard-block (recent improvement) | `web/rewrite-review.js:373-381` |
-| Overlap warnings at download (recent improvement) | `web/download-tab.js:330-339` |
-| Cover letter / screening in download (recent improvement) | `web/download-tab.js:51-58` |
-| Rewrite tally bar | `web/rewrite-review.js:130-138` |
-| Iterative refinement panel | `web/download-tab.js:211-230` |
-| Error recovery paths | `web/ui-core.js:472-476`, `web/ui-core.js:638-646` |
-| Download tab 7-concern layout | `web/download-tab.js:295-358` |
+| Dimension | Rating |
+| --------- | ------ |
+| H1 Visibility of system status | 🟡 Minor |
+| H2 Match system/real world | 🟡 Minor |
+| H3 User control/freedom | 🟠 Major |
+| H4 Consistency/standards | 🟡 Minor |
+| H5 Error prevention | 🟡 Minor |
+| H6 Recognition not recall | 🟠 Major |
+| H7 Flexibility/efficiency | 🟢 Good |
+| H8 Aesthetic/minimalist | 🟠 Major |
+| H9 Error recovery | 🟡 Minor |
+| H10 Help/documentation | 🔴 Critical |
+| Cognitive load | 🟠 Major |
+| Visual hierarchy | 🟡 Minor |
+| Information architecture | 🟠 Major |
+| Workflow momentum | 🟡 Minor |
+| Feedback loops | 🟢 Good |
+| Error recovery | 🟡 Minor |
+| Affordance clarity | 🟠 Major |
+| Terminology clarity | 🟠 Major |

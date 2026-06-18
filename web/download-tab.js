@@ -50,7 +50,7 @@ function _collectDownloadableFiles(cvData = {}) {
       icon = '📝';
       if (filename.startsWith('CoverLetter_')) {
         description = 'Cover letter — Word document for the application';
-      } else if (filename.startsWith('Screening_Responses_')) {
+      } else if (filename.startsWith('Screening_')) {
         description = 'Screening question responses — Word document';
       } else {
         description = filename.includes('ATS')

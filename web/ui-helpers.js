@@ -77,26 +77,6 @@ function showToast(message, type = 'success', duration = 3000) {
   }, duration);
 }
 
-// ---------------------------------------------------------------------------
-// Chat panel toggle
-// ---------------------------------------------------------------------------
-
-function toggleChat() {
-  const chatArea = document.getElementById('chat-area');
-  const viewerArea = document.getElementById('viewer-area');
-  const toggleBtn = document.getElementById('toggle-chat');
-
-  if (chatArea.classList.contains('collapsed')) {
-    chatArea.classList.remove('collapsed');
-    viewerArea.classList.remove('expanded');
-    toggleBtn.textContent = '◀';
-  } else {
-    chatArea.classList.add('collapsed');
-    viewerArea.classList.add('expanded');
-    toggleBtn.textContent = '▶';
-  }
-}
-
 function refreshLayoutStatusUI() {
   const layoutChip = document.getElementById('layout-freshness-chip');
   const layoutBtn = document.getElementById('layout-btn');
@@ -175,7 +155,6 @@ export {
   showAlertModal, closeAlertModal,
   showConfirmModal, closeConfirmModal,
   showToast,
-  toggleChat,
   refreshLayoutStatusUI,
   handleLayoutFreshnessChipClick,
   updateActionButtons,

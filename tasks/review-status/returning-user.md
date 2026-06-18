@@ -8,10 +8,10 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Returning User Review Status
 
-**Last Updated:** 2026-06-18
+**Last Updated:** 2026-06-18 (cycle 3)
 **Reviewer:** Source-first UI review against `tasks/user-story-returning-user.md` (US-S1–S3)
 
-**Executive Summary:** Session restoration is functionally sound — job context, phase, and decisions are recovered automatically on return. The workflow bar correctly shows completed vs active vs upcoming steps, and the layout freshness staleness system reliably flags outdated outputs. Four medium-priority gaps remain open from prior reviews: no restored-decisions summary on return, the re-run icon (↻) is keyboard-inaccessible, abbreviated phase labels are opaque to occasional users, and the header rename still uses the browser-native `prompt()`. GAP-R2b (Move to Trash without confirmation) confirmed still present in source — `_deleteSessionFromModal` at `web/session-switcher-ui.js:545` calls the API directly with no `confirmDialog`. One new finding added: the `final_generation` phase is absent from both `SESSION_PHASE_LABELS` and `SESSION_PHASE_LABELS_SHORT` (`web/utils.js:262–285`), causing the session switcher to display the raw string "final generation" for sessions in that phase.
+**Executive Summary:** Session restoration is functionally sound — job context, phase, and decisions are recovered automatically on return. The workflow bar correctly shows completed vs active vs upcoming steps, and the layout freshness staleness system reliably flags outdated outputs. **GAP-R8 is now resolved:** `final_generation` is present in both `SESSION_PHASE_LABELS` (`'Final Generation'`) and `SESSION_PHASE_LABELS_SHORT` (`'Final Gen'`) in `web/utils.js:271,286`. Three medium-priority gaps remain open from prior reviews: no restored-decisions summary on return (GAP-R1), the re-run icon (↻) is keyboard-inaccessible (GAP-R3), and abbreviated phase labels are opaque to occasional users (GAP-R5). Two low-priority gaps persist: GAP-R2b ("Move to Trash" without confirmation) and GAP-R7 (header rename uses browser `prompt()`).
 
 ---
 
@@ -63,7 +63,7 @@ The confirmation modal fires only for the ↻ button path, not for step-click ba
 
 ⚠️ **Partial** — The ↻ re-run button is rendered with `style="…opacity:0…"` inline (`web/workflow-steps.js:704–706`) and revealed only via `.step.completed:hover .step-rerun { opacity: 1 !important; }` (`web/workflow-steps.js:723`). Keyboard-only and touch users cannot discover it. The element carries a standard HTML `title` attribute but no Bootstrap tooltip.
 
-`_getStepTooltip()` (`web/workflow-steps.js:199`) now returns `'Click ↻ to rerun from here'` when a returning user is currently viewing a completed step, and `'Click to view'` on other completed steps. This is an improvement but remains hover-dependent. No persistent on-screen label differentiates the two actions.
+`_getStepTooltip()` (`web/workflow-steps.js:199`) returns `'Click ↻ to rerun from here'` when a returning user is currently viewing a completed step, and `'Click to view'` on other completed steps. This is an improvement but remains hover-dependent. No persistent on-screen label differentiates the two actions.
 
 **Failure modes:**
 
@@ -118,7 +118,7 @@ The layout freshness system (US-S3.2) addresses both. `getLayoutFreshnessFromSta
 | "Move to Trash" button (sessions modal) | `web/session-switcher-ui.js:95,343` | ✅ Correct — label reads "Move to Trash"; `title` attr says "Move session to Trash". Reversible soft-delete behavior is accurately communicated. |
 | "refinement" → "Done" (short phase label) | `web/utils.js:284` | ⚠️ Misleading — a session in `refinement` phase is actively being refined, not necessarily complete. A returning user seeing "Done" in the session switcher may incorrectly believe no more work is needed. |
 | "customization" → "Custom" (short phase label) | `web/utils.js:279` | ⚠️ Ambiguous abbreviation — non-obvious to occasional returning users; full label "Customisation" (`web/utils.js:265`) is available for full-width contexts but unused in the switcher. |
-| `final_generation` phase — absent from label maps | `web/utils.js:262–285` | ❌ **New finding** — `final_generation` is not present in either `SESSION_PHASE_LABELS` or `SESSION_PHASE_LABELS_SHORT`. The fallback in `formatSessionPhaseLabel()` (`web/utils.js:294`) applies `.replace(/_/g, ' ')`, rendering it as "final generation" (lowercase, raw). A returning user sees this raw string in the session switcher header for any session in `FINAL_GENERATION` phase. |
+| `final_generation` phase — label maps | `web/utils.js:271,286` | ✅ **Fixed (GAP-R8 / GAP-124)** — `SESSION_PHASE_LABELS` now has `final_generation: 'Final Generation'` (line 271) and `SESSION_PHASE_LABELS_SHORT` has `final_generation: 'Final Gen'` (line 286). The fallback raw-string rendering no longer occurs. |
 | "↻" re-run icon | `web/workflow-steps.js:704` | ⚠️ Hidden by default — `opacity:0`, revealed on hover only; not keyboard accessible; no ARIA label. |
 | "Takeover" (session conflict dialog) | `web/session-switcher-ui.js` | ✅ Clear — ownership conflict dialog explains the action before proceeding. |
 | "Current tab" / "Owned by another tab" / "Unclaimed" | `web/session-manager.js:91–99` | ✅ Clear ownership terminology in session modal. |
@@ -149,12 +149,11 @@ The ↻ re-run button is `opacity:0` by default (`web/workflow-steps.js:704`) an
 > Remaining gap: "As a returning user on keyboard or touch, I want the distinction between view-navigation and re-run to be persistently visible so I can find re-run without prior knowledge of hover interactions."
 
 **GAP-R5 (MEDIUM) — Abbreviated phase labels opaque to occasional returning users**
-`SESSION_PHASE_LABELS_SHORT` (`web/utils.js:276`) maps `refinement` → "Done" (misleading if work is ongoing) and `customization` → "Custom" (non-obvious). These appear in the session-switcher header chip.
+`SESSION_PHASE_LABELS_SHORT` (`web/utils.js:277`) maps `refinement` → "Done" (misleading if work is ongoing) and `customization` → "Custom" (non-obvious). These appear in the session-switcher header chip.
 > Proposed story: "As a returning user, I want session phase labels in the session switcher to be human-readable so that I can immediately understand where a prior session was left off."
 
-**GAP-R8 (LOW) — `final_generation` phase missing from both label maps** *(new finding)*
-`SESSION_PHASE_LABELS` and `SESSION_PHASE_LABELS_SHORT` (`web/utils.js:262–285`) both omit `final_generation`. The fallback `formatSessionPhaseLabel()` (`web/utils.js:292`) renders it as "final generation" (raw lowercase string with space). A returning user whose session is in `FINAL_GENERATION` phase sees this raw string in the session switcher header instead of a human-readable label like "Generating Final CV".
-> Proposed fix: Add `final_generation: 'Final Generation'` / `'Generating'` to both maps in `web/utils.js:262–285`.
+**GAP-R8 (RESOLVED ✅) — `final_generation` phase missing from both label maps**
+Previously flagged LOW. Fixed by GAP-124: `SESSION_PHASE_LABELS` now has `final_generation: 'Final Generation'` (`web/utils.js:271`) and `SESSION_PHASE_LABELS_SHORT` has `final_generation: 'Final Gen'` (`web/utils.js:286`). The fallback `.replace(/_/g, ' ')` path no longer triggers for this phase. Closed.
 
 **GAP-R6 (LOW) — No session duplicate/copy action**
 Sessions modal offers Load, Rename, and Move to Trash but no Duplicate. A returning user who wants to try a different customization approach cannot create a copy of an existing session without risk to prior decisions.
@@ -224,6 +223,6 @@ Sessions modal offers Load, Rename, and Move to Trash but no Duplicate. A return
 - `web/workflow-steps.js:774` — `handleStepClick()` — view navigation, no modal
 - `web/state-manager.js:120` — `getLayoutFreshnessFromState()` — staleness logic
 - `web/styles.css:155–156` — `.step.stale` / `.step.stale-critical` visual states
-- `web/utils.js:262–285` — `SESSION_PHASE_LABELS` / `SESSION_PHASE_LABELS_SHORT` — `final_generation` missing
+- `web/utils.js:262–288` — `SESSION_PHASE_LABELS` / `SESSION_PHASE_LABELS_SHORT` — `final_generation` now present in both maps (GAP-R8 / GAP-124 resolved)
 
 **Evidence standard:** Every conclusion is supported by a specific file path and line number from the source files listed above, read directly during this review.
