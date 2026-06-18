@@ -1,16 +1,23 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-18
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-18 (cycle 2)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22 and 2026-06-18
-- independent heuristic UX evaluation (2026-04-22 and 2026-06-18)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), and 2026-06-18 (cycle 2)
+- independent heuristic UX evaluation (2026-04-22, 2026-06-18 cycle 1 and 2)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123 from newly discovered issues and resolved/updated GAP-08, GAP-28, GAP-30, GAP-37, GAP-38, and GAP-45. The 2026-06-18 cycle added GAP-124 through GAP-142.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123 from newly discovered issues and resolved/updated GAP-08, GAP-28, GAP-30, GAP-37, GAP-38, and GAP-45. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145.
 
-## 2026-06-18 Reconciliation Notes
+## 2026-06-18 (Cycle 2) Reconciliation Notes
+
+- **3 gaps resolved this cycle:** GAP-33 (employment date overlap detection — implemented), GAP-45 (persuasion warning bypass — hard-gated), GAP-36 (first-run blank Master CV — implemented).
+- **3 new gaps added:** GAP-143 (`showConfirmModal` missing focus management), GAP-144 (Harvest pre-selects high/medium confidence items violating opt-in requirement), GAP-145 (no session audit log panel in Finalise — already GAP-118, superseded by this entry's clarification).
+- **Confirmed resolved from last cycle:** GAP-103 (ATS advisory checks no longer block downloads), GAP-110 (date overlap detection implemented).
+- **Most critical open gaps this cycle:** GAP-120 (keyboard tabs WCAG Level A), GAP-127 (`candidate_to_confirm` not rendered/excluded), GAP-128 (rejected rewrites not audited), GAP-132 (two divergent CV templates), GAP-34 (`confirmDialog` missing ARIA), GAP-143 (`showConfirmModal` missing focus).
+
+## 2026-06-18 (Cycle 1) Reconciliation Notes
 
 - **0 gaps resolved this cycle:** No source-code evidence confirmed fixes for any open gap in this review pass. All prior open items remain open.
 - **19 new gaps added:** GAP-124 through GAP-142, spanning returning-user (GAP-124), UX expert (GAP-125, GAP-135), hiring manager (GAP-126), resume expert (GAP-127, GAP-128), accessibility (GAP-129, GAP-140), trust/compliance (GAP-130, GAP-131), graphical designer (GAP-132, GAP-133), applicant (GAP-134), persuasion expert (GAP-136, GAP-137, GAP-138, GAP-139), and master CV curator (GAP-141, GAP-142).
@@ -1192,3 +1199,27 @@ The publication CRUD modal in `web/master-cv.js` loads the `editor` BibTeX field
 **Found:** 2026-06-18 cvUiReview
 `POST /api/master-data/publications/import` at `scripts/routes/master_data_routes.py:1375–1415` validates that the uploaded file parses as valid BibTeX but does not validate required fields (title, year, author or editor) on a per-entry basis. Entries missing required fields are imported silently and may produce malformed citations in the generated CV.
 **Source evidence:** `scripts/routes/master_data_routes.py:1375–1415`; master-cv-curator.md 2026-06-18.
+
+## GAP-143: `showConfirmModal` Missing Focus Management
+
+**Priority:** HIGH
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview (cycle 2)
+`showConfirmModal` in `web/ui-helpers.js:41–48` sets `display: block` on the confirm modal overlay with no `setInitialFocus`, no `trapFocus`, and `closeConfirmModal` calls no `restoreFocus`. This is a separate code path from `confirmDialog` (which is also deficient per GAP-34). Screen reader and keyboard users can tab out of the modal into the background, and focus is not returned to the triggering element on close. This affects all confirm dialogs triggered via `showConfirmModal` (cover letter generation, rewrite submission, etc.).
+**Source evidence:** `web/ui-helpers.js:41–53`; accessibility-specialist.md 2026-06-18 (cycle 2).
+
+## GAP-144: Harvest Pre-Selects High/Medium Confidence Items by Default (Opt-In Violation)
+
+**Priority:** HIGH
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview (cycle 2)
+`web/harvest.js:101–103` pre-checks all harvest candidates with `confidence === 'high' || confidence === 'medium'` on render. The applicant story (US-A11) requires that master CV updates are opt-in only — no candidate should be selected without explicit user action. Pre-selection biases users toward accepting every AI recommendation and can result in unintended master CV changes if the user clicks "Save Selected" without reviewing each item.
+**Source evidence:** `web/harvest.js:101–103`; applicant.md 2026-06-18 (cycle 2).
+
+## GAP-145: Cover Letter and Screening DOCX Filenames Omit Role Token
+
+**Priority:** LOW
+**Status:** Open
+**Found:** 2026-06-18 cvUiReview (cycle 2)
+Cover letter files are named `CoverLetter_{company}_{date}.docx` and screening responses are named `Screening_Responses_{date}.docx` (no company for screening). Neither includes the role/position token used in CV filenames (`CV_{company}_{role}_{date}.*`). For same-company same-day applications (e.g., two different roles at the same firm), cover letter files will collide and the second will silently overwrite the first.
+**Source evidence:** `scripts/routes/master_data_routes.py:1638, 1869`; recruiter-ops.md 2026-06-18 (cycle 2).

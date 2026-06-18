@@ -10,7 +10,7 @@
 
 **Persona:** Accessibility Specialist
 **Stories evaluated:** US-X1, US-X2, US-X3
-**Source files read:** web/index.html, web/app.js, web/ui-core.js, web/review-table-base.js, web/master-cv.js, web/session-switcher-ui.js, web/ats-modals.js, web/styles.css
+**Source files read:** web/index.html, web/app.js, web/ui-core.js, web/ui-helpers.js, web/review-table-base.js, web/master-cv.js, web/session-switcher-ui.js, web/ats-modals.js, web/styles.css, web/review-icons.js, web/rewrite-review.js, web/job-input.js, web/workflow-steps.js
 **Review date:** 2026-06-18
 
 ---
@@ -100,6 +100,8 @@ Focus infrastructure exists in `ui-core.js:274–287` (`setInitialFocus`). It is
 - `openSessionsModal` (`session-switcher-ui.js:454–457`) — saves `_focusedElementBeforeModal` and calls `trapFocus`, but does **not** call `setInitialFocus`. Focus is not moved into the modal on open.
 - `openMasterCvModal` (`master-cv.js:2464–2471`) — calls neither `setInitialFocus` nor `trapFocus`. Focus is not moved, and the modal is not trapped.
 - `openAtsReportModal` (`ats-modals.js:112–141`) — directly sets `style.display = 'flex'` with no focus management at all.
+- `showConfirmModal` (`ui-helpers.js:41–48`) — sets `style.display = 'block'` with no `setInitialFocus`, `trapFocus`, or `restoreFocus`. This is distinct from the `confirmDialog` function (ui-core.js).
+- `confirmDialog` (`ui-core.js:372–419`) — dynamically creates an overlay div (`#confirm-dialog-overlay`) with no `role="dialog"`, no `aria-modal`, no `aria-labelledby`, no focus management. This is the primary confirmation path used throughout the codebase; it is entirely invisible to assistive technologies as a dialog.
 
 #### Criterion 2: Focus is trapped inside the modal while it is open.
 
@@ -107,7 +109,7 @@ Focus infrastructure exists in `ui-core.js:274–287` (`setInitialFocus`). It is
 
 `trapFocus` (`ui-core.js:294–331`) is a correct implementation: it intercepts Tab and Shift+Tab to wrap at the first/last focusable element. It is wired for: Settings, Model, and Sessions modals.
 
-Not wired: Master CV modal, ATS Report modal, Job Analysis modal. Users can Tab out of these modals to background content.
+Not wired: Master CV modal, ATS Report modal, Job Analysis modal, `showConfirmModal` confirm-modal-overlay, `confirmDialog` dynamically-created overlay. Users can Tab out of these modals to background content.
 
 Additionally, `_currentFocusTrapListener` is a single shared variable. Opening a second modal while the first is still open (e.g., a confirm dialog opened from within the sessions modal) will discard the first modal's trap listener and leave it untrapped when the second modal closes. There is no trap stack.
 
@@ -117,7 +119,7 @@ Additionally, `_currentFocusTrapListener` is a single shared variable. Opening a
 
 `restoreFocus` (`ui-core.js:336–347`) correctly returns focus to `_focusedElementBeforeModal`. It is called from `closeModal` and `closeSettingsModal`.
 
-Not called: `closeMasterCvModal` (`master-cv.js:2473–2478`) and `closeAtsReportModal` (`ats-modals.js:143–145`) discard `style.display` but never call `restoreFocus`. After closing these modals, focus is lost (returned to `<body>`).
+Not called: `closeMasterCvModal` (`master-cv.js:2473–2478`) and `closeAtsReportModal` (`ats-modals.js:143–145`) discard `style.display` but never call `restoreFocus`. `closeConfirmModal` (`ui-helpers.js:50–53`) also does not call `restoreFocus`. After closing these modals, focus is lost (returned to `<body>`).
 
 #### Criterion 4: Dialog title and purpose are programmatically exposed.
 
@@ -134,7 +136,10 @@ All `role="dialog"` overlays carry `aria-modal="true"` and `aria-labelledby` ref
 - Settings: `aria-labelledby="settings-modal-title"` (`index.html:558`)
 - ATS Report: `aria-labelledby="ats-report-modal-title"` (`index.html:669`)
 
-**One gap:** The onboarding modal lacks `aria-describedby` despite having a substantial body (`index.html:315–379`). This is minor.
+**Two gaps:**
+
+- The onboarding modal lacks `aria-describedby` despite having a substantial body (`index.html:315–379`). This is minor.
+- `confirmDialog` (`ui-core.js:372–419`) creates a dynamically-inserted overlay div with no `role="dialog"`, no `aria-modal`, no `aria-labelledby`. The dialog box has no heading and no semantic structure — it is transparent to assistive technologies as a dialog context.
 
 **US-X2 Acceptance criteria summary:**
 

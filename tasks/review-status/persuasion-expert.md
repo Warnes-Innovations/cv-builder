@@ -8,9 +8,14 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Persuasion Expert Review Status
 
-**Last Updated:** 2026-06-18 (source-first refresh; prior pass: 2026-04-22)
+**Last Updated:** 2026-06-18 (source-first refresh, rev 2 — two specific fixes confirmed)
 
-**Executive Summary:** US-P4 (Rhetorical Quality) remains the strongest area — all four bullet-quality checks are implemented and blocking. US-P2 (Social Proof) is mostly solid: metric-preservation is enforced in `apply_rewrite_constraints` and publications are ranked by job-relevance via LLM. Primary remaining gaps: (1) no narrative-fragmentation detection (US-P1-AC3 and US-P6 cross-document consistency remain 🔲 Not Implemented); (2) cover letter post-generation validation has no programmatic enforcement of the first-word "I" rejection, word-count ceiling, or call-to-action specificity — all rely solely on LLM prompt instructions; (3) positive-sum metric reframing (US-P3-AC2) is absent; (4) non-recommended publications are shown without a rationale for exclusion; (5) the summary-generation prompt instructs "title + years of experience" as the opener, which is title-first framing rather than value-identity framing.
+**Recent fixes confirmed in this pass:**
+
+- `_strip_intro_phrase()` (`llm_client.py:1064`) now strips 1–5-word colon-prefixed labels before persuasion checks, preventing false-positive failures on bullets like "Category Compass: Led the team…". Called in `check_strong_action_verb` (line 1097) and `check_word_count` (line 1176).
+- Persuasion warnings panel now **defaults open** (`display:block` at `rewrite-review.js:107`). The "Submit All Decisions" button is disabled until `persuasionWarningsAcknowledged = true` (`rewrite-review.js:375–380`), and `submitRewriteDecisions()` shows a modal guard if warnings are unacknowledged (`rewrite-review.js:384–391`). When no warnings are present, the flag is pre-set to `true` at load time (`rewrite-review.js:52`).
+
+**Executive Summary:** US-P4 (Rhetorical Quality) remains the strongest area — all four bullet-quality checks are implemented and blocking, with the `_strip_intro_phrase` helper now preventing label-prefix false positives. US-P2 (Social Proof) is mostly solid: metric-preservation is enforced in `apply_rewrite_constraints` and publications are ranked by job-relevance via LLM. Primary remaining gaps: (1) no narrative-fragmentation detection (US-P1-AC3 and US-P6 cross-document consistency remain 🔲 Not Implemented); (2) cover letter post-generation validation has no programmatic enforcement of the first-word "I" rejection, word-count ceiling, or call-to-action specificity — all rely solely on LLM prompt instructions; (3) positive-sum metric reframing (US-P3-AC2) is absent; (4) non-recommended publications are shown without a rationale for exclusion; (5) the summary-generation prompt instructs "title + years of experience" as the opener, which is title-first framing rather than value-identity framing.
 
 ---
 

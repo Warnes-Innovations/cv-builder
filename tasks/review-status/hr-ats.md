@@ -151,8 +151,8 @@ Status: ⚠️ Partial — Date format is pass-through from master data. No enfo
 Status: ✅ Pass — cite `cv_orchestrator.py:3762–3766`
 
 **AC-H5.4** No overlapping date ranges (system validates this).
-No overlapping date range validation exists anywhere in the codebase. The validation report has no check for this.
-Status: 🔲 Not Implemented — No overlap detection in `validate_ats_report` or `_validate_ats_compatibility`.
+`CVOrchestrator._detect_date_overlaps` (`cv_orchestrator.py:4612–4680`) is a `@staticmethod` that iterates all parsed experience entries pairwise, skips same-company overlaps (promotions/parallel roles), and returns a list of `{entry_a, entry_b, overlap_description}` dicts. It is called in `generate_cv` at `cv_orchestrator.py:2078–2088`, and the resulting warnings are stored in `metadata.json` under `date_overlap_warnings` (line 2202). The frontend displays these warnings in the File Review tab: `download-tab.js:330–339` renders a yellow warning block listing each overlap pair with an advisory to review before submitting. The check is advisory (not a blocking ATS validation check), which is appropriate given that legitimate concurrent roles at different companies are a valid scenario.
+Status: ✅ Pass — overlap detection is implemented in `cv_orchestrator.py:4612–4680`, results persist to `metadata.json`, and the UI warns the user (`download-tab.js:330–339`).
 
 **AC-H5.5** "Present" used for current role (not future date).
 `cv_orchestrator.py:3761`: `exp.get('end_date', 'Present')` defaults to "Present" when end_date is absent. If the master data stores a specific date for the current role, it will use that date instead. No validation enforces that the active role uses "Present".
@@ -173,8 +173,8 @@ Status: ✅ Pass — cite `cv_orchestrator.py:4599–4944`, `download-tab.js:76�
 Status: ✅ Pass — cite `download-tab.js:108–130`
 
 **AC-H6.3** Any fail blocks download with a clear explanation.
-`download-tab.js:144–148`: ATS keyword failure blocks all formats; other fails block per-format. The UI shows a "Blocked" button with an explanation at lines 132–138.
-Status: ✅ Pass — cite `download-tab.js:144–148`, `132–138`
+`download-tab.js:147–157` defines `_NON_BLOCKING_CHECKS` — a `Set` of 9 check names that are advisory-only and never block downloads even when they fail. These are: `cv_page_count`, `pdf_us_letter`, `docx_zero_shapes`, `docx_standard_headings`, `docx_heading1_present`, `docx_date_format_consistent`, `docx_publications_heading`, `html_jsonld_valid_person`, `html_jsonld_knows_about`. Checks not in this set do block downloads on fail. The `isCriticalFail` predicate at line 161 enforces this. The UI shows a "Blocked" button with an explanation at lines 132–138. ATS keyword failure (`ats_keyword_presence`) is not in `_NON_BLOCKING_CHECKS` and blocks all formats.
+Status: ✅ Pass — cite `download-tab.js:147–157, 161–165, 132–138`
 
 **AC-H6.4** Any warn allows download but shows the specific issue.
 Warns produce a ⚠ icon and detail text in the validation table but do not block downloads (only fails block). The summary line shows the warn count (`download-tab.js:111`).
@@ -338,8 +338,8 @@ The PDF validation checks (US-H6, checks 13–15):
 
 ## Summary of Findings
 
-### Passed (12)
-AC-H1.1, AC-H1.2, AC-H1.4, AC-H1.5, AC-H2.1, AC-H2.2, AC-H2.3, AC-H3.1–H3.5, AC-H4.1, AC-H4.2, AC-H4.3, AC-H5.1, AC-H5.3, AC-H6.1, AC-H6.2, AC-H6.3, AC-H6.4, AC-H7.1, AC-H7.3, AC-H7.4, AC-H8.3, AC-H8.4, AC-H8.6
+### Passed (13)
+AC-H1.1, AC-H1.2, AC-H1.4, AC-H1.5, AC-H2.1, AC-H2.2, AC-H2.3, AC-H3.1–H3.5, AC-H4.1, AC-H4.2, AC-H4.3, AC-H5.1, AC-H5.3, AC-H5.4, AC-H6.1, AC-H6.2, AC-H6.3, AC-H6.4, AC-H7.1, AC-H7.3, AC-H7.4, AC-H8.3, AC-H8.4, AC-H8.6
 
 ### Partial (10)
 - **AC-H1.3** Font family not explicitly set in `_setup_ats_styles`; no font-name validation check
@@ -353,8 +353,7 @@ AC-H1.1, AC-H1.2, AC-H1.4, AC-H1.5, AC-H2.1, AC-H2.2, AC-H2.3, AC-H3.1–H3.5, A
 - **AC-H7.5** Bonus ★ symbol absent; "Partial match" badge not in story spec
 - **AC-H8.1** Hard/soft classification uses heuristics, not LLM classification during analysis
 
-### Not Implemented (3)
-- **AC-H5.4** No overlapping date range detection
+### Not Implemented (2)
 - **AC-H8.2** No LLM skill classification and no `skill_type` write-back to `Master_CV_Data.json`
 - **AC-H8.5** No UI control for user to override hard/soft skill classification
 
@@ -365,11 +364,10 @@ AC-H1.1, AC-H1.2, AC-H1.4, AC-H1.5, AC-H2.1, AC-H2.2, AC-H2.3, AC-H3.1–H3.5, A
 
 ## Priority Recommendations
 
-1. **HIGH — Implement overlapping date detection** (AC-H5.4): No validation exists; could cause ATS data quality flags.
-2. **HIGH — Add font-name enforcement in `_setup_ats_styles`** (AC-H1.3): Set `font.name = 'Calibri'` (or Arial) on the Normal style to prevent ATS font issues from template drift.
-3. **MED — Add PDF font embedding check** to `validate_ats_report`: Verify at least one font is embedded using pypdf's font extraction.
-4. **MED — Cross-check `knowsAbout` against approved skills** (AC-H4.5): The validation report should confirm all approved skills appear in `knowsAbout`, not just that the array is non-empty.
-5. **MED — Add month-year date format enforcement** (AC-H5.2): Validate that start/end dates include month before writing to ATS DOCX.
-6. **LOW — Add skill type classification UI override** (AC-H8.5): Allow user to change Hard↔Soft for any skill in the Skills Review tab.
-7. **LOW — Align score weighting** (AC-H7.2): Change to `0.667 * hard + 0.333 * soft` to match the 2:1 story specification exactly.
-8. **LOW — Add ★ Bonus badge** (AC-H7.5): Use ★ symbol for bonus skills to match story specification.
+1. **HIGH — Add font-name enforcement in `_setup_ats_styles`** (AC-H1.3): Set `font.name = 'Calibri'` (or Arial) on the Normal style to prevent ATS font issues from template drift.
+2. **MED — Add PDF font embedding check** to `validate_ats_report`: Verify at least one font is embedded using pypdf's font extraction.
+3. **MED — Cross-check `knowsAbout` against approved skills** (AC-H4.5): The validation report should confirm all approved skills appear in `knowsAbout`, not just that the array is non-empty.
+4. **MED — Add month-year date format enforcement** (AC-H5.2): Validate that start/end dates include month before writing to ATS DOCX.
+5. **LOW — Add skill type classification UI override** (AC-H8.5): Allow user to change Hard↔Soft for any skill in the Skills Review tab.
+6. **LOW — Align score weighting** (AC-H7.2): Change to `0.667 * hard + 0.333 * soft` to match the 2:1 story specification exactly.
+7. **LOW — Add ★ Bonus badge** (AC-H7.5): Use ★ symbol for bonus skills to match story specification.
