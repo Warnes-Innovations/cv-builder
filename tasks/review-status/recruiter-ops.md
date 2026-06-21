@@ -10,51 +10,40 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 **Persona:** Recruiter / Application Operations Reviewer
 **Review date:** 2026-06-18
-**Cycle:** 3
+**Cycle:** 4
+**Review time:** ~19:00 ET
 **Source files examined (canonical — not bundle.js):**
 
 - `web/index.html`
 - `web/app.js`
 - `web/ui-core.js`
 - `web/state-manager.js`
+- `web/styles.css`
 - `web/finalise.js`
-- `web/session-switcher-ui.js`
 - `web/download-tab.js`
-- `scripts/routes/master_data_routes.py`
+- `web/final-generate.js`
+- `web/cover-letter.js`
+- `web/screening-questions.js`
+- `web/review-table-base.js`
+- `web/ui-helpers.js`
+- `scripts/web_app.py`
+- `scripts/utils/conversation_manager.py`
 - `scripts/routes/generation_routes.py`
+- `scripts/routes/master_data_routes.py`
+- `scripts/cv-preview.py`
+- `scripts/utils/cv_orchestrator.py`
 
 ---
 
-## Changes Since Cycle 2
+## Changes Since Cycle 3
 
-### GAP-145 Fix Verified
+### Bug Fixed: Screening DOCX description prefix
 
-**Cover letter filename** (`master_data_routes.py:1639`):
+**Cycle 3 top gap #1 resolved.** `download-tab.js:53` now correctly checks `filename.startsWith('Screening_')` (previously `'Screening_Responses_'`). Screening DOCX files generated with the current `Screening_{company}_{role}_{date}.docx` pattern now receive the correct description "Screening question responses — Word document" in the Download tab file cards.
 
-```python
-filename = f'CoverLetter_{company}_{role}_{date_str}.docx'
-```
+### No other structural changes detected for recruiter-ops scope
 
-Result: now includes role token. Example: `CoverLetter_Acme_Software_Engineer_2026-06-18.docx`. Previously `CoverLetter_{company}_{date}.docx`.
-
-**Screening filename** (`master_data_routes.py:1873`):
-
-```python
-filename = f'Screening_{company_s}_{role_s}_{date_str}.docx'
-```
-
-Result: now includes company and role tokens. Example: `Screening_Acme_Software_Engineer_2026-06-18.docx`. Previously `Screening_Responses_{date}.docx`.
-
-**New bug introduced by GAP-145 fix** (`web/download-tab.js:53`):
-
-The download-tab's `_collectDownloadableFiles` function still checks for the old prefix `'Screening_Responses_'`:
-
-```js
-} else if (filename.startsWith('Screening_Responses_')) {
-  description = 'Screening question responses — Word document';
-```
-
-The new filename pattern starts with `'Screening_'` (followed by company), not `'Screening_Responses_'`. As a result, screening DOCX files generated after the GAP-145 fix will not match this branch and will fall through to the generic DOCX description (`'ATS-optimised Word document — keyword-optimised for job applications'` or `'Human-readable Word document — editable format'`). The file will still appear in the Download tab, but with a misleading generic description rather than "Screening question responses — Word document". The fix is to change the prefix check to `'Screening_'` (or use a regex that matches both patterns).
+The finalise tab, archive flow, application status fields, session modal, and package completeness gating are unchanged from cycle 3.
 
 ---
 
@@ -64,31 +53,20 @@ The new filename pattern starts with `'Screening_'` (followed by company), not `
 
 **Story:** As a recruiter or application-operations reviewer, I want to know when the application package is complete and ready to send, so that the finalisation step represents a trustworthy readiness checkpoint.
 
-**Criterion 1: Final outputs are clearly visible and distinguishable.**
-
-PASS (with caveat) — The Download ("File Review") tab renders each file via `_renderDownloadGrid` (`download-tab.js`). File cards show an icon, raw filename, and a descriptive string. File-type detection is done by filename suffix and prefix in `_collectDownloadableFiles`.
-
-Caveat: The `Screening_` prefix mismatch (see Changes Since Cycle 2) means screening DOCX cards display a generic description rather than the specific "Screening question responses — Word document" label. This is a regression from the GAP-145 fix and reduces distinguishability for screening deliverables.
-
-The two tabs (`tab-final_generate` = "Generated Files" and `tab-download` = "File Review") are shown together in the download stage (`STAGE_TABS.download = ['final_generate', 'download']`, `ui-core.js:357`). There is no unified "package complete" banner across both tabs.
-
-**Criterion 2: The UI makes clear which files are available and current.**
-
-PARTIAL — The layout freshness chip (`#layout-freshness-chip`) communicates stale/current state based on `stateManager`'s generation state model (`state-manager.js`). When `isCritical` is true (content revised after final files were produced), the chip updates visually. The three states are: `'Files outdated'` (critical, red), `'Layout outdated'` (stale, amber), `'Layout current'` (fresh, green).
-
-However:
-
-- The download tab does not repeat the staleness signal inline alongside the file list. A user navigating directly to the File Review tab sees files without any integrated "these may be outdated" warning in the file cards themselves.
-- Neither the Download nor Finalise tab attaches a "generated at [datetime]" label to individual file cards. If generate-final has been run multiple times, there is no per-file timestamp to confirm currency.
-
-**Criterion 3: Finalise/archive actions are clearly separated from earlier preview steps.**
-
-PASS — The `finalise-action-btn` button (`index.html:190`) is only shown after `final-generate-proceed-btn` fires. The Finalise tab (`populateFinaliseTab`, `finalise.js:42`) renders a distinct section titled "Finalise Application" with a green "Finalise & Archive" button, clearly separated from the layout and download steps. `tab-finalise` is `display:none` in HTML (`index.html:219`) and is not listed in `STAGE_TABS`, so it does not appear in normal tab bar navigation — only reachable by `finalise-action-btn` or `switchTab('finalise')`. This separation is clear.
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| 1 | Final outputs clearly visible and distinguishable | ✅ Pass | `download-tab.js:43–68` — file cards show format-specific icon, filename, and description. Cover letter: `CoverLetter_` prefix check at line 51. Screening: `Screening_` prefix check at line 53 (cycle 3 bug now fixed). ATS-blocked formats visually greyed with "Blocked" label via `_renderDownloadGrid`. |
+| 2 | UI makes clear which files are available and current | ⚠️ Partial | Layout freshness chip (`#layout-freshness-chip`, `index.html:95`) signals stale/current at page-header level. But the Download and Finalise tab file lists carry no per-file "generated at [datetime]" timestamp, and the chip's staleness signal is not echoed inline within either file list. A user who navigates directly to the File Review tab sees files with no inline currency marker. |
+| 3 | Finalise/archive actions separated from earlier preview steps | ✅ Pass | `tab-finalise` is `style="display:none"` in HTML (`index.html:219`) and has no entry in `STAGE_TABS` (`ui-core.js:350–363`), so it never appears in the second-bar nav. It is only reachable when `finalise-action-btn` fires (`app.js:137`), which is itself hidden until `final-generate-proceed-btn` has been clicked. The Finalise tab's "Finalise & Archive" CTA is visually distinct from layout and download actions. |
 
 **Acceptance Criteria:**
 
-- "The final-stage UI supports a confident determination of package readiness" — PARTIAL. ATS validation blocks failing formats in the download grid, and the freshness chip flags stale content. But there is no unified "all-clear" or "not ready" package-readiness gate before the Finalise button becomes available.
-- "The user can identify the current set of deliverables before finalising" — PARTIAL. The Finalise tab shows a file list (`finalise.js:65-79`), but does not label files with a currency timestamp, and does not visually distinguish the current run from an earlier one.
+- "The final-stage UI supports a confident determination of package readiness" — ⚠️ **Partial.** ATS validation blocks critical failures in the download grid, and the freshness chip signals stale content. No unified all-clear or readiness gate exists before the Finalise button becomes active. A user can finalise even when cover letter or screening responses are absent.
+- "The user can identify the current set of deliverables before finalising" — ⚠️ **Partial.** The Finalise tab shows a file list (`finalise.js:65–79`) derived from `generated_files.files`, which reflects the current generation run. But no per-file timestamp is shown, and cover letter / screening DOCX files are only in the list if they were generated and registered in that same session's `generated_files.files` array — there is no cross-check or completeness report.
+
+**Failure modes still present:**
+- No package-readiness gate before "Finalise & Archive" (no checklist confirming CV + cover letter + screening).
+- No per-file currency timestamp in file cards.
 
 ---
 
@@ -96,34 +74,21 @@ PASS — The `finalise-action-btn` button (`index.html:190`) is only shown after
 
 **Story:** As a recruiter or application-operations reviewer, I want to capture status and notes in a structured way, so that submission tracking remains organized after files are generated.
 
-**Criterion 1: Status values are understandable and actionable.**
-
-PASS — The Finalise tab renders a `<select id="finalise-status">` with three human-readable options: "Draft — not yet sent", "Ready to send", "Sent" (`finalise.js:89-93`). The backend validates against the enum `('draft', 'ready', 'sent')` (`generation_routes.py:1908`). Labels are operationally clear for a recruiter tracking application state.
-
-**Criterion 2: Notes are captured at the point of finalisation.**
-
-PASS — A `<textarea id="finalise-notes">` is rendered on the Finalise tab with placeholder text: "Recruiter name, salary info, follow-up date, interview notes…" (`finalise.js:97-101`). Notes are submitted in `POST /api/finalise` as `notes` and written to `metadata.json` (`generation_routes.py:1908-1924`).
-
-**Criterion 3: Archive behavior preserves the context needed for later follow-up.**
-
-PASS — `POST /api/finalise` (`generation_routes.py:1882`) writes to `metadata.json` in the output directory:
-
-- `application_status` and `notes` (user-supplied, line 1923-1924)
-- `finalised_at` ISO timestamp (line 1925)
-- `clarification_answers` from post-analysis Q&A
-- `spell_audit`, `layout_instructions`, `validation_results`
-- `ats_score` from generation state
-
-Screening responses are upserted to `response_library.json` at finalisation. A git commit is created with message `feat: Add {Company}_{Role}_{date} application`, providing version-controlled history.
-
-The success confirmation card in the UI shows status, approved rewrite count, ATS score, and git commit hash (`finalise.js:178-189`). This is a comprehensive archive.
-
-Caveat: The success card does not display the output directory path, so a recruiter cannot confirm the file location from the UI without checking the Download tab's "Output Directory" line. The ATS score in the success card is conditional on `summary.ats_score` being non-null; if ATS scoring was not run in the session, the score field is absent.
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| 1 | Status values are understandable and actionable | ✅ Pass | `<select id="finalise-status">` renders three options: "Draft — not yet sent", "Ready to send", "Sent" (`finalise.js:89–93`). Backend validates against enum `('draft', 'ready', 'sent')` at `generation_routes.py:1929`. Labels are operationally precise. |
+| 2 | Notes captured at the point of finalisation | ✅ Pass | `<textarea id="finalise-notes">` on the Finalise tab; placeholder: "Recruiter name, salary info, follow-up date, interview notes…" (`finalise.js:97–101`). Submitted via `POST /api/finalise`; written to `metadata.json` (`generation_routes.py:1942`). |
+| 3 | Archive behavior preserves context needed for later follow-up | ✅ Pass | `POST /api/finalise` (`generation_routes.py:1880`) writes to `metadata.json`: `application_status`, `notes`, `finalised_at` ISO timestamp, `clarification_answers`, `spell_audit`, `layout_instructions`, `validation_results`, `ats_score`. Screening responses are upserted to `response_library.json`. Git commit created with `feat: Add {Company}_{Role}_{date} application`. Archive is comprehensive. |
 
 **Acceptance Criteria:**
 
-- "The finalise flow supports storing practical application-tracking metadata" — PASS.
-- "The workflow makes clear when that metadata becomes part of the archived session" — PARTIAL. The git commit hash confirms archival, but output path is omitted from the success card; ATS score display is conditional.
+- "The finalise flow supports storing practical application-tracking metadata" — ✅ **Pass.** All required fields written on finalise.
+- "The workflow makes clear when that metadata becomes part of the archived session" — ⚠️ **Partial.** Success card shows approved rewrite count, ATS score (when available), and git commit hash (`finalise.js:180–189`). However: (a) the output directory path is not shown in the success card, so the user must look at the Download tab to confirm file location; (b) ATS score display is conditional on `summary.ats_score` being non-null — if ATS scoring was not run in session, the score item is absent without indication of why.
+
+**Failure modes still present:**
+- Success card omits output directory path.
+- ATS score display silently absent when ats_score is null rather than surfacing "not scored".
+- `application_status` from `metadata.json` is not surfaced in the Sessions modal — no at-a-glance pipeline view across sessions.
 
 ---
 
@@ -131,70 +96,97 @@ Caveat: The success card does not display the output directory path, so a recrui
 
 **Story:** As a recruiter or application-operations reviewer, I want to verify that output artifacts are clearly named and grouped, so that files can be managed outside the application without confusion.
 
-**Criterion 1: Generated files use job-relevant naming.**
-
-PASS (improved from cycle 2) — File naming is now consistently job-relevant across all artifact types, including cover letter and screening:
-
-- CV finals: `CV_{company}_{role}_{date}.html/.pdf`
-- ATS DOCX: `CV_{company}_{role}_{date}_ATS.docx`
-- Human DOCX: `CV_{company}_{role}_{date}.docx`
-- Cover letter: `CoverLetter_{company}_{role}_{date}.docx` (GAP-145 fix — role token added)
-- Screening: `Screening_{company}_{role}_{date}.docx` (GAP-145 fix — company + role tokens added)
-- Git commit: `feat: Add {Company}_{Role}_{date} application`
-
-The cycle 2 caveat about cover letter and screening filenames colliding for same-company-same-day applications is resolved.
-
-**Criterion 2: File review surfaces present outputs in a manageable way.**
-
-PARTIAL (regression from cycle 2) — The Download tab renders each file as a card with icon, filename, description, and a Download button. ATS-blocked files are greyed out with a "Blocked" label.
-
-Regression: `download-tab.js:53` still checks for `'Screening_Responses_'` prefix, but the new filename format starts with `'Screening_'` (e.g. `Screening_Acme_Software_Engineer_2026-06-18.docx`). Screening DOCX files will match the generic DOCX branch instead, showing a generic description label. The file appears in the download grid correctly (since registration into `generated_files.files` at `master_data_routes.py:1910-1915` is correct), but its description is wrong.
-
-**Criterion 3: Multiple generation passes do not obscure which output is current.**
-
-PARTIAL — Same finding as cycle 2. The layout freshness chip tracks content revision and whether outputs are stale. The download tab collects files from session state (`cvData.files`, etc.), so it reflects the current generation run's file list. However, neither the Download nor Finalise tab attaches a per-file "generated at [datetime]" label. Preview artifacts are correctly filtered out of the file list.
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| 1 | Generated files use job-relevant naming | ✅ Pass | All artifact types use job-relevant tokens: CV finals `CV_{company}_{role}_{date}.html/.pdf` (`cv_orchestrator.py:1432`); ATS DOCX `CV_{company}_{role}_{date}_ATS.docx` (line 3826); human DOCX `CV_{company}_{role}_{date}.docx` (line 4354); cover letter `CoverLetter_{company}_{role}_{date}.docx` (`cv-preview.py:393`); screening `Screening_{company}_{role}_{date}.docx` (`master_data_routes.py:1883`); git commit `feat: Add {Company}_{Role}_{date} application` (`generation_routes.py:1974`). |
+| 2 | File review surfaces present outputs in a manageable way | ✅ Pass | Download tab renders each file as a card (`_renderDownloadGrid`, `download-tab.js:159–209`). Description labels are now correct for all types including screening (cycle 3 bug fixed at line 53). ATS-blocked formats are greyed with "Blocked" label. Persuasion check panel appended beneath the grid. Iterative refinement shortcuts available. |
+| 3 | Multiple generation passes do not obscure which output is current | ⚠️ Partial | The layout freshness chip (`state-manager.js`) tracks whether content was revised after file generation and flips between "Files outdated" (red), "Layout outdated" (amber), and "Layout current" (green) at header level. `_collectDownloadableFiles` (`download-tab.js:22–73`) de-duplicates using a `Set` and sources from session state (the current generation run). Preview artifacts are filtered (`final-generate.js:93`). However, no per-file timestamp label exists in the download grid or the Finalise file list. If a user re-runs generation, there is no visible distinction between files in the list from run 1 vs run 2. |
 
 **Acceptance Criteria:**
 
-- "Output presentation and naming support practical handling outside the UI" — PASS for naming (improved); PARTIAL for multi-run disambiguation (no per-file timestamp) and partial regression on screening description label.
+- "Output presentation and naming support practical handling outside the UI" — ✅ **Pass for naming.** ⚠️ **Partial for multi-run disambiguation** (no per-file timestamp).
 
 ---
 
-## Extended Evaluation: Package Completeness Signals
+## Generated Materials Evaluation
 
-The cover letter and screening DOCX files are registered into the session's `generated_files.files` array after saving and appear in the Download tab automatically. The description regression for screening files (see US-O3.2) does not prevent them from appearing — only the label is wrong.
+### Package Completeness: Are Cover Letter and Screening in the Download/Finalise Tab?
 
-There is still no completeness checklist in the Download or Finalise tab that verifies "CV + cover letter + screening responses" are all present before the user proceeds to finalise.
+**Cover Letter:**
 
-The Sessions modal's "Status" column (`session-switcher-ui.js:327-329`) shows session ownership status (Current / other active / Saved), not `application_status` from `metadata.json`. A recruiter managing multiple applications has no at-a-glance view of which sessions are "Ready to send" or "Sent". The `_normalizeSessionsForTable` function (`session-switcher-ui.js:235`) does not read `application_status` from the session data; the API response from `/api/sessions` would need to expose this field.
+- Cover letter DOCX is generated by `_write_cover_letter_docx` in `cv-preview.py` when the final generation pipeline runs. The path is appended to `generated_paths` (`cv-preview.py:564`) and therefore included in `generated_files.files` in session state.
+- The Download ("File Review") tab collects files from `cvData.files` in `_collectDownloadableFiles` (`download-tab.js:24–33`). If the cover letter has been generated and saved before the final generation step, its path is included.
+- The Finalise tab renders `generated.files` directly (`finalise.js:65–79`). It shows whatever is in the `generated_files.files` array.
+- **Gap:** Cover letter is only in `generated_files.files` if it was generated as part of the main CV generation pipeline. If the user generates the cover letter from the Cover Letter tab separately (via `POST /api/cover-letter/save`, which writes the DOCX to the output directory and records it in `metadata.json` but does NOT push it into `generated_files.files`), it will appear in the output directory but NOT be listed in the Download or Finalise tab file lists. The user would need to navigate to the Cover Letter tab to see it and download it. The Download tab has no cross-reference to `metadata.json` to pick up artifacts saved outside `generated_files.files`.
+
+**Screening Responses:**
+
+- Screening DOCX is generated by `POST /api/screening/save` (`master_data_routes.py:1833`), which saves `Screening_{company}_{role}_{date}.docx` to the output directory. This endpoint does NOT push the path into `generated_files.files`. It records it in `metadata.json` under `screening_responses` (the responses array, not the filename).
+- Therefore, a screening DOCX saved from the Screening tab will NOT appear in the Download tab's file grid or the Finalise tab's file list. Only the Screening tab itself shows the saved response state. The user has no download link for the screening DOCX from the Download or Finalise tabs.
+- **This is a significant gap** for the recruiter-ops persona: the screening DOCX is an application deliverable, but it is invisible in the final package review and finalisation screens.
+
+**Summary of package completeness signal:**
+
+| Artifact | Visible in Download tab | Visible in Finalise tab | Notes |
+|----------|------------------------|-------------------------|-------|
+| CV HTML/PDF | ✅ Yes | ✅ Yes | Part of `generated_files.files` |
+| ATS DOCX | ✅ Yes | ✅ Yes | Part of `generated_files.files` |
+| Human DOCX | ✅ Yes | ✅ Yes | Part of `generated_files.files` |
+| Cover letter DOCX (pipeline-generated) | ✅ Yes | ✅ Yes | Added to `generated_paths` in `cv-preview.py:564` |
+| Cover letter DOCX (tab-generated via `/api/cover-letter/save`) | ❌ No | ❌ No | Not in `generated_files.files`; only in output dir + metadata |
+| Screening DOCX (via `/api/screening/save`) | ❌ No | ❌ No | Not in `generated_files.files`; only in output dir |
 
 ---
 
-## Summary of Findings
+## Additional Story Gaps / Proposed Story Items
 
-| Criterion | Status | Key Evidence |
-| --- | --- | --- |
-| US-O1.1 Final outputs visible and distinguishable | PASS (caveat) | File cards have icons + descriptions; screening description regression introduced by GAP-145 fix |
-| US-O1.2 Which files are available and current | PARTIAL | Freshness chip exists; not shown inline in download tab; no per-file timestamp |
-| US-O1.3 Finalise separated from preview steps | PASS | `finalise-action-btn` gated behind final-generate; tab hidden in nav bar |
-| US-O2.1 Status values understandable | PASS | Three-value select: draft / ready / sent; backend validates enum |
-| US-O2.2 Notes captured at finalisation | PASS | `finalise-notes` textarea; placeholder prompts recruiter name, follow-up date |
-| US-O2.3 Archive preserves follow-up context | PASS | metadata.json captures status, notes, ATS, audit, git commit |
-| US-O2 archive confirmation clear | PARTIAL | Success card shows hash; output path omitted; ATS score conditional |
-| US-O3.1 Job-relevant file naming | PASS (improved) | GAP-145 fix: all filenames now include company + role + date |
-| US-O3.2 File review surface | PARTIAL (regression) | Screening DOCX description wrong: `download-tab.js:53` checks old `'Screening_Responses_'` prefix; new format starts with `'Screening_'` |
-| US-O3.3 Multi-run file disambiguation | PARTIAL | Freshness chip tracks staleness; no per-file timestamp in file list |
-| Package completeness checklist | NOT IMPLEMENTED | No automated gate confirming CV + cover letter + screening are all present |
-| Cross-session pipeline visibility | NOT IMPLEMENTED | Sessions modal shows ownership status, not `application_status` from metadata |
+### GAP-OPS-A: Screening DOCX not surfaced in Download or Finalise tab
 
-### Top Gaps to Address
+**Priority: HIGH.** Screening responses saved from the Screening tab produce a DOCX in the output directory, but its path is never registered in `generated_files.files`. As a result, the screening DOCX is invisible to the recruiter in the Download and Finalise stages. The user has no download link from the file review screen.
 
-1. **Screening prefix mismatch (BUG — regression from GAP-145)**: `download-tab.js:53` must change `'Screening_Responses_'` to `'Screening_'` to match the new `Screening_{company}_{role}_{date}.docx` filename format. Without this fix, the screening DOCX description displays as a generic "Human-readable Word document" instead of "Screening question responses — Word document".
+**Fix options:**
+1. Have `POST /api/screening/save` append the new DOCX path to `generated_files.files` in session state (alongside patching `metadata.json`).
+2. Have the Download tab also scan `metadata.json` for artifact filenames not in `generated_files.files` (e.g., `cover_letter_docx_path`, `screening_docx_path`).
 
-2. **No cross-session pipeline status view** (US-O2 extended): The Sessions modal lists sessions by position name, timestamp, and phase, but does not surface `application_status` ("draft" / "ready" / "sent") from `metadata.json`. A recruiter managing multiple active applications has no at-a-glance view of which are ready to send. The `/api/sessions` API response would need to expose this field, and `_normalizeSessionsForTable` would need to pass it into `_renderSessionTableRow`.
+### GAP-OPS-B: Cover letter DOCX (tab-generated) not surfaced in Download or Finalise tab
 
-3. **No package completeness gate before Finalise** (US-O1.1): There is no automated check on the Finalise tab (or before reaching it) that confirms CV, cover letter, and screening responses are all present and non-stale.
+**Priority: HIGH.** When a cover letter is generated or edited via the Cover Letter tab and saved with `POST /api/cover-letter/save`, the DOCX is written to the output directory and recorded in `metadata.json` — but its path is not appended to `generated_files.files`. The Download and Finalise tabs do not see it.
 
-4. **No per-file currency timestamp in file lists** (US-O1.2 / US-O3.3): Neither the Download tab nor the Finalise tab labels file cards with "generated at [datetime]". Adding a timestamp to each file card would confirm currency without user inference.
+**Fix:** Have `POST /api/cover-letter/save` also push the new path into `generated_files.files` in session state.
 
-5. **Finalise success card omits output path** (US-O2.3 minor): The archive confirmation shows the git commit hash but not the output directory path. Adding the path (already surfaced in the Download tab) would confirm to the recruiter where the archived files are stored.
+### GAP-OPS-C: No package readiness gate before Finalise
+
+**Priority: MEDIUM.** The Finalise tab is reachable once `finalise-action-btn` is clicked, with no automated check that CV, cover letter, and screening responses are all present and non-stale. A recruiter can archive a package that is missing application deliverables.
+
+**Proposed story:** Before rendering "Finalise & Archive", the UI should show a readiness checklist: CV generated (PASS/FAIL), cover letter present (PASS/FAIL/WARN), screening saved (PASS/FAIL/WARN). Only CV being present should block archiving; cover letter and screening should warn but not block.
+
+### GAP-OPS-D: application_status not shown in Sessions modal
+
+**Priority: MEDIUM.** The Sessions modal (listing all sessions) shows position name, company, phase, and ownership status — but not `application_status` from `metadata.json`. A recruiter with multiple active applications cannot determine at a glance which ones are "draft", "ready to send", or "sent" from the sessions list.
+
+**Fix:** Have `GET /api/sessions` include `application_status` from `metadata.json` in the session list item, and render it as a badge column in the session table.
+
+### GAP-OPS-E: Per-file currency timestamp missing from file list cards
+
+**Priority: LOW.** Neither the Download tab nor the Finalise file list shows "generated at [datetime]" on file cards. After multiple generation passes, the user must infer from the freshness chip alone whether the listed files are from the latest run.
+
+---
+
+## Evidence Summary
+
+| Story Criterion | Status | File:Line or Function |
+|-----------------|--------|-----------------------|
+| US-O1.1 Final outputs visible and distinguishable | ✅ Pass | `download-tab.js:43–68` `_collectDownloadableFiles`; `_renderDownloadGrid` |
+| US-O1.2 Which files are available and current | ⚠️ Partial | Freshness chip: `index.html:95`; no per-file timestamp in `_renderDownloadGrid` or `finalise.js:65–79` |
+| US-O1.3 Finalise separated from earlier steps | ✅ Pass | `index.html:219` (`display:none`); `STAGE_TABS` (`ui-core.js:350–363`) excludes finalise; `app.js:137` button gate |
+| US-O2.1 Status values understandable | ✅ Pass | `finalise.js:89–93`; `generation_routes.py:1929` enum validation |
+| US-O2.2 Notes captured at finalisation | ✅ Pass | `finalise.js:97–101`; `generation_routes.py:1942` |
+| US-O2.3 Archive preserves follow-up context | ✅ Pass | `generation_routes.py:1941–1969`; git commit 1974 |
+| US-O2 confirmation completeness | ⚠️ Partial | Output dir omitted from success card (`finalise.js:180–189`); ats_score conditional |
+| US-O3.1 Job-relevant file naming | ✅ Pass | `cv_orchestrator.py:1432`; `cv-preview.py:393`; `master_data_routes.py:1883` |
+| US-O3.2 File review surface | ✅ Pass | `download-tab.js:53` `Screening_` prefix fixed (cycle 3 bug resolved) |
+| US-O3.3 Multi-run file disambiguation | ⚠️ Partial | Freshness chip; no per-file timestamp |
+| Screening DOCX in Download/Finalise | ❌ Not Implemented | `master_data_routes.py:1883` saves DOCX but does not push to `generated_files.files` |
+| Cover letter DOCX (tab-generated) in Download/Finalise | ❌ Not Implemented | `master_data_routes.py:1606` `cover_letter_save` does not push to `generated_files.files` |
+| Package readiness gate | 🔲 Not Implemented | No completeness check before "Finalise & Archive" |
+| Cross-session pipeline status | 🔲 Not Implemented | Sessions modal does not expose `application_status` from `metadata.json` |

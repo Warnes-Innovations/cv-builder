@@ -2475,10 +2475,13 @@ async function deleteMasterSummary(key) {
 function openMasterCvModal() {
   const overlay = document.getElementById('master-cv-modal-overlay');
   if (!overlay) return;
+  _focusedElementBeforeModal = document.activeElement;
   overlay.style.display = 'flex';
   document.body.style.overflow = 'hidden';
   const container = document.getElementById('master-cv-modal-body');
   populateMasterTab(container);
+  setInitialFocus('master-cv-modal-overlay');
+  trapFocus('master-cv-modal-overlay');
 }
 
 function closeMasterCvModal() {
@@ -2486,6 +2489,7 @@ function closeMasterCvModal() {
   if (overlay) overlay.style.display = 'none';
   _masterCvActiveContainer = null;
   document.body.style.overflow = '';
+  restoreFocus();
 }
 
 export {

@@ -537,9 +537,9 @@ async function submitSessionModalRename(path, idx) {
       cancelSessionModalRename(idx);
       await fetchStatus();
     } else {
-      alert(`Rename failed: ${data.error}`);
+      if (typeof showToast === 'function') showToast(`Rename failed: ${data.error}`, 'error');
     }
-  } catch (e) { alert(`Rename error: ${e.message}`); }
+  } catch (e) { if (typeof showToast === 'function') showToast(`Rename error: ${e.message}`, 'error'); }
 }
 
 async function _deleteSessionFromModal(path, event) {
@@ -554,9 +554,9 @@ async function _deleteSessionFromModal(path, event) {
       await _renderSessionsModalBody();
       await _refreshTrashBadge();
     } else {
-      alert(`Failed to move session to Trash: ${data.error || 'Unknown error'}`);
+      if (typeof showToast === 'function') showToast(`Failed to move session to Trash: ${data.error || 'Unknown error'}`, 'error');
     }
-  } catch (e) { alert(`Error: ${e.message}`); }
+  } catch (e) { if (typeof showToast === 'function') showToast(`Error: ${e.message}`, 'error'); }
 }
 
 // ── Trash badge ───────────────────────────────────────────────────────────────
@@ -674,8 +674,8 @@ async function restoreFromTrash(path) {
     });
     const data = await res.json();
     if (data.success) { await _renderTrashView(); await _refreshTrashBadge(); }
-    else alert(`Restore failed: ${data.error || 'Unknown error'}`);
-  } catch (e) { alert(`Error: ${e.message}`); }
+    else if (typeof showToast === 'function') showToast(`Restore failed: ${data.error || 'Unknown error'}`, 'error');
+  } catch (e) { if (typeof showToast === 'function') showToast(`Error: ${e.message}`, 'error'); }
 }
 
 async function deleteForever(path) {
@@ -691,8 +691,8 @@ async function deleteForever(path) {
     });
     const data = await res.json();
     if (data.success) { await _renderTrashView(); await _refreshTrashBadge(); }
-    else alert(`Delete failed: ${data.error || 'Unknown error'}`);
-  } catch (e) { alert(`Error: ${e.message}`); }
+    else if (typeof showToast === 'function') showToast(`Delete failed: ${data.error || 'Unknown error'}`, 'error');
+  } catch (e) { if (typeof showToast === 'function') showToast(`Error: ${e.message}`, 'error'); }
 }
 
 async function emptyTrash() {
@@ -705,8 +705,8 @@ async function emptyTrash() {
     const res  = await fetch('/api/trash/empty', { method: 'POST' });
     const data = await res.json();
     if (data.success) { await _renderTrashView(); await _refreshTrashBadge(); }
-    else alert(`Failed to empty trash: ${data.error || 'Unknown error'}`);
-  } catch (e) { alert(`Error: ${e.message}`); }
+    else if (typeof showToast === 'function') showToast(`Failed to empty trash: ${data.error || 'Unknown error'}`, 'error');
+  } catch (e) { if (typeof showToast === 'function') showToast(`Error: ${e.message}`, 'error'); }
 }
 
 // ── Session conflict banner ───────────────────────────────────────────────────

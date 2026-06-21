@@ -9,10 +9,10 @@ For commercial licensing, contact greg@warnes-innovations.com
 <!-- markdownlint-disable MD032 -->
 
 # Applicant Review Status
-**Last Updated:** 2026-06-18 15:45 ET
+**Last Updated:** 2026-06-18 19:00 ET
 **Reviewer:** Source-first audit against user-story-applicant.md (US-A1 – US-A12)
 **Branch:** feature/multi-user-deployment
-**Cycle:** 3
+**Cycle:** 4
 
 **Executive Summary:**
 Cycle 3 confirms three targeted fixes from the task brief are now working: (1) `shouldPreCheck()` in `web/harvest.js` returns `false` unconditionally — harvest opt-in is now fully compliant; (2) roving tabindex (`tabindex="0"` on active tab, `tabindex="-1"` on all others) is correctly set at HTML initialisation and updated on every `switchTab()` call in `review-table-base.js`; (3) `_confirmPreviousFocus` save/restore in `showConfirmModal`/`closeConfirmModal` (`web/ui-helpers.js`) is implemented correctly. The US-A11 fail from cycle 2 is now a pass. The four remaining fails/gaps from cycle 2 are unchanged: (a) no `"queued"` session status (US-A1 partial); (b) natural-language master CV update and document ingestion absent (US-A10 fail); (c) no keyboard shortcut for re-run affordance (US-A12 fail); (d) no structured audit log per re-run event (US-A12 partial). Consolidated JSON diff before harvest write is still partial. The misleading "Done — Generate CV →" spell-check button label and publication up/down reorder gap remain open.

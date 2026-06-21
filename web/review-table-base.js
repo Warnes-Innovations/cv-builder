@@ -129,6 +129,8 @@ function switchTab(tab) {
     activeTab.classList.add('active');
     activeTab.setAttribute('aria-selected', 'true');
     activeTab.setAttribute('tabindex', '0');
+    const tabpanel = document.getElementById('document-content');
+    if (tabpanel) tabpanel.setAttribute('aria-labelledby', `tab-${tab}`);
   }
   stateManager.setCurrentTab(tab);
 

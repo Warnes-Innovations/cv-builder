@@ -133,6 +133,17 @@ function _setWelcomeSection(section) {
   // Empty skeleton: show "present" footer (Close/dismiss) not "missing" footer (Create/Reload)
   if (fPresent) fPresent.style.display = (section === 'present' || section === 'empty') ? 'flex' : 'none';
   if (fMissing) fMissing.style.display = section === 'missing' ? 'flex' : 'none';
+  // For empty state: change CTA to navigate to Master CV instead of just closing
+  const getStartedBtn = fPresent ? fPresent.querySelector('button.primary') : null;
+  if (getStartedBtn) {
+    if (section === 'empty') {
+      getStartedBtn.textContent = 'Open Master CV';
+      getStartedBtn.onclick = () => { closeWelcomeModal(); if (typeof openMasterCvModal === 'function') openMasterCvModal(); };
+    } else {
+      getStartedBtn.textContent = 'Get Started';
+      getStartedBtn.onclick = () => closeWelcomeModal();
+    }
+  }
 }
 
 /**
@@ -761,10 +772,12 @@ async function promptRenameCurrentSession() {
   const okBtn = document.createElement('button');
   okBtn.textContent = '✓';
   okBtn.title = 'Save rename';
+  okBtn.setAttribute('aria-label', 'Save rename');
   okBtn.style.cssText = 'background:#10b981;color:#fff;border:none;border-radius:3px;cursor:pointer;padding:1px 6px;font-size:1em;';
   const cancelBtn = document.createElement('button');
   cancelBtn.textContent = '✕';
-  cancelBtn.title = 'Cancel';
+  cancelBtn.title = 'Cancel rename';
+  cancelBtn.setAttribute('aria-label', 'Cancel rename');
   cancelBtn.style.cssText = 'background:#6b7280;color:#fff;border:none;border-radius:3px;cursor:pointer;padding:1px 6px;font-size:1em;';
   wrapper.append(input, okBtn, cancelBtn);
 

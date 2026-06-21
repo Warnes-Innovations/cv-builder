@@ -145,7 +145,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 
 /* ===== WORKFLOW STEPS ===== */
 .workflow { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 20px 24px; }
-.workflow-steps { display: flex; align-items: center; justify-content: center; gap: 32px; }
+.workflow-steps { display: flex; align-items: center; justify-content: center; gap: 32px; overflow-x: auto; }
 .step { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-radius: 20px; background: #f1f5f9; color: #64748b; }
 .step.active { background: #dbeafe; color: #1d4ed8; cursor: pointer; }
 .step.active:hover { filter: brightness(0.93); }
@@ -177,7 +177,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
   padding: 1px 5px;
   vertical-align: middle;
 }
-.step-stale-badge { background: rgba(245, 158, 11, 0.16); color: inherit; }
 .arrow { color: #94a3b8; }
 
 /* ===== SESSION CONFLICT BANNER ===== */
@@ -1221,6 +1220,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .toast.toast-show { opacity: 1; transform: translateY(0); }
 .toast.toast-success { border-left: 4px solid #10b981; }
 .toast.toast-error { border-left: 4px solid #ef4444; }
+.toast.toast-warning { border-left: 4px solid #f59e0b; }
 
 /* ===== REWRITE REVIEW PANEL ===== */
 .rewrite-tally-bar { position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 2px solid #e2e8f0; padding: 12px 20px; display: flex; align-items: center; gap: 20px; font-size: 14px; font-weight: 500; margin: 0 -20px 20px; }

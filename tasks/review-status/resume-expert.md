@@ -7,7 +7,7 @@
 # Resume Optimisation Expert Review
 
 **Persona:** Certified professional résumé writer / career strategist  
-**Date:** 2026-06-18 (Cycle 3 update)  
+**Date:** 2026-06-18 (Cycle 4 update)  
 **Reviewer:** Claude Sonnet 4.6 (source-first analysis)  
 **Story file:** `tasks/user-story-resume-expert.md`  
 **Rating key:** ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Implemented | — N/A
@@ -230,7 +230,8 @@
 | US-R7 | Dictionary deduplicated on write | ✅ |
 
 **Totals:** 16 ✅ Pass | 8 ⚠️ Partial | 2 ❌ Fail | 0 🔲 Not Implemented  
-*(Cycle 3: US-R6 AC1 ⚠️→✅, US-R6 AC3 ❌→✅, US-R5 AC4 ❌→⚠️)*
+*(Cycle 3: US-R6 AC1 ⚠️→✅, US-R6 AC3 ❌→✅, US-R5 AC4 ❌→⚠️)*  
+*(Cycle 4: no rating changes — all Cycle 3 assessments confirmed correct by fresh source read)*
 
 ---
 
@@ -268,3 +269,30 @@ The `ats_keywords` list is presented with positional rank badges but the rank is
 
 **Severity: None — confirmed pass.**  
 `rewrite-review.js:376` enforces `submitBtn.disabled = (pending > 0) || needsAck`, meaning the Submit button is disabled until every rewrite card has an outcome and all persuasion warnings are acknowledged. This is the gate that ensures `rewrite_audit` is always complete when written. The `acceptAllRewrites` / `rejectAllRewrites` bulk-action functions only operate on cards without an existing decision (`if (!rewriteDecisions[id])`), so they cannot re-open already-decided cards.
+
+---
+
+## Cycle 4 New Findings (2026-06-18)
+
+Cycle 4 re-reads the source directly; no prior review artifacts consulted. All Cycle 3 ratings confirmed unchanged. Three additional findings surfaced:
+
+### C4-1: Manual achievement edits bypass `rewrite_audit` (US-R6 sub-gap)
+
+**Severity: Medium.**  
+`_apply_session_achievement_edits()` (`cv_orchestrator.py:432–481`) writes accepted bullet edits from `customizations['achievement_edits']` directly into `selected_content['experiences']` before template rendering. These edits do not produce an entry in `rewrite_audit`. A user who edits a bullet in the Bullets tab produces output not traceable to any audit record. The US-R6 story says "every word in the final CV is traceable to either an approved rewrite or the original master data" — manual edits via this path are neither.
+
+**Fix needed:** When `_apply_session_achievement_edits()` applies an edit, append a synthetic audit record to `state['rewrite_audit']` with `type: 'manual_edit'`, the experience ID, bullet index, original and final text.
+
+### C4-2: Spell-check suggestions not sorted by severity (US-R7 AC7)
+
+**Severity: Low.**  
+`spell_checker.py` returns suggestions in LanguageTool iteration order. No severity sort is applied before the list is returned to the UI. Critical misspelling rules (morfologik/hunspell) may appear after minor grammar suggestions. The story requires critical errors to be surfaced first.
+
+**Fix needed:** After building the `suggestions` list in `spell_checker.check()`, sort by `_is_spelling_rule(m)` descending (spelling = True first), then by `rule_id` to group by type.
+
+### C4-3: Required-vs-preferred visual distinction gap in analysis card (US-R1 AC1)
+
+**Severity: Low.**  
+Cycle 3 rated this ✅ Pass, citing `review-table-base.js`. Cycle 4 source read of `message-queue.js:215–229` finds a second rendering path (the conversation-panel analysis card) where required skills (`<h4>🎯 Required Skills:</h4>`) and nice-to-have (`<h4>✨ Nice to Have:</h4>`) are rendered as plain icon-differentiated headings inside one unstyled card with no background, border, or colour distinction. The analysis tab (`review-table-base.js`) may be visually distinct, but the conversation panel card (shown immediately after job analysis) is not. The ✅ rating for R1-AC1 is confirmed for the analysis tab but is ⚠️ for the conversation panel card.
+
+**Fix needed:** In `message-queue.js:215–229`, wrap required-skills and nice-to-have blocks in differently styled containers (e.g. green border for required, amber border for preferred) to match the visual distinction in the analysis tab.

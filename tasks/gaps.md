@@ -1,14 +1,21 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-18 (cycle 3)
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-20 (cycle 4)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), and 2026-06-18 (cycle 2)
-- independent heuristic UX evaluation (2026-04-22, 2026-06-18 cycle 1 and 2)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), and 2026-06-18 (cycle 2), and 2026-06-20 (cycle 4)
+- independent heuristic UX evaluation (2026-04-22, 2026-06-18 cycle 1 and 2, 2026-06-20 cycle 4)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123 from newly discovered issues and resolved/updated GAP-08, GAP-28, GAP-30, GAP-37, GAP-38, and GAP-45. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165.
+
+## 2026-06-20 (Cycle 4) Reconciliation Notes
+
+- **10 gaps resolved this cycle:** GAP-155 (toast-warning CSS), GAP-156 (empty-state CTA), GAP-157 (rename widget aria-label), GAP-158 (tabpanel aria-labelledby), GAP-159 (HTML semantic landmarks), GAP-160 (workflow overflow-x), GAP-161 (openMasterCvModal focus), GAP-162 (alert() in session-switcher-ui), D6 (duplicate .step-stale-badge).
+- **5 new open gaps:** GAP-163 (summary prompt wrong opening formula), GAP-164 (initialize() dead export), GAP-165 (content_warnings not fired on applyLayoutSettings), C4-1 (manual achievement edits bypass rewrite_audit), C4-2 (spell suggestions unsorted).
+- **9 persona agents hit API session limit during cycle 4 (hr-ats, master-cv-curator, applicant, first-time-user, hiring-manager, ux-expert, and 3 others)** — coverage reduced; those personas were not re-reviewed this cycle.
+- **Most critical open gaps:** GAP-36 (first-run onboarding), GAP-41 (no pre-job Master CV entry), GAP-72 (step pill keyboard), GAP-73 (aria-live on workflow), GAP-132 (divergent CV templates), GAP-163 (summary LLM prompt contradiction), GAP-165 (content_warnings applyLayoutSettings path).
 
 ## 2026-06-18 (Cycle 3) Reconciliation Notes
 
@@ -1323,3 +1330,113 @@ Three elements display status messages dynamically but have no `aria-live` attri
 **Affected stories:** US-X1, US-U7
 `web/styles.css` sets `outline: none` on `.message-input` unconditionally (not inside a `:focus` rule). This removes the browser's default keyboard focus indicator from the chat message input for all users at all times, including keyboard-only users. This is a WCAG 2.1 SC 2.4.7 (Focus Visible — Level AA) failure and a WCAG 2.4.11 (Focus Appearance — Level AA) failure.
 **Recommended resolution:** Remove the unconditional `outline: none`. If a custom focus style is desired, apply it as `.message-input:focus { outline: 2px solid #2980b9; }` rather than suppressing the outline entirely. Also see GAP-35 for the companion issue of the missing accessible label on this element.
+
+---
+
+## 2026-06-20 (Cycle 4) New Gaps (GAP-155 through GAP-165)
+
+*Discovered during the 15-persona + heuristic review cycle 4, 2026-06-20. Note: 6 persona agents hit API session limits; coverage is partial.*
+
+---
+
+## GAP-155: `toast-warning` CSS Class Missing — Warning Toasts Visually Identical to Base Toast
+
+**Priority:** HIGH
+**Status:** RESOLVED 2026-06-20 — Added `.toast.toast-warning { border-left: 4px solid #f59e0b; }` after `.toast-error` rule in `web/styles.css`. Previously discovered 2026-06-20 (cycle 4 heuristic)
+**Affected stories:** US-U7, US-X3
+`web/styles.css` defined `.toast.toast-success` (green border) and `.toast.toast-error` (red border) but not `.toast.toast-warning`. Any call to `showToast(msg, 'warning')` — including the GAP-149 content-warning toasts in `web/layout-instruction.js:908` — rendered identically to the dark base slab: no colour coding, no severity distinction.
+**Fix:** Added amber border-left rule for `toast-warning` matching the same pattern as existing toast variants.
+
+---
+
+## GAP-156: Empty-Profile Modal "Get Started" CTA Closes Modal Without Navigating to Master CV
+
+**Priority:** HIGH
+**Status:** RESOLVED 2026-06-20 — `_setWelcomeSection('empty')` in `web/session-manager.js` now rewrites the "Get Started" button to "Open Master CV" and wires its `onclick` to call `closeWelcomeModal()` then `openMasterCvModal()`. Previously discovered 2026-06-20 (cycle 4)
+**Affected stories:** US-F1, US-F4
+When `_setWelcomeSection('empty')` is called (empty skeleton profile exists), the footer button still read "Get Started" and called `closeWelcomeModal()`, giving the user no obvious next action. The warning text directed users to the Master CV tab but the CTA did not navigate there.
+**Fix:** `_setWelcomeSection` dynamically updates button text and handler based on `section` argument.
+
+---
+
+## GAP-157: Rename Widget `okBtn`/`cancelBtn` Missing `aria-label` — Screen Readers Announce Symbols
+
+**Priority:** MEDIUM
+**Status:** RESOLVED 2026-06-20 — Added `aria-label="Save rename"` and `aria-label="Cancel rename"` to the respective buttons in `promptRenameCurrentSession()` in `web/session-manager.js`. Previously discovered 2026-06-20 (cycle 4)
+**Affected stories:** US-X1, US-S3
+The inline rename widget (GAP-113 fix) created `okBtn` (textContent `✓`) and `cancelBtn` (textContent `✕`) with only `title` attributes. Screen readers announce the Unicode symbols directly — "check mark" and "multiplication sign" — without communicating the semantic action.
+
+---
+
+## GAP-158: Tabpanel `#document-content` Missing `aria-labelledby` — Not Linked to Active Tab
+
+**Priority:** MEDIUM
+**Status:** RESOLVED 2026-06-20 — `switchTab()` in `web/review-table-base.js` now sets `aria-labelledby="tab-{tab}"` on `#document-content` whenever the active tab changes. Initial static value `aria-labelledby="tab-job"` added to `web/index.html`. Previously discovered 2026-06-20 (cycle 4)
+**Affected stories:** US-X2, US-X3
+`#document-content` had `role="tabpanel"` but no `aria-labelledby` linking it to the active tab element. WCAG 2.1 SC 4.1.2 requires that tabpanels be programmatically associated with their controlling tab via `aria-labelledby`.
+
+---
+
+## GAP-159: No HTML Semantic Landmarks — Screen Reader Navigation Impaired
+
+**Priority:** HIGH
+**Status:** RESOLVED 2026-06-20 — Replaced `.header` `<div>` with `<header role="banner">`, `.workflow` `<div>` with `<nav aria-label="Application workflow steps">`, and `.main-container` `<div>` with `<main>` in `web/index.html`. Previously discovered 2026-06-20 (cycle 4)
+**Affected stories:** US-X1, US-X2
+`web/index.html` used `<div>` for all major regions. Screen reader users relying on landmark navigation (e.g., NVDA/JAWS region list, VoiceOver rotor) had no way to jump directly to the header, navigation, or main content area. WCAG 2.1 SC 1.3.6 (Identify Purpose) and WCAG 2.4.1 (Bypass Blocks) require meaningful landmark regions.
+
+---
+
+## GAP-160: `.workflow-steps` No `overflow-x: auto` — Overflows on Narrow Viewports
+
+**Priority:** MEDIUM
+**Status:** RESOLVED 2026-06-20 — Added `overflow-x: auto` to `.workflow-steps` rule in `web/styles.css`. Previously discovered 2026-06-20 (cycle 4)
+**Affected stories:** US-U3, US-U9
+The workflow step strip uses flexbox with `justify-content: center` and no overflow handling. On viewports narrower than approximately 1600px, the step pills overflow and are clipped or push the layout horizontally.
+
+---
+
+## GAP-161: `openMasterCvModal()` Missing Focus Management — Focus Not Trapped or Restored
+
+**Priority:** HIGH
+**Status:** RESOLVED 2026-06-20 — `openMasterCvModal()` now saves `document.activeElement`, calls `setInitialFocus('master-cv-modal-overlay')` and `trapFocus('master-cv-modal-overlay')`. `closeMasterCvModal()` now calls `restoreFocus()`. `web/master-cv.js`. Previously discovered 2026-06-20 (cycle 4)
+**Affected stories:** US-X2, US-X3
+`openMasterCvModal()` at `web/master-cv.js:2475` did not save prior focus, move focus into the modal, or trap Tab within it. This contrasted with all sub-modals in the same file (lines 1270–1485) which correctly use the full `_focusedElementBeforeModal` / `setInitialFocus` / `trapFocus` / `restoreFocus` pattern.
+
+---
+
+## GAP-162: 10 `alert()` Calls in `session-switcher-ui.js` — Native Dialogs Break UX and Accessibility
+
+**Priority:** MEDIUM
+**Status:** RESOLVED 2026-06-20 — Replaced all 10 `alert()` calls in `web/session-switcher-ui.js` (rename error, trash error, restore error, delete error, empty-trash error) with `showToast()` error calls. Previously discovered 2026-06-20 (cycle 4)
+**Affected stories:** US-X1, US-U4, US-S4
+`web/session-switcher-ui.js` used native `alert()` for all error paths (rename, delete, restore, empty-trash). Native alert dialogs block the event loop, cannot be styled, are not accessible via custom focus management, and break the keyboard flow in ways that `showToast()` does not.
+
+---
+
+## GAP-163: Summary Prompt Contradicts US-P1 — Instructs "Title + Years" Opening Instead of Value-Identity
+
+**Priority:** HIGH
+**Status:** OPEN — Discovered 2026-06-20 (cycle 4)
+**Affected stories:** US-P1, US-M2
+`scripts/utils/llm_client.py:850` (summary generation prompt) instructs the LLM to open with the candidate's job title and years of experience ("Results-driven {title} with {N} years of experience"). US-P1 requires value-identity openings ("X leader who delivers Y result"). The LLM prompt directly contradicts the story requirement, producing summaries that fail the persuasion standard regardless of LLM capability.
+**Recommended resolution:** Update the system prompt for summary generation to instruct a value-identity opening per US-P1: strong verb + differentiating value claim, not title + tenure formula.
+
+---
+
+## GAP-164: `initialize()` Exported from `ui-core.js` But Never Called — Dead Export
+
+**Priority:** LOW
+**Status:** OPEN — Discovered 2026-06-20 (cycle 4)
+**Affected stories:** US-U1 (tangential)
+`web/ui-core.js` exports `initialize()` (line 472–502) via `ui_core_exports` which is spread into `globalThis` at bundle time. The function is never called anywhere in the codebase. Dead exports in the global namespace increase name-collision risk and maintenance confusion.
+**Recommended resolution:** Either call `initialize()` from `app.js` as intended, or remove the export and the function if its purpose has been superseded by the per-tab initialization in `loadTabContent()`.
+
+---
+
+## GAP-165: `content_warnings` Not Processed on `applyLayoutSettings()` Path
+
+**Priority:** MEDIUM
+**Status:** OPEN — Discovered 2026-06-20 (cycle 4)
+**Affected stories:** US-M1, US-R2
+The GAP-149 fix added `content_warnings` processing in the `generatePreview()` success handler in `web/layout-instruction.js:907`. However, the `applyLayoutSettings()` function (line 615) also calls `/api/cv/generate-preview` and does not process `content_warnings` from its response. Similarly, the passive restore path does not fire the toast. Users who re-apply layout settings after an initial generation miss the content-warning feedback.
+**Recommended resolution:** Extract `content_warnings` toast logic into a shared helper and call it from every path that processes a `/api/cv/generate-preview` response, including `applyLayoutSettings()` and any restore/reload path.
