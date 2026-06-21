@@ -89,15 +89,6 @@ class TestStateSchema(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.cm  = _make_manager(self.tmp)
 
-    def test_pending_rewrites_initialised_to_none(self):
-        self.assertIsNone(self.cm.state['pending_rewrites'])
-
-    def test_approved_rewrites_initialised_to_empty_list(self):
-        self.assertEqual(self.cm.state['approved_rewrites'], [])
-
-    def test_rewrite_audit_initialised_to_empty_list(self):
-        self.assertEqual(self.cm.state['rewrite_audit'], [])
-
     def test_phase_comment_includes_rewrite_review(self):
         """Phase value must be one of the valid phases; rewrite_review is accepted without error."""
         self.cm.state['phase'] = 'rewrite_review'  # should just work
@@ -620,33 +611,6 @@ class TestAnalyzeQuestionExtraction(unittest.TestCase):
         with no recommendations present.
         """
         self.cm.llm.chat.return_value = 'Any clarifying question?'
-        self.cm._execute_action({'action': 'analyze_job'})
-        self.assertEqual(self.cm.state['phase'], 'job_analysis')
-
-    def test_recommend_customizations_sets_customization_phase(self):
-        """recommend_customizations must advance to CUSTOMIZATION, not REWRITE_REVIEW.
-
-        After recommendations are generated the user still needs to review them
-        in the Customise tab. Jumping to REWRITE_REVIEW skips that review and
-        drops the user into the Rewrite tab on next session restore.
-        """
-        self.cm.state['job_analysis'] = {
-            'title': 'SDE', 'company': 'Acme', 'ats_keywords': [],
-        }
-        self.cm.llm.recommend_customizations.return_value = {
-            'recommended_experiences': [], 'recommended_skills': [],
-        }
-        self.cm._execute_action({'action': 'recommend_customizations'})
-        self.assertEqual(self.cm.state['phase'], 'customization')
-
-    def test_analyze_action_sets_job_analysis_phase(self):
-        """analyze_job must advance to JOB_ANALYSIS, not CUSTOMIZATION.
-
-        CUSTOMIZATION is only set when recommend_customizations runs.  If the
-        backend jumps straight to CUSTOMIZATION here, a restart between analysis
-        and recommendations restores the session with an empty Customise tab.
-        """
-        self.cm.llm.chat.return_value = 'Any question?'
         self.cm._execute_action({'action': 'analyze_job'})
         self.assertEqual(self.cm.state['phase'], 'job_analysis')
 

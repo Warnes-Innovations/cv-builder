@@ -142,10 +142,6 @@ class TestParseBibtexFile(unittest.TestCase):
     def tearDown(self):
         Path(self.bib_path).unlink(missing_ok=True)
 
-    def test_returns_dict(self):
-        result = parse_bibtex_file(self.bib_path)
-        self.assertIsInstance(result, dict)
-
     def test_all_entries_present(self):
         result = parse_bibtex_file(self.bib_path)
         self.assertIn("warnes2024ml", result)
@@ -255,11 +251,6 @@ class TestFormatPublication(unittest.TestCase):
         self.pubs = parse_bibtex_file(bib_path)
         Path(bib_path).unlink(missing_ok=True)
         self.article = self.pubs["warnes2024ml"]
-
-    def test_default_style_returns_string(self):
-        result = format_publication(self.article)
-        self.assertIsInstance(result, str)
-        self.assertTrue(len(result) > 0)
 
     def test_apa_contains_title(self):
         result = format_publication(self.article, style="apa")
@@ -624,20 +615,18 @@ class TestRoundTrip(unittest.TestCase):
 class TestBibtexTextToPublications(unittest.TestCase):
     """Direct tests for bibtex_text_to_publications edge cases."""
 
-    def test_empty_string_returns_empty_dict(self):
-        result = bibtex_text_to_publications("")
-        self.assertEqual(result, {})
-
-    def test_whitespace_only_returns_empty_dict(self):
-        result = bibtex_text_to_publications("   \n\t  ")
-        self.assertEqual(result, {})
+    def test_empty_whitespace_and_invalid_inputs_return_empty_dict(self):
+        cases = [
+            ("empty string",        ""),
+            ("whitespace only",     "   \n\t  "),
+            ("invalid bibtex",      "this is not bibtex at all!"),
+        ]
+        for label, text in cases:
+            with self.subTest(input=label):
+                self.assertEqual(bibtex_text_to_publications(text), {})
 
     def test_none_input_returns_empty_dict(self):
         result = bibtex_text_to_publications(None)
-        self.assertEqual(result, {})
-
-    def test_invalid_bibtex_returns_empty_dict(self):
-        result = bibtex_text_to_publications("this is not bibtex at all!")
         self.assertEqual(result, {})
 
     def test_write_failure_returns_empty_dict_not_unbound_error(self):

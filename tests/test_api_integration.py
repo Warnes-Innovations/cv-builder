@@ -157,10 +157,11 @@ class TestStatusAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_status_returns_json(self):
-        """GET /api/status returns valid JSON."""
+        """GET /api/status returns JSON with a phase field."""
         response = self.client.get('/api/status', query_string={'session_id': self.session_id})
         data = response.get_json()
         self.assertIsNotNone(data)
+        self.assertIn('phase', data)
 
     def test_status_includes_required_fields(self):
         """Status response includes phase and LLM provider."""
@@ -199,13 +200,14 @@ class TestMasterDataAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_master_data_overview_returns_structure(self):
-        """Master data overview includes counts and personal info."""
+        """Master data overview succeeds and includes counts and personal info."""
         response = self.client.get(
             '/api/master-data/overview',
             query_string={'session_id': self.session_id},
         )
         data = response.get_json()
         self.assertIn('ok', data)
+        self.assertTrue(data['ok'])
         self.assertIn('name', data)
         self.assertIn('email', data)
         self.assertIn('experience_count', data)
