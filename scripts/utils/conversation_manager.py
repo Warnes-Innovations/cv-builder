@@ -782,24 +782,44 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             page_budget=page_budget,
         )
 
-        # Page-count iteration: if recommended content is estimated to exceed
-        # the CV body budget by >25%, re-call the LLM with explicit feedback.
+        # Page-count iteration: re-call the LLM if the estimated page count is
+        # too high (>25% over budget) or too low (<75% of budget with content
+        # still available), so the final recommendations fit the page target.
         if page_budget and page_budget.get('max_cv_pages'):
             max_cv   = page_budget['max_cv_pages']
             estimated = self._estimate_cv_body_pages(
                 recommendations, self.orchestrator.master_data
             )
+            retry_prefs = dict(user_preferences or {})
             if estimated > max_cv * 1.25:
                 print(
                     f"  ⚠ Estimated CV body {estimated:.1f} pages > {max_cv} page budget "
                     "— refining recommendations..."
                 )
-                retry_prefs = dict(user_preferences or {})
                 retry_prefs['page_count_feedback'] = (
                     f"Your previous recommendations would fill approximately {estimated:.1f} pages "
                     f"of CV body content (target ≤ {max_cv} pages).  "
                     "Please change some Include → De-emphasize or Emphasize → Include "
                     "to bring the total within budget.  Prioritise the highest-relevance items."
+                )
+                recommendations = self.llm.recommend_customizations(
+                    self.state['job_analysis'],
+                    self.orchestrator.master_data,
+                    user_preferences=retry_prefs,
+                    conversation_history=self.conversation_history,
+                    page_budget=page_budget,
+                )
+            elif (estimated < max_cv * 0.75
+                  and not self._all_available_cv_content_included(
+                      recommendations, self.orchestrator.master_data)):
+                print(
+                    f"  ℹ Estimated CV body {estimated:.1f} pages < {max_cv} page budget "
+                    "— requesting more content..."
+                )
+                retry_prefs['page_count_feedback'] = (
+                    f"Your previous recommendations would fill approximately {estimated:.1f} pages "
+                    f"of CV body content (target ≤ {max_cv} pages).  "
+                    "Please include additional relevant content to better fill the available space."
                 )
                 recommendations = self.llm.recommend_customizations(
                     self.state['job_analysis'],
@@ -861,6 +881,30 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         total += n_included_achs * 200
 
         return round(total / chars_per_page, 1)
+
+    def _all_available_cv_content_included(
+        self,
+        recommendations: Dict,
+        master_data: Dict,
+    ) -> bool:
+        """Return True if recommendations already cover all available experience and skill content."""
+        rec_exp_ids = set(recommendations.get('recommended_experiences', []))
+        all_exp_ids = {
+            str(e.get('id', ''))
+            for e in master_data.get('experience', [])
+            if e.get('id')
+        }
+        if all_exp_ids - rec_exp_ids:
+            return False
+        rec_skills = {
+            (s.lower() if isinstance(s, str) else str(s.get('name', '')).lower())
+            for s in recommendations.get('recommended_skills', [])
+        }
+        all_skills = {
+            (s.lower() if isinstance(s, str) else str(s.get('name', '')).lower())
+            for s in master_data.get('skills', [])
+        }
+        return not bool(all_skills - rec_skills)
 
     def _handle_submit_rewrites(self, action: Dict) -> Optional[str]:
         """Handle the submit_rewrites action."""

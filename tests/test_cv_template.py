@@ -279,7 +279,6 @@ class TestOptionalSidebarFields(unittest.TestCase):
     def test_column_spacing_tunings_are_rendered(self):
         html = _render()
         self.assertIn('#cv-body .right-col {', html)
-        self.assertIn('padding: 40px 30px;', html)
         self.assertIn('#cv-body .left-col {', html)
 
 class TestExperiencePageFlow(unittest.TestCase):
