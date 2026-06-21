@@ -847,7 +847,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                 "professional summary for a CV application.\n\n"
                 "REQUIREMENTS:\n"
                 "- 3–5 sentences (≈80–150 words)\n"
-                "- Open with a strong positioning statement (title + years of experience)\n"
+                "- Open with a value-identity statement: strong verb + differentiating value claim (e.g. 'Drives 3× revenue growth…', 'Builds ML pipelines that…') — NOT a title + years-of-experience formula\n"
                 "- Weave in 3–5 of the provided ATS keywords naturally\n"
                 "- Reference 1–2 specific, quantified achievements from the experience list\n"
                 "- Close with a forward-looking statement aligned to the target role\n"

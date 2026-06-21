@@ -660,7 +660,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-X1, US-U7
-**Status:** OPEN - discovered 2026-04-22; accessibility and UX expert reviews confirmed all 8 workflow step pills are `<div>` elements with `onclick` handlers but no `tabindex="0"` or `keydown` handlers (`web/workflow-steps.js:666–670`). Keyboard users cannot focus or activate any step pill.
+**Status:** RESOLVED 2026-06-20 — `updateWorkflowStepsClickable()` in `web/ui-core.js` now adds `role="button"`, `tabindex="0"`, and a keydown handler (Enter/Space) when a step becomes clickable; removes them when inert. See GAP-72/GAP-NEW-K entry in cycle 4 section. Previously discovered 2026-04-22.
 **Description:** The workflow step bar is the primary navigation affordance for the entire application. Without keyboard access, keyboard-only users cannot navigate between stages, trigger back-navigation, or discover the ↻ re-run action.
 **Recommended resolution:** Add `tabindex="0"` and `Enter`/`Space` `keydown` event handlers to all step pill elements. Ensure the ↻ re-run icon within each pill is separately reachable. Apply the ARIA `tablist` pattern.
 
@@ -1416,10 +1416,9 @@ The workflow step strip uses flexbox with `justify-content: center` and no overf
 ## GAP-163: Summary Prompt Contradicts US-P1 — Instructs "Title + Years" Opening Instead of Value-Identity
 
 **Priority:** HIGH
-**Status:** OPEN — Discovered 2026-06-20 (cycle 4)
+**Status:** RESOLVED 2026-06-20 — Updated summary generation prompt in `scripts/utils/llm_client.py:850` to instruct value-identity opening ("strong verb + differentiating value claim") instead of the title + years formula. Previously discovered 2026-06-20 (cycle 4)
 **Affected stories:** US-P1, US-M2
 `scripts/utils/llm_client.py:850` (summary generation prompt) instructs the LLM to open with the candidate's job title and years of experience ("Results-driven {title} with {N} years of experience"). US-P1 requires value-identity openings ("X leader who delivers Y result"). The LLM prompt directly contradicts the story requirement, producing summaries that fail the persuasion standard regardless of LLM capability.
-**Recommended resolution:** Update the system prompt for summary generation to instruct a value-identity opening per US-P1: strong verb + differentiating value claim, not title + tenure formula.
 
 ---
 
@@ -1436,7 +1435,15 @@ The workflow step strip uses flexbox with `justify-content: center` and no overf
 ## GAP-165: `content_warnings` Not Processed on `applyLayoutSettings()` Path
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-20 (cycle 4)
+**Status:** RESOLVED 2026-06-20 — Added `content_warnings` toast processing to `applyLayoutSettings()` response handler in `web/layout-instruction.js`. Previously discovered 2026-06-20 (cycle 4)
 **Affected stories:** US-M1, US-R2
 The GAP-149 fix added `content_warnings` processing in the `generatePreview()` success handler in `web/layout-instruction.js:907`. However, the `applyLayoutSettings()` function (line 615) also calls `/api/cv/generate-preview` and does not process `content_warnings` from its response. Similarly, the passive restore path does not fire the toast. Users who re-apply layout settings after an initial generation miss the content-warning feedback.
-**Recommended resolution:** Extract `content_warnings` toast logic into a shared helper and call it from every path that processes a `/api/cv/generate-preview` response, including `applyLayoutSettings()` and any restore/reload path.
+
+---
+
+## GAP-72 / GAP-NEW-K: Workflow Step Pills — Keyboard Navigation (Enter/Space)
+
+**Priority:** HIGH
+**Status:** RESOLVED 2026-06-20 — `updateWorkflowStepsClickable()` in `web/ui-core.js` now sets `role="button"` and `tabindex="0"` on steps as they become clickable, and attaches a `keydown` handler for Enter/Space. Non-clickable steps get `tabindex="-1"` and role removed. `step-job` initial state updated in `web/index.html`. Previously tracked as GAP-72 (2026-04-22)
+**Affected stories:** US-X1, US-X2
+Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, or keyboard event listeners. Keyboard-only users could not activate workflow step navigation using Enter or Space.

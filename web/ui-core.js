@@ -1914,13 +1914,40 @@ function updateWorkflowStepsClickable(currentPhase) {
   const postLayoutUnlocked = ['final_generation', 'refinement'].includes(currentPhase);
   const currentIdx = phaseToIndex[currentPhase] ?? 0;
 
+  function _makeStepClickable(el) {
+    if (!el || el.classList.contains('clickable')) return;
+    el.classList.add('clickable');
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    if (!el._stepKeyHandler) {
+      el._stepKeyHandler = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          el.click();
+        }
+      };
+      el.addEventListener('keydown', el._stepKeyHandler);
+    }
+  }
+
+  function _makeStepInert(el) {
+    if (!el) return;
+    el.classList.remove('clickable');
+    el.removeAttribute('role');
+    el.setAttribute('tabindex', '-1');
+    if (el._stepKeyHandler) {
+      el.removeEventListener('keydown', el._stepKeyHandler);
+      delete el._stepKeyHandler;
+    }
+  }
+
   sequentialSteps.forEach((id, idx) => {
     const el = document.getElementById(id);
     if (!el) return;
     if (idx <= currentIdx || postLayoutUnlocked) {
-      el.classList.add('clickable');
+      _makeStepClickable(el);
     } else {
-      el.classList.remove('clickable');
+      _makeStepInert(el);
     }
   });
 
@@ -1928,9 +1955,9 @@ function updateWorkflowStepsClickable(currentPhase) {
     const el = document.getElementById(id);
     if (!el) return;
     if (postLayoutUnlocked) {
-      el.classList.add('clickable');
+      _makeStepClickable(el);
     } else {
-      el.classList.remove('clickable');
+      _makeStepInert(el);
     }
   });
 }

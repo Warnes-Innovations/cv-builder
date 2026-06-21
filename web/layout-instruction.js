@@ -630,6 +630,9 @@ async function applyLayoutSettings(fontSizeValue, pageMarginValue, publicationsS
       });
       renderPreviewOutputStatus(previewRes.preview_outputs || null);
       refreshLayoutReviewState();
+      (previewRes.content_warnings || []).forEach(w => {
+        if (typeof showToast === 'function') showToast(w.message, 'warning', 8000);
+      });
     }
     if (statusEl) { statusEl.textContent = '✅ Applied'; setTimeout(() => { statusEl.textContent = ''; }, 2000); }
   } catch (err) {
