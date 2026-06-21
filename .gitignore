@@ -48,3 +48,4 @@ htmlcov/
 *.bak
 tasks/e2e-test-report-*.md
 .specstory/history/
+.specstory/statistics.json
