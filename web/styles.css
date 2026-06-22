@@ -141,6 +141,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 }
 .step.clickable { cursor: pointer; }
 .step.clickable:hover { filter: brightness(0.93); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+.step:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
 .load-item-row:hover td { background: #f0f9ff !important; }
 
 /* ===== WORKFLOW STEPS ===== */
@@ -586,6 +587,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .action-btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 .action-btn.primary:hover:not(:disabled) { background: #2563eb; }
 .action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.action-btn:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
 
 /* ===== TABS ===== */
 .tab-bar-wrapper {
@@ -632,6 +634,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
   transition: color 0.15s, border-color 0.15s;
 }
 .tab:hover { color: #334155; background: #f1f5f9; }
+.tab:focus-visible { outline: 2px solid #3b82f6; outline-offset: -2px; }
 .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; background: #fff; }
 .tab-stale { color: #92400e; }
 .tab-stale-critical { color: #b91c1c; }

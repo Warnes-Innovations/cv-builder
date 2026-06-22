@@ -152,7 +152,7 @@
       <div id="llm-busy-overlay">
         <div id="llm-busy-card">
           <div class="llm-busy-spinner"></div>
-          <div id="llm-busy-label">Reasoning…</div>
+          <div id="llm-busy-label" aria-live="polite" role="status">Reasoning…</div>
           <div id="llm-busy-elapsed">0:00</div>
           <div id="llm-busy-state-badge">Taking longer than usual</div>
           <button id="llm-busy-stop" onclick="abortCurrentRequest()">■ Stop</button>
@@ -183,7 +183,7 @@
           <button class="action-btn primary" id="recommend-btn"         style="display:none">⚙️ Recommend Customizations</button>
           <button class="action-btn primary" id="generate-btn"          style="display:none">✏️ Review Rewrites</button>
           <button class="action-btn primary" id="rewrite-btn"           style="display:none">Continue to Spell Check →</button>
-          <button class="action-btn primary" id="spell-btn"             style="display:none">Done — Generate CV →</button>
+          <button class="action-btn primary" id="spell-btn"             style="display:none">Generate Preview →</button>
           <button class="action-btn primary" id="generate-proceed-btn"  style="display:none">🎨 Open Layout Review →</button>
           <button class="action-btn primary" id="layout-btn"                    style="display:none">✅ Confirm Layout</button>
           <button class="action-btn primary" id="final-generate-proceed-btn" style="display:none">✅ Proceed to Finalise →</button>

@@ -455,6 +455,7 @@ async function openSessionsModal({ required = false } = {}) {
   await _renderSessionsModalBody();
   _refreshTrashBadge();
   trapFocus('sessions-modal-overlay');
+  setInitialFocus('sessions-modal-overlay');
 }
 
 function closeSessionsModal() {

@@ -699,16 +699,30 @@ function updateWorkflowSteps(status) {
       el.classList.add('completed');
       // Completed steps are clickable for back-navigation.
       el.classList.add('clickable');
-      // Add ↻ re-run icon for steps that support LLM re-execution
+      // Add ↻ re-run button for steps that support LLM re-execution
       if (RE_RUN_STEPS.has(step)) {
-        label += ` <span class="step-rerun" title="Re-run ${step} with updated inputs"
+        const rerunLabel = _STEP_DISPLAY[step] || step;
+        label += ` <button class="step-rerun" aria-label="Re-run ${rerunLabel}"
+          title="Re-run ${step} with updated inputs"
           onclick="event.stopPropagation();confirmReRunPhase('${step}')"
-          style="font-size:0.8em;opacity:0;transition:opacity 0.15s;margin-left:2px;cursor:pointer;">↻</span>`;
+          style="font-size:0.8em;opacity:0;transition:opacity 0.15s;margin-left:2px;cursor:pointer;background:none;border:none;padding:0;color:inherit;line-height:1;">↻</button>`;
       }
     }
 
     // Apply stale class for steps downstream of a re-run
     if (staleSteps.has(step)) el.classList.add('stale');
+
+    // Append sr-only state description for screen reader users
+    const isStale         = staleSteps.has(step);
+    const isStaleCritical = el.classList.contains('stale-critical');
+    const isActive        = el.classList.contains('active');
+    const isCompleted     = el.classList.contains('completed');
+    const srState = isStaleCritical ? ' (critical — review required)'
+      : isStale     ? ' (stale — results may be outdated)'
+      : isActive    ? ' (current step)'
+      : isCompleted ? ' (completed)'
+      : '';
+    if (srState) label += `<span class="sr-only">${srState}</span>`;
 
     el.innerHTML = label;
   });
@@ -720,7 +734,7 @@ function updateWorkflowSteps(status) {
   if (!document.getElementById('step-rerun-style')) {
     const s = document.createElement('style');
     s.id = 'step-rerun-style';
-    s.textContent = '.step.completed:hover .step-rerun { opacity: 1 !important; }';
+    s.textContent = '.step.completed:hover .step-rerun, .step.completed:focus-within .step-rerun { opacity: 1 !important; } .step-rerun:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; opacity: 1 !important; }';
     document.head.appendChild(s);
   }
 

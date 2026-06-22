@@ -1476,7 +1476,7 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-167: ↻ Re-Run `<span>` Inside Step Pills Is Keyboard-Inaccessible
 
 **Priority:** HIGH
-**Status:** OPEN — Discovered 2026-06-20 (cycle 5)
+**Status:** RESOLVED 2026-06-22 — Converted `.step-rerun` from a bare `<span>` to a `<button>` element with `aria-label="Re-run ${stepLabel}"`, `background:none;border:none;padding:0` styling, and no change to click behavior. Hover CSS injection updated to also reveal on `:focus-within` and `:focus-visible`. `web/workflow-steps.js:702–707`. Previously OPEN since 2026-06-20.
 **Affected stories:** US-X1, US-A12, US-U7
 `web/workflow-steps.js:704–706` inserts a `<span class="step-rerun">` inside each completed step pill that supports LLM re-execution. The span has a bare `onclick="event.stopPropagation();confirmReRunPhase('${step}')"` handler but no `role="button"`, no `tabindex`, and no `keydown` listener. The span also starts at `opacity:0` and becomes visible only on CSS `:hover` (`styles.css` injected rule at `workflow-steps.js:723`). Keyboard-only users cannot reach or activate the re-run action; screen reader users receive no announcement of the control's purpose.
 **Recommended resolution:** Convert the re-run indicator from a `<span>` to a `<button>` element (or add `role="button"`, `tabindex="0"`, `aria-label="Re-run ${stepLabel}"`, and a `keydown` handler for Enter/Space). Replace `opacity:0/hover` visibility with `:focus-within` or always-visible styling to ensure keyboard-discoverable affordance.
@@ -1486,7 +1486,7 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-168: `openSessionsModal` Traps Focus But Does Not Move Focus Into Modal
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-20 (cycle 5)
+**Status:** RESOLVED 2026-06-22 — Added `setInitialFocus('sessions-modal-overlay')` call immediately after `trapFocus()` in `openSessionsModal()`. `web/session-switcher-ui.js:458`. Previously OPEN since 2026-06-20.
 **Affected stories:** US-X2, US-S1
 `web/session-switcher-ui.js:445–458` — `openSessionsModal()` calls `trapFocus('sessions-modal-overlay')` at line 457 but does not call `setInitialFocus()` or move focus to the first actionable element in the modal. The result is that focus remains on whatever element triggered the modal open, with Tab-key now trapped inside a modal the user cannot perceive focus entering. Contrast with `openMasterCvModal()` (fixed in cycle 4) which correctly calls both `setInitialFocus` and `trapFocus`.
 **Recommended resolution:** Call `setInitialFocus('sessions-modal-overlay')` immediately after `trapFocus()` in `openSessionsModal()`, and save `document.activeElement` before opening to restore focus on close.
@@ -1496,7 +1496,7 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-169: "Done — Generate CV →" CTA Label Misleads Users About What Happens Next
 
 **Priority:** LOW
-**Status:** OPEN — Discovered 2026-06-20 (cycle 5)
+**Status:** RESOLVED 2026-06-22 — Renamed `#spell-btn` button text from "Done — Generate CV →" to "Generate Preview →" in `web/index.html:186`. Previously OPEN since 2026-06-20.
 **Affected stories:** US-F3, US-U6
 `web/index.html:186` — the spell-check completion button (`#spell-btn`) reads "Done — Generate CV →". Activating this button calls `generatePreview()`, which produces an HTML preview for layout review — not the final CV files. The label implies that clicking it produces the finished submission-ready CV, which is not accurate. Users may be surprised to land on the Layout Review step rather than a download page.
 **Recommended resolution:** Rename the button to "Generate Preview →" or "Next: Layout Review →" to accurately describe the destination and preserve the staged-generation mental model introduced by GAP-79's recommended fix.
@@ -1506,7 +1506,7 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-170: `#llm-busy-label` Has No `aria-live` — "Reasoning…" Not Announced to Screen Readers
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-20 (cycle 5)
+**Status:** RESOLVED 2026-06-22 — Added `aria-live="polite" role="status"` to `#llm-busy-label` in `web/index.html:155`. Previously OPEN since 2026-06-20.
 **Affected stories:** US-X3, US-U7
 `web/index.html:155` — `<div id="llm-busy-label">Reasoning…</div>` is updated dynamically by `job-input.js`, `job-analysis.js`, and other modules to describe the current LLM operation. The element has no `aria-live` attribute or `role="status"`. Screen reader users receive no announcement when the overlay appears or when the label text changes (e.g., "Analysing job description…", "Generating rewrites…"). The outer `#llm-busy-overlay` is similarly silent.
 **Recommended resolution:** Add `aria-live="polite"` and `role="status"` to `#llm-busy-label` so that its content is announced to screen reader users when the overlay becomes visible. Alternatively, add `aria-live="assertive"` to the overlay container so the appearance of any busy state is immediately announced.
@@ -1516,7 +1516,7 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-171: Category Reorder Buttons Missing `aria-label` — WCAG 2.1 Level A Failure
 
 **Priority:** HIGH
-**Status:** OPEN — Discovered 2026-06-20 (cycle 5)
+**Status:** RESOLVED 2026-06-22 — Added `aria-label="Move ${category} category up"` and `aria-label="Move ${category} category down"` to the category reorder buttons in `web/skills-review.js:423–424`. Previously OPEN since 2026-06-20.
 **Affected stories:** US-X1, US-M3
 `web/skills-review.js:423–424` — the skill category reorder buttons use `title` attribute only:
 
@@ -1533,7 +1533,7 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-172: Workflow Step States Conveyed by Colour Alone — No Screen-Reader Text
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-20 (cycle 5)
+**Status:** RESOLVED 2026-06-22 — `updateWorkflowSteps()` in `web/workflow-steps.js` now appends a `<span class="sr-only">` to each step pill describing its state: "(current step)", "(completed)", "(stale — results may be outdated)", "(critical — review required)". Previously OPEN since 2026-06-20.
 **Affected stories:** US-X1, US-U7
 `web/styles.css:149–159` — the five workflow step states (active, completed, upcoming, stale, stale-critical) are differentiated exclusively by background colour and text colour changes. No `.sr-only` text or `aria-label` announces the current state of each pill to screen reader users. A screen reader user navigating the step bar via keyboard hears the step label (e.g., "Analysis") but receives no state information ("completed", "stale — results may be outdated").
 **Recommended resolution:** In `updateWorkflowSteps()` (`web/workflow-steps.js`), append a visually-hidden `<span class="sr-only">` to each step element describing its state: " (completed)", " (active)", " (stale — click to review)", etc. Update the span's text whenever the state class changes.
@@ -1543,7 +1543,7 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-173: No `:focus-visible` CSS for `.tab`, `.action-btn`, and `.step` Elements
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-20 (cycle 5)
+**Status:** RESOLVED 2026-06-22 — Added `:focus-visible` rules to `web/styles.css` for `.action-btn` (line 589), `.tab` (line 635), and `.step` (line 144). All three classes now show a 2px blue outline on keyboard focus, visible in Windows High Contrast mode. Previously OPEN since 2026-06-20.
 **Affected stories:** US-X1, US-U7
 `web/styles.css` — no `:focus-visible` rules exist for the three primary interactive element classes: `.tab` (viewer tab bar), `.action-btn` (workflow action buttons), and `.step` (workflow step pills). These rely entirely on the browser's default focus ring, which is invisible in Windows High Contrast mode and suppressed in some browsers by default. The `#message-input` outline issue was fixed in cycle 3 (GAP-154), but the other interactive classes were not updated to include explicit `:focus-visible` styling.
 **Recommended resolution:** Add `:focus-visible` rules for `.tab:focus-visible`, `.action-btn:focus-visible`, and `.step:focus-visible` with a distinct, high-contrast outline (e.g., `outline: 2px solid #2980b9; outline-offset: 2px`). This ensures keyboard focus is visible across browsers and accessibility modes.

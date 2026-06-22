@@ -420,8 +420,8 @@ function _buildSkillCategoryManagerHtml() {
               aria-label="Rename skill category ${escapeHtml(category)}"
               style="flex:1;min-width:0;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;"
             />
-            <button class="icon-btn" data-action="category-up" data-category="${escapeHtml(category)}" title="Move category up" ${index === 0 ? 'disabled' : ''}>↑</button>
-            <button class="icon-btn" data-action="category-down" data-category="${escapeHtml(category)}" title="Move category down" ${index === categories.length - 1 ? 'disabled' : ''}>↓</button>
+            <button class="icon-btn" data-action="category-up" data-category="${escapeHtml(category)}" aria-label="Move ${escapeHtml(category)} category up" title="Move category up" ${index === 0 ? 'disabled' : ''}>↑</button>
+            <button class="icon-btn" data-action="category-down" data-category="${escapeHtml(category)}" aria-label="Move ${escapeHtml(category)} category down" title="Move category down" ${index === categories.length - 1 ? 'disabled' : ''}>↓</button>
           </div>
         `).join('')}
       </div>
