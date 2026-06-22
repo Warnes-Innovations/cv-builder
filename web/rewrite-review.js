@@ -33,6 +33,37 @@ function syncRewriteGlobals() {
   window.rejectAllRewrites = rejectAllRewrites;
 }
 
+function _decisionsKey() {
+  try {
+    const sid = new URLSearchParams(window.location.search).get('session');
+    return sid ? `rw_decisions_${sid}` : null;
+  } catch (_) { return null; }
+}
+
+function _persistDecisions() {
+  const key = _decisionsKey();
+  if (!key) return;
+  try { localStorage.setItem(key, JSON.stringify(rewriteDecisions)); } catch (_) {}
+}
+
+function _restoreDecisions() {
+  const key = _decisionsKey();
+  if (!key) return;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+      Object.assign(rewriteDecisions, saved);
+      syncRewriteGlobals();
+    }
+  } catch (_) {}
+}
+
+function _clearPersistedDecisions() {
+  const key = _decisionsKey();
+  if (!key) return;
+  try { localStorage.removeItem(key); } catch (_) {}
+}
+
 async function fetchAndReviewRewrites() {
   const loadingMsg = appendLoadingMessage('Checking for text improvements...');
   setLoading(true, 'Reviewing rewrites…');
@@ -151,6 +182,8 @@ function renderRewritePanel(rewrites, warnings = []) {
     </div>
   `;
 
+  // Restore decisions persisted from a previous page load (GAP-166).
+  _restoreDecisions();
   // Re-apply any decisions made before the last tab navigation.
   if (Object.keys(rewriteDecisions).length > 0) {
     for (const [id, dec] of Object.entries(rewriteDecisions)) {
@@ -316,6 +349,7 @@ function applyRewriteAction(id, outcome) {
     afterEl.style.display = 'none';
 
     rewriteDecisions[id] = { outcome, final_text: null };
+    _persistDecisions();
     card.classList.add(outcome === 'accept' ? 'accepted' : 'rejected');
     document.getElementById(`rw-${outcome}-${id}`)?.classList.add('active');
     syncRewriteGlobals();
@@ -343,6 +377,7 @@ function saveRewriteEdit(id) {
   }
 
   rewriteDecisions[id] = { outcome: 'edit', final_text: editedText };
+  _persistDecisions();
   card.classList.remove('rejected');
   card.classList.add('accepted');
   ['accept', 'reject'].forEach(a => document.getElementById(`rw-${a}-${id}`)?.classList.remove('active'));
@@ -431,6 +466,7 @@ async function submitRewriteDecisions() {
     const accepted = data.approved_count || 0;
     const rejected = data.rejected_count || 0;
     stateManager.markContentChanged();
+    _clearPersistedDecisions();
     appendMessage('assistant', `✅ Rewrite decisions recorded: ${accepted} accepted, ${rejected} rejected. Starting spell check…`);
     scheduleAtsRefresh('review_checkpoint');
     switchTab('spell');

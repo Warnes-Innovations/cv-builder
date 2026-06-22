@@ -15,7 +15,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 - **1 gap resolved this cycle:** GAP-39 (cover letter and screening DOCX now surfaced in Download/Finalise tab).
 - **10 new open gaps:** GAP-166 through GAP-175, spanning returning-user (GAP-166 — data loss on restore), accessibility (GAP-167 ↻ rerun span, GAP-168 sessions modal focus, GAP-170 llm-busy-label, GAP-171 category reorder aria-label, GAP-172 colour-only step states, GAP-173 focus-visible CSS), UX (GAP-169 misleading CTA label), and hiring-manager/persuasion (GAP-174 company-initiative injection, GAP-175 summary specificity).
 - **GAP-72 regression clarification:** Cycle 5 accessibility agent reported steps 2–12 still missing role/tabindex. Code inspection at `web/ui-core.js:1917–1931` confirms `_makeStepClickable()` DOES add `role="button"`, `tabindex="0"`, and keydown handler. Agent misread `workflow-steps.js` without reading `ui-core.js`. GAP-72 remains correctly RESOLVED.
-- **Most critical open gaps:** GAP-36 (first-run onboarding), GAP-41 (pre-job Master CV editor), GAP-166 (rewriteDecisions data loss), GAP-167 (↻ rerun span keyboard), GAP-174 (cover letter company initiative), GAP-132 (divergent CV templates).
+- **Most critical open gaps:** GAP-36 (first-run onboarding), GAP-41 (pre-job Master CV editor), GAP-174 (cover letter company initiative), GAP-175 (summary specificity validator), GAP-132 (divergent CV templates).
 
 ## 2026-06-20 (Cycle 4) Reconciliation Notes
 
@@ -1466,10 +1466,9 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-166: `rewriteDecisions = {}` Reset on Session Restore — In-Progress Decisions Lost
 
 **Priority:** HIGH
-**Status:** OPEN — Discovered 2026-06-20 (cycle 5)
+**Status:** RESOLVED 2026-06-22 — Implemented `localStorage` persistence keyed by session ID in `web/rewrite-review.js`. Added `_persistDecisions()` (called after every accept/reject/edit at lines 318, 345), `_restoreDecisions()` (called at the start of `renderRewritePanel` before the re-apply loop), and `_clearPersistedDecisions()` (called after successful final submission). Decisions now survive page reload and browser close within the same session. Previously OPEN since 2026-06-20.
 **Affected stories:** US-S1, US-S2, US-A4
 `web/session-manager.js:740` resets `rewriteDecisions = {}` during session restore when `sessionPhase === PHASES.REWRITE_REVIEW`. The backend `/api/rewrites` endpoint returns rewrite proposals but not any prior partial decisions (accept/reject/edit) the user made before leaving the session. `renderRewritePanel()` then populates the UI from scratch with all proposals undecided. Any decisions the user had made before the session was interrupted are silently discarded.
-**Recommended resolution:** Before resetting `rewriteDecisions`, attempt to load any stored decision state from the session backend (e.g., a new `/api/rewrites/decisions` endpoint or embedding decision state in the `/api/rewrites` response). Alternatively, persist partial `rewriteDecisions` to the session state on every decision action rather than only on final submit.
 
 ---
 
