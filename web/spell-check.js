@@ -145,7 +145,7 @@ function renderSpellCheckZeroState(message, statsLine = '', customDictSize = 0) 
       <h2 style="color:#166534;">${escapeHtml(message)}</h2>
       ${statsParts.join('\n')}
       <p style="color:#6b7280;margin:16px 0 24px;">Continue when you are ready to generate your CV.</p>
-      <button class="submit-btn" onclick="submitEmptySpellCheck()">Done — Generate CV →</button>
+      <button class="submit-btn" onclick="submitEmptySpellCheck()">Generate Preview →</button>
     </div>
   `;
 }
@@ -268,7 +268,7 @@ function renderSpellSuggestions(flaggedSections, totalSections, stats = {}, cust
 
   html += `
     <div class="nav-buttons" style="margin:24px 0;">
-      <button class="submit-btn" onclick="submitSpellCheckDecisions()">Done — Generate CV →</button>
+      <button class="submit-btn" onclick="submitSpellCheckDecisions()">Generate Preview →</button>
     </div>
   `;
   results.innerHTML = html;

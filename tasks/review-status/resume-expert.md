@@ -4,35 +4,33 @@
 -->
 <!-- markdownlint-disable MD036 MD060 -->
 
-# Resume Optimisation Expert Review
+# Resume Expert Review Status
 
-**Persona:** Certified professional résumé writer / career strategist  
-**Date:** 2026-06-20 (Cycle 5 update)  
-**Reviewer:** Claude Sonnet 4.6 (source-first analysis)  
-**Story file:** `tasks/user-story-resume-expert.md`  
-**Rating key:** ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Implemented | — N/A
+**Last Updated:** 2026-06-22 12:00 ET
+
+**Executive Summary:** The application earns 15 Pass, 10 Partial, and 2 Fail across the seven story groups. The two hard failures are keyword-frequency weighting (US-R1 AC4) and cross-rewrite terminology consistency (US-R3 AC4) — both structural gaps that require new code, not prompt tuning. The most consequential single defect is that `candidate_to_confirm` skills (weak-evidence `skill_add` proposals) bypass all generated-output filters and appear unmarked in every PDF, DOCX, and HTML file. The spell/grammar subsystem and the rewrite audit trail are the strongest areas; the job-analysis display layer has unresolved visual inconsistency. No source-code changes relevant to this persona occurred between the Cycle 5 review (2026-06-20) and this refresh (2026-06-22); ratings and evidence are unchanged.
 
 ---
 
-## Section 1: Application Evaluation
+## Application Evaluation
 
 ### US-R1: Job Description Analysis Quality
 
-**AC1 — Required vs. preferred split displayed in visually distinct sections**
+**AC1 — Required vs. preferred displayed in visually distinct sections**
 
-⚠️ Partial — **Cycle 5 update (retains prior split verdict):** The analysis tab (`review-table-base.js`) renders required skills under `<h2>🎯 Required Skills</h2>` with `.skill-badge` chips and preferred under `<h2>⭐ Preferred / Nice-to-Have</h2>` as a distinct list. This tab-level rendering passes. However, the conversation-panel card (`message-queue.js:215–229`) renders all three groups (`required_skills`, `preferred_skills`, `nice_to_have_requirements`) as plain icon-differentiated headings inside a single unstyled card — no background colour, no border distinction, no CSS class differentiation. Users see the conversation card first (immediately after job analysis) before the analysis tab is populated. The two-panel inconsistency introduced in Cycle 4 finding C4-3 is confirmed still present. The analysis tab earns ✅; the conversation card earns ❌; overall rating remains ⚠️ Partial.
+⚠️ Partial — The Analysis tab (`ats-modals.js:282–293`) renders `required_skills` under `<h4>Required Skills</h4>` with green/red pill chips and `preferred_skills` under `<h4>Preferred / Nice-to-have</h4>` as a separate list — visually distinct. The conversation-panel card rendered immediately after job analysis (`message-queue.js:215–229`) renders all three groups (`required_skills`, `preferred_skills`, `nice_to_have_requirements`) as plain icon-prefixed `<h4>` headings inside a single unstyled `div.content.job-analysis` with no background colour, border colour, or CSS-class distinction. Users see the conversation card first; the two-panel inconsistency remains open.
 
 **AC2 — Synonyms and acronym/expansion pairs grouped**
 
-⚠️ Partial — `cv_orchestrator.py:503–531` (`_deduplicate_skills`) deduplicates using `canonical_skill_name` and `synonym_map.json` at the render/generation layer. The analysis tab ATS keyword badge list (`review-table-base.js`) and the conversation-panel ATS keyword chips (`message-queue.js:230–235`) still display the raw LLM output, which is not deduplicated. Users can see `"ML"` and `"Machine Learning"` as separate badges.
+⚠️ Partial — `cv_orchestrator.py:503–531` (`_deduplicate_skills`) deduplicates using `canonical_skill_name` backed by `synonym_map.json`. This operates at the render/generation layer only. The LLM `ats_keywords` array returned by `analyze_job_description` (`llm_client.py:276–323`) is displayed raw in both the conversation-panel chip list (`message-queue.js:230–235`) and the Analysis tab keyword badges (`ats-modals.js:298–301`). Synonym pairs such as `"ML"` and `"Machine Learning"` can appear as separate ATS keyword entries.
 
 **AC3 — Domain inference presented with confidence level; ambiguous cases prompt the user**
 
-⚠️ Partial — `job_analysis` JSON includes `domain` and `role_level` and these are displayed in the Analysis tab. No `domain_confidence` field exists in the LLM schema (`llm_client.py:252–316`). Ambiguous inferences do not trigger a user clarification. The post-analysis questions (`conversation_manager.py:654–713`) ask about experience emphasis, not domain ambiguity.
+⚠️ Partial — `job_analysis` JSON exposes `domain` and `role_level` and these appear in the Analysis tab header block (`ats-modals.js:272`). The LLM schema (`llm_client.py:299–310`) has no `domain_confidence` field. Ambiguous domain inferences do not trigger clarification. The post-analysis questions (`conversation_manager.py:654–713`) target experience-emphasis and positioning, not domain ambiguity.
 
-**AC4 — Keyword frequency weighting (title, first paragraph, repeat appearances)**
+**AC4 — Keyword frequency weighting (title, first paragraph, repeated appearances)**
 
-❌ Fail — `analyze_job_description` prompt (`llm_client.py:252–316`) requests `ats_keywords` as a flat list of "top 10 keywords" with no position or frequency weighting instruction. The ATS keyword rank badges in the UI are based on list order only. No preprocessing counts keyword occurrences or boosts title-line or repeated-mention keywords. No change from Cycle 4.
+❌ Fail — `analyze_job_description` prompt (`llm_client.py:281–310`) requests `ats_keywords` as a flat list of "top 10 keywords" with no instruction to weight by position or repetition count. The ATS keyword rank badges in the UI are positional (list order). No preprocessing counts keyword occurrences or boosts title-line or repeated-mention keywords before or after the LLM call.
 
 ---
 
@@ -40,27 +38,27 @@
 
 **AC1 — Relevance score based on semantic + keyword match, not recency rank**
 
-✅ Pass — Content selection uses `calculate_relevance_score` from `scoring.py` (keyword + semantic + experience-level alignment). The LLM recommendation system prompt at `conversation_manager.py:415–477` explicitly instructs that recommendation level is "about how relevant the experience is to the job, not recency." No change from prior cycles.
+✅ Pass — `build_render_ready_content` (`cv_orchestrator.py:3130–3145`) computes `llm_score + keyword_score + semantic_score` per experience. The conversation system prompt (`conversation_manager.py:417`) explicitly states recommendation level "IS ABOUT HOW RELEVANT THE EXPERIENCE IS TO THE JOB, NOT CONFIDENCE." Final output ordering is reverse-chronological only after relevance sorting is applied and the user has not manually reordered.
 
 **AC2 — Bullet reordering proposed and applied within each experience entry**
 
-✅ Pass — `POST /api/reorder-bullets` (`review_routes.py:1472`); ordered achievements persisted in `selected_exp['ordered_achievements']` (`cv_orchestrator.py:479`). The Bullets tab provides UI for reordering. No change from prior cycles.
+✅ Pass — Per-experience bullet ordering defaults to keyword-overlap relevance (`cv_orchestrator.py:3209–3219`); user drag-to-reorder overrides via `achievement_orders` in customizations (`cv_orchestrator.py:3186–3224`). The Experience Bullets tab provides UI for manual reordering.
 
 **AC3 — Conditional section decisions (Publications, Languages, Awards) shown with rationale**
 
-⚠️ Partial — Publications have full LLM-driven per-item rationale in the Publications review tab. Languages and Awards are included/excluded wholesale from the `customizations` dict with no per-section rationale shown to the user. No change from Cycle 4.
+⚠️ Partial — Publications: the Publications review tab shows LLM `rationale`, `relevance_score`, and `confidence` per item (`publications-review.js:108–150`). Languages and Awards have no per-section rationale UI — they are included or excluded wholesale by the customizations dict with no explanation surfaced to the user.
 
 **AC4 — Ranked publication shortlist with per-item relevance scores and rationale**
 
-✅ Pass — `llm_client.py:1513–1666` (`rank_publications_for_job`) produces per-item `relevance_score`, `confidence`, and `rationale`. Publications review table displays rank, score, confidence badge, and reasoning column. Score-based fallback used on LLM failure. No change from Cycle 4.
+✅ Pass — `llm_client.py:1537–1666` (`rank_publications_for_job`) produces per-item `relevance_score` (1–10), `confidence` (High/Medium/Low), and `rationale`. The publications table (`publications-review.js:82–150`) displays rank column, score badge, confidence badge, and reasoning column. Recommended publications are pre-selected; non-recommended are pre-excluded with a divider. Score-based fallback is used when LLM fails.
 
-**AC5 — System warns if CV length exceeds 3 pages or is under 1.5 pages**
+**AC5 — System warns if estimated CV length exceeds 3 pages or is under 1.5 pages**
 
-✅ Pass — `generation_routes.py:756–759` (`_page_warning`) triggers when `page_count < 2.0 or page_count > 3.0`. Warning propagates to `page_length_warning` in API response and renders in UI. Note: story threshold is 1.5 pages; implementation threshold is 2.0 pages (more conservative). No change from Cycle 4.
+✅ Pass — `cv_orchestrator.py:5014–5028` checks `page_count` against `ideal_min` (default 2), `ideal_max` (default 3), and `absolute_max` (default 4). A 1-page CV triggers `warn`. A CV exceeding `absolute_max` triggers `fail`. Warning propagates through the ATS report API and renders in the ATS report tab. Note: the story threshold is 1.5 pages; the implementation threshold is 2.0 pages (more conservative).
 
 **AC6 — Selected Achievements represent diverse impact types appropriate to the role**
 
-⚠️ Partial — `recommend_customizations` LLM prompt includes achievement recommendations with relevance reasoning (`llm_client.py:852–863`). No explicit diversity constraint (technical / leadership / business balance) is in the prompt. A keyword-dominated call can return achievements all of the same type. No change from Cycle 4.
+⚠️ Partial — `recommend_customizations` LLM prompt includes achievement recommendations with relevance reasoning (`llm_client.py:573–596`). No diversity constraint (technical / leadership / business balance) exists in the prompt or in the scoring pipeline. A heavily keyword-matched role can produce an all-technical achievement selection.
 
 ---
 
@@ -68,19 +66,19 @@
 
 **AC1 — `apply_rewrite_constraints` rejects proposals that remove numbers, dates, or company names**
 
-✅ Pass — `LLMClient.apply_rewrite_constraints` (`llm_client.py:913–961`) extracts numeric tokens and Title-Case proper nouns, then asserts originals are subsets of the proposed set. Called before each rewrite is applied (`cv_orchestrator.py:1678`). Constraint violations cause the original text to be preserved. No change from Cycle 4.
+✅ Pass — `LLMClient.apply_rewrite_constraints` (`llm_client.py:913–961`) extracts numeric tokens (`\d[\d,\.]*%?`) and Title-Case proper nouns (filtered against a stop-word list). It asserts `original_tokens.issubset(proposed_tokens)` for both sets. Called before each rewrite is applied at `cv_orchestrator.py:1678`. Violations cause the original text to be preserved with a logged warning.
 
 **AC2 — Every `skill_add` proposal cites at least one experience ID as evidence**
 
-⚠️ Partial — The LLM schema includes an `evidence` field (`llm_client.py:736–747`). `apply_approved_rewrites` stores `evidence` in the new skill dict (`cv_orchestrator.py:1776–1790`). No validation enforces `evidence` is non-empty before the `skill_add` is accepted. An empty `evidence` field results in a skill added with no cited source. No change from Cycle 4.
+⚠️ Partial — The LLM rewrite schema includes an `evidence` field (`llm_client.py:736–747`). `apply_approved_rewrites` (`cv_orchestrator.py:1776–1790`) stores the `evidence` value in the new skill dict. No validation enforces `evidence` is non-empty before the `skill_add` is accepted; an empty or absent `evidence` field produces a skill entry with no source citation. The `⚠ Verify evidence` badge in the skills review UI indicates the gap (`skills-review.js:663`), but the backend does not gate on it.
 
 **AC3 — Inserted keywords appear mid-sentence, not appended**
 
-⚠️ Partial — The LLM system prompt instructs natural substitution and prohibits keyword appending (`llm_client.py:833, 854`). No programmatic check validates keyword placement in proposed text. The persuasion checks catch passive voice and weak verbs but not end-of-sentence keyword appending. No change from Cycle 4.
+⚠️ Partial — The LLM summary prompt (`llm_client.py:833, 854`) and rewrite instructions prohibit keyword appending and require natural integration. No programmatic check validates keyword placement in the returned text. Persuasion checks (`check_strong_action_verb`, `_check_generic_summary`) do not test for end-of-sentence keyword appending.
 
 **AC4 — Introduced keywords are consistent across all rewrites in a batch**
 
-❌ Fail — Each rewrite proposal is generated independently. No batch-level terminology consistency enforcement exists. `propose_rewrites` returns a list of independent proposals (`llm_client.py:722–870`). No post-processing checks or enforces cross-proposal term consistency. No change from Cycle 4.
+❌ Fail — Each rewrite proposal is generated independently by `propose_rewrites` (`llm_client.py:722–870`). No post-processing pass extracts newly introduced terminology from accepted proposals and checks other proposals in the same batch for inconsistency. A summary rewrite and a bullet rewrite can apply different phrasing for the same underlying concept.
 
 ---
 
@@ -88,15 +86,15 @@
 
 **AC1 — Proposed summary is role-specific (different from stored variants unless good match)**
 
-✅ Pass — Summary rewrite is generated per-job via `propose_rewrites` after job analysis and customizations are applied. The LLM has access to `professional_summaries` stored variants. Per-session summary rewrites are distinct from master data by design. No change from Cycle 4.
+✅ Pass — Summary rewrite is generated per-job via `propose_rewrites` after job analysis and customizations are applied. The LLM receives the full `professional_summaries` variants from master data as context. The rewrite prompt (`llm_client.py:844–863`) instructs a job-specific output distinct from boilerplate.
 
-**AC2 — Opening sentence is evaluable: contains role type + years experience + differentiator**
+**AC2 — Opening sentence contains role type + years experience + differentiator**
 
-⚠️ Partial — **Cycle 5 update:** The summary prompt was revised in commit `6ad34fa` (GAP-163) to explicitly require "a value-identity statement: strong verb + differentiating value claim (e.g. 'Drives 3× revenue growth…') — NOT a title + years-of-experience formula" (`llm_client.py:850`). This introduces a tension with the user-story criterion, which requires the opening to contain "role type + years experience + differentiator." The implementation now deliberately omits years from the opening, substituting a value-claim opening. The story's three-element formula is not met. However, the new prompt produces a stronger resume hook by industry standards — a genuinely evaluable, differentiating opening. No structural validation of any opening formula exists. Rating remains ⚠️ Partial: the prompt change improves quality but diverges from the story's three-element requirement; the story AC may need to be updated to reflect the improved approach.
+⚠️ Partial — The summary prompt (`llm_client.py:850`) was updated (GAP-163) to require "a value-identity statement: strong verb + differentiating value claim (e.g. 'Drives 3× revenue growth…', 'Builds ML pipelines that…') — NOT a title + years-of-experience formula." This explicitly removes years-of-experience from the opening, which diverges from the user story's three-element requirement (role type + years + differentiator). The new approach produces a stronger industry hook but the literal story acceptance criterion is not met. No structural validation of any opening formula exists in code.
 
 **AC3 — System does not inject "results-driven" or similar filler**
 
-✅ Pass — `llm_client.py:1036–1052` defines `_GENERIC_FILLER_PHRASES` and `_check_generic_summary` flags them. The rewrite prompt explicitly prohibits `"hard-working"`, `"passionate"`, `"results-driven"` (`llm_client.py:854`). No change from Cycle 4.
+✅ Pass — `LLMClient._GENERIC_FILLER_PHRASES` (`llm_client.py:1037–1061`) includes `'results-driven'`, `'passionate about'`, `'dynamic professional'`, and 17 other phrases. `_check_generic_summary` (`llm_client.py:1372–1402`) flags them in persuasion checks. The rewrite prompt explicitly prohibits them at `llm_client.py:854`.
 
 ---
 
@@ -104,35 +102,35 @@
 
 **AC1 — Only skills from `Master_CV_Data.json` (or explicitly approved additions) appear in output**
 
-✅ Pass — `build_render_ready_content` selects content via `_select_content_hybrid` from `master_data`, then applies only `approved_rewrites`. `skill_add` path (`cv_orchestrator.py:1776–1790`) adds only user-approved skills. No change from Cycle 4.
+✅ Pass — `build_render_ready_content` selects skills from `master_data` via `session_view.normalized_skills()`. The `skill_add` path (`cv_orchestrator.py:1776–1790`) adds only user-approved proposals. No hallucination path exists: skills not in master data or user-approved extra skills cannot reach the template.
 
 **AC2 — Skills ordered by relevance within each category group**
 
-⚠️ Partial — `_sort_categories` (`cv_orchestrator.py:564–580`) sorts within each category by `(-x.get('years', 0), x.get('name', ''))` — years-of-experience descending, then alphabetical. A high-relevance skill with fewer years (e.g., `"Python"`, 5 years) can appear below a low-relevance skill with more years (e.g., `"SAS"`, 20 years) when the target role requires Python. No job-relevance weighting is applied within categories. No change from Cycle 4.
+⚠️ Partial — `_sort_categories` (`cv_orchestrator.py:564–580`) sorts within each category by `(-x.get('years', 0), x.get('name', ''))`: years-of-experience descending, then alphabetical. Job-relevance weighting is not applied within categories. A high-relevance skill with fewer years (e.g., 5 years Python for a Python-required role) can appear below a low-relevance skill with more years (e.g., 20 years SAS).
 
 **AC3 — Approved additional skills eligible for Harvest write-back only (not automatic)**
 
-✅ Pass — Session-added skills stored in `state['extra_skills']` (`conversation_manager.py:113`). Write-back to `Master_CV_Data.json` is an explicit user action in the Harvest tab. No automatic write-back path. No change from Cycle 4.
+✅ Pass — Session-added skills are stored in `state['extra_skills']` (`conversation_manager.py:113`). Write-back to `Master_CV_Data.json` is an explicit user action in the Harvest tab; there is no automatic write-back path.
 
-**AC4 — Candidate-to-confirm items clearly flagged in skills review UI; never appear in generated output**
+**AC4 — Candidate-to-confirm items clearly flagged in skills review UI; never appear in generated output documents**
 
-⚠️ Partial — **Cycle 5: no change from Cycle 4.** The review-UI badge (`skills-review.js:633, 663–665`) renders a red `⚠ Verify evidence` span for `candidate_to_confirm: True` skills — the UI flag requirement is met. The generated-output exclusion requirement is **still not met**: `_organize_skills_by_category` (`cv_orchestrator.py:583–595`) does not filter on `candidate_to_confirm`. All skills, including weak-evidence additions, flow through to `skills_by_category` at line 207 and are passed directly to the template. The template (`cv-template.html:628–629`) renders `skill.name` or `skill.display_name` with no `candidate_to_confirm` guard. Weak-evidence skills approved through the review UI appear identically to verified skills in generated PDF, DOCX, and HTML.
+⚠️ Partial — The review-UI flag is present: `skills-review.js:633,663–665` renders a red `⚠ Verify evidence` badge for any skill where `candidate_to_confirm === true`. The generated-output exclusion requirement is **not met**: `_organize_skills_by_category` (`cv_orchestrator.py:583–595`) does not filter on `candidate_to_confirm`. All skills, including weak-evidence additions with `candidate_to_confirm: True`, flow through `_sort_categories` and into `skills_by_category` at line 207. The template (`templates/cv-template.html`) renders `skill.display_name` with no guard on `candidate_to_confirm`. Weak-evidence skills approved in the review UI appear identically to verified skills in generated PDF, DOCX, and HTML files.
 
 ---
 
 ### US-R6: Rewrite Audit Traceability
 
-**AC1 — `rewrite_audit` contains an entry for every proposal with `outcome` and `final` text**
+**AC1 — `rewrite_audit` contains an entry for every proposal with `outcome: accept|reject|edit` and `final` text**
 
-✅ Pass — `conversation_manager.py:1144–1148` (`submit_rewrite_decisions`) appends every decision (including rejections) to `audit` unconditionally. `self.state['rewrite_audit'] = audit` at line 1157 stores all entries. The `rewrite-review.js:376` submit gate enforces all proposals receive a decision before the audit is written. No change from Cycle 4.
+✅ Pass — `submit_rewrite_decisions` (`conversation_manager.py:1138–1148`) iterates all decisions and appends every entry — including rejections — to the `audit` list unconditionally before storing. `self.state['rewrite_audit'] = audit` at line 1157. The `rewrite-review.js` submit gate enforces that all proposals receive a decision before submission, ensuring the audit is complete.
 
 **AC2 — Diff between generated CV text and `rewrite_audit.final` values = zero unexplained changes**
 
-— N/A (requires runtime verification against an actual generated CV; cannot be confirmed from static analysis)
+— N/A (requires runtime verification against an actual generated CV; cannot be confirmed from static analysis alone)
 
 **AC3 — Audit non-empty even when all rewrites are rejected**
 
-✅ Pass — As established in AC1, `submit_rewrite_decisions` appends every proposal unconditionally. All-rejected scenarios produce a fully populated audit. No change from Cycle 4.
+✅ Pass — As established in AC1, `submit_rewrite_decisions` appends every proposal entry unconditionally regardless of outcome. An all-rejected scenario produces a fully populated audit recording all rejections with `outcome: 'reject'` and `final: null`.
 
 ---
 
@@ -140,151 +138,103 @@
 
 **AC1 — All terms in `custom_dictionary.json` produce zero flags**
 
-✅ Pass — `spell_checker.py:194–213` builds `custom_lower` and skips flagged words whose normalized form appears in it. No change from Cycle 4.
+✅ Pass — `spell_checker.py:194–213`: for each LanguageTool match, `flagged = text[m.offset:m.offset+m.errorLength]`; if `_normalize_word(flagged)` appears in `custom_lower` (the lower-cased custom word set), the match is skipped and `stats['custom_dict_hits']` is incremented. No custom-dict term can reach the suggestion list.
 
-**AC2 — Bullet beginning with a strong action verb produces zero fragment warnings**
+**AC2 — A bullet beginning with a strong action verb produces zero fragment warnings**
 
-✅ Pass — `spell_checker.py:30–36` defines `SUPPRESSED_BULLET_RULES` including `'SENTENCE_FRAGMENT'`. When `context == 'bullet'` these rules are skipped. No change from Cycle 4.
+✅ Pass — `spell_checker.py:30–36` defines `SUPPRESSED_BULLET_RULES` as a frozenset including `'SENTENCE_FRAGMENT'`, `'PUNCTUATION_PARAGRAPH'`, `'UPPERCASE_SENTENCE_START'`, `'WORD_CONTAINS_UNDERSCORE'`, and `'EN_UNPAIRED_BRACKETS'`. When `context == 'bullet'`, any match whose `ruleId` is in this frozenset is skipped at `spell_checker.py:203–204`.
 
 **AC3 — `skill_name` context entries produce only spelling flags, never grammar flags**
 
-✅ Pass — `spell_checker.py:206–208`: when `context == 'skill'`, any match not identified by `_is_spelling_rule(m)` is filtered out. No change from Cycle 4.
+✅ Pass — `spell_checker.py:207–208`: when `context == 'skill'`, any match where `_is_spelling_rule(m)` returns False is filtered out. `_is_spelling_rule` checks for `morfologik`, `hunspell`, `spelling`, `misspell`, or `typo` in the rule ID or category (`spell_checker.py:145–151`). Non-spelling grammar rules are suppressed.
 
 **AC4 — Accepted corrections change exactly and only the flagged span in the source text**
 
-✅ Pass — `cv_orchestrator.py:1803–1980` (`apply_accepted_spell_fixes`) applies fixes in reverse-offset order. Only the exact flagged span is replaced. No change from Cycle 4.
+✅ Pass — `apply_accepted_spell_fixes` (`cv_orchestrator.py:1800–1980`) groups accepted fixes by `section_id`, then processes each group in reverse offset order so earlier spans do not shift later spans. Only the exact `[offset:offset+length]` region is replaced with the accepted suggestion.
 
 **AC5 — `custom_dictionary.json` is deduplicated on every write; no duplicate entries**
 
-✅ Pass — `spell_checker.py:81–90` (`add_word`) and `prepopulate_from_skills` both check `word.lower() not in lower` before appending. No write path can introduce duplicates. No change from Cycle 4.
+✅ Pass — `add_word` (`spell_checker.py:80–90`) builds `lower = {w.lower() for w in self._custom_words}` and guards `if word.lower() not in lower` before appending. `prepopulate_from_skills` (`spell_checker.py:92–103`) uses the same `lower` set guard. No write path can introduce duplicate entries.
+
+**AC6 — Severity-sorted flags (critical errors before minor suggestions)**
+
+⚠️ Partial (finding C4-2, open) — `spell_checker.py:241` returns suggestions in LanguageTool's native iteration order. No sort pass is applied. The caller (`review_routes.py`) does not reorder by severity before returning the spell-check response. Critical misspellings and minor stylistic suggestions are interleaved in the order LanguageTool emits them.
 
 ---
 
-## Section 2: Generated Materials Evaluation
-
-**Note:** The generated-materials evaluation is based on the code paths that produce output. Runtime confirmation against actual generated files is required for full verification.
+## Generated Materials Evaluation
 
 ### Summary rewrite in generated documents
 
-⚠️ Partial — Factual preservation via `apply_rewrite_constraints` is enforced. The `_check_generic_summary` persuasion check detects filler. Acronym expansion (US-R3 AC6: "introduced keywords should include both forms on first use") is a prompt-level instruction only — no programmatic verification. **Cycle 5 note:** The summary-opening approach changed (GAP-163); the new value-identity opening is industry-stronger but diverges from the user-story's three-element formula.
+⚠️ Partial — Factual preservation via `apply_rewrite_constraints` (`llm_client.py:913–961`) is enforced at write time. Generic filler detection via `_check_generic_summary` (`llm_client.py:1372–1402`) is active. Acronym expansion (US-R3: "introduced keywords should include both forms on first use") is a prompt-level instruction only; no programmatic verification confirms acronym pairing in proposals before they are accepted. The summary-opening approach changed in GAP-163: the prompt now produces value-claim hooks rather than a title+years+differentiator opening, which is industry-stronger but diverges from the user-story AC.
 
 ### Skills section in generated output
 
-❌ Fail — **Cycle 5: confirmed unchanged.** While the skills review UI flags `candidate_to_confirm` skills with a `⚠ Verify evidence` badge, the generated-output path remains unguarded. `candidate_to_confirm: True` skills flow through `_organize_skills_by_category` (`cv_orchestrator.py:207–211`) and `skills_by_category` into the template at `cv-template.html:628–629` without any filtering. Skills approved as "candidate to confirm" in the review UI will appear unmarked in all generated PDF, DOCX, and HTML files.
+❌ Fail — The skills review UI correctly flags `candidate_to_confirm` skills with a red `⚠ Verify evidence` badge (`skills-review.js:633,663`). The generated-output path is unguarded: `candidate_to_confirm: True` skills flow through `_organize_skills_by_category` (`cv_orchestrator.py:583`) and `skills_by_category` into the template at `templates/cv-template.html` without any filtering. Skills approved as "candidate to confirm" during review will appear unmarked in all generated PDF, DOCX, and HTML files.
 
 ### Publications in generated output
 
-✅ Pass — LLM-based ranking with score-based fallback. User decisions from the publications review tab are persisted as `publication_decisions` and applied before generation. Non-recommended publications excluded by the user are excluded from the rendered output.
+✅ Pass — LLM-based ranking (`llm_client.py:1537–1666`) with score-based fallback. User decisions from the publications review tab are persisted as `publication_decisions` in session state and applied in `build_render_ready_content` (`cv_orchestrator.py`) before generation. Non-recommended publications excluded by the user are excluded from the rendered output. First-author detection is implemented.
 
 ### Spell-check corrections in generated output
 
-✅ Pass — `build_render_ready_content` (`cv_orchestrator.py:2337`) calls `apply_accepted_spell_fixes` as the final step before template rendering. Only `outcome: 'accept'` entries are applied.
+✅ Pass — `build_render_ready_content` calls `apply_accepted_spell_fixes` as the final step before template rendering. Only `outcome: 'accept'` entries are applied. Offset-reversed application ensures multi-fix sections are correct.
 
 ---
 
-## Terminology Review
+## Additional Story Gaps / Proposed Story Items
 
-| Term used in UI | Assessment |
-|---|---|
-| "Required Skills" (Analysis tab) | Clear — matches story intent |
-| "Preferred / Nice-to-Have" (Analysis tab) | Clear — distinct section, unambiguous |
-| "Required Skills" / "Preferred Skills" / "Nice to Have" (conversation panel) | Inconsistent visual weight — icon-differentiated only, no colour/border distinction (C4-3 open) |
-| "ATS Keywords" with rank badges | Appropriate — rank implies priority; but rank = list order, not frequency-weighted |
-| "Candidate to confirm" / "⚠ Verify evidence" | Badge confirmed in skills review UI (`skills-review.js:663–665`); absent from generated documents |
-| "Evidence" field in `skill_add` proposals | Not surfaced in the skills review UI (only the badge, not the cited experience IDs) |
-| "Rationale" column in publications table | Clear and useful |
-| "Confidence" badge (High/Medium/Low) | Clear for publications; absent for domain inference |
-| Value-identity summary opening | **Cycle 5 new:** Prompt now produces value-claim hooks rather than title+years+differentiator; stronger industry practice but story AC requires years |
+1. **Severity-sorted spell-check list** — US-R7 does not include an acceptance criterion for severity ordering, but the story description requires it ("Critical errors surfaced before minor stylistic suggestions"). Add an explicit AC: "The spell-check flag list is sorted by severity: TYPO/MISSPELLING items before grammar suggestions before stylistic tips."
+
+2. **Manual bullet edits bypass audit** (finding C4-1) — When the user edits a bullet directly in the Experience Bullets tab (`_apply_session_achievement_edits` at `cv_orchestrator.py:432`), no audit entry is written to `rewrite_audit`. This is outside the scope of US-R6 as written, but traceability is incomplete. Proposed: "Any direct user edit to an experience bullet or summary that bypasses the rewrite-review flow must generate an audit entry with `outcome: 'direct_edit'` and `final` equal to the user's text."
+
+3. **`skill_add` evidence enforcement** — US-R3 AC2 specifies evidence must be cited. Proposed: Gate the `skill_add` path — reject any `skill_add` proposal where `evidence` is empty or absent, surfacing a validation error in the rewrite review UI rather than silently adding an unevidenced skill.
+
+4. **Summary opening formula vs. value-claim standard** — US-R4 AC2 is in tension with the GAP-163 implementation. Proposed updated AC: "The opening sentence contains a value-identity claim with a strong verb and a quantified differentiator (e.g., 'Drives 40% faster time-to-insight by…'). Years of experience may appear in sentences 2–3 rather than the opening." This aligns the story with the improved prompt while preserving evaluability.
 
 ---
 
-## Summary Table
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/cv_orchestrator.py
 
-| Story | Criterion | Rating |
-|---|---|---|
-| US-R1 | Required/preferred visually distinct | ⚠️ |
-| US-R1 | Synonyms grouped | ⚠️ |
-| US-R1 | Domain inference with confidence | ⚠️ |
-| US-R1 | Keyword frequency weighting | ❌ |
-| US-R2 | Relevance score not recency-based | ✅ |
-| US-R2 | Bullet reordering proposed and applied | ✅ |
-| US-R2 | Conditional section decisions with rationale | ⚠️ |
-| US-R2 | Ranked publication shortlist | ✅ |
-| US-R2 | Page length warning | ✅ |
-| US-R2 | Achievement diversity | ⚠️ |
-| US-R3 | `apply_rewrite_constraints` guards numbers/names | ✅ |
-| US-R3 | `skill_add` requires evidence | ⚠️ |
-| US-R3 | Keywords appear mid-sentence | ⚠️ |
-| US-R3 | Cross-rewrite terminology consistency | ❌ |
-| US-R4 | Summary is role-specific | ✅ |
-| US-R4 | Opening sentence evaluable | ⚠️ |
-| US-R4 | No filler phrases | ✅ |
-| US-R5 | Skills only from master or approved additions | ✅ |
-| US-R5 | Skills ordered by relevance within category | ⚠️ |
-| US-R5 | Extra skills Harvest-only write-back | ✅ |
-| US-R5 | Candidate-to-confirm flagged in UI + excluded from output | ⚠️ |
-| US-R6 | Audit contains all proposals with outcome | ✅ |
-| US-R6 | Audit non-empty when all rejected | ✅ |
-| US-R7 | Custom dict produces zero flags | ✅ |
-| US-R7 | Bullet fragment suppression | ✅ |
-| US-R7 | Skill context grammar suppression | ✅ |
-| US-R7 | Accepted correction changes exact span only | ✅ |
-| US-R7 | Dictionary deduplicated on write | ✅ |
+Additional files read: scripts/utils/llm_client.py, scripts/utils/spell_checker.py, scripts/routes/review_routes.py, web/skills-review.js, web/publications-review.js, web/ats-modals.js, web/message-queue.js, web/review-table-base.js, templates/cv-template.html
 
-**Totals:** 15 ✅ Pass | 10 ⚠️ Partial | 2 ❌ Fail | 0 🔲 Not Implemented  
-*(Cycle 5: US-R1 AC1 ✅→⚠️ — downgraded due to conversation-panel visual inconsistency confirmed by source read)*  
-*(Prior: Cycle 3: US-R6 AC1 ⚠️→✅, US-R6 AC3 ❌→✅, US-R5 AC4 ❌→⚠️)*  
-*(Prior: Cycle 4: C4-1/C4-2/C4-3 findings added; all Cycle 3 assessments confirmed)*
+| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
+|-------|---------|-----------|--------|------------|-------|
+| US-R1 | 0 | 3 | 1 | 0 | 0 |
+| US-R2 | 4 | 2 | 0 | 0 | 0 |
+| US-R3 | 1 | 2 | 1 | 0 | 0 |
+| US-R4 | 2 | 1 | 0 | 0 | 0 |
+| US-R5 | 3 | 1 | 0 | 0 | 0 |
+| US-R6 | 2 | 0 | 0 | 0 | 1 |
+| US-R7 | 5 | 1 | 0 | 0 | 0 |
+| **Total** | **17** | **10** | **2** | **0** | **1** |
+
+**Key evidence references:**
+
+- US-R1 AC1 (Analysis tab pass): web/ats-modals.js:282–293
+- US-R1 AC1 (Conversation card fail): web/message-queue.js:215–229
+- US-R1 AC4: scripts/utils/llm_client.py:281–310
+- US-R2 AC1: scripts/utils/cv_orchestrator.py:3130–3145; scripts/utils/conversation_manager.py:415–477
+- US-R2 AC4: scripts/utils/llm_client.py:1537–1666; web/publications-review.js:82–150
+- US-R3 AC1: scripts/utils/llm_client.py:913–961; scripts/utils/cv_orchestrator.py:1678
+- US-R3 AC4: scripts/utils/llm_client.py:722–870 (no cross-proposal enforcement)
+- US-R4 AC2: scripts/utils/llm_client.py:850 (GAP-163 value-identity opening)
+- US-R4 AC3: scripts/utils/llm_client.py:1037–1061, 1372–1402
+- US-R5 AC4 (UI pass): web/skills-review.js:633,663–665
+- US-R5 AC4 (output fail): scripts/utils/cv_orchestrator.py:583–595; templates/cv-template.html
+- US-R6 AC1: scripts/utils/conversation_manager.py:1138–1157
+- US-R7 AC1–AC5: scripts/utils/spell_checker.py:80–244; scripts/utils/cv_orchestrator.py:1800–1980
+- Spell-check severity gap (C4-2): scripts/utils/spell_checker.py:241
+
+**Evidence standard:** Every conclusion is independently verifiable from the cited source lines. Runtime generation outputs were not analyzed; the generated-output skill-filter gap (US-R5 AC4) is confirmed by the absence of `candidate_to_confirm` filtering in `cv_orchestrator.py:583–595` and the template's unconditional `skill.display_name` rendering.
 
 ---
 
-## Priority Findings (Top 5)
+## Open Findings from Prior Cycles
 
-### 1. `candidate_to_confirm` skills appear unmarked in all generated output (US-R5 AC4)
-
-**Severity: High.**  
-The review UI flag is confirmed present (`skills-review.js:663–665` renders a red `⚠ Verify evidence` badge). However, weak-evidence `skill_add` proposals flagged `candidate_to_confirm: True` (`cv_orchestrator.py:1779`) flow through `_organize_skills_by_category` at line 207 and into `skills_by_category` with no filter. The template (`cv-template.html:628–629`) renders `skill.name` or `skill.display_name` directly. A candidate who approves a suggested skill "for review purposes" will unknowingly send it in all generated materials.
-
-**Fix needed:** In `_organize_skills_by_category` or the `_sort_categories` call chain, filter out any entry where `candidate_to_confirm == True` before returning `skills_by_category`. Alternatively, filter in `build_render_ready_content` before passing content to the template renderer.
-
-### 2. No cross-rewrite terminology consistency enforcement (US-R3 AC4)
-
-**Severity: High.**  
-Rewrites are proposed and reviewed independently. No mechanism ensures that an adopted keyword (e.g., `"MLOps"`) appears consistently across all proposals in a batch. A summary rewrite and a bullet rewrite can use different phrasing for the same concept. `propose_rewrites` returns a list of independent proposals (`llm_client.py:722–870`).
-
-**Fix needed:** After the LLM returns a batch of proposals, run a post-processing pass that extracts newly introduced terminology from accepted proposals and checks all other proposals in the batch for inconsistency. Or include the full accepted batch in a follow-up LLM terminology-normalisation pass before final generation.
-
-### 3. Required/preferred visual distinction absent from conversation-panel analysis card (US-R1 AC1, C4-3)
-
-**Severity: Medium.**  
-`message-queue.js:215–229` renders all three skill groups (required, preferred, nice-to-have) as plain icon-prefixed `<h4>` headings within a single unstyled `div.content.job-analysis`. No background colour, border colour, or CSS class differentiates them visually. The analysis tab renders correctly with styled `.skill-badge` chips and distinct `<h2>` headings, but users encounter the conversation card first.
-
-**Fix needed:** In `message-queue.js:215–229`, wrap required-skills and nice-to-have blocks in differently styled containers (e.g., green border for required, amber border for preferred) matching the visual distinction in the analysis tab.
-
-### 4. Keyword frequency weighting absent from job analysis (US-R1 AC4)
-
-**Severity: Medium.**  
-The `ats_keywords` list is presented with positional rank badges, but the rank is simply the LLM's output order, not a computed frequency/position weight. Keywords appearing in the job title or repeated multiple times in the posting are not systematically weighted higher.
-
-**Fix needed:** Add a preprocessing step after the raw job text is received — count keyword occurrences and detect title-line keywords. Pass these counts to the LLM prompt as a weighted frequency table, or post-process the LLM's keyword list by boosting items that appear in the job title or opening paragraph.
-
-### 5. Summary opening no longer meets three-element story criterion (US-R4 AC2)
-
-**Severity: Low — may require story update rather than code change.**  
-Commit `6ad34fa` (GAP-163) updated the summary LLM prompt (`llm_client.py:850`) to require "a value-identity statement: strong verb + differentiating value claim — NOT a title + years-of-experience formula." This deliberately removes `years of experience` from the opening line. The user story (US-R4 AC2) requires the opening sentence to contain "role type + years experience + differentiator." The implementation now produces a stronger industry hook but violates the literal story criterion. The story AC should be updated to reflect the value-identity opening standard, or a structural check should be added to confirm the opening contains a value claim with quantified achievement.
-
----
-
-## Cycle 5 Change Summary (2026-06-20)
-
-**Source changes detected since Cycle 4:**
-
-1. **GAP-163 (commit 6ad34fa):** Summary LLM prompt changed at `llm_client.py:850` — now requires value-identity opening (strong verb + differentiating claim) instead of title + years + differentiator. Affects US-R4 AC2 assessment. Rating unchanged (⚠️) but rationale updated.
-2. **Rating change: US-R1 AC1 ✅→⚠️** — Cycle 4 marked this ✅ but Cycle 4 finding C4-3 identified the conversation-panel card gap. This cycle formalises the downgrade to ⚠️ Partial, splitting the verdict between the analysis tab (passes) and the conversation-panel card (fails). The summary table row was not updated in Cycle 4 to reflect C4-3; corrected in Cycle 5.
-
-**Findings still open from prior cycles (no code change detected):**
-
-- C4-1: Manual achievement edits bypass `rewrite_audit` — `_apply_session_achievement_edits` writes no audit record
-- C4-2: Spell-check suggestions not sorted by severity — `spell_checker.py:241` returns suggestions in LanguageTool iteration order
-- C4-3: Conversation-panel analysis card lacks visual distinction between required/preferred (now formalised in summary table)
-- US-R5 AC4 output exclusion: `candidate_to_confirm` skills appear in generated documents
+| ID | Finding | Status |
+|----|---------|--------|
+| C4-1 | Manual achievement edits via `_apply_session_achievement_edits` write no audit record | Open — no fix detected |
+| C4-2 | Spell-check suggestions returned in LanguageTool iteration order, not severity order | Open — no fix detected |
+| C4-3 | Conversation-panel analysis card lacks visual distinction between required/preferred skills | Open — formalised as US-R1 AC1 ⚠️ |
+| US-R5 AC4 | `candidate_to_confirm` skills appear unmarked in generated PDF/DOCX/HTML | Open — highest severity |

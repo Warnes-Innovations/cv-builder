@@ -1,14 +1,20 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-22 (cycle 5)
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-22 (cycle 6)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), and 2026-06-20 (cycle 5)
-- independent heuristic UX evaluation (2026-04-22, 2026-06-18 cycle 1 and 2, 2026-06-20 cycle 4 and 5)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), and 2026-06-22 (cycle 6)
+- independent heuristic UX evaluation (all cycles through 2026-06-22 cycle 6)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181.
+
+## 2026-06-22 (Cycle 6) Reconciliation Notes
+
+- **8 gaps resolved or partially resolved this cycle:** GAP-166 (resolved for same-device; residual cross-device), GAP-167 (resolved), GAP-168 (resolved), GAP-169 (now fully resolved — viewer-panel buttons fixed), GAP-170 (resolved), GAP-171 (resolved), GAP-172 (resolved), GAP-173 (resolved). GAP-179 and GAP-181 opened and immediately resolved this cycle.
+- **6 new open gaps:** GAP-176 (bullet-reorder modal inaccessible), GAP-177 (DOCX heading bold runs not heading styles), GAP-178 (rewrite buttons no aria-pressed), GAP-180 (step-rerun zero discoverability at rest). GAP-179 (.icon-btn/.rw-btn focus-visible) and GAP-181 (viewer-panel spell label) opened and closed this cycle.
+- **Most critical open gaps:** GAP-36 (first-run onboarding), GAP-41 (pre-job Master CV editor), GAP-174 (cover letter company initiative), GAP-176 (bullet-reorder modal accessibility), GAP-14 (no workflow progress indicator), GAP-175 (summary specificity validator).
 
 ## 2026-06-22 (Cycle 5) Reconciliation Notes
 
@@ -1495,9 +1501,9 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-169: "Done — Generate CV →" CTA Label Misleads Users About What Happens Next
 
 **Priority:** LOW
-**Status:** RESOLVED 2026-06-22 — Renamed `#spell-btn` button text from "Done — Generate CV →" to "Generate Preview →" in `web/index.html:186`. Previously OPEN since 2026-06-20.
+**Status:** FULLY RESOLVED 2026-06-22 (cycle 6) — Viewer-panel spell-check buttons at `web/spell-check.js:148,271` renamed from "Done — Generate CV →" to "Generate Preview →". Previously PARTIALLY RESOLVED in cycle 5 (only `web/index.html:186` was fixed). All three button instances now consistent.
 **Affected stories:** US-F3, US-U6
-`web/index.html:186` — the spell-check completion button (`#spell-btn`) reads "Done — Generate CV →". Activating this button calls `generatePreview()`, which produces an HTML preview for layout review — not the final CV files. The label implies that clicking it produces the finished submission-ready CV, which is not accurate. Users may be surprised to land on the Layout Review step rather than a download page.
+`web/index.html:186` and `web/spell-check.js:148,271` — the spell-check completion buttons read "Done — Generate CV →". Activating this button calls `generatePreview()`, which produces an HTML preview for layout review — not the final CV files. The label implies that clicking it produces the finished submission-ready CV, which is not accurate.
 **Recommended resolution:** Rename the button to "Generate Preview →" or "Next: Layout Review →" to accurately describe the destination and preserve the staged-generation mental model introduced by GAP-79's recommended fix.
 
 ---
@@ -1566,3 +1572,65 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 **Affected stories:** US-M1, US-P1
 `web/scripts/utils/conversation_manager.py:1325` — `check_summary_generic_phrases()` detects and blocks filler phrases like "seasoned professional", "results-driven", and "passionate about". However, the system has no complementary check that enforces the presence of positive specificity: the target job title (or equivalent), a quantified claim (numbers, percentages, years), or a concrete differentiator. A summary like "Experienced engineer who has worked on many challenging problems" passes all current checks despite being generic and unverifiable.
 **Recommended resolution:** Add a post-generation summary validation step that checks for the presence of at least one of: (1) the target job title or role synonym, (2) a quantified achievement (regex for number/percentage patterns), or (3) a specific named technology or domain. Surface failures as an advisory warning in the summary review tab before the user proceeds to generation.**
+
+---
+
+## 2026-06-22 (Cycle 6) New Gaps (GAP-176 through GAP-181)
+
+---
+
+## GAP-176: Bullet-Reorder Modal Missing `role="dialog"`, Focus Trap, and ARIA Structure
+
+**Priority:** HIGH
+**Status:** OPEN — Discovered 2026-06-22 (cycle 6)
+**Affected stories:** US-X2, US-A3
+`web/workflow-steps.js:456–499` — `showBulletReorder()` renders a list-reorder overlay modal. The modal has no `role="dialog"`, no `aria-modal="true"`, no `aria-labelledby`, no focus trap (`trapFocus` is not called), no `setInitialFocus` call, and no focus restoration on close. Screen reader users receive no modal entry announcement; keyboard users cannot be trapped inside the modal; focus is not restored to the trigger button on close. This is a WCAG 2.1 SC 1.3.1, 2.1.2, 4.1.2 failure.
+**Recommended resolution:** Add `role="dialog" aria-modal="true" aria-labelledby="bullet-reorder-title"` to the modal container. Call `trapFocus(modalId)` and `setInitialFocus(modalId)` on open. Call `restoreFocus()` on close. Add a visible heading with `id="bullet-reorder-title"`.
+
+---
+
+## GAP-177: Human DOCX Section Headings Use Bold Runs, Not Word Heading Paragraph Styles
+
+**Priority:** MEDIUM
+**Status:** OPEN — Discovered 2026-06-22 (cycle 6)
+**Affected stories:** US-H1, US-X3
+`scripts/utils/cv_orchestrator.py:4373–4391` — The human-readable DOCX output applies bold formatting to section heading paragraphs using `run.bold = True` rather than assigning Word Heading paragraph styles (`doc.styles['Heading 1']`). As a result: (1) JAWS, NVDA, and VoiceOver cannot navigate the document by heading; (2) ATS parsers that use semantic paragraph role to detect sections may misclassify content. The ATS DOCX path (`_setup_ats_styles`) correctly avoids tables and shapes but also does not set Heading paragraph styles for sections.
+**Recommended resolution:** Apply `para.style = doc.styles['Heading 1']` (or equivalent) to section heading paragraphs in the human DOCX path, in addition to any bold/font-size formatting. This preserves visual appearance while enabling semantic navigation.
+
+---
+
+## GAP-178: Rewrite Accept/Edit/Reject Buttons Missing `aria-pressed` State
+
+**Priority:** LOW
+**Status:** OPEN — Discovered 2026-06-22 (cycle 6)
+**Affected stories:** US-X3, US-A4
+`web/rewrite-review.js:273–275` — The three action buttons per rewrite card (✓ Accept, ✎ Edit, ✗ Reject) visually show their selected state via CSS `.active` class (color fill) but carry no `aria-pressed` attribute. Screen reader users hear "Accept button" without any indication that a decision has already been made. The button state is invisible to AT.
+**Recommended resolution:** Add `aria-pressed="false"` to each button at render time. In `applyRewriteAction()` and `saveRewriteEdit()`, update `aria-pressed` to `"true"` on the active button and `"false"` on the others for each card.
+
+---
+
+## GAP-179: `.icon-btn`, `.rw-btn`, `.sm-btn` Missing `:focus-visible` CSS
+
+**Priority:** MEDIUM
+**Status:** RESOLVED 2026-06-22 (cycle 6) — Added `:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px }` to `.icon-btn` (`styles.css` after line 1193), `.rw-btn` (after line 1261), and `.sm-btn` (after line 295). Discovered and fixed this cycle.
+**Affected stories:** US-X2, US-X3
+`web/styles.css` — `GAP-173` (cycle 5) added `:focus-visible` to `.action-btn`, `.tab`, and `.step`, but missed `.icon-btn` (skills reorder, session switcher), `.rw-btn` (rewrite accept/edit/reject), and `.sm-btn` (session modal action buttons). Keyboard-only users tabbing to these elements received no visible focus ring on browsers that suppress default outlines.
+
+---
+
+## GAP-180: Step-Rerun Button `opacity:0` at Rest — Zero Discoverability for Mouse Users
+
+**Priority:** MEDIUM
+**Status:** OPEN — Discovered 2026-06-22 (cycle 6)
+**Affected stories:** US-W3, US-A12
+`web/workflow-steps.js:723` — The CSS injected for the ↻ re-run button sets `opacity: 0` by default and `opacity: 1 !important` on `.step.completed:hover` and `.step.completed:focus-within`. Mouse users who do not hover over completed step pills never see the re-run affordance. The button is now keyboard-reachable (GAP-167 fix), but it is invisible unless the pill is hovered first. Users who don't know the feature exists will never discover it through normal navigation.
+**Recommended resolution:** Consider making the ↻ button always-visible (possibly at reduced opacity, e.g. `opacity: 0.4`) on completed steps, or surfacing re-run as a labelled button or menu item in the step tooltip/context. The hover-only pattern is a discoverability anti-pattern for a high-value power-user feature.
+
+---
+
+## GAP-181: Viewer-Panel Spell-Check Buttons Still "Done — Generate CV →"
+
+**Priority:** MEDIUM
+**Status:** RESOLVED 2026-06-22 (cycle 6) — Changed `web/spell-check.js:148` and `web/spell-check.js:271` from "Done — Generate CV →" to "Generate Preview →". This completes the GAP-169 fix; `web/index.html:186` was fixed in cycle 5 but `spell-check.js` was missed. Discovered and fixed this cycle.
+**Affected stories:** US-F3, US-U6
+`web/spell-check.js:148,271` — The two viewer-panel spell-check submit buttons (empty state and review state) still read "Done — Generate CV →" after the cycle 5 partial fix of GAP-169 that only updated `index.html:186`. This created a label inconsistency between the chat-panel button and the viewer-panel buttons.

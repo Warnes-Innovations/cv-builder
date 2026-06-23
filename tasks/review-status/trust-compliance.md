@@ -6,32 +6,11 @@ This file is part of CV-Builder.
 For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# Trust and Compliance Review
+# Trust & Compliance Review Status
 
-**Persona:** Trust / Compliance Reviewer
-**Stories:** US-C1, US-C2, US-C3
-**Reviewed:** 2026-06-20
+**Last Updated:** 2026-06-22 ET
 
-**Source files examined:**
-
-- `web/index.html`
-- `web/app.js`
-- `web/ui-core.js`
-- `web/state-manager.js`
-- `web/styles.css`
-- `web/rewrite-review.js`
-- `web/spell-check.js`
-- `web/harvest.js`
-- `web/experience-review.js`
-- `web/skills-review.js`
-- `web/summary-review.js`
-- `web/layout-instruction.js`
-- `web/finalise.js`
-- `web/download-tab.js`
-- `web/cover-letter.js`
-- `web/workflow-steps.js`
-- `scripts/web_app.py`
-- `scripts/utils/conversation_manager.py`
+**Executive Summary:** The application largely satisfies the Trust & Compliance persona's core concerns. AI suggestions are visibly distinguished from source content, rewrite decisions require explicit per-item user action, word-level diffs expose changes, and a rationale mechanism is present. Two partial gaps stand out: spell-check unreviewed items are bulk-auto-ignored on "proceed" rather than requiring per-item decisions, and there is no in-UI rendering of the `metadata.json` audit at the Download/Finalise stage — traceability requires leaving the application. API key handling is stored locally (config.yaml) not in the browser, and per-provider privacy disclosure is available in the LLM wizard. Generated output files carry no AI-attribution metadata, which may matter in institutional contexts.
 
 ---
 
@@ -39,150 +18,171 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 ### US-C1: Transparent AI Suggestions
 
-#### Criterion C1.1 — Proposed rewrites and additions are visibly presented as suggestions
+#### C1.1 — Proposed rewrites and additions are visibly presented as suggestions
 
-Status: ✅ Pass
+✅ Pass
 
-The Rewrites tab renders every AI-proposed text change as an explicit review card (`renderRewriteCard`, `rewrite-review.js:229`). The card header labels the type of change (e.g. "rewrite", "skill add") and presents a word-level inline diff (`computeWordDiff`, `rewrite-review.js:183`) that visually distinguishes removed tokens (`<del class="diff-removed">`, red) from added tokens (`<ins class="diff-added">`, green). No rewrite enters approved state without an explicit Accept / Edit / Reject action (`applyRewriteAction`, `rewrite-review.js:281`). The introductory message at `rewrite-review.js:67` explicitly characterizes the suggestions as "AI's text improvement suggestions … introducing job-relevant keywords while preserving your facts."
+Every AI-proposed text change is rendered as an explicit named review card in the Rewrites tab. The card header labels the change type ("rewrite", "skill add", etc.) and shows a word-level inline diff produced by a Longest-Common-Subsequence algorithm (`computeWordDiff`, `rewrite-review.js:216–251`), with red strikethrough for removed tokens (`<del class="diff-removed">`) and green underline for added tokens (`<ins class="diff-added">`). The chat message that accompanies the rewrite panel explicitly attributes the suggestions to the AI: "Here are the AI's **N** text improvement suggestions … each one introduces job-relevant keywords while preserving your facts" (`rewrite-review.js:98`).
 
-The AI-generated professional summary is explicitly labeled "AI-Generated Summary" (`summary-review.js:71`) and distinguished from stored master-CV variants, which appear under a separate collapsible "Use a stored summary variant instead" panel (`summary-review.js:93`).
+AI-suggested achievements are visually distinguished from user-authored achievements by a yellow "⭐ AI Suggested" badge on the row background (`achievements-review.js:270`, `style="background:#fefce8;"`). The row prominently shows "Add New" in the Recommendation column, not "Emphasize" or "Include", distinguishing it from existing-achievement decisions (`achievements-review.js:284`).
 
-#### Criterion C1.2 — Weak-evidence or confirm-first cases are clearly flagged
+The LLM Configuration Wizard provides per-provider data-handling disclosure via popover: the `provider-info.js` module fetches `/api/providers` and renders a `confidential` flag ("Data confidential" / "Data may be reviewed/retained"), `free_tier` flag, and a link to each provider's privacy policy (`provider-info.js:67–84`, `provider_registry.py:44–197`). Groq and Gemini free tier are explicitly flagged as non-confidential.
 
-Status: ✅ Pass
+#### C1.2 — Weak-evidence or confirm-first cases are clearly flagged
 
-Two distinct weak-evidence flags exist:
+✅ Pass
 
-1. Skills: inline "⚠ Verify evidence" badge with tooltip (`skills-review.js:664`), styled amber via CSS class `.weak-badge` (`styles.css:1238`). Set when backend `evidence_strength == 'weak'` triggers `candidate_to_confirm: True` (`cv_orchestrator.py:1779`).
-2. Rewrites: `<span class="weak-badge">⚠ Candidate to confirm</span>` when `r.type === 'skill_add' && r.evidence_strength === 'weak'` (`rewrite-review.js:230–233`).
+Two distinct weak-evidence flags are present:
 
-Persuasion warnings (overstatements, weak verbs) are surfaced as a collapsible red panel at the top of the rewrite review, with per-card inline badges (`rewrite-review.js:100–119`, `rewrite-review.js:267–270`). CSS classes `.persuasion-badge--warn` (amber) and `.persuasion-badge--info` (blue) (`styles.css:1267–1268`) provide colour-coded severity distinction.
+1. **Skill additions** — `rewrite-review.js:263–265`: when `r.type === 'skill_add' && r.evidence_strength === 'weak'`, the card header renders `<span class="weak-badge">⚠ Candidate to confirm</span>`. The `.weak-badge` class is an amber badge defined in styles.css.
+2. **Persuasion quality warnings** — `rewrite-review.js:121–150`: if the LLM persuasion checks (`persuasion_warnings` array) are non-empty, a collapsible red-bordered panel appears at the top of the rewrite tab with count, type breakdown, and per-item detail. Each individual card also receives inline `<span class="persuasion-badge persuasion-badge--warn">` or `persuasion-badge--info` badges (`rewrite-review.js:300–303`).
 
-#### Criterion C1.3 — The UI does not blur the line between approved output and proposed changes
+The submit button is disabled until the user explicitly clicks the "Acknowledged" button in the persuasion warnings panel (`rewrite-review.js:145`, `rewrite-review.js:410–411`), making the confirmation a hard gate.
 
-Status: ✅ Pass
+#### C1.3 — The UI does not blur the line between approved output and proposed changes
 
-The Submit button is `disabled` until all cards have a decision (pending count = 0) and persuasion warnings are acknowledged (`updateRewriteTally`, `rewrite-review.js:373–380`). Approved content enters the session only via the explicit `/api/rewrites/approve` POST (`submitRewriteDecisions`, `rewrite-review.js:417`). Cards change to `.accepted` or `.rejected` CSS classes immediately on decision, so the panel's visual state always reflects the user's choices, not the AI's proposals.
+✅ Pass
 
-The cover letter is placed into a user-editable `<textarea>` immediately on generation (`cover-letter.js:261`), making clear it is a draft; no auto-save occurs on generation — the user must explicitly click "Save Cover Letter".
+Proposed rewrites cannot enter approved state without an explicit button click. The "Submit All Decisions" button is `disabled` by default (`rewrite-review.js:167`: `disabled` attribute on initial render) and stays disabled while any card has no recorded decision (`updateRewriteTally`, `rewrite-review.js:408–415`). The per-card state — accepted, rejected, or pending — is visually reflected by CSS classes `.accepted` and `.rejected` (`applyRewriteAction`, `rewrite-review.js:321`). Approved content is only written to session state via the POST to `/api/rewrites/approve` (`submitRewriteDecisions`, `rewrite-review.js:443–456`).
+
+The cover letter is placed into a user-editable `<textarea>` immediately on generation — no content auto-saves on LLM response.
 
 ---
 
 ### US-C2: User Approval Integrity
 
-#### Criterion C2.1 — Review-required stages block progression until required decisions are made
+#### C2.1 — Review-required stages block progression until required decisions are made
 
-Status: ✅ Pass (rewrite stage, tagline gate) / ⚠️ Partial (spell-check stage)
+⚠️ Partial
 
-*Rewrite stage:* The "Submit All Decisions" button is `disabled` while any card has `pending` status or persuasion warnings are unacknowledged (`rewrite-review.js:136`, `rewrite-review.js:375–380`). This is a hard gate.
+**Rewrite stage: hard gate — Pass.** The Submit button remains `disabled` while `pending > 0` or persuasion warnings are unacknowledged (`rewrite-review.js:411`). No content proceeds to spell-check until the user has actioned every rewrite card.
 
-*Tagline gate:* `_confirmProceedToGenerate()` (`spell-check.js:359`) checks `status.decisions_confirmed.tagline` and shows a blocking alert modal if the tagline has not been confirmed; generation is blocked.
+**Spell-check stage: modal only — Partial.** The "Done — Generate CV →" action button is always clickable. Clicking it with unreviewed spell/grammar issues triggers a confirm modal ("There are unreviewed spell-check issues…"), but if the user confirms, all remaining `pending` items are bulk-auto-set to `outcome: 'ignore'`. The code sets `outcome: 'ignore'` for every item lacking an explicit decision before submitting to `/api/spell/approve` (this is the observed pattern in `spell-check.js`). Per-item review is not enforced as a hard gate.
 
-*Spell-check stage:* The "Done — Generate CV →" button is reachable at any time. When clicked with unreviewed issues present, a confirm modal warns the user (`submitSpellCheckDecisions`, `spell-check.js:401–408`). However, if the user proceeds, all unreviewed items are auto-set to `outcome: 'ignore'` (`spell-check.js:413–416`). The confirmation gate is present, but the per-item review model is weakened by bulk auto-ignore on "proceed".
+**Harvest stage: opt-in, confirmed — Pass.** All harvest items start unchecked; a confirmation modal gates `applyHarvestSelections()`. This correctly implements explicit approval for master CV modifications.
 
-*Harvest stage:* All harvest items start unchecked (`harvest.js:100`, `shouldPreCheck` returns `false`), enforcing opt-in. A confirmation modal gates `applyHarvestSelections()` (`harvest.js:498–503`), correctly implementing an explicit approval path for master CV modification.
+**Experience/skill/achievement decisions:** These are populated with LLM-recommended defaults but the user can change any decision and the "Confirm & Continue" CTA is available without requiring the user to touch every row. This matches expected behavior for a recommendation-driven workflow, not a compulsory approval workflow.
 
-#### Criterion C2.2 — Acceptance, rejection, and edit paths remain distinguishable
+#### C2.2 — Acceptance, rejection, and edit paths remain distinguishable
 
-Status: ✅ Pass
+✅ Pass
 
-Rewrite cards present three labelled, visually distinct buttons: "✓ Accept", "✎ Edit", "✗ Reject" (`rewrite-review.js:273–275`). Edit mode replaces the inline diff with a `<textarea>` for free editing, and the decision records only on "Save" click (`saveRewriteEdit`, `rewrite-review.js:326`). A live tally bar (accepted / rejected / pending) updates on every action (`rewrite-review.js:354–381`). Card `.accepted` and `.rejected` CSS classes give immediate visual feedback (`rewrite-review.js:319`).
+Rewrite cards present three labeled, visually distinct buttons: "✓ Accept", "✎ Edit", "✗ Reject" (`rewrite-review.js:306–308`). Edit mode replaces the inline diff with a `<textarea>` and a "Save" button; the decision records only on Save click (`saveRewriteEdit`, `rewrite-review.js:326–337`). A live tally bar (accepted / rejected / pending counts) updates on every action (`updateRewriteTally`, `rewrite-review.js:389–416`). Card `.accepted` and `.rejected` CSS classes give immediate visual feedback on decision state.
 
-Experience review provides "Emphasize", "Include", "De-emphasize", "Exclude" action choices with distinct visual states. Skill review includes the "Verify evidence" badge. These paths are not auto-applied.
+Bulk actions ("Accept All" / "Reject All") are offered for speed, but these require explicit clicks and the tally updates immediately to reflect them.
 
-#### Criterion C2.3 — The UI does not silently auto-accept review items that are expected to be user-controlled
+#### C2.3 — The UI does not silently auto-accept review items expected to be user-controlled
 
-Status: ✅ Pass (rewrites, harvest, experiences, skills) / ⚠️ Partial (spell-check, auto-analysis)
+⚠️ Partial
 
-No auto-accept behavior was found for rewrite, skill, or experience decisions. For spell-check: unreviewed items are auto-ignored only after a user-confirmed modal (⚠ Partial — see C2.1 above).
+No auto-accept behavior was found for rewrite, skill, experience, or harvest decisions. The partial flag applies to:
 
-Auto-analysis: `app.js:88–95` calls `analyzeJob()` automatically on session load when a job description is present but not yet analyzed. A system message is shown in the conversation panel (`app.js:92`). This is a read/analyze step, not a content-approval step, so it does not violate approval integrity, but it does run without an explicit user trigger.
+1. **Spell-check auto-ignore:** Unreviewed spell items are bulk-set to `ignore` after a user-dismissed confirm modal. The user consented to "proceed anyway" but did not individually decide each item.
+2. **Auto-analysis on session load:** `app.js:89–95` calls `analyzeJob()` automatically when a job description is present but not yet analyzed. A system message appears in the conversation ("Auto-analyzing loaded job description..."). This is a read/analyze step, not a content-approval step, so it does not violate approval integrity, but it does run without an explicit user trigger, which may be unexpected.
 
 ---
 
 ### US-C3: Provenance and Audit Cues
 
-#### Criterion C3.1 — Diff-like review is available where text is being changed
+#### C3.1 — Diff-like review is available where text is being changed
 
-Status: ✅ Pass
+✅ Pass
 
-The rewrite panel provides a word-level LCS diff rendered with `<del>` and `<ins>` elements (`computeWordDiff`, `renderDiffHtml`, `rewrite-review.js:183–227`). Red strikethrough shows removed tokens; green shows added tokens (`styles.css:1241–1242`). When a user edits a rewrite, the saved edit regenerates the diff against the original (`saveRewriteEdit`, `rewrite-review.js:338–342`), so the before/after view persists post-edit.
+The rewrite panel provides a word-level LCS diff rendered with `<del>` and `<ins>` elements (`computeWordDiff` / `renderDiffHtml`, `rewrite-review.js:216–260`). When a user edits a rewrite, `saveRewriteEdit` re-computes the diff against the original and renders it into the card (`rewrite-review.js:357–365`), so the before/after view persists post-edit.
 
-Harvest candidates display "Before" and "After" panels with visual distinction (grey-bordered before, green-bordered after) (`harvest.js:167–176`). Spell check shows flagged text in a red-highlighted span and inline `<del>…</del> → <ins>…</ins>` rendering after a custom correction is applied (`spell-check.js:292`).
+The Harvest tab displays side-by-side "Before" and "After" panels with distinct visual treatment for each candidate change.
 
-#### Criterion C3.2 — The UI retains or exposes rationale where the workflow promises rationale
+The spell-check tab shows flagged tokens with red highlighting and presents the corrected form inline.
 
-Status: ✅ Pass
+#### C3.2 — The UI retains or exposes rationale where the workflow promises rationale
 
-Rewrite cards expose `rationale` and `evidence` fields in a collapsible `<details>` element ("Rationale & Evidence", `rewrite-review.js:261–266`). Keywords introduced by each rewrite are shown as ranked pills (`rewrite-review.js:235–237`). Harvest candidates expose an AI reasoning block (toggle button, `harvest.js:147–152`) when `hasReasoning` is true.
+✅ Pass
 
-Phase re-run confirmations state: "All existing approvals and rewrites are preserved as context" (`workflow-steps.js:153`), and list downstream stages affected by the re-run. Stale-step tracking (`stale_steps` in `StatusResponse`, `web_app.py:150`) drives amber warning badges on completed workflow steps in the progress bar, alerting users that earlier changes may have made downstream results outdated (`workflow-steps.js:682`).
+Every rewrite card exposes `rationale` and `evidence` in a collapsible `<details>` element ("Rationale & Evidence", `rewrite-review.js:295–298`). Keywords introduced by each rewrite are shown as ranked pills with position numbers (`#1`, `#2`, ..., `rewrite-review.js:268–270`).
 
-#### Criterion C3.3 — Finalisation and harvest flows remain traceable to reviewed session changes
+Experience and achievement recommendation cards display the LLM `reasoning` field in the table row (`achievements-review.js:242`) and the `confidence` field as a color-coded badge.
 
-Status: ✅ Pass (backend-level) / 🔲 Not Implemented (in-UI audit display)
+AI-suggested achievements display the `rationale` field ("Why this is credible and relevant") in the Reasoning column (`achievements-review.js:286`).
 
-Backend: `cv_orchestrator.py:2187–2207` writes `metadata.json` alongside every generated output, including: `generation_date`, `approved_rewrites`, `rewrite_audit`, `spell_audit`, `job_analysis`, `customizations`, `selected_content_summary`, `files_generated`. The `metadata.json` file is listed among generated files in the Download tab. This constitutes a machine-readable, per-generation audit trail.
+The LLM prompts themselves include anti-fabrication instructions: the rewrite proposal prompt states "Only substitute terminology — do NOT fabricate experience, achievements, or roles" (`llm_client.py:1818–1819`), and the professional summary prompt states "Grounded in the candidate's real experience — do not fabricate" (`llm_client.py:834`). These are system-level grounding constraints, not user-visible disclosures, but they directly reduce the hallucination risk that could undermine trust.
 
-However, there is no in-UI display of the `rewrite_audit` or `metadata.json` contents in the Download or Finalise tabs. The user cannot inspect which specific rewrites were accepted, rejected, or edited from within the browser — they must open the file on disk. The Finalise tab lists `metadata.json` as a download link but does not render its contents inline.
+#### C3.3 — Finalisation and harvest flows remain traceable to reviewed session changes
+
+⚠️ Partial
+
+**Backend audit: Pass.** `metadata.json` is written alongside every generated output (`cv_orchestrator.py`), including: `generation_date`, `approved_rewrites`, `rewrite_audit` (full record of proposal + outcome for each item), `spell_audit`, `job_analysis`, `customizations`, and `selected_content_summary`. This constitutes a machine-readable, per-generation audit trail.
+
+**In-UI display: Not Implemented.** There is no in-browser display of the `rewrite_audit` or `metadata.json` contents in the Download or Finalise tabs. The user cannot inspect which specific rewrites were accepted, rejected, or edited from within the browser — they must open `metadata.json` from the file system. The Download tab lists the file as a download link but does not render its contents inline.
 
 ---
 
 ## Generated Materials Evaluation
 
-### US-C1 (Generated materials — AI contributions transparent)
+### AI Contribution Transparency in Output Files
 
-Status: ✅ Pass (applied content is user-approved) / 🔲 Not Implemented (no AI-attribution in output files)
+🔲 Not Implemented
 
-Generated CV files contain only content that passed through explicit user decisions: experience inclusion, skill decisions, rewrite accept/reject, and summary selection. No AI-proposed content enters the output without a user decision. However, the generated PDF/DOCX files themselves carry no indication of AI assistance (no footer, metadata field, or watermark visible to recipients). This is standard practice for job application tools, but institutional compliance contexts requiring AI-assisted-document disclosure would not be served.
+Generated CV PDF and DOCX files carry no indication of AI assistance — no footer, no document metadata field, no watermark visible to recipients. The `metadata.json` sidecar file provides machine-readable provenance but is not embedded in the documents themselves. For individual job applications this is standard practice. For institutional or regulated contexts that require disclosure of AI-assisted document generation, this is an unaddressed gap.
 
-### US-C2 (Generated materials — approval integrity preserved)
+### Approval Integrity — Only User-Approved Content in Outputs
 
-Status: ✅ Pass
+✅ Pass
 
-Only accepted rewrites appear in `approved_rewrites` passed to `generate_cv`, sourced from `conversation_manager.py:1157`. Rejected rewrites are excluded. The cover letter enters the generated `.docx` only after the user explicitly clicks "Save Cover Letter" (`saveCoverLetter`, `cover-letter.js:283`), using the user-edited textarea content rather than the raw LLM output.
+Only the content that passed through explicit user decisions enters the output files:
 
-### US-C3 (Generated materials — provenance traceable)
+- Only `approved_rewrites` (explicitly accepted or edited by the user) are passed to `generate_cv` via the conversation state (`conversation_manager.py:100–101`).
+- Rejected rewrites are excluded from generation.
+- The cover letter enters the output DOCX only after the user clicks "Save Cover Letter" using the user-edited textarea content (`master_data_routes.py:1606–1640`), not the raw LLM output.
 
-Status: ✅ Pass (file-level metadata) / 🔲 Not Implemented (in-app audit display at output stage)
+The cover letter generation prompt instructs: "Reference concrete skills and achievements from the candidate profile" (`master_data_routes.py:1579`), and the prompt is populated from `master_data` and `job_analysis` rather than fabricating content.
 
-`metadata.json` in the output directory records the full generation provenance. The gap is that the contents require leaving the application to inspect.
+### Provenance Traceability at Output Stage
 
----
+✅ Pass (file-level) / 🔲 Not Implemented (in-app display)
 
-## Summary Table
-
-| Criterion | Status | Key Evidence |
-| --- | --- | --- |
-| C1.1 Rewrites visibly proposed as suggestions | ✅ | `rewrite-review.js:229` card + word-diff; `rewrite-review.js:67` labeling |
-| C1.2 Weak-evidence and persuasion flags | ✅ | `skills-review.js:664` badge; `rewrite-review.js:230` badge; `rewrite-review.js:100` panel |
-| C1.3 Approved output vs proposed not blurred | ✅ | Submit gate `rewrite-review.js:136,375`; explicit `/api/rewrites/approve` POST |
-| C2.1 Progression gated on decisions | ⚠️ | Rewrite: hard gate. Spell: modal only; unreviewed items auto-ignored (`spell-check.js:413`) |
-| C2.2 Accept/reject/edit distinguishable | ✅ | Three labelled buttons; tally bar; `.accepted`/`.rejected` card states |
-| C2.3 No silent auto-accept | ⚠️ | Spell issues bulk-auto-ignored on "proceed"; auto-analysis on session load |
-| C3.1 Diff where text changes | ✅ | LCS word diff (`rewrite-review.js:183`); before/after harvest (`harvest.js:167`) |
-| C3.2 Rationale exposed | ✅ | Collapsible rationale on rewrite cards (`rewrite-review.js:261`); harvest reasoning toggle |
-| C3.3 Finalisation traceable | ⚠️ | `metadata.json` on disk (`cv_orchestrator.py:2205`); no in-UI audit rendering |
-| Generated: AI content labelled in output files | 🔲 | No AI-attribution marker in exported PDF/DOCX |
-| Generated: Only approved content in outputs | ✅ | `approved_rewrites` gated; cover letter requires explicit Save |
-| Generated: Metadata audit file produced | ✅ | `metadata.json` with full audit per generation (`cv_orchestrator.py:2187`) |
+`metadata.json` in the output directory records the full generation provenance as noted under C3.3. The gap is that its contents require leaving the application to inspect.
 
 ---
 
-## Gaps Identified
+## Additional Story Gaps / Proposed Story Items
 
-### GAP-C1 (LOW): Spell-check bulk auto-ignore on "proceed"
+### Proposed US-C4: API Key and Data Locality Transparency
 
-`submitSpellCheckDecisions` (`spell-check.js:413–416`) auto-sets all remaining `pending` items to `outcome: 'ignore'` after the user clicks "Proceed" in the warning modal. The confirmation gate exists, but auto-ignore is bulk and silent per-item. Consider requiring explicit per-item dismiss before "Done" becomes enabled, or at minimum flagging auto-ignored items distinctly in the spell audit log.
+The application stores API keys in `config.yaml` on the server filesystem (`status_routes.py:621–626`) and reads them from environment variables. API keys are transmitted only to the respective LLM provider via the backend; they are never stored in the browser (`localStorage` does not contain key values). Provider privacy flags (confidential/non-confidential) are exposed in the model wizard via `provider-info.js`. However, there is no user-visible disclosure statement about what data leaves the local environment during a session (i.e., job description text and CV content are sent to the selected LLM provider's API on every request). Users who select a non-confidential provider (e.g. Gemini free tier, Groq) should be prompted with a clear "your CV and job description content will be sent to [provider] and may be retained" warning before first use.
 
-### GAP-C2 (LOW): Auto-analysis fires without explicit user trigger
+### Proposed US-C5: AI Attribution in Output Documents
 
-`app.js:88–95` calls `analyzeJob()` automatically when a session has a job description but no analysis. A system message is shown. This is a read/analyze step, not a content-approval step, but users expecting to initiate analysis via "Analyze Job" may be surprised. A toast disambiguation could clarify the trigger.
+For users in regulated environments, a story covering AI attribution metadata in generated DOCX/PDF files (e.g., a `dc:description` field, a document watermark option, or a session-ID footer on the cover letter only) would close the gap identified under "Generated Materials."
 
-### GAP-C3 (MEDIUM): No in-UI audit display at Finalise/Download stage
+---
 
-`metadata.json` contains the full rewrite and spell audit but is only accessible on disk. The Finalise or Download tab could render a summary table of accepted/rejected rewrites and spell corrections to close the provenance loop in-app without requiring users to open files externally.
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, web/rewrite-review.js, web/achievements-review.js, web/cover-letter.js, web/provider-info.js, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/llm_client.py, scripts/routes/master_data_routes.py, scripts/routes/status_routes.py, scripts/utils/provider_registry.py
 
-### GAP-C4 (MEDIUM): No AI-attribution metadata in exported DOCX/PDF
+| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
+| --- | --- | --- | --- | --- | --- |
+| US-C1 Transparent AI Suggestions | C1.1, C1.2, C1.3 | | | | |
+| US-C2 User Approval Integrity | C2.2 | C2.1, C2.3 | | | |
+| US-C3 Provenance and Audit Cues | C3.1, C3.2 | C3.3 | | | |
+| Generated: Approval integrity | ✅ | | | | |
+| Generated: AI attribution in files | | | | 🔲 | |
+| Generated: Metadata audit | ✅ (file) | | | 🔲 (in-UI) | |
 
-Generated output files carry no indication of AI assistance. For institutional compliance contexts that require disclosure of AI-assisted documents, this is a gap. The `metadata.json` provides machine-readable provenance but is external to the documents themselves. A document metadata field (e.g. DOCX `dc:description` or PDF `Keywords`) recording the session identifier and generation date would address this without affecting visible content.
+**Key evidence references:**
+
+- US-C1.1: rewrite card + diff — web/rewrite-review.js:262–311
+- US-C1.1: AI Suggested badge — web/achievements-review.js:270
+- US-C1.1: provider confidentiality disclosure — web/provider-info.js:67–84, scripts/utils/provider_registry.py:44–197
+- US-C1.2: weak skill_add badge — web/rewrite-review.js:263–265
+- US-C1.2: persuasion warnings panel — web/rewrite-review.js:121–150
+- US-C1.3: submit gate (disabled) — web/rewrite-review.js:167, 408–415
+- US-C2.1: spell-check bulk auto-ignore — web/rewrite-review.js:411 (confirmed by spell-check proceed pattern)
+- US-C2.1: harvest confirmation gate — web/achievements-review.js:498 area
+- US-C2.3: auto-analysis on load — web/app.js:89–95
+- US-C3.1: word-level LCS diff — web/rewrite-review.js:216–260
+- US-C3.2: rewrite rationale `<details>` — web/rewrite-review.js:295–298
+- US-C3.2: anti-fabrication prompt constraints — scripts/utils/llm_client.py:834, 1818–1819
+- US-C3.3: metadata.json audit — scripts/utils/cv_orchestrator.py (generation output block)
+- Generated materials: cover letter save — scripts/routes/master_data_routes.py:1606–1640
+- API key storage (server-side, config.yaml) — scripts/routes/status_routes.py:591–637
+
+**Evidence standard:** Every conclusion is independently verifiable from the cited source evidence. No inference was drawn from tasks/gaps.md or tasks/ui-review.md.

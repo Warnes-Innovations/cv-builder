@@ -6,271 +6,257 @@ This file is part of CV-Builder.
 For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# CV-Builder UI Review — Cycle 5
+# CV-Builder UI Review — Cycle 6
 
-**Generated:** 2026-06-22 | **Review date:** 2026-06-20
-**Cycle:** 5 (full 14-persona + heuristic parallel source-first review)
-**Branch:** `feature/multi-user-deployment`
+**Date:** 2026-06-22
+**Cycle:** 6 (source-first parallel review — 14 personas + 1 heuristic)
 
 ---
 
 ## Executive Summary
 
-Cycle 5 ran all 14 persona sub-agents and the heuristic sub-agent concurrently. All 15 agents
-completed successfully. Sources were read fresh from the working directory; review docs were
-not used as evidence.
+| Reviewer | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
+| -------- | ------- | --------- | ------ | ---------- | ----- |
+| UX Expert / Heuristic | 32 | 12 | 4 | 1 | 1 |
+| Applicant | 96 | 13 | 2 | 1 | — |
+| Resume Expert | 17 | 10 | 2 | 0 | 1 |
+| Hiring Manager | 29 | 13 | 1 | 0 | — |
+| Persuasion Expert | 10 | 10 | 0 | 4 | — |
+| HR/ATS | ~18 | ~6 | ~2 | ~2 | — |
+| Accessibility Specialist | 9 | 3 | 0 | 0 | — |
+| First-Time User | 1 | 8 | 0 | 0 | — |
+| Returning User | 5 | 4 | 0 | 0 | — |
+| Power User | 2 | 3 | 0 | 0 | — |
+| Recruiter Ops | 6 | 3 | 0 | 3 | — |
+| Master CV Curator | 4 | 6 | 1 | 0 | — |
+| Trust & Compliance | 7 | 2 | 0 | 0 | — |
+| Graphical Designer | 5 | 7 | 0 | 0 | — |
 
-### Summary Counts (UX Expert — full criterion set)
-
-| Persona | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl |
-|---------|---------|-----------|--------|------------|
-| UX Expert (US-U1–U9) | 28 | 13 | 4 | 1 |
-
-The four persistent UX Fails:
-1. **US-U3 AC4** — Clarifying questions not paged (rendered all-at-once)
-2. **US-U4 AC6** — Numeric relevance score with scale label absent from experience review
-3. **US-U5 AC5** — No keyboard "Approve & Next" navigation in rewrite review
-4. **US-U8 AC2** — Review tables not responsive at ≤1400 px
-
-### Cycle 5 Progress vs. Cycle 4
-
-**Fixes confirmed still present from cycles 1–4:**
-- HTML semantic landmarks (`<main>`, `<nav>`, `<header>`) ✅
-- Tabpanel `aria-labelledby` wired dynamically ✅
-- `toggleChat` bundle collision resolved ✅
-- Master CV modal focus management ✅
-- `showConfirmModal` + `openAtsReportModal` focus trap ✅
-- Status message `aria-live` regions ✅
-- Session-conflict banner `role="alert"` ✅
-- Rename widget inline (no `window.prompt()`) ✅
-- `session-switcher-ui.js` `alert()` → `showToast()` ✅
-- `updateWorkflowStepsClickable()` adds role/tabindex/keydown to clickable step pills ✅
-- Welcome modal CTA navigates to Master CV on empty skeleton ✅
-- `content_warnings` toast on both `generatePreview` and `applyLayoutSettings` paths ✅
-
-**New gaps discovered this cycle:** 10 (GAP-166 through GAP-175)
-**Gaps confirmed resolved this cycle:** 1 (GAP-39)
+**Net improvement from cycle 5:** UX Expert/Heuristic moved from 28P/13Pa/4F/1NI → 32P/12Pa/4F/1NI. 10 gaps confirmed resolved from cycle 5 work.
 
 ---
 
-## Resolved This Cycle
+## Confirmed Resolved Since Cycle 5
 
-### GAP-39: Cover Letter and Screening DOCX Now in Download/Finalise
+All the following were verified fixed in source code by cycle 6 agents:
 
-**Status → RESOLVED 2026-06-20**
+| Gap | Fix | Evidence |
+| --- | --- | -------- |
+| GAP-166 | Rewrite decisions persisted to `localStorage` per session | `web/rewrite-review.js:_persistDecisions()`, `_restoreDecisions()` |
+| GAP-167 | `.step-rerun` converted from `<span>` to `<button>` with `aria-label` and `:focus-within` visibility | `web/workflow-steps.js:702–707` |
+| GAP-168 | Sessions modal `openSessionsModal()` calls `setInitialFocus()` | `web/session-switcher-ui.js:458` |
+| GAP-169 (chat) | `#spell-btn` label changed to "Generate Preview →" | `web/index.html:186` |
+| GAP-170 | `#llm-busy-label` has `aria-live="polite" role="status"` | `web/index.html:155` |
+| GAP-171 | Category reorder ↑↓ buttons have `aria-label` | `web/skills-review.js:423–424` |
+| GAP-172 | Step pills append `.sr-only` state text | `web/workflow-steps.js:715–726` |
+| GAP-173 | `.action-btn`, `.tab`, `.step` have `:focus-visible` CSS | `web/styles.css` |
+| GAP-179 | `.icon-btn`, `.rw-btn`, `.sm-btn` `:focus-visible` rules added | `web/styles.css` (cycle 6 fix) |
+| GAP-181 | Viewer-panel spell-check buttons relabelled "Generate Preview →" | `web/spell-check.js:148,271` (cycle 6 fix) |
 
-Recruiter-ops persona confirmed cover letter and screening DOCX files are surfaced in the
-Download tab file listing. `web/download-tab.js` now renders all three CV formats, the cover
-letter, and the screening DOCX in the file grid.
+**Residual (partially resolved):**
 
----
-
-## Top 5 UX Issues by Impact
-
-| Priority | Issue | Severity | Source |
-|----------|-------|----------|--------|
-| 1 | `rewriteDecisions = {}` reset on session restore — in-progress decisions wiped | HIGH | `session-manager.js:740` |
-| 2 | ↻ re-run `<span>` inside step pills keyboard-inaccessible (bare `onclick`, `opacity:0`) | HIGH | `workflow-steps.js:704–706` |
-| 3 | Cover letter has no mechanism to inject company-specific initiative/product references | HIGH | `master_data_routes.py:1559–1580` |
-| 4 | Category reorder ↑↓ buttons missing `aria-label` — WCAG 2.1 Level A failure | HIGH | `skills-review.js:423–424` |
-| 5 | `openSessionsModal` calls `trapFocus` but not `setInitialFocus` — focus not moved into modal | MED | `session-switcher-ui.js:457` |
-
----
-
-## Heuristic Evaluation (Nielsen's 10)
-
-| Heuristic | Rating | Key Finding |
-|-----------|--------|-------------|
-| H1: System status visibility | 🟡 Minor | Workflow step bar excellent; `#llm-busy-label` has no `aria-live` for AT users |
-| H2: Real-world match | 🟡 Minor | Phase labels improved; "Done — Generate CV →" CTA misleading (generates preview) |
-| H3: User control/freedom | 🟠 Major | No paged clarifying questions (US-U3); no Approve-&-Next in rewrites (US-U5) |
-| H4: Consistency/standards | 🟠 Major | Bootstrap 5 in Layout tab vs `.action-btn` system in all other tabs (GAP-80) |
-| H5: Error prevention | 🟡 Minor | `rewriteDecisions = {}` reset is a data-loss error with no prevention mechanism |
-| H6: Recognition over recall | 🟢 Good | Workflow step bar + position bar keep context visible; diff cards show before/after |
-| H7: Flexibility/efficiency | 🟠 Major | No keyboard shortcuts; no bulk accept/reject for rewrites; no stage skip |
-| H8: Aesthetic/minimalist | 🟡 Minor | Two divergent CV templates (GAP-132); Layout tab visual language mismatch |
-| H9: Error diagnosis/recovery | 🟡 Minor | Phase-enforcement 409 still shows "session conflict" banner (GAP-93) |
-| H10: Help/documentation | 🔴 Critical | No in-app help system; jargon terms undefined; no keyboard shortcut reference |
+- **GAP-166 cross-device**: localStorage approach works for same-device reloads; cold-restore from a different device or cleared storage still requires re-deciding all rewrites. Backend persistence would fully close this.
 
 ---
 
-## New Gaps — Cycle 5
+## Top 5 UX Issues (Cycle 6)
 
-| GAP | Severity | Description | File:Line |
-|-----|----------|-------------|-----------|
-| GAP-166 | HIGH | `rewriteDecisions = {}` reset on session restore wipes in-progress decisions | `session-manager.js:740` |
-| GAP-167 | HIGH | ↻ re-run `<span>` inside step pills has no `role`, `tabindex`, or keydown handler | `workflow-steps.js:704–706` |
-| GAP-168 | MED | `openSessionsModal` traps focus but doesn't call `setInitialFocus` | `session-switcher-ui.js:457` |
-| GAP-169 | LOW | "Done — Generate CV →" CTA label misleading — generates preview, not final | `index.html:186` |
-| GAP-170 | MED | `#llm-busy-label` div has no `aria-live` — "Reasoning…" updates not announced to AT | `index.html:155` |
-| GAP-171 | HIGH | Category reorder ↑↓ buttons have `title` only, missing `aria-label` — WCAG 2.1 Level A | `skills-review.js:423–424` |
-| GAP-172 | MED | Workflow step states (active/completed/stale) conveyed by colour only; no `.sr-only` text | `styles.css:149–159` |
-| GAP-173 | MED | No `:focus-visible` CSS for `.tab`, `.action-btn`, `.step` — invisible focus in HC mode | `styles.css` |
-| GAP-174 | HIGH | Cover letter has no mechanism to extract/inject company-specific initiatives or products | `master_data_routes.py:1559–1580` |
-| GAP-175 | MED | Summary specificity: generic-phrase detection exists but no check enforces role-specific content | `conversation_manager.py:1325` |
+### 1. First-Time User Onboarding Gap (GAP-36) — CRITICAL
 
----
+All 13 workflow steps are visible at load, with no progress indicator, no welcome screen, and no contextual guidance. First-time users have no clear starting point. The "Not ready" LLM badge reads as an error state.
 
-## Persona Findings
+### 2. Cover Letter Missing Company Context (GAP-174) — HIGH
 
-### Applicant (US-A1–A12)
+The cover letter LLM prompt receives structured `job_analysis` fields but not the raw job posting text or company-specific content (initiatives, products, values). Every letter is structurally sound but generically voiced.
 
-Key findings:
-- US-A1–A3 (job intake, analysis, customization): Core workflow functional. Intake confirmation
-  card appears in chat panel but may be missed if user's attention is on the job tab.
-- US-A4 (rewrite review): Core review UI functional; rewrite decision reset bug (GAP-166) is
-  a data loss risk for partial sessions.
-- US-A10 (NL master CV update): Still not implemented — GAP-01 open.
-- US-A11 (harvest persistence): Harvest opt-in now correct (GAP-144 resolved). Skill type
-  not persisted to master data (GAP-89 open).
-- "Done — Generate CV →" CTA on spell-check completion misleads users (GAP-169).
+### 3. Bullet-Reorder Modal Missing Accessibility Structure (GAP-176) — HIGH
 
-### UX Expert (US-U1–U9)
+`showBulletReorder()` (`workflow-steps.js:456–499`) renders a list-reorder modal with no `role="dialog"`, no `aria-modal`, no `aria-labelledby`, no focus entry, no focus trap, and no focus restoration on close. Screen reader users cannot interact with it.
 
-**28 Pass / 13 Partial / 4 Fail / 1 Not Implemented**
+### 4. candidate_to_confirm Skills Flow Into Output — HIGH
 
-Persistent fails:
-- US-U3 AC4: All clarifying questions rendered at once — no paging.
-- US-U4 AC6: Experience relevance shown as badge, not a numeric scale.
-- US-U5 AC5: No keyboard-driven "Approve & Next" sequential rewrite navigation.
-- US-U8 AC2: Review tables not responsive at ≤1400 px.
+Skills with `evidence_strength === 'weak'` (marked ⚠ in UI) are not filtered in `_organize_skills_by_category()` (`cv_orchestrator.py:583–595`). They appear in the generated PDF/DOCX without qualification.
 
-Strong areas: Workflow step bar, position identity persistence, back-nav confirm modal,
-stale-state signaling, session restore phase detection.
+### 5. Clarifying Questions Rendered Flat (GAP-55) — HIGH
 
-### Resume Expert (US-R1–R7)
-
-Strong on: ATS keyword matching, synonym deduplication, spell-check flow, publication
-rendering, relevance-sorted bullets. Gaps:
-- Experience table default sort still recency-biased (GAP-108 open).
-- Synonym grouping absent from analysis display (GAP-107 open).
-- `candidate_to_confirm` badge visible in skills UI; output exclusion design decision pending.
-
-### Hiring Manager (US-M1–M7)
-
-All structural criteria pass. Key partials and fails:
-- US-M1: Generic-phrase detection active; no check enforces job-title or quantified claims in
-  summary (GAP-175 new).
-- US-M2: No minimum bullet count gate (GAP-81); persuasion warnings server-log only (GAP-09).
-- US-M6: **❌ Fail** — cover letter has no mechanism for company-specific initiative injection
-  (GAP-174 new). Backend prompt targets ~250–300 words vs story minimum 300w (GAP-126).
-- US-M7: Venue-warning rendering confirmed working. First-author star confirmed. ✅
-
-### Persuasion Expert (US-P1–P6)
-
-Summary prompt now uses value-identity opener (GAP-163 resolved in cycle 4). Remaining:
-- Post-generation cover letter word-count enforcement absent (GAP-136).
-- CTA check accepts passive closings (GAP-137, GAP-96).
-- `post_analysis_answers` not passed to summary generator (GAP-139).
-- No positive-sum metric framing guidance (GAP-97).
-
-### HR / ATS (US-H1–H8)
-
-ATS scoring and keyword display improvements confirmed. Remaining open:
-- Hard/soft skill classification rule-based (GAP-22).
-- `skill_type` not persisted via harvest (GAP-89).
-- Synonym grouping absent from ATS report (GAP-90).
-- Font compliance validation absent (GAP-87).
-- Year-only dates not flagged (GAP-88).
-
-### Accessibility Specialist (US-X1–X3)
-
-Significant cycle 3–4 improvements confirmed. Cycle 5 remaining gaps:
-- Category reorder ↑↓ buttons missing `aria-label` — WCAG 2.1 Level A (GAP-171 new).
-- `#llm-busy-label` has no `aria-live` (GAP-170 new).
-- `openSessionsModal` traps but doesn't move focus in (GAP-168 new).
-- `#message-input` still missing accessible label (GAP-35 open).
-- `.workflow` container has no `aria-live` for stage-change announcements (GAP-73 open).
-- Step states colour-only — no `.sr-only` text (GAP-172 new).
-- No `:focus-visible` on `.tab`, `.action-btn`, `.step` (GAP-173 new).
-
-Note: GAP-72 (step pill keyboard nav) CONFIRMED RESOLVED — `updateWorkflowStepsClickable()`
-in `ui-core.js:1917–1931` adds `role="button"`, `tabindex="0"`, and keydown handler.
-Cycle 5 accessibility agent misread `workflow-steps.js` without reading `ui-core.js`;
-direct code inspection confirms the fix is in place.
-
-### First-Time User (US-F1–F4)
-
-Welcome modal, empty-skeleton detection, and Master CV CTA all functioning. Remaining:
-- LLM provider prerequisite still not mentioned in onboarding (GAP-76).
-- "Get Started" CTA on normal-profile path closes modal but doesn't navigate to Job tab (GAP-77).
-- Jargon terms undefined on first encounter (GAP-78).
-- Preview vs. final generation pipeline unexplained (GAP-79).
-
-### Returning User (US-S1–S3)
-
-Session restore: phase resolution, tab switching, history replay, decisions in state — all pass.
-**New critical finding:**
-- **GAP-166**: `session-manager.js:740` — `rewriteDecisions = {}` reset during restore in
-  `rewrite_review` phase wipes any in-progress decisions the user made before leaving.
-
-### Power User (US-W1–W3)
-
-Bulk accept/reject for experience, skills, achievements confirmed. Remaining:
-- No keyboard shortcuts (GAP-98).
-- No bulk accept for rewrites (GAP-99).
-- No forward stage skip (GAP-101).
-- No session duplicate/copy action (GAP-113).
-
-### Recruiter Ops (US-O1–O4)
-
-**Cover letter and screening DOCX now visible in Download tab** — GAP-39 RESOLVED.
-Remaining open:
-- `application_status` not shown in session list (GAP-102).
-- No readiness checklist before archive (GAP-40).
-- No per-file generated-at timestamp (GAP-106).
-- "Done" label for refinement-phase sessions misleading (GAP-104).
-- No applications pipeline dashboard (GAP-105).
-
-### Master CV Curator (US-M1–M4, M7)
-
-Backup-before-write and per-entry validation confirmed. Remaining:
-- Publication count stat card reads from JSON not BibTeX (GAP-92).
-- Phase-enforcement 409 shows wrong "session conflict" banner (GAP-93).
-- Summary variant format inconsistency after harvest (GAP-94).
-- Bulk BibTeX import skips per-entry validation (GAP-142).
-- No backup history/restore UI (GAP-91).
-
-### Trust & Compliance (US-C1–C3)
-
-AI-proposal labeling confirmed: rewrite diff cards, "AI-Generated Summary" label, weak-evidence
-badges in skills and rewrites. Remaining:
-- Rewrite audit log not rendered in Finalise tab (GAP-118).
-- No AI-attribution metadata in generated files (GAP-119).
-- No persistent non-confidential provider warning (GAP-115).
-- No per-item decision gate at customization stages (GAP-116, GAP-131).
-
-### Graphical Designer (US-G1–G3)
-
-- Two divergent CV templates still unresolved (GAP-132).
-- No CSS design token layer (GAP-133).
-- Layout tab uses Bootstrap 5 classes vs `.action-btn` throughout (GAP-80).
-- No `:focus-visible` on `.tab` / `.step` / `.action-btn` (GAP-173).
-- Duplicate `.step-stale-badge` CSS rule: confirmed removed. ✅
+All clarifying questions are rendered in a single scrollable list with no grouping, paging, or topic separation. Users presented with 15+ questions face significant cognitive overload.
 
 ---
 
-## Top Persistent Open Gaps (Cross-Persona Priority)
+## Nielsen's 10 Heuristics Summary
 
-| GAP | Severity | Description |
-|-----|----------|-------------|
-| GAP-36 | CRITICAL | First-run onboarding: raw FileNotFoundError if skeleton creation fails |
-| GAP-41 | CRITICAL | No pre-job Master CV editor entry point |
-| GAP-20 | CRITICAL | Staged generation frontend contract incomplete |
-| GAP-166 | HIGH | `rewriteDecisions = {}` reset on session restore — data loss |
-| GAP-167 | HIGH | ↻ re-run span keyboard-inaccessible |
-| GAP-174 | HIGH | Cover letter missing company-initiative injection |
-| GAP-132 | HIGH | Two divergent CV templates |
-| GAP-98 | HIGH | No keyboard shortcuts for workflow navigation |
-| GAP-35 | HIGH | `#message-input` missing accessible label |
-| GAP-73 | HIGH | `.workflow` no `aria-live` for stage announcements |
-| GAP-171 | HIGH | Category reorder buttons missing `aria-label` |
-| GAP-22 | HIGH | Hard/soft skill classification and ATS output |
-| GAP-118 | MED | Rewrite audit log not rendered in Finalise tab |
-| GAP-93 | MED | Phase-enforcement 409 → wrong session-conflict banner |
-| GAP-92 | MED | Publication count stat card reads wrong field |
+| # | Heuristic | Rating | Key Issue |
+| --- | --------- | ------ | --------- |
+| H1 | Visibility of system status | 🟡 Minor | LLM status readable; step pills informative; but no global progress % |
+| H2 | Match between system and real world | 🟡 Minor | "Rewrite review" / "spell check" are internal terms; "Generate Preview" now clearer |
+| H3 | User control and freedom | 🟠 Major | Re-run modals confirm; but no undo for bulk accept/reject; no back-nav within phase |
+| H4 | Consistency and standards | 🟡 Minor | Some label inconsistencies remain; button styling somewhat unified |
+| H5 | Error prevention | 🟡 Minor | Required fields gated; rewrites gated; spell-check is soft gate only |
+| H6 | Recognition rather than recall | 🟠 Major | Clarifying questions flat list; step meanings non-obvious without hover |
+| H7 | Flexibility and efficiency | 🟡 Minor | Re-run now keyboard-accessible; no primary-action keyboard shortcuts |
+| H8 | Aesthetic and minimalist design | 🟡 Minor | 96 hardcoded hex values; 218 inline style attrs; emoji in steps |
+| H9 | Help recover from errors | 🟡 Minor | Retry messages present; no in-app error log |
+| H10 | Help and documentation | 🟠 Major | No in-app help; workflow stage meaning requires prior knowledge |
 
 ---
 
-*See `tasks/gaps.md` for the canonical gap registry with status, severity, and resolution details.*
-*See `tasks/review-status/` for per-persona source evidence files.*
+## New Gaps Identified (GAP-176 through GAP-181)
+
+| Gap | Priority | Summary |
+| --- | -------- | ------- |
+| GAP-176 | HIGH | Bullet-reorder modal missing `role="dialog"`, focus trap, `aria-labelledby` |
+| GAP-177 | MED | Human DOCX section headings use bold runs, not Word Heading paragraph styles |
+| GAP-178 | LOW | Rewrite accept/edit/reject buttons lack `aria-pressed` state |
+| GAP-179 | MED | `.icon-btn`, `.rw-btn`, `.sm-btn` missing `:focus-visible` CSS → FIXED this cycle |
+| GAP-180 | MED | Step-rerun button `opacity:0` at rest — mouse users who don't hover never see it |
+| GAP-181 | MED | Viewer-panel spell-check buttons still "Done — Generate CV →" → FIXED this cycle |
+
+---
+
+## Per-Persona Findings
+
+### Applicant (96P / 13Pa / 2F / 1NI)
+
+**Key change from cycle 5:** US-A12 ↻ keyboard reachability promoted from ❌ Fail to ⚠️ Partial (GAP-167 converts span to button; acceptance criterion requires keyboard shortcut, not only progress-bar access).
+
+**Still failing:**
+
+- US-A10: Natural-language master CV update — not implemented (2 criteria)
+
+**Key partials:** session "queued" status, publications reorder, consolidated JSON diff before harvest, clarification amendment at re-run, re-run audit log.
+
+---
+
+### UX Expert / Heuristic (32P / 12Pa / 4F / 1NI)
+
+**Confirmed resolved:** GAP-166–173, GAP-NEW-D (intake focus replacement), GAP-U12 (freshness chip aria-label).
+
+**Still failing (3 persistent):**
+
+1. US-U3 AC4 — Clarifying questions rendered flat, no paged grouping
+2. US-U5 AC5 — No "Approve & Next" keyboard navigation for rewrites
+3. US-U8 AC2 — Review table columns not responsive at 1400px
+
+**New gaps:** GAP-U15/GAP-179 (`.icon-btn`/`.rw-btn` focus-visible → fixed), GAP-U16/GAP-180 (step-rerun zero discoverability at rest).
+
+---
+
+### Resume Expert (17P / 10Pa / 2F / 1 N/A)
+
+**Hard failures:**
+
+1. US-R1 AC4 — Keyword frequency weighting: `ats_keywords` is flat list, no title/repetition boost
+2. US-R3 AC4 — No cross-rewrite consistency check; rewrites proposed independently
+
+**Critical partial:** `candidate_to_confirm` skills flow into output without filtering (`cv_orchestrator.py:583–595`).
+
+---
+
+### Hiring Manager (29P / 13Pa / 1F)
+
+**Hard failure:** US-M6 (cover letter) — no mechanism to inject company-specific intelligence (GAP-174 remains).
+
+**Partials:** Action-verb warnings server-side only (not surfaced in UI); no minimum 2-bullet gate; cover letter at ~250–300 words (below story's 300w floor); no role-type word-count tiers.
+
+---
+
+### Persuasion Expert (10P / 10Pa / 0F / 4NI)
+
+**Persistent gaps:** No narrative-fragmentation detection, no positive-sum framing preference, no cross-document framing check, cover-letter word-count ceiling 400 vs. story's 300, CTA check accepts passive closes, `post_analysis_answers` does not flow to `generate_professional_summary`.
+
+---
+
+### HR/ATS
+
+**Hard failures:**
+
+1. Hard/soft skill classification is rule-based heuristic, not LLM (GAP-H1)
+2. `skill_type` never written back to `Master_CV_Data.json` (GAP-H2)
+
+**Partials:** No per-skill UI toggle; month-required enforcement absent; `knowsAbout` only validates count (not membership); bonus ★ not per-row; ATS DOCX normal font not set to Calibri.
+
+---
+
+### Accessibility Specialist (US-X1: 4/4, US-X2: 3/4, US-X3: 2/4)
+
+**All cycle 5 fixes confirmed:** Steps 2–12 keyboard-reachable, sr-only state text, sessions modal focus, category reorder aria-label, aria-live on LLM status, focus-visible CSS.
+
+**Open findings (cycle 6):**
+
+1. `#message-input` no accessible label (`index.html:177`, GAP-35)
+2. Bullet-reorder modal has no `role="dialog"`, focus trap, or aria structure (GAP-176)
+3. Human DOCX headings: bold runs, not Word Heading paragraph styles (GAP-177)
+4. `.icon-btn`, `.rw-btn`, `.sm-btn` lack `:focus-visible` CSS (GAP-179) → **FIXED this cycle**
+5. Rewrite accept/edit/reject buttons lack `aria-pressed` (GAP-178)
+6. Four input types use `outline:none` without `:focus-visible` replacement
+7. Single `_currentFocusTrapListener` cannot handle nested modals
+8. Emoji in tabs/steps not wrapped in `aria-hidden` spans
+
+---
+
+### First-Time User (1P / 8Pa / 0F)
+
+**GAP-169 residual:** viewer-panel spell buttons "Done — Generate CV →" at `spell-check.js:148,271` → **FIXED this cycle** (GAP-181).
+
+**Top open:** GAP-79 (viewer-panel pipeline explanation), GAP-78 (all 13 steps visible at load), GAP-14 (no progress indicator), GAP-76 (LLM "Not ready" alarms new users).
+
+---
+
+### Returning User (5P / 4Pa / 0F)
+
+**GAP-166 partially resolved:** Same-device reloads now restore rewrite decisions via localStorage. Residual gap for cross-device or cleared-storage restores.
+
+**Open partials:** No "welcome back" summary on restore, re-run vs. navigation distinction hover/tooltip only, ↻ button zero-opacity at rest.
+
+---
+
+### Power User (2P / 3Pa / 0F)
+
+**Confirmed fixed:** GAP-167 (keyboard-reachable ↻), GAP-166 (localStorage decisions), GAP-169 (label).
+
+**Open:** No primary-action keyboard shortcut, no session search, no changed-item count after re-run, no bulk-decision undo.
+
+---
+
+### Recruiter Ops (6P / 3Pa / 0F / 3NI)
+
+**Open gaps:** No preflight check before archive (GAP-OPS-C), `application_status` not shown in sessions modal (GAP-OPS-D), no per-file timestamp (GAP-OPS-E), ATS score not flagged as unchecked at finalise.
+
+---
+
+### Master CV Curator (4P / 6Pa / 1F)
+
+**Hard failure:** Publications overview stat card reads `data.get('publications', [])` (returns list from JSON, not BibTeX dict) → shows 0 when bibliography is non-empty. Fix: `master_data_routes.py:214` — change to `len(orchestrator.publications or {})`.
+
+**Partials:** Bulk BibTeX import doesn't validate required fields per entry; 409 phase-enforcement caught by session-conflict handler (wrong semantic); harvest section not labelled as optional; summary variants can be corrupted on CRUD edit.
+
+---
+
+### Trust & Compliance (7P / 2Pa / 0F)
+
+**Partials:** Spell-check is a soft gate (bulk-ignore can bypass per-item review); `metadata.json` audit log requires opening from disk (no in-browser rendering); no AI attribution metadata in generated PDF/DOCX.
+
+---
+
+### Graphical Designer (5P / 7Pa / 0F)
+
+**Confirmed fixed:** GAP-173 (focus-visible), GAP-169 (label), GAP-170 (aria-live).
+
+**Persistent:** No CSS custom properties (96 hardcoded hex values, GAP-133); two divergent CV templates not disclosed (GAP-132); six parallel button classes maintaining geometry independently.
+
+---
+
+## Most Critical Open Gaps (post-cycle 6)
+
+| Priority | Gap | Description |
+| -------- | --- | ----------- |
+| HIGH | GAP-36 | First-run onboarding — no welcome screen, all steps visible, unclear start |
+| HIGH | GAP-174 | Cover letter no company-specific injection |
+| HIGH | GAP-176 | Bullet-reorder modal inaccessible (no dialog role, no focus trap) |
+| HIGH | GAP-41 | Pre-job Master CV editor missing |
+| HIGH | GAP-14 | No workflow progress indicator |
+| MED | GAP-175 | Summary specificity validator absent |
+| MED | GAP-132 | Divergent CV templates (cv-template.html vs cv-style.css) |
+| MED | GAP-133 | No CSS custom properties — theming impossible |
+| MED | GAP-79 | Viewer-panel pipeline unclear for first-time users |
+| MED | GAP-55 | Clarifying questions flat list — cognitive overload |
