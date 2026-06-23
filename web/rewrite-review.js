@@ -303,9 +303,9 @@ function renderRewriteCard(r, cardWarnings = []) {
         </div>` : ''}
         <div class="rewrite-actions">
           <a class="rw-back-link" href="#" onclick="event.preventDefault(); switchTab('customizations')" title="Go back to Customise to reconsider whether to include this content">↩ Reconsider inclusion</a>
-          <button class="rw-btn accept" id="rw-accept-${cardId}" onclick="applyRewriteAction('${cardId}', 'accept')">✓ Accept</button>
-          <button class="rw-btn edit"   id="rw-edit-${cardId}"   onclick="applyRewriteAction('${cardId}', 'edit')">✎ Edit</button>
-          <button class="rw-btn reject" id="rw-reject-${cardId}" onclick="applyRewriteAction('${cardId}', 'reject')">✗ Reject</button>
+          <button class="rw-btn accept" id="rw-accept-${cardId}" aria-pressed="false" onclick="applyRewriteAction('${cardId}', 'accept')">✓ Accept</button>
+          <button class="rw-btn edit"   id="rw-edit-${cardId}"   aria-pressed="false" onclick="applyRewriteAction('${cardId}', 'edit')">✎ Edit</button>
+          <button class="rw-btn reject" id="rw-reject-${cardId}" aria-pressed="false" onclick="applyRewriteAction('${cardId}', 'reject')">✗ Reject</button>
         </div>
       </div>
     </div>`;
@@ -320,7 +320,9 @@ function applyRewriteAction(id, outcome) {
   // Clear any previous outcome styling
   card.classList.remove('accepted', 'rejected');
   ['accept', 'edit', 'reject'].forEach(a => {
-    document.getElementById(`rw-${a}-${id}`)?.classList.remove('active');
+    const btn = document.getElementById(`rw-${a}-${id}`);
+    btn?.classList.remove('active');
+    if (btn) btn.setAttribute('aria-pressed', 'false');
   });
 
   if (outcome === 'edit') {
@@ -335,7 +337,9 @@ function applyRewriteAction(id, outcome) {
       <button class="rw-save-edit-btn" style="margin-top:6px"
               onclick="saveRewriteEdit('${id}')">Save</button>
     `;
-    document.getElementById(`rw-edit-${id}`)?.classList.add('active');
+    const editBtn = document.getElementById(`rw-edit-${id}`);
+    editBtn?.classList.add('active');
+    if (editBtn) editBtn.setAttribute('aria-pressed', 'true');
     // Decision is recorded only when the user clicks Save
   } else {
     // Restore the after-text span if we previously entered edit mode
@@ -351,7 +355,9 @@ function applyRewriteAction(id, outcome) {
     rewriteDecisions[id] = { outcome, final_text: null };
     _persistDecisions();
     card.classList.add(outcome === 'accept' ? 'accepted' : 'rejected');
-    document.getElementById(`rw-${outcome}-${id}`)?.classList.add('active');
+    const activeBtn = document.getElementById(`rw-${outcome}-${id}`);
+    activeBtn?.classList.add('active');
+    if (activeBtn) activeBtn.setAttribute('aria-pressed', 'true');
     syncRewriteGlobals();
     updateRewriteTally();
   }
@@ -380,8 +386,14 @@ function saveRewriteEdit(id) {
   _persistDecisions();
   card.classList.remove('rejected');
   card.classList.add('accepted');
-  ['accept', 'reject'].forEach(a => document.getElementById(`rw-${a}-${id}`)?.classList.remove('active'));
-  document.getElementById(`rw-edit-${id}`)?.classList.add('active');
+  ['accept', 'reject'].forEach(a => {
+    const btn = document.getElementById(`rw-${a}-${id}`);
+    btn?.classList.remove('active');
+    if (btn) btn.setAttribute('aria-pressed', 'false');
+  });
+  const saveEditBtn = document.getElementById(`rw-edit-${id}`);
+  saveEditBtn?.classList.add('active');
+  if (saveEditBtn) saveEditBtn.setAttribute('aria-pressed', 'true');
   syncRewriteGlobals();
   updateRewriteTally();
 }
