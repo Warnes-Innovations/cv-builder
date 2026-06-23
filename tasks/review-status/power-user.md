@@ -8,19 +8,21 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Power User Review Status
 
-**Last Updated:** 2026-06-22 21:30 ET
+**Last Updated:** 2026-06-22 23:00 ET
 
-**Executive Summary:** The power-user story is substantially met for session management (US-W2) and backend iteration support (US-W3 context preservation). High-throughput workflow (US-W1) and iteration discoverability (US-W3.1/W3.3) remain partially satisfied. Two commits since Cycle 5 closed Gap B (↻ re-run button is now a real `<button>` visible on focus, not just hover) and Gap F (rewrite decisions now persist across page reload). Three gaps remain open: no keyboard shortcut for primary action buttons (Gap A), no session text search (Gap C), and no changed-item count after re-run (Gap D). A legacy undo gap (Gap E) remains unchanged.
+**Executive Summary:** The power-user story is substantially met for session management (US-W2) and backend iteration support (US-W3 context preservation). High-throughput workflow (US-W1) and iteration discoverability (US-W3.3) remain partially satisfied. GAP-180 (this cycle) raised the ↻ re-run button's resting opacity from 0 to 0.35, making it persistently visible at a glance on all completed steps without requiring hover or keyboard focus — this upgrades W3.1 from ⚠️ Partial to ✅ Pass and closes the residual discoverability concern flagged in Cycle 6. Three gaps remain open: no keyboard shortcut for primary action buttons (Gap A), no session text search (Gap C), and no changed-item count after re-run (Gap D). A legacy undo gap (Gap E) remains unchanged.
 
 ---
 
 ## What Changed Since Cycle 5
 
-Two commits landed after the Cycle 5 review date (2026-06-20) that affect this persona:
+Three commits have landed since the Cycle 5 review date (2026-06-20) that affect this persona:
 
 - **commit `3057ea8`** (GAP-167–173): Converted `.step-rerun` from `<span>` to `<button aria-label="Re-run …">` in `workflow-steps.js:705`. Added `.step.completed:focus-within .step-rerun { opacity: 1 !important; }` so the ↻ button becomes visible when the parent step pill has focus. Added `:focus-visible` outline to `.step-rerun`. This **closes Gap B** from Cycle 5 — keyboard users can now Tab to a completed step pill, see the ↻ appear, and activate it. Also renamed `#spell-btn` CTA label from "Done — Generate CV →" to "Generate Preview →" (GAP-169, `index.html:186`), fixing a misleading label.
 
 - **commit `f2f5a0b`** (GAP-166): Rewrite decisions now persist to `localStorage` keyed by session ID after every accept/reject/edit action and are restored in `renderRewritePanel()`. Key is cleared after final submission. This **closes Gap F** (regression path where page reload lost rewrite decisions mid-review).
+
+- **GAP-180** (this cycle): The ↻ re-run button inline style changed from `opacity:0` to `opacity:0.35` at rest (`workflow-steps.js:733`). The button is now dimly but persistently visible on all completed step pills at a glance — no hover or keyboard focus required to discover it. On hover/focus the CSS override raises it to `opacity:1 !important` (`workflow-steps.js:762`). This **closes the residual discoverability concern** from Gap B and upgrades W3.1 to ✅ Pass.
 
 ---
 
@@ -70,16 +72,16 @@ Two commits landed after the Cycle 5 review date (2026-06-20) that affect this p
 
 | # | Criterion | Status | Evidence |
 |---|-----------|--------|----------|
-| W3.1 | Re-run affordances are discoverable for supported stages | ⚠️ Partial | **Improved in this cycle.** The ↻ re-run button is now a real `<button class="step-rerun" aria-label="Re-run …">` (GAP-167, `workflow-steps.js:705`). The injected style `.step.completed:focus-within .step-rerun { opacity: 1 !important; }` makes it visible when the step pill has keyboard focus (`workflow-steps.js:737`). `:focus-visible` adds a blue ring directly on the ↻ button. A keyboard user can now Tab to a completed step pill, see ↻ appear, Tab once more to reach it, and press Enter. However, the ↻ button is **still hidden at `opacity:0` by default** (`workflow-steps.js:706, style="...opacity:0..."`), surfacing only on hover or parent-focus — it is not visible at a glance without interaction. |
+| W3.1 | Re-run affordances are discoverable for supported stages | ✅ Pass | **GAP-180 (this cycle) resolved the last discoverability gap.** The ↻ re-run button inline style is now `opacity:0.35` at rest (`workflow-steps.js:733`), making it persistently visible — a dim ↻ glyph appears on every completed step pill without any hover or keyboard interaction. On hover or parent `:focus-within` the CSS override raises it to `opacity:1 !important` (`workflow-steps.js:762`). The button is a proper `<button aria-label="Re-run …">` (GAP-167, `workflow-steps.js:730`), has a `:focus-visible` ring, and fires the confirmation modal via `confirmReRunPhase()`. Keyboard users can Tab to it and press Enter; pointer users see it immediately. Discoverability is now satisfactory for both interaction modes. |
 | W3.2 | Re-entry into earlier stages preserves useful downstream context | ✅ Pass | `conversation_manager.py:_build_downstream_context()` (`line 1392`) collects approved rewrites, experience/skill decisions, and accepted spell fixes, injecting them into the re-run LLM prompt. `back_to_phase()` (`line 1435`) marks downstream steps stale without erasing content. `re_run_phase()` (`line 1470`) passes context to the new LLM call. Backend support is comprehensive. |
 | W3.3 | The app minimises redundant work during iteration | ⚠️ Partial | `_highlightChangedItems()` (`workflow-steps.js:332–380`) marks changed rewrite cards and experience/skill table rows. GAP-166 (commit `f2f5a0b`) ensures rewrite decisions survive page reload. However, the assistant message after re-run (`workflow-steps.js:294`) still does not surface a count — "changed items are highlighted" with no quantity. No "show only changed" filter. |
 
 **Failure modes guard-against check:**
 
 - **Reruns feel equivalent to starting over:** Substantially mitigated. Confirmation modal (`workflow-steps.js:138–188`) lists which downstream stages remain intact. Stale badges appear on downstream steps. Downstream context passes into the LLM prompt.
-- **Re-run affordance keyboard accessibility:** Gap B is now **closed**. The ↻ button is a focusable `<button>` visible on step-pill focus. Activating it raises the confirmation modal with its own focus trap. This is a meaningful improvement over Cycle 5.
+- **Re-run affordance keyboard accessibility and discoverability:** Gap B is **closed** (Cycle 6) and the residual opacity=0 concern is now **closed** by GAP-180. The ↻ button is persistently visible at reduced opacity, fully accessible to keyboard users, and raises the confirmation modal with its own focus trap.
 
-**Net: W3.2 passes fully. W3.1 and W3.3 are partial — discoverability is better but ↻ is still hidden-by-default, and changed-item count is absent.**
+**Net: W3.1 and W3.2 pass fully. W3.3 remains partial — changed-item count after re-run is still absent.**
 
 ---
 
@@ -111,11 +113,9 @@ The keyboard bindings in the primary flow are: `Enter` sends message (`ui-core.j
 
 ---
 
-### Gap B (CLOSED since Cycle 6) — Re-run ↻ button keyboard accessible
+### Gap B (FULLY CLOSED — Cycle 6 + GAP-180) — Re-run ↻ button keyboard accessible and persistently visible
 
-GAP-167 (commit `3057ea8`) converted `.step-rerun` from a `<span>` to a `<button>` with `aria-label`. The injected CSS makes ↻ visible when the parent step has keyboard focus (`:focus-within`). The button has its own `:focus-visible` ring. A keyboard-only user can now reach and activate the re-run button without a pointer. The button is still **hidden by default** (`opacity:0`, `workflow-steps.js:706`) — it only appears on hover or parent-focus — but keyboard reachability is now confirmed.
-
-**Residual concern:** At-a-glance discoverability is still weak — a new power user unaware of the hover/focus reveal may not discover the re-run feature without a pointer or accidental Tab traversal. Consider always-visible ↻ at reduced opacity on completed steps.
+GAP-167 (commit `3057ea8`) converted `.step-rerun` from a `<span>` to a `<button>` with `aria-label`, and added `:focus-within` CSS visibility and `:focus-visible` ring. **GAP-180** (this cycle) changed the resting opacity from `0` to `0.35` (`workflow-steps.js:733`), so the ↻ glyph is now always visible at a glance on completed steps — no hover or Tab needed to discover it. The full opacity-1 reveal on hover/focus (`workflow-steps.js:762`) remains. Both keyboard and pointer discoverability are now satisfactory. No residual concerns.
 
 ---
 
@@ -143,13 +143,13 @@ Layout instructions have an undo stack (`layout-instruction.js`), but experience
 
 ---
 
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/workflow-steps.js
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 | ------- | ------- | ---------- | ------ | ---------- | ----- |
 | US-W1 (3 criteria) | 2 | 1 | 0 | 0 | 0 |
 | US-W2 (3 criteria) | 3 | 0 | 0 | 0 | 0 |
-| US-W3 (3 criteria) | 1 | 2 | 0 | 0 | 0 |
+| US-W3 (3 criteria) | 2 | 1 | 0 | 0 | 0 |
 | Generated Materials (7 criteria) | 7 | 0 | 0 | 0 | 0 |
 
 **Key evidence references:**
@@ -160,15 +160,16 @@ Layout instructions have an undo stack (`layout-instruction.js`), but experience
 - W2.1: session modal table + recents → `web/session-switcher-ui.js:445–492`; status pill CSS → `web/styles.css:210–215`
 - W2.2: current-row indicator, conflict detection → `web/session-manager.js:759–818`, `web/ui-core.js:449–465`
 - W2.3: three active-session signals → `web/index.html:41,75–80`, `web/session-manager.js`
-- W3.1: ↻ button now `<button>` with focus-within visibility → `web/workflow-steps.js:705,737`; step pill keyboard nav → `web/ui-core.js:1917–1931`
+- W3.1: ↻ button `opacity:0.35` at rest (GAP-180) → `web/workflow-steps.js:733`; hover/focus CSS to opacity:1 → `web/workflow-steps.js:762`; button element → `web/workflow-steps.js:730`; step pill keyboard nav → `web/ui-core.js:1917–1931`
 - W3.2: downstream context preservation → `scripts/utils/conversation_manager.py:1392,1435,1470`
 - W3.3: highlight logic exists, count absent → `web/workflow-steps.js:294,332–380`
 - Gap A (open): no primary-action shortcut → `web/ui-core.js:547–561`
-- Gap B (closed): GAP-167 commit `3057ea8` → `web/workflow-steps.js:705,737`
+- Gap B (fully closed — GAP-167 + GAP-180): `<button>` with `aria-label`, focus-within CSS, now `opacity:0.35` at rest → `web/workflow-steps.js:730,733,762`
 - Gap C (open): no search input → `web/session-switcher-ui.js` (no filter element)
 - Gap D (open): count not surfaced → `web/workflow-steps.js:294`
 - Gap E (open): no bulk-decision undo → `web/rewrite-review.js`, `web/review-table-base.js`
 - GAP-166 closed: rewrite decision persistence → `web/rewrite-review.js` (commit `f2f5a0b`)
 - GAP-169 label fix: spell-check CTA relabelled "Generate Preview →" → `web/index.html:186`
+- GAP-180 closed: ↻ resting opacity raised from 0 to 0.35 → `web/workflow-steps.js:733`
 
 **Evidence standard:** Every conclusion is independently verifiable from the cited source files. No runtime testing was performed — assessment is based on source code only.

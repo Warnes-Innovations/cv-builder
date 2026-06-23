@@ -6,9 +6,16 @@
 
 # Resume Expert Review Status
 
-**Last Updated:** 2026-06-22 12:00 ET
+**Last Updated:** 2026-06-22 14:30 ET
 
-**Executive Summary:** The application earns 15 Pass, 10 Partial, and 2 Fail across the seven story groups. The two hard failures are keyword-frequency weighting (US-R1 AC4) and cross-rewrite terminology consistency (US-R3 AC4) — both structural gaps that require new code, not prompt tuning. The most consequential single defect is that `candidate_to_confirm` skills (weak-evidence `skill_add` proposals) bypass all generated-output filters and appear unmarked in every PDF, DOCX, and HTML file. The spell/grammar subsystem and the rewrite audit trail are the strongest areas; the job-analysis display layer has unresolved visual inconsistency. No source-code changes relevant to this persona occurred between the Cycle 5 review (2026-06-20) and this refresh (2026-06-22); ratings and evidence are unchanged.
+**Executive Summary (Cycle 7):** The application earns 17 Pass, 10 Partial, and 2 Fail across the seven story groups. The two hard failures are keyword-frequency weighting (US-R1 AC4) and cross-rewrite terminology consistency (US-R3 AC4) — both structural gaps that require new code, not prompt tuning. The most consequential single open defect is that `candidate_to_confirm` skills (weak-evidence `skill_add` proposals) bypass all generated-output filters and appear unmarked in every PDF, DOCX, and HTML file (US-R5 AC4). The three recent changes (GAP-176, GAP-178, GAP-180) are accessibility-focused and do not affect Resume Expert story coverage. The spell/grammar subsystem and the rewrite audit trail remain the strongest areas; job-analysis display and cross-rewrite consistency remain open.
+
+**Recent changes since cycle 6 assessed:**
+
+- GAP-176 (bullet-reorder modal role="dialog" + focus trap): No impact on resume-expert story criteria.
+- GAP-178 (rewrite accept/edit/reject buttons aria-pressed): No impact on rewrite quality or audit traceability ratings.
+- GAP-180 (step-rerun button opacity at rest): No impact on resume-expert story criteria.
+- All prior ratings unchanged.
 
 ---
 

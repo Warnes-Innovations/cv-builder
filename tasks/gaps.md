@@ -1,14 +1,21 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-22 (cycle 6)
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-22 (cycle 7)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), and 2026-06-22 (cycle 6)
-- independent heuristic UX evaluation (all cycles through 2026-06-22 cycle 6)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), and 2026-06-22 (cycle 7)
+- independent heuristic UX evaluation (all cycles through 2026-06-22 cycle 7)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182.
+
+## 2026-06-22 (Cycle 7) Reconciliation Notes
+
+- **10 gaps resolved this cycle:** GAP-166 (same-device confirmed), GAP-174 (company context), GAP-176 (bullet-reorder modal), GAP-178 (aria-pressed), GAP-179 (:focus-visible), GAP-180 (step-rerun opacity), GAP-181 (spell-check labels) all confirmed by cycle 7 agents. GAP-35 (#message-input aria-label) and GAP-92 (publications stat card bug) fixed and resolved post-cycle. GAP-182 opened and immediately resolved this cycle.
+- **1 new open gap:** GAP-182 (`.action-btn.secondary` no CSS definition) — opened and fixed this cycle.
+- **Score improvements:** UX Expert 32→34 Pass; Hiring Manager 1→0 Fail (US-M6); Accessibility Specialist US-X2 now 4/4; Power User W3.1 promoted to Pass.
+- **Most critical open gaps:** GAP-36 (first-run onboarding), GAP-41 (pre-job Master CV editor), GAP-14 (no workflow progress indicator), GAP-177 (DOCX heading styles), GAP-H1/H2/H3 (skill_type).
 
 ## 2026-06-22 (Cycle 6) Reconciliation Notes
 
@@ -369,7 +376,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-X1
-**Status:** OPEN - discovered 2026-04-20; accessibility review found `index.html:149` — the chat message input — has only a `placeholder` attribute and no `<label>` or `aria-label`. Screen readers cannot identify the field by name.
+**Status:** RESOLVED 2026-06-22 (cycle 7) — Added `aria-label="Chat message"` to `#message-input` at `web/index.html:177`.
 **Description:** Placeholder text is not a substitute for an accessible label. Screen reader users navigating by form fields will encounter an unlabeled input.
 **Recommended resolution:** Add `aria-label="Chat message"` (or a visually-hidden `<label>`) to the message input element.
 
@@ -833,7 +840,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-M4, US-M7
-**Status:** OPEN - discovered 2026-04-22; master CV curator review found the publications stat card in the Master CV overview reads `publication_count` from `Master_CV_Data.json` rather than `publications.bib`. Users who maintain their bibliography exclusively in BibTeX see a count of 0.
+**Status:** RESOLVED 2026-06-22 (cycle 7) — Changed `scripts/routes/master_data_routes.py:214` from `len(data.get('publications', []))` (always 0) to `len(orchestrator.publications or {})`, which reads from the parsed BibTeX dict.
 **Description:** The application is designed to support BibTeX as the primary bibliography format. The stat card should reflect this by counting from the BibTeX source.
 **Recommended resolution:** Update the publications count stat card to call a route that counts entries from `publications.bib` when it exists, falling back to `Master_CV_Data.json`.
 
@@ -1630,3 +1637,12 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 **Status:** RESOLVED 2026-06-22 (cycle 6) — Changed `web/spell-check.js:148` and `web/spell-check.js:271` from "Done — Generate CV →" to "Generate Preview →". This completes the GAP-169 fix; `web/index.html:186` was fixed in cycle 5 but `spell-check.js` was missed. Discovered and fixed this cycle.
 **Affected stories:** US-F3, US-U6
 `web/spell-check.js:148,271` — The two viewer-panel spell-check submit buttons (empty state and review state) still read "Done — Generate CV →" after the cycle 5 partial fix of GAP-169 that only updated `index.html:186`. This created a label inconsistency between the chat-panel button and the viewer-panel buttons.
+
+---
+
+## GAP-182: `.action-btn.secondary` Has No CSS Definition
+
+**Priority:** MEDIUM
+**Status:** RESOLVED 2026-06-22 (cycle 7) — Added `.action-btn.secondary { background: #e2e8f0; color: #374151; border-color: #94a3b8; }` and hover rule to `web/styles.css` after the `.action-btn.primary` block. Discovered and fixed this cycle.
+**Affected stories:** US-G2, US-U4
+`web/index.html:307`, `web/master-cv.js:77,166,171,176,204,206,434` — Eight elements use `class="action-btn secondary"` (Cancel button in confirm modal; Export Master CV; BibTeX import/convert/toggle/validate/load buttons) but no CSS rule defines `.action-btn.secondary`. These buttons silently fall back to the base `.action-btn` grey style, making Cancel and secondary actions visually indistinguishable from each other and from ghost navigation buttons.

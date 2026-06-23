@@ -8,9 +8,9 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Master CV Curator Review Status
 
-**Last Updated:** 2026-06-22 ET
+**Last Updated:** 2026-06-22 14:45 ET
 
-**Executive Summary:** Session-boundary enforcement is correct and comprehensive — all 14 write endpoints are phase-gated to `init`/`refinement` only. The Master CV tab provides full CRUD for all data sections including a rich, multi-path publications workflow. Harvest supports fully opt-in, LLM-scored, selective promotion. Five gaps carried from prior cycles remain open: a wrong publication count in the overview stat card (❌), a missing field-validation pass in bulk BibTeX import (⚠️), a confusing 409 error message for phase violations (⚠️), the harvest section not being explicitly labelled optional in the Finalise tab (⚠️), and a summary variant data-format inconsistency between the harvest and CRUD paths (⚠️). No regressions introduced in the Cycle 5/6 commits. One prior gap (Master CV modal focus management) was resolved in Cycle 5.
+**Executive Summary:** Session-boundary enforcement is correct and comprehensive — all 14 write endpoints are phase-gated to `init`/`refinement` only. The Master CV tab provides full CRUD for all data sections including a rich, multi-path publications workflow (structured add/edit/delete, bulk BibTeX import, citation-text-to-BibTeX conversion, raw editor with validate-before-save). Harvest supports fully opt-in, LLM-scored, selective promotion. Five gaps carried from prior cycles remain open: a confirmed bug where the Publications overview stat card always shows 0 (❌) because `master_data_overview()` reads `data.get('publications', [])` from `Master_CV_Data.json` instead of `len(orchestrator.publications)` from the BibTeX file; a missing per-entry required-field validation pass in bulk BibTeX import (⚠️); a confusing 409 error message for phase violations mis-labelled as a session conflict (⚠️); the harvest section not being explicitly labelled optional in the Finalise tab (⚠️); and a summary variant data-format inconsistency between the harvest and CRUD paths (⚠️). No regressions introduced in the Cycle 5/6 commits. One prior gap (Master CV modal focus management) was resolved in Cycle 5.
 
 ---
 

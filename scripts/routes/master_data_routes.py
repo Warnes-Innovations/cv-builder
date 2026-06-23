@@ -211,7 +211,12 @@ def create_blueprint(deps):
                 "summary_count":     len(summaries) if isinstance(summaries, dict)
                                      else len(summaries),
                 "education_count":   len(data.get('education', [])),
-                "publication_count": len(data.get('publications', [])),
+                "publication_count": (
+                    len(orchestrator.publications)
+                    if isinstance(orchestrator.publications, dict)
+                    and orchestrator.publications
+                    else len(data.get('publications', []))
+                ),
             })
         except Exception:
             logger.exception("Failed to load master data overview")

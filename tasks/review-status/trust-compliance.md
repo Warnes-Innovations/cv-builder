@@ -8,7 +8,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Trust & Compliance Review Status
 
-**Last Updated:** 2026-06-22 ET
+**Last Updated:** 2026-06-22 12:00 ET
 
 **Executive Summary:** The application largely satisfies the Trust & Compliance persona's core concerns. AI suggestions are visibly distinguished from source content, rewrite decisions require explicit per-item user action, word-level diffs expose changes, and a rationale mechanism is present. Two partial gaps stand out: spell-check unreviewed items are bulk-auto-ignored on "proceed" rather than requiring per-item decisions, and there is no in-UI rendering of the `metadata.json` audit at the Download/Finalise stage — traceability requires leaving the application. API key handling is stored locally (config.yaml) not in the browser, and per-provider privacy disclosure is available in the LLM wizard. Generated output files carry no AI-attribution metadata, which may matter in institutional contexts.
 

@@ -8,7 +8,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Recruiter Ops Review Status
 
-**Last Updated:** 2026-06-22 ET
+**Last Updated:** 2026-06-22 14:30 ET
 
 **Persona:** Recruiter / Application Operations Reviewer
 **Cycle:** 6
@@ -33,7 +33,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 ---
 
-**Executive Summary:** The three recruiter-ops stories are substantially satisfied. Submission readiness signals are strong at the format level (ATS validation in the Download tab, per-format block logic, freshness chip). The finalise flow provides well-defined status values, a free-text notes field, and a full metadata archive with git commit. File naming is job-relevant across all artifact types. Three gaps from cycle 5 remain open and unresolved: no package readiness gate before archiving (GAP-OPS-C), no application pipeline status column in the Sessions modal (GAP-OPS-D), and no per-file generation timestamp in the file cards (GAP-OPS-E). Post-cycle-5 code changes (GAP-166 rewrite decision persistence, GAP-167-173 accessibility fixes) do not affect recruiter-ops scope.
+**Executive Summary:** The three recruiter-ops stories are substantially satisfied. Submission readiness signals are strong at the format level (ATS validation in the Download tab, per-format block logic, freshness chip). The finalise flow provides well-defined status values (draft/ready/sent via `web/finalise.js:89–93`, validated at `generation_routes.py:1929`), a free-text notes field with a practical placeholder, and a full metadata archive to `metadata.json` including `application_status`, `notes`, `finalised_at`, `ats_score`, and `clarification_answers` (`generation_routes.py:1941–1950`) followed by a git commit. File naming follows a deterministic job-relevant convention (`CV_{Company}_{Role}_{date}.*`). A cross-document consistency check fires in the Finalise tab on load. Three gaps remain open and unresolved: no package readiness gate before archiving (GAP-OPS-C), no application pipeline status column in the Sessions modal (GAP-OPS-D — confirmed: `session_routes.py:133–141` reads `session.json` only, not `metadata.json`), and no per-file generation timestamp in the file cards (GAP-OPS-E). An additional unaddressed concern: when ATS scoring has not been run the position bar badge is hidden and the Finalise success card silently shows nothing for ATS (`ats-refinement.js:160–162`).
 
 ---
 
