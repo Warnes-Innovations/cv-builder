@@ -1495,6 +1495,7 @@ def create_blueprint(deps):
             hiring_manager  = (body.get('hiring_manager') or 'Hiring Manager').strip()
             company_address = (body.get('company_address') or '').strip()
             highlight       = (body.get('highlight') or '').strip()
+            company_context = (body.get('company_context') or '').strip()
             reuse_body      = (body.get('reuse_body') or '').strip()
 
             job_analysis  = conversation.state.get('job_analysis') or {}
@@ -1552,6 +1553,11 @@ def create_blueprint(deps):
                 f'adapting it to the new role:\n\n"""\n{reuse_body}\n"""\n'
             ) if reuse_body else ''
 
+            company_context_block = (
+                f'\nCOMPANY CONTEXT (from candidate research — weave these specifics into the letter):\n{company_context}\n'
+                if company_context else ''
+            )
+
             prompt = f"""\
 You are a professional career coach writing a tailored cover letter.
 
@@ -1561,7 +1567,7 @@ TARGET ROLE
   Company: {company}
   Position: {role}
   Key requirements: {req_skills or keywords or '(see job description)'}
-
+{company_context_block}
 CANDIDATE PROFILE
   Name: {personal_info.get('name', 'The candidate')}
   Summary: {summary_text[:400] if summary_text else '(see CV)'}
@@ -1577,6 +1583,7 @@ Write a compelling, personalised cover letter (3–4 paragraphs, ~250–300 word
 {_OPENING_GUIDANCE.get(opening_style, _OPENING_GUIDANCE['formal']).format(hiring_manager=hiring_manager)}
 Do NOT include a date, address block, or subject line before the opening line.
 Reference concrete skills and achievements from the candidate profile.
+{"Weave in the company-specific context above to show genuine knowledge of the organisation." if company_context else ""}
 Close professionally with a call to action.
 """
 
@@ -1598,6 +1605,7 @@ Close professionally with a call to action.
                 'tone': tone, 'hiring_manager': hiring_manager,
                 'opening_style': opening_style,
                 'company_address': company_address, 'highlight': highlight,
+                'company_context': company_context,
             }
         session_registry.touch(sid)
         return jsonify({'ok': True, 'text': letter_text})

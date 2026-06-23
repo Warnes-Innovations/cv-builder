@@ -34,13 +34,14 @@ let _coverLetterPriorSessions = [];
 
 /** Survives tab navigation: form inputs and the generated letter body. */
 let _coverLetterFormState = {
-  tone:          '',
-  openingStyle:  '',
-  hiringManager: '',
+  tone:           '',
+  openingStyle:   '',
+  hiringManager:  '',
   companyAddress: '',
-  highlight:     '',
-  letterText:    '',
-  letterVisible: false,
+  highlight:      '',
+  companyContext: '',
+  letterText:     '',
+  letterVisible:  false,
 };
 
 // ── Populate cover letter tab ─────────────────────────────────────────────────
@@ -125,6 +126,12 @@ async function populateCoverLetterTab() {
         <input type="text" id="cl-highlight" class="edit-input"
             placeholder="e.g. Led the migration to Kubernetes saving 30% infra cost" />
       </div>
+      <div class="cl-form-field" style="margin-top:12px;">
+        <label for="cl-company-context">Company context <span style="color:#94a3b8;font-weight:400;">(optional — paste specific initiatives, products, values, or recent news)</span></label>
+        <textarea id="cl-company-context" class="edit-input" rows="3"
+            style="resize:vertical;"
+            placeholder="e.g. They just launched a new AI platform for healthcare; their CTO wrote about prioritising reliability over speed…"></textarea>
+      </div>
       <div style="margin-top:16px;">
         <button class="action-btn primary" id="cl-generate-btn" onclick="generateCoverLetter()">
           ✨ Generate Cover Letter
@@ -169,6 +176,7 @@ function _restoreCoverLetterFormState() {
   const hmEl      = document.getElementById('cl-hiring-manager');
   const addrEl    = document.getElementById('cl-company-address');
   const hlEl      = document.getElementById('cl-highlight');
+  const ctxEl     = document.getElementById('cl-company-context');
   const resultEl  = document.getElementById('cl-result-section');
   const letterEl  = document.getElementById('cl-letter-textarea');
 
@@ -182,6 +190,8 @@ function _restoreCoverLetterFormState() {
     addrEl.value = _coverLetterFormState.companyAddress;
   if (hlEl && _coverLetterFormState.highlight)
     hlEl.value = _coverLetterFormState.highlight;
+  if (ctxEl && _coverLetterFormState.companyContext)
+    ctxEl.value = _coverLetterFormState.companyContext;
 
   if (_coverLetterFormState.letterVisible && _coverLetterFormState.letterText) {
     if (resultEl) resultEl.style.display = 'block';
@@ -197,6 +207,7 @@ function _restoreCoverLetterFormState() {
   if (hmEl)      hmEl.addEventListener('input',      () => { _coverLetterFormState.hiringManager = hmEl.value; });
   if (addrEl)    addrEl.addEventListener('input',    () => { _coverLetterFormState.companyAddress = addrEl.value; });
   if (hlEl)      hlEl.addEventListener('input',      () => { _coverLetterFormState.highlight = hlEl.value; });
+  if (ctxEl)     ctxEl.addEventListener('input',     () => { _coverLetterFormState.companyContext = ctxEl.value; });
 }
 
 // ── Generate cover letter ─────────────────────────────────────────────────────
@@ -232,11 +243,12 @@ async function generateCoverLetter() {
   btn.disabled = true;
   btn.textContent = '⏳ Generating…';
 
-  const tone           = (document.getElementById('cl-tone-select')    || {}).value || 'startup/tech';
-  const opening_style  = (document.getElementById('cl-opening-style')  || {}).value || 'formal';
-  const hiring_manager = (document.getElementById('cl-hiring-manager') || {}).value || '';
-  const company_address = (document.getElementById('cl-company-address') || {}).value || '';
-  const highlight      = (document.getElementById('cl-highlight')       || {}).value || '';
+  const tone            = (document.getElementById('cl-tone-select')      || {}).value || 'startup/tech';
+  const opening_style   = (document.getElementById('cl-opening-style')    || {}).value || 'formal';
+  const hiring_manager  = (document.getElementById('cl-hiring-manager')   || {}).value || '';
+  const company_address = (document.getElementById('cl-company-address')  || {}).value || '';
+  const highlight       = (document.getElementById('cl-highlight')         || {}).value || '';
+  const company_context = (document.getElementById('cl-company-context')  || {}).value || '';
 
   // Check for prior letter selection
   let reuse_body = '';
@@ -250,7 +262,7 @@ async function generateCoverLetter() {
     const res  = await fetch('/api/cover-letter/generate', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ tone, opening_style, hiring_manager, company_address, highlight, reuse_body }),
+      body:    JSON.stringify({ tone, opening_style, hiring_manager, company_address, highlight, company_context, reuse_body }),
     });
     const data = await res.json();
 

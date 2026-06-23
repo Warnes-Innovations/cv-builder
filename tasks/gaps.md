@@ -1558,10 +1558,9 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-174: Cover Letter Has No Mechanism to Inject Company-Specific Initiative References
 
 **Priority:** HIGH
-**Status:** OPEN — Discovered 2026-06-20 (cycle 5)
+**Status:** RESOLVED 2026-06-22 — Added "Company context" textarea (`#cl-company-context`) to the cover letter generation form in `web/cover-letter.js`. The field value is sent as `company_context` in the POST body and injected into the LLM prompt in `scripts/routes/master_data_routes.py` as a `COMPANY CONTEXT` block with explicit instruction to weave the specifics into the letter. Stored in `cover_letter_params` in session state. Previously OPEN since 2026-06-20.
 **Affected stories:** US-M6, US-P3, US-P5
-`web/master_data_routes.py:1559–1580` — the cover letter generation prompt passes company name, role title, ATS keywords, tone guidance, and achievement summaries to the LLM. However, there is no mechanism to extract, display, or inject company-specific context (e.g., a recent product launch, a named strategic initiative, a publicly stated value) into the prompt. US-M6 requires "at least one company-specific reference (initiative, product, or value)" in the cover letter body. The only escape hatch is the `highlight` free-text field (`master_data_routes.py:1574`) which is labelled generically and provides no guidance nudging the user to supply company-specific intelligence.
-**Recommended resolution:** Add a dedicated "Company context" textarea to the cover letter generation UI, explicitly labelled "Company initiative, product, or value to reference (optional)". Include its contents as a named field in the generation prompt with instruction to weave it into the opening or body paragraph. Consider auto-populating a suggestion from the job description text during intake.
+`web/cover-letter.js:124–133` (new textarea), `scripts/routes/master_data_routes.py:1497,1555–1581` (backend extraction and prompt injection).
 
 ---
 
