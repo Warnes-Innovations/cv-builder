@@ -12,9 +12,9 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 ## 2026-06-22 (Cycle 6) Reconciliation Notes
 
-- **8 gaps resolved or partially resolved this cycle:** GAP-166 (resolved for same-device; residual cross-device), GAP-167 (resolved), GAP-168 (resolved), GAP-169 (now fully resolved — viewer-panel buttons fixed), GAP-170 (resolved), GAP-171 (resolved), GAP-172 (resolved), GAP-173 (resolved). GAP-179 and GAP-181 opened and immediately resolved this cycle.
-- **6 new open gaps:** GAP-176 (bullet-reorder modal inaccessible), GAP-177 (DOCX heading bold runs not heading styles), GAP-178 (rewrite buttons no aria-pressed), GAP-180 (step-rerun zero discoverability at rest). GAP-179 (.icon-btn/.rw-btn focus-visible) and GAP-181 (viewer-panel spell label) opened and closed this cycle.
-- **Most critical open gaps:** GAP-36 (first-run onboarding), GAP-41 (pre-job Master CV editor), GAP-174 (cover letter company initiative), GAP-176 (bullet-reorder modal accessibility), GAP-14 (no workflow progress indicator), GAP-175 (summary specificity validator).
+- **8 gaps resolved or partially resolved this cycle:** GAP-166 (resolved for same-device; residual cross-device), GAP-167 (resolved), GAP-168 (resolved), GAP-169 (now fully resolved — viewer-panel buttons fixed), GAP-170 (resolved), GAP-171 (resolved), GAP-172 (resolved), GAP-173 (resolved). GAP-174, GAP-176, GAP-179, GAP-181 resolved post-cycle. GAP-178 and GAP-180 resolved 2026-06-22 (post-cycle).
+- **6 new open gaps:** GAP-176 (resolved post-cycle), GAP-177 (DOCX heading bold runs not heading styles), GAP-178 (resolved 2026-06-22), GAP-180 (resolved 2026-06-22). GAP-179 and GAP-181 opened and immediately resolved this cycle.
+- **Most critical open gaps:** GAP-36 (first-run onboarding), GAP-41 (pre-job Master CV editor), GAP-14 (no workflow progress indicator), GAP-175 (summary specificity validator), GAP-177 (DOCX heading styles).
 
 ## 2026-06-22 (Cycle 5) Reconciliation Notes
 
@@ -1600,10 +1600,9 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-178: Rewrite Accept/Edit/Reject Buttons Missing `aria-pressed` State
 
 **Priority:** LOW
-**Status:** OPEN — Discovered 2026-06-22 (cycle 6)
+**Status:** RESOLVED 2026-06-22 — Added `aria-pressed="false"` at render time to all three buttons (`web/rewrite-review.js:306–308`). In `applyRewriteAction()`, reset all to `"false"` in the clear loop then set the active button to `"true"`. Same pattern in `saveRewriteEdit()`.
 **Affected stories:** US-X3, US-A4
 `web/rewrite-review.js:273–275` — The three action buttons per rewrite card (✓ Accept, ✎ Edit, ✗ Reject) visually show their selected state via CSS `.active` class (color fill) but carry no `aria-pressed` attribute. Screen reader users hear "Accept button" without any indication that a decision has already been made. The button state is invisible to AT.
-**Recommended resolution:** Add `aria-pressed="false"` to each button at render time. In `applyRewriteAction()` and `saveRewriteEdit()`, update `aria-pressed` to `"true"` on the active button and `"false"` on the others for each card.
 
 ---
 
@@ -1619,10 +1618,9 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-180: Step-Rerun Button `opacity:0` at Rest — Zero Discoverability for Mouse Users
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-22 (cycle 6)
+**Status:** RESOLVED 2026-06-22 — Changed default `opacity` from `0` to `0.35` in the `.step-rerun` inline button template (`web/workflow-steps.js:733`). The ↻ button is now dimly visible at rest on all completed step pills; it brightens to full opacity on hover or focus.
 **Affected stories:** US-W3, US-A12
 `web/workflow-steps.js:723` — The CSS injected for the ↻ re-run button sets `opacity: 0` by default and `opacity: 1 !important` on `.step.completed:hover` and `.step.completed:focus-within`. Mouse users who do not hover over completed step pills never see the re-run affordance. The button is now keyboard-reachable (GAP-167 fix), but it is invisible unless the pill is hovered first. Users who don't know the feature exists will never discover it through normal navigation.
-**Recommended resolution:** Consider making the ↻ button always-visible (possibly at reduced opacity, e.g. `opacity: 0.4`) on completed steps, or surfacing re-run as a labelled button or menu item in the step tooltip/context. The hover-only pattern is a discoverability anti-pattern for a high-value power-user feature.
 
 ---
 
