@@ -1582,10 +1582,9 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-176: Bullet-Reorder Modal Missing `role="dialog"`, Focus Trap, and ARIA Structure
 
 **Priority:** HIGH
-**Status:** OPEN — Discovered 2026-06-22 (cycle 6)
+**Status:** RESOLVED 2026-06-22 — Added `role="dialog" aria-modal="true" aria-labelledby="bullet-reorder-title"` to the modal element; added `id="bullet-reorder-title"` to the h3; calls `trapFocus('bullet-reorder-modal')` and `setInitialFocus('bullet-reorder-modal')` after appending; calls `restoreFocus()` on ✕ close, Save Order, and Reset to Auto paths; added Escape key handler. Also added `aria-label` to the ↑↓ move buttons. `web/workflow-steps.js`. Previously OPEN since 2026-06-22.
 **Affected stories:** US-X2, US-A3
-`web/workflow-steps.js:456–499` — `showBulletReorder()` renders a list-reorder overlay modal. The modal has no `role="dialog"`, no `aria-modal="true"`, no `aria-labelledby`, no focus trap (`trapFocus` is not called), no `setInitialFocus` call, and no focus restoration on close. Screen reader users receive no modal entry announcement; keyboard users cannot be trapped inside the modal; focus is not restored to the trigger button on close. This is a WCAG 2.1 SC 1.3.1, 2.1.2, 4.1.2 failure.
-**Recommended resolution:** Add `role="dialog" aria-modal="true" aria-labelledby="bullet-reorder-title"` to the modal container. Call `trapFocus(modalId)` and `setInitialFocus(modalId)` on open. Call `restoreFocus()` on close. Add a visible heading with `id="bullet-reorder-title"`.
+`web/workflow-steps.js:456–499` — `showBulletReorder()` rendered a list-reorder overlay modal with no ARIA dialog structure, no focus trap, and no focus restoration.
 
 ---
 

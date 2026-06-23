@@ -453,9 +453,17 @@ async function showBulletReorder(expId, expTitle) {
     return;
   }
 
+  // Save focus origin for restoration on close (GAP-176)
+  if (typeof _focusedElementBeforeModal !== 'undefined') {
+    _focusedElementBeforeModal = document.activeElement;
+  }
+
   // Build modal content
   const modal = document.createElement('div');
   modal.id = 'bullet-reorder-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'bullet-reorder-title');
   modal.style.cssText = `
     position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);
     z-index:9999;display:flex;align-items:center;justify-content:center;`;
@@ -477,10 +485,11 @@ async function showBulletReorder(expId, expTitle) {
                 max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
         <div>
-          <h3 style="margin:0;color:#1f2937;">↕ Reorder Bullets</h3>
+          <h3 id="bullet-reorder-title" style="margin:0;color:#1f2937;">↕ Reorder Bullets</h3>
           <div style="color:#6b7280;font-size:0.9em;margin-top:4px;">${expTitle}</div>
         </div>
-        <button onclick="document.getElementById('bullet-reorder-modal').remove()"
+        <button aria-label="Close reorder dialog"
+          onclick="restoreFocus();document.getElementById('bullet-reorder-modal').remove()"
           style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#6b7280;">✕</button>
       </div>
       <div style="font-size:0.85em;color:#6b7280;margin-bottom:12px;">
@@ -493,10 +502,23 @@ async function showBulletReorder(expId, expTitle) {
       <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
         ${suggestedBtn}
         <button class="btn-secondary" onclick="resetBulletOrder('${expId}')">↺ Reset to Auto</button>
-        <button class="btn-primary"   onclick="saveBulletOrder('${expId}')">Save Order</button>
+        <button class="btn-primary"   onclick="saveBulletOrder('${expId}');restoreFocus()">Save Order</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
+  trapFocus('bullet-reorder-modal');
+  setInitialFocus('bullet-reorder-modal');
+
+  // Close on Escape
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      restoreFocus();
+      modal.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
 
   // Populate list items
   const list = document.getElementById('bullet-reorder-list');
@@ -508,10 +530,12 @@ async function showBulletReorder(expId, expTitle) {
       background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;`;
     li.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
-        <button title="Move up"   onclick="moveBullet(this,-1)"
+        <button title="Move up" aria-label="Move bullet up"
+          onclick="moveBullet(this,-1)"
           style="background:none;border:1px solid #d1d5db;border-radius:3px;
                  cursor:pointer;padding:1px 5px;line-height:1.2;font-size:0.9em;">↑</button>
-        <button title="Move down" onclick="moveBullet(this,+1)"
+        <button title="Move down" aria-label="Move bullet down"
+          onclick="moveBullet(this,+1)"
           style="background:none;border:1px solid #d1d5db;border-radius:3px;
                  cursor:pointer;padding:1px 5px;line-height:1.2;font-size:0.9em;">↓</button>
       </div>
@@ -601,6 +625,7 @@ async function resetBulletOrder(expId) {
       return;
     }
     appendMessage('assistant', '↺ Bullet order reset. Relevance-based ordering will apply.');
+    restoreFocus();
     document.getElementById('bullet-reorder-modal')?.remove();
   } catch(e) {
     appendRetryMessage('⚠ Network error resetting bullet order: ' + e.message, () => resetBulletOrder(expId));
