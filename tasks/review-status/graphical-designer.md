@@ -8,52 +8,77 @@
 
 # Graphical Designer Review Status
 
-**Last Updated:** 2026-06-22 22:30 ET
+**Last Updated:** 2026-06-29 19:30 ET
 
-**Executive Summary:** Cycle 7 source-first review against all seven specified
-files. Three post-cycle-6 commits affect design criteria: `5b20aa2` raises
-step-rerun button opacity from 0 to 0.35 (GAP-180) — a discoverability improvement
-for the re-run affordance on completed workflow pills. `0cf4d61` adds `role="dialog"`
-and focus-trap to the bullet-reorder modal (GAP-176) — primarily accessibility.
-`56dba9e` adds a cover-letter company-context textarea (GAP-174) — functional UX,
-no style sheet changes. All four persistent design issues (D1 CSS token layer, D2
-button proliferation, D3 emoji nav, D5 template divergence) remain open and
-unchanged from Cycle 6. Inline `style=""` count in `index.html` is 218. Net
-result: 5 Pass / 7 Partial / 0 Fail on story criteria (same as Cycle 6).
+**Executive Summary:** Cycle 8 source-first review against all seven specified
+files. Three post-cycle-7 commits affect design criteria: `664750d` (cycle 7
+close) resolved GAP-182 by defining `.action-btn.secondary` in `styles.css` lines
+590–591; `b7fb7c5` adds colour-coded application-status badges to the sessions modal
+(Draft grey / Ready blue / Sent green) via `session-switcher-ui.js`; `162dedc`
+refines the session-conflict banner to suppress false-positive fires on
+phase-enforcement 409s — a behavioural fix with no CSS changes; `f2a0bbf` adds a
+"Generated {date}" label to each download card. Net delta: GAP-G4
+(`.action-btn.secondary` undefined) is resolved; sessions modal gains a new
+semantic status badge surface. D1 (no CSS token layer), D2 (button class
+proliferation), D3 (emoji nav), and D5 (template divergence) remain open and
+unchanged. Inline `style=""` count in `index.html`: 218 (stable). Net result:
+**5 Pass / 7 Partial / 0 Fail** on story criteria — same total as Cycle 7, but
+GAP-G4 is closed and sessions modal receives a Pass-tier addendum on AC 2.2.
 
 ---
 
-## Cycle 7 Delta Assessment
+## Cycle 8 Delta Assessment
 
-Compared to Cycle 6 (`tasks/review-status/graphical-designer.md`, last updated
-2026-06-22 20:30 ET), the following design-relevant changes are confirmed from
-source inspection and commits since `7937d57`:
+Compared to Cycle 7 (`tasks/review-status/graphical-designer.md`, updated
+2026-06-22 22:30 ET), the following design-relevant changes are confirmed from
+source inspection of commits since `664750d`:
 
-**Post-cycle-6 commits inspected (design-relevant only):**
+**Post-cycle-7 commits inspected (design-relevant):**
 
 | Commit | Description | Design impact |
 | ------ | ----------- | ------------- |
-| `5b20aa2` | GAP-180: step-rerun opacity 0→0.35 at rest | Improves discoverability (AC 1.2, D4-adjacent) |
-| `0cf4d61` | GAP-176: bullet-reorder modal dialog role + focus trap | Accessibility; no visual change |
-| `56dba9e` | GAP-174: cover letter company context textarea | Functional addition; no style changes |
-| `56d0d2c` | docs: mark GAP-178 and GAP-180 resolved | Documentation only |
+| `664750d` | GAP-182: define `.action-btn.secondary` CSS rule | Resolves GAP-G4; 8 elements now styled correctly |
+| `b7fb7c5` | GAP-102: sessions modal application status badge | New semantic colour badge surface (Draft/Ready/Sent) |
+| `162dedc` | GAP-93: phase-enforcement 409 suppresses conflict banner | Behavioural fix; no CSS change |
+| `f2a0bbf` | GAP-106: show generation timestamp on download cards | Adds "Generated {date}" label to each download row |
 
-**Step-rerun affordance improvement (GAP-180):**
+**GAP-182 fix — `.action-btn.secondary` now defined:**
 
-`web/workflow-steps.js` line 733 changed from `opacity:0` to `opacity:0.35` on the
-↻ re-run button injected inside `.step.completed` pills. The hover/focus-within
-rule (injected via a `<style>` tag at line 762) raises it to `opacity:1 !important`
-on hover or keyboard focus. At 0.35 base opacity, the affordance is now faintly
-visible at rest — reducing the hidden-action problem without cluttering the
-workflow bar during normal scanning. This is an improvement in visual hierarchy for
-the step bar under AC 1.2. The button styling remains an inline `style=""` attribute
-(hardcoded hex colours absent; structural only at this element).
+`styles.css` lines 590–591 now contain:
+```css
+.action-btn.secondary { background: #e2e8f0; color: #374151; border-color: #94a3b8; }
+.action-btn.secondary:hover:not(:disabled) { background: #cbd5e1; }
+```
+This closes GAP-G4. The eight elements that previously silently fell back to
+base `.action-btn` grey (including the "Cancel" button in the confirm modal,
+`index.html` line 307) now render with a medium-grey background that visually
+distinguishes them from pure ghost/default buttons.
 
-**No CSS-layer additions in this cycle:**
+**GAP-102 fix — sessions modal status badge:**
 
-`grep ":root" web/styles.css` → 0 matches. Distinct hex literal count: 96 (styles.css
-only). `grep -c 'style="' web/index.html` → 218. No `:root` token block introduced.
-D1 and D2 remain open.
+`web/session-switcher-ui.js` `_renderSessionTableRow()` now emits a
+colour-coded status pill inside the phase column:
+- **Draft** → grey `#e2e8f0` background / `#374151` text
+- **Ready** → blue `#dbeafe` background / `#1d4ed8` text
+- **Sent** → green `#dcfce7` background / `#166534` text
+
+These are inline colour pairs injected via JS (not via a stylesheet class).
+They follow the same semantic palette used for workflow step pills and ATS
+badges, which is coherent with AC 2.2.
+
+**GAP-106 fix — download card timestamp label:**
+
+`web/download-tab.js` `_renderDownloadGrid()` now accepts a `generatedAt`
+parameter from `populateDownloadTab()` and appends a small grey "Generated
+{date}" label (`font-size: 12px; color: #64748b`) beneath each download item's
+description. This improves file-currency communication at the file-review
+surface (AC 3.3).
+
+**No new CSS-layer additions:**
+
+`grep ":root" web/styles.css` → 0 matches. Distinct hex literal count: 96
+(styles.css only). `grep -c 'style="' web/index.html` → 218 (stable). D1 and
+D2 remain open.
 
 ---
 
@@ -83,8 +108,7 @@ Three weaknesses persist:
    7px;line-height:1.6;"` inline — rendering meaningful workflow entry points at
    sub-tertiary visual weight.
 
-3. **Helper text from JS is outside the stylesheet.** `ui-core.js` injects helper
-   text via inline `style.cssText` assignments. `_setConnectionMessage()` in
+3. **Helper text from JS is outside the stylesheet.** `_setConnectionMessage()` in
    `app.js` (lines 16–39) applies `content.style.color`, `content.style.background`,
    `content.style.borderColor` as inline JS properties for the connection status
    pill — a surface outside the CSS layer.
@@ -97,31 +121,26 @@ No change in this cycle.
 
 **Status: ⚠️ Partial**
 
-`.action-btn.primary` (`styles.css` lines 586–587) correctly delivers
+`.action-btn.primary` (`styles.css` lines 588–589) correctly delivers
 `background: #3b82f6; color: #fff; border-color: #3b82f6` at `font-size: 14px`.
 
-**Improvement (GAP-180):** The step-rerun ↻ button in completed workflow pills
-now has `opacity: 0.35` at rest (`workflow-steps.js` line 733, up from `opacity:0`)
-with `opacity:1` on hover/focus-within (`workflow-steps.js` line 762). This makes
-the re-run affordance visible without dominating the workflow bar.
+**Improvement (GAP-182, Cycle 7):** `.action-btn.secondary` is now defined at
+`styles.css` lines 590–591. The Cancel button in the confirm modal (`index.html`
+line 307) and the eight other elements that previously fell back to base grey now
+render with a deliberate medium-grey visual weight (`#e2e8f0` background /
+`#374151` text / `#94a3b8` border), distinct from both primary blue and
+ghost-style default buttons.
 
 Persistent inconsistencies:
 
-- Six parallel CSS classes for the primary blue button role: `.action-btn.primary`
-  (line 586), `.btn-primary` (line 1302), `.submit-btn` (line 1215), `.editor-btn`
-  (line 861), `.continue-btn` (line 1219), `.layout-action-btn` (line 1435),
-  `.modal-btn` (line 946). Each independently specifies geometry; border-radius
-  ranges from 4px (position-bar inline buttons) to 10px (rewrite cards).
+- Five remaining parallel classes for the primary blue button role: `.btn-primary`
+  (line 1302), `.submit-btn` (line 1215), `.editor-btn` (line 861), `.continue-btn`
+  (line 1219), `.layout-action-btn` (line 1435), `.modal-btn` (line 946) — each
+  independently specifying geometry; border-radius ranges from 4px to 10px.
 - The interaction-area action strip (`index.html` lines 182–190) contains nine
   `.action-btn.primary` buttons managed via `display:none` state toggling. Only
   one visible at a time, but the flat HTML structure provides no secondary-emphasis
   tier.
-- `.action-btn secondary` class referenced at `index.html` line 307 and throughout
-  `master-cv.js`, but `.action-btn.secondary` has no CSS rule defined in
-  `styles.css` — these buttons fall back to base `.action-btn` styling (grey/neutral),
-  which renders them visually equivalent to tertiary ghost buttons.
-
-No net change in overall status.
 
 ---
 
@@ -155,12 +174,16 @@ complete green `#dcfce7/#166534`, stale amber `#fffbeb/#92400e`, error red
 confidence badges (lines 700–722), rewrite cards (lines 1237–1239), toast variants
 (lines 1224–1228), and the `[data-changed="true"]` animation (lines 1537–1547).
 
+The sessions modal status badges (GAP-102, `b7fb7c5`) follow the same semantic
+palette coherently: Draft grey matches `.action-btn.secondary`, Ready blue matches
+ATS badge `#dbeafe/#1d4ed8`, Sent green matches `.step.completed`.
+
 The visual ceiling remains utilitarian. The dark header bar is flat. 96 distinct
 hex literals remain hardcoded with no `:root {}` indirection. The master-profile
 card gradient (`linear-gradient(135deg, #1e40af, #3b82f6)`, line 1463) is the
 sole decorative gradient in the app shell.
 
-No change in this cycle.
+No net change in overall criterion status.
 
 ---
 
@@ -185,14 +208,16 @@ position-bar entry-point buttons are rendered at sub-tertiary weight.
 
 **Status: ⚠️ Partial**
 
-Button proliferation is unchanged (six primary-role classes; see AC 1.2). Tab
-underline pattern continues to be implemented three times independently: `.tab`
-(`styles.css` lines 626–635), `.review-subtab` (lines 665–679), `.input-tab`
-(lines 1295–1297) — same active-underline concept, independently specified padding
-and font-size values. The inline rename widget introduces two more styled
-buttons (ok/cancel) as injected inline styles.
+Button proliferation is partially reduced. `.action-btn.secondary` is now defined
+(`styles.css` lines 590–591), closing the silent-fallback gap (GAP-G4). However,
+five remaining primary-role classes (`.btn-primary`, `.submit-btn`, `.editor-btn`,
+`.continue-btn`, `.modal-btn`) still specify geometry independently. Tab underline
+pattern continues to be implemented three times independently: `.tab` (`styles.css`
+lines 626–635), `.review-subtab` (lines 665–679), `.input-tab` (lines 1295–1297)
+— same active-underline concept, independently specified padding and font-size
+values.
 
-No change in this cycle.
+Improvement from Cycle 7: GAP-G4 resolved; one source of inconsistency closed.
 
 ---
 
@@ -200,19 +225,20 @@ No change in this cycle.
 
 **Status: ✅ Pass**
 
-The semantic state colour mapping remains consistent across all surfaces:
+The semantic state colour mapping remains consistent and now extends to the
+sessions modal:
 
 - Active / in-progress: blue (`#dbeafe/#1d4ed8`)
-- Completed / success: green (`#dcfce7/#166534`)
+- Completed / success / Sent: green (`#dcfce7/#166534`)
 - Stale / warning: amber (`#fffbeb/#92400e`)
 - Critical / error: red (`#fef2f2/#b91c1c`)
+- Draft / unclaimed: grey (`#e2e8f0/#374151`)
 
-Applied faithfully in workflow steps (lines 150–156), freshness chips (lines
-119–121), layout status cards (lines 1425–1428), confidence badges (lines 700–722),
-rewrite cards (lines 1237–1239), toast variants (lines 1224–1228), and the
-`[data-changed="true"]` animation (lines 1537–1547).
-
-No change in this cycle.
+Applied in: workflow steps (lines 150–156), freshness chips (lines 119–121),
+layout status cards (lines 1425–1428), confidence badges (lines 700–722), rewrite
+cards (lines 1237–1239), toast variants (lines 1224–1228), ATS score badge
+(lines 102–104), sessions modal status badges (`session-switcher-ui.js`
+`_renderSessionTableRow()`). No palette drift detected.
 
 ---
 
@@ -227,8 +253,8 @@ in `ui-core.js` uses fully hardcoded inline styles and cannot be themed or
 overridden via the stylesheet. `_setConnectionMessage()` in `app.js` (lines
 16–39) applies colour as inline JS properties for the connection status pill.
 
-The bullet-reorder modal (`0cf4d61`) gains `role="dialog"` and focus-trap semantics
-but introduces no visual regressions.
+The sessions modal status badges (`b7fb7c5`) also inject colour pairs as inline
+JS style strings rather than as CSS classes, continuing this pattern.
 
 No change in overall visual consistency status this cycle.
 
@@ -242,19 +268,18 @@ All standard patterns are correctly applied:
 
 - Modal overlays with close-on-backdrop-click (`index.html` lines 245, 267)
 - Tab-based navigation with active underline and WCAG arrow-key traversal
+  (`ui-core.js` lines 528–554)
 - Sticky tally bar during rewrite review
 - Toast notifications (bottom-right, `gap: 8px` stack, `styles.css` line 1223)
 - Focus trap and focus restoration in modals (`ui-core.js` lines 260–347)
-- Session conflict banner with retry and dismiss affordances
+- Session conflict banner with retry and dismiss affordances; now correctly
+  suppressed for phase-enforcement 409s (`162dedc`; `ui-core.js` lines 451–478)
 - Keyboard-accessible workflow step pills — Enter/Space keydown handlers in
-  `workflow-steps.js` (`updateWorkflowStepsClickable()`)
+  `ui-core.js` (`updateWorkflowStepsClickable()` lines 1891–1975)
 - `#llm-busy-label` carries `aria-live="polite" role="status"` (`index.html` line
   155) — assistive technology users receive LLM operation status announcements
-- Spell-check CTA labelled "Generate Preview →" (`index.html` line 186) —
-  accurately describes the workflow destination
-- **New (GAP-176):** Bullet-reorder modal now has `role="dialog" aria-modal="true"`
-  with focus trap and Escape handler (`0cf4d61`) — consistent with the modal pattern
-  applied to all other dialogs.
+- Step-rerun ↻ button is visible at rest (opacity 0.35) and reaches full opacity
+  on hover/focus-within (`styles.css` line 143–144 with `:hover` rule)
 
 No novel interaction patterns introduced without reason.
 
@@ -270,8 +295,8 @@ No novel interaction patterns introduced without reason.
 | 2.4 Standard interaction patterns | ✅ Pass |
 
 Acceptance Criteria verdict: **⚠️ Partial** — state colour language is coherent
-and well-maintained; component class structure remains fractured; inline-style
-count stable at 218.
+and well-maintained; component class structure remains fractured but GAP-G4 is now
+closed.
 
 ---
 
@@ -292,9 +317,6 @@ The `layout-preview-status` block shows timestamp and revision-count information
 Responsive breakpoints collapse to vertical stacking at ≤1100px (`styles.css`
 lines 1454–1460).
 
-The sandboxed iframe (`sandbox="allow-same-origin"`, `index.html` line 287)
-prevents script execution inside the preview while preserving CSS rendering.
-
 No change in this cycle.
 
 ---
@@ -303,17 +325,15 @@ No change in this cycle.
 
 **Status: ⚠️ Partial**
 
-The font-size input shows both px and pt (`layout-instruction.js` lines 33–35,
-413–415: `pxToPt()` calculates the point equivalent; the `#font-size-pt-display`
-span reads e.g. `px (9.8 pt)`). This is a typographic transparency improvement
-for designers.
+Persistent concern: the layout-settings row packs six heterogeneous controls (font-
+size number input, px/pt readout span, page-margin number input, page-break
+checkbox, skill-experience select, Apply button, status label) in a single
+`flex-wrap: wrap` row without a section heading or visual divider separating
+"document-wide settings" from the "natural-language instruction" textarea below.
+Source evidence: `styles.css` line 1435 (`.layout-instruction-textarea`) and the
+layout-settings row container — no group heading CSS class exists in the stylesheet.
 
-Persistent concern: the layout-settings row (`layout-instruction.js` line 312)
-packs six heterogeneous controls (font-size number input, px/pt readout span,
-page-margin number input, page-break checkbox, skill-experience select, Apply
-button, status label) in a single `flex-wrap: wrap` row without a section heading
-or visual divider separating "document-wide settings" from the "natural-language
-instruction" textarea below. No change.
+No change in this cycle.
 
 ---
 
@@ -323,14 +343,20 @@ instruction" textarea below. No change.
 
 The File Review tab uses `.download-grid` (`.download-item` flex rows: icon + info
 block + green `.btn-download` CTA — `styles.css` line 1289: `background: #10b981`).
-File type detection in `download-tab.js` (lines 43–69) yields contextually labelled
-descriptions for PDF, DOCX, HTML, cover letter, and screening files. The ATS
-validation report renders in a `<details open>` collapsible with pass/warn/fail
-colour-coded rows. The paper-simulation document viewer (`styles.css` line 685:
+File type detection in `web/download-tab.js` yields contextually labelled
+descriptions for PDF, DOCX, HTML, cover letter, and screening files.
+
+**Improvement (GAP-106, `f2a0bbf`):** Each download card now displays a "Generated
+{date}" timestamp label (`font-size: 12px; color: #64748b`) beneath the file
+description. `populateDownloadTab()` reads `cvData.metadata?.generation_date` and
+passes it to `_renderDownloadGrid()` as the `generatedAt` parameter. This gives
+users explicit file-currency confirmation — a substantive improvement for the
+file-review surface.
+
+The ATS validation report renders in a `<details open>` collapsible with pass/warn/
+fail colour-coded rows. The paper-simulation document viewer (`styles.css` line 685:
 `max-width: 8.5in; min-height: 11in; padding: 0.5in; box-shadow: 0 4px 6px -1px
 rgba(0,0,0,0.1)`) is appropriate for the context.
-
-No change in this cycle.
 
 ---
 
@@ -345,9 +371,9 @@ flex-row two-column layout. The colour scheme (dark-blue `#2c3e50`, accent
 `#2980b9`, sidebar `#eef2f5`) is professional and non-distracting.
 
 `templates/cv-style.css` (DOCX output) diverges on all dimensions documented in
-GAP-132 (font family: Segoe UI vs Inter/Merriweather; brand blue: `#2c5aa0` vs
-`#2980b9`; layout: CSS Grid vs Flexbox; column proportions reversed; size units: pt
-vs rem). No change.
+GAP-132: font family (Segoe UI vs Inter/Merriweather), brand blue (`#2c5aa0` vs
+`#2980b9`), layout (CSS Grid vs Flexbox), column proportions reversed, size units
+(pt vs rem). No change.
 
 ---
 
@@ -362,7 +388,7 @@ vs rem). No change.
 
 Acceptance Criteria verdict: **⚠️ Partial** — preview and file-review screens are
 largely polished; AC 3.2 settings row grouping remains visually ambiguous; AC 3.4
-blocked by divergent template systems.
+blocked by divergent template systems. Download surface improved by timestamp label.
 
 ---
 
@@ -374,12 +400,10 @@ blocked by divergent template systems.
 
 `templates/cv-template.html` uses a well-constructed type system:
 - Inter (weights 300/400/600/700) for body and labels; Merriweather for the name
-  heading (line 211: `font-family: 'Merriweather', serif; font-size: 2.2rem;`)
-- `rem`-based scale anchored to `html { font-size: <base_font_size> }` (line 39);
-  default 13px ≈ 9.75pt, adjustable in the layout panel
-- `line-height: 1.6` on body (line 51)
-- Sidebar titles at `0.85rem / letter-spacing: 1px / font-weight: 700 /
-  text-transform: uppercase` (line 137)
+  heading (`font-family: 'Merriweather', serif; font-size: 2.2rem;`)
+- `rem`-based scale anchored to `html { font-size: <base_font_size> }`; default
+  13px ≈ 9.75pt, adjustable in the layout panel
+- `line-height: 1.6` on body
 
 `templates/cv-style.css` (DOCX): `font-family: "Segoe UI", Arial, sans-serif;
 font-size: 11pt; line-height: 1.4` — lower typographic quality and visually
@@ -404,18 +428,18 @@ brand colours with no UI disclosure.
 The HTML template's two-column flex-row (32/68 split) is a recognised professional
 resume format. Sidebar carries contact, skills, education; main column carries
 experience and achievements. `page-break-inside: avoid` prevents mid-entry page
-cuts (`cv-template.html` line 279). `max-width: 215.9mm` + CSS `@page { size:
-letter; margin: var(--page-margin); }` correctly sized for US Letter PDF.
+cuts. `max-width: 215.9mm` + CSS `@page { size: letter; margin: var(--page-margin); }`
+correctly sized for US Letter PDF.
 
 ### Preview Fidelity
 
 **Status: ⚠️ Partial**
 
 The layout review iframe serves the HTML template. The `pxToPt()` helper in
-`layout-instruction.js` (lines 33–35) allows designers to reason about printed
-font size in points. No viewport-zoom or DPI-scale control is exposed, so at
-non-standard viewports or HiDPI displays the preview may not accurately represent
-printed proportions (GAP-G1, below).
+`layout-instruction.js` allows designers to reason about printed font size in
+points. No viewport-zoom or DPI-scale control is exposed, so at non-standard
+viewports or HiDPI displays the preview may not accurately represent printed
+proportions (GAP-G1, below).
 
 ---
 
@@ -426,28 +450,32 @@ printed proportions (GAP-G1, below).
 **Status: ❌ Fail — UNCHANGED**
 
 `web/styles.css` contains no `:root {}` block. `grep ":root" web/styles.css`
-returns zero matches. Distinct hex colour literals: 96 unique values across 1607
+returns zero matches. Distinct hex colour literals: 96 unique values across 1609
 lines. 218 inline `style=""` attributes in `index.html`. JS files (`app.js` lines
 16–39, `ui-core.js` lines 99–118) add further hardcoded colour values outside the
 stylesheet. Theming is structurally impossible; colour drift between components is
 endemic.
 
 Evidence: `styles.css` line 17 (`#f8fafc`), line 20 (`#1e293b`), line 77
-(`#3b82f6`), etc. — 529 total hex-bearing lines.
+(`#3b82f6`), etc.
 
 ### Issue D2 — Proliferation of Button Classes
 
-**Status: ❌ Fail — UNCHANGED**
+**Status: ⚠️ Partial — IMPROVED**
 
-Six distinct classes for primary blue action buttons: `.action-btn.primary`
-(`styles.css` line 588), `.btn-primary` (line 1302), `.submit-btn` (line 1215),
-`.editor-btn` (line 861), `.continue-btn` (line 1219), `.layout-action-btn` (line
-1435), `.modal-btn` (line 946). Each independently specifies geometry.
+GAP-182 is resolved: `.action-btn.secondary` is now defined at `styles.css` lines
+590–591 (`background: #e2e8f0; color: #374151; border-color: #94a3b8`). The eight
+elements (confirm modal Cancel, master-cv.js secondary actions) that previously
+silently fell back to base grey now render with deliberate medium-grey visual weight.
 
-Additionally, `.action-btn.secondary` is referenced in `index.html` line 307 and
-across `master-cv.js` (7 occurrences) but has no dedicated CSS rule — these buttons
-silently inherit base `.action-btn` grey styling, indistinguishable from other
-ghost buttons.
+However, five remaining parallel classes for primary-role blue buttons still exist
+independently: `.btn-primary` (line 1302), `.submit-btn` (line 1215), `.editor-btn`
+(line 861), `.continue-btn` (line 1219), `.modal-btn` (line 946). Each independently
+specifies padding, border-radius, and font-size. Border-radius ranges from 4px
+(position-bar inline buttons) to 10px (wizard primary close).
+
+Status upgraded from ❌ Fail to ⚠️ Partial due to resolution of the most acute
+gap (undefined secondary class).
 
 ### Issue D3 — Heavy Emoji Use in Navigation
 
@@ -459,24 +487,19 @@ bar (`index.html` lines 200–225), most with emoji prefixes. Header buttons inc
 emoji (📂, ⚙️, 📚). Emoji rendering is platform-dependent and cannot be recoloured
 or scaled independently via CSS.
 
-### Issue D4 — Missing Focus Indicators on Interactive Navigation Elements
+### Issue D4 — Focus Indicators on Interactive Navigation Elements
 
-**Status: ✅ RESOLVED (Cycle 6)**
+**Status: ✅ RESOLVED (Cycle 6) — Confirmed stable Cycle 8**
 
 Three `:focus-visible` rules confirmed at:
 - `.step:focus-visible` — `styles.css` line 144
-- `.action-btn:focus-visible` — `styles.css` line 591
-- `.tab:focus-visible` — `styles.css` line 638
+- `.action-btn:focus-visible` — `styles.css` line 593
+- `.tab:focus-visible` — `styles.css` line 640
 
 Combined with `.sm-th:focus-visible` (line 261), `.sm-btn:focus-visible` (line 296),
-`.icon-btn:focus-visible` (line 1195), `.rw-btn:focus-visible` (line 1263), and
-`.preview-output-badge-link:focus-visible` (line 1396) — primary interactive
-elements have consistent 2px blue outlines. No regression in this cycle.
-
-**GAP-180 addendum:** The step-rerun ↻ button now has `opacity:0.35` at rest with
-`.step-rerun:focus-visible { outline: 2px solid #3b82f6; opacity: 1 !important; }`
-injected by `workflow-steps.js` line 762 — the affordance is both visible and
-keyboard-focusable.
+`.icon-btn:focus-visible` (line 1197), `.rw-btn:focus-visible` (line 1265), and
+`.preview-output-badge-link:focus-visible` (line 1398) — primary interactive
+elements have consistent 2px blue outlines. No regression.
 
 ### Issue D5 — Divergent Generated Output Templates (GAP-132)
 
@@ -492,21 +515,25 @@ keyboard-focusable.
 | CSS variables | :root with 8 custom properties | None |
 
 The font-size control in the layout panel adjusts `cv-template.html`'s `rem` root.
-This has no effect on the DOCX output, which uses hardcoded `pt` values. The
-template divergence is not disclosed in the UI. No change.
+This has no effect on the DOCX output. Not disclosed in UI. No change.
 
 ### Issue D6 — Duplicate CSS Rule: `.step-stale-badge`
 
-**Status: ✅ RESOLVED (Cycle 5)**
+**Status: ✅ RESOLVED (Cycle 5) — Confirmed stable Cycle 8**
 
-Single definition at `styles.css` line 1423. No regression.
+Single definition at `styles.css` line 1425. No regression.
+
+### Issue GAP-G4 — `.action-btn.secondary` Undefined
+
+**Status: ✅ RESOLVED (Cycle 7 commit `664750d`)**
+
+`styles.css` lines 590–591 now define `.action-btn.secondary`. The confirm-modal
+"Cancel" button (`index.html` line 307) and all other secondary-labelled buttons
+now render with deliberate medium-grey weight. No regression detected in Cycle 8.
 
 ---
 
 ## Additional Story Gaps / Proposed Story Items
-
-These observations fall outside the current user story criteria but are relevant
-to the graphical-designer perspective:
 
 **GAP-G1 — No zoom/scale control on layout preview iframe.** At non-standard
 viewport widths or HiDPI displays, the iframe renders at a fixed width without
@@ -519,60 +546,55 @@ so that I can evaluate the printed proportions accurately at any viewport size."
 controls in the layout-settings bar (font size, margin, publications checkbox,
 skill-experience select, Apply button, status) are visually co-mingled with the
 instruction textarea below them. No section heading or horizontal rule separates
-"document-wide settings" from "natural-language instruction." Source: `web/layout-instruction.js` line 312. Proposed story: "As a graphical designer, I
-want the document-wide layout settings (font size, margin, page-break) to be
-visually grouped and labelled separately from the natural-language instruction
-textarea so that I can identify the scope of each control at a glance."
+"document-wide settings" from "natural-language instruction." Proposed story: "As a
+graphical designer, I want the document-wide layout settings (font size, margin,
+page-break) to be visually grouped and labelled separately from the natural-language
+instruction textarea so that I can identify the scope of each control at a glance."
 
 **GAP-G3 — Template identity is not disclosed in the UI.** Users cannot tell from
 the application that the preview renders `cv-template.html` (Inter + Merriweather,
 rem, CSS custom properties) while the DOCX download uses `cv-style.css` (Segoe
 UI, pt, no variables). The visual discrepancy between preview and downloaded
-artifact is invisible until download. Source: no template-name element found in any
-reviewed file. Proposed story: "As a graphical designer, I want the layout review
-and file-review tabs to indicate which template is used for each output format so
-that I understand why the downloaded DOCX may differ visually from the preview."
-
-**GAP-G4 — `.action-btn.secondary` class referenced but not defined.** Used in
-`index.html` line 307 ("Cancel" in confirm modal) and 7 times in `master-cv.js`,
-but no `.action-btn.secondary` rule exists in `styles.css`. These buttons silently
-inherit the base `.action-btn` styling (grey background `#f8fafc`, `color: #475569`)
-with no visual differentiation from other ghost buttons. A named `.action-btn.secondary`
-rule would disambiguate intent and align with the existing `.btn-secondary` pattern.
+artifact is invisible until download. Proposed story: "As a graphical designer,
+I want the layout review and file-review tabs to indicate which template is used for
+each output format so that I understand why the downloaded DOCX may differ visually
+from the preview."
 
 ---
 
 **Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-| ----- | ------- | --------- | ------ | ---------- | ----- |
+|-------|---------|-----------|--------|------------|-------|
 | US-G1 | 1 | 3 | 0 | 0 | 0 |
 | US-G2 | 2 | 2 | 0 | 0 | 0 |
 | US-G3 | 2 | 2 | 0 | 0 | 0 |
 | **Total** | **5** | **7** | **0** | **0** | **0** |
 
-| Issue | Cycle 6 | Cycle 7 | Change |
+**Issue tracker delta (Cycle 7 → Cycle 8):**
+
+| Issue | Cycle 7 | Cycle 8 | Change |
 | ----- | ------- | ------- | ------ |
 | D1 CSS token layer (GAP-133) | ❌ | ❌ | No change |
-| D2 Button class proliferation | ❌ | ❌ | No change; GAP-G4 added |
+| D2 Button class proliferation | ❌ | ⚠️ | **Improved** — `.action-btn.secondary` now defined |
 | D3 Emoji navigation | ⚠️ | ⚠️ | No change |
-| D4 Focus-visible indicators | ✅ | ✅ | Remains resolved; GAP-180 addendum |
+| D4 Focus-visible indicators | ✅ | ✅ | Remains resolved |
 | D5 Template divergence (GAP-132) | ❌ | ❌ | No change |
 | D6 Duplicate CSS rule | ✅ | ✅ | Remains resolved |
-| GAP-G4 `.action-btn.secondary` undefined | — | ⚠️ New | First identified this cycle |
+| GAP-G4 `.action-btn.secondary` undefined | ⚠️ | ✅ | **Resolved** (`664750d`) |
 
 **Key evidence references:**
 
 - D1 open: `grep ":root" web/styles.css` → 0 matches; 96 distinct hex literals; 218 inline `style=""` in `index.html`
-- D2 open: `styles.css` lines 588, 1302, 1215, 861, 1219, 1435, 946 — seven primary-role button classes
-- D4 confirmed resolved: `styles.css` lines 144, 591, 638; `workflow-steps.js` line 762 (step-rerun focus-visible)
-- D5 open: `templates/cv-template.html` line 49 (Inter/Merriweather) vs `templates/cv-style.css` (Segoe UI); `#2980b9` vs `#2c5aa0`
-- GAP-G2: `web/layout-instruction.js` line 312 (layout-settings-row flex container — no group heading)
-- GAP-G3: no template-name disclosure in any reviewed source file
-- GAP-G4: `web/index.html` line 307, `web/master-cv.js` (7 occurrences) — `.action-btn.secondary` absent from `styles.css`
-- GAP-180 improvement: `web/workflow-steps.js` line 733 (`opacity:0.35` at rest)
-- AC 3.1 pass: `web/styles.css` line 1371 (layout pane); `web/index.html` line 287 (sandboxed iframe)
-- AC 3.3 pass: `web/styles.css` line 685 (paper simulation); `web/download-tab.js` lines 43–69 (file labelling)
-- Inline style count: `grep -c 'style="' web/index.html` → 218
+- D2 improved: `styles.css` lines 590–591 (`.action-btn.secondary` now defined); remaining parallel classes: lines 1302, 1215, 861, 1219, 1435, 946
+- D4 confirmed resolved: `styles.css` lines 144, 593, 640; `ui-core.js` lines 1930–1943 (step-rerun keyboard handlers)
+- D5 open: `templates/cv-template.html` (Inter/Merriweather, `#2980b9`) vs `templates/cv-style.css` (Segoe UI, `#2c5aa0`)
+- GAP-G1: no zoom/scale control in `styles.css` layout-preview rules or layout-instruction panel HTML
+- GAP-G2: `styles.css` line 1435 (`.layout-instruction-textarea`) — no group heading rule adjacent; layout-settings row has no class boundary visible in `styles.css`
+- GAP-G3: no template-name disclosure found in any reviewed source file
+- GAP-G4 resolved: `styles.css` lines 590–591 (`664750d`); `index.html` line 307 (confirm Cancel now correctly styled)
+- AC 3.2 partial: `styles.css` line 1435 — no grouping class between layout-settings row and textarea
+- AC 3.3 improved: `web/download-tab.js` `_renderDownloadGrid()` — `generatedAt` parameter adds "Generated {date}" label (`f2a0bbf`)
+- AC 2.2 pass-tier addendum: `web/session-switcher-ui.js` `_renderSessionTableRow()` — Draft/Ready/Sent semantic badge colours match palette (`b7fb7c5`)
 
 **Evidence standard:** Every conclusion above is independently verifiable from the cited source evidence at the specified file paths and line numbers.

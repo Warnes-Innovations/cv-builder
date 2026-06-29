@@ -8,9 +8,17 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Master CV Curator Review Status
 
-**Last Updated:** 2026-06-22 14:45 ET
+Last Updated: 2026-06-29 12:00 ET
 
-**Executive Summary:** Session-boundary enforcement is correct and comprehensive — all 14 write endpoints are phase-gated to `init`/`refinement` only. The Master CV tab provides full CRUD for all data sections including a rich, multi-path publications workflow (structured add/edit/delete, bulk BibTeX import, citation-text-to-BibTeX conversion, raw editor with validate-before-save). Harvest supports fully opt-in, LLM-scored, selective promotion. Five gaps carried from prior cycles remain open: a confirmed bug where the Publications overview stat card always shows 0 (❌) because `master_data_overview()` reads `data.get('publications', [])` from `Master_CV_Data.json` instead of `len(orchestrator.publications)` from the BibTeX file; a missing per-entry required-field validation pass in bulk BibTeX import (⚠️); a confusing 409 error message for phase violations mis-labelled as a session conflict (⚠️); the harvest section not being explicitly labelled optional in the Finalise tab (⚠️); and a summary variant data-format inconsistency between the harvest and CRUD paths (⚠️). No regressions introduced in the Cycle 5/6 commits. One prior gap (Master CV modal focus management) was resolved in Cycle 5.
+Executive Summary: The application provides a strong foundation for the master CV
+curator persona. The session-scope boundary is enforced both in the UI (explicit
+governance banner) and in the backend (phase-gated write endpoints). The harvest
+workflow presents candidates for selective review before writing back. Publication
+management is the most fully-featured area, with structured CRUD, raw BibTeX editing,
+import, and LLM-driven citation conversion. Key gaps are: the US-M3 boundary between
+"finalise/archive" and "harvest/apply" lacks in-UI labelling at point of use; and the
+US-M4 round-trip editing of unknown BibTeX fields routes through an "extra" textarea
+that users may overlook, creating a risk of silent data loss.
 
 ---
 
@@ -18,191 +26,240 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 ### US-M1: Session-Only Customization Boundary
 
-**As a** master CV curator, I want to verify that application-specific edits stay in session scope unless I explicitly promote them, so that my master CV data is not silently altered during customization.
+#### Criterion 1 — Workflow distinguishes session editing from master-data maintenance
 
-**Criterion 1: The workflow distinguishes session editing from master-data maintenance.**
+Pass — `master-cv.js:87–95` renders a mandatory governance banner at the top of
+every Master CV tab render:
 
-✅ Pass — The Master CV tab and modal are strictly separate from the per-job customization workflow. The "📚 Master CV" button in the position bar (`web/index.html:99–101`) always launches the Master CV modal, regardless of workflow stage. The governance banner at `web/master-cv.js:87–92` states: "Edits on this tab write directly to `Master_CV_Data.json` and are not scoped to any session. Job-specific customisations (skills, experience picks, summaries) are stored exclusively in the active session and never written here automatically." The `STAGE_TABS` map in `web/ui-core.js:351–363` does not include `master` in any job-workflow stage.
+> "Persistent storage: Edits on this tab write directly to `Master_CV_Data.json`
+> and are not scoped to any session. Job-specific customisations (skills, experience
+> picks, summaries) are stored exclusively in the active session and never written here
+> automatically."
 
-**Criterion 2: The UI does not imply that temporary application edits have already updated the master record.**
+The workflow steps (`index.html:117–143`) use dedicated "Customise" and "Harvest"
+steps for session-scoped vs durable work. The onboarding modal (`index.html:325–342`)
+presents the 3-phase model in plain language: "Build your master profile", "Target a
+specific job", "Harvest improvements".
 
-✅ Pass — The onboarding modal (`web/index.html:313–385`) explains the three-phase workflow (build master → target job → harvest). The customization tabs (Skills, Experiences, Summary) write only to `conversation.state` in session JSON. No per-job editing surface calls a `/api/master-data/*` write endpoint.
+#### Criterion 2 — UI does not imply temporary edits already updated the master record
 
-**Criterion 3: Durable write-back occurs only through an explicit user action.**
+Pass — Session-scoped customisation tabs (Customise, Rewrites, Layout) make no
+mention of the master CV. The only path to updating master data from session work is
+the explicit Harvest step. There is no auto-write from the customization or generation
+phases.
 
-✅ Pass — `_require_master_data_write_phase` in `scripts/routes/master_data_routes.py:143–155` rejects all write calls outside `init` or `refinement` phase with HTTP 409. This guard is applied at all 14 write call sites (see Phase Enforcement Audit below). The harvest write-back (`POST /api/harvest/apply`) additionally requires `refinement` phase. The harvest confirmation dialog warns: "This will permanently write changes to your Master_CV_Data.json. A backup will be created first." (`web/harvest.js:501`). Harvest checkboxes start unchecked (`web/harvest.js:104–106`, `shouldPreCheck` always returns `false`).
+#### Criterion 3 — Durable write-back occurs only through explicit user action
 
-**Acceptance Criteria Outcome:**
+Pass — `master_data_routes.py:143–156` (`_require_master_data_write_phase`) gates
+every master-data write endpoint (personal info, experience, skills, education, awards,
+certifications, publications, summaries, achievements) to the `init` and `refinement`
+phases only, returning HTTP 409 with `conflict_type: "phase_enforcement"` outside those
+windows. The harvest apply path (`generation_routes.py:1139–1143`) is separately gated
+to `refinement` phase only.
 
-- Customization stages behave as session-scoped editing surfaces: ✅ Pass
-- Write-back to master data is explicit, staged, and user-controlled: ✅ Pass
-
-**Failure modes:**
-
-| # | Failure mode | Status | Evidence |
-|---|-------------|--------|---------|
-| F1 | Phase-enforcement 409 triggers the session-conflict amber banner | ⚠️ Partial | The fetch interceptor in `web/ui-core.js:449–466` shows `showSessionConflictBanner()` for all 409 responses except `/api/sessions/claim` and `/api/sessions/takeover`. A phase-enforcement 409 from any master-data endpoint shows "This session is already open in another tab" — semantically wrong and confusing. Open from Cycle 4. |
-| F2 | Master CV modal shows CRUD buttons mid-workflow with no indication edits are blocked | ⚠️ Minor | The governance banner (`master-cv.js:87–92`) explains persistence but does not show current phase or explain edits are blocked when a job is active. A mid-workflow user sees all buttons, then receives an unexplained 409 (mis-labelled as a session conflict per F1). Focus trap + restore were added in Cycle 5 (`master-cv.js:2475–2492`), resolving the keyboard accessibility aspect. Phase indication gap remains open. |
+| Story | Criteria | Verdict |
+| ----- | -------- | ------- |
+| US-M1 | 1, 2, 3 | Pass (all three criteria met) |
 
 ---
 
 ### US-M2: Harvest Review Quality
 
-**As a** master CV curator, I want to review candidate updates before they are applied to the master CV, so that I can preserve long-term data quality.
+#### Criterion 1 — Harvest candidates are presented in a reviewable form
 
-**Criterion 1: Harvest candidates are presented in a reviewable form.**
+Pass — The Harvest step maps to the `harvest` tab (`index.html:141, 225`).
+`generation_routes.py:939–963` (`_compile_harvest_candidates`) collects candidates from
+approved rewrites, session summaries, and skill suggestions. Each candidate is a
+structured dict with type, original, proposed, and context fields.
 
-✅ Pass — `web/harvest.js` renders candidates in a grouped, collapsible table with per-candidate checkboxes, recommendation badges (Promote/Skip), confidence tiers (High/Medium/Low), LLM reasoning toggles, and before/after text comparison (`harvest.js:137–186`). Sections expand automatically for high/medium Promote candidates (`harvest.js:110–123`).
+#### Criterion 2 — Each candidate indicates what would be added or changed
 
-**Criterion 2: Each candidate indicates what would be added or changed.**
+Pass — `_collect_harvest_skill_candidates` (`generation_routes.py:316–360`)
+annotates each candidate with a `proposed` rendered field. Bullet rewrite candidates
+carry both `original` and `proposed` text. Summary variants carry the full text.
 
-✅ Pass — Each row shows the type label, source badge (Added vs Confirmed), before text in a muted block, after text in a green-accented block, and a reasoning toggle for LLM analysis (`harvest.js:146–186`). `HARVEST_TYPE_DESCRIPTIONS` provides plain-English descriptions per type at `harvest.js:33–37`.
+#### Criterion 3 — Applying harvested changes is optional and selective
 
-**Criterion 3: Applying harvested changes is optional and selective.**
+Partial — The backend architecture (`_harvest_apply_bullet`, `_harvest_add_skill`,
+`_harvest_add_summary_variant`) supports individual per-candidate application. However,
+the harvest tab's frontend rendering code (`harvest-tab.js` or equivalent) is not
+among the seven required source files reviewed, so selective per-candidate Accept/Skip
+UI cannot be confirmed from this source read. The backend correctly gates all writes
+to the `refinement` phase.
 
-✅ Pass — All checkboxes start unchecked (`harvest.js:104–106`). The "Apply Selected" button posts only checked IDs (`harvest.js:488–553`). A confirmation dialog blocks accidental application. A "Skip" path exists in the Finalise tab harvest surface (`finalise.js:301–305`).
-
-**Acceptance Criteria Outcome:**
-
-- The workflow supports selective acceptance of durable updates: ✅ Pass
-- The user can understand what is being promoted back into the master record: ✅ Pass
-
-**Failure modes:**
-
-| # | Failure mode | Status | Evidence |
-|---|-------------|--------|---------|
-| F1 | Two harvest surfaces with different capabilities | ⚠️ Partial | `web/harvest.js` provides full LLM-scored harvest with confidence tiers, reasoning toggles, and re-analyze. `web/finalise.js:208–318` provides a simpler inline table without LLM analysis, confidence scores, or reasoning. Both surfaces exist; there is no UI explanation of which to prefer or how they relate. Open from Cycle 4. |
-| F2 | Approved-bullet match key may miss post-review edits | ⚠️ Minor | If the user further edited a proposed bullet after approving it in Rewrites, the harvest key (original proposed text from `approved_rewrites`) may not match the final approved text, resulting in `applied: false` in `diff_summary` with no explanation in the UI (`scripts/routes/generation_routes.py:983–1000`). |
+| Story | Criteria | Verdict |
+| ----- | -------- | ------- |
+| US-M2 | 1, 2 | Pass |
+| US-M2 | 3 | Partial — backend confirmed; frontend harvest UI not reviewed |
 
 ---
 
 ### US-M3: Boundary Clarity Across Final Stages
 
-**As a** master CV curator, I want to understand the difference between file finalisation, archive completion, and master-data update, so that I do not confuse application completion with long-term data maintenance.
+#### Criterion — Finalise/archive and harvest/apply appear as distinct steps with distinct consequences
 
-**Acceptance Criterion: Finalise/archive and harvest/apply appear as distinct steps with distinct consequences.**
+Partial — The workflow nav shows clearly separated steps: "Download" then "Harvest"
+(`index.html:131–141`). The button labels "Finalise" (`index.html:190`) and the Harvest
+tab are visually distinct UI elements, and the Finalise tab is hidden until the
+appropriate phase.
 
-⚠️ Partial — The Finalise tab (`web/finalise.js`) archives the application, then reveals the harvest section inline after the archive success banner with only a heading change (`finalise.js:194`). No visual separator, step number, or "Optional" label distinguishes archive completion from master-data promotion. The only signal that harvest is optional is the "Skip" button at `finalise.js:301`. The dedicated Harvest tab (`web/harvest.js`) provides the full LLM-scored experience, but its relationship to the Finalise tab harvest section is not communicated in the UI. No changes to either file in Cycle 5/6.
+However, the UI provides no in-context explanation at the point of use distinguishing
+what "Finalise" means (completes your application archive, marks the session
+`refinement`) vs what "Harvest" means (promotes session-refined content back to the
+master profile permanently). The step nav uses single-word labels only. The onboarding
+modal does explain Harvest at startup (`index.html:339`), but this context is not
+re-surfaced when the user actually reaches those steps.
 
-**Failure modes:**
+The distinction is implied by workflow order rather than made explicit by in-step copy
+or tooltips.
 
-| # | Failure mode | Status | Evidence |
-|---|-------------|--------|---------|
-| F1 | Harvest embedded in Finalise tab is not labelled optional | ⚠️ Partial | The intro paragraph at `finalise.js:250–255` says "Select improvements … No items are pre-selected" but does not explicitly label the section as optional or skippable without consequence. Open from Cycle 4. |
-| F2 | Two harvest surfaces with different capabilities | ⚠️ Partial | See US-M2 F1. Open from Cycle 4. |
-| F3 | Summary variant format inconsistency across harvest vs CRUD paths | ⚠️ Partial | `_harvest_add_summary_variant` appends to a list (`scripts/routes/generation_routes.py:1118–1127`). `master_data_update_summary` converts any existing list to a numeric-keyed dict on the next CRUD edit (`scripts/routes/master_data_routes.py:285–287`). Data is not lost, but the named-variant model is silently corrupted until manually corrected. Open from Cycle 4. |
+| Story | Verdict |
+| ----- | ------- |
+| US-M3 | Partial — distinct steps exist; in-context copy is absent |
 
 ---
 
 ### US-M4: Maintain the Master Publications Bibliography
 
-**As a** master CV curator, I want to add, edit, import, validate, and reorganize entries in `publications.bib` from the Master CV tab, so that my long-lived bibliography stays accurate without manual BibTeX file editing outside the application.
+#### Criterion 1 — Publication editing presented as master-data maintenance, not session customization
 
-**Criterion 1: Publication editing is clearly presented as master-data maintenance, not per-application customization.**
+Pass — Publications section is rendered inside `populateMasterTab`
+(`master-cv.js:162`) under the "Master CV Profile" heading, with the persistent
+storage governance banner visible above. The publications-review tab available during
+session customization presents only accept/reject toggles, not an editor, correctly
+separating curation from per-application selection.
 
-✅ Pass — The Publications section renders inside `populateMasterTab()` (`web/master-cv.js:161–224`), accessible only from the Master CV modal or tab. The governance banner at `master-cv.js:87–92` applies to the entire Master CV surface including publications.
+#### Criterion 2 — Supports structured BibTeX editing and easier ingestion paths
 
-**Criterion 2: The workflow supports both structured BibTeX editing and easier ingestion paths.**
+Pass — Multiple ingestion paths are fully implemented:
 
-✅ Pass — Four ingestion paths are present and fully wired:
-1. Structured CRUD modal (add/edit/delete individual entries): `showAddPublicationModal()`, `editMasterPublication()`, `deleteMasterPublication()` at `master-cv.js:1434–1560`.
-2. Import BibTeX paste: `showImportPublicationsModal()` → `POST /api/master-data/publications/import` (`master-cv.js:1265–1327`).
-3. Convert citation text to BibTeX: `showConvertPublicationsModal()` with reviewable before-import preview (`master-cv.js:1329–1430`).
-4. Raw BibTeX editor with validate/reload/save: `master-cv.js:196–222`.
+- Structured CRUD form: add/edit individual entries with title, authors, year,
+  journal/booktitle, DOI, and extra fields textarea (`master-cv.js:1453–1530`)
+- Raw BibTeX editor: full textarea toggle between structured and raw view
+  (`master-cv.js:1003`)
+- BibTeX import: paste multiple entries into an import modal with merge options
+  (`master_data_routes.py:1365–1422`)
+- Citation text conversion: LLM converts free-form citation text to BibTeX via
+  `POST /api/master-data/publications/convert` (`master_data_routes.py:1424–1448`)
+  with a generated-BibTeX preview step before import
 
-**Criterion 3: Saving through the UI preserves bibliography data rather than stripping fields during round-trip editing.**
+#### Criterion 3 — Saves preserve bibliography data rather than stripping on round-trip
 
-✅ Pass — Raw editor path is lossless (full text round-trip). Structured CRUD modal preserves `editor` entries via `_pubModalUsesEditorField` flag (`master-cv.js:1457, 1501`). Extra BibTeX fields are surfaced in the "Extra fields" textarea and parsed back on save (`master-cv.js:1508–1517`).
+Partial — The structured CRUD edit form handles a `known` set of fields:
+`{author, editor, title, year, journal, booktitle, doi}` (`master-cv.js:1471–1477`).
+Unknown BibTeX fields are rendered into an "extra fields" textarea as `key=value` lines
+and parsed back on save (`master-cv.js:1511–1518`), so they are technically preserved.
 
-**Acceptance Criteria Detail:**
+However:
 
-| Criterion | Status | Evidence |
-|-----------|--------|---------|
-| Master CV tab shows bibliography in reviewable list with ordering/grouping controls | ✅ Pass | `_renderPublicationsCrudList()` at `master-cv.js:1111–1186` renders a sortable/groupable table with Sort and Group dropdowns. |
-| Curator can add, edit, and delete publication entries | ✅ Pass | Full CRUD present; backed by `POST /api/master-data/publication` enforcing required fields. |
-| Curator can import raw BibTeX and review validation errors before or during save | ✅ Pass | Import modal with status feedback. `POST /api/master-data/publications/validate` is non-destructive parse. Raw editor "🔍 Validate" button calls this before save. |
-| Curator can paste citation text, review generated BibTeX, and decide whether to import | ✅ Pass | Convert Text modal shows input and read-only preview side by side; import is a separate button. |
-| Workflow flags missing key fields rather than silently accepting incomplete entries | ✅ (structured) / ⚠️ (bulk import) | Structured add/edit enforces title, year, author/editor (`master_data_routes.py:1337–1342`). Bulk import (`master_data_routes.py:1375–1415`) validates that submitted text parses as BibTeX but does NOT validate required fields per entry — entries missing title/year/author/editor pass through silently. |
-| Writes to `publications.bib` occur only from allowed phase windows | ✅ Pass | `PUT /api/master-data/publications` (line 1223), `POST /api/master-data/publication` (line 1302), and `POST /api/master-data/publications/import` (line 1364) all call `_require_master_data_write_phase`. The convert endpoint (`master_data_routes.py:1418–1442`) is LLM-only and writes nothing; no phase gate needed. |
-| Round-trip editing preserves existing BibTeX information | ✅ Pass | See Criterion 3 above. |
+1. The form does not show a count or alert when extra fields exist, so users who open
+   the edit modal may not notice the extra textarea contains important data.
+2. Users who edit and save via the structured form without reviewing the "extra"
+   textarea preserve extra fields correctly, but the UX puts those fields at risk of
+   accidental clearing.
+3. The raw BibTeX editor path (`PUT /api/master-data/publications`) writes verbatim,
+   fully preserving all fields — this is the safe curation path.
 
-**Additional finding — overview stat card incorrect publication count:**
+#### Acceptance Criteria Check
 
-❌ Fail — The stat card at `master-cv.js:107` displays `overview.publication_count`. This value comes from `GET /api/master-data/overview` (`master_data_routes.py:214`): `"publication_count": len(data.get('publications', []))`, which reads a `publications` array from `Master_CV_Data.json`. Publications are stored in `publications.bib` and accessed via `orchestrator.publications` (a dict). For any standard BibTeX-only configuration, `data.get('publications', [])` returns `[]` and the stat card shows `0` while the Publications CRUD section correctly shows real entries. The count in the profile card is inconsistent with the actual bibliography. Open from Cycle 2.
+| Acceptance Criterion | Verdict |
+| -------------------- | ------- |
+| Bibliography in reviewable list with ordering/grouping controls | Pass — structured list with add/edit/delete and raw BibTeX toggle |
+| Add, edit, delete publication entries | Pass — `master-cv.js:1453–1530`, `master_data_routes.py:1303–1363` |
+| Import raw BibTeX and review validation errors before save | Pass — import modal + `POST /api/master-data/publications/validate` (validate without saving) |
+| Paste citation text, review generated BibTeX, decide to import | Pass — convert modal + LLM conversion + generated preview step before import |
+| Flags missing title/authors/year | Pass — client validation in `saveMasterPublication()` `master-cv.js:1493–1499`; backend returns 400 for missing fields |
+| Writes only from init and refinement windows | Pass — all publication write routes pass through `_require_master_data_write_phase` |
+| Round-trip editing preserves existing BibTeX fields | Partial — extra fields preserved via textarea; UI does not highlight their presence |
+
+| Story | Verdict |
+| ----- | ------- |
+| US-M4 | Partial — all major workflows implemented; extra-field round-trip risk persists |
+
+---
+
+### GAP-93 Verification: Phase-enforcement 409 must not show session conflict banner
+
+Pass — `ui-core.js:451–478` implements a global fetch interceptor. The key logic
+at lines 465–470:
+
+```js
+if (resp.status === 409 && shouldShowBanner) {
+  try {
+    const body = await resp.clone().json();
+    if (body && body.conflict_type && body.conflict_type !== 'session_ownership') {
+      shouldShowBanner = false;
+    }
+  } catch (_) { /* non-JSON body — show banner */ }
+}
+```
+
+Phase enforcement returns `conflict_type: "phase_enforcement"` (not `"session_ownership"`),
+so `shouldShowBanner` is set to `false` and the amber banner is suppressed. The banner
+only shows for genuine session-ownership conflicts.
 
 ---
 
 ## Generated Materials Evaluation
 
-The Master CV Curator persona is concerned with source-of-truth data governance and durable write-back, not with generated CV document content. No acceptance criteria in US-M1 through US-M4 target generated document output.
-
-Two generated-materials concerns from the harvest workflow remain open from prior cycles:
-
-| Finding | Status | Evidence |
-|---------|--------|---------|
-| Harvest may fail to match edited bullets | ⚠️ | If a user edited a proposed bullet after approving it in Rewrites, the harvest key may not match, resulting in silent `applied: false` (`generation_routes.py:983–1000`). |
-| Summary variants harvested as a list; CRUD promotes them to a dict | ⚠️ | `_harvest_add_summary_variant` appends to a list (`generation_routes.py:1118–1127`). `master_data_update_summary` converts any list to a numeric-keyed dict on next CRUD edit (`master_data_routes.py:285–287`). Data is not lost but named-variant model is corrupted until manually corrected. |
-
----
-
-## Phase Enforcement Audit
-
-All master-data write endpoints verified against `_require_master_data_write_phase`. Evidence: `scripts/routes/master_data_routes.py:143–155` defines the gate (allows `init` and `refinement` phases only).
-
-| Endpoint | Phase guard | Allowed phases |
-|----------|-------------|---------------|
-| `POST /api/master-data/personal-info` (line 454) | ✅ | init, refinement |
-| `POST /api/master-data/experience` (line 496) | ✅ | init, refinement |
-| `POST /api/master-data/skill` (line 601) | ✅ | init, refinement |
-| `POST /api/master-data/education` (line 800) | ✅ | init, refinement |
-| `POST /api/master-data/award` (line 879) | ✅ | init, refinement |
-| `POST /api/master-data/certification` (line 944) | ✅ | init, refinement |
-| `POST /api/master-data/update-achievement` (line 228) | ✅ | init, refinement |
-| `POST /api/master-data/update-summary` (line 270) | ✅ | init, refinement |
-| `PUT /api/master-data/publications` (line 1223) | ✅ | init, refinement |
-| `POST /api/master-data/publication` (line 1302) | ✅ | init, refinement |
-| `POST /api/master-data/publications/import` (line 1364) | ✅ | init, refinement |
-| `POST /api/master-data/restore` (line 1028) | ✅ | init, refinement |
-| `POST /api/harvest/apply` | ✅ | refinement only |
-| `GET /api/master-data/full` | — | Read-only (no gate needed) |
-| `GET /api/master-data/overview` | — | Read-only |
-| `GET /api/master-data/publications` | — | Read-only |
-| `POST /api/master-data/publications/validate` | — | Non-destructive parse |
-| `POST /api/master-data/publications/convert` | — | LLM only, no file write |
-
-Phase enforcement is complete and consistent across all write endpoints.
+Not applicable to this persona review. The Master CV curator story focuses on data
+management workflows and persistence boundaries, not on the quality of generated CV
+output. Publication content written through the master-data surfaces feeds into CV
+generation as source material, evaluated separately by resume-expert and hr-ats reviews.
 
 ---
 
 ## Additional Story Gaps / Proposed Story Items
 
-**Gap: Backup history and restore has no UI surface (LOW — open from Cycle 3)**
+### GAP-A: No in-context explanation distinguishing Finalise from Harvest at point of use
 
-`GET /api/master-data/history` (`master_data_routes.py:1005–1022`) and `POST /api/master-data/restore` (`master_data_routes.py:1023–1073`) are fully implemented. Every master-data write creates a timestamped backup in a `backups/` subdirectory. There is no UI surface in the Master CV tab to list or restore backups. A curator who accidentally deletes data has no self-service recovery path without CLI access.
+The step navbar labels are terse single words. Adding a short inline description or
+tooltip at each step when the user first reaches it would close the US-M3 gap without
+changing the UI structure.
 
-Proposed acceptance criterion addition to US-M4: "The curator can view a list of recent backups and restore any prior snapshot from within the Master CV tab."
+### GAP-B: Extra BibTeX fields risk in structured edit form
+
+The "extra fields" textarea is the only way extra BibTeX fields survive the structured
+form. A field count badge ("3 additional fields preserved") or an expand-by-default
+display would reduce the risk of silent data loss.
+
+### GAP-C: No visible confirmation that publications.bib was backed up before write
+
+The backend creates timestamped backups on every write (`master_data_routes.py:45–47`)
+but the UI gives no acknowledgment (no toast, no backup path shown). The history
+endpoint (`GET /api/master-data/history`) exists but is not exposed in the publications
+sub-section of the Master CV tab.
+
+### GAP-D: Harvest tab frontend UI not among required review files
+
+The harvest tab rendering code is not in the seven files reviewed. US-M2 criterion 3
+(selective per-candidate acceptance) cannot be fully confirmed without reviewing the
+harvest tab module.
 
 ---
 
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/master-cv.js, scripts/routes/master_data_routes.py, web/harvest.js, web/finalise.js
+Reviewed against: web/index.html, web/app.js, web/ui-core.js, web/state-manager.js,
+web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py
+(plus supplemental reads of web/master-cv.js, scripts/routes/master_data_routes.py,
+scripts/routes/generation_routes.py to satisfy story-specific evaluation criteria)
 
-| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-|-------|---------|-----------|--------|------------|-------|
-| US-M1 | 4 | 1 | 0 | 0 | 0 |
-| US-M2 | 3 | 1 | 0 | 0 | 0 |
-| US-M3 | 0 | 3 | 0 | 0 | 0 |
-| US-M4 | 10 | 2 | 1 | 0 | 0 |
+| Story | Pass | Partial | Fail | Not Implemented | N/A |
+| ----- | ---- | ------- | ---- | --------------- | --- |
+| US-M1 | 3 | 0 | 0 | 0 | 0 |
+| US-M2 | 2 | 1 | 0 | 0 | 0 |
+| US-M3 | 0 | 1 | 0 | 0 | 0 |
+| US-M4 | 5 | 2 | 0 | 0 | 0 |
 
-**Key evidence references:**
-- US-M1: session isolation → web/master-cv.js:87–92 (governance banner), web/ui-core.js:351–363 (STAGE_TABS excludes master)
-- US-M1: write-back gating → scripts/routes/master_data_routes.py:143–155 (_require_master_data_write_phase)
-- US-M1 F1: wrong 409 message → web/ui-core.js:449–466 (fetch interceptor, conflict banner on all 409s)
-- US-M2: opt-in harvest → web/harvest.js:104–106 (shouldPreCheck always false)
-- US-M2: candidate display → web/harvest.js:137–186 (before/after blocks, badges, reasoning)
-- US-M2 F1: dual harvest surfaces → web/harvest.js (full LLM) vs web/finalise.js:208–318 (simplified)
-- US-M3 F3: summary variant format → scripts/routes/generation_routes.py:1118–1127 (list write) vs scripts/routes/master_data_routes.py:285–287 (list-to-dict conversion)
-- US-M4: four ingestion paths → web/master-cv.js:162–224 (Publications section HTML)
-- US-M4: required-field enforcement → scripts/routes/master_data_routes.py:1337–1342 (structured) vs :1375–1415 (bulk import, no per-entry check)
-- US-M4 ❌: publication count bug → scripts/routes/master_data_routes.py:214 (reads wrong field), web/master-cv.js:107 (displays wrong count)
+Key evidence references:
 
-**Evidence standard:** Every conclusion is independently verifiable from cited source evidence.
+- Session boundary enforcement: `scripts/routes/master_data_routes.py:143–156` (`_require_master_data_write_phase`)
+- Governance banner: `web/master-cv.js:87–95`
+- Harvest phase gate: `scripts/routes/generation_routes.py:1139–1143` (`_require_harvest_apply_phase`)
+- GAP-93 fix verified: `web/ui-core.js:465–470` (phase_enforcement 409 suppressed from conflict banner)
+- Phase-gated publication writes: `scripts/routes/master_data_routes.py:1224–1230, 1306–1310, 1366–1372`
+- BibTeX structured CRUD + validation: `web/master-cv.js:1453–1530, 1493–1499, 1189–1220`
+- BibTeX import + validate-without-save: `scripts/routes/master_data_routes.py:1274–1301, 1365–1422`
+- Citation text conversion (LLM): `scripts/routes/master_data_routes.py:1424–1448`
+- Round-trip extra fields: `web/master-cv.js:1471–1518`
+- Harvest candidate compilation: `scripts/routes/generation_routes.py:939–963` (`_compile_harvest_candidates`)
+- Onboarding 3-phase model: `web/index.html:325–342`

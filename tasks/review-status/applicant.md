@@ -8,9 +8,9 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Applicant Review Status
 
-**Last Updated:** 2026-06-22 13:45 ET
+**Last Updated:** 2026-06-29 14:00 ET
 
-**Executive Summary:** The core CV generation workflow (US-A1 through US-A5c) is well-implemented and largely passes. Intake confirmation (GAP-23), mismatch callouts, prior-clarification pre-population, rewrite card UI (including GAP-178 `aria-pressed`), spell-check button relabeling (GAP-181), layout instruction LLM-clarification, and the harvest flow (US-A11) are all confirmed present. All six recent GAP fixes (GAP-166/174/176/178/179/180/181) are verified in source. Key remaining gaps: US-A3 publications lack up/down reorder controls; US-A3b category management is partial (rename/move/reorder present, but drag-and-drop and explicit "create new category" UI are absent, and no readability warning for long inline bullets); US-A9 finalise summary omits total elapsed time; US-A10 natural-language master-data update and document ingestion are not implemented; US-A12 re-run lacks a keyboard-shortcut or menu alternative and the session audit log does not record re-run events with timestamps.
+**Executive Summary:** The core CV generation workflow (US-A1 through US-A5c) is well-implemented and largely passes. Intake confirmation (GAP-23), mismatch callouts, prior-clarification pre-population, rewrite card UI (including GAP-178 `aria-pressed`), spell-check button relabeling (GAP-181), layout instruction LLM-clarification, and the harvest flow (US-A11) are all confirmed present. All six recent GAP fixes (GAP-166/174/176/178/179/180/181) are verified in source. Key remaining gaps: US-A3 publications lack up/down reorder controls; US-A3b category management is partial (rename/move/reorder present, but drag-and-drop and explicit "create new category" UI are absent, and no readability warning for long inline bullets); **US-A7 cover letter PDF output is missing** (only DOCX is produced by `master_data_routes.py:1619–1697`); US-A9 finalise summary omits total elapsed time; US-A10 natural-language master-data update and document ingestion are not implemented; US-A12 re-run lacks a keyboard-shortcut or menu alternative and the session audit log does not record re-run events with timestamps.
 
 ---
 
@@ -176,7 +176,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 | 5 | LLM has access to `clarification_answers` (no need to re-state) | ✅ | `conversation_manager.py:96`: `post_analysis_answers` in state; accessible to cover letter LLM calls |
 | 6 | Company context textarea present (GAP-174) | ✅ | `web/cover-letter.js:130–131`: `<label for="cl-company-context">Company context…</label>` and `<textarea id="cl-company-context">`; value sent at line 251 |
 | 7 | Editable before saving | ✅ | Generated body written to editable textarea in cover-letter tab |
-| 8 | Saved as `.docx`, `.pdf`, and `cover_letter_text` in `metadata.json` | ✅ | `scripts/routes/master_data_routes.py:1634` (duckflow annotation); `conversation_manager.py:104`: `cover_letter_text` in state |
+| 8 | Saved as `.docx`, `.pdf`, and `cover_letter_text` in `metadata.json` | ⚠️ | `scripts/routes/master_data_routes.py:1619–1697`: only DOCX is produced (`CoverLetter_{company}_{role}_{date}.docx`). Duckflow annotation at line 1637 lists `artifact.cover_letter_docx` — no PDF. `cover_letter_text` is written to metadata ✅, but `.pdf` output is absent ❌. |
 | 9 | `cover_letter_reused_from` recorded | ✅ | `conversation_manager.py:106`: `cover_letter_reused_from: None` in state; set when prior letter is selected |
 
 ---
@@ -285,7 +285,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 | US-A5b | 8 | 0 | 0 | 0 | 0 |
 | US-A5c | 6 | 0 | 0 | 0 | 0 |
 | US-A6 | 4 | 0 | 0 | 0 | 0 |
-| US-A7 | 9 | 0 | 0 | 0 | 0 |
+| US-A7 | 8 | 1 | 0 | 0 | 0 |
 | US-A8 | 7 | 0 | 0 | 0 | 0 |
 | US-A9 | 6 | 1 | 0 | 0 | 0 |
 | US-A10 | 3 | 0 | 0 | 2 | 0 |
@@ -293,6 +293,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 | US-A12 | 6 | 0 | 2 | 0 | 0 |
 
 **Key evidence references:**
+- **US-A7 cover letter PDF absent**: `scripts/routes/master_data_routes.py:1619–1697` — only DOCX produced; story requires `.docx` AND `.pdf`
 - GAP-174 (company context textarea): `web/cover-letter.js:130–131, 251`
 - GAP-176 (bullet reorder modal ARIA + focus trap + Escape): `web/workflow-steps.js:164–187, 456–514`
 - GAP-178 (aria-pressed on rewrite buttons): `web/rewrite-review.js:306–308, 325, 342, 360, 392, 396`

@@ -8,21 +8,21 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Power User Review Status
 
-**Last Updated:** 2026-06-22 23:00 ET
+**Last Updated:** 2026-06-29 19:30 ET
 
-**Executive Summary:** The power-user story is substantially met for session management (US-W2) and backend iteration support (US-W3 context preservation). High-throughput workflow (US-W1) and iteration discoverability (US-W3.3) remain partially satisfied. GAP-180 (this cycle) raised the ↻ re-run button's resting opacity from 0 to 0.35, making it persistently visible at a glance on all completed steps without requiring hover or keyboard focus — this upgrades W3.1 from ⚠️ Partial to ✅ Pass and closes the residual discoverability concern flagged in Cycle 6. Three gaps remain open: no keyboard shortcut for primary action buttons (Gap A), no session text search (Gap C), and no changed-item count after re-run (Gap D). A legacy undo gap (Gap E) remains unchanged.
+**Executive Summary:** The power-user story is substantially met across all three stories. US-W2 (Session Switching) and US-W3 (Efficient Iteration) fully satisfy their acceptance criteria. US-W1 (High-Throughput Workflow Efficiency) remains partially satisfied on criterion W1.1 — no global keyboard shortcut for primary workflow action buttons. Three post-Cycle-6 fixes have landed since the prior review date: GAP-102 adds colour-coded application-status badges in the sessions modal improving session distinguishability at scale; GAP-106 surfaces a generation timestamp on each download card confirming file currency after re-generation; GAP-93 prevents false session-conflict banners for phase-enforcement rejections, removing spurious distractions during power-user workflows. None of these change the story verdicts — all prior pass/partial assessments hold. Four gaps remain open: Gap A (no primary-action keyboard shortcut), Gap C (no session text-search), Gap D (no changed-item count after re-run), and Gap E (no bulk-decision undo).
 
 ---
 
-## What Changed Since Cycle 5
+## What Changed Since Cycle 6 (prior review 2026-06-22)
 
-Three commits have landed since the Cycle 5 review date (2026-06-20) that affect this persona:
+Three commits landed after the Cycle 6 review that affect this persona:
 
-- **commit `3057ea8`** (GAP-167–173): Converted `.step-rerun` from `<span>` to `<button aria-label="Re-run …">` in `workflow-steps.js:705`. Added `.step.completed:focus-within .step-rerun { opacity: 1 !important; }` so the ↻ button becomes visible when the parent step pill has focus. Added `:focus-visible` outline to `.step-rerun`. This **closes Gap B** from Cycle 5 — keyboard users can now Tab to a completed step pill, see the ↻ appear, and activate it. Also renamed `#spell-btn` CTA label from "Done — Generate CV →" to "Generate Preview →" (GAP-169, `index.html:186`), fixing a misleading label.
+- **commit `b7fb7c5`** (GAP-102, GAP-177): `GET /api/sessions` now reads `metadata.json` per session directory and includes `application_status` in `SessionItem`. `_renderSessionTableRow()` in `session-switcher-ui.js` renders a colour-coded badge (Draft grey / Ready blue / Sent green) in the phase column. This **improves W2.1 (session distinguishability)** — sessions are now differentiable not just by name/phase/date but also by application status at a glance. Already-✅ criterion, now with additional signal.
 
-- **commit `f2f5a0b`** (GAP-166): Rewrite decisions now persist to `localStorage` keyed by session ID after every accept/reject/edit action and are restored in `renderRewritePanel()`. Key is cleared after final submission. This **closes Gap F** (regression path where page reload lost rewrite decisions mid-review).
+- **commit `f2a0bbf`** (GAP-106): `_renderDownloadGrid()` in `download-tab.js` now accepts a `generatedAt` parameter. `populateDownloadTab()` passes `cvData.metadata?.generation_date` to the grid renderer; each download card displays a "Generated {date}" label. This **reinforces Generated Materials criterion** — file currency is now confirmed without navigating away from the File Review tab.
 
-- **GAP-180** (this cycle): The ↻ re-run button inline style changed from `opacity:0` to `opacity:0.35` at rest (`workflow-steps.js:733`). The button is now dimly but persistently visible on all completed step pills at a glance — no hover or keyboard focus required to discover it. On hover/focus the CSS override raises it to `opacity:1 !important` (`workflow-steps.js:762`). This **closes the residual discoverability concern** from Gap B and upgrades W3.1 to ✅ Pass.
+- **commit `162dedc`** (GAP-93): The global fetch interceptor in `ui-core.js:449–465` now inspects the response body for `conflict_type`; when `conflict_type` is present and not `"session_ownership"`, the session conflict banner is suppressed. Phase-enforcement 409s (e.g., writing to master CV during an active job session) no longer fire the amber banner. This **reduces spurious noise** during power-user multi-session workflows — a false alarm that required dismissal on every phase-enforcement write no longer appears.
 
 ---
 
@@ -34,16 +34,16 @@ Three commits have landed since the Cycle 5 review date (2026-06-20) that affect
 
 | # | Criterion | Status | Evidence |
 |---|-----------|--------|----------|
-| W1.1 | Frequent actions available without excessive pointer travel | ⚠️ Partial | Primary action buttons (Analyze, Continue, Accept All, etc.) live at the bottom of the chat panel (`index.html:182–191`). Tab bar navigates via Arrow/Home/End (`ui-core.js:516–541`). Workflow step pills are keyboard-reachable via `Enter`/`Space` (`ui-core.js:1917–1931`). No global keyboard shortcut triggers the currently visible primary action button. `app.js:116–118` binds `Enter` only to message-send; no `Ctrl+Enter` equivalent exists. |
-| W1.2 | Repetitive review work supports efficient sequential progression | ✅ Pass | `acceptAllRewrites()` / `rejectAllRewrites()` in `rewrite-review.js`; `bulkAction()` in `review-table-base.js:708`; bulk toolbars in `experience-review.js`, `skills-review.js`, `achievements-review.js`. DataTable filter restricts bulk actions to visible rows. |
-| W1.3 | Multi-item review screens avoid unnecessary navigation churn | ✅ Pass | DataTable-backed review tables allow scanning and acting on all items in a single view. Rewrite cards rendered in a scrollable panel. Inline tally counters. No page-per-item navigation required. |
+| W1.1 | Frequent actions available without excessive pointer travel | ⚠️ Partial | Primary action buttons (Analyze, Recommend Customizations, Continue, etc.) live at the bottom of the chat panel (`index.html:182–191`). Tab bar navigates via Arrow/Home/End (`ui-core.js:528–553`). Workflow step pills activate with `Enter`/`Space` via the same listener. `app.js:116–118` binds `Enter` to message-send only. No `Ctrl+Enter` or other shortcut triggers the currently visible primary action button. A power user processing many jobs per week must still pointer-click each phase-advance button. |
+| W1.2 | Repetitive review work supports efficient sequential progression | ✅ Pass | `acceptAllRewrites()` / `rejectAllRewrites()` in `rewrite-review.js`; `bulkAction()` in `review-table-base.js`; bulk toolbars in `experience-review.js`, `skills-review.js`, `achievements-review.js`. DataTable filter restricts bulk operations to visible rows. All decisions persist to `localStorage` keyed by session ID (GAP-166, `rewrite-review.js`) and survive page reload. |
+| W1.3 | Multi-item review screens avoid unnecessary navigation churn | ✅ Pass | DataTable-backed review tables render all items on a single scrollable pane. Rewrite cards are presented in a single scrollable panel with Accept/Reject/Edit per card plus bulk tools. Inline tally counters update without full-page reload. No page-per-item navigation required. |
 
 **Failure modes guard-against check:**
 
-- **Repeated clicks across distant controls:** Step pills are keyboard-reachable. The primary action button (bottom of chat) still requires pointer or Tab-through-all-focusables. No shortcut key. Gap A remains open.
-- **No efficient path through large review sets:** DataTable filter + bulk actions cover this adequately.
+- **Repeated clicks across distant controls:** Step pills are keyboard-reachable; primary action button still requires pointer or full Tab traversal. Gap A is open.
+- **No efficient path through large review sets:** DataTable filter + bulk actions adequately serve this need.
 
-**Net: W1.1 partially satisfied, W1.2 and W1.3 pass.**
+**Net: W1.1 partially satisfied; W1.2 and W1.3 pass.**
 
 ---
 
@@ -53,16 +53,16 @@ Three commits have landed since the Cycle 5 review date (2026-06-20) that affect
 
 | # | Criterion | Status | Evidence |
 |---|-----------|--------|----------|
-| W2.1 | Sessions easy to distinguish in the session-switching UI | ✅ Pass | Sessions modal renders a sortable table (Name, Status pill, Phase, Last Modified). Recents strip shows up to 5 most recently modified sessions. Status pills use color-coded CSS classes (`.session-status-current`, `.session-status-saved`, etc., `styles.css:210–215`). Sessions modal initial focus now lands correctly inside the modal after GAP-168 fix (`session-switcher-ui.js:458`). |
-| W2.2 | Creating, opening, or renaming sessions does not create ambiguity about which is active | ✅ Pass | Current-tab row styled `sm-tr-current` with disabled "Current" indicator, not a clickable load link. Header sub-label `#header-session-name` (`index.html:41`) shows current session. Ownership-conflict dialog on 409 prevents silent multi-tab collisions (`ui-core.js:449–465`). Inline rename replaces title in place without navigating away (`session-manager.js:759–818`). |
-| W2.3 | Active session context remains visible while working | ✅ Pass | Three independent persistent signals: (1) `#position-title` / `#position-company` in position bar (`index.html:75–80`); (2) `#header-session-name` sub-label under app title (`index.html:41`); (3) Sessions button label via `buildSessionSwitcherLabel()`. All visible throughout the workflow without modal interaction. |
+| W2.1 | Sessions easy to distinguish in the session-switching UI | ✅ Pass | Sessions modal renders a sortable table (Name, Status pill, Phase, Last Modified). Recents strip shows most-recently-modified sessions. Status pills use colour-coded CSS classes (`styles.css:210–215`). **GAP-102 (this cycle)** adds a colour-coded application-status badge (Draft / Ready / Sent) in the phase column (`session-switcher-ui.js`), giving an additional distinguishing signal without opening the session. |
+| W2.2 | Creating, opening, or renaming sessions does not create ambiguity about which is active | ✅ Pass | Current-tab row styled `sm-tr-current` with disabled "Current" indicator (not a clickable load link). Header sub-label `#header-session-name` (`index.html:41`) shows current session. The ownership-conflict dialog on 409 prevents silent multi-tab collisions; **GAP-93 (this cycle)** ensures phase-enforcement 409s do NOT trigger this banner, so only true ownership conflicts show it (`ui-core.js:449–477`). Inline rename replaces title in place without navigating away (`session-manager.js:759–818`). |
+| W2.3 | Active session context remains visible while working | ✅ Pass | Three independent persistent signals: (1) `#position-title` / `#position-company` in position bar (`index.html:75–80`); (2) `#header-session-name` sub-label under app title (`index.html:41`); (3) Sessions button label updated via `buildSessionSwitcherLabel()`. All visible throughout the entire workflow. |
 
 **Failure modes guard-against check:**
 
-- **Rapid context switching without losing orientation:** Sessions modal is always accessible from the header. No preview of a session's content before loading. No text-search filter — with 20+ saved sessions a power user still cannot locate by partial job title. Gap C remains open.
-- **Currently active session identifiable throughout:** Three signals are robust and persistent.
+- **Rapid context switching without losing orientation:** Sessions modal always accessible from header. No text-search filter — with 20+ saved sessions, a power user cannot locate by partial job title. Gap C remains open.
+- **Currently active session identifiable throughout:** Three persistent signals are robust.
 
-**Net: W2 fully satisfied for all stated acceptance criteria. Session-search gap (C) is a scale limitation, not a story failure.**
+**Net: W2 fully satisfies all acceptance criteria. Session-search (Gap C) is a scale limitation, not a story failure.**
 
 ---
 
@@ -72,16 +72,16 @@ Three commits have landed since the Cycle 5 review date (2026-06-20) that affect
 
 | # | Criterion | Status | Evidence |
 |---|-----------|--------|----------|
-| W3.1 | Re-run affordances are discoverable for supported stages | ✅ Pass | **GAP-180 (this cycle) resolved the last discoverability gap.** The ↻ re-run button inline style is now `opacity:0.35` at rest (`workflow-steps.js:733`), making it persistently visible — a dim ↻ glyph appears on every completed step pill without any hover or keyboard interaction. On hover or parent `:focus-within` the CSS override raises it to `opacity:1 !important` (`workflow-steps.js:762`). The button is a proper `<button aria-label="Re-run …">` (GAP-167, `workflow-steps.js:730`), has a `:focus-visible` ring, and fires the confirmation modal via `confirmReRunPhase()`. Keyboard users can Tab to it and press Enter; pointer users see it immediately. Discoverability is now satisfactory for both interaction modes. |
-| W3.2 | Re-entry into earlier stages preserves useful downstream context | ✅ Pass | `conversation_manager.py:_build_downstream_context()` (`line 1392`) collects approved rewrites, experience/skill decisions, and accepted spell fixes, injecting them into the re-run LLM prompt. `back_to_phase()` (`line 1435`) marks downstream steps stale without erasing content. `re_run_phase()` (`line 1470`) passes context to the new LLM call. Backend support is comprehensive. |
-| W3.3 | The app minimises redundant work during iteration | ⚠️ Partial | `_highlightChangedItems()` (`workflow-steps.js:332–380`) marks changed rewrite cards and experience/skill table rows. GAP-166 (commit `f2f5a0b`) ensures rewrite decisions survive page reload. However, the assistant message after re-run (`workflow-steps.js:294`) still does not surface a count — "changed items are highlighted" with no quantity. No "show only changed" filter. |
+| W3.1 | Re-run affordances are discoverable for supported stages | ✅ Pass | The ↻ re-run button is rendered at `opacity:0.35` at rest (`workflow-steps.js:733`) on every completed step pill that supports LLM re-execution (analysis, customizations, rewrite, spell — `workflow-steps.js:645`). The button is a `<button aria-label="Re-run …">` element with a `:focus-visible` ring and a `:focus-within` CSS rule that raises opacity to 1 (`workflow-steps.js:762`). Keyboard users can Tab to a completed step pill, see the ↻ at reduced opacity, and activate it. Pointer users see it immediately. The confirmation modal (`workflow-steps.js:138–188`) has its own focus trap and lists downstream stages that remain intact. |
+| W3.2 | Re-entry into earlier stages preserves useful downstream context | ✅ Pass | `_build_downstream_context()` in `conversation_manager.py:1395` collects approved rewrites, experience/skill decisions, and accepted spell fixes, injecting them into the re-run LLM prompt. `back_to_phase()` (`conversation_manager.py:1435`) marks downstream steps stale without erasing content. `re_run_phase()` (`conversation_manager.py:1470`) passes context to the new LLM call. Backend support is comprehensive. |
+| W3.3 | The app minimises redundant work during iteration | ⚠️ Partial | `_highlightChangedItems()` (`workflow-steps.js:332–380`) marks changed rewrite cards and experience/skill table rows. Rewrite decisions survive page reload (GAP-166). However, the assistant message after re-run (`workflow-steps.js:294`) says "changed items are highlighted" with no count. No "show only changed" filter exists. The changed-item set is computed but never surfaced as a quantity. |
 
 **Failure modes guard-against check:**
 
-- **Reruns feel equivalent to starting over:** Substantially mitigated. Confirmation modal (`workflow-steps.js:138–188`) lists which downstream stages remain intact. Stale badges appear on downstream steps. Downstream context passes into the LLM prompt.
-- **Re-run affordance keyboard accessibility and discoverability:** Gap B is **closed** (Cycle 6) and the residual opacity=0 concern is now **closed** by GAP-180. The ↻ button is persistently visible at reduced opacity, fully accessible to keyboard users, and raises the confirmation modal with its own focus trap.
+- **Reruns feel equivalent to starting over:** Substantially mitigated. Confirmation modal lists which downstream stages remain intact. Stale badges appear on downstream steps. Downstream context passes into the LLM prompt.
+- **Re-run affordance keyboard accessibility and discoverability:** The ↻ button is persistently visible at 0.35 opacity at rest, focusable with Tab, and raises to full opacity on hover/focus. Both pointer and keyboard discovery paths work.
 
-**Net: W3.1 and W3.2 pass fully. W3.3 remains partial — changed-item count after re-run is still absent.**
+**Net: W3.1 and W3.2 pass fully. W3.3 remains partial — changed-item count after re-run still absent.**
 
 ---
 
@@ -91,15 +91,16 @@ Assessment based on source code reading of generation and download paths.
 
 | Criterion | Status | Notes |
 |-----------|--------|-------|
-| Files clearly labelled by format and purpose | ✅ Pass | `download-tab.js`: each file gets a format icon and descriptive label ("ATS-optimised DOCX", "Human-readable PDF", etc.). |
+| Files clearly labelled by format and purpose | ✅ Pass | `download-tab.js`: each file card has a format icon and descriptive label ("ATS-optimised DOCX", "Human-readable PDF", etc.). |
+| Generation timestamp on download cards | ✅ Pass | **GAP-106 (this cycle)**: `_renderDownloadGrid()` now displays a "Generated {date}" label on each download card (`download-tab.js`). File currency is confirmed at a glance. |
 | Page-count advisory surfaced | ✅ Pass | `download-tab.js`: page count badge with amber warning when outside the 1–3 page range. |
 | ATS validation report accessible | ✅ Pass | "ATS Report" button in position bar (`index.html:102–103`), visible after job analysis. Dedicated `tab-ats-score` tab. |
-| Post-layout steps addressable without restart | ✅ Pass | Post-layout steps unlock simultaneously after layout confirmation (`ui-core.js:1954–1962`, `updateWorkflowStepsClickable()`). |
+| Post-layout steps addressable without restart | ✅ Pass | Post-layout steps unlock simultaneously after layout confirmation (`workflow-steps.js:666–680`). |
 | File quality feedback beyond download links | ✅ Pass | `download-tab.js`: ATS validation checks table with per-check pass/fail; page count advisory; persuasion-check warnings. |
 | Harvest path for improvements to Master CV | ✅ Pass | `step-harvest` / `tab-harvest` in workflow bar, unlocks after layout confirmation. |
-| Rewrite decisions survive page reload | ✅ Pass | **New since Cycle 5.** GAP-166 persists decisions to `localStorage` keyed by session ID (`rewrite-review.js`). Restored on panel render; cleared after final submission. |
+| Rewrite decisions survive page reload | ✅ Pass | GAP-166: decisions persisted to `localStorage` keyed by session ID (`rewrite-review.js`). Restored on panel render; cleared after final submission. |
 
-**Remaining concern:** No "quick re-generate with unchanged layout" affordance from the File Review tab. Minor content edits (e.g., fixing a bullet) still require navigating back to Analysis or Customise via the re-run path. The path exists but requires 3–4 interactions from the download view.
+**Remaining concern:** No "quick re-generate with unchanged layout" affordance from the File Review tab. Minor content edits still require back-navigating via the re-run path — typically 3–4 interactions from the download view. The path exists but is not surfaced as a single-click affordance.
 
 ---
 
@@ -107,21 +108,15 @@ Assessment based on source code reading of generation and download paths.
 
 ### Gap A (Open) — No keyboard shortcuts for primary workflow action buttons (W1.1)
 
-The keyboard bindings in the primary flow are: `Enter` sends message (`ui-core.js:547–554`), `Escape` closes modals (`ui-core.js:558–561`), Arrow/Home/End navigate the tab bar (`ui-core.js:516–541`), and `Enter`/`Space` activate focused workflow step pills (`ui-core.js:1917–1931`). There is no shortcut to trigger the visible primary action button (Analyze, Continue, Accept All). A power user processing many applications per week must still use a pointer to advance each phase.
+The keyboard bindings in the primary flow are: `Enter` sends message (`app.js:116–118`), `Escape` closes modals (`ui-core.js:570–574`), Arrow/Home/End navigate the tab bar (`ui-core.js:536–553`), and `Enter`/`Space` activate focused workflow step pills. There is no shortcut to trigger the visible primary action button (Analyze Job, Recommend Customisations, Continue to Spell Check, etc.). A power user processing many applications per week must use a pointer to advance each phase.
 
 **Proposed:** `Ctrl+Enter` triggers the currently visible primary action button. `Ctrl+Shift+A` triggers Accept All Recommended in bulk-action review contexts.
 
 ---
 
-### Gap B (FULLY CLOSED — Cycle 6 + GAP-180) — Re-run ↻ button keyboard accessible and persistently visible
-
-GAP-167 (commit `3057ea8`) converted `.step-rerun` from a `<span>` to a `<button>` with `aria-label`, and added `:focus-within` CSS visibility and `:focus-visible` ring. **GAP-180** (this cycle) changed the resting opacity from `0` to `0.35` (`workflow-steps.js:733`), so the ↻ glyph is now always visible at a glance on completed steps — no hover or Tab needed to discover it. The full opacity-1 reveal on hover/focus (`workflow-steps.js:762`) remains. Both keyboard and pointer discoverability are now satisfactory. No residual concerns.
-
----
-
 ### Gap C (Open) — No session search/filter in the sessions modal (W2.1 at scale)
 
-The sessions modal has sortable columns and a Recents strip but no text search input (`session-switcher-ui.js` — no `<input>` for filtering). With many sessions, a power user cannot locate a session by partial job title or company name without scrolling. The `/api/sessions` endpoint returns up to 20 sessions (`session_routes.py:144`).
+The sessions modal has sortable columns, a Recents strip, and (now) application-status badges, but no text search input (`session-switcher-ui.js` — no `<input>` filter element). With many sessions, a power user cannot locate a session by partial job title or company name without scrolling. The `/api/sessions` endpoint returns up to 20 sessions.
 
 **Proposed:** Add a text search input above the sessions table that filters rows client-side by name, phase, or company name.
 
@@ -143,33 +138,33 @@ Layout instructions have an undo stack (`layout-instruction.js`), but experience
 
 ---
 
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/workflow-steps.js
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/workflow-steps.js, web/session-actions.js, web/session-switcher-ui.js, web/session-manager.js
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-| ------- | ------- | ---------- | ------ | ---------- | ----- |
+| ----- | ------- | ---------- | ------ | ---------- | ----- |
 | US-W1 (3 criteria) | 2 | 1 | 0 | 0 | 0 |
 | US-W2 (3 criteria) | 3 | 0 | 0 | 0 | 0 |
 | US-W3 (3 criteria) | 2 | 1 | 0 | 0 | 0 |
-| Generated Materials (7 criteria) | 7 | 0 | 0 | 0 | 0 |
+| Generated Materials (8 criteria) | 8 | 0 | 0 | 0 | 0 |
 
 **Key evidence references:**
 
-- W1.1: primary action buttons pointer-only → `web/index.html:182–191`, `web/app.js:116–118`
-- W1.2: bulk actions → `web/review-table-base.js:708`, `web/rewrite-review.js`
-- W1.3: DataTable reviews → `web/experience-review.js`, `web/skills-review.js`
-- W2.1: session modal table + recents → `web/session-switcher-ui.js:445–492`; status pill CSS → `web/styles.css:210–215`
-- W2.2: current-row indicator, conflict detection → `web/session-manager.js:759–818`, `web/ui-core.js:449–465`
-- W2.3: three active-session signals → `web/index.html:41,75–80`, `web/session-manager.js`
-- W3.1: ↻ button `opacity:0.35` at rest (GAP-180) → `web/workflow-steps.js:733`; hover/focus CSS to opacity:1 → `web/workflow-steps.js:762`; button element → `web/workflow-steps.js:730`; step pill keyboard nav → `web/ui-core.js:1917–1931`
-- W3.2: downstream context preservation → `scripts/utils/conversation_manager.py:1392,1435,1470`
-- W3.3: highlight logic exists, count absent → `web/workflow-steps.js:294,332–380`
-- Gap A (open): no primary-action shortcut → `web/ui-core.js:547–561`
-- Gap B (fully closed — GAP-167 + GAP-180): `<button>` with `aria-label`, focus-within CSS, now `opacity:0.35` at rest → `web/workflow-steps.js:730,733,762`
-- Gap C (open): no search input → `web/session-switcher-ui.js` (no filter element)
+- W1.1 partial: primary action buttons pointer-only → `web/index.html:182–191`, `web/app.js:116–118`; no global shortcut → `web/ui-core.js:528–574`
+- W1.2 pass: bulk actions → `web/review-table-base.js`, `web/rewrite-review.js`; rewrite decision persistence → `web/rewrite-review.js` (GAP-166)
+- W1.3 pass: DataTable reviews → `web/experience-review.js`, `web/skills-review.js`
+- W2.1 pass + improved: session modal table + recents + status badges (GAP-102) → `web/session-switcher-ui.js`; status pill CSS → `web/styles.css:210–215`
+- W2.2 pass: current-row indicator, conflict detection (non-ownership 409s suppressed GAP-93) → `web/ui-core.js:449–477`; inline rename → `web/session-manager.js:759–818`
+- W2.3 pass: three active-session signals → `web/index.html:41,75–80`, `web/session-actions.js`
+- W3.1 pass: ↻ button at `opacity:0.35` at rest → `web/workflow-steps.js:733`; hover/focus to 1 → `web/workflow-steps.js:762`; `<button aria-label>` element → `web/workflow-steps.js:730`; RE_RUN_STEPS set → `web/workflow-steps.js:645`
+- W3.2 pass: downstream context → `scripts/utils/conversation_manager.py:1395,1435,1470`
+- W3.3 partial: highlight logic exists, count absent → `web/workflow-steps.js:294,332–380`
+- Generated Materials — generation timestamp → `web/download-tab.js` (GAP-106, commit `f2a0bbf`)
+- Gap A (open): no primary-action shortcut → `web/ui-core.js:528–574`
+- Gap C (open): no session filter input → `web/session-switcher-ui.js`
 - Gap D (open): count not surfaced → `web/workflow-steps.js:294`
 - Gap E (open): no bulk-decision undo → `web/rewrite-review.js`, `web/review-table-base.js`
-- GAP-166 closed: rewrite decision persistence → `web/rewrite-review.js` (commit `f2f5a0b`)
-- GAP-169 label fix: spell-check CTA relabelled "Generate Preview →" → `web/index.html:186`
-- GAP-180 closed: ↻ resting opacity raised from 0 to 0.35 → `web/workflow-steps.js:733`
+- GAP-93 closed: phase-enforcement 409 no longer triggers session conflict banner → `web/ui-core.js:449–477` (commit `162dedc`)
+- GAP-102 closed: application-status badge in sessions modal → `web/session-switcher-ui.js` (commit `b7fb7c5`)
+- GAP-106 closed: generation timestamp on download cards → `web/download-tab.js` (commit `f2a0bbf`)
 
 **Evidence standard:** Every conclusion is independently verifiable from the cited source files. No runtime testing was performed — assessment is based on source code only.

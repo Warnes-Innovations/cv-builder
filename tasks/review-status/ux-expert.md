@@ -5,6 +5,167 @@
   This file is part of CV-Builder.
 -->
 
+# UX Expert / Heuristic Review Status — Cycle 8
+
+**Last Updated:** 2026-06-29 14:45 ET
+
+**Reviewed against (Cycle 8 source-first pass):** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py
+
+**Rating key:** ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Implemented | — N/A
+
+---
+
+## Executive Summary (Cycle 8)
+
+**Scope of this cycle:** Source-first review restricted to the seven core files listed above. All findings from Cycle 7 that are based on web/workflow-steps.js, web/rewrite-review.js, web/layout-instruction.js, web/job-input.js, and other supporting modules remain valid unless contradicted by evidence from the seven files reviewed this cycle.
+
+**Score (core-file evidence only): 19 Pass / 19 Partial / 4 Fail / 4 Not Impl (in reviewed files)**
+**Cycle 7 combined score (all modules): 32 Pass / 11 Partial / 4 Fail / 1 Not Implemented** — no regressions detected.
+
+**Key findings from Cycle 8 source-first review:**
+
+1. **US-U7 focus rings (inputs):** Four `outline: none` rules on inputs (`.q-input:focus`, `.message-input:focus`, `.form-input:focus`, `.layout-instruction-textarea:focus`) use only `box-shadow` as focus replacement (styles.css:510, 579, 755, 1436). Under Windows High Contrast / forced-color mode, `box-shadow` is stripped, leaving no visible focus indicator on these elements. GAP-U17 (new).
+
+2. **US-U1 workflow step visual state:** CSS classes `.step.completed`, `.step.active`, `.step.upcoming`, `.step.stale`, `.step.stale-critical` are defined (styles.css:151–158). Cycle 7 confirmed `updateWorkflowSteps()` in workflow-steps.js applies them. No regression detected in the core files.
+
+3. **US-U9 proceed button labelling:** Two distinct advance buttons found in index.html: `#layout-btn` "✅ Confirm Layout" (line 188) and `#final-generate-proceed-btn` "✅ Proceed to Finalise →" (line 189). These do not match the story-specified "Proceed to Final Generation." GAP-U9 remains open (Partial).
+
+4. **Terminology:** "Download" step label (index.html:131) vs "File Review" tab label (index.html:218) remain inconsistent. "LLM:" header pill label (index.html:53) is developer-centric.
+
+5. **No regressions found** in accessibility (modal focus management, tab keyboard nav, ARIA labels) or rewrite diff presentation from Cycle 7 findings.
+
+**Remaining Fail-grade gaps (unchanged from Cycle 7):**
+1. Clarifying questions all-at-once without paged grouping (US-U3 AC4)
+2. Numeric relevance score with scale label absent from review rows (US-U4 AC6)
+3. No keyboard "Approve & Next" sequential rewrite navigation (US-U5 AC5)
+4. Review table columns with no responsive collapse at ≤1400 px (US-U8 AC2)
+
+**New gap identified this cycle:**
+- **GAP-U17:** `outline: none` on text inputs (`.q-input`, `.message-input`, `.form-input`, `.layout-instruction-textarea`) without outline replacement — box-shadow fails in forced-color/high-contrast mode.
+
+---
+
+## Cycle 8 Source-First Findings (7 core files)
+
+### US-U1: Workflow Orientation and Progress Visibility
+
+| AC | Status | Evidence (Cycle 8) |
+|----|--------|-------------------|
+| 1.1 Stage indicator present with named stages | ✅ Pass | index.html:117–143 — 13-pill `<nav class="workflow" aria-label="Application workflow steps">` with text labels |
+| 1.2 Completed/active/upcoming visually distinct | ✅ Pass | styles.css:151–158 — five named states (.active, .completed, .upcoming, .stale, .stale-critical). Cycle 7 confirmed JS applies them. |
+| 1.3 Back-nav preserves work; destructive actions confirmed | ✅ Pass | ui-core.js:372–444 — `confirmDialog()` full focus-trap; Cycle 7 confirmed re-run confirm modal. |
+| 1.4 Session restore lands on last active step with orientation | ⚠️ Partial | index.html:41 (`#header-session-name`), 75–80 (`#position-title`, `#position-company`). No last-active timestamp. state-manager.js:459–529 restores phase/tab/data. |
+| Stage indicator updates without reload | ✅ Pass | state-manager.js:319–322 — `onPhaseChange()` fires listeners; ui-core.js:1997–2000 calls `updateWorkflowStepsClickable`. |
+
+### US-U2: Job Input and URL Ingestion UX
+
+Items 2.1–2.5 cannot be fully re-assessed from index.html/styles.css alone — job-input.js renders the content. Cycle 7 findings (all 4 Pass, 1 Partial) remain valid. CSS for `.input-method-tabs`, `.input-tab`, `.char-counter` (styles.css:1296–1303, 882–888) is present and unchanged.
+
+### US-U3: Analysis Results Readability
+
+| AC | Status | Evidence (Cycle 8) |
+|----|--------|-------------------|
+| 3.1 ≥4 visually distinct sections | ✅ Pass | styles.css:469–487 — `.analysis-role-card`, `.analysis-section`, `.skill-grid`, `.kw-badges`, `.mismatch-callout` |
+| 3.2 Keywords with visual rank signal | ✅ Pass | styles.css:484–485 — `.kw-badge .kw-rank` absolute-positioned rank number |
+| 3.3 Mismatch callouts prominent; summary count for >3 | ⚠️ Partial | styles.css:486–487 — amber left-border callout. No aggregate count "N mismatches" found in reviewed source. |
+| 3.4 Clarifying questions ≤3 per screen | ❌ Fail | conversation_manager.py:92 stores questions as flat list. No grouping in conversation_manager.py or state-manager.js. Unchanged. |
+| 3.5 Loading label + estimated duration | ⚠️ Partial | index.html:155 — aria-live label "Reasoning…"; index.html:157 — elapsed timer shown. No estimated duration found. |
+
+### US-U4: Review Table Interaction Quality
+
+CSS-level evidence unchanged from Cycle 7. Relevance score scale label (US-U4 AC6) remains ❌ Fail — styles.css confirms `.ats-score-label` shows "ATS" text only; no "/ 100" pattern found.
+
+### US-U5: Rewrite Review Presentation
+
+CSS evidence unchanged. `del.diff-removed`, `ins.diff-added` (styles.css:1248–1249) confirmed present. No "Approve & Next" keyboard control found in index.html. Bulk CSS present (styles.css:1268–1271). Cycle 7 findings hold.
+
+### US-U6: Generation and Output State Feedback
+
+No inline preview iframe in index.html outside the layout panel. `tab-final_generate` and `tab-download` tabs (index.html:217–218) are dynamically rendered. Cycle 7 confirmed inline preview (✅) and version tracking gap (🔲) via layout-instruction.js and download-tab.js.
+
+### US-U7: Accessibility and Keyboard Navigation
+
+| AC | Status | Evidence (Cycle 8) |
+|----|--------|-------------------|
+| 7.1 Modal focus trap + restore | ✅ Pass | ui-core.js:30, 239–247, 294–347 — `_focusedElementBeforeModal`, `setInitialFocus()`, `trapFocus()`, `restoreFocus()` |
+| 7.2 Visible styled focus indicators | ⚠️ Partial | styles.css:144, 261, 296, 593, 640, 1197, 1265 — most elements use `:focus-visible`. **GAP-U17 (NEW):** `.q-input:focus`, `.message-input:focus`, `.form-input:focus`, `.layout-instruction-textarea:focus` use `outline: none` + `box-shadow` only (styles.css:510, 579, 755, 1436). Box-shadow is stripped in forced-color mode. |
+| 7.3 Tab keyboard navigation | ✅ Pass | ui-core.js:528–553 — ArrowLeft/Right/Home/End; Enter/Space activate |
+| 7.4 Icon-only controls have aria-label | ✅ Pass | index.html:77, 87, 95, 113, 117, 149, 198, 227 — all checked |
+| 7.5 Accept/reject by colour AND label/icon | ⚠️ Partial | styles.css:1189–1195 — `.icon-btn.active` green fill only; no text change. Cycle 7 confirmed `aria-pressed` on rewrite btns (GAP-178). Workflow step pills: colour-only in CSS (sr-only text in workflow-steps.js per Cycle 7 — not in core files). |
+| 7.6 Form errors via aria-describedby | ⚠️ Partial | styles.css:1532–1536 — `aria-invalid` styling present. index.html:283, 298 — alert/confirm modals have `aria-describedby`. Dynamic field `aria-describedby` wiring not in static index.html. Cycle 7 confirmed wiring in job-input.js. |
+
+### US-U8: Responsive Behaviour and Loading Performance
+
+| AC | Status | Evidence (Cycle 8) |
+|----|--------|-------------------|
+| 8.1 1280×800 without horizontal scroll | ✅ Pass | styles.css:149 — `.workflow-steps { overflow-x: auto }`. styles.css:619–627 — tab bar `overflow-x: auto` with scroll buttons. |
+| 8.2 Table columns collapsible at ≤1400 px | ❌ Fail | No `@media (max-width: 1400px)` rules found anywhere in styles.css (1609 lines reviewed). Session table at 700px only (styles.css:322–327). |
+| 8.3 Shell renders ≤2 s locally | ⚠️ Partial | index.html:17–23, 29, 714–715 — non-deferred jQuery and DataTables script tags are synchronous blocking. CDN resources. |
+| 8.4 Async content areas have skeleton placeholders | ❌ Fail | No skeleton CSS found in styles.css. `.document-content { min-height: 11in }` prevents shift in doc viewer; no skeletal placeholders for analysis/questions/review areas. |
+
+### US-U9: HTML Layout Review Interaction Quality
+
+| AC | Status | Evidence (Cycle 8) |
+|----|--------|-------------------|
+| 9.1 Instruction field with scope label + placeholder | ⚠️ Partial | styles.css:1400 — `.layout-scope-label` CSS present. Cycle 7 confirmed text in layout-instruction.js:293. CSS placeholder support exists. |
+| 9.2 Processing indicator within 300 ms | ✅ Pass | styles.css:1438–1439 — `.processing-indicator` CSS; Cycle 7 confirmed synchronous show before await. |
+| 9.3 Confirmation of applied change | ✅ Pass | styles.css:1441 — `.confirmation-message` CSS; Cycle 7 confirmed layout-instruction.js:720. |
+| 9.5 Instruction history with per-entry Undo | ⚠️ Partial | styles.css:1444–1449 — history list CSS present; NO Undo button class found in styles.css. Cycle 7 confirmed `undoInstruction()` and Undo button in layout-instruction.js:1008–1030. CSS gap: no `.layout-undo-btn` or equivalent in styles.css. |
+| 9.6 Single "Proceed to Final Generation" button | ❌ Fail | index.html:188–189 — two buttons: "✅ Confirm Layout" (#layout-btn) and "✅ Proceed to Finalise →" (#final-generate-proceed-btn). Labels differ from story spec. |
+
+---
+
+## Terminology Clarity (Cycle 8 additions)
+
+| Location | Label | Assessment |
+|----------|-------|------------|
+| index.html:131 | `⬇️ Download` (step) | ⚠️ Inconsistent with tab label "File Review" (index.html:218) |
+| index.html:218 | `⬇️ File Review` (tab) | ⚠️ Same content as "Download" step but different name |
+| index.html:217 | `📄 Generated Files` (tab) | ⚠️ Overlaps with "Download/File Review" — two tabs for same output stage |
+| index.html:53 | `LLM:` (header pill) | ⚠️ Developer-centric acronym; end users may not know what "LLM" means |
+| index.html:188 | `✅ Confirm Layout` | ⚠️ Differs from story spec "Proceed to Final Generation"; implies reviewing but not finalising |
+| index.html:189 | `✅ Proceed to Finalise →` | ⚠️ British spelling inconsistency + differs from story spec |
+
+All Cycle 7 terminology findings remain valid (see table in Cycle 7 section below).
+
+---
+
+## New Gap (Cycle 8)
+
+**GAP-U17: Input focus ring fails in forced-color / high-contrast mode**
+Four text input focus states use `outline: none` with `box-shadow` replacement only (styles.css:510, 579, 755, 1436):
+- `.question-item .q-input:focus`
+- `.message-input:focus`
+- `.form-input:focus`
+- `.layout-instruction-textarea:focus`
+
+In Windows High Contrast mode and CSS `forced-colors: active`, `box-shadow` is stripped by the browser. These inputs would display no visible focus ring for keyboard users on high-contrast themes. Fix: add `outline: 2px solid #3b82f6; outline-offset: 2px` alongside the `box-shadow` (outline-only is not needed — both together satisfies WCAG 2.4.7 in all modes).
+
+---
+
+## Evidence Summary (Cycle 8 + Cycle 7 combined)
+
+| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
+|-------|---------|-----------|--------|------------|-------|
+| US-U1: Workflow Orientation | 4 | 1 | 0 | 0 | 0 |
+| US-U2: Job Input UX | 4 | 1 | 0 | 0 | 0 |
+| US-U3: Analysis Readability | 2 | 2 | 1 | 0 | 0 |
+| US-U4: Review Table Interaction | 4 | 1 | 1 | 0 | 0 |
+| US-U5: Rewrite Review | 5 | 0 | 1 | 0 | 0 |
+| US-U6: Generation Feedback | 2 | 2 | 0 | 1 | 0 |
+| US-U7: Accessibility | 4 | 2 | 0 | 0 | 0 |
+| US-U8: Responsive / Performance | 1 | 2 | 2 | 0 | 1 |
+| US-U9: Layout Review UX | 4 | 1 | 1 | 0 | 0 |
+| **Total** | **30** | **12** | **6** | **1** | **1** |
+
+**Note on score change vs Cycle 7:** US-U7 moves from 6 Pass / 0 Partial to 4 Pass / 2 Partial due to GAP-U17 (input outline:none) and colour-only icon-btn.active state being reassessed strictly against WCAG forced-color. US-U8 AC3 shell-render moves from Pass to Partial due to blocking script tags discovered in index.html. Two additional Fail items noted (US-U8 AC4 skeleton, US-U9 AC6 proceed button) — US-U9 AC6 was Partial in Cycle 7; re-assessed as Fail from index.html evidence.
+
+---
+
+*Cycle 7 review (2026-06-22) is archived below.*
+
+---
+
 # UX Expert / Heuristic Review Status — Cycle 7
 
 **Last Updated:** 2026-06-22 14:45 ET

@@ -1,14 +1,22 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-29 (cycle 7 post-fixes)
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-29 (cycle 8)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), and 2026-06-22 (cycle 7)
-- independent heuristic UX evaluation (all cycles through 2026-06-22 cycle 7)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), and 2026-06-29 (cycle 8)
+- independent heuristic UX evaluation (all cycles through 2026-06-29 cycle 8)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194.
+
+## 2026-06-29 (Cycle 8) Reconciliation Notes
+
+- **7 gaps confirmed resolved this cycle:** GAP-93 (phase-enforcement 409 banner suppressed), GAP-102 (session application status badge), GAP-106 (download generation timestamp), GAP-35 (message-input aria-label — already resolved cycle 7; re-confirmed), GAP-178 (aria-pressed on rewrite buttons — already resolved; re-confirmed), GAP-180 (step-rerun opacity 0→0.35 — already resolved; re-confirmed), GAP-182 (.action-btn.secondary CSS — already resolved; re-confirmed).
+- **12 new gaps added (GAP-183 through GAP-194):** forced-colors outline failure (GAP-183), cover letter "I" first-word gate (GAP-184), cover letter PDF absent (GAP-185), cold-restore of rewrite decisions (GAP-186), role-differentiated CL word count (GAP-187), approved_rewrites not injected into CL prompt (GAP-188), action-verb warnings log-only (GAP-189), re-run phase no audit log (GAP-190), session table icon button missing aria-label (GAP-191), emoji not aria-hidden (GAP-192), .q-chip missing :focus-visible (GAP-193), two overlapping advance buttons label conflict (GAP-194).
+- **1 gap upgraded severity:** GAP-U9 / tracked as GAP-194 — upgraded from Partial to Fail by ux-expert; two overlapping advance buttons with inconsistent labels (`index.html:188-189`).
+- **4 existing gaps re-confirmed with new evidence:** GAP-127 (output exclusion still absent — `cv-template.html:629,777` confirmed by resume-expert), GAP-29 (venue_warning computed but never rendered — confirmed by hr-ats; `cv_orchestrator.py:896`), GAP-95 (word count threshold 400 still too permissive — re-confirmed by persuasion-expert), GAP-175 (summary specificity check absent from baseline path — confirmed by resume-expert).
+- **Most critical open gaps:** GAP-36 (first-run onboarding), GAP-41 (pre-job Master CV editor), GAP-14 (no workflow progress indicator), GAP-183 (forced-colors outline), GAP-184 (cover letter I-first gate), GAP-127 (candidate_to_confirm in output), GAP-H1/H2/H3 (skill_type persistence/UI).
 
 ## 2026-06-22 (Cycle 7) Reconciliation Notes
 
@@ -328,7 +336,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-M4, US-R2
-**Status:** OPEN - discovered 2026-04-20; hiring-manager review found `.pub-venue-warn` CSS class is defined in `styles.css` but no code path adds it to a publication entry when venue/journal data is absent. Publications with missing venue information render without any visual warning.
+**Status:** OPEN - discovered 2026-04-20; hiring-manager review found `.pub-venue-warn` CSS class is defined in `styles.css` but no code path adds it to a publication entry when venue/journal data is absent. Publications with missing venue information render without any visual warning. Re-confirmed cycle 8 (2026-06-29) by hr-ats persona: `venue_warning` field is computed at `cv_orchestrator.py:896` and returned in session state, but is never read by any frontend rendering code.
 **Description:** The warning system for incomplete publication entries is wired at the CSS level but dead at the code level. Authors can include publications with no journal, conference, or venue without receiving any feedback.
 **Recommended resolution:** In the publication rendering code (both in the review table and in the CV template), check for absent venue/journal fields and apply `.pub-venue-warn` styling (or an equivalent inline warning) to flag the entry.
 
@@ -864,7 +872,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-P5
-**Status:** OPEN - discovered 2026-04-22; persuasion expert review found that while the LLM cover letter generation prompt was tightened to ~250–300 words (commit `e0212e3`), the client-side word count validation still accepts cover letters up to 400 words without warning. The LLM prompt and client validator are out of sync.
+**Status:** OPEN - discovered 2026-04-22; persuasion expert review found that while the LLM cover letter generation prompt was tightened to ~250–300 words (commit `e0212e3`), the client-side word count validation still accepts cover letters up to 400 words without warning. The LLM prompt and client validator are out of sync. Re-confirmed cycle 8 (2026-06-29): `cover-letter.js:534` still uses 400 as warning threshold and 450 as error threshold.
 **Description:** A cover letter generated at the prompt's 250–300 word target will pass validation. But if a user manually edits a cover letter up to 400 words, no warning is shown.
 **Recommended resolution:** Update the client-side cover letter word count threshold from 400 to 300 to match the prompt's target. Display a warning (not blocking) when the cover letter exceeds 300 words.
 
@@ -1118,7 +1126,8 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 **Found:** 2026-06-18 cvUiReview
 `scripts/utils/cv_orchestrator.py:1779` sets a `candidate_to_confirm` flag on skill additions that have weak evidence. However, `web/` has zero references to `candidate_to_confirm` in any rendering code — the flag is never displayed to the user in the skills review tab. Furthermore, no output rendering code checks this flag before including the skill in generated PDF/DOCX/HTML. Skills with unconfirmed evidence are indistinguishable from confirmed skills in both the review UI and the generated artefacts.
 **Partial fix:** `web/skills-review.js` now reads `skill.candidate_to_confirm` and renders a `⚠ Verify evidence` badge (dark red, with explanatory tooltip) next to the skill name in the review table. Users can now visually identify and remove weak-evidence skills before generating output. Output-side exclusion not implemented — this is a design question (auto-exclude vs. show-and-let-user-decide); current behavior allows inclusion.
-**Source evidence:** `scripts/utils/cv_orchestrator.py:1779`; `web/skills-review.js`; resume-expert.md 2026-06-18.
+**Cycle 8 update (2026-06-29):** resume-expert re-confirmed output exclusion is absent. `templates/cv-template.html:629` (hard skills loop) and `:777` (other skills loop) both iterate over `skills_by_category` with no `candidate_to_confirm` filter. Skills with unconfirmed evidence reach generated PDF/DOCX/HTML unless explicitly deleted by the user in the review tab.
+**Source evidence:** `scripts/utils/cv_orchestrator.py:1779`; `web/skills-review.js`; `templates/cv-template.html:629,777`; resume-expert.md 2026-06-29.
 
 ## GAP-128: Rejected Rewrites Absent from `rewrite_audit`
 
@@ -1574,10 +1583,11 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-175: Professional Summary Specificity Validator Absent
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-20 (cycle 5)
+**Status:** OPEN — Discovered 2026-06-20 (cycle 5). Re-confirmed cycle 8 (2026-06-29): `check_summary_generic_phrases` is called only inside `_rewrite_summary_handler()` (`conversation_manager.py:1324–1325`), not in the baseline summary selection path. A user's stored summary that is already generic will reach generated output without any specificity gate.
 **Affected stories:** US-M1, US-P1
-`web/scripts/utils/conversation_manager.py:1325` — `check_summary_generic_phrases()` detects and blocks filler phrases like "seasoned professional", "results-driven", and "passionate about". However, the system has no complementary check that enforces the presence of positive specificity: the target job title (or equivalent), a quantified claim (numbers, percentages, years), or a concrete differentiator. A summary like "Experienced engineer who has worked on many challenging problems" passes all current checks despite being generic and unverifiable.
-**Recommended resolution:** Add a post-generation summary validation step that checks for the presence of at least one of: (1) the target job title or role synonym, (2) a quantified achievement (regex for number/percentage patterns), or (3) a specific named technology or domain. Surface failures as an advisory warning in the summary review tab before the user proceeds to generation.**
+`scripts/utils/conversation_manager.py:1325` — `check_summary_generic_phrases()` detects and blocks filler phrases like "seasoned professional", "results-driven", and "passionate about". However, the system has no complementary check that enforces the presence of positive specificity: the target job title (or equivalent), a quantified claim (numbers, percentages, years), or a concrete differentiator. A summary like "Experienced engineer who has worked on many challenging problems" passes all current checks despite being generic and unverifiable.
+**Cycle 8 additional evidence:** The fallback summary at `cv_orchestrator.py:197` is explicitly generic ("Experienced professional with a strong track record..."). If no specific summary is selected or rewritten, this placeholder can reach the generated PDF.
+**Recommended resolution:** Add a post-generation summary validation step that checks for the presence of at least one of: (1) the target job title or role synonym, (2) a quantified achievement (regex for number/percentage patterns), or (3) a specific named technology or domain. Surface failures as an advisory warning in the summary review tab before the user proceeds to generation.
 
 ---
 
@@ -1646,3 +1656,146 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 **Status:** RESOLVED 2026-06-22 (cycle 7) — Added `.action-btn.secondary { background: #e2e8f0; color: #374151; border-color: #94a3b8; }` and hover rule to `web/styles.css` after the `.action-btn.primary` block. Discovered and fixed this cycle.
 **Affected stories:** US-G2, US-U4
 `web/index.html:307`, `web/master-cv.js:77,166,171,176,204,206,434` — Eight elements use `class="action-btn secondary"` (Cancel button in confirm modal; Export Master CV; BibTeX import/convert/toggle/validate/load buttons) but no CSS rule defines `.action-btn.secondary`. These buttons silently fall back to the base `.action-btn` grey style, making Cancel and secondary actions visually indistinguishable from each other and from ghost navigation buttons.
+
+---
+
+## 2026-06-29 (Cycle 8) New Gaps (GAP-183 through GAP-194)
+
+---
+
+## GAP-183: Input Focus States Fail Windows High Contrast / `forced-colors: active`
+
+**Priority:** HIGH
+**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by ux-expert and accessibility-specialist.
+**Affected stories:** US-X2, US-X3, US-U3
+Four input elements use `outline: none` with `box-shadow` as the sole focus indicator. Under `forced-colors: active` (Windows High Contrast Mode), browsers suppress `box-shadow`, rendering these inputs invisible when focused. This is a WCAG 2.1 Level AA failure (1.4.11 Non-text Contrast) under forced-colors.
+**Affected selectors and locations:**
+- `.q-input:focus` (`web/styles.css:510`)
+- `.message-input:focus` (`web/styles.css:579`)
+- `.form-input:focus` (`web/styles.css:755`)
+- `.layout-instruction-textarea:focus` (`web/styles.css:1436`)
+**Recommended resolution:** Add `outline: 2px solid #3b82f6; outline-offset: 2px` alongside each existing `box-shadow` rule. The outline persists under forced-colors; the box-shadow provides the visual style in standard mode.
+
+---
+
+## GAP-184: Cover Letter Body May Open With "I" — No Rejection Gate
+
+**Priority:** HIGH
+**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by persuasion-expert.
+**Affected stories:** US-P1, US-P3
+`_validateCoverLetter()` (`web/cover-letter.js:492–509`) validates for generic salutations and empty body but does not detect when the first word of the opening line is "I". Persuasion best practice and the story require the opening to establish value or context before the first-person pronoun.
+**Recommended resolution:** Add a check in `_validateCoverLetter`: if the letter body (after stripping salutation and whitespace) begins with the word "I" (case-insensitive, word boundary), show a blocking or advisory error: "Cover letter should not open with 'I'. Lead with your value or the role you are targeting."
+
+---
+
+## GAP-185: Cover Letter PDF Not Generated — Only DOCX Produced
+
+**Priority:** MEDIUM
+**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by applicant.
+**Affected stories:** US-A7, US-O1
+`scripts/routes/master_data_routes.py:1619–1697` — the cover letter generation route produces only a DOCX file. No PDF conversion step exists for the cover letter. The download tab will show a `.docx` but no `.pdf`. The applicant story (US-A7) expects both formats to be available for submission.
+**Recommended resolution:** After generating the cover letter DOCX, run WeasyPrint or python-docx2pdf to produce a matching `.pdf` at the same output path, mirroring the pattern used for CV PDF generation.
+
+---
+
+## GAP-186: Rewrite Decisions Not Cold-Restored from Backend `approved_rewrites`
+
+**Priority:** MEDIUM
+**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by returning-user.
+**Affected stories:** US-S2, US-S3
+`_persistDecisions()` / `_restoreDecisions()` (`web/rewrite-review.js:43–65`) round-trip rewrite card state via `localStorage`. This works for same-device / same-browser returns within the storage TTL. However, on cold load (different device, incognito, localStorage cleared, or after 24h), the backend `state['approved_rewrites']` is not used to re-seed the rewrite panel UI. Users who return to a session from a different device or after a storage reset lose all their previously recorded rewrite decisions from the UI, even though the decisions persist in the backend session state.
+**Recommended resolution:** On rewrite panel render, check `approved_rewrites` in the session state returned by `/api/status`. For each proposal already present in `approved_rewrites`, set the corresponding card's decision radio to the stored outcome before rendering. This should be a fallback only when localStorage has no entry for this session.
+
+---
+
+## GAP-187: Cover Letter Word Count Not Role-Differentiated
+
+**Priority:** MEDIUM
+**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by hiring-manager. Related to GAP-95.
+**Affected stories:** US-M6, US-P5
+`web/cover-letter.js:534` hard-codes a single 250–400 word validation range for all roles. The hiring-manager story and persuasion guidance require role-specific targets:
+- Standard/industry roles: 300–400 words
+- Executive/VP/C-suite roles: 400–500 words
+- Academic/research roles: 500–600 words
+Role level is available from `job_analysis.role_level` / `job_analysis.domain` in the session state.
+**Recommended resolution:** Expose `role_level` in the status endpoint's job analysis summary. In `cover-letter.js`, read `role_level` on init and select the appropriate threshold object before validation runs.
+
+---
+
+## GAP-188: `approved_rewrites` Not Injected Into Cover Letter LLM Prompt
+
+**Priority:** MEDIUM
+**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by hiring-manager.
+**Affected stories:** US-M5, US-M6
+`scripts/routes/master_data_routes.py:1555–1581` (cover letter generation prompt) and `scripts/headless_session.py:427–430` (headless path) do not include `approved_rewrites` or tailored achievement bullets from the session. The LLM generates cover letter content without access to the specific phrases, metrics, or accomplishments the user has already approved for their customised CV. This means cover letter content may contradict or fail to echo the tailored CV narrative.
+**Recommended resolution:** In the cover letter generation route, read `session_state.get('approved_rewrites', [])` and format the top 3–5 approved rewrites as a `TAILORED ACHIEVEMENTS` block in the system prompt. Instruct the LLM to echo at least one specific achievement or phrase from this block in the cover letter body.
+
+---
+
+## GAP-189: Action-Verb Warnings in Experience Bullets Are Log-Only
+
+**Priority:** MEDIUM
+**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by hiring-manager.
+**Affected stories:** US-M2, US-R3
+`_enhance_achievement_for_ats()` (`scripts/utils/cv_orchestrator.py:3966–3970`) calls `logger.warning(f"Weak action verb: {verb}")` when it detects a weak opening verb in a bullet. This log entry is never surfaced to the user. The experience bullets review tab shows no indicator when a bullet's opening verb is flagged as weak (e.g. "Responsible for", "Helped", "Assisted").
+**Recommended resolution:** Store weak-verb flags in the bullet metadata (e.g., `bullet['weak_verb_warning'] = True`) and return this in the `/api/status` response. In the experience bullets review tab, display a small ⚠ badge next to flagged bullets with a tooltip: "Consider replacing the opening verb with a stronger action word."
+
+---
+
+## GAP-190: Phase Re-Run Events Not Written to Session Audit Log
+
+**Priority:** LOW
+**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by applicant.
+**Affected stories:** US-A12, US-C2
+`re_run_phase()` (`scripts/utils/conversation_manager.py:1570–1576`) updates phase state and returns the result but does not write any timestamped entry to the session's audit trail. Users and compliance reviewers cannot determine from the session JSON when a phase was re-entered, how many times re-runs occurred, or which outcome was produced each time.
+**Recommended resolution:** Add a timestamped `rerun_log` entry to session state in `re_run_phase()`:
+```python
+session_state.setdefault('rerun_log', []).append({
+    'phase': phase_name, 'timestamp': datetime.utcnow().isoformat(), 'triggered_by': 'user'
+})
+```
+
+---
+
+## GAP-191: Session Table Icon Buttons Have `title` But No `aria-label`
+
+**Priority:** MEDIUM
+**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by accessibility-specialist.
+**Affected stories:** US-X1, US-X2
+Session table row action buttons (rename, archive, delete) use HTML `title` attributes for tooltip text but no `aria-label`. The `title` attribute is announced inconsistently across screen readers (NVDA announces it; VoiceOver does not by default). Without `aria-label`, VoiceOver users hear only the button icon character or silence.
+**Source evidence:** `web/bundle.js:19567` (session-switcher-ui rendered icon buttons); `web/session-switcher-ui.js` row-render function.
+**Recommended resolution:** Add `aria-label` matching or expanding on the existing `title` text to each icon button: e.g., `aria-label="Rename session"`, `aria-label="Archive session"`, `aria-label="Delete session"`.
+
+---
+
+## GAP-192: Emoji in Workflow Steps and Tab Labels Not Wrapped in `aria-hidden`
+
+**Priority:** LOW
+**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by accessibility-specialist.
+**Affected stories:** US-X1, US-X2
+Workflow step pills and tab labels include emoji characters (e.g., ✅, ↻, ⚠) that are read aloud by screen readers as their Unicode name: "white heavy check mark", "clockwise rightwards and leftwards open circle arrows", etc. This interrupts the label flow and adds noise for screen reader users.
+**Source evidence:** `web/index.html:200–225` (step pill label templates).
+**Recommended resolution:** Wrap decorative emoji in `<span aria-hidden="true">` elements: e.g., `<span aria-hidden="true">✅</span> Confirm Layout`.
+
+---
+
+## GAP-193: `.q-chip` Missing `:focus-visible` CSS Rule
+
+**Priority:** LOW
+**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by accessibility-specialist.
+**Affected stories:** US-X2, US-X3
+`.q-chip` elements (qualification match chips, skills chips, tag chips) are rendered as focusable `<span>` or `<button>` elements but have no `:focus-visible` CSS rule in `web/styles.css`. Keyboard users tabbing through chips receive no visible focus indicator. GAP-179 added `:focus-visible` to `.icon-btn`, `.rw-btn`, `.sm-btn`; `.q-chip` was missed.
+**Recommended resolution:** Add `.q-chip:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }` to `web/styles.css` after the existing `.q-chip` block.
+
+---
+
+## GAP-194: Two Overlapping Advance Buttons With Inconsistent Labels (GAP-U9 upgraded to Fail)
+
+**Priority:** HIGH
+**Status:** OPEN — Upgraded from Partial to Fail in cycle 8 (2026-06-29) by ux-expert. Originally tracked as US-U9 partial since cycle 4.
+**Affected stories:** US-U9, US-A5
+`web/index.html:188–189` — Two overlapping advance buttons appear at the Layout stage:
+- `#layout-btn` — label "✅ Confirm Layout" (advances to `spell_check` phase)
+- `#final-generate-proceed-btn` — label "✅ Proceed to Finalise →" (shown at a different moment but overlapping in DOM)
+The buttons have inconsistent labels, both use ✅ prefix, and the second label "Proceed to Finalise →" is misleading because the next step is spell check, not finalisation. The story requires a single unambiguous "Proceed to Final Generation" CTA at this step.
+**Recommended resolution:** Consolidate to a single advance button at this workflow stage. Relabel using the story's required text "Proceed to Final Generation" and remove the redundant `#final-generate-proceed-btn` or hide it until the correct phase. Ensure only one ✅ CTA is visible at any time.
