@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-22 (cycle 7)
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-29 (cycle 7 post-fixes)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -848,7 +848,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-M1, US-M3
-**Status:** OPEN - discovered 2026-04-22; master CV curator review found that when the backend returns a `409 Conflict` response to enforce phase restrictions, the UI displays a generic "session conflict" error message rather than a phase-appropriate explanation.
+**Status:** RESOLVED - 2026-06-29. Added `conflict_type: "phase_enforcement"` to the 409 response in `_require_master_data_write_phase()` (`scripts/routes/master_data_routes.py`). Updated the global fetch interceptor in `web/ui-core.js` to clone and inspect the response body; the session conflict banner is suppressed when `conflict_type` is present and is not `"session_ownership"`. Bundle rebuilt.
 **Description:** A `409` during phase enforcement and a `409` during session-ownership conflict are distinct situations with very different user implications. The current UI handling does not distinguish them.
 **Recommended resolution:** Add a `conflict_type` field (e.g., `phase_enforcement` vs `session_ownership`) to 409 responses and update the UI error handler to display phase-appropriate messaging.
 

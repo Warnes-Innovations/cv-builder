@@ -445,6 +445,8 @@ function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', d
 
 /**
  * Global fetch interceptor — shows amber banner on 409 Conflict (session already active).
+ * Skips banner for phase-enforcement 409s (conflict_type: "phase_enforcement") and
+ * for /api/sessions/claim and /api/sessions/takeover which handle their own 409s.
  */
 (function() {
   const _origFetch = window.fetch;
@@ -454,9 +456,19 @@ function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', d
     try {
       const rawUrl = typeof args[0] === 'string' ? args[0] : args[0]?.url;
       const url = new URL(rawUrl, window.location.origin);
-      shouldShowBanner = url.pathname !== '/api/sessions/claim' && url.pathname !== '/api/sessions/takeover';
+      if (url.pathname === '/api/sessions/claim' || url.pathname === '/api/sessions/takeover') {
+        shouldShowBanner = false;
+      }
     } catch (_) {
       shouldShowBanner = true;
+    }
+    if (resp.status === 409 && shouldShowBanner) {
+      try {
+        const body = await resp.clone().json();
+        if (body && body.conflict_type && body.conflict_type !== 'session_ownership') {
+          shouldShowBanner = false;
+        }
+      } catch (_) { /* non-JSON body — show banner */ }
     }
     if (resp.status === 409 && shouldShowBanner) {
       showSessionConflictBanner();

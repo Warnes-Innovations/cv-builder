@@ -152,6 +152,7 @@ def create_blueprint(deps):
                 "post-job finalise workflow."
             ),
             "phase": current_phase or None,
+            "conflict_type": "phase_enforcement",
         }), 409
 
     # ------------------------------------------------------------------
