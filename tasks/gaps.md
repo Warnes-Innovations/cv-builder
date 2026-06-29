@@ -872,13 +872,15 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-P5
-**Status:** OPEN - discovered 2026-04-22; persuasion expert review found that while the LLM cover letter generation prompt was tightened to ~250–300 words (commit `e0212e3`), the client-side word count validation still accepts cover letters up to 400 words without warning. The LLM prompt and client validator are out of sync. Re-confirmed cycle 8 (2026-06-29): `cover-letter.js:534` still uses 400 as warning threshold and 450 as error threshold.
+**Status:** RESOLVED 2026-06-29 — Updated word count thresholds in `web/cover-letter.js`: pass range is now 250–300 words (was 250–400); warning range 200–350 (was 200–450); error below 200 or above 350 (was above 450). Progress bar scaled to 300-word target. Label updated to "Word count (250–300)".
+**Previously:** OPEN - discovered 2026-04-22; persuasion expert review found that while the LLM cover letter generation prompt was tightened to ~250–300 words (commit `e0212e3`), the client-side word count validation still accepted cover letters up to 400 words without warning.
 **Description:** A cover letter generated at the prompt's 250–300 word target will pass validation. But if a user manually edits a cover letter up to 400 words, no warning is shown.
 **Recommended resolution:** Update the client-side cover letter word count threshold from 400 to 300 to match the prompt's target. Display a warning (not blocking) when the cover letter exceeds 300 words.
 
 ## GAP-96: Cover Letter CTA Validation Accepts Passive Closings
 
 **Severity:** MEDIUM
+**Status:** RESOLVED 2026-06-29 — Refactored CTA check in `_validateCoverLetter()` (`web/cover-letter.js`). Introduced two pattern lists: `assertiveCtaPatterns` (pass: candidate takes initiative — "I will call", "I will follow up", "discuss", "interview") and `passiveCtaPatterns` (warn: "look forward to hearing from you", "await your response", "hope to hear"). If only a passive CTA is present the card shows warn with guidance: "Passive closing detected — consider an assertive follow-up." If no CTA is present the card fails.
 **Affected stories:** US-P5
 **Status:** OPEN - discovered 2026-04-22; persuasion expert review found the cover letter CTA (call-to-action) validator accepts passive closings such as "I look forward to hearing from you" without flagging them as weak. Persuasion best practice requires an active, initiative-taking closing.
 **Description:** Passive closings put the burden of action on the hiring manager. Active closings imply the applicant will follow up (e.g., "I will follow up on [date]").
@@ -1762,7 +1764,8 @@ session_state.setdefault('rerun_log', []).append({
 ## GAP-191: Session Table Icon Buttons Have `title` But No `aria-label`
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by accessibility-specialist.
+**Status:** RESOLVED 2026-06-29 — Added `aria-label` matching the `title` text to all three icon buttons in `_renderSessionTableRow()` (`web/session-switcher-ui.js:342–344`): Load session, Rename session, Move session to Trash. Also added aria-label to the inline rename Save/Cancel buttons.
+**Discovered:** 2026-06-29 (cycle 8) by accessibility-specialist.
 **Affected stories:** US-X1, US-X2
 Session table row action buttons (rename, archive, delete) use HTML `title` attributes for tooltip text but no `aria-label`. The `title` attribute is announced inconsistently across screen readers (NVDA announces it; VoiceOver does not by default). Without `aria-label`, VoiceOver users hear only the button icon character or silence.
 **Source evidence:** `web/bundle.js:19567` (session-switcher-ui rendered icon buttons); `web/session-switcher-ui.js` row-render function.
@@ -1773,7 +1776,8 @@ Session table row action buttons (rename, archive, delete) use HTML `title` attr
 ## GAP-192: Emoji in Workflow Steps and Tab Labels Not Wrapped in `aria-hidden`
 
 **Priority:** LOW
-**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by accessibility-specialist.
+**Status:** RESOLVED 2026-06-29 — Wrapped all 12 workflow step emoji and all 19 tab label emoji in `<span aria-hidden="true">` in `web/index.html` (lines 119–141 and 200–225). Also wrapped the three ✅ advance buttons (layout-btn, final-generate-proceed-btn, finalise-action-btn, lines 188–190).
+**Discovered:** 2026-06-29 (cycle 8) by accessibility-specialist.
 **Affected stories:** US-X1, US-X2
 Workflow step pills and tab labels include emoji characters (e.g., ✅, ↻, ⚠) that are read aloud by screen readers as their Unicode name: "white heavy check mark", "clockwise rightwards and leftwards open circle arrows", etc. This interrupts the label flow and adds noise for screen reader users.
 **Source evidence:** `web/index.html:200–225` (step pill label templates).

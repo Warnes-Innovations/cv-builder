@@ -540,32 +540,43 @@ function _validateCoverLetter(text) {
     };
   }
 
-  // ── Rule 3: Word count (250-400) ──────────────────────────────
+  // ── Rule 3: Word count (250-300 target) ──────────────────────
   const words    = text.trim().split(/\s+/).filter(Boolean).length;
-  const wcPct    = Math.min(100, (words / 400) * 100);
-  const wcColour = words < 200 ? '#ef4444' : words <= 250 ? '#f59e0b' : words <= 400 ? '#22c55e' : words <= 450 ? '#f59e0b' : '#ef4444';
-  const wcStatus = words >= 250 && words <= 400 ? 'pass' : words >= 200 && words <= 450 ? 'warn' : 'fail';
+  const wcPct    = Math.min(100, (words / 300) * 100);
+  const wcColour = words < 200 ? '#ef4444' : words <= 250 ? '#f59e0b' : words <= 300 ? '#22c55e' : words <= 350 ? '#f59e0b' : '#ef4444';
+  const wcStatus = words >= 250 && words <= 300 ? 'pass' : words >= 200 && words <= 350 ? 'warn' : 'fail';
   const wcBar    = `<span class="cl-wc-bar"><span class="cl-wc-fill" style="width:${wcPct}%;background:${wcColour};"></span></span>`;
   const wordCountCheck = {
     [wcStatus]: true,
-    label: 'Word count (250–400)',
-    detail: `${words} words ${wcBar} — ${ words < 250 ? 'too short; aim for at least 250.' : words > 400 ? 'too long; trim to 400 words.' : 'within target range.' }`,
+    label: 'Word count (250–300)',
+    detail: `${words} words ${wcBar} — ${ words < 250 ? 'too short; aim for 250–300.' : words > 300 ? 'too long; trim to 300 words.' : 'within target range.' }`,
   };
 
   // ── Rule 4: Call-to-action closing ────────────────────────────
   const lastPara = text.split(/\n{2,}/).filter(p => p.trim()).slice(-1)[0] || '';
-  const ctaPatterns = [
+  // Assertive CTAs: candidate takes initiative (pass)
+  const assertiveCtaPatterns = [
     /interview/i, /discuss/i, /opportunity to (speak|talk|meet|connect)/i,
-    /hear from you/i, /look forward to/i, /welcome the chance/i,
+    /i will (call|follow.?up|reach out|contact|send)/i,
+    /i (plan|intend) to/i, /welcome the chance/i,
     /available (for|to)/i, /contact me/i,
   ];
-  const hasCta = ctaPatterns.some(re => re.test(lastPara));
+  // Passive CTAs: waiting for a response (warn — present but weak)
+  const passiveCtaPatterns = [
+    /hear from you/i, /look forward to (your|hearing)/i,
+    /await(ing)? your/i, /hope to (hear|meet)/i,
+  ];
+  const hasAssertiveCta = assertiveCtaPatterns.some(re => re.test(lastPara));
+  const hasPassiveCta   = passiveCtaPatterns.some(re => re.test(lastPara));
   const ctaCheck = {
-    pass: hasCta,
+    pass: hasAssertiveCta,
+    warn: !hasAssertiveCta && hasPassiveCta,
     label: 'Call-to-action closing',
-    detail: hasCta
-      ? 'Closing paragraph contains a call-to-action — good.'
-      : 'No call-to-action found in the closing paragraph — add an interview request or follow-up offer.',
+    detail: hasAssertiveCta
+      ? 'Assertive call-to-action — takes initiative.'
+      : hasPassiveCta
+        ? 'Passive closing detected ("I look forward to hearing from you") — consider an assertive follow-up: "I will contact your office next week."'
+        : 'No call-to-action found — add an interview request or proactive follow-up statement.',
   };
 
   // ── Render ─────────────────────────────────────────────────────

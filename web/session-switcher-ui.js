@@ -339,9 +339,9 @@ function _renderSessionTableRow(row) {
     const ep  = escapeHtml(row.path || '');
     const idx = row.idx;
     actionHtml =
-      `<button data-sm-action="load"   data-sm-path="${ep}" class="sm-btn sm-btn-open sm-btn-icon" title="Load session"><i class="fa-solid fa-folder-open" aria-hidden="true"></i></button>` +
-      `<button data-sm-action="rename" data-sm-path="${ep}" data-sm-idx="${idx}" class="sm-btn sm-btn-icon" title="Rename session"><i class="fa-solid fa-pencil" aria-hidden="true"></i></button>` +
-      `<button data-sm-action="delete" data-sm-path="${ep}" class="sm-btn sm-btn-danger sm-btn-icon" title="Move to Trash"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>`;
+      `<button data-sm-action="load"   data-sm-path="${ep}" class="sm-btn sm-btn-open sm-btn-icon" title="Load session" aria-label="Load session"><i class="fa-solid fa-folder-open" aria-hidden="true"></i></button>` +
+      `<button data-sm-action="rename" data-sm-path="${ep}" data-sm-idx="${idx}" class="sm-btn sm-btn-icon" title="Rename session" aria-label="Rename session"><i class="fa-solid fa-pencil" aria-hidden="true"></i></button>` +
+      `<button data-sm-action="delete" data-sm-path="${ep}" class="sm-btn sm-btn-danger sm-btn-icon" title="Move to Trash" aria-label="Move session to Trash"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>`;
   }
 
   const rowClass = (row.type === 'active' && row.ownership.isCurrent) ? 'sm-tr sm-tr-current' : 'sm-tr';
@@ -352,8 +352,8 @@ function _renderSessionTableRow(row) {
         `<input id="sm-input-${row.idx}" type="text" value="${escapeHtml(row.name)}" class="sm-key-input"` +
           ` data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}"` +
           ` style="border:1px solid #3b82f6;border-radius:4px;padding:3px 8px;font-size:12px;flex:1;min-width:60px;">` +
-        `<button data-sm-action="submit-rename" data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}" class="sm-btn" title="Save">\u2713</button>` +
-        `<button data-sm-action="cancel-rename" data-sm-idx="${row.idx}" class="sm-btn" title="Cancel">\u2715</button>` +
+        `<button data-sm-action="submit-rename" data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}" class="sm-btn" title="Save rename" aria-label="Save rename">\u2713</button>` +
+        `<button data-sm-action="cancel-rename" data-sm-idx="${row.idx}" class="sm-btn" title="Cancel rename" aria-label="Cancel rename">\u2715</button>` +
       `</span>`
     : `<span>${escapeHtml(row.name)}</span>`;
 
