@@ -508,6 +508,19 @@ function _validateCoverLetter(text) {
       : 'Personalised opener — good.',
   };
 
+  // ── Rule 1b: Body must not open with "I" ──────────────────────
+  const allLines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const bodyLines = allLines.slice(allLines.indexOf(allLines.find(l => l.toLowerCase() === firstLine.toLowerCase()) || '') + 1);
+  const firstBodyWord = (bodyLines.find(l => l.trim()) || '').split(/\s+/)[0] || '';
+  const bodyStartsWithI = /^I[^a-zA-Z]/i.test(firstBodyWord + ' ') && firstBodyWord.toUpperCase() === 'I';
+  const iFirstCheck = {
+    pass: !bodyStartsWithI,
+    label: 'Opening word',
+    detail: bodyStartsWithI
+      ? 'Body opens with "I" — lead with your value, the role, or the company instead.'
+      : 'Body does not open with "I" — good.',
+  };
+
   // ── Rule 2: Company-specific reference ────────────────────────
   const companyName = _getCompanyNameForCL();
   let companyCheck;
@@ -556,7 +569,7 @@ function _validateCoverLetter(text) {
   };
 
   // ── Render ─────────────────────────────────────────────────────
-  const checks = [openingCheck, companyCheck, wordCountCheck, ctaCheck];
+  const checks = [openingCheck, iFirstCheck, companyCheck, wordCountCheck, ctaCheck];
   container.innerHTML = checks.map(c => {
     const state = c.pass ? 'pass' : c.warn ? 'warn' : 'fail';
     return `<div class="cl-check ${state}">

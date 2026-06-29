@@ -1666,7 +1666,8 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-183: Input Focus States Fail Windows High Contrast / `forced-colors: active`
 
 **Priority:** HIGH
-**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by ux-expert and accessibility-specialist.
+**Status:** RESOLVED 2026-06-29 — Added `outline: 2px solid #3b82f6; outline-offset: 2px` to all four affected `:focus` rules in `web/styles.css` (lines 510, 579, 755, 1436). Focus outline now persists under `forced-colors: active`; `box-shadow` continues to provide the visual glow in standard mode. Also added `.q-chip:focus-visible` rule at same time (see GAP-193).
+**Discovered:** 2026-06-29 (cycle 8) by ux-expert and accessibility-specialist.
 **Affected stories:** US-X2, US-X3, US-U3
 Four input elements use `outline: none` with `box-shadow` as the sole focus indicator. Under `forced-colors: active` (Windows High Contrast Mode), browsers suppress `box-shadow`, rendering these inputs invisible when focused. This is a WCAG 2.1 Level AA failure (1.4.11 Non-text Contrast) under forced-colors.
 **Affected selectors and locations:**
@@ -1681,7 +1682,8 @@ Four input elements use `outline: none` with `box-shadow` as the sole focus indi
 ## GAP-184: Cover Letter Body May Open With "I" — No Rejection Gate
 
 **Priority:** HIGH
-**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by persuasion-expert.
+**Status:** RESOLVED 2026-06-29 — Added Rule 1b to `_validateCoverLetter()` in `web/cover-letter.js`. The check finds the first body paragraph (lines after the salutation) and tests if its first word is "I". If so, it renders a fail card: "Body opens with 'I' — lead with your value, the role, or the company instead." Bundle rebuilt.
+**Discovered:** 2026-06-29 (cycle 8) by persuasion-expert.
 **Affected stories:** US-P1, US-P3
 `_validateCoverLetter()` (`web/cover-letter.js:492–509`) validates for generic salutations and empty body but does not detect when the first word of the opening line is "I". Persuasion best practice and the story require the opening to establish value or context before the first-person pronoun.
 **Recommended resolution:** Add a check in `_validateCoverLetter`: if the letter body (after stripping salutation and whitespace) begins with the word "I" (case-insensitive, word boundary), show a blocking or advisory error: "Cover letter should not open with 'I'. Lead with your value or the role you are targeting."
@@ -1782,7 +1784,8 @@ Workflow step pills and tab labels include emoji characters (e.g., ✅, ↻, ⚠
 ## GAP-193: `.q-chip` Missing `:focus-visible` CSS Rule
 
 **Priority:** LOW
-**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by accessibility-specialist.
+**Status:** RESOLVED 2026-06-29 — Added `.q-chip:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }` to `web/styles.css` after the `.q-chip.selected` rule. Fixed in the same commit as GAP-183.
+**Discovered:** 2026-06-29 (cycle 8) by accessibility-specialist.
 **Affected stories:** US-X2, US-X3
 `.q-chip` elements (qualification match chips, skills chips, tag chips) are rendered as focusable `<span>` or `<button>` elements but have no `:focus-visible` CSS rule in `web/styles.css`. Keyboard users tabbing through chips receive no visible focus indicator. GAP-179 added `:focus-visible` to `.icon-btn`, `.rw-btn`, `.sm-btn`; `.q-chip` was missed.
 **Recommended resolution:** Add `.q-chip:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }` to `web/styles.css` after the existing `.q-chip` block.

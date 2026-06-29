@@ -506,8 +506,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .q-chip { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 16px; padding: 6px 14px; font-size: 13px; cursor: pointer; transition: all 0.15s; }
 .q-chip:hover { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
 .q-chip.selected { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; font-weight: 600; }
+.q-chip:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
 .question-item .q-input { width: 100%; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 14px; color: #1e293b; resize: vertical; min-height: 96px; }
-.question-item .q-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+.question-item .q-input:focus { outline: 2px solid #3b82f6; outline-offset: 2px; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
 .questions-submit-btn { background: #3b82f6; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 4px; }
 .questions-submit-btn:hover { background: #2563eb; }
 .questions-submit-btn:disabled { background: #94a3b8; cursor: not-allowed; }
@@ -576,7 +577,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 }
 .input-group { display: flex; gap: 12px; margin-bottom: 16px; }
 .message-input { flex: 1; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 8px; }
-.message-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+.message-input:focus { outline: 2px solid #3b82f6; outline-offset: 2px; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 .send-btn { background: #3b82f6; color: #fff; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; }
 .send-btn:hover:not(:disabled) { background: #2563eb; }
 .send-btn:disabled { background: #9ca3af; cursor: not-allowed; }
@@ -752,7 +753,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
   font-size: 14px;
   transition: border-color 0.2s;
 }
-.form-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+.form-input:focus { outline: 2px solid #3b82f6; outline-offset: 2px; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 .form-textarea {
   min-height: 80px;
   resize: vertical;
@@ -1433,7 +1434,7 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .layout-preview-status-details { font-size: 11px; color: #6b7280; line-height: 1.5; }
 .layout-pane-freshness-chip { font-size: 11px; }
 .layout-instruction-textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit; resize: vertical; line-height: 1.5; }
-.layout-instruction-textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+.layout-instruction-textarea:focus { outline: 2px solid #3b82f6; outline-offset: 2px; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
 .layout-action-btn { width: 100%; padding: 10px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.2s; }
 .processing-indicator { display: flex; align-items: center; gap: 10px; padding: 10px; background: #f8fafc; border-radius: 6px; font-size: 13px; color: #475569; }
 .processing-indicator .spinner { width: 16px; height: 16px; border: 2px solid #cbd5e1; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
