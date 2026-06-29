@@ -163,6 +163,7 @@ class SessionItem:
     has_job: bool
     has_analysis: bool
     has_customizations: bool
+    application_status: str = ''
 
 
 @dataclass

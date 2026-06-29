@@ -4371,7 +4371,8 @@ Include one entry per candidate. Do not omit any candidate."""
 
         # ── Helper functions ─────────────────────────────────────────────────
         def _heading(text: str, level: int = 1):
-            p = doc.add_paragraph()
+            style_name = 'Heading 1' if level == 1 else 'Heading 2'
+            p = doc.add_paragraph(style=style_name)
             run = p.add_run(text.upper())
             run.bold = True
             run.font.size = Pt(13 if level == 1 else 11)

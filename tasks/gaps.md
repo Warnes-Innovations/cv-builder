@@ -919,7 +919,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-O2
-**Status:** OPEN - discovered 2026-04-22; recruiter-ops review found the session switcher shows position name, phase label, created date, and last-modified date — but not `application_status` from `metadata.json`. Users managing multiple applications cannot see which packages are sent, ready, or draft without opening each session.
+**Status:** RESOLVED 2026-06-22 (cycle 8) — Added `application_status: str = ''` to `SessionItem` (`scripts/web_app.py:165`). Updated `list_sessions()` (`scripts/routes/session_routes.py:130–142`) to read `metadata.json` from each session directory and include `application_status`. Updated `_normalizeSessionsForTable` and `_renderSessionTableRow` in `web/session-switcher-ui.js` to pass through and render a colour-coded badge (Draft/Ready/Sent) in the phase column.
 **Description:** For a user tracking 5–10 active applications, the inability to see submission status in the session list forces them to open and close each session individually.
 **Recommended resolution:** Update `GET /api/sessions/list` to include `application_status` from each session's `metadata.json`. Render the status as a badge (Draft / Ready / Sent) in each session row.
 
@@ -1597,7 +1597,7 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-177: Human DOCX Section Headings Use Bold Runs, Not Word Heading Paragraph Styles
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-22 (cycle 6)
+**Status:** RESOLVED 2026-06-22 (cycle 8) — Updated `_heading()` helper in `_generate_human_docx()` (`scripts/utils/cv_orchestrator.py:4373`) to use `doc.add_paragraph(style='Heading 1')` (or `'Heading 2'` for level 2) so the paragraph carries Word's semantic heading structure. Visual formatting (bold run, dark blue colour, bottom border, spacing) is applied on top and continues to control appearance.
 **Affected stories:** US-H1, US-X3
 `scripts/utils/cv_orchestrator.py:4373–4391` — The human-readable DOCX output applies bold formatting to section heading paragraphs using `run.bold = True` rather than assigning Word Heading paragraph styles (`doc.styles['Heading 1']`). As a result: (1) JAWS, NVDA, and VoiceOver cannot navigate the document by heading; (2) ATS parsers that use semantic paragraph role to detect sections may misclassify content. The ATS DOCX path (`_setup_ats_styles`) correctly avoids tables and shapes but also does not set Heading paragraph styles for sections.
 **Recommended resolution:** Apply `para.style = doc.styles['Heading 1']` (or equivalent) to section heading paragraphs in the human DOCX path, in addition to any bold/font-size formatting. This preserves visual appearance while enabling semantic navigation.

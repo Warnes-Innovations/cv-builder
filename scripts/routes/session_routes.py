@@ -130,6 +130,14 @@ def create_blueprint(deps):
                     try:
                         data = _load_json_guarded(session_file)
                         state = data.get('state', {})
+                        metadata_file = session_file.parent / 'metadata.json'
+                        app_status = ''
+                        if metadata_file.exists():
+                            try:
+                                meta = _load_json_guarded(metadata_file)
+                                app_status = meta.get('application_status', '')
+                            except Exception:
+                                pass
                         sessions.append(SessionItem(
                             path=str(session_file),
                             position_name=state.get('position_name') or session_file.parent.name,
@@ -138,6 +146,7 @@ def create_blueprint(deps):
                             has_job=bool(state.get('job_description')),
                             has_analysis=bool(state.get('job_analysis')),
                             has_customizations=bool(state.get('customizations')),
+                            application_status=app_status,
                         ))
                     except Exception:
                         logger.debug("Skipping unreadable session file during list: %s", session_file, exc_info=True)

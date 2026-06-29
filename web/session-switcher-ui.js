@@ -254,14 +254,15 @@ function _normalizeSessionsForTable(activeSessions, savedSessions) {
   savedSessions.forEach((s, idx) => {
     const createdIso = _createdIsoFromSessionPath(s.path);
     rows.push({
-      type:         'saved',
-      name:          s.position_name || 'Untitled',
-      phase:         s.phase         || '',
-      lastModified:  s.timestamp  ? new Date(s.timestamp)  : null,
-      created:       createdIso   ? new Date(createdIso)   : null,
-      ownership:     null,
-      sessionId:     null,
-      path:          s.path,
+      type:              'saved',
+      name:               s.position_name || 'Untitled',
+      phase:              s.phase         || '',
+      applicationStatus:  s.application_status || '',
+      lastModified:       s.timestamp  ? new Date(s.timestamp)  : null,
+      created:            createdIso   ? new Date(createdIso)   : null,
+      ownership:          null,
+      sessionId:          null,
+      path:               s.path,
       idx,
     });
   });
@@ -356,10 +357,17 @@ function _renderSessionTableRow(row) {
       `</span>`
     : `<span>${escapeHtml(row.name)}</span>`;
 
+  const appStatusLabels = { draft: 'Draft', ready: 'Ready', sent: 'Sent' };
+  const appStatusColors = { draft: '#94a3b8', ready: '#3b82f6', sent: '#22c55e' };
+  const appStatus = row.applicationStatus || '';
+  const appStatusBadge = appStatus && appStatusLabels[appStatus]
+    ? ` <span style="font-size:0.75em;padding:1px 6px;border-radius:9px;background:${appStatusColors[appStatus]};color:#fff;vertical-align:middle;">${appStatusLabels[appStatus]}</span>`
+    : '';
+
   return `<div class="${rowClass}">` +
     `<span class="sm-td sm-td-name">${nameCell}</span>` +
     `<span class="sm-td sm-td-status">${statusPill}</span>` +
-    `<span class="sm-td sm-td-phase">${phaseLabel}</span>` +
+    `<span class="sm-td sm-td-phase">${phaseLabel}${appStatusBadge}</span>` +
     `<span class="sm-td sm-td-date">${modLabel}</span>` +
     `<span class="sm-td sm-td-actions">${actionHtml}</span>` +
     `</div>`;
