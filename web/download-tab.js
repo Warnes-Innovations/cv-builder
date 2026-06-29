@@ -156,12 +156,23 @@ const _NON_BLOCKING_CHECKS = new Set([
   'html_jsonld_knows_about',     // advisory: JSON-LD skills population
 ]);
 
-function _renderDownloadGrid(files, checks, summary) {
+function _renderDownloadGrid(files, checks, summary, generatedAt = null) {
   const keywordFail = checks.some((check) => check.name === 'ats_keyword_presence' && check.status === 'fail');
   const isCriticalFail = (check) => check.status === 'fail' && !_NON_BLOCKING_CHECKS.has(check.name);
   const blockDocx = keywordFail || checks.some((check) => check.format === 'docx' && isCriticalFail(check));
   const blockHtml = keywordFail || checks.some((check) => check.format === 'html' && isCriticalFail(check));
   const blockPdf  = keywordFail || checks.some((check) => check.format === 'pdf'  && isCriticalFail(check));
+
+  let generatedLabel = '';
+  if (generatedAt) {
+    try {
+      const d = new Date(generatedAt);
+      generatedLabel = d.toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit',
+      });
+    } catch (_) { /* ignore */ }
+  }
 
   let html = '<div class="download-section"><div class="download-grid">';
   if (!files.length) {
@@ -180,6 +191,9 @@ function _renderDownloadGrid(files, checks, summary) {
     const blockedMessage = blocked
       ? '<div style="font-size:0.78em;color:#dc2626;margin-top:4px;">⛔ Blocked — output file could not be generated</div>'
       : '';
+    const timestampLine = generatedLabel
+      ? `<div style="font-size:0.75em;color:#9ca3af;margin-top:3px;">Generated ${generatedLabel}</div>`
+      : '';
 
     html += `
       <div class="download-item" style="${blocked ? 'opacity:0.75;' : ''}">
@@ -187,6 +201,7 @@ function _renderDownloadGrid(files, checks, summary) {
         <div class="download-info">
           <div class="download-name">${escapeHtml(file.filename)}</div>
           <div class="download-description">${escapeHtml(file.description)}</div>
+          ${timestampLine}
           ${blockedMessage}
         </div>
         ${blocked
@@ -338,7 +353,8 @@ async function populateDownloadTab(cvData) {
     </div>`;
   }
 
-  html += _renderDownloadGrid(files, checks, summary);
+  const generatedAt = cvData.metadata?.generation_date ?? null;
+  html += _renderDownloadGrid(files, checks, summary, generatedAt);
 
   if (cvData.output_dir) {
     html += `<div style="margin-top:20px;padding:12px;background:#f1f5f9;border-radius:6px;font-size:14px;color:#64748b;">

@@ -949,7 +949,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-O3, US-S3
-**Status:** OPEN - discovered 2026-04-22; recruiter-ops review found `populateDownloadTab` (`web/download-tab.js:276–325`) renders no "generated at" timestamp alongside file names. After a back-to-phase re-run, users cannot confirm that displayed files reflect the current review decisions.
+**Status:** RESOLVED - 2026-06-29. `_renderDownloadGrid()` in `web/download-tab.js` now accepts a `generatedAt` parameter. `populateDownloadTab()` passes `cvData.metadata?.generation_date` to that function, and each download card displays a "Generated {date}" label (e.g. "Generated Jun 29, 2026 at 2:23 PM") beneath the file description. The `metadata.generation_date` field is already present in the `generated_files` state returned by `/api/status` — no backend changes needed.
 **Description:** Multiple generation passes within a session produce files with the same date-stamped naming pattern. Without a visible "generated at" timestamp, users cannot confirm currency after re-generation.
 **Recommended resolution:** Include a `generatedAt` timestamp in the `cvData.files` response and render it alongside each file in the download grid.
 
