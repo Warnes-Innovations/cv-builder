@@ -8,9 +8,9 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Returning User Review Status
 
-**Last Updated:** 2026-06-29 23:00 ET
+**Last Updated:** 2026-06-30 09:55 ET
 
-**Executive Summary:** The returning-user experience is now strong across all three story areas. Since the previous review (2026-06-29 14:30 ET), four gaps have been resolved in the same day: GAP-110 adds a restored-decisions summary message to the conversation (`_appendRestoredDecisionsSummary`, `session-manager.js:415–436`); GAP-186 implements cold-restore of rewrite decisions from backend `rewrite_audit` when localStorage is empty (`rewrite-review.js:64–79`); GAP-111 adds `confirmDialog()` guard before move-to-trash (`_deleteSessionFromModal`); and GAP-112 replaces opaque/misleading short phase labels ("Custom", "Done") with "Customising", "Finalise", "Setup", "Spell Check". Seven of nine criteria now pass cleanly; two remain partial. The only remaining partial areas are: (1) the view-navigation vs. recomputation distinction for touch/keyboard users (GAP-R4 — tooltip-only, no persistent on-screen text); and (2) saved decisions in review tabs require individual tab visits to confirm (no per-tab count badge). No failures or unimplemented criteria remain.
+**Executive Summary:** The returning-user experience is strong across all three story areas. The current source-code read (2026-06-30) confirms seven of nine evaluated criteria pass cleanly; two remain partial. Both partial items are unchanged from the 2026-06-29 review: (1) the view-navigation vs. recomputation distinction remains hover/tooltip-only for touch and keyboard users (GAP-R4); and (2) saved decisions in individual review tabs require a tab visit to verify granular state — no per-tab count badge exists on tab labels (GAP-RU-DEC1). All previously resolved gaps (GAP-110, GAP-111, GAP-112, GAP-166, GAP-178, GAP-180, GAP-186, GAP-R2, GAP-R7, GAP-R8, GAP-R9) remain intact in the codebase as confirmed by this read. No regressions found.
 
 ---
 

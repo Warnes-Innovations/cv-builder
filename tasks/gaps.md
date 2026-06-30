@@ -1,14 +1,28 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-29 (cycle 9)
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-30 (cycle 11)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), and 2026-06-29 (cycle 9)
-- independent heuristic UX evaluation (all cycles through 2026-06-29 cycle 9)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), 2026-06-29 (cycle 9), and 2026-06-30 (cycles 10–11)
+- independent heuristic UX evaluation (all cycles through 2026-06-30 cycle 11)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review).
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233.
+
+## 2026-06-30 (Cycle 11) Reconciliation Notes
+
+- **5 gaps resolved in cycle 10 (commit 94ec2ae):** GAP-197, GAP-199, GAP-204, GAP-212, GAP-216.
+- **1 gap re-confirmed resolved (cycle 11 source review):** GAP-127 (`candidate_to_confirm` filter confirmed present in `cv-template.html:628,777` — resume-expert cycle 11 review).
+- **16 new gaps added (GAP-218 through GAP-233):**
+  - Hiring Manager bug (GAP-218): ATS validator falsely rejects "Selected Publications" heading.
+  - Accessibility (GAP-219–221): job-analysis modal no focus management; aria-current absent post-layout; layout iframe missing title.
+  - Cover Letter (GAP-222–224): "I"-first-word gate missing; word count threshold mismatch 400 vs 300; passive CTA shows warn not fail.
+  - Resume (GAP-225–226): experience relevance ordering overridden by reverse-chrono sort; domain inference missing confidence field.
+  - UX (GAP-227–230): layout undo stack vs per-entry UI misleading; no in-browser final CV preview; no version labelling for multiple runs; rewrite card state colour-only.
+  - Generated materials (GAP-231–233): cover letter PDF absent (carry-over from GAP-185, but confirmed STILL OPEN); publications reorder controls absent; terminology consistency batch check absent.
+- **ATS validator "Selected Publications" bug (GAP-218)** is HIGH priority — it fires as a false validation failure on every curated CV where subset publications are shown.
+- **Most critical open gaps (cycle 11):** GAP-206 (phase-lock indicator), GAP-213 (publications absent from ATS DOCX), GAP-215 (skill type override UI), GAP-218 (ATS validator "Selected Publications" bug), GAP-14 (workflow progress indicator), GAP-201 (clarifying questions all-at-once), GAP-228 (no in-browser final preview).
 
 ## 2026-06-29 (Cycle 9) Reconciliation Notes
 
@@ -1685,10 +1699,12 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 **Affected stories:** US-X2, US-X3, US-U3
 Four input elements use `outline: none` with `box-shadow` as the sole focus indicator. Under `forced-colors: active` (Windows High Contrast Mode), browsers suppress `box-shadow`, rendering these inputs invisible when focused. This is a WCAG 2.1 Level AA failure (1.4.11 Non-text Contrast) under forced-colors.
 **Affected selectors and locations:**
+
 - `.q-input:focus` (`web/styles.css:510`)
 - `.message-input:focus` (`web/styles.css:579`)
 - `.form-input:focus` (`web/styles.css:755`)
 - `.layout-instruction-textarea:focus` (`web/styles.css:1436`)
+
 **Recommended resolution:** Add `outline: 2px solid #3b82f6; outline-offset: 2px` alongside each existing `box-shadow` rule. The outline persists under forced-colors; the box-shadow provides the visual style in standard mode.
 
 ---
@@ -1733,9 +1749,11 @@ Four input elements use `outline: none` with `box-shadow` as the sole focus indi
 **Discovered:** 2026-06-29 (cycle 8) by hiring-manager. Related to GAP-95.
 **Affected stories:** US-M6, US-P5
 `web/cover-letter.js:534` hard-codes a single 250–400 word validation range for all roles. The hiring-manager story and persuasion guidance require role-specific targets:
+
 - Standard/industry roles: 300–400 words
 - Executive/VP/C-suite roles: 400–500 words
 - Academic/research roles: 500–600 words
+
 Role level is available from `job_analysis.role_level` / `job_analysis.domain` in the session state.
 **Recommended resolution:** Expose `role_level` in the status endpoint's job analysis summary. In `cover-letter.js`, read `role_level` on init and select the appropriate threshold object before validation runs.
 
@@ -1771,6 +1789,7 @@ Role level is available from `job_analysis.role_level` / `job_analysis.domain` i
 **Affected stories:** US-A12, US-C2
 `re_run_phase()` (`scripts/utils/conversation_manager.py:1570–1576`) updates phase state and returns the result but does not write any timestamped entry to the session's audit trail. Users and compliance reviewers cannot determine from the session JSON when a phase was re-entered, how many times re-runs occurred, or which outcome was produced each time.
 **Recommended resolution:** Add a timestamped `rerun_log` entry to session state in `re_run_phase()`:
+
 ```python
 session_state.setdefault('rerun_log', []).append({
     'phase': phase_name, 'timestamp': datetime.utcnow().isoformat(), 'triggered_by': 'user'
@@ -1861,7 +1880,7 @@ The buttons have inconsistent labels, both use ✅ prefix, and the second label 
 ## GAP-197: `showAlertModal()` Does Not Save Prior Focus Before Opening
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30 cycle 10. Added module-level `let _alertPreviousFocus = null` to `web/ui-helpers.js`. `showAlertModal()` saves `document.activeElement` to `_alertPreviousFocus` before calling `setInitialFocus`; `closeAlertModal()` restores focus from that local variable (bypassing the shared `_focusedElementBeforeModal` to avoid clobbering nested modal state).
 **Discovered:** 2026-06-29 (cycle 9) by accessibility-specialist.
 **Affected stories:** US-X2
 `ui-helpers.js:31–37` — `showAlertModal()` calls `setInitialFocus('alert-modal-overlay')` but does not first execute `_focusedElementBeforeModal = document.activeElement`. `closeAlertModal()` calls `restoreFocus()` which reads `_focusedElementBeforeModal` from `ui-core.js:30`. Since that variable was never set by the alert modal open path, focus restores to wherever the last named modal left it (null or stale).
@@ -1945,7 +1964,7 @@ The experience and skills review tables render relevance scores as bare integers
 ## GAP-204: Cover Letter Closing Prompt Underspecified — "Call to Action" Not "Direct Interview Request"
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30 cycle 10. Updated `scripts/routes/master_data_routes.py:1630` — replaced generic "call to action" with: "Close with a specific, confident request for an interview or a conversation about the role. Name the role explicitly. Avoid passive language such as 'I look forward to hearing from you.'"
 **Discovered:** 2026-06-29 (cycle 9) by hiring-manager.
 **Affected stories:** US-M6, US-P (persuasion-expert)
 `scripts/routes/master_data_routes.py:1630` — the cover letter generation prompt instructs the LLM to write a "call to action" closing. The user story and hiring-manager standards require the closing to contain a direct, specific interview request ("I would welcome the opportunity to discuss..."), not a generic call to action. Vague closings ("I look forward to hearing from you") score significantly lower with hiring managers.
@@ -2037,7 +2056,7 @@ After a user switches the active LLM provider via the model wizard, the non-conf
 ## GAP-212: ATS DOCX `_setup_ats_styles` Never Sets `font.name` — Inherits Theme Font
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30 cycle 10. Added `font.name = 'Calibri'` to Heading 1 (line 3847), Heading 2 (line 3857), Normal (line 3867), and List Bullet (line 3875) style blocks in `_setup_ats_styles()` in `scripts/utils/cv_orchestrator.py`. Verified by grep: all 4 styles now set Calibri explicitly.
 **Discovered:** 2026-06-29 (cycle 9) by hr-ats.
 **Affected stories:** US-H1 (ATS file ingestion)
 `scripts/utils/cv_orchestrator.py:3836–3867` (`_setup_ats_styles`) sets font sizes and bold/color properties for all ATS DOCX styles but never calls `font.name = 'Calibri'` (or any explicit ATS-safe font) on any style. The ATS DOCX document therefore inherits Word's default theme font (typically "Calibri Light" or whatever the host Word installation sets as default), which may not be Calibri/Arial/Times New Roman. By contrast, the human DOCX correctly calls `font.name = 'Calibri'` at line 4369. The existing `validate_ats_report` font check (GAP-87) focuses on PDF font embedding and does not validate the DOCX font name.
@@ -2085,7 +2104,7 @@ After a user switches the active LLM provider via the model wizard, the non-conf
 ## GAP-216: ATS Match Score Weighting Is 70/30, Not Story-Required 2:1
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30 cycle 10. Changed `scripts/utils/scoring.py:534` from `round(0.7 * hard_score + 0.3 * soft_score, 1)` to `round((2 * hard_score + soft_score) / 3, 1)`. Now exactly implements the 2:1 (66.7/33.3) specification. Verified by grep.
 **Discovered:** 2026-06-29 (cycle 9) by hr-ats.
 **Affected stories:** US-H7 (ATS match score visibility)
 `scripts/utils/scoring.py:533–534` computes `overall = round(0.7 * hard_score + 0.3 * soft_score, 1)`. The user story US-H7 specifies "hard skill matches count twice as much as soft skill matches" — i.e., a 2:1 ratio, which is 66.7%/33.3%. The actual implementation uses 70%/30% (a 7:3 ratio). The maximum difference between the two formulas is ~3.4 percentage points, but the implementation does not match the documented specification.
@@ -2103,3 +2122,195 @@ After a user switches the active LLM provider via the model wizard, the non-conf
 `validate_ats_report` in `scripts/utils/cv_orchestrator.py:4686–5031` runs 16 checks and returns a full pass/warn/fail report structure. At generation time, only `metadata['date_overlap_warnings']` (line 2202) and the scalar `metadata['ats_score']` (via `_try_patch_metadata`, `generation_routes.py:1703–1704`) are persisted to `metadata.json`. The 16-check validation report list is never written to `metadata.json`. If a user archives and later returns to a session, the per-check validation detail is lost — only the aggregate ATS score is available.
 **Source evidence:** `scripts/utils/cv_orchestrator.py:2198–2210` — `metadata` dict written at generation; contains `ats_score` and `date_overlap_warnings` but not `ats_validation_report`. `scripts/routes/generation_routes.py:1703–1704` — `_try_patch_metadata` only patches `ats_score`.
 **Recommended resolution:** Add `metadata['ats_validation_report'] = validation_result` (or the serialized check list) to the generation metadata write. Include it in `_try_patch_metadata`. Surface the persisted validation data in the Finalise tab's readiness checklist when reviewing an archived session.
+
+---
+
+## GAP-218: ATS Validator Falsely Rejects "Selected Publications" Heading
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by hiring-manager.
+**Affected stories:** US-M7, US-H2 (ATS section recognition)
+`scripts/utils/cv_orchestrator.py:4882–4889` — the `validate_ats_report` check `docx_standard_headings` asserts the publications section heading must be exactly `"Publications"` and marks `"Selected Publications"` as a **fail**. However, `cv_orchestrator.py:4592` and `templates/cv-template.html` both correctly use `"Selected Publications"` when a subset of publications is shown. The validator check is therefore wrong: it fires as a false failure on every curated CV.
+**Source evidence:** `scripts/utils/cv_orchestrator.py:4882–4889` — heading check `== 'Publications'` only; `cv_orchestrator.py:4592` — generates heading as `"Selected Publications"` when publication subset is used.
+**Recommended resolution:** Update the `docx_standard_headings` validator to accept both `"Publications"` and `"Selected Publications"` as valid heading text.
+
+---
+
+## GAP-219: `openJobAnalysisModal()` Has Zero Focus Management
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by accessibility-specialist.
+**Affected stories:** US-X2 (WCAG 2.1.2 No Keyboard Trap, 2.4.3 Focus Order)
+`bundle.js:6686–6700` — `openJobAnalysisModal()` opens the job analysis modal without: (1) saving the currently focused element, (2) calling `setInitialFocus()`, (3) calling `trapFocus()`, or (4) calling `restoreFocus()` on close. This is inconsistent with every other major modal in the application. Keyboard users cannot navigate into the modal naturally and focus leaks to background content.
+**Source evidence:** `bundle.js:6686–6700` (or equivalent in source `web/` file) — no prior-focus save, no `setInitialFocus`, no `trapFocus`, no `restoreFocus` on close.
+**Recommended resolution:** Add the standard four-call focus management pattern used by `openSettingsModal()` (`ui-core.js:258–280`): save prior focus, `setInitialFocus`, `trapFocus` on open; `restoreFocus` on close.
+
+---
+
+## GAP-220: `aria-current="step"` Not Set During Post-Layout Phases
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by accessibility-specialist.
+**Affected stories:** US-X1.3
+`web/ui-core.js:1985` — `updateWorkflowStepsClickable()` resolves `activeStepId` to `null` for post-layout phases (`final_generation`, `refinement`). As a result, `aria-current` is cleared from all step pills during these phases, leaving screen reader users with no programmatic indication of current workflow position. The visual "active" state (blue background `.step.active`) is still set but is not communicated via ARIA.
+**Source evidence:** `web/ui-core.js:1985` — `activeStepId` null branch clears all `aria-current`; post-layout steps have no fallback indicator.
+**Recommended resolution:** During post-layout phases, set `aria-current="step"` on whichever post-layout step is currently active rather than clearing all indicators.
+
+---
+
+## GAP-221: Layout Review Iframe Missing `title` Attribute
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by accessibility-specialist.
+**Affected stories:** US-X1 (WCAG 4.1.2 Name, Role, Value)
+The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title` attribute. WCAG 4.1.2 requires iframes to have a descriptive `title` attribute so screen reader users understand the frame's purpose when navigating. An untitled iframe is announced as just "frame" with no context.
+**Source evidence:** `web/layout-instruction.js` — iframe element creation or declaration; `title` attribute not confirmed present.
+**Recommended resolution:** Add `title="CV layout preview"` to the layout-preview iframe.
+
+---
+
+## GAP-222: Cover Letter "I"-As-First-Word Gate Not Implemented
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by persuasion-expert. (See also GAP-184 from cycle 8 which flagged the same issue — GAP-222 supersedes GAP-184.)
+**Affected stories:** US-P5 (cover letter persuasion architecture)
+`web/cover-letter.js:492–521` — `_validateCoverLetter()` checks 6 generic salutation patterns (Dear, To Whom, Hello, Hi, Greetings, Good Morning/Afternoon). The acceptance criterion "System rejects any draft where the first word is 'I'" is not implemented. The body-starts-with-I check at `cover-letter.js:515` (`firstBodyWord.toUpperCase() === 'I'`) has a logic flaw: it checks only the body segment (after the salutation line) but even if it fires, the result category is `warn` not `fail`, per the acceptance criterion.
+**Source evidence:** `web/cover-letter.js:492–521` — no `fail`-level "I"-as-first-word check on body text. `cover-letter.js:515` — `warn` category used, not `fail`.
+**Recommended resolution:** After stripping the salutation line, check if the first word of the letter body is "I" — if so, return a `fail` result with a message: "Cover letter body must not open with 'I'. Try starting with the role name, a value statement, or a hook."
+
+---
+
+## GAP-223: Cover Letter Word Count Threshold Mismatch — Frontend 400 vs Backend 300
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by persuasion-expert.
+**Affected stories:** US-P5 (cover letter conciseness)
+`web/cover-letter.js:550–566` — the frontend validator green zone for standard roles extends to 400 words (warn above 400, fail above 450). However, the backend generation prompt (`scripts/routes/master_data_routes.py:_cover_letter_word_count_instruction`) targets `~300–400 words` for standard roles. These are internally consistent for standard roles, but the persuasion story spec requires ≤300 words as the primary target. The frontend does not warn when the LLM overshoots 300 words.
+**Source evidence:** `web/cover-letter.js:550–566` — green zone 300–400 for standard. `scripts/routes/master_data_routes.py` — `_cover_letter_word_count_instruction()` targets 300–400w standard.
+**Recommended resolution:** Align the frontend green zone upper bound to 300 words for standard roles (matching the story's ≤300 target), with amber at 300–400 and fail above 400.
+
+---
+
+## GAP-224: Passive Cover Letter CTA Shows Warning Instead of Fail
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by persuasion-expert.
+**Affected stories:** US-P5 (cover letter CTA)
+`web/cover-letter.js:578–603` — the CTA validator correctly identifies passive phrases ("hear from you", "look forward to", "await your") in `passiveCtaPatterns` (line 589). However, the result is `warn: !hasAssertiveCta && hasPassiveCta` — a warning level. The user story specifies that a passive CTA ("I look forward to hearing from you") must be rejected (fail), not merely warned. The current render logic shows a yellow warning rather than a hard failure, allowing passive closings to reach final output.
+**Source evidence:** `web/cover-letter.js:589` — `passiveCtaPatterns` correct; `cover-letter.js:623` — renders warn not fail; `master_data_routes.py:1630` — strengthened prompt (cycle 10) helps at generation time but client-side gate remains advisory.
+**Recommended resolution:** Upgrade passive CTA from `warn` to `fail` in `_validateCoverLetter`. Add explicit rejection message: "Closing must include a direct interview request. Phrases like 'I look forward to hearing from you' are too passive."
+
+---
+
+## GAP-225: Experience Relevance Ordering Overridden by Reverse-Chronological Sort
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by resume-expert.
+**Affected stories:** US-R2 (publication/experience selection quality)
+`scripts/utils/cv_orchestrator.py:3168` — unconditionally overwrites any relevance-scored ordering of experience entries with a reverse-chronological sort. `rank_publications_for_job` produces job-relevance ordering (1–10 scores), but this sort is discarded. A highly relevant older role lands behind a less-relevant current role in the generated CV, contradicting the story requirement that "most relevant experiences appear prominently."
+**Source evidence:** `scripts/utils/cv_orchestrator.py:3168` — `sorted(..., key=lambda e: e.get('end_date', ''), reverse=True)` overwrites relevance order.
+**Recommended resolution:** Use a hybrid ordering: primary sort by relevance score (descending), secondary tiebreak by recency. Alternatively, surface a "sort by relevance / sort by date" toggle in the Customise Experience tab.
+
+---
+
+## GAP-226: Domain Inference Missing Confidence Field
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by resume-expert.
+**Affected stories:** US-R1 (domain and role-type inference)
+`JobAnalysisResponse` schema has no `confidence` field for domain or role-type inference. When the LLM has low confidence (e.g., a multi-domain JD), the analysis proceeds without any ambiguity signal to the UI or to the customisation pipeline. No clarifying question is triggered when domain inference is ambiguous. US-R1.3 explicitly requires that low-confidence domain inference triggers a targeted clarifying question.
+**Source evidence:** `scripts/utils/conversation_manager.py` — `JobAnalysisResponse` dataclass/TypedDict has no `confidence` field. No ambiguity-triggered clarifying question exists in any route handler.
+**Recommended resolution:** Add `domain_confidence: float` (0.0–1.0) to `JobAnalysisResponse`. In `recommend_customizations()`, if `domain_confidence < 0.7`, prepend a domain-clarifying question to the clarifying questions list before the user proceeds.
+
+---
+
+## GAP-227: Layout Instruction Undo Is Stack-Based But UI Shows Per-Entry Buttons
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by ux-expert.
+**Affected stories:** US-U9.5 (layout review interaction quality)
+`web/layout-instruction.js:1022–1029` renders `.instruction-history-list` with an Undo button on each history entry, implying that each entry can be independently undone. However, `undoInstruction()` at `web/layout-instruction.js:1181–1193` is a stack-based undo — it always undoes the most recent instruction, regardless of which entry's button was clicked. Clicking "Undo" on an old entry pops the latest entry, not the selected one. This is a misleading affordance that will confuse users who attempt non-linear undo.
+**Source evidence:** `web/layout-instruction.js:1181–1193` — `undoInstruction()` pops a stack; does not accept an index or entry ID. `layout-instruction.js:1022–1029` — per-entry Undo buttons rendered without any click argument.
+**Recommended resolution:** Either (a) implement true per-entry undo by replaying all instructions except the selected one, or (b) replace per-entry Undo buttons with a single "Undo Last" button to accurately represent the stack-based behavior.
+
+---
+
+## GAP-228: No In-Browser Preview of Final Generated CV
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by ux-expert.
+**Affected stories:** US-U6.2 (generation and output state feedback)
+`web/final-generate.js:72–100` — the "Generated Files" tab renders download links only. No iframe, embedded PDF viewer, or HTML preview is present for the final output. By contrast, the Layout Review stage has `<iframe id="layout-preview">` for the draft preview, creating an inconsistency: the draft is previewable but the final output is not. Users must download a file to verify the final result, adding friction and a round-trip.
+**Source evidence:** `web/final-generate.js:72–100` — download link rendering only; no iframe or embed element. `web/layout-instruction.js` — `<iframe id="layout-preview">` for draft stage.
+**Recommended resolution:** Add an HTML preview panel on the Download tab that renders the generated `CV_*.html` in a sandboxed iframe. Allow switching between HTML preview and download-only mode via a tab or toggle.
+
+---
+
+## GAP-229: No Version Labelling for Multiple Generation Runs in a Session
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by ux-expert.
+**Affected stories:** US-U6.6 (version label)
+`web/final-generate.js` and `web/download-tab.js` list files from `cvData.files` array without showing version numbers, timestamps relative to each other, or a "current" / "previous" label. A user who re-runs generation (e.g., after iterating on customizations) sees multiple file sets with identical name patterns and cannot distinguish the current output from a prior run without checking file system timestamps.
+**Source evidence:** `web/final-generate.js` — `cvData.files` rendered without per-file generation timestamps or version markers. `web/download-tab.js:42–68` — same issue; no "current" label.
+**Recommended resolution:** Persist a `generated_at` ISO timestamp per generation run. Display it alongside each file set in the download tab as "(generated HH:MM)" or "(latest)" / "(prior run)".
+
+---
+
+## GAP-230: Rewrite Card Accepted/Rejected State Is Colour-Only
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by ux-expert and accessibility-specialist.
+**Affected stories:** US-U7.5 (colour-independence), US-X1 (WCAG 1.4.1 Use of Color)
+`web/styles.css:1241–1242` — `.rewrite-card.accepted` sets `border-color: #10b981; background: #f0fdf4` (green) and `.rewrite-card.rejected` sets `border-color: #ef4444; background: #fee2e2; opacity: 0.6` (red). The card-level accepted/rejected state is communicated entirely through colour and opacity. While the action buttons carry text labels (Accept / Reject / Edit), the whole-card visual state change adds no text badge or icon to communicate the decision state independently of colour. Users with protanopia or deuteranopia may not distinguish accepted (green) from rejected (red) cards.
+**Source evidence:** `web/styles.css:1241–1242` — colour-only card state; no text badge or icon in card header for accepted/rejected state.
+**Recommended resolution:** Add a compact text badge ("✓ Accepted" / "✗ Rejected") to the card header that appears once a decision is made, independent of card background colour.
+
+---
+
+## GAP-231: Cover Letter PDF Format Not Generated
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by applicant (US-A7). See also GAP-185 from cycle 8.
+**Affected stories:** US-A7 (cover letter generation)
+`scripts/routes/master_data_routes.py:1619–1697` — cover letter generation saves only a `.docx` file. US-A7 acceptance criteria require both `.docx` and `.pdf` outputs. The cover letter PDF format is absent from the generation pipeline. GAP-185 tracked this from cycle 8; confirmed still open in cycle 11 source review.
+**Source evidence:** `scripts/routes/master_data_routes.py:1619–1697` — `Document()` creation and save only; no WeasyPrint / headless-Chrome PDF conversion call.
+**Recommended resolution:** After generating the cover letter DOCX, run WeasyPrint on an HTML rendering of the letter to produce a matching PDF. Store it alongside the DOCX in the output directory.
+
+---
+
+## GAP-232: Publications Review Has No Reorder Controls
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by applicant (US-A3).
+**Affected stories:** US-A3 (review and approve content customizations)
+`web/publications-review.js` — has accept/reject/edit controls for each publication row but no up/down reorder buttons and no drag-and-drop reorder. US-A3 AC explicitly requires reorder controls for publications. The experience review and achievement review tables both have reorder controls (`experience-review.js`, `achievement-review.js`), but publications are the exception.
+**Source evidence:** `web/publications-review.js` — no up/down button handlers, no drag-and-drop event handlers anywhere in the file.
+**Recommended resolution:** Add up/down reorder buttons to each publication row in the review table, matching the pattern used in `experience-review.js`. Wire to a backend endpoint that persists reorder decisions to `session.json`.
+
+---
+
+## GAP-233: No Batch Terminology Consistency Check Across Rewrites
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 11) by resume-expert.
+**Affected stories:** US-R3 (resume quality standards — terminology consistency)
+`scripts/utils/llm_client.py` — the 8 persuasion checks in `_check_persuasion_quality()` evaluate each bullet in isolation. No batch-level check verifies that a keyword adopted in one bullet (e.g., "machine learning") appears consistently across related bullets and the professional summary. `_renderConsistencyReport` (`web/cover-letter.js:348`) checks cross-document consistency but only for cover letter vs. CV, not within the CV itself.
+**Source evidence:** `scripts/utils/llm_client.py` — `_check_persuasion_quality()` operates per-bullet; no cross-bullet consistency pass. `web/cover-letter.js:348–469` — `_renderConsistencyReport` is CL-vs-CV only.
+**Recommended resolution:** After all per-bullet checks complete, run a batch consistency pass that identifies keyword variants (e.g., "ML" vs. "machine learning", "Python" vs. "Python 3") and surfaces a Rewrites tab warning: "Inconsistent terminology: 'ML' used in 2 bullets, 'machine learning' in 3 — consider standardizing."

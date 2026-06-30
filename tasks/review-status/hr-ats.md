@@ -8,7 +8,7 @@
 
 # HR/ATS Persona Review
 
-**Last Updated:** 2026-06-29 23:00 ET
+**Last Updated:** 2026-06-30 14:30 ET
 **Branch:** feature/multi-user-deployment
 **Reviewer:** hr-ats persona (source-first, automated)
 **Story file:** `tasks/user-story-hr-ats.md`
@@ -23,11 +23,11 @@ The application has strong ATS infrastructure across all three output formats. T
 
 | Status | Count |
 | --- | --- |
-| Pass | 20 |
-| Partial | 6 |
-| Fail | 5 |
-| Not Implemented | 2 |
-| N/A | 0 |
+| ✅ Pass | 20 |
+| ⚠️ Partial | 6 |
+| ❌ Fail | 5 |
+| 🔲 Not Implemented | 2 |
+| — N/A | 0 |
 
 ---
 
