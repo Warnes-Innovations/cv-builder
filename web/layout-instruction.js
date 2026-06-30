@@ -1257,7 +1257,16 @@ async function generateFinalOutputs() {
       throw new Error('Preview is outdated. Regenerate the preview before generating final files.');
     }
     if (!generationState.layoutConfirmed && generationState.phase !== 'confirmed') {
-      throw new Error('Confirm layout before generating final files.');
+      const hasInstructions = (window.layoutInstructions || []).length > 0;
+      if (hasInstructions) {
+        throw new Error('Confirm layout before generating final files.');
+      }
+      // No instructions added — auto-confirm so users aren't blocked by a redundant click.
+      const confirmRes = await apiCall('POST', '/api/cv/confirm-layout', { content_revision: getCurrentContentRevision() });
+      if (!confirmRes?.ok) {
+        throw new Error(confirmRes?.error || 'Failed to auto-confirm layout.');
+      }
+      stateManager.markLayoutConfirmed({ confirmedAt: confirmRes.confirmed_at || new Date().toISOString() });
     }
 
     const finalRes = await apiCall('POST', '/api/cv/generate-final', {});
