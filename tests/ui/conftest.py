@@ -467,8 +467,8 @@ def _force_stage(page: Page, stage: str) -> None:
                 customizations: 'exp-review',
                 rewrite: 'rewrite',
                 spell: 'spell',
-                generate: 'generate',
                 layout: 'layout',
+                download: 'final_generate',
                 finalise: 'download',
             };
             const tab = map[s];
@@ -656,16 +656,16 @@ def finalise_stage_page(browser, live_server):
 
 @pytest.fixture
 def generate_stage_page(browser, live_server):
-    """Page in generation phase — #tab-generate is visible."""
+    """Page in refinement phase — #tab-final_generate and #tab-download visible."""
     context = browser.new_context()
     p = context.new_page()
     p.set_default_timeout(10_000)
-    _install_mock_routes(p, status_response=API_STATUS_GENERATE)
+    _install_mock_routes(p, status_response=API_STATUS_FINALISE)
     p.goto(f"{live_server}/?session=test-session-id",
            wait_until="load")
     _wait_for_ui_ready(p)
-    _setup_global_state(p, "generation")
-    _force_stage(p, "generate")
-    _sync_workflow_steps(p, API_STATUS_GENERATE)
+    _setup_global_state(p, "refinement")
+    _force_stage(p, "download")
+    _sync_workflow_steps(p, API_STATUS_FINALISE)
     yield p
     context.close()
