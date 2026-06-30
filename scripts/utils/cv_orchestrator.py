@@ -4261,22 +4261,38 @@ Include one entry per candidate. Do not omit any candidate."""
         # Awards (if present and relevant) — Heading 1, title-case ATS label.
         if content.get('awards'):
             doc.add_paragraph('Awards', style='Heading 1')
-            
+
             for award in content['awards']:
                 award_title = award.get('title', '')
                 award_year = award.get('year', '')
                 award_desc = award.get('description', '')
-                
+
                 award_line = award_title
                 if award_year:
                     award_line += f" ({award_year})"
-                
+
                 award_para = doc.add_paragraph()
                 award_para.add_run(award_line).bold = True
-                
+
                 if award_desc:
                     doc.add_paragraph(award_desc)
-            
+
+            doc.add_paragraph()
+
+        # Publications (if present) — plain-text citations for ATS keyword coverage.
+        publications = content.get('publications', [])
+        if publications:
+            total_count = len(self.publications) if self.publications else 0
+            heading_text = (
+                'Selected Publications'
+                if total_count and total_count > len(publications)
+                else 'Publications'
+            )
+            doc.add_paragraph(heading_text, style='Heading 1')
+            for pub in publications:
+                citation = pub.get('formatted_citation', '').strip()
+                if citation:
+                    doc.add_paragraph(citation)
             doc.add_paragraph()
     
     def _validate_ats_compatibility(self, content: Dict, job_analysis: Dict) -> int:

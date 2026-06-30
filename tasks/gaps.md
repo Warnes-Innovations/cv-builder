@@ -2114,12 +2114,9 @@ After a user switches the active LLM provider via the model wizard, the non-conf
 ## GAP-213: Publications Section Absent From ATS DOCX
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30; added publications block to `_add_ats_additional_sections()` in `scripts/utils/cv_orchestrator.py`. Renders selected publications as plain-text paragraphs (`formatted_citation`) under a "Publications" or "Selected Publications" heading (same title logic as the human DOCX). Uses the `publications` key already present in the `content` dict passed to the function.
 **Discovered:** 2026-06-29 (cycle 9) by hr-ats.
 **Affected stories:** US-H1, US-H2
-`_add_ats_additional_sections` in `scripts/utils/cv_orchestrator.py` adds certifications and awards to the ATS DOCX but does not add a publications section. Publications appear in the human-readable DOCX and HTML but are entirely absent from the ATS format. An ATS scanning for publication-related keywords ("journal", "proceedings", title words) will not find them, causing a missed keyword match for research-oriented roles.
-**Source evidence:** `scripts/utils/cv_orchestrator.py:_add_ats_additional_sections` — certifications and awards added; no publications block. Human DOCX at lines 4227–4248 adds publications.
-**Recommended resolution:** Add a publications block to `_add_ats_additional_sections` following the same flat-text pattern as other ATS sections (title + author list + venue on one line per entry). Guard with the same `_select_publications` call used by the human DOCX path.
 
 ---
 
