@@ -101,6 +101,17 @@ function updateInclusionCounts() {
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 
+// Tracks which customise-stage sub-tabs have been viewed this session (GAP-269).
+const _visitedCustomiseTabs = new Set();
+const _CUSTOMISE_TABS = new Set(['goals', 'questions', 'exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'tagline-review', 'summary-review', 'publications-review', 'ats-score']);
+
+function _updateVisitedTabIndicators() {
+  _visitedCustomiseTabs.forEach(name => {
+    const el = document.getElementById(`tab-${name}`);
+    if (el) el.classList.add('tab--visited');
+  });
+}
+
 function switchTab(tab) {
   // Save unsaved user input from the tab we are leaving
   _saveDraftInputsForTab(stateManager.getCurrentTab());
@@ -133,6 +144,12 @@ function switchTab(tab) {
     if (tabpanel) tabpanel.setAttribute('aria-labelledby', `tab-${tab}`);
   }
   stateManager.setCurrentTab(tab);
+
+  // Mark this tab as visited and refresh the visited indicators (GAP-269)
+  if (_CUSTOMISE_TABS.has(tab)) {
+    _visitedCustomiseTabs.add(tab);
+    _updateVisitedTabIndicators();
+  }
 
   // Announce the tab change to screen readers (GAP-73)
   const announcer = document.getElementById('workflow-stage-announcer');

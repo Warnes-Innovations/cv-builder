@@ -2765,12 +2765,12 @@ The welcome modal contains a "Don't show again" checkbox that, once checked, set
 ## GAP-269: 10 Customise Sub-Tabs Have No Completion Indicators
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30
 **Discovered:** 2026-06-30 (cycle 14) by ux-expert and heuristic sub-agent.
 **Affected stories:** US-U3, US-A4 (progress visibility in customisation stage)
 The Customise stage has 10 sub-tabs. There is no visual indicator on any tab showing whether the user has reviewed its content, made changes, or confirmed their decisions. Users must remember which tabs they have visited and cannot tell at a glance whether they have completed the Customise stage.
 **Source evidence:** `web/ui-core.js:350–363` — sub-tab definitions; no completion badge or visited-state class found in `web/styles.css` or `web/app.js`. Heuristic rated H6 (Recognition rather than recall) as 🟡 Minor.
-**Recommended resolution:** Track which sub-tabs have been viewed (a simple `Set<string>` in client state). Apply a subtle visual indicator (e.g., a small checkmark or border accent) to visited tabs. For tabs with required decisions, add a count of pending items.
+**Resolution:** Added `_visitedCustomiseTabs` Set and `_updateVisitedTabIndicators()` to `web/review-table-base.js`; `switchTab()` marks each customise tab visited on first view and applies `.tab--visited` CSS class. CSS added to `web/styles.css:643` — small green dot after the tab label for visited tabs.
 
 ## GAP-270: CDN Font Dependency for WeasyPrint — No Bundled Local Fallback
 
