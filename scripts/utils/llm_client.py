@@ -300,6 +300,7 @@ Return ONLY a JSON object — no prose, no markdown fences:
   "title":                   "...",   // formal job title; not email subject line
   "company":                 "...",   // hiring employer, not recruiter agency; "" if unknown
   "domain":                  "...",   // e.g. "biostatistics", "ML engineering", "data science"
+  "domain_confidence":       0.9,     // float 0.0–1.0: how confident are you in the domain classification? Use <0.7 when the JD spans multiple domains or is ambiguous.
   "role_level":              "...",   // one of: IC / Senior IC / Staff / Principal / Leadership
   "required_skills":         ["..."], // must-have skills and technologies
   "preferred_skills":        ["..."], // nice-to-have skills

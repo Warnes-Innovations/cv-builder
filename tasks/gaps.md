@@ -1998,7 +1998,7 @@ Workflow step pills use CSS class colours to distinguish active, completed, upco
 ## GAP-203: Publications Always Included With No Role-Type Gate
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. After `_handle_analyze_job()` builds clarifying questions, a publication-inclusion question is appended when: (a) the user has publications in their master CV (`orchestrator.publications` is non-empty) and (b) `job_analysis.domain` does not match a research/academic keyword list. Question type `include_publications`, two choices: "Yes — include publications" / "No — omit for this application". In `scripts/utils/session_data_view.py:materialize_generation_customizations()`, if `post_analysis_answers['include_publications']` starts with "no" and no explicit `accepted_publications` are set, `accepted_publications = []` is written — which the generation pipeline (`cv_orchestrator.py:3434`) treats as "user selected nothing", suppressing the section. Research-domain roles bypass the gate automatically. Users can still override via the Publications review tab decisions at any time.
 **Discovered:** 2026-06-29 (cycle 9) by hiring-manager.
 **Affected stories:** US-M (hiring manager, generated materials)
 `scripts/utils/cv_orchestrator.py:3444` — `_select_publications()` runs and includes publications whenever `publications.bib` is non-empty, regardless of whether the target role is research-oriented or industry/commercial. For industry roles (engineering, product, operations), a publications section is often a negative signal that suggests academic-world misalignment. No analysis flag, role-level check, or user prompt gates whether publications should appear.
@@ -2132,7 +2132,7 @@ After a user switches the active LLM provider via the model wizard, the non-conf
 ## GAP-215: Skill Type UI Override Not Supported
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. Added a clickable toggle button to each skill row in `web/skills-review.js` (replaced the display-only `skillTypeBadge` span with a `<button class="skill-type-toggle">`). Button cycles: Hard → Soft → unset → Hard. Overrides are stored in `window._skillTypeOverrides` keyed by lowercase skill name and persisted via `/api/review-skill-qualifiers` (extended to accept `skill_type` field in `scripts/routes/review_routes.py`). Backend coercion added in `scripts/utils/session_data_view.py:_coerce_skill_qualifier_overrides`. Override badges display with an outline to distinguish them from job-analysis-derived labels. Override is loaded from `skill_qualifier_overrides` in `/api/status` response (field added to `StatusResponse` in `scripts/web_app.py` and builder in `scripts/routes/status_routes.py`).
 **Discovered:** 2026-06-29 (cycle 9) by hr-ats.
 **Affected stories:** US-H8 (hard/soft skill distinction)
 `web/skills-review.js:667–671` renders skill type as a display-only badge derived from job analysis lists (`hardSkillSet`/`softSkillSet`). No UI control allows users to reclassify a skill from hard to soft or vice versa. No backend route accepts a `skill_type` override. The `skill_qualifier_overrides` state field (`scripts/utils/conversation_manager.py:119`) covers proficiency/subskills/parenthetical but not `skill_type`. Note: GAP-89 covers persistence of `skill_type` to Master CV via harvest; this gap specifically covers the missing UI override mechanism.
@@ -2261,7 +2261,7 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-226: Domain Inference Missing Confidence Field
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. Added `domain_confidence: Optional[float]` (0.0–1.0, `ge=0.0`, `le=1.0`) to `JobAnalysisResponse` in `scripts/utils/llm_response_models.py`. Updated `analyze_job_description` prompt in `scripts/utils/llm_client.py` to request the field. In `_handle_analyze_job()` (`scripts/utils/conversation_manager.py`), when `domain_confidence < 0.7` and a domain was inferred, a `domain_clarification` question is prepended to `cleaned_questions` before saving to `post_analysis_questions` — satisfying US-R1.3.
 **Discovered:** 2026-06-30 (cycle 11) by resume-expert.
 **Affected stories:** US-R1 (domain and role-type inference)
 `JobAnalysisResponse` schema has no `confidence` field for domain or role-type inference. When the LLM has low confidence (e.g., a multi-domain JD), the analysis proceeds without any ambiguity signal to the UI or to the customisation pipeline. No clarifying question is triggered when domain inference is ambiguous. US-R1.3 explicitly requires that low-confidence domain inference triggers a targeted clarifying question.
@@ -2285,7 +2285,7 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-228: No In-Browser Preview of Final Generated CV
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. Added a sandboxed `<iframe id="final-cv-preview">` to `web/final-generate.js`. The iframe loads `CV_*.html` via `/api/download/{base}`. A toggle button ("🌐 Show preview" / "🌐 Hide preview") and an inline "Hide" button in the pane header control visibility. Default state: open. State persists across re-renders via module-level `_previewOpen`. The `_htmlPreviewFile()` helper selects the human-readable HTML file (non-ATS) when multiple HTML files exist; preview pane is suppressed entirely if no HTML file is present.
 **Discovered:** 2026-06-30 (cycle 11) by ux-expert.
 **Affected stories:** US-U6.2 (generation and output state feedback)
 `web/final-generate.js:72–100` — the "Generated Files" tab renders download links only. No iframe, embedded PDF viewer, or HTML preview is present for the final output. By contrast, the Layout Review stage has `<iframe id="layout-preview">` for the draft preview, creating an inconsistency: the draft is previewable but the final output is not. Users must download a file to verify the final result, adding friction and a round-trip.

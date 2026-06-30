@@ -19,6 +19,10 @@ const log = getLogger('final-generate');
 
 import { stateManager } from './state-manager.js';
 
+// ── Preview state ─────────────────────────────────────────────────────────────
+
+let _previewOpen = true;
+
 // ── File type helpers ─────────────────────────────────────────────────────────
 
 function _fileLabel(filename) {
@@ -62,6 +66,37 @@ function _fileDescription(filename) {
   return 'Generated file';
 }
 
+function _htmlPreviewFile(files) {
+  // Prefer human-readable HTML (CV_*.html, not ATS)
+  const human = files.find(f => f.endsWith('.html') && !f.toLowerCase().includes('ats'));
+  return human || files.find(f => f.endsWith('.html')) || null;
+}
+
+function _renderPreviewPane(htmlFile) {
+  if (!htmlFile) return '';
+  const base = htmlFile.split('/').pop();
+  const src = `/api/download/${encodeURIComponent(base)}`;
+  return `
+    <div id="final-preview-pane" style="margin-bottom:24px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;${_previewOpen ? '' : 'display:none;'}">
+      <div style="padding:10px 16px;background:#f1f5f9;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0;">
+        <span style="font-size:0.9em;font-weight:600;color:#1e293b;">🌐 HTML Preview</span>
+        <span style="font-size:0.8em;color:#64748b;flex:1;">${escapeHtml(base)}</span>
+        <button type="button" id="final-preview-close-btn"
+                style="font-size:0.8em;padding:3px 10px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;color:#475569;"
+                aria-label="Hide preview">Hide</button>
+      </div>
+      <div style="position:relative;width:100%;padding-top:56.25%;background:#f8fafc;">
+        <iframe id="final-cv-preview"
+                src="${src}"
+                title="Final CV HTML Preview"
+                sandbox="allow-same-origin"
+                referrerpolicy="no-referrer"
+                style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;"
+                aria-label="Final generated CV preview"></iframe>
+      </div>
+    </div>`;
+}
+
 // ── Tab renderer ─────────────────────────────────────────────────────────────
 
 /**
@@ -94,8 +129,24 @@ async function populateFinalGenerateTab(cvData = {}) {
     files.push(filename);
   }
 
+  const htmlPreviewFile = _htmlPreviewFile(files);
+
   let html = '<h1>📄 Generated Files</h1>';
   html += '<p style="color:#475569;margin-bottom:20px;">Your final CV files have been generated. Download them below, then proceed to the Finalise step.</p>';
+
+  if (htmlPreviewFile) {
+    const showHide = _previewOpen ? 'Hide preview' : 'Show preview';
+    html += `<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+      <button type="button" id="final-preview-toggle-btn"
+              style="font-size:0.85em;padding:5px 14px;border:1px solid #3b82f6;border-radius:6px;background:${_previewOpen ? '#eff6ff' : '#fff'};color:#3b82f6;cursor:pointer;font-weight:600;"
+              aria-expanded="${_previewOpen}"
+              aria-controls="final-preview-pane">
+        🌐 ${showHide}
+      </button>
+      <span style="font-size:0.8em;color:#94a3b8;">In-browser HTML preview</span>
+    </div>`;
+    html += _renderPreviewPane(htmlPreviewFile);
+  }
 
   if (files.length === 0) {
     html += '<p style="color:#9ca3af;padding:16px;">No files generated yet.</p>';
@@ -147,6 +198,26 @@ async function populateFinalGenerateTab(cvData = {}) {
     </div>`;
 
   content.innerHTML = html;
+
+  // Wire up preview toggle
+  if (htmlPreviewFile) {
+    const toggleBtn  = content.querySelector('#final-preview-toggle-btn');
+    const closeBtn   = content.querySelector('#final-preview-close-btn');
+    const previewPane = content.querySelector('#final-preview-pane');
+
+    const setPreviewOpen = (open) => {
+      _previewOpen = open;
+      if (previewPane) previewPane.style.display = open ? '' : 'none';
+      if (toggleBtn) {
+        toggleBtn.textContent = open ? '🌐 Hide preview' : '🌐 Show preview';
+        toggleBtn.setAttribute('aria-expanded', String(open));
+        toggleBtn.style.background = open ? '#eff6ff' : '#fff';
+      }
+    };
+
+    toggleBtn?.addEventListener('click', () => setPreviewOpen(!_previewOpen));
+    closeBtn?.addEventListener('click',  () => setPreviewOpen(false));
+  }
 }
 
 // ── Phase transition ──────────────────────────────────────────────────────────

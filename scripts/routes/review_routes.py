@@ -844,6 +844,9 @@ def create_blueprint(deps):
 
         proficiency = str(data.get('proficiency') or '').strip() or None
         parenthetical = str(data.get('parenthetical') or '').strip() or None
+        raw_skill_type = str(data.get('skill_type') or '').strip().lower() or None
+        skill_type = raw_skill_type if raw_skill_type in ('hard', 'soft') else None
+        skill_type_clear = 'skill_type' in data and data['skill_type'] in (None, '')
         raw_subskills = data.get('subskills')
         if isinstance(raw_subskills, str):
             raw_subskills = [item.strip() for item in raw_subskills.split(',')]
@@ -879,6 +882,11 @@ def create_blueprint(deps):
                 current['parenthetical'] = parenthetical
             else:
                 current.pop('parenthetical', None)
+
+            if skill_type:
+                current['skill_type'] = skill_type
+            elif skill_type_clear:
+                current.pop('skill_type', None)
 
             if current:
                 overrides[skill_name] = current

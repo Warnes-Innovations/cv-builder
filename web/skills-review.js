@@ -277,6 +277,7 @@ async function saveSkillQualifierOverride(skillName, qualifiers) {
   const normalizedProficiency = String(qualifiers?.proficiency || '').trim();
   const normalizedSubskills = _normalizeSkillSubskills(qualifiers?.subskills);
   const normalizedParenthetical = String(qualifiers?.parenthetical || '').trim();
+  const normalizedSkillType = String(qualifiers?.skill_type || '').trim().toLowerCase() || null;
 
   const sk = (window._skillsOrdered || []).find(s => (typeof s === 'string' ? s : s.name || s) === normalizedSkill);
   if (sk && typeof sk === 'object') {
@@ -290,15 +291,20 @@ async function saveSkillQualifierOverride(skillName, qualifiers) {
     else delete sk.parenthetical;
   }
 
+  const payload = {
+    skill: normalizedSkill,
+    proficiency: normalizedProficiency,
+    subskills: normalizedSubskills,
+    parenthetical: normalizedParenthetical,
+  };
+  if ('skill_type' in (qualifiers || {})) {
+    payload.skill_type = normalizedSkillType;
+  }
+
   const response = await fetch('/api/review-skill-qualifiers', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      skill: normalizedSkill,
-      proficiency: normalizedProficiency,
-      subskills: normalizedSubskills,
-      parenthetical: normalizedParenthetical,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -449,6 +455,13 @@ async function buildSkillsReviewTable() {
     allSkills = statusData.all_skills || [];
     persistedExtraSkills = statusData.extra_skills || [];
     window._allExperiences = statusData.all_experiences || [];
+    const qualOverrides = statusData.skill_qualifier_overrides || {};
+    window._skillTypeOverrides = window._skillTypeOverrides || {};
+    for (const [skillName, overrides] of Object.entries(qualOverrides)) {
+      if (overrides && overrides.skill_type) {
+        window._skillTypeOverrides[skillName.toLowerCase()] = overrides.skill_type;
+      }
+    }
   } catch (error) {
     log.error('Error fetching all skills:', error);
     // Fallback to just recommended skills
@@ -664,11 +677,25 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
       ? '<span title="Weak evidence — confirm this skill is genuinely demonstrated in your experience before including it" style="margin-left:6px;font-size:10px;color:#9f1239;border:1px solid #9f1239;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Verify evidence</span>'
       : '';
     const skillNameLower  = skillName.toLowerCase();
-    const skillTypeBadge  = hardSkillSet.has(skillNameLower)
-      ? '<span title="Required by job description" style="margin-left:5px;font-size:10px;font-weight:600;color:#1d4ed8;background:#dbeafe;border-radius:3px;padding:1px 5px;">Hard</span>'
-      : softSkillSet?.has(skillNameLower)
-        ? '<span title="Nice-to-have per job description" style="margin-left:5px;font-size:10px;font-weight:600;color:#6b21a8;background:#f3e8ff;border-radius:3px;padding:1px 5px;">Soft</span>'
-        : '';
+    const _typeOverride   = (window._skillTypeOverrides || {})[skillNameLower];
+    const _baseType       = hardSkillSet.has(skillNameLower) ? 'hard'
+      : softSkillSet?.has(skillNameLower) ? 'soft' : null;
+    const _effectiveType  = _typeOverride || _baseType;
+    const _isOverridden   = !!_typeOverride && _typeOverride !== _baseType;
+    const _toggleTarget   = _effectiveType === 'hard' ? 'soft'
+      : _effectiveType === 'soft' ? null : 'hard';
+    const _badgeTitle     = _isOverridden
+      ? `User override: ${_effectiveType} (original: ${_baseType || 'none'}) — click to cycle`
+      : _effectiveType
+        ? `${_effectiveType === 'hard' ? 'Required' : 'Nice-to-have'} per job description — click to override`
+        : 'Not classified — click to mark as Hard';
+    const _badgeStyle     = _effectiveType === 'hard'
+      ? `margin-left:5px;font-size:10px;font-weight:600;color:#1d4ed8;background:#dbeafe;border-radius:3px;padding:1px 5px;cursor:pointer;${_isOverridden ? 'outline:2px solid #1d4ed8;outline-offset:1px;' : ''}`
+      : _effectiveType === 'soft'
+        ? `margin-left:5px;font-size:10px;font-weight:600;color:#6b21a8;background:#f3e8ff;border-radius:3px;padding:1px 5px;cursor:pointer;${_isOverridden ? 'outline:2px solid #6b21a8;outline-offset:1px;' : ''}`
+        : 'margin-left:5px;font-size:10px;font-weight:600;color:#6b7280;background:#f3f4f6;border-radius:3px;padding:1px 5px;cursor:pointer;border:1px dashed #9ca3af;';
+    const _badgeLabel     = _effectiveType ? (_effectiveType === 'hard' ? 'Hard' : 'Soft') : '+ Type';
+    const skillTypeBadge  = `<button type="button" class="skill-type-toggle" data-skill="${skillNameEsc}" data-toggle-to="${_toggleTarget || ''}" title="${_badgeTitle}" style="${_badgeStyle}" aria-label="Skill type: ${_effectiveType || 'unclassified'}, click to toggle">${_badgeLabel}</button>`;
     const recommendationText = recommendation || (skill._isUserCreated ? 'Include (session-added)' : (isNew ? 'Include (AI suggested)' : 'Omit'));
     const confidenceBadge    = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
     const reasoningText      = reasoning || (skill._isUserCreated
@@ -884,6 +911,28 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   });
 
   container.querySelector('#skills-review-table tbody')?.addEventListener('click', e => {
+    const typeToggle = e.target.closest('.skill-type-toggle');
+    if (typeToggle) {
+      e.preventDefault();
+      e.stopPropagation();
+      const skillName = typeToggle.dataset.skill;
+      const toggleTo = typeToggle.dataset.toggleTo || null;
+      window._skillTypeOverrides = window._skillTypeOverrides || {};
+      if (toggleTo) {
+        window._skillTypeOverrides[skillName.toLowerCase()] = toggleTo;
+      } else {
+        delete window._skillTypeOverrides[skillName.toLowerCase()];
+      }
+      saveSkillQualifierOverride(skillName, {
+        proficiency: container.querySelector(`.skill-proficiency-input[data-skill="${_cssEscape(skillName)}"]`)?.value || '',
+        subskills: container.querySelector(`.skill-subskills-input[data-skill="${_cssEscape(skillName)}"]`)?.value || '',
+        parenthetical: container.querySelector(`.skill-parenthetical-input[data-skill="${_cssEscape(skillName)}"]`)?.value || '',
+        skill_type: toggleTo || '',
+      }).then(() => _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet))
+        .catch(() => showToast('Failed to save skill type override.', 'error'));
+      return;
+    }
+
     const aiBtn = e.target.closest('.skill-apply-ai');
     if (aiBtn) {
       e.preventDefault();

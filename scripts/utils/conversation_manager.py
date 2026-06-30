@@ -710,6 +710,47 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                     'choices': choices,
                 })
 
+            # Prepend a domain-clarification question when the LLM signals low
+            # confidence in the inferred domain (US-R1.3).
+            domain_confidence = analysis.get('domain_confidence')
+            inferred_domain   = analysis.get('domain', '').strip()
+            if (isinstance(domain_confidence, (int, float))
+                    and domain_confidence < 0.7
+                    and inferred_domain):
+                domain_q = {
+                    'type': 'domain_clarification',
+                    'question': (
+                        f"The job domain was inferred as \"{inferred_domain}\", but the posting "
+                        "spans multiple areas. Which domain best describes your target positioning?"
+                    )[:220],
+                    'choices': [inferred_domain, 'Other / Multiple domains'],
+                }
+                cleaned_questions = [domain_q] + cleaned_questions
+
+            # Add a publications-gate question (GAP-203) when:
+            #   • the user has publications in their master CV, and
+            #   • the domain suggests an industry (non-research) role.
+            # This avoids silently including publications for roles where they
+            # are a negative signal (e.g. engineering, product, operations).
+            has_publications = bool(getattr(self.orchestrator, 'publications', None))
+            inferred_domain_lower = inferred_domain.lower()
+            _RESEARCH_TERMS = (
+                'research', 'academic', 'science', 'scientist', 'statistics',
+                'biostat', 'genomic', 'clinical', 'epidemiol', 'faculty',
+                'bioinformat', 'computational biology', 'drug discovery',
+            )
+            domain_is_research = any(t in inferred_domain_lower for t in _RESEARCH_TERMS)
+            if has_publications and not domain_is_research and inferred_domain:
+                pub_q = {
+                    'type': 'include_publications',
+                    'question': (
+                        f"Publications are in your CV profile, but this looks like an industry "
+                        f"{inferred_domain} role. Include your publications section?"
+                    )[:220],
+                    'choices': ['Yes — include publications', 'No — omit for this application'],
+                }
+                cleaned_questions.append(pub_q)
+
             if cleaned_questions:
                 self.state['post_analysis_questions'] = cleaned_questions
 

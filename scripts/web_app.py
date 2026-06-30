@@ -150,6 +150,7 @@ class StatusResponse:
     stale_steps: List[str]
     job_url: Optional[str]
     generation_goals: Optional[Dict[str, Any]]
+    skill_qualifier_overrides: Dict[str, Dict[str, Any]]
 
 
 @dataclass

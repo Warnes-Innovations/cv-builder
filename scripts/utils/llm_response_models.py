@@ -49,6 +49,7 @@ class JobAnalysisResponse(BaseModel):
     culture_indicators:      list[str]      = Field(default_factory=list)
     ats_keywords:            list[str]      = Field(default_factory=list)
     reasoning:               Optional[str]  = None
+    domain_confidence:       Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
 
 # ── Customization Result ──────────────────────────────────────────────────────
