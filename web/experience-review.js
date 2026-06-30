@@ -199,10 +199,10 @@ function _renderExperienceTable(container, recommendedSet, data) {
         <td>${confidenceBadge}</td>
         <td style="max-width:300px;"><small>${escapeHtml(reasoningText)}</small></td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${titleEsc}"       title="Emphasize — feature prominently" style="color:#10b981;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${titleEsc}"         title="Include — standard treatment">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${titleEsc}"    title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${titleEsc}"         title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${titleEsc}"       aria-pressed="${defaultAction === 'emphasize'}"    title="Emphasize — feature prominently" style="color:#10b981;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${titleEsc}"         aria-pressed="${defaultAction === 'include'}"      title="Include — standard treatment">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${titleEsc}"    aria-pressed="${defaultAction === 'de-emphasize'}" title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${titleEsc}"         aria-pressed="${defaultAction === 'exclude'}"      title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
           <button class="icon-btn" data-action="reorder" aria-label="Reorder bullets for ${titleEsc}" title="${bulletOrderSummary ? `Reorder bullet points (AI suggested order ${bulletOrderSummary})` : 'Reorder bullet points'}" style="color:#6366f1;">↕</button>
           <button class="icon-btn" data-action="row-up"   aria-label="Move ${titleEsc} earlier in CV" title="Move up in CV"   ${isFirst ? 'disabled' : ''}>↑</button>
           <button class="icon-btn" data-action="row-down" aria-label="Move ${titleEsc} later in CV"   title="Move down in CV" ${isLast  ? 'disabled' : ''}>↓</button>

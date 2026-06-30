@@ -711,11 +711,15 @@ function handleActionClick(itemId, action, type) {
     : document.querySelector(`tr[data-skill="${itemId}"]`);
 
   const buttons = row.querySelectorAll('.icon-btn');
-  buttons.forEach(btn => btn.classList.remove('active'));
+  buttons.forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', 'false');
+  });
 
   // Add active class to clicked button
   const clickedBtn = row.querySelector(`[data-action="${action}"]`);
   clickedBtn.classList.add('active');
+  if (clickedBtn.hasAttribute('aria-pressed')) clickedBtn.setAttribute('aria-pressed', 'true');
 
   // Store selection
   if (type === 'experience') {
@@ -755,9 +759,15 @@ function bulkAction(action, type) {
     }
 
     // Update button states
-    row.querySelectorAll('.icon-btn').forEach(btn => btn.classList.remove('active'));
+    row.querySelectorAll('.icon-btn').forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', 'false');
+    });
     const target = row.querySelector(`[data-action="${resolvedAction}"]`);
-    if (target) target.classList.add('active');
+    if (target) {
+      target.classList.add('active');
+      if (target.hasAttribute('aria-pressed')) target.setAttribute('aria-pressed', 'true');
+    }
 
     // Store selection
     if (type === 'experience') {

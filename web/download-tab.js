@@ -364,6 +364,17 @@ async function populateDownloadTab(cvData) {
     </div>`;
   }
 
+  const longBulletWarnings = (cvData.metadata?.long_bullet_warnings || []);
+  if (longBulletWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Long bullet points detected (${longBulletWarnings.length}) — may exceed 2 lines:</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;list-style:none;">
+        ${longBulletWarnings.map(w => `<li style="font-size:0.85em;margin-bottom:4px;"><strong>${escapeHtml(w.company)} · ${escapeHtml(w.title)}</strong> (${w.char_count} chars)<br><span style="color:#6b7280;">"${escapeHtml(w.bullet_text)}"</span></li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">Consider shortening these bullets — aim for ≤200 characters each for clean 2-line rendering in the DOCX.</p>
+    </div>`;
+  }
+
   const overlapWarnings = (cvData.date_overlap_warnings || []);
   if (overlapWarnings.length) {
     html += `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:16px;">

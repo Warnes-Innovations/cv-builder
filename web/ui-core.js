@@ -470,38 +470,6 @@ function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', d
  * Initialize the application on DOM ready.
  * Sets up event listeners, restores session, and loads initial tab.
  */
-async function initialize() {
-  try {
-    // Initialize state
-    if (typeof initializeState === 'function') {
-      initializeState();
-    }
-
-    // Try to restore prior session
-    if (typeof restoreSession === 'function') {
-      await restoreSession();
-    }
-
-    // Set up event listeners
-    setupEventListeners();
-
-    // Restore tab data from localStorage
-    if (typeof loadStateFromLocalStorage === 'function') {
-      loadStateFromLocalStorage();
-    }
-
-    // Load initial tab content
-    const savedTab = stateManager.getCurrentTab() || localStorage.getItem(StorageKeys.CURRENT_TAB) || 'job';
-    updateTabBarForStage(getStageForTab(savedTab) || getWorkflowStepForPhase(stateManager.getPhase()));
-    switchTab(savedTab);
-
-    log.info('✅ Application initialized');
-  } catch (error) {
-    log.error('Initialization error:', error);
-    appendMessage('system', `⚠️ Failed to initialize: ${error.message}`);
-  }
-}
-
 /**
  * Set up all global event listeners.
  */
@@ -2020,8 +1988,6 @@ export {
   setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage, loadTabContent,
   // Chat
   toggleChat,
-  // Phase / status
-  initialize,
   // Model selector
   loadModelSelector, openModelModal, closeModelModal, setModel, testCurrentModel, refreshModelPricing,
   toggleModelCatalogVisibility, startCopilotAuthFromWizard, logoutCopilotAuthFromWizard,

@@ -2094,6 +2094,9 @@ For manual generation:
         date_overlap_warnings = self._detect_date_overlaps(
             selected_content.get('experiences', [])
         )
+        long_bullet_warnings = self._detect_long_bullets(
+            selected_content.get('experiences', [])
+        )
         if date_overlap_warnings:
             logger.warning(
                 "Employment date overlaps detected (%d): %s",
@@ -2217,6 +2220,7 @@ For manual generation:
             },
             'files_generated': files_created,
             'date_overlap_warnings': date_overlap_warnings,
+            'long_bullet_warnings': long_bullet_warnings,
             'summary_warnings': selected_content.get('summary_warnings', []),
         }
 
@@ -4696,6 +4700,31 @@ Include one entry per candidate. Do not omit any candidate."""
         return filepath
 
     # ── Pre-generation validation ─────────────────────────────────────────────
+
+    @staticmethod
+    def _detect_long_bullets(experiences: List[Dict], max_chars: int = 200) -> List[Dict]:
+        """Return a list of warnings for experience bullets exceeding max_chars.
+
+        Each warning is {company, title, bullet_text, char_count}.
+        Long bullets typically wrap to 3+ lines in the generated DOCX.
+        """
+        warnings: List[Dict] = []
+        for exp in experiences or []:
+            if not isinstance(exp, dict):
+                continue
+            company = exp.get('company', '')
+            title   = exp.get('title', '')
+            bullets = exp.get('ordered_achievements') or exp.get('achievements') or []
+            for bullet in bullets:
+                text = bullet.get('text', '') if isinstance(bullet, dict) else str(bullet)
+                if len(text) > max_chars:
+                    warnings.append({
+                        'company':    company,
+                        'title':      title,
+                        'bullet_text': text[:120] + '…' if len(text) > 120 else text,
+                        'char_count': len(text),
+                    })
+        return warnings
 
     @staticmethod
     def _detect_date_overlaps(experiences: List[Dict]) -> List[Dict]:

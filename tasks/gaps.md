@@ -1531,7 +1531,8 @@ The workflow step strip uses flexbox with `justify-content: center` and no overf
 ## GAP-164: `initialize()` Exported from `ui-core.js` But Never Called — Dead Export
 
 **Priority:** LOW
-**Status:** OPEN — Discovered 2026-06-20 (cycle 4)
+**Status:** RESOLVED — 2026-06-30
+**Resolution:** Removed the dead `async function initialize()` from `web/ui-core.js` and its `initialize,` export entry. The function was never called; actual app initialization is done by the `DOMContentLoaded` → `init()` + `session-manager.js` path.
 **Affected stories:** US-U1 (tangential)
 `web/ui-core.js` exports `initialize()` (line 472–502) via `ui_core_exports` which is spread into `globalThis` at bundle time. The function is never called anywhere in the codebase. Dead exports in the global namespace increase name-collision risk and maintenance confusion.
 **Recommended resolution:** Either call `initialize()` from `app.js` as intended, or remove the export and the function if its purpose has been superseded by the per-tab initialization in `loadTabContent()`.
@@ -2419,7 +2420,8 @@ When `metadata.generation_date` is null (e.g., session partially completed), the
 ## GAP-240: Experience/Skill Icon-Button Active State Missing aria-pressed
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30
+**Resolution:** Added `aria-pressed` attribute to all 4 state-toggle buttons (emphasize/include/de-emphasize/exclude) in `web/experience-review.js` and `web/skills-review.js`. Updated `handleActionClick()` and `bulkAction()` in `web/review-table-base.js` to sync `aria-pressed` whenever the `active` CSS class changes.
 **Discovered:** 2026-06-30 (cycle 13) by accessibility-specialist (US-X3).
 **Affected stories:** US-X3 (ARIA state accuracy)
 Experience and skill review icon-buttons (`icon-btn`) that toggle "include/exclude" state do not carry `aria-pressed` to reflect the current toggle state. Sighted users see a visual colour change; keyboard and screen reader users have no programmatic indicator of state.
@@ -2696,7 +2698,8 @@ The CSS confidence badge classes cover only `confidence-high`, `confidence-mediu
 ## GAP-267: No Bullet Line-Length Check
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30
+**Resolution:** Added `_detect_long_bullets()` static method to `CVOrchestrator` in `scripts/utils/cv_orchestrator.py` that flags bullets >200 characters. Called in `generate_cv()` after `_detect_date_overlaps`; results stored in metadata as `long_bullet_warnings`. Added a callout in `web/download-tab.js` to display warnings when present.
 **Discovered:** 2026-06-30 (cycle 14) by hiring-manager.
 **Affected stories:** US-M3 (resume quality standards)
 The system does not check whether individual CV bullets exceed the recommended ≤2-line target. Excessively long bullets reduce scannability, look unprofessional, and may wrap awkwardly in the generated DOCX.

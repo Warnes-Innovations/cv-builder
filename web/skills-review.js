@@ -792,10 +792,10 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
           /><span class="derived-years-hint" data-skill="${skillNameEsc}" title="Estimated years derived from matched experience entries" style="display:inline-block;margin-top:4px;font-size:0.8em;color:#6b7280;">${escapeHtml(yearsHint)}</span>` : '<span style="color:#9ca3af;">—</span>'}
         </td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${skillNameEsc}"    title="Emphasize — feature prominently" style="color:#10b981;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${skillNameEsc}"      title="Include — standard listing">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${skillNameEsc}" title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${skillNameEsc}"      title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${skillNameEsc}"    aria-pressed="${defaultAction === 'emphasize'}"    title="Emphasize — feature prominently" style="color:#10b981;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${skillNameEsc}"      aria-pressed="${defaultAction === 'include'}"      title="Include — standard listing">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${skillNameEsc}" aria-pressed="${defaultAction === 'de-emphasize'}" title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${skillNameEsc}"      aria-pressed="${defaultAction === 'exclude'}"      title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
           <button class="icon-btn" data-action="row-up"   aria-label="Move ${skillNameEsc} earlier" title="Move up"   ${isFirst ? 'disabled' : ''}>↑</button>
           <button class="icon-btn" data-action="row-down" aria-label="Move ${skillNameEsc} later"   title="Move down" ${isLast  ? 'disabled' : ''}>↓</button>
         </td>
