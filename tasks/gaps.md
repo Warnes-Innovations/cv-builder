@@ -1716,7 +1716,8 @@ Four input elements use `outline: none` with `box-shadow` as the sole focus indi
 ## GAP-187: Cover Letter Word Count Not Role-Differentiated
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by hiring-manager. Related to GAP-95.
+**Status:** RESOLVED 2026-06-29 — `_validateCoverLetter()` in `web/cover-letter.js` now reads `window._lastAnalysisData.role_level` and `.domain` (same source used by `_getCompanyNameForCL`). Selects `wcTarget` from three tiers: standard (300–400w, warn 250–450), executive (400–500w, warn 300–550), academic/research (500–600w, warn 400–650). The validation label and detail text update to show the active tier. Bundle rebuilt.
+**Discovered:** 2026-06-29 (cycle 8) by hiring-manager. Related to GAP-95.
 **Affected stories:** US-M6, US-P5
 `web/cover-letter.js:534` hard-codes a single 250–400 word validation range for all roles. The hiring-manager story and persuasion guidance require role-specific targets:
 - Standard/industry roles: 300–400 words

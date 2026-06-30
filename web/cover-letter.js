@@ -482,7 +482,7 @@ function _debouncedValidateCL() {
 
 /**
  * Client-side cover letter quality checks.
- * 4 rules: opening, company name, word count (250-400), call-to-action.
+ * 5 rules: opening, I-first gate, company name, word count (role-differentiated), call-to-action.
  */
 function _validateCoverLetter(text) {
   const panel     = document.getElementById('cl-validation-panel');
@@ -540,16 +540,39 @@ function _validateCoverLetter(text) {
     };
   }
 
-  // ── Rule 3: Word count (250-300 target) ──────────────────────
+  // ── Rule 3: Word count (role-differentiated target) ───────────
+  const _roleAnalysis = window._lastAnalysisData ||
+    (window.pendingRecommendations && window.pendingRecommendations.job_analysis) || {};
+  const _roleLevel  = (_roleAnalysis.role_level || '').toLowerCase();
+  const _roleDomain = (_roleAnalysis.domain || '').toLowerCase();
+  const isExec      = /exec|vp|c-suite|chief|director|president|partner/.test(_roleLevel);
+  const isAcademic  = /academic|research|faculty|professor|postdoc/.test(_roleDomain + ' ' + _roleLevel);
+  const wcTarget    = isAcademic ? { lo: 500, hi: 600, warnLo: 400, warnHi: 650 }
+                    : isExec     ? { lo: 400, hi: 500, warnLo: 300, warnHi: 550 }
+                                 : { lo: 300, hi: 400, warnLo: 250, warnHi: 450 };
+  const wcLabel     = isAcademic ? `${wcTarget.lo}–${wcTarget.hi} (academic/research)`
+                    : isExec     ? `${wcTarget.lo}–${wcTarget.hi} (executive)`
+                                 : `${wcTarget.lo}–${wcTarget.hi} (standard)`;
+
   const words    = text.trim().split(/\s+/).filter(Boolean).length;
-  const wcPct    = Math.min(100, (words / 300) * 100);
-  const wcColour = words < 200 ? '#ef4444' : words <= 250 ? '#f59e0b' : words <= 300 ? '#22c55e' : words <= 350 ? '#f59e0b' : '#ef4444';
-  const wcStatus = words >= 250 && words <= 300 ? 'pass' : words >= 200 && words <= 350 ? 'warn' : 'fail';
+  const wcPct    = Math.min(100, (words / wcTarget.hi) * 100);
+  const wcColour = words < wcTarget.warnLo ? '#ef4444'
+                 : words < wcTarget.lo      ? '#f59e0b'
+                 : words <= wcTarget.hi     ? '#22c55e'
+                 : words <= wcTarget.warnHi ? '#f59e0b'
+                 : '#ef4444';
+  const wcStatus = words >= wcTarget.lo && words <= wcTarget.hi ? 'pass'
+                 : words >= wcTarget.warnLo && words <= wcTarget.warnHi ? 'warn'
+                 : 'fail';
   const wcBar    = `<span class="cl-wc-bar"><span class="cl-wc-fill" style="width:${wcPct}%;background:${wcColour};"></span></span>`;
   const wordCountCheck = {
     [wcStatus]: true,
-    label: 'Word count (250–300)',
-    detail: `${words} words ${wcBar} — ${ words < 250 ? 'too short; aim for 250–300.' : words > 300 ? 'too long; trim to 300 words.' : 'within target range.' }`,
+    label: `Word count (${wcLabel})`,
+    detail: `${words} words ${wcBar} — ${
+      words < wcTarget.lo ? `too short; aim for ${wcTarget.lo}–${wcTarget.hi}.`
+      : words > wcTarget.hi ? `too long; trim to ${wcTarget.hi} words.`
+      : 'within target range.'
+    }`,
   };
 
   // ── Rule 4: Call-to-action closing ────────────────────────────
