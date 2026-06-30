@@ -2585,24 +2585,18 @@ The application header reads "CV Customizer" while the onboarding welcome modal 
 ## GAP-252: Intake Confirmation UI Not Connected — API Exists but No Frontend Step
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — re-verified 2026-06-30; `_showIntakeConfirmCard()`, `_submitIntakeCard()`, `_skipIntakeCard()`, and `_proceedAfterIntake()` are fully implemented in `web/message-dispatch.js:420–509`; called from `analyzeJob()` in `web/job-analysis.js:145–155` after analysis completes; CSS in `web/styles.css:1575–1618`; backend routes in `scripts/routes/status_routes.py:1027–1086`. The GAP source-evidence claim that "no call to either endpoint found in `web/app.js`" was stale — the call is in `web/job-analysis.js`, not `app.js`.
 **Discovered:** 2026-06-30 (cycle 13) by applicant (US-A2) and ux-expert.
 **Affected stories:** US-A2 (job analysis — intake confirmation)
-`scripts/web_app.py` has `GET /api/intake-metadata` and `POST /api/confirm-intake` endpoints, and `scripts/utils/conversation_manager.py` includes an intake-confirmation stage in the workflow model. However, no frontend step presents the extracted company name, role title, and target start date for user confirmation before analysis proceeds. The intake confirmation is silently skipped.
-**Source evidence:** `scripts/web_app.py` — `/api/intake-metadata` and `/api/confirm-intake` routes present. `web/app.js` — no call to either endpoint found in the frontend flow.
-**Recommended resolution:** After job description submission and before analysis, fetch `/api/intake-metadata`, display extracted values (company, role, date) in a confirmation card, and require the user to confirm or correct before calling `/api/confirm-intake` and proceeding.
 
 ---
 
 ## GAP-253: Prior Clarification Answers Not Pre-Populated on Re-Visit
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — re-verified 2026-06-30; `web/session-manager.js:600` restores `window.questionAnswers` from `statusData.post_analysis_answers` during session hydration on page load. `web/questions-panel.js:renderQuestionsPanel()` reads `window.questionAnswers` at lines 166–168 and pre-fills each textarea at line 188. Within-session re-visits also retain answers because `window.questionAnswers` persists in memory across tab switches. The GAP source-evidence claim that no pre-population existed in `web/app.js` was stale — the implementation is in `web/questions-panel.js` and `web/session-manager.js`.
 **Discovered:** 2026-06-30 (cycle 13) by applicant (US-A2).
 **Affected stories:** US-A2 (clarifying questions flow)
-The clarifying questions step shows blank input fields on every visit, even if the user previously answered the questions in this session. The backend stores answers in `session.json` and the API can return them, but the frontend never fetches and pre-populates them.
-**Source evidence:** `web/app.js` — clarifying question inputs rendered without a prior-answer fetch; no GET request to retrieve stored answers on question panel open.
-**Recommended resolution:** On clarifying question panel open, fetch any stored answers for the current session and pre-populate the input fields.
 
 ---
 
@@ -2705,12 +2699,9 @@ Nine or more error catch blocks in `web/layout-instruction.js` append `error.mes
 ## GAP-263: Two Placeholder Workflow Steps Are Dead Ends
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — re-verified 2026-06-30; `web/interview-prep.js` and `web/thank-you.js` both render a "coming soon" card with an emoji heading, explanation text, and a "Proceed to next step →" button. Both are wired into `switchTab()` in `web/review-table-base.js:262–267`. The GAP claim that they "show no content" was stale — placeholder content with forward navigation was already implemented.
 **Discovered:** 2026-06-30 (cycle 14) by heuristic sub-agent.
 **Affected stories:** US-F3, US-A5 (workflow orientation and momentum)
-Two workflow step pills are visible in the pill bar and reachable by users, but clicking them shows no content and provides no action — they are dead ends. Users who reach these steps after generating files find nothing actionable and no explanation.
-**Source evidence:** `web/ui-core.js` — pill bar step registration. Heuristic rated H3 (User control and freedom) as 🟡 Minor for this issue. First-Time User persona noted generation transitions have no inline explanatory text.
-**Recommended resolution:** Either implement the steps or replace them with a clear "coming soon" placeholder with a brief explanation. At minimum, clicking a dead-end step should not appear to succeed with no feedback.
 
 ## GAP-264: CSS Confidence Badge Only Handles 3 Levels; LLM Emits 5-Point Scale
 
@@ -2735,12 +2726,9 @@ The `rewrite_audit` array is computed and persisted in `session.json`, and is us
 ## GAP-266: No Minimum 2-Bullets-Per-Job Enforcement
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30; added sparse-bullet check to `_collect_render_snapshot_inputs()` in `scripts/routes/generation_routes.py:456–495`. Reads `achievement_edits` from session state and emits a `sparse_experience_bullets` content_warning (code + severity + message) for any experience whose visible bullet count is < 2. Warning surfaces to the user in the Preview generation response via the existing `content_warnings` mechanism. Not a hard block — user can proceed with fewer bullets.
 **Discovered:** 2026-06-30 (cycle 14) by hiring-manager.
 **Affected stories:** US-M3 (resume quality standards)
-A job entry in the generated CV can appear with 0 or 1 bullets if the user deselects all or all-but-one bullets during customisation. Hiring managers and ATS systems expect a minimum of 2 impact bullets per role; a role with a single bullet looks sparse and may be misread as a gap.
-**Source evidence:** No minimum-bullet check found in `scripts/utils/cv_orchestrator.py` bullet selection logic. Hiring Manager persona flagged this as a quality standard gap (🔲 Not Implemented).
-**Recommended resolution:** Add a validation check before generation: if a job entry has fewer than 2 selected bullets, warn the user (not a hard block) and suggest they either select more bullets or remove the entry.
 
 ## GAP-267: No Bullet Line-Length Check
 

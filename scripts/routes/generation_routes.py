@@ -453,6 +453,49 @@ def _collect_render_snapshot_inputs(
             ),
         })
 
+    raw_edits = state.get('achievement_edits') or {}
+    if isinstance(raw_edits, dict):
+        master_experiences = (
+            conversation.orchestrator.master_data.get('experience') or []
+        )
+        for str_idx, items in raw_edits.items():
+            try:
+                exp_idx = int(str_idx)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(items, list):
+                items = [items]
+            visible = [
+                it for it in items
+                if isinstance(it, dict)
+                and not it.get('hidden')
+                and str(it.get('text') or '').strip()
+            ]
+            if len(visible) < 2:
+                exp = (
+                    master_experiences[exp_idx]
+                    if 0 <= exp_idx < len(master_experiences)
+                    else {}
+                )
+                role = str(
+                    exp.get('title')
+                    or exp.get('position')
+                    or f'Position {exp_idx + 1}'
+                )
+                company = str(exp.get('company') or '')
+                label = f'"{role}" at {company}' if company else f'"{role}"'
+                n = len(visible)
+                content_warnings.append({
+                    'code': 'sparse_experience_bullets',
+                    'severity': 'warning',
+                    'message': (
+                        f'Experience {label} has {n} selected '
+                        f'bullet{"" if n == 1 else "s"}. '
+                        'At least 2 impact bullets per role are recommended. '
+                        'Add more in the Ach Editor tab.'
+                    ),
+                })
+
     return {
         'job_analysis': job_analysis,
         'materialized_customizations': materialized,
