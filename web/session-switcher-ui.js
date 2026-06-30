@@ -357,17 +357,42 @@ function _renderSessionTableRow(row) {
       `</span>`
     : `<span>${escapeHtml(row.name)}</span>`;
 
-  const appStatusLabels = { draft: 'Draft', ready: 'Ready', sent: 'Sent' };
-  const appStatusColors = { draft: '#94a3b8', ready: '#3b82f6', sent: '#22c55e' };
+  const appStatusLabels = {
+    draft: 'Draft', ready: 'Ready', sent: 'Sent',
+    interview: 'Interview', rejected: 'Rejected', accepted: 'Accepted',
+  };
+  const appStatusColors = {
+    draft: '#94a3b8', ready: '#3b82f6', sent: '#22c55e',
+    interview: '#a855f7', rejected: '#ef4444', accepted: '#059669',
+  };
   const appStatus = row.applicationStatus || '';
   const appStatusBadge = appStatus && appStatusLabels[appStatus]
-    ? ` <span style="font-size:0.75em;padding:1px 6px;border-radius:9px;background:${appStatusColors[appStatus]};color:#fff;vertical-align:middle;">${appStatusLabels[appStatus]}</span>`
+    ? ` <span id="sm-status-badge-${row.idx}" style="font-size:0.75em;padding:1px 6px;border-radius:9px;background:${appStatusColors[appStatus]};color:#fff;vertical-align:middle;">${appStatusLabels[appStatus]}</span>`
+    : `<span id="sm-status-badge-${row.idx}"></span>`;
+
+  // Status-edit inline widget (saved rows only)
+  const statusEditWidget = row.type === 'saved'
+    ? `<span id="sm-status-edit-${row.idx}" style="display:none;align-items:center;gap:4px;margin-top:2px;">` +
+        `<select id="sm-status-sel-${row.idx}" class="sm-key-input" style="border:1px solid #3b82f6;border-radius:4px;padding:2px 4px;font-size:12px;" aria-label="Select application status">` +
+          `<option value="">-- clear --</option>` +
+          Object.entries(appStatusLabels).map(([v, l]) =>
+            `<option value="${v}"${appStatus === v ? ' selected' : ''}>${l}</option>`
+          ).join('') +
+        `</select>` +
+        `<button data-sm-action="submit-status" data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}" class="sm-btn" title="Save status" aria-label="Save status">&#10003;</button>` +
+        `<button data-sm-action="cancel-status" data-sm-idx="${row.idx}" class="sm-btn" title="Cancel" aria-label="Cancel status edit">&#10005;</button>` +
+      `</span>`
     : '';
+
+  if (row.type === 'saved') {
+    actionHtml +=
+      `<button data-sm-action="edit-status" data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}" class="sm-btn sm-btn-icon" title="Update application status" aria-label="Update application status"><i class="fa-solid fa-tag" aria-hidden="true"></i></button>`;
+  }
 
   return `<div class="${rowClass}">` +
     `<span class="sm-td sm-td-name">${nameCell}</span>` +
     `<span class="sm-td sm-td-status">${statusPill}</span>` +
-    `<span class="sm-td sm-td-phase">${phaseLabel}${appStatusBadge}</span>` +
+    `<span class="sm-td sm-td-phase"><span id="sm-phase-${row.idx}">${phaseLabel}${appStatusBadge}</span>${statusEditWidget}</span>` +
     `<span class="sm-td sm-td-date">${modLabel}</span>` +
     `<span class="sm-td sm-td-actions">${actionHtml}</span>` +
     `</div>`;
@@ -430,6 +455,9 @@ function _handleSessionModalClick(e) {
   if      (action === 'rename')        startSessionModalRename(path, idx);
   else if (action === 'submit-rename') submitSessionModalRename(path, idx);
   else if (action === 'cancel-rename') cancelSessionModalRename(idx);
+  else if (action === 'edit-status')   startSessionStatusEdit(idx);
+  else if (action === 'submit-status') submitSessionStatusEdit(path, idx);
+  else if (action === 'cancel-status') cancelSessionStatusEdit(idx);
   else if (action === 'load')          loadSessionAndCloseModal(path);
   else if (action === 'delete')        _deleteSessionFromModal(path, e);
 }
@@ -549,6 +577,60 @@ async function submitSessionModalRename(path, idx) {
       if (typeof showToast === 'function') showToast(`Rename failed: ${data.error}`, 'error');
     }
   } catch (e) { if (typeof showToast === 'function') showToast(`Rename error: ${e.message}`, 'error'); }
+}
+
+function startSessionStatusEdit(idx) {
+  const phaseEl  = document.getElementById(`sm-phase-${idx}`);
+  const editWidget = document.getElementById(`sm-status-edit-${idx}`);
+  if (phaseEl)    phaseEl.style.display    = 'none';
+  if (editWidget) editWidget.style.display = 'flex';
+  const sel = document.getElementById(`sm-status-sel-${idx}`);
+  if (sel) sel.focus();
+}
+
+function cancelSessionStatusEdit(idx) {
+  const phaseEl    = document.getElementById(`sm-phase-${idx}`);
+  const editWidget = document.getElementById(`sm-status-edit-${idx}`);
+  if (editWidget) editWidget.style.display = 'none';
+  if (phaseEl)    phaseEl.style.display    = '';
+}
+
+async function submitSessionStatusEdit(path, idx) {
+  const sel = document.getElementById(`sm-status-sel-${idx}`);
+  if (!sel) return;
+  const newStatus = sel.value;
+  const _appStatusLabels = {
+    draft: 'Draft', ready: 'Ready', sent: 'Sent',
+    interview: 'Interview', rejected: 'Rejected', accepted: 'Accepted',
+  };
+  const _appStatusColors = {
+    draft: '#94a3b8', ready: '#3b82f6', sent: '#22c55e',
+    interview: '#a855f7', rejected: '#ef4444', accepted: '#059669',
+  };
+  try {
+    const res  = await fetch('/api/sessions/metadata', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, application_status: newStatus }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const badge = document.getElementById(`sm-status-badge-${idx}`);
+      if (badge) {
+        if (newStatus && _appStatusLabels[newStatus]) {
+          badge.textContent = _appStatusLabels[newStatus];
+          badge.style.cssText = `font-size:0.75em;padding:1px 6px;border-radius:9px;background:${_appStatusColors[newStatus]};color:#fff;vertical-align:middle;`;
+        } else {
+          badge.textContent = '';
+          badge.style.cssText = '';
+        }
+      }
+      cancelSessionStatusEdit(idx);
+    } else {
+      if (typeof showToast === 'function') showToast(`Status update failed: ${data.error || 'Unknown error'}`, 'error');
+    }
+  } catch (e) {
+    if (typeof showToast === 'function') showToast(`Status update error: ${e.message}`, 'error');
+  }
 }
 
 async function _deleteSessionFromModal(path, event) {

@@ -613,6 +613,46 @@ def create_blueprint(deps):
         except SessionNotFoundError:
             return jsonify({"error": "Session not found."}), 404
 
+    @bp.route("/api/sessions/metadata", methods=["PATCH"])
+    def sessions_patch_metadata():
+        """Update application_status and/or notes for an archived session's metadata.json."""
+        data = request.get_json(silent=True) or {}
+        path = data.get("path")
+        if not path:
+            return jsonify({"error": "Missing path"}), 400
+
+        # Optional fields — at least one must be present
+        new_status = data.get("application_status")
+        new_notes  = data.get("notes")
+        if new_status is None and new_notes is None:
+            return jsonify({"error": "Provide at least one of: application_status, notes"}), 400
+
+        _VALID_STATUSES = {"", "draft", "ready", "sent", "interview", "rejected", "accepted"}
+        if new_status is not None and new_status not in _VALID_STATUSES:
+            return jsonify({"error": f"Invalid application_status '{new_status}'"}), 400
+
+        output_base = _output_base()
+        safe_path = _resolve_session_path(output_base, path)
+        if safe_path is None or not safe_path.exists():
+            return jsonify({"error": "Session file not found."}), 404
+
+        metadata_file = safe_path.parent / "metadata.json"
+        try:
+            meta = {}
+            if metadata_file.exists():
+                meta = _load_json_guarded(metadata_file) or {}
+            if new_status is not None:
+                meta["application_status"] = new_status
+            if new_notes is not None:
+                meta["notes"] = str(new_notes)[:2000]
+            meta["metadata_updated"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            with open(metadata_file, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            return jsonify({"ok": True, "metadata": meta})
+        except Exception:
+            logger.exception("Failed to update session metadata")
+            return jsonify({"error": "Failed to update session metadata."}), 500
+
     @bp.get("/api/sessions/active")
     def sessions_active():
         """Return a list of all active in-memory sessions."""

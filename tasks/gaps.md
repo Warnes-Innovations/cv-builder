@@ -352,7 +352,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-P5
-**Status:** PARTIAL - updated 2026-04-22; the LLM generation prompt has been tightened to ~250–300 words (commit `e0212e3`), but client-side validation in the cover letter UI still allows 400 words. The server-side prompt fix is confirmed; the client-side ceiling mismatch is tracked as GAP-95.
+**Status:** RESOLVED 2026-06-29 — Both backend prompt and frontend validation now use role-differentiated word count targets (300–400w standard, 400–500w executive, 500–600w academic/research). Backend: `_cover_letter_word_count_instruction()` in `scripts/routes/master_data_routes.py` (GAP-126 fix). Frontend: role-differentiated thresholds in `_validateCoverLetter()` at `web/cover-letter.js:550–576` (GAP-95 fix). The blanket 400-word ceiling is gone.
 **Description:** The 400-word ceiling produces cover letters that are too long for most recruiter review contexts, which typically allow 200–300 words per the story spec.
 **Recommended resolution:** Reduce the cover letter word count target to 300 words maximum in the generation prompt.
 
@@ -584,7 +584,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; backend review found `_save_master` runs `git add` with `check=False` and no warning on failure.
+**Status:** RESOLVED 2026-06-29 — `_save_master` in `scripts/routes/master_data_routes.py:62` now captures the `subprocess.run` result and emits `logger.warning(...)` when `returncode != 0`, including the git stderr/stdout. Non-fatal — master save still succeeds.
 **Description:** The master file can be updated successfully while the repo is left untracked or partially staged without any visible signal.
 **Recommended resolution:** Log and optionally surface a non-fatal warning when `git add` fails during master-data save.
 
@@ -880,9 +880,8 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 ## GAP-96: Cover Letter CTA Validation Accepts Passive Closings
 
 **Severity:** MEDIUM
-**Status:** RESOLVED 2026-06-29 — Refactored CTA check in `_validateCoverLetter()` (`web/cover-letter.js`). Introduced two pattern lists: `assertiveCtaPatterns` (pass: candidate takes initiative — "I will call", "I will follow up", "discuss", "interview") and `passiveCtaPatterns` (warn: "look forward to hearing from you", "await your response", "hope to hear"). If only a passive CTA is present the card shows warn with guidance: "Passive closing detected — consider an assertive follow-up." If no CTA is present the card fails.
 **Affected stories:** US-P5
-**Status:** OPEN - discovered 2026-04-22; persuasion expert review found the cover letter CTA (call-to-action) validator accepts passive closings such as "I look forward to hearing from you" without flagging them as weak. Persuasion best practice requires an active, initiative-taking closing.
+**Status:** RESOLVED 2026-06-29 — Refactored CTA check in `_validateCoverLetter()` (`web/cover-letter.js`). Introduced two pattern lists: `assertiveCtaPatterns` (pass: candidate takes initiative — "I will call", "I will follow up", "discuss", "interview") and `passiveCtaPatterns` (warn: "look forward to hearing from you", "await your response", "hope to hear"). If only a passive CTA is present the card shows warn with guidance: "Passive closing detected — consider an assertive follow-up." If no CTA is present the card fails. (Same fix also resolves GAP-137.)
 **Description:** Passive closings put the burden of action on the hiring manager. Active closings imply the applicant will follow up (e.g., "I will follow up on [date]").
 **Recommended resolution:** Update the CTA validation heuristic to flag passive constructions ("I look forward to hearing", "Please feel free to contact me") and suggest an active alternative.
 
@@ -937,7 +936,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-O2
-**Status:** OPEN - discovered 2026-04-22; recruiter-ops review found no route or UI to update `application_status` or `notes` after a session has been archived. Users who want to update status from "Sent" to "Interview" must reload the entire session into the active workflow.
+**Status:** RESOLVED 2026-06-29 — Added `PATCH /api/sessions/metadata` route to `scripts/routes/session_routes.py`. Accepts `{ path, application_status?, notes? }`. Validates path is within the output directory, validates status against the extended enum (draft/ready/sent/interview/rejected/accepted), and writes to `metadata.json`. Added "Update status" tag-icon button to saved session rows in `web/session-switcher-ui.js`. Clicking it shows an inline `<select>` widget (same pattern as rename); save/cancel are handled by `startSessionStatusEdit`, `submitSessionStatusEdit`, `cancelSessionStatusEdit`. Badge in the phase column updates in-place without a full re-render. Bundle rebuilt.
 **Recommended resolution:** Add a `PATCH /api/sessions/{id}/metadata` endpoint that accepts `application_status` and `notes` updates. Surface a lightweight "Update status" UI in the session list row.
 
 ## GAP-104: "Done" Phase Label Misleading for Active-Refinement Sessions
@@ -1116,7 +1115,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 ## GAP-126: Cover Letter Word Count Hardcoded for All Role Types
 
 **Priority:** HIGH
-**Status:** Open
+**Status:** RESOLVED 2026-06-29 — `_cover_letter_word_count_instruction(job_analysis)` helper added to `scripts/routes/master_data_routes.py`. Reads `role_level` and `domain` from `job_analysis`; returns 300–400w (standard), 400–500w (executive), or 500–600w (academic/research). Prompt line 1601 now calls this helper instead of hardcoding `~250–300 words`.
 **Found:** 2026-06-18 cvUiReview
 `scripts/routes/master_data_routes.py:1566` hard-codes the cover letter length target as `~250-300 words` regardless of role type. US-M6 requires: 300–400w for standard roles, 400–500w for executive roles, 500–600w for research/academic roles. The current prompt will underdeliver for executive and academic candidates.
 **Source evidence:** `scripts/routes/master_data_routes.py:1566`; hiring-manager.md 2026-06-18.
@@ -1198,7 +1197,7 @@ After URL fetch populates the job intake confirmation card (company, role, date,
 ## GAP-136: No Post-Generation Cover Letter Word Count Enforcement
 
 **Priority:** MED
-**Status:** Open
+**Status:** RESOLVED 2026-06-29 — Source-verified false positive. `_validateCoverLetter()` in `web/cover-letter.js:543–576` already implements role-differentiated word count validation with a colour-coded progress bar: standard 300–400w, executive 400–500w, academic 500–600w, each with warn zones. The check runs on every textarea `input` event (line 275) and on post-generation populate (line 479 — called after the LLM returns the letter). The `wcStatus` pass/warn/fail gates match US-P5 AC3 exactly.
 **Found:** 2026-06-18 cvUiReview
 US-P5 AC3 requires a programmatic check that the generated cover letter falls within the target word count range for the role type. Currently, the only mechanism is the LLM prompt instruction (`master_data_routes.py:1566`). No post-generation validation counts words and warns or blocks if the output is outside range. LLMs routinely deviate from length instructions.
 **Source evidence:** `scripts/routes/master_data_routes.py:1566`; persuasion-expert.md 2026-06-18.
@@ -1206,7 +1205,7 @@ US-P5 AC3 requires a programmatic check that the generated cover letter falls wi
 ## GAP-137: Cover Letter CTA Check Accepts Passive Closings
 
 **Priority:** MED
-**Status:** Open
+**Status:** RESOLVED 2026-06-29 — Source-verified false positive. `_validateCoverLetter()` (`web/cover-letter.js:578–603`) explicitly distinguishes assertive CTAs (pass: "I will follow up", "discuss", "interview") from passive CTAs (warn: "look forward to hearing from you", "await your response"). Passive closings produce a `warn` card with the specific advisory: "consider an assertive follow-up: 'I will contact your office next week.'" This satisfies US-P5 AC4.
 **Found:** 2026-06-18 cvUiReview
 US-P5 AC4 requires the cover letter to contain a specific, active call-to-action (e.g., "I will follow up on [date]" rather than "I look forward to hearing from you"). No post-generation pattern check distinguishes passive from active CTAs. The LLM prompt mentions "call to action" but does not enforce the active/specific requirement with a verifiable rule.
 **Source evidence:** `scripts/routes/master_data_routes.py:1570`; persuasion-expert.md 2026-06-18.
@@ -1214,7 +1213,7 @@ US-P5 AC4 requires the cover letter to contain a specific, active call-to-action
 ## GAP-138: Professional Summary Prompt Uses Title-First Opener (Not Value-Identity-First)
 
 **Priority:** MED
-**Status:** Open
+**Status:** RESOLVED 2026-06-29 — Duplicate of GAP-163 (resolved 2026-06-20). `scripts/utils/llm_client.py:850` now instructs: "Open with a value-identity statement: strong verb + differentiating value claim (e.g. 'Drives 3× revenue growth…', 'Builds ML pipelines that…') — NOT a title + years-of-experience formula". Source-verified 2026-06-29.
 **Found:** 2026-06-18 cvUiReview
 US-P1 AC1 requires the summary to open with a value-identity-first framing (e.g., "Scaling ML inference pipelines…") rather than a title-and-tenure opener (e.g., "Senior ML Engineer with 8 years of experience…"). `scripts/utils/llm_client.py:850` instructs the LLM with a title-first opener pattern, producing summaries that fail the persuasion expert's value-identity requirement.
 **Source evidence:** `scripts/utils/llm_client.py:850`; persuasion-expert.md 2026-06-18.
@@ -1222,7 +1221,7 @@ US-P1 AC1 requires the summary to open with a value-identity-first framing (e.g.
 ## GAP-139: `post_analysis_answers` Not Passed to `generate_professional_summary`
 
 **Priority:** MED
-**Status:** Open
+**Status:** RESOLVED 2026-06-29 — Added `post_analysis_answers: Dict = None` parameter to `generate_professional_summary` in `scripts/utils/llm_client.py:754`. When provided, builds a "CANDIDATE CONTEXT (from interview Q&A)" block (up to 6 Q&A pairs) injected into both the fresh and refinement prompt paths. Route `POST /api/generate-summary` (`scripts/routes/master_data_routes.py:1175`) now reads `post_analysis_answers` from `conversation.state` and passes it through.
 **Found:** 2026-06-18 cvUiReview
 Clarification answers (`post_analysis_answers`) are injected into the cover letter and screening question prompts but are absent from the `generate_professional_summary` call at `scripts/utils/llm_client.py:754`. The summary LLM therefore lacks the user's clarification context (e.g., "I led the team during the reorg") that was provided during the analysis phase. This context is material to producing a personalised, accurate summary.
 **Source evidence:** `scripts/utils/llm_client.py:754`; persuasion-expert.md 2026-06-18.

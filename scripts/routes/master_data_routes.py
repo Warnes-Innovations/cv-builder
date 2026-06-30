@@ -59,10 +59,17 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
             f"Errors: {'; '.join(result.errors)}"
         )
 
-    subprocess.run(
+    git_result = subprocess.run(
         ['git', '-C', str(master_path.parent), 'add', master_path.name],
         capture_output=True, check=False,
     )
+    if git_result.returncode != 0:
+        logger.warning(
+            "git add failed for %s (exit %d): %s",
+            master_path,
+            git_result.returncode,
+            (git_result.stderr or git_result.stdout or b'').decode('utf-8', errors='replace').strip(),
+        )
 
 
 def _resolve_backup_path(backup_dir: Path, filename: str) -> Path | None:
@@ -100,6 +107,20 @@ _OPENING_GUIDANCE: Dict[str, str] = {
     'hook':               'Open with a compelling hook or pattern-interrupt — a specific achievement, a bold claim, or a provocative question that immediately establishes value. Do NOT use a formal salutation.',
     'narrative':          'Open with a brief vivid scene or narrative moment that connects you personally to the work. Do NOT use a formal salutation.',
 }
+
+def _cover_letter_word_count_instruction(job_analysis: dict) -> str:
+    """Return a role-type-differentiated word count target for the cover letter prompt."""
+    import re as _re
+    role_level = (job_analysis.get('role_level') or '').lower()
+    domain     = (job_analysis.get('domain') or '').lower()
+    is_exec    = bool(_re.search(r'vp|vice.?president|c-level|ceo|cto|cfo|coo|chief|svp|evp|director|partner|principal', role_level))
+    is_academic = bool(_re.search(r'academi|research|professor|faculty|postdoc|phd|scientist', domain + ' ' + role_level))
+    if is_exec:
+        return '400–500 words'
+    if is_academic:
+        return '500–600 words'
+    return '300–400 words'
+
 
 # Text similarity helper (used in screening search)
 def _text_similarity(query: str, target: str) -> float:
@@ -1157,6 +1178,8 @@ def create_blueprint(deps):
                     if recommended_ids else all_experiences
                 )
 
+            post_analysis_answers = conversation.state.get('post_analysis_answers') or {}
+
             with entry.lock:
                 summary = llm_client_ref['value'].generate_professional_summary(
                     job_analysis=job_analysis,
@@ -1164,6 +1187,7 @@ def create_blueprint(deps):
                     selected_experiences=selected_experiences,
                     refinement_prompt=refinement_prompt,
                     previous_summary=previous_summary,
+                    post_analysis_answers=post_analysis_answers or None,
                 )
 
                 if not summary:
@@ -1598,7 +1622,7 @@ CANDIDATE PROFILE
 {reuse_instruction}
 {'Please especially highlight: ' + highlight if highlight else ''}
 
-Write a compelling, personalised cover letter (3–4 paragraphs, ~250–300 words).
+Write a compelling, personalised cover letter (3–4 paragraphs, {_cover_letter_word_count_instruction(job_analysis)}).
 {_OPENING_GUIDANCE.get(opening_style, _OPENING_GUIDANCE['formal']).format(hiring_manager=hiring_manager)}
 Do NOT include a date, address block, or subject line before the opening line.
 Reference concrete skills and achievements from the candidate profile.

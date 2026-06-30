@@ -758,6 +758,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         selected_experiences: List[Dict] = None,
         refinement_prompt: str = None,
         previous_summary: str = None,
+        post_analysis_answers: Dict = None,
     ) -> str:
         """Generate a custom professional summary tailored to a specific job.
 
@@ -823,6 +824,13 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         domain      = job_analysis.get('domain', '')
         role_level  = job_analysis.get('role_level', '')
 
+        # Build candidate clarification context block (from post-analysis Q&A)
+        answers_block = ''
+        if post_analysis_answers:
+            lines = [f"- {q}: {a}" for q, a in list(post_analysis_answers.items())[:6]]
+            if lines:
+                answers_block = "CANDIDATE CONTEXT (from interview Q&A — use to personalise):\n" + "\n".join(lines) + "\n\n"
+
         # Build the prompt
         if refinement_prompt and previous_summary:
             prompt = (
@@ -839,6 +847,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                 + (f" | Domain: {domain}" if domain else "")
                 + (f" | Level: {role_level}" if role_level else "") + "\n"
                 f"KEY KEYWORDS: {', '.join(keywords[:20])}\n\n"
+                + answers_block +
                 "Return ONLY the refined summary text — no labels, no bullet points, no preamble."
             )
         else:
@@ -860,6 +869,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                 f"KEY ATS KEYWORDS: {', '.join(keywords[:20])}\n\n"
                 f"RELEVANT EXPERIENCE:\n" + ("\n".join(exp_lines) or "(none)") + "\n\n"
                 f"KEY SKILLS: {', '.join(skill_names[:25])}\n\n"
+                + answers_block +
                 "Return ONLY the summary text — no labels, no bullet points, no preamble."
             )
 
