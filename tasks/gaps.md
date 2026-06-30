@@ -298,7 +298,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-U3, US-A6
-**Status:** OPEN - discovered 2026-04-20; UX expert review found `layout-instruction.js:855–865` implements undo by posting a chat message ("I want to undo the last layout instruction") rather than rolling back to a prior layout snapshot. The Undo button exists in the UI but does not undo.
+**Status:** RESOLVED — `undoInstruction()` (`layout-instruction.js:1125`) pops from `_layoutUndoStack` (defined at line 50; pushed at lines 651 and 766 before each instruction is applied) and calls `displayLayoutPreview(snapshot.html)` + `renderInstructionHistory()`. The original report described an earlier stub implementation; the current implementation is fully functional.
 **Description:** The layout-review Undo button is a visible affordance with no real action behind it. Users who click Undo expecting to revert a layout change will instead see a chat message posted, and the layout will not change.
 **Recommended resolution:** Implement proper undo by snapshotting the layout state (instruction history + current rendered result) before each instruction is applied, and restoring the last snapshot when the Undo button is pressed.
 
@@ -440,7 +440,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-M1, US-A10
-**Status:** OPEN - discovered 2026-04-20; master CV curator review confirmed `master_data_routes.py:284–302` does not include `certifications` in the `GET /api/master-data/full` response. `master-cv.js:60` reads `fullData.certifications || []`, so the Certifications section in the Master CV editor always renders empty regardless of what is stored in `Master_CV_Data.json`. Write operations via `POST /api/master-data/certification` work correctly, but data is invisible in the UI.
+**Status:** RESOLVED — `master_data_routes.py:324` already includes `"certifications": master.get('certifications', [])` in the `GET /api/master-data/full` response. The original line numbers in the GAP (284–302) are stale; certifications was added in a prior refactor. No code change needed.
 **Description:** The certifications data is stored correctly and can be written to, but it is invisible to the user because the read endpoint omits it. Any certifications entered via the editor or present in the file are silently lost from the view.
 **Recommended resolution:** Add `certifications` to the response body of `GET /api/master-data/full` in `master_data_routes.py`.
 
@@ -448,7 +448,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-M1
-**Status:** OPEN - discovered 2026-04-20; master CV curator review found that the `_save_master` helper in `master_data_routes.py:38–51` creates a backup and writes the new file but does not run `validate_master_data_file`. The corresponding helper in `web_app.py:1166–1191` does run validation and restores the backup on failure. This inconsistency means malformed writes through the routes module bypass the validation-and-restore safety net.
+**Status:** RESOLVED — `master_data_routes.py:52–60` already runs `validate_master_data(master)` after writing and restores from backup on validation failure. The original report (lines 38–51) captured a snapshot before post-write validation was added. No code change needed.
 **Description:** Two implementations of the same write-path helper exist with different safety guarantees. Writes routed through `master_data_routes._save_master` can corrupt `Master_CV_Data.json` without triggering the automatic restore.
 **Recommended resolution:** Consolidate to a single `_save_master` implementation that always runs post-write validation with backup-restore on failure. Remove the duplicate in `web_app.py` or make the routes module call the validated version.
 
@@ -456,7 +456,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-M4
-**Status:** OPEN - discovered 2026-04-20; master CV curator review found that when editing an existing publication via the structured Add/Edit modal, the `extra fields` textarea does not pre-populate from stored BibTeX fields not covered by the fixed form fields (volume, pages, publisher, address, etc.). Clicking Save overwrites those fields with an empty string.
+**Status:** RESOLVED — `master-cv.js:1469–1474` already builds the extra-fields content on edit: filters out the known field set (author, editor, title, year, journal, booktitle, doi) and joins remaining fields as `key=value` per line into `#pub-modal-extra`. No code change needed.
 **Description:** Publications with volume, pages, publisher, or other BibTeX fields beyond the fixed set will silently lose those fields if saved through the CRUD modal, because the extra-fields textarea is empty on open.
 **Recommended resolution:** When opening the edit modal for an existing publication, populate the `extra fields` textarea with all BibTeX fields that are not mapped to dedicated form inputs.
 
@@ -944,7 +944,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** US-S1, US-O2
-**Status:** OPEN - discovered 2026-04-22; recruiter-ops and returning user reviews found `SESSION_PHASE_LABELS_SHORT.refinement = 'Done'` (`web/utils.js:282`). Sessions in `refinement` phase are actively being refined, not necessarily complete. A session that reached the finalise step but was never submitted also shows "Done".
+**Status:** RESOLVED 2026-06-29 — Fixed as part of GAP-112: `SESSION_PHASE_LABELS_SHORT.refinement` changed from "Done" to "Finalise" (`web/utils.js:285`).
 **Recommended resolution:** Replace "Done" with "Finalise" or "Refine" for sessions in `refinement` phase without an `application_status`. For sessions with `application_status = 'sent'`, show "Sent". Consider a compound status badge.
 
 ## GAP-105: No Cross-Application Summary/Pipeline Dashboard View
@@ -1075,7 +1075,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-U9, US-X2
-**Status:** OPEN - discovered 2026-04-22; UX expert review found `showClarificationDialog()` (`web/layout-instruction.js:842–851`) uses `window.prompt()` (native browser dialog) to request clarification when a layout instruction is ambiguous. This breaks screen reader context and may be blocked by browser security policies.
+**Status:** RESOLVED 2026-06-29 — Replaced `window.prompt()` with an inline amber panel injected after the instruction input container. Panel includes: a `role="alert"` wrapper, the LLM question text, a labelled `<textarea>` pre-filled with the original instruction, Submit and Cancel buttons, Escape/Enter keyboard handling. Focus moves to the textarea on open. No `trapFocus()` needed (panel is inline, not modal). `web/layout-instruction.js:1109`.
 **Description:** `window.prompt()` is inconsistent with the application's custom modal infrastructure (`confirmDialog()`, `showAlertModal()`, `trapFocus()`). It cannot be styled and breaks the keyboard focus chain.
 **Recommended resolution:** Replace `showClarificationDialog()` with an inline clarification input rendered within the layout pane — a text input field that appears below the instruction textarea with a "Submit clarification" button, using the application's existing `trapFocus()` infrastructure.
 

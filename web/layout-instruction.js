@@ -1104,17 +1104,64 @@ function showConfirmationMessage(message) {
 }
 
 /**
- * Show inline clarification dialog when LLM needs more info.
+ * Show inline clarification panel when LLM needs more info.
+ * Replaces window.prompt() with an accessible inline form.
  */
 function showClarificationDialog(question, originalInstruction) {
-  const response = prompt(
-    `The system needs clarification:\n\n${question}\n\nYour original: "${originalInstruction}"\n\nPlease clarify:`,
-    originalInstruction
-  );
+  const inputEl = document.getElementById('instruction-input');
+  const container = inputEl ? inputEl.closest('div') || inputEl.parentNode : null;
+  if (!container) return;
 
-  if (response && response !== originalInstruction) {
-    submitLayoutInstruction(response);
-  }
+  const existingPanel = document.getElementById('layout-clarification-panel');
+  if (existingPanel) existingPanel.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'layout-clarification-panel';
+  panel.setAttribute('role', 'alert');
+  panel.style.cssText = 'background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:14px;margin-top:10px;';
+  panel.innerHTML = `
+    <p style="margin:0 0 8px;font-size:0.9em;color:#92400e;font-weight:600;">
+      <span aria-hidden="true">❓</span> Clarification needed
+    </p>
+    <p style="margin:0 0 10px;font-size:0.88em;color:#78350f;">${escapeHtml(question)}</p>
+    <label for="layout-clarification-input" style="font-size:0.85em;font-weight:600;color:#374151;display:block;margin-bottom:4px;">
+      Your clarification:
+    </label>
+    <textarea id="layout-clarification-input" rows="2"
+      style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #fde047;border-radius:4px;font-size:0.88em;resize:vertical;"
+      aria-label="Clarification for layout instruction">${escapeHtml(originalInstruction)}</textarea>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button id="layout-clarification-submit"
+        style="background:#d97706;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.85em;cursor:pointer;font-weight:600;">
+        Submit clarification
+      </button>
+      <button id="layout-clarification-cancel"
+        style="background:none;border:1px solid #d97706;color:#92400e;border-radius:4px;padding:6px 14px;font-size:0.85em;cursor:pointer;">
+        Cancel
+      </button>
+    </div>`;
+
+  container.appendChild(panel);
+
+  const clarInput  = panel.querySelector('#layout-clarification-input');
+  const submitBtn  = panel.querySelector('#layout-clarification-submit');
+  const cancelBtn  = panel.querySelector('#layout-clarification-cancel');
+
+  clarInput.focus();
+  clarInput.setSelectionRange(clarInput.value.length, clarInput.value.length);
+
+  submitBtn.addEventListener('click', () => {
+    const clarified = clarInput.value.trim();
+    panel.remove();
+    if (clarified && clarified !== originalInstruction) {
+      submitLayoutInstruction(clarified);
+    }
+  });
+  cancelBtn.addEventListener('click', () => panel.remove());
+  clarInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitBtn.click(); }
+    if (e.key === 'Escape') cancelBtn.click();
+  });
 }
 
 /**
