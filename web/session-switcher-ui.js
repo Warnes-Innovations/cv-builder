@@ -258,6 +258,7 @@ function _normalizeSessionsForTable(activeSessions, savedSessions) {
       name:               s.position_name || 'Untitled',
       phase:              s.phase         || '',
       applicationStatus:  s.application_status || '',
+      notes:              s.notes || '',
       lastModified:       s.timestamp  ? new Date(s.timestamp)  : null,
       created:            createdIso   ? new Date(createdIso)   : null,
       ownership:          null,
@@ -384,15 +385,33 @@ function _renderSessionTableRow(row) {
       `</span>`
     : '';
 
+  // Notes-edit inline widget (saved rows only)
+  const notesPreview = row.notes
+    ? `<div id="sm-notes-preview-${row.idx}" style="font-size:0.78em;color:#94a3b8;margin-top:2px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(row.notes)}">${escapeHtml(row.notes)}</div>`
+    : `<div id="sm-notes-preview-${row.idx}" style="display:none;font-size:0.78em;color:#94a3b8;margin-top:2px;"></div>`;
+  const notesEditWidget = row.type === 'saved'
+    ? `<span id="sm-notes-edit-${row.idx}" style="display:none;flex-direction:column;gap:4px;margin-top:4px;width:100%;">` +
+        `<textarea id="sm-notes-ta-${row.idx}" rows="2" maxlength="2000"` +
+          ` style="width:100%;font-size:12px;padding:4px;border:1px solid #3b82f6;border-radius:4px;resize:vertical;"` +
+          ` aria-label="Session notes" placeholder="e.g., Interviewed 2025-03-10, awaiting callback">${escapeHtml(row.notes || '')}</textarea>` +
+        `<span style="display:flex;gap:4px;">` +
+          `<button data-sm-action="submit-notes" data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}" class="sm-btn" title="Save notes" aria-label="Save notes">&#10003;</button>` +
+          `<button data-sm-action="cancel-notes" data-sm-idx="${row.idx}" class="sm-btn" title="Cancel" aria-label="Cancel notes edit">&#10005;</button>` +
+        `</span>` +
+      `</span>`
+    : '';
+
   if (row.type === 'saved') {
     actionHtml +=
       `<button data-sm-action="edit-status" data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}" class="sm-btn sm-btn-icon" title="Update application status" aria-label="Update application status"><i class="fa-solid fa-tag" aria-hidden="true"></i></button>`;
+    actionHtml +=
+      `<button data-sm-action="edit-notes" data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}" class="sm-btn sm-btn-icon" title="Edit notes" aria-label="Edit notes"><i class="fa-solid fa-note-sticky" aria-hidden="true"></i></button>`;
   }
 
   return `<div class="${rowClass}">` +
     `<span class="sm-td sm-td-name">${nameCell}</span>` +
     `<span class="sm-td sm-td-status">${statusPill}</span>` +
-    `<span class="sm-td sm-td-phase"><span id="sm-phase-${row.idx}">${phaseLabel}${appStatusBadge}</span>${statusEditWidget}</span>` +
+    `<span class="sm-td sm-td-phase"><span id="sm-phase-${row.idx}">${phaseLabel}${appStatusBadge}</span>${statusEditWidget}${notesPreview}${notesEditWidget}</span>` +
     `<span class="sm-td sm-td-date">${modLabel}</span>` +
     `<span class="sm-td sm-td-actions">${actionHtml}</span>` +
     `</div>`;
@@ -458,6 +477,9 @@ function _handleSessionModalClick(e) {
   else if (action === 'edit-status')   startSessionStatusEdit(idx);
   else if (action === 'submit-status') submitSessionStatusEdit(path, idx);
   else if (action === 'cancel-status') cancelSessionStatusEdit(idx);
+  else if (action === 'edit-notes')    startSessionNotesEdit(idx);
+  else if (action === 'submit-notes')  submitSessionNotesEdit(path, idx);
+  else if (action === 'cancel-notes')  cancelSessionNotesEdit(idx);
   else if (action === 'load')          loadSessionAndCloseModal(path);
   else if (action === 'delete')        _deleteSessionFromModal(path, e);
 }
@@ -630,6 +652,48 @@ async function submitSessionStatusEdit(path, idx) {
     }
   } catch (e) {
     if (typeof showToast === 'function') showToast(`Status update error: ${e.message}`, 'error');
+  }
+}
+
+function startSessionNotesEdit(idx) {
+  const editWidget = document.getElementById(`sm-notes-edit-${idx}`);
+  const preview    = document.getElementById(`sm-notes-preview-${idx}`);
+  if (preview)    preview.style.display    = 'none';
+  if (editWidget) editWidget.style.display = 'flex';
+  const ta = document.getElementById(`sm-notes-ta-${idx}`);
+  if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; }
+}
+
+function cancelSessionNotesEdit(idx) {
+  const editWidget = document.getElementById(`sm-notes-edit-${idx}`);
+  const preview    = document.getElementById(`sm-notes-preview-${idx}`);
+  if (editWidget) editWidget.style.display = 'none';
+  if (preview)    preview.style.display    = '';
+}
+
+async function submitSessionNotesEdit(path, idx) {
+  const ta = document.getElementById(`sm-notes-ta-${idx}`);
+  if (!ta) return;
+  const newNotes = ta.value;
+  try {
+    const res  = await fetch('/api/sessions/metadata', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, notes: newNotes }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const preview = document.getElementById(`sm-notes-preview-${idx}`);
+      if (preview) {
+        preview.textContent = newNotes;
+        preview.title       = newNotes;
+        preview.style.display = newNotes ? '' : 'none';
+      }
+      cancelSessionNotesEdit(idx);
+    } else {
+      if (typeof showToast === 'function') showToast(`Notes update failed: ${data.error || 'Unknown error'}`, 'error');
+    }
+  } catch (e) {
+    if (typeof showToast === 'function') showToast(`Notes update error: ${e.message}`, 'error');
   }
 }
 

@@ -165,6 +165,7 @@ class SessionItem:
     has_analysis: bool
     has_customizations: bool
     application_status: str = ''
+    notes: str = ''
 
 
 @dataclass
