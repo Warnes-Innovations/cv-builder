@@ -1617,3 +1617,14 @@ textarea[aria-invalid="true"]:focus {
 }
 .prior-clarifications-banner .pcb-text { flex: 1; color: #374151; }
 .prior-clarifications-banner .pcb-role { font-weight: 600; color: #5b21b6; }
+
+/* ── Reduced-motion accommodation (WCAG 2.3.3, GAP-199) ─────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

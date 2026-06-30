@@ -3844,6 +3844,7 @@ Include one entry per candidate. Do not omit any candidate."""
         # (Candidate name is rendered as a bold run, not a Heading style.)
         try:
             heading1 = styles['Heading 1']
+            heading1.font.name = 'Calibri'
             heading1.font.size = Pt(12)
             heading1.font.bold = True
             heading1.font.color.rgb = RGBColor(0, 0, 0)
@@ -3853,15 +3854,25 @@ Include one entry per candidate. Do not omit any candidate."""
         # Heading 2 — available for optional sub-sections if needed.
         try:
             heading2 = styles['Heading 2']
+            heading2.font.name = 'Calibri'
             heading2.font.size = Pt(11)
             heading2.font.bold = True
             heading2.font.color.rgb = RGBColor(0, 0, 0)
         except KeyError:
             pass
-            
+
+        # Default body paragraph style — sets ATS-safe Calibri across all body runs.
+        try:
+            normal = styles['Normal']
+            normal.font.name = 'Calibri'
+            normal.font.size = Pt(11)
+        except KeyError:
+            pass
+
         # Clean list style
         try:
             list_bullet = styles['List Bullet']
+            list_bullet.font.name = 'Calibri'
             list_bullet.font.size = Pt(10)
         except KeyError:
             pass

@@ -1627,7 +1627,7 @@ Write a compelling, personalised cover letter (3–4 paragraphs, {_cover_letter_
 Do NOT include a date, address block, or subject line before the opening line.
 Reference concrete skills and achievements from the candidate profile.
 {"Weave in the company-specific context above to show genuine knowledge of the organisation." if company_context else ""}
-Close professionally with a call to action.
+Close with a specific, confident request for an interview or a conversation about the role. Name the role explicitly. Avoid passive language such as "I look forward to hearing from you."
 """
 
             try:

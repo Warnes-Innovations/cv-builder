@@ -1885,7 +1885,7 @@ Workflow step pills use CSS class colours to distinguish active, completed, upco
 ## GAP-199: No `@media (prefers-reduced-motion: reduce)` on CSS Animations
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-29 cycle 10. Added `@media (prefers-reduced-motion: reduce)` block at end of `web/styles.css` that sets `animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important` for `*, *::before, *::after`. Covers all 7 animation types: `spin`, `stale-chip-pulse`, `browsing-pulse`, `dots`, `llm-spin`, `step-pulse`, `changed-item-pulse`.
 **Discovered:** 2026-06-29 (cycle 9) by accessibility-specialist.
 **Affected stories:** US-X (WCAG 2.3.3 Animation from Interactions)
 `web/styles.css` contains `browsing-pulse`, `stale-chip-pulse`, `changed-item-pulse`, `step-pulse`, `llm-spin`, `dots`, and spinner keyframe animations. None are wrapped in `@media (prefers-reduced-motion: reduce)`. Users with vestibular disorders or motion sensitivity receive no accommodation and will experience persistent animation throughout the workflow.

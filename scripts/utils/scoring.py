@@ -530,8 +530,8 @@ def compute_ats_score(
     hard_score = (hard_matched / hard_total * 100.0) if hard_total else 100.0
     soft_score = (soft_matched / soft_total * 100.0) if soft_total else 100.0
 
-    # Overall: 70% hard, 30% soft
-    overall = round(0.7 * hard_score + 0.3 * soft_score, 1)
+    # Overall: hard skills count twice as much as soft skills (2:1 ratio).
+    overall = round((2 * hard_score + soft_score) / 3, 1)
 
     # ── Section scores ────────────────────────────────────────────────────
     all_keywords = {k.lower() for k in required_skills + nice_to_have + ats_keywords}

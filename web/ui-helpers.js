@@ -28,7 +28,11 @@ function _setModalText(el, message) {
   });
 }
 
+// Saved before the alert modal opens so we can restore on close (GAP-197).
+let _alertPreviousFocus = null;
+
 function showAlertModal(title, message) {
+  _alertPreviousFocus = document.activeElement;
   document.getElementById('alert-modal-title').textContent = title;
   _setModalText(document.getElementById('alert-modal-message'), message);
   document.getElementById('alert-modal-overlay').style.display = 'block';
@@ -38,7 +42,10 @@ function showAlertModal(title, message) {
 
 function closeAlertModal() {
   document.getElementById('alert-modal-overlay').style.display = 'none';
-  if (typeof restoreFocus === 'function') restoreFocus();
+  if (_alertPreviousFocus && typeof _alertPreviousFocus.focus === 'function') {
+    _alertPreviousFocus.focus();
+    _alertPreviousFocus = null;
+  }
 }
 
 // ---------------------------------------------------------------------------
