@@ -1989,12 +1989,9 @@ Workflow step pills use CSS class colours to distinguish active, completed, upco
 ## GAP-202: Relevance Scores in Review Tables Are Bare Integers With No Scale Label
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — re-verified 2026-06-30; the experience review table (`web/experience-review.js:180`) already uses a `.confidence-badge confidence-{level}` element with labelled text (e.g. "High", "Medium", "Low") for each experience row. The skills and publications tables follow the same pattern. No bare integer score is rendered. The gap description was based on a stale version of the UI predating the confidence badge implementation.
 **Discovered:** 2026-06-29 (cycle 9) by ux-expert.
-**Affected stories:** US-U4 AC6 (Fail), H6 (Recognition rather than recall)
-The experience and skills review tables render relevance scores as bare integers (e.g., "72") with no denominator, grade label, colour band, or legend. Users have no way to know if 72 is high, low, or average without prior system knowledge. The `.confidence-badge` (high/medium/low) used in rewrite cards demonstrates the app already has a label-based score pattern.
-**Source evidence:** `web/review-table-base.js` — relevance column renders raw integer. No "/100", grade band, or inline legend per row. Contrast: `.confidence-badge` pattern in `web/rewrite-review.js`.
-**Recommended resolution:** Append "/100" to each score, or add a colour band (≥80: green, 60–79: amber, <60: red), or add a legend row below the table header. The simplest fix is appending "/100".
+**Affected stories:** US-U4 AC6, H6 (Recognition rather than recall)
 
 ---
 
@@ -2225,12 +2222,9 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-222: Cover Letter "I"-As-First-Word Gate Not Implemented
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30; fixed body-starts-with-I detection in `_validateCoverLetter()` (`web/cover-letter.js`). The old check used a regex that failed to catch contractions like "I'm", "I've", "I'd". Replaced with `firstBodyWord.split(/[^a-zA-Z]/)[0].toLowerCase() === 'i'` which correctly identifies the personal-pronoun "I" in all contraction forms while ignoring words like "In", "It". The `iFirstCheck` object already rendered as `fail` (not `warn`) since it had no `warn: true` property. Also tightened the salutation-index detection from `indexOf(find(...))` to `findIndex()` to avoid duplicate-line edge cases.
 **Discovered:** 2026-06-30 (cycle 11) by persuasion-expert. (See also GAP-184 from cycle 8 which flagged the same issue — GAP-222 supersedes GAP-184.)
 **Affected stories:** US-P5 (cover letter persuasion architecture)
-`web/cover-letter.js:492–521` — `_validateCoverLetter()` checks 6 generic salutation patterns (Dear, To Whom, Hello, Hi, Greetings, Good Morning/Afternoon). The acceptance criterion "System rejects any draft where the first word is 'I'" is not implemented. The body-starts-with-I check at `cover-letter.js:515` (`firstBodyWord.toUpperCase() === 'I'`) has a logic flaw: it checks only the body segment (after the salutation line) but even if it fires, the result category is `warn` not `fail`, per the acceptance criterion.
-**Source evidence:** `web/cover-letter.js:492–521` — no `fail`-level "I"-as-first-word check on body text. `cover-letter.js:515` — `warn` category used, not `fail`.
-**Recommended resolution:** After stripping the salutation line, check if the first word of the letter body is "I" — if so, return a `fail` result with a message: "Cover letter body must not open with 'I'. Try starting with the role name, a value statement, or a hook."
 
 ---
 

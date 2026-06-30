@@ -510,9 +510,14 @@ function _validateCoverLetter(text) {
 
   // ── Rule 1b: Body must not open with "I" ──────────────────────
   const allLines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const bodyLines = allLines.slice(allLines.indexOf(allLines.find(l => l.toLowerCase() === firstLine.toLowerCase()) || '') + 1);
+  const salutationIdx = allLines.findIndex(
+    l => l.toLowerCase() === firstLine.toLowerCase()
+  );
+  const bodyLines = allLines.slice(Math.max(0, salutationIdx + 1));
   const firstBodyWord = (bodyLines.find(l => l.trim()) || '').split(/\s+/)[0] || '';
-  const bodyStartsWithI = /^I[^a-zA-Z]/i.test(firstBodyWord + ' ') && firstBodyWord.toUpperCase() === 'I';
+  // Split on non-alpha so "I'm" → token "I", "In" → token "In"
+  const firstBodyToken = firstBodyWord.split(/[^a-zA-Z]/)[0] || '';
+  const bodyStartsWithI = firstBodyToken.toLowerCase() === 'i';
   const iFirstCheck = {
     pass: !bodyStartsWithI,
     label: 'Opening word',
