@@ -3222,7 +3222,7 @@ def test_cv_ats_score_route_enriches_customizations_from_session_state(
         assert (
             customizations_arg["selected_summary"] == "Targeted summary text"
         )
-        assert mock_score.call_args.kwargs == {"basis": "review_checkpoint"}
+        assert mock_score.call_args.kwargs.get("basis") == "review_checkpoint"
         assert manager.state["generation_state"]["ats_score"] == returned_score
         assert manager.save_calls == 1
 
@@ -3403,7 +3403,7 @@ def test_cv_ats_score_route_falls_back_to_achievement_edits_when_needed(
                 "section": "experience",
             },
         ]
-        assert mock_score.call_args.kwargs == {"basis": "post_generation"}
+        assert mock_score.call_args.kwargs.get("basis") == "post_generation"
         assert manager.state["generation_state"]["ats_score"] == returned_score
         assert manager.save_calls == 1
 

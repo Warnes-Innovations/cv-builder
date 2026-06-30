@@ -1738,7 +1738,10 @@ def create_blueprint(deps):
             #   notes: "Live ATS scoring route materializes the selected summary into generation customizations."
             pass
 
-        score = _compute_ats_score(job_analysis, customizations, basis=basis)
+        score = _compute_ats_score(
+            job_analysis, customizations, basis=basis,
+            synonym_map=getattr(conv.orchestrator, '_expansion_index', None),
+        )
         gen = conv.state.setdefault("generation_state", {})
         gen["ats_score"] = score
         conv._save_session()

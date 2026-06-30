@@ -346,7 +346,8 @@ async function populateDownloadTab(cvData) {
   }
 
   const files = _collectDownloadableFiles(cvData);
-  let html = '<h1>⬇️ Download Generated Files</h1>';
+  let html = '<h1>⬇️ File Review</h1>';
+  html += '<p style="font-size:0.83em;color:#94a3b8;margin-bottom:16px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0;">✅ <em>This is the <strong>completeness check</strong> step — ATS validation runs here and you can archive the application. To download files immediately after generation, use the <strong>Generated Files</strong> tab.</em></p>';
   html += _renderValidationSummary(checks, summary, pageCount, atsError);
 
   const overlapWarnings = (cvData.date_overlap_warnings || []);

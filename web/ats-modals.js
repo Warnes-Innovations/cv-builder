@@ -280,9 +280,19 @@ function _renderAnalysisIntoEl(el, result) {
     return;
   }
 
-  const req = result.required_skills || [];
-  const pref = result.preferred_skills || result.nice_to_have || [];
-  const keywords = result.ats_keywords || [];
+  // Deduplicate lists: case-insensitive, keep first occurrence of each normalised form.
+  const _dedup = (arr) => {
+    const seen = new Set();
+    return (arr || []).filter(item => {
+      const key = String(typeof item === 'string' ? item : item.keyword || item.term || '').trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+  const req = _dedup(result.required_skills);
+  const pref = _dedup(result.preferred_skills || result.nice_to_have);
+  const keywords = _dedup(result.ats_keywords);
   const culture = result.culture_indicators || [];
   const mustHave = result.must_have_requirements || [];
   const missing = result.missing_required || [];

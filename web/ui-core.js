@@ -26,11 +26,11 @@ import {
 // Accessibility: Focus Management for Modals
 // ─────────────────────────────────────────────────────────────────────────
 
-/** Stores the element that opened the current modal (for focus restoration on close). */
-let _focusedElementBeforeModal = null;
+/** Stack of elements that opened each modal (supports nested modals). */
+const _focusStack = [];
 
-/** Stores the current keydown listener for focus trap (to enable cleanup). */
-let _currentFocusTrapListener = null;
+/** Stack of focus-trap listeners (one per open modal). */
+const _focusTrapStack = [];
 let _settingsData = null;
 const RETRY_POLICY_STORAGE_KEY = 'cv-builder-retry-policy';
 
@@ -240,7 +240,7 @@ async function openSettingsModal() {
   const overlay = document.getElementById('settings-modal-overlay');
   if (!overlay) return;
   overlay.style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  _focusStack.push(document.activeElement);
   setInitialFocus('settings-modal-overlay');
   trapFocus('settings-modal-overlay');
   await reloadSettingsModal();
@@ -295,31 +295,24 @@ function trapFocus(modalId) {
   const modal = document.getElementById(modalId);
   if (!modal) return;
 
-  // Remove any previous trap listener
-  if (_currentFocusTrapListener) {
-    document.removeEventListener('keydown', _currentFocusTrapListener);
-  }
-
   const focusableElements = getFocusableElements(modal);
   if (focusableElements.length === 0) return;
 
   const firstElement = focusableElements[0];
   const lastElement = focusableElements[focusableElements.length - 1];
 
-  _currentFocusTrapListener = (e) => {
+  const listener = (e) => {
     if (e.key !== 'Tab') return;
 
     const isShift = e.shiftKey;
     const activeEl = document.activeElement;
 
     if (isShift) {
-      // Shift+Tab from first element → focus last element
       if (activeEl === firstElement) {
         e.preventDefault();
         lastElement.focus();
       }
     } else {
-      // Tab from last element → focus first element
       if (activeEl === lastElement) {
         e.preventDefault();
         firstElement.focus();
@@ -327,23 +320,19 @@ function trapFocus(modalId) {
     }
   };
 
-  document.addEventListener('keydown', _currentFocusTrapListener);
+  document.addEventListener('keydown', listener);
+  _focusTrapStack.push(listener);
 }
 
 /**
  * Restore focus to the element that opened the modal.
  */
 function restoreFocus() {
-  if (_focusedElementBeforeModal && typeof _focusedElementBeforeModal.focus === 'function') {
-    _focusedElementBeforeModal.focus();
-  }
-  _focusedElementBeforeModal = null;
+  const el = _focusStack.pop();
+  if (el && typeof el.focus === 'function') el.focus();
 
-  // Clean up focus trap listener
-  if (_currentFocusTrapListener) {
-    document.removeEventListener('keydown', _currentFocusTrapListener);
-    _currentFocusTrapListener = null;
-  }
+  const listener = _focusTrapStack.pop();
+  if (listener) document.removeEventListener('keydown', listener);
 }
 
 /** Maps each workflow stage (top bar) to the tabs shown in the second nav bar. */
@@ -724,7 +713,7 @@ function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) {
     // Save focus before opening modal
-    _focusedElementBeforeModal = document.activeElement;
+    _focusStack.push(document.activeElement);
 
     modal.classList.add('visible');
     modal.setAttribute('aria-hidden', 'false');
@@ -1517,7 +1506,7 @@ async function openModelModal() {
   _setModelWizardStep(1);
   _hideModelWizardBusy();
   overlay.style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  _focusStack.push(document.activeElement);
   setInitialFocus('model-modal-overlay');
   trapFocus('model-modal-overlay');
 }

@@ -10,7 +10,7 @@ Relevance scoring utilities for content selection.
 
 import re
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Any
 from collections import Counter
 
 
@@ -346,6 +346,7 @@ def compute_ats_score(
     job_analysis: Dict,
     customizations: Optional[Dict],
     basis: str = "review_checkpoint",
+    synonym_map: Optional[Dict[str, str]] = None,
 ) -> Dict:
     """Compute an ATS match score for the current session state.
 
@@ -366,6 +367,8 @@ def compute_ats_score(
         customizations: The customizations dict (approved skills, rewrites, etc.)
                         May be None if not yet available.
         basis: One of "analysis", "review_checkpoint", "post_generation".
+        synonym_map: Optional expansion_index (alias → canonical) from CVOrchestrator.
+                     When supplied, synonymous forms are matched and labelled match_type='synonym'.
     """
     required_skills: List[str] = job_analysis.get("required_skills", [])
     nice_to_have: List[str] = job_analysis.get("nice_to_have_skills", [])
@@ -440,12 +443,26 @@ def compute_ats_score(
                 candidate_terms.add(kw)
                 section_matches["education"].add(kw)
 
-    def _match_status(keyword: str) -> Tuple[str, List[str]]:
-        """Return (status, sections_list) where status is 'matched', 'partial', or 'missing'.
+    # Pre-compute synonym sets: form → frozenset of all synonymous forms
+    # synonym_map is expansion_index: {any_form: canonical}. Two forms are synonymous when
+    # they share the same canonical.
+    _synonym_forms: Dict[str, FrozenSet[str]] = {}
+    if synonym_map:
+        _canonical_to_forms: Dict[str, Set[str]] = {}
+        for form, canonical in synonym_map.items():
+            _canonical_to_forms.setdefault(canonical, set()).add(form)
+        for form, canonical in synonym_map.items():
+            _synonym_forms[form] = frozenset(_canonical_to_forms[canonical])
 
-        - 'matched'  — whole keyword string is present as a term or substring
+    def _match_status(keyword: str) -> Tuple[str, List[str], bool]:
+        """Return (status, sections_list, via_synonym).
+
+        status values:
+        - 'matched'  — whole keyword string (or a synonym) is present as a term or substring
         - 'partial'  — at least one token of a multi-word keyword is present
         - 'missing'  — no match at all
+
+        via_synonym is True only when the match was found through a synonym, not the keyword itself.
         """
         kw_lower = keyword.lower().strip()
         kw_words = [w for w in kw_lower.split() if len(w) > 2]
@@ -469,61 +486,68 @@ def compute_ats_score(
                 partial_in.append(sec)
 
         if matched_in:
-            return "matched", list(dict.fromkeys(matched_in))
+            return "matched", list(dict.fromkeys(matched_in)), False
         if partial_in:
-            return "partial", list(dict.fromkeys(partial_in))
-        return "missing", []
+            return "partial", list(dict.fromkeys(partial_in)), False
+
+        # No direct match — try synonyms
+        synonyms = _synonym_forms.get(kw_lower, frozenset())
+        syn_matched_in: List[str] = []
+        for syn in synonyms:
+            if syn == kw_lower:
+                continue
+            for sec, terms in section_matches.items():
+                if syn in terms or any(syn in term or term in syn for term in terms):
+                    syn_matched_in.append(sec)
+        if syn_matched_in:
+            return "matched", list(dict.fromkeys(syn_matched_in)), True
+
+        return "missing", [], False
 
     # ── Build keyword_status list ──────────────────────────────────────────
     keyword_status: List[Dict] = []
     hard_matched = hard_total = 0
     soft_matched = soft_total = 0
 
-    # Hard requirements
-    for kw in required_skills:
-        status, sections = _match_status(kw)
+    def _make_entry(kw: str, kw_type: str) -> Dict[str, Any]:
+        status, sections, via_synonym = _match_status(kw)
         entry: Dict[str, Any] = {
             "keyword": kw,
-            "type": "hard",
+            "type": kw_type,
             "status": status,
             "matched_in_sections": sections,
         }
-        if status != "missing":
-            entry["match_type"] = "exact" if status == "matched" else "partial"
+        if status == "missing":
+            return entry
+        if via_synonym:
+            entry["match_type"] = "synonym"
+        elif status == "matched":
+            entry["match_type"] = "exact"
+        else:
+            entry["match_type"] = "partial"
+        return entry
+
+    # Hard requirements
+    for kw in required_skills:
+        entry = _make_entry(kw, "hard")
         keyword_status.append(entry)
         hard_total += 1
-        if status in ("matched", "partial"):
+        if entry["status"] in ("matched", "partial"):
             hard_matched += 1
 
     # Soft / nice-to-have
     for kw in nice_to_have:
-        status, sections = _match_status(kw)
-        entry = {
-            "keyword": kw,
-            "type": "soft",
-            "status": status,
-            "matched_in_sections": sections,
-        }
-        if status != "missing":
-            entry["match_type"] = "exact" if status == "matched" else "partial"
+        entry = _make_entry(kw, "soft")
         keyword_status.append(entry)
         soft_total += 1
-        if status in ("matched", "partial"):
+        if entry["status"] in ("matched", "partial"):
             soft_matched += 1
 
     # Bonus ATS keywords (not already listed)
     listed_kws = {k.lower() for k in required_skills + nice_to_have}
     for kw in ats_keywords:
         if kw.lower() not in listed_kws:
-            status, sections = _match_status(kw)
-            entry = {
-                "keyword": kw,
-                "type": "bonus",
-                "status": status,
-                "matched_in_sections": sections,
-            }
-            if status != "missing":
-                entry["match_type"] = "exact" if status == "matched" else "partial"
+            entry = _make_entry(kw, "bonus")
             keyword_status.append(entry)
 
     # ── Compute sub-scores ────────────────────────────────────────────────
