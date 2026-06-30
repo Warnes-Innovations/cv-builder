@@ -1564,6 +1564,18 @@ def create_blueprint(deps):
                 if company_context else ''
             )
 
+            # Inject up to 5 approved rewrites so the LLM can echo tailored phrasing.
+            approved_rewrites = conversation.state.get('approved_rewrites') or []
+            approved_bullets = []
+            for rw in approved_rewrites[:5]:
+                bullet = (rw.get('proposed') or rw.get('original') or '').strip()
+                if bullet:
+                    approved_bullets.append(f'  • {bullet}')
+            approved_rewrites_block = (
+                '\nTAILORED CV BULLETS (approved by candidate — reference at least one in the letter):\n'
+                + '\n'.join(approved_bullets) + '\n'
+            ) if approved_bullets else ''
+
             prompt = f"""\
 You are a professional career coach writing a tailored cover letter.
 
@@ -1580,6 +1592,7 @@ CANDIDATE PROFILE
   Top skills: {top_skills}
   Key achievements:
 {top_ach_titles}
+{approved_rewrites_block}
 
 {answers_snippet}
 {reuse_instruction}

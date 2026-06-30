@@ -46,6 +46,9 @@ function _persistDecisions() {
   try { localStorage.setItem(key, JSON.stringify(rewriteDecisions)); } catch (_) {}
 }
 
+// Fallback audit from the last /api/rewrites response — used for cold-restore (GAP-186).
+let _backendRewriteAudit = [];
+
 function _restoreDecisions() {
   const key = _decisionsKey();
   if (!key) return;
@@ -54,8 +57,26 @@ function _restoreDecisions() {
     if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
       Object.assign(rewriteDecisions, saved);
       syncRewriteGlobals();
+      return;
     }
   } catch (_) {}
+
+  // Cold-restore fallback: seed decisions from backend rewrite_audit when
+  // localStorage has nothing (different device, incognito, cleared storage).
+  if (_backendRewriteAudit.length > 0) {
+    for (const entry of _backendRewriteAudit) {
+      const id = entry.id;
+      if (!id || !entry.outcome) continue;
+      rewriteDecisions[id] = {
+        outcome: entry.outcome,
+        final_text: entry.outcome === 'edit' ? (entry.final ?? null) : null,
+      };
+    }
+    if (Object.keys(rewriteDecisions).length > 0) {
+      syncRewriteGlobals();
+      _persistDecisions();
+    }
+  }
 }
 
 function _clearPersistedDecisions() {
@@ -78,6 +99,7 @@ async function fetchAndReviewRewrites() {
     }
     const rewrites = data.rewrites || [];
     const warnings = data.persuasion_warnings || [];  // Phase 10
+    _backendRewriteAudit = data.rewrite_audit || [];
 
     // Show persuasion warnings first (Phase 10)
     persuasionWarningsAcknowledged = warnings.length === 0;  // Mark acknowledged if no warnings

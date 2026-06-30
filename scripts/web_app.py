@@ -184,6 +184,7 @@ class RewritesResponse:
     rewrites: List[Any]
     persuasion_warnings: List[Any]
     phase: str
+    rewrite_audit: List[Any]
 
 
 @dataclass

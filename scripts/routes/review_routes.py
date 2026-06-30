@@ -1183,6 +1183,7 @@ def create_blueprint(deps):
                         [],
                     ),
                     phase=Phase.REWRITE_REVIEW,
+                    rewrite_audit=conversation.state.get('rewrite_audit') or [],
                 )))
 
             job_analysis = conversation.state.get('job_analysis')
@@ -1247,6 +1248,7 @@ def create_blueprint(deps):
                     [],
                 ),
                 phase=phase,
+                rewrite_audit=conversation.state.get('rewrite_audit') or [],
             )))
 
         except Exception:

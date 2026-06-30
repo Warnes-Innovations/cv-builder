@@ -1705,7 +1705,8 @@ Four input elements use `outline: none` with `box-shadow` as the sole focus indi
 ## GAP-186: Rewrite Decisions Not Cold-Restored from Backend `approved_rewrites`
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by returning-user.
+**Status:** RESOLVED 2026-06-29 — Three-layer fix: (1) `RewritesResponse` dataclass (`scripts/web_app.py`) gained `rewrite_audit: List[Any]` field; (2) both return paths in `/api/rewrites` (`scripts/routes/review_routes.py`) now include `rewrite_audit=conversation.state.get('rewrite_audit') or []`; (3) `web/rewrite-review.js` adds module-level `_backendRewriteAudit`, stores audit from `fetchAndReviewRewrites()` response, and `_restoreDecisions()` falls back to cold-restore from the audit when localStorage has no entry for the session.
+**Discovered:** 2026-06-29 (cycle 8) by returning-user.
 **Affected stories:** US-S2, US-S3
 `_persistDecisions()` / `_restoreDecisions()` (`web/rewrite-review.js:43–65`) round-trip rewrite card state via `localStorage`. This works for same-device / same-browser returns within the storage TTL. However, on cold load (different device, incognito, localStorage cleared, or after 24h), the backend `state['approved_rewrites']` is not used to re-seed the rewrite panel UI. Users who return to a session from a different device or after a storage reset lose all their previously recorded rewrite decisions from the UI, even though the decisions persist in the backend session state.
 **Recommended resolution:** On rewrite panel render, check `approved_rewrites` in the session state returned by `/api/status`. For each proposal already present in `approved_rewrites`, set the corresponding card's decision radio to the stored outcome before rendering. This should be a fallback only when localStorage has no entry for this session.
@@ -1729,7 +1730,8 @@ Role level is available from `job_analysis.role_level` / `job_analysis.domain` i
 ## GAP-188: `approved_rewrites` Not Injected Into Cover Letter LLM Prompt
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by hiring-manager.
+**Status:** RESOLVED 2026-06-29 — In `scripts/routes/master_data_routes.py`, added `approved_rewrites_block` construction after `company_context_block`. Reads `conversation.state.get('approved_rewrites') or []`, formats up to 5 approved bullets as a `TAILORED CV BULLETS` block, and injects it into the cover letter generation f-string prompt immediately after `top_ach_titles`. LLM is instructed to "reference at least one" approved bullet.
+**Discovered:** 2026-06-29 (cycle 8) by hiring-manager.
 **Affected stories:** US-M5, US-M6
 `scripts/routes/master_data_routes.py:1555–1581` (cover letter generation prompt) and `scripts/headless_session.py:427–430` (headless path) do not include `approved_rewrites` or tailored achievement bullets from the session. The LLM generates cover letter content without access to the specific phrases, metrics, or accomplishments the user has already approved for their customised CV. This means cover letter content may contradict or fail to echo the tailored CV narrative.
 **Recommended resolution:** In the cover letter generation route, read `session_state.get('approved_rewrites', [])` and format the top 3–5 approved rewrites as a `TAILORED ACHIEVEMENTS` block in the system prompt. Instruct the LLM to echo at least one specific achievement or phrase from this block in the cover letter body.
