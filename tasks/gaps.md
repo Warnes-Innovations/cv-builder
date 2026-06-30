@@ -2649,22 +2649,16 @@ Generated documents (CV, cover letter, screening answers) may use acronyms (e.g.
 ## GAP-258: Decorative ATS Legend Dots Lack aria-hidden
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — re-verified 2026-06-30; `web/ats-modals.js:205–207` already has `aria-hidden="true"` on all three `●` spans. The gap description was based on a stale pre-implementation snapshot.
 **Discovered:** 2026-06-30 (cycle 14) by accessibility-specialist.
 **Affected stories:** US-X1 (keyboard and screen-reader navigation)
-The three colour-coded `●` characters in the ATS grade legend (`ats-modals.js:204–207`) are rendered as plain Unicode bullet characters. Screen readers announce them literally (e.g., "black circle") before reading the adjacent text, adding noise without meaning.
-**Source evidence:** `web/ats-modals.js:204–207` — `<span style="color:#10b981;">●</span>`, `<span style="color:#f59e0b;">●</span>`, `<span style="color:#ef4444;">●</span>` — none have `aria-hidden="true"`.
-**Recommended resolution:** Add `aria-hidden="true"` to each `<span>` containing `●`.
 
 ## GAP-259: Finalise Notes Character Counter Has No aria-live
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — re-verified 2026-06-30; `web/finalise.js:108` already has `aria-live="polite"` on `#finalise-notes-counter`. The gap description was based on a stale pre-implementation snapshot.
 **Discovered:** 2026-06-30 (cycle 14) by accessibility-specialist.
 **Affected stories:** US-X1, US-X3 (form feedback for screen readers)
-The `#finalise-notes-counter` `<div>` updates dynamically as the user types in the notes textarea, but has no `aria-live` attribute. Screen reader users do not hear the character count change, making the counter invisible to them.
-**Source evidence:** `web/finalise.js` — `<div id="finalise-notes-counter" style="...">0 / 2000</div>` — no `aria-live` or `role="status"` attribute.
-**Recommended resolution:** Add `aria-live="polite"` (or `role="status"`) to `#finalise-notes-counter`.
 
 ## GAP-260: "Download" Step Pill and "File Review" Tab Use Different Names for Same Step
 
@@ -2760,9 +2754,6 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-270: CDN Font Dependency for WeasyPrint — No Bundled Local Fallback
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30; added `scripts/setup_fonts.py` (one-time downloader) and `scripts/utils/wp_render.py` (standalone WeasyPrint subprocess). `cv_orchestrator.py:_try_weasyprint()` now calls `wp_render.py` which substitutes the Google Fonts CDN `<link>` with inline `@font-face` CSS using `file://` URIs to local WOFF2 files in `web/fonts/` when that directory exists. Falls back to CDN transparently when fonts are not pre-downloaded.
 **Discovered:** 2026-06-30 (cycle 14) by hiring-manager.
 **Affected stories:** US-M2, US-H1 (generated materials quality and portability)
-The DOCX/PDF generation pipeline uses fonts loaded from Google Fonts CDN at WeasyPrint render time. In offline, air-gapped, or container-isolated deployments (including Docker), this request will fail silently, causing the generated PDF to fall back to system fonts that do not match the intended design and may have different metrics (causing reflow and layout shifts).
-**Source evidence:** `scripts/utils/cv_orchestrator.py` — WeasyPrint invocation; CSS template references to Google Fonts. Hiring Manager persona flagged this as a deployment risk.
-**Recommended resolution:** Bundle the required fonts (Google Noto or similar open-license fonts) under `web/fonts/` and update the CSS template to use local font paths. The `scripts/setup_languagetool.py` approach (one-time download) could be extended to pre-download fonts.

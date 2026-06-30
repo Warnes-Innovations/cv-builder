@@ -1336,12 +1336,18 @@ class CVOrchestrator:
             raise PDFRendererNotFoundError('Chrome/Chromium not found')
 
         def _try_weasyprint() -> Dict[str, str]:
-            wp_script = (
-                "import sys, weasyprint; "
-                "weasyprint.HTML(filename=sys.argv[1]).write_pdf(sys.argv[2])"
+            wp_render = (
+                Path(__file__).parent / 'wp_render.py'
             )
+            fonts_dir = Path(__file__).parent.parent.parent / 'web' / 'fonts'
+            cmd = [
+                sys.executable, str(wp_render),
+                str(html_file), str(pdf_output),
+            ]
+            if fonts_dir.is_dir():
+                cmd.append(str(fonts_dir))
             wp_result = subprocess.run(
-                [sys.executable, '-c', wp_script, str(html_file), str(pdf_output)],
+                cmd,
                 capture_output=True,
                 timeout=120,
             )

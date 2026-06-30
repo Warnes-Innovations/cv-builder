@@ -991,7 +991,8 @@ class TestConvertHtmlToPdf(unittest.TestCase):
         html_path.write_text("<html><body>hi</body></html>", encoding="utf-8")
 
         def _fake_run(command, **_kwargs):
-            Path(command[4]).write_bytes(b"%PDF-1.4\n%%EOF\n")
+            # command: [python, wp_render.py, html_file, pdf_output, fonts_dir?]
+            Path(command[3]).write_bytes(b"%PDF-1.4\n%%EOF\n")
             return MagicMock(returncode=0, stderr=b"")
 
         with patch(
@@ -1023,8 +1024,13 @@ class TestConvertHtmlToPdf(unittest.TestCase):
                 Path(pdf_target).write_bytes(b"%PDF-1.4\n%%EOF\n")
                 return MagicMock(returncode=0)
 
-            if len(command) >= 5 and command[0] == sys.executable and command[1] == "-c":
-                Path(command[4]).write_bytes(b"%PDF-1.4\n%%EOF\n")
+            # WeasyPrint: [python, wp_render.py, html_file, pdf_output, fonts_dir?]
+            if (
+                len(command) >= 4
+                and command[0] == sys.executable
+                and 'wp_render' in command[1]
+            ):
+                Path(command[3]).write_bytes(b"%PDF-1.4\n%%EOF\n")
                 return MagicMock(returncode=0, stderr=b"")
 
             raise AssertionError(f"Unexpected subprocess command: {command!r}")
