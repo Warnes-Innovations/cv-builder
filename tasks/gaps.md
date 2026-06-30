@@ -2128,7 +2128,7 @@ After a user switches the active LLM provider via the model wizard, the non-conf
 ## GAP-218: ATS Validator Falsely Rejects "Selected Publications" Heading
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — cycle 12
 **Discovered:** 2026-06-30 (cycle 11) by hiring-manager.
 **Affected stories:** US-M7, US-H2 (ATS section recognition)
 `scripts/utils/cv_orchestrator.py:4882–4889` — the `validate_ats_report` check `docx_standard_headings` asserts the publications section heading must be exactly `"Publications"` and marks `"Selected Publications"` as a **fail**. However, `cv_orchestrator.py:4592` and `templates/cv-template.html` both correctly use `"Selected Publications"` when a subset of publications is shown. The validator check is therefore wrong: it fires as a false failure on every curated CV.
@@ -2140,7 +2140,7 @@ After a user switches the active LLM provider via the model wizard, the non-conf
 ## GAP-219: `openJobAnalysisModal()` Has Zero Focus Management
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — cycle 12
 **Discovered:** 2026-06-30 (cycle 11) by accessibility-specialist.
 **Affected stories:** US-X2 (WCAG 2.1.2 No Keyboard Trap, 2.4.3 Focus Order)
 `bundle.js:6686–6700` — `openJobAnalysisModal()` opens the job analysis modal without: (1) saving the currently focused element, (2) calling `setInitialFocus()`, (3) calling `trapFocus()`, or (4) calling `restoreFocus()` on close. This is inconsistent with every other major modal in the application. Keyboard users cannot navigate into the modal naturally and focus leaks to background content.
@@ -2212,7 +2212,7 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-225: Experience Relevance Ordering Overridden by Reverse-Chronological Sort
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — cycle 12
 **Discovered:** 2026-06-30 (cycle 11) by resume-expert.
 **Affected stories:** US-R2 (publication/experience selection quality)
 `scripts/utils/cv_orchestrator.py:3168` — unconditionally overwrites any relevance-scored ordering of experience entries with a reverse-chronological sort. `rank_publications_for_job` produces job-relevance ordering (1–10 scores), but this sort is discarded. A highly relevant older role lands behind a less-relevant current role in the generated CV, contradicting the story requirement that "most relevant experiences appear prominently."

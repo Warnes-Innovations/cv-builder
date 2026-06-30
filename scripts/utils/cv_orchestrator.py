@@ -3141,11 +3141,8 @@ Include one entry per candidate. Do not omit any candidate."""
 
             scored_experiences.append((exp, llm_score + keyword_score + semantic_score))
 
-        scored_experiences.sort(key=lambda x: x[1], reverse=True)
-        selected_experiences = [exp for exp, _ in scored_experiences]
-
-        # Sort experiences in reverse chronological order by end date.
-        # "Current", "Present", "", or None are treated as today (sorts first).
+        # Hybrid sort: relevance-primary, recency-secondary within equal scores.
+        # "Current", "Present", "", or None are treated as today (float to top among ties).
         _today = _date.today()
 
         def _parse_end_date(exp: Dict) -> _date:
@@ -3163,9 +3160,10 @@ Include one entry per candidate. Do not omit any candidate."""
                 return _date(int(m.group(1)), 12, 31)
             return _date.min
 
-        # Only apply default chronological sort when the user hasn't manually reordered.
-        # The user-override block below will replace this ordering if present.
-        selected_experiences = sorted(selected_experiences, key=_parse_end_date, reverse=True)
+        scored_experiences.sort(
+            key=lambda x: (-x[1], -_parse_end_date(x[0]).toordinal()),
+        )
+        selected_experiences = [exp for exp, _ in scored_experiences]
 
         # Override: if the user has explicitly reordered experience rows via the UI,
         # apply their ordering stored in customizations['experience_row_order']
@@ -4879,14 +4877,16 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 _chk('docx_publications_heading', 'Publications heading text', 'docx', 'pass',
                      'No publications section (optional)')
             else:
+                _allowed = {'Publications', 'Selected Publications'}
                 wrong = [p.text.strip() for p in pub_headings
-                         if p.text.strip() != 'Publications']
+                         if p.text.strip() not in _allowed]
                 if not wrong:
                     _chk('docx_publications_heading', 'Publications heading text', 'docx',
-                         'pass', 'Heading reads exactly "Publications"')
+                         'pass', 'Heading is "Publications" or "Selected Publications"')
                 else:
                     _chk('docx_publications_heading', 'Publications heading text', 'docx',
-                         'fail', f'Heading "{wrong[0]}" must be exactly "Publications"')
+                         'fail',
+                         f'Heading "{wrong[0]}" must be "Publications" or "Selected Publications"')
 
         except Exception as exc:
             for name, label in DOCX_CHECKS:

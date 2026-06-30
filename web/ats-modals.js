@@ -225,8 +225,20 @@ function _renderAtsReport(score) {
 /**
  * Open the Job Analysis modal. Reuses tabData.analysis if available.
  */
+let _jobAnalysisPreviousFocus = null;
+
+function _jobAnalysisEscapeHandler(e) {
+  if (e.key === 'Escape') closeJobAnalysisModal();
+}
+
 function openJobAnalysisModal() {
-  document.getElementById('job-analysis-modal-overlay').style.display = 'flex';
+  _jobAnalysisPreviousFocus = document.activeElement;
+  const overlay = document.getElementById('job-analysis-modal-overlay');
+  overlay.style.display = 'flex';
+  document.addEventListener('keydown', _jobAnalysisEscapeHandler);
+  const closeBtn = overlay.querySelector('.modal-footer .action-btn');
+  if (closeBtn) closeBtn.focus();
+  if (typeof trapFocus === 'function') trapFocus('job-analysis-modal-overlay');
   const body = document.getElementById('job-analysis-modal-body');
 
   const analysis = stateManager.getTabData('analysis');
@@ -245,6 +257,12 @@ function openJobAnalysisModal() {
 
 function closeJobAnalysisModal() {
   document.getElementById('job-analysis-modal-overlay').style.display = 'none';
+  document.removeEventListener('keydown', _jobAnalysisEscapeHandler);
+  if (typeof restoreFocus === 'function') restoreFocus();
+  if (_jobAnalysisPreviousFocus && typeof _jobAnalysisPreviousFocus.focus === 'function') {
+    _jobAnalysisPreviousFocus.focus();
+  }
+  _jobAnalysisPreviousFocus = null;
 }
 
 /**
