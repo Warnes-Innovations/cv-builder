@@ -159,7 +159,7 @@ const _NON_BLOCKING_CHECKS = new Set([
   'html_jsonld_knows_about',     // advisory: JSON-LD skills population
 ]);
 
-function _renderDownloadGrid(files, checks, summary, generatedAt = null) {
+function _renderDownloadGrid(files, checks, summary, generatedAt = null, generationRun = null) {
   const keywordFail = checks.some((check) => check.name === 'ats_keyword_presence' && check.status === 'fail');
   const isCriticalFail = (check) => check.status === 'fail' && !_NON_BLOCKING_CHECKS.has(check.name);
   const blockDocx = keywordFail || checks.some((check) => check.format === 'docx' && isCriticalFail(check));
@@ -170,10 +170,13 @@ function _renderDownloadGrid(files, checks, summary, generatedAt = null) {
   if (generatedAt) {
     try {
       const d = new Date(generatedAt);
-      generatedLabel = d.toLocaleString('en-US', {
+      const dateStr = d.toLocaleString('en-US', {
         month: 'short', day: 'numeric', year: 'numeric',
         hour: 'numeric', minute: '2-digit',
       });
+      generatedLabel = (generationRun && generationRun > 1)
+        ? `Run #${generationRun} — ${dateStr}`
+        : dateStr;
     } catch (_) { /* ignore */ }
   }
 
@@ -362,7 +365,8 @@ async function populateDownloadTab(cvData) {
   }
 
   const generatedAt = cvData.metadata?.generation_date ?? null;
-  html += _renderDownloadGrid(files, checks, summary, generatedAt);
+  const generationRun = cvData.metadata?.generation_run ?? null;
+  html += _renderDownloadGrid(files, checks, summary, generatedAt, generationRun);
 
   if (cvData.output_dir) {
     html += `<div style="margin-top:20px;padding:12px;background:#f1f5f9;border-radius:6px;font-size:14px;color:#64748b;">

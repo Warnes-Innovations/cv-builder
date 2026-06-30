@@ -1019,19 +1019,23 @@ function renderInstructionHistory() {
   const historyList = document.getElementById('instruction-history');
   if (!historyList) return;
 
+  const instructions = window.layoutInstructions || [];
   historyList.innerHTML = '';
-  (window.layoutInstructions || []).forEach((instruction, index) => {
+  const lastIdx = instructions.length - 1;
+  instructions.forEach((instruction, index) => {
     const entry = document.createElement('div');
     entry.className = 'instruction-history-entry';
+    const isLast = index === lastIdx;
+    const undoHtml = isLast
+      ? `<button class="action-btn-sm" onclick="undoInstruction(${index})">↩ Undo</button>`
+      : `<button class="action-btn-sm" disabled title="Undo is sequential — undo the most recent instruction first"
+           style="opacity:0.3;cursor:not-allowed;">↩ Undo</button>`;
     entry.innerHTML = `
       <div class="instruction-time">${instruction.timestamp || ''}</div>
       <div class="instruction-text">${escapeHtml(instruction.instruction_text || '')}</div>
       <div class="instruction-summary"><em>${escapeHtml(instruction.change_summary || '')}</em></div>
-      <button class="action-btn-sm" onclick="undoInstruction(${index})">
-        Undo
-      </button>
+      ${undoHtml}
     `;
-
     historyList.appendChild(entry);
   });
 

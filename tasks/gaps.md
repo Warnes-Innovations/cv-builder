@@ -2051,12 +2051,9 @@ Duplicate of the previously discovered GAP-91 (No Backup History/Restore UI Desp
 ## GAP-208: BibTeX Import Returns Aggregate Error Counts Only — No Per-Key Detail
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Added `added_keys`, `updated_keys`, and `skipped_keys` arrays to the `/api/master-data/publications/import` response in `scripts/routes/master_data_routes.py`. Both import result handlers in `web/master-cv.js` (`importBibtexPublications`, `importConvertedBibtex`) now show a bulleted list of skipped cite keys in the alert modal when any were skipped, with a note that enabling "Overwrite" will update them.
 **Discovered:** 2026-06-29 (cycle 9) by master-cv-curator.
 **Affected stories:** US-M4 AC3 (Master CV Curator — publications import)
-The BibTeX import flow (`/api/publications/import`) returns a summary of added/updated/skipped counts but no per-key error detail. When a BibTeX file has malformed entries or duplicate cite keys, users see only "3 skipped" with no indication of which keys failed or why. This makes it impossible to fix import errors without re-examining the full `.bib` file externally.
-**Source evidence:** Import response in `scripts/routes/master_data_routes.py` — returns aggregate counts. No per-key error list in response payload or in `web/master-cv.js` import result handler.
-**Recommended resolution:** Include a `skipped_keys` array in the import response listing each skipped cite key and the reason (duplicate, parse error, missing required field). Display this in the import result UI alongside the aggregate counts.
 
 ---
 
@@ -2274,12 +2271,9 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-227: Layout Instruction Undo Is Stack-Based But UI Shows Per-Entry Buttons
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — In `renderInstructionHistory()` (`web/layout-instruction.js`), only the most recent (last) instruction entry now shows an active "↩ Undo" button. Earlier entries show the same button but `disabled` with `opacity:0.3` and a tooltip: "Undo is sequential — undo the most recent instruction first". This matches the stack-based behavior of `undoInstruction()` without requiring a full non-linear undo rewrite.
 **Discovered:** 2026-06-30 (cycle 11) by ux-expert.
 **Affected stories:** US-U9.5 (layout review interaction quality)
-`web/layout-instruction.js:1022–1029` renders `.instruction-history-list` with an Undo button on each history entry, implying that each entry can be independently undone. However, `undoInstruction()` at `web/layout-instruction.js:1181–1193` is a stack-based undo — it always undoes the most recent instruction, regardless of which entry's button was clicked. Clicking "Undo" on an old entry pops the latest entry, not the selected one. This is a misleading affordance that will confuse users who attempt non-linear undo.
-**Source evidence:** `web/layout-instruction.js:1181–1193` — `undoInstruction()` pops a stack; does not accept an index or entry ID. `layout-instruction.js:1022–1029` — per-entry Undo buttons rendered without any click argument.
-**Recommended resolution:** Either (a) implement true per-entry undo by replaying all instructions except the selected one, or (b) replace per-entry Undo buttons with a single "Undo Last" button to accurately represent the stack-based behavior.
 
 ---
 
@@ -2298,12 +2292,9 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-229: No Version Labelling for Multiple Generation Runs in a Session
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Added `generation_run` integer counter to `metadata.json` in `scripts/utils/cv_orchestrator.py`. Before writing metadata, the orchestrator reads the existing `metadata.json` (if any) to get the previous run number and increments it; first run is `1`. In `web/download-tab.js`, `_renderDownloadGrid()` now accepts a `generationRun` parameter and shows "Run #N — {date}" in the timestamp line when `generation_run > 1`.
 **Discovered:** 2026-06-30 (cycle 11) by ux-expert.
 **Affected stories:** US-U6.6 (version label)
-`web/final-generate.js` and `web/download-tab.js` list files from `cvData.files` array without showing version numbers, timestamps relative to each other, or a "current" / "previous" label. A user who re-runs generation (e.g., after iterating on customizations) sees multiple file sets with identical name patterns and cannot distinguish the current output from a prior run without checking file system timestamps.
-**Source evidence:** `web/final-generate.js` — `cvData.files` rendered without per-file generation timestamps or version markers. `web/download-tab.js:42–68` — same issue; no "current" label.
-**Recommended resolution:** Persist a `generated_at` ISO timestamp per generation run. Display it alongside each file set in the download tab as "(generated HH:MM)" or "(latest)" / "(prior run)".
 
 ---
 

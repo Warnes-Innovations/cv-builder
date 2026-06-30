@@ -2062,7 +2062,17 @@ For manual generation:
             output_name    = f"{company}_{role_slug}_{timestamp}"
             job_output_dir = self.output_dir / output_name
         job_output_dir.mkdir(parents=True, exist_ok=True)
-        
+        # Read existing run counter so re-generations are numbered sequentially
+        _prev_run = 0
+        _prev_meta_file = job_output_dir / 'metadata.json'
+        if _prev_meta_file.exists():
+            try:
+                with open(_prev_meta_file, encoding='utf-8') as _f:
+                    _prev_run = int(json.load(_f).get('generation_run', 0))
+            except Exception:  # noqa: BLE001
+                pass
+        generation_run = _prev_run + 1
+
         logger.info("Output directory: %s", job_output_dir)
         logger.debug(
             "generate_cv: entry (company=%s, role=%s, max_skills=%s, "
@@ -2192,6 +2202,7 @@ For manual generation:
         # Save metadata
         metadata = {
             'generation_date': datetime.now().isoformat(),
+            'generation_run':  generation_run,
             'company':         company,
             'role':            role,
             'job_analysis':    job_analysis,

@@ -1415,16 +1415,22 @@ def create_blueprint(deps):
         added = 0
         updated = 0
         skipped = 0
+        added_keys: list = []
+        updated_keys: list = []
+        skipped_keys: list = []
         for key, pub in imported.items():
             if key in pubs:
                 if overwrite:
                     pubs[key] = pub
                     updated += 1
+                    updated_keys.append(key)
                 else:
                     skipped += 1
+                    skipped_keys.append(key)
             else:
                 pubs[key] = pub
                 added += 1
+                added_keys.append(key)
 
         try:
             orchestrator.publications_path.write_text(
@@ -1443,6 +1449,9 @@ def create_blueprint(deps):
             "updated": updated,
             "skipped": skipped,
             "total": len(pubs),
+            "added_keys": added_keys,
+            "updated_keys": updated_keys,
+            "skipped_keys": skipped_keys,
         })
 
     @bp.post("/api/master-data/publications/convert")
