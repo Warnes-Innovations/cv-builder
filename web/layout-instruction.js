@@ -645,7 +645,8 @@ async function applyLayoutSettings(fontSizeValue, pageMarginValue, publicationsS
     }
     if (statusEl) { statusEl.textContent = '✅ Applied'; setTimeout(() => { statusEl.textContent = ''; }, 2000); }
   } catch (err) {
-    if (statusEl) statusEl.textContent = `❌ ${err.message}`;
+    if (statusEl) statusEl.textContent = `❌ Failed to apply — try again or refresh.`;
+    appendMessage('system', `❌ Could not apply the instruction. Try rephrasing it or refresh the page if the problem persists.`);
   }
 }
 
@@ -731,7 +732,7 @@ async function submitSmartInstruction(instructionText) {
     refreshLayoutReviewState();
 
   } catch (error) {
-    appendMessage('system', `❌ Failed to apply instruction: ${error.message}`);
+    appendMessage('system', `❌ Could not apply the instruction. Try rephrasing it, or click "Regenerate Preview" to reset the preview and try again.`);
   } finally {
     showProcessing(false);
   }
@@ -855,7 +856,7 @@ async function submitLayoutInstruction(instructionText) {
     refreshLayoutReviewState();
 
   } catch (error) {
-    appendMessage('system', `❌ Failed to apply layout instruction: ${error.message}`);
+    appendMessage('system', `❌ Could not apply the layout instruction. Try rephrasing it, or click "Regenerate Preview" to reset and try again.`);
   } finally {
     showProcessing(false);
   }
@@ -1066,7 +1067,7 @@ async function handleRegeneratePreviewAction() {
     await _fetchAndDisplayLayoutPreview();
     showConfirmationMessage('✅ Preview regenerated from the latest content.');
   } catch (error) {
-    appendMessage('system', `❌ Failed to regenerate preview: ${error.message}`);
+    appendMessage('system', `❌ Could not regenerate the preview. Check that your session is active and try again. If the problem persists, reload the page.`);
     showPreviewLoading(false);
   } finally {
     showProcessing(false);
@@ -1221,7 +1222,7 @@ async function confirmLayoutReview() {
     appendMessage('assistant', '✅ Layout confirmed. Review the preview if needed, then generate the final files.');
     refreshLayoutReviewState();
   } catch (error) {
-    appendMessage('system', `❌ Failed to confirm layout: ${error.message}`);
+    appendMessage('system', `❌ Could not confirm the layout. Try clicking Confirm again. If the problem persists, reload the page.`);
   } finally {
     showProcessing(false);
   }
@@ -1286,7 +1287,7 @@ async function generateFinalOutputs() {
     switchTab('final_generate');
     appendMessage('assistant', '✅ Final files generated from the confirmed layout.');
   } catch (error) {
-    appendMessage('system', `❌ Failed to generate final files: ${error.message}`);
+    appendMessage('system', `❌ Could not generate final files. Try clicking Generate again. If layout confirmation is needed first, click Confirm Layout, then try again.`);
   } finally {
     showProcessing(false);
   }
@@ -1332,7 +1333,7 @@ async function submitContentProposal() {
   try {
     const res = await apiCall('POST', '/api/cv/propose-content-change', { instruction });
     if (!res?.ok) {
-      appendMessage('system', `❌ Could not generate proposals: ${res?.error || 'Unknown error'}`);
+      appendMessage('system', `❌ Could not generate content proposals. Try rephrasing your instruction or check the session is still active.`);
       return;
     }
     const proposals = res.proposals || [];
@@ -1343,7 +1344,7 @@ async function submitContentProposal() {
     renderContentProposals(proposals);
     if (panel) panel.style.display = 'block';
   } catch (err) {
-    appendMessage('system', `❌ Network error submitting content proposal: ${err.message}`);
+    appendMessage('system', `❌ Could not submit the content proposal. Check your connection and try again.`);
   } finally {
     if (processing) processing.style.display = 'none';
   }
@@ -1426,7 +1427,7 @@ async function applyAcceptedProposals() {
 
     refreshLayoutReviewState();
   } catch (err) {
-    appendMessage('system', `❌ Network error applying content changes: ${err.message}`);
+    appendMessage('system', `❌ Could not apply content changes. Check your connection and try again.`);
   } finally {
     if (applyBtn) applyBtn.disabled = false;
   }

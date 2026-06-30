@@ -2695,12 +2695,12 @@ The workflow step pill in the pill bar is labelled "Download" while the tab insi
 ## GAP-262: Error Messages in layout-instruction.js Dump Raw error.message With No Recovery Guidance
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30
 **Discovered:** 2026-06-30 (cycle 14) by heuristic sub-agent.
 **Affected stories:** US-U6, US-A6 (error handling and recovery)
 Nine or more error catch blocks in `web/layout-instruction.js` append `error.message` directly to the chat or show it as a status string without providing a recovery action, retry button, or guidance on what the user should do next. This violates H9 (Help users recognise, diagnose, and recover from errors).
 **Source evidence:** `web/layout-instruction.js` — multiple `catch(e)` blocks using `_appendToChat(e.message)` or equivalent. Heuristic rated H9 as 🟠 Major.
-**Recommended resolution:** Replace raw error dumps with user-friendly messages that include: (1) a plain-language explanation of what failed, (2) a suggested next action, and (3) where possible, a retry button or CTA.
+**Resolution:** All 9 raw `error.message` dumps replaced with user-friendly messages that include a plain-language explanation and a suggested recovery action (retry, rephrase, or reload). `web/layout-instruction.js` — all catch blocks.
 
 ## GAP-263: Two Placeholder Workflow Steps Are Dead Ends
 
