@@ -1028,7 +1028,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-C1, US-C3
-**Status:** OPEN - discovered 2026-04-22; trust and compliance review found that providers marked `confidential: False` in `provider_registry.py` (Gemini free-tier and Groq) only show data-retention disclosures during the LLM wizard setup popover. After the wizard is closed, no persistent indicator warns the user that CV content is being transmitted to a non-confidential provider.
+**Status:** RESOLVED 2026-06-29 — Added `#llm-non-confidential-badge` amber pill in the LLM header area (`web/index.html`, after `#llm-status-pill`). Badge is shown/hidden in `updateAuthBadge()` (`web/auth-provider.js`) by calling `getProviderInfo(activeProvider)` (now a direct import from `provider-info.js`) and checking `info.confidential === false`. Badge reads "⚠ Non-confidential" and links to provider details via tooltip. Previously discovered 2026-04-22; no persistent indicator after wizard close.
 **Description:** A user who configured Gemini free-tier at startup and never re-opened the wizard has no ongoing reminder that their CV and job description content may be reviewed by Google. The header pill shows only model name and auth status.
 **Recommended resolution:** Add a persistent visual indicator (e.g., an amber "⚠ Non-confidential" badge in the header LLM pill) when the active provider has `confidential: False`. The indicator should link to the provider privacy policy.
 
