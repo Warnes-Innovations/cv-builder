@@ -306,7 +306,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-S1, US-U1
-**Status:** OPEN - discovered 2026-04-20; `web/session-manager.js:608` renders the raw Python `PHASES` enum value ("customization", "rewrite_review", "spell_check") in the session restoration message, rather than the human-friendly step label ("Customise", "Rewrites", "Spell Check").
+**Status:** RESOLVED — `web/session-manager.js:747` already uses `SESSION_PHASE_LABELS[data.phase]` (imported from `utils.js`) which maps e.g. `customization` → "Customisation". The fallback is `String(data.phase).replace(/_/g, ' ')` for unknown phases. No code change needed; the gap was resolved when `SESSION_PHASE_LABELS` was added to utils.js.
 **Description:** The restoration confirmation reads "✅ Session restored: [title] (customization)" — technical enum copy visible to end users.
 **Recommended resolution:** Map the phase enum value to the same display label used by `_STEP_DISPLAY` in `workflow-steps.js` before constructing the restoration message.
 
@@ -424,7 +424,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-O4, US-A9
-**Status:** OPEN - discovered 2026-04-20; recruiter-ops review found no checklist or summary confirming all required package components (CV formats, cover letter, screening questions, ATS compliance) are present, current, and ready before archiving.
+**Status:** RESOLVED 2026-06-29 — Added `_renderReadinessChecklist(files, statusData)` in `web/finalise.js` rendered into `#readiness-checklist` div above `#consistency-report`. Checks: CV PDF ❌/✅, CV DOCX ❌/✅, CV HTML ❌/✅ (required), cover letter ⚠/✅, screening Q&A ⚠/✅, ATS validation ⚠/✅, layout freshness ⚠/✅. Optional items warn but don't block archiving; required CV formats show ❌ if missing.
 **Description:** Without a submission readiness checklist, users cannot quickly verify completeness. Partially generated or stale-file packages can be archived without warning.
 **Recommended resolution:** Add a pre-archive checklist to the Finalise tab that confirms: all three CV formats generated, cover letter generated, screening questions generated (or explicitly skipped), ATS score above threshold (or explicitly acknowledged), and layout freshness current.
 

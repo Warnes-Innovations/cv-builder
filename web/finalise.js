@@ -79,6 +79,7 @@ async function populateFinaliseTab() {
       <p style="margin:8px 0 0;font-size:0.85em;color:#166534;">Output dir: <code>${escapeHtml(generated.output_dir)}</code></p>
     </div>
 
+    <div id="readiness-checklist"></div>
     <div id="consistency-report"></div>
 
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:24px;">
@@ -113,7 +114,63 @@ async function populateFinaliseTab() {
   `;
 
   content.innerHTML = html;
+  _renderReadinessChecklist(files, statusData);
   if (statusData) _renderConsistencyReport(statusData);
+}
+
+// ── Submission readiness checklist ────────────────────────────────────────────
+
+function _renderReadinessChecklist(files, statusData) {
+  const el = document.getElementById('readiness-checklist');
+  if (!el) return;
+
+  const fileSet = new Set((files || []).map(f => (f || '').toLowerCase()));
+  const hasPdf  = [...fileSet].some(f => f.endsWith('.pdf') && !f.includes('coverletter') && !f.includes('cover_letter'));
+  const hasDocx = [...fileSet].some(f => f.endsWith('.docx') && !f.includes('coverletter') && !f.includes('cover_letter') && !f.includes('screening'));
+  const hasHtml = [...fileSet].some(f => f.endsWith('.html'));
+  const hasCl   = [...fileSet].some(f => f.includes('coverletter') || f.includes('cover_letter'));
+  const hasScr  = [...fileSet].some(f => f.includes('screening'));
+
+  const atsChecks  = statusData?.ats_checks || [];
+  const atsFails   = (atsChecks).filter(c => c.status === 'fail' || c.status === 'error').length;
+  const atsScanned = atsChecks.length > 0;
+
+  const layoutFresh = statusData?.layout_freshness !== 'stale';
+
+  const items = [
+    { ok: hasPdf,   label: 'CV PDF generated',        warn: false },
+    { ok: hasDocx,  label: 'CV DOCX generated',       warn: false },
+    { ok: hasHtml,  label: 'CV HTML generated',       warn: false },
+    { ok: hasCl,    label: 'Cover letter generated',  warn: true  },
+    { ok: hasScr,   label: 'Screening Q&A generated', warn: true  },
+    { ok: atsScanned && atsFails === 0, warn: true,
+      label: atsScanned
+        ? (atsFails > 0 ? `ATS validation — ${atsFails} issue${atsFails !== 1 ? 's' : ''} found` : 'ATS validation passed')
+        : 'ATS validation not yet run' },
+    { ok: layoutFresh, warn: true, label: 'Layout is current (not stale)' },
+  ];
+
+  const rows = items.map(({ ok, label, warn }) => {
+    const icon  = ok ? '✅' : (warn ? '⚠' : '❌');
+    const color = ok ? '#065f46' : (warn ? '#92400e' : '#991b1b');
+    const bg    = ok ? '#f0fdf4' : (warn ? '#fffbeb' : '#fef2f2');
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${bg};border-radius:6px;margin-bottom:6px;">
+      <span aria-hidden="true" style="font-size:1.1em;">${icon}</span>
+      <span style="color:${color};font-size:0.92em;">${escapeHtml(label)}</span>
+    </div>`;
+  }).join('');
+
+  const allRequired = hasPdf && hasDocx && hasHtml;
+  const headerColor = allRequired ? '#065f46' : '#92400e';
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin-bottom:24px;">
+      <h3 style="margin:0 0 12px;color:${headerColor};">📋 Submission Readiness</h3>
+      ${rows}
+      <p style="margin:10px 0 0;font-size:0.82em;color:#64748b;">
+        ⚠ items are optional — they warn but do not block archiving.
+        ❌ items must be resolved before submitting.
+      </p>
+    </div>`;
 }
 
 // ── Finalise application ──────────────────────────────────────────────────────
@@ -392,4 +449,5 @@ export {
   finaliseApplication,
   showHarvestSection,
   applyHarvestSelections,
+  _renderReadinessChecklist,
 };
