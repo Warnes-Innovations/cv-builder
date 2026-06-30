@@ -1764,6 +1764,9 @@ async function setModel(model, provider) {
       currentModelProvider: effectiveProvider || null,
       currentModelName: model || null,
     });
+    if (typeof globalThis.updateAuthBadge === 'function') {
+      globalThis.updateAuthBadge({}, effectiveProvider || null);
+    }
     await _refreshCopilotAuthStatus();
     await testCurrentModel();
   } catch (e) {
@@ -1972,6 +1975,18 @@ function updateWorkflowStepsClickable(currentPhase) {
       _makeStepInert(el);
     }
   });
+
+  // Mark the currently active step for screen readers.
+  const allStepIds = [...sequentialSteps, ...postLayoutSteps];
+  allStepIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.removeAttribute('aria-current');
+  });
+  const activeStepId = postLayoutUnlocked ? null : sequentialSteps[currentIdx];
+  if (activeStepId) {
+    const activeEl = document.getElementById(activeStepId);
+    if (activeEl) activeEl.setAttribute('aria-current', 'step');
+  }
 }
 
 // Initialize on page load — delegates to app.js init() which is loaded after this file

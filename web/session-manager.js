@@ -161,7 +161,10 @@ function showOnboardingModal(masterCvPath) {
   if (pathEl)   pathEl.textContent   = masterCvPath || '(unknown)';
   if (statusEl) statusEl.textContent = '';
   _setWelcomeSection('missing');
-  if (overlay) overlay.style.display = 'flex';
+  if (overlay) {
+    overlay.style.display = 'flex';
+    _openOnboardingFocusTrap(overlay);
+  }
 }
 
 /**
@@ -191,7 +194,22 @@ async function maybeShowWelcomeModal() {
   if (statusEl) statusEl.textContent = '';
   _setWelcomeSection(section);
   const overlay = document.getElementById('onboarding-modal-overlay');
-  if (overlay) overlay.style.display = 'flex';
+  if (overlay) {
+    overlay.style.display = 'flex';
+    _openOnboardingFocusTrap(overlay);
+  }
+}
+
+/** Wire focus trap and Escape handler for the onboarding overlay (WCAG 2.1.2). */
+function _openOnboardingFocusTrap(overlay) {
+  if (typeof globalThis.setInitialFocus === 'function') globalThis.setInitialFocus('onboarding-modal-overlay');
+  if (typeof globalThis.trapFocus === 'function')       globalThis.trapFocus('onboarding-modal-overlay');
+  if (!overlay._onboardingEscHandler) {
+    overlay._onboardingEscHandler = (e) => {
+      if (e.key === 'Escape') closeWelcomeModal();
+    };
+    overlay.addEventListener('keydown', overlay._onboardingEscHandler);
+  }
 }
 
 /**
@@ -201,10 +219,17 @@ async function maybeShowWelcomeModal() {
 function closeWelcomeModal() {
   const overlay  = document.getElementById('onboarding-modal-overlay');
   const checkbox = document.getElementById('welcome-dont-show-again');
-  if (overlay) overlay.style.display = 'none';
+  if (overlay) {
+    overlay.style.display = 'none';
+    if (overlay._onboardingEscHandler) {
+      overlay.removeEventListener('keydown', overlay._onboardingEscHandler);
+      delete overlay._onboardingEscHandler;
+    }
+  }
   if (checkbox && checkbox.checked) {
     try { localStorage.setItem(_WELCOME_DISMISSED_KEY, '1'); } catch (_) {}
   }
+  if (typeof globalThis.restoreFocus === 'function') globalThis.restoreFocus();
 }
 
 /**

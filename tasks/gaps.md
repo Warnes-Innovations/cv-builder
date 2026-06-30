@@ -1,14 +1,28 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-29 (cycle 8)
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-29 (cycle 9)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), and 2026-06-29 (cycle 8)
-- independent heuristic UX evaluation (all cycles through 2026-06-29 cycle 8)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), and 2026-06-29 (cycle 9)
+- independent heuristic UX evaluation (all cycles through 2026-06-29 cycle 9)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review).
+
+## 2026-06-29 (Cycle 9) Reconciliation Notes
+
+- **23 new gap entries added (GAP-195 through GAP-217):**
+  - Accessibility (GAP-195–200): aria-live on tabpanel, welcome modal no focus trap, alertModal missing prior-focus save, workflow step colour-only status, no prefers-reduced-motion, nested modal clobbers focus state.
+  - UX Expert (GAP-201–202): clarifying questions all-at-once, bare relevance scores.
+  - Hiring Manager (GAP-203–205): publications no role-type gate, cover letter closing underspecified, no 2-bullet floor (GAP-205 DUPLICATE of GAP-81).
+  - Master CV Curator (GAP-206–208): phase-lock indicator absent, backup restore no UI (GAP-207 DUPLICATE of GAP-91), BibTeX import aggregate-only errors.
+  - Recruiter-Ops (GAP-209–210): Finalise tab status vocabulary mismatch, notes not editable post-archive.
+  - Trust-Compliance (GAP-211): non-confidential badge lags after provider change.
+  - HR/ATS Specialist (GAP-212–217): ATS DOCX font.name not set, publications absent from ATS DOCX, synonym expansion missing from score computation, skill type UI override not supported, score weighting 70/30 vs. 2:1, 16-check results not in metadata.json.
+- **2 duplicates noted:** GAP-205 = GAP-81; GAP-207 = GAP-91.
+- **Download-blocking design decision confirmed:** ATS advisory checks intentionally do not block downloads (resolved in cycle 2 as GAP-103). US-H6 story criterion may need updating to reflect this design decision.
+- **Most critical open gaps (cycle 9):** GAP-127 (candidate_to_confirm in output), GAP-195 (aria-live on tabpanel), GAP-196 (welcome modal focus trap), GAP-206 (phase-lock indicator), GAP-209 (Finalise status vocabulary), GAP-212 (ATS DOCX font name), GAP-213 (publications missing from ATS DOCX), GAP-215 (skill type UI override), GAP-36 (first-run onboarding), GAP-14 (workflow progress indicator).
 
 ## 2026-06-29 (Cycle 8) Reconciliation Notes
 
@@ -1817,3 +1831,275 @@ Workflow step pills and tab labels include emoji characters (e.g., ✅, ↻, ⚠
 
 The buttons have inconsistent labels, both use ✅ prefix, and the second label "Proceed to Finalise →" is misleading because the next step is spell check, not finalisation. The story requires a single unambiguous "Proceed to Final Generation" CTA at this step.
 **Recommended resolution:** Consolidate to a single advance button at this workflow stage. Relabel using the story's required text "Proceed to Final Generation" and remove the redundant `#final-generate-proceed-btn` or hide it until the correct phase. Ensure only one ✅ CTA is visible at any time.
+
+---
+
+## GAP-195: `aria-live="polite"` on `#document-content` Tabpanel Causes Full Content Announcement on Tab Switch
+
+**Priority:** HIGH
+**Status:** RESOLVED 2026-06-29 — Removed `aria-live="polite"` from `#document-content` tabpanel in `web/index.html:235`. The dedicated `#workflow-stage-announcer` live region (lines 146–147) already announces tab navigation; the tabpanel must not itself carry a live region attribute.
+**Discovered:** 2026-06-29 (cycle 9) by accessibility-specialist.
+**Affected stories:** US-X1, US-X2
+`web/index.html:235` — the main content `<div id="document-content">` carries both `role="tabpanel"` and `aria-live="polite"`. Every time the active tab changes, the browser injects the full new tab HTML into this element, causing screen readers to announce the entire content of the tab (entire review tables, cover letter editors, etc.). This produces verbose, disorienting output and makes the application unusable for screen reader users navigating between tabs.
+**Source evidence:** `web/index.html:235` — `<div id="document-content" role="tabpanel" aria-live="polite" ...>`
+**Recommended resolution:** Remove `aria-live="polite"` from `#document-content`. The dedicated `#workflow-stage-announcer` region (`index.html:146–147`) already provides tab-change announcements. Do not add `aria-live` to any element that receives large HTML injections.
+
+---
+
+## GAP-196: Welcome/Onboarding Modal Has No Focus Trap or Escape Handler
+
+**Priority:** HIGH
+**Status:** RESOLVED 2026-06-29 — Added `_openOnboardingFocusTrap(overlay)` helper to `web/session-manager.js`. Calls `globalThis.setInitialFocus('onboarding-modal-overlay')` and `globalThis.trapFocus('onboarding-modal-overlay')` on open. Adds an Escape key handler (`keydown` listener) that calls `closeWelcomeModal()`. The handler is cleaned up on close. `closeWelcomeModal()` now also calls `globalThis.restoreFocus()`.
+**Discovered:** 2026-06-29 (cycle 9) by accessibility-specialist.
+**Affected stories:** US-X2 (WCAG 2.1 AA failure — 2.1.2 No Keyboard Trap)
+`maybeShowWelcomeModal()` in `web/session-manager.js:172–195` shows `#onboarding-modal-overlay` without calling `trapFocus()`, `setInitialFocus()`, or installing an Escape key handler. Keyboard users can Tab through the modal and continue into background page content, violating WCAG 2.1.2. This is inconsistent with every other modal in the app, which all call `trapFocus()` and `setInitialFocus()`.
+**Source evidence:** `web/session-manager.js:172–195` — `_openOnboardingModal()` has no `trapFocus` or `setInitialFocus` call. Contrast: `openSettingsModal()` in `ui-core.js:258–280` calls both.
+**Recommended resolution:** Add `setInitialFocus('onboarding-modal-overlay')` and `trapFocus('onboarding-modal-overlay')` on open; call `restoreFocus()` in `closeWelcomeModal()`.
+
+---
+
+## GAP-197: `showAlertModal()` Does Not Save Prior Focus Before Opening
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by accessibility-specialist.
+**Affected stories:** US-X2
+`ui-helpers.js:31–37` — `showAlertModal()` calls `setInitialFocus('alert-modal-overlay')` but does not first execute `_focusedElementBeforeModal = document.activeElement`. `closeAlertModal()` calls `restoreFocus()` which reads `_focusedElementBeforeModal` from `ui-core.js:30`. Since that variable was never set by the alert modal open path, focus restores to wherever the last named modal left it (null or stale).
+**Source evidence:** `web/ui-helpers.js:31–37` — no `_focusedElementBeforeModal = document.activeElement` before `setInitialFocus`. `web/ui-core.js:30` — shared variable. `web/ui-helpers.js:63–71` — `closeAlertModal` calls `restoreFocus()`.
+**Recommended resolution:** Add `_focusedElementBeforeModal = document.activeElement` to `showAlertModal()` before calling `setInitialFocus`.
+
+---
+
+## GAP-198: Workflow Step Active Status Conveyed by Colour Only — No `aria-current`
+
+**Priority:** MED
+**Status:** RESOLVED 2026-06-29 — Added `aria-current="step"` management to the tail of `updateWorkflowStepsClickable()` in `web/ui-core.js`. After updating clickable state, all step elements have `aria-current` removed, then `aria-current="step"` is set on `sequentialSteps[currentIdx]` (the currently active step). Post-layout phases have no single active step; `aria-current` is cleared for all in that case.
+**Discovered:** 2026-06-29 (cycle 9) by accessibility-specialist.
+**Affected stories:** US-X1.3
+Workflow step pills use CSS class colours to distinguish active, completed, upcoming, stale, and stale-critical states (`web/styles.css:151–157`). No `aria-current` attribute is set on the active step pill, so screen reader users receive no programmatic indication of current position. This is inconsistent with the LLM wizard progress bar, which correctly sets `aria-current="step"` (`web/ui-core.js:1362`).
+**Source evidence:** `web/styles.css:151–157` — state conveyed by class only. `web/ui-core.js:1891–1975` — `updateWorkflowStepsClickable()` sets `classList` but not `aria-current`. Contrast: `ui-core.js:1362` — wizard bar sets `aria-current="step"`.
+**Recommended resolution:** In `updateWorkflowStepsClickable()`, set `aria-current="step"` on the currently active workflow step element and remove it from all others.
+
+---
+
+## GAP-199: No `@media (prefers-reduced-motion: reduce)` on CSS Animations
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by accessibility-specialist.
+**Affected stories:** US-X (WCAG 2.3.3 Animation from Interactions)
+`web/styles.css` contains `browsing-pulse`, `stale-chip-pulse`, `changed-item-pulse`, `step-pulse`, `llm-spin`, `dots`, and spinner keyframe animations. None are wrapped in `@media (prefers-reduced-motion: reduce)`. Users with vestibular disorders or motion sensitivity receive no accommodation and will experience persistent animation throughout the workflow.
+**Source evidence:** `web/styles.css` — `@keyframes` animations present without motion media query guard.
+**Recommended resolution:** Wrap all non-essential animations in `@media (prefers-reduced-motion: reduce) { ... { animation: none; } }`. Spinners can use `opacity: 0.5` toggle instead of rotation.
+
+---
+
+## GAP-200: Single `_focusedElementBeforeModal` Variable Clobbered by Nested Modal Opens
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by accessibility-specialist.
+**Affected stories:** US-X2
+`web/ui-core.js:30` maintains a single module-level `_focusedElementBeforeModal` variable shared by all modal open/close paths. When a sub-modal is opened from within a primary modal (e.g., a publication editor modal opened from within the Master CV modal), the inner modal open overwrites the value saved by the outer modal. When the inner modal closes and calls `restoreFocus()`, focus returns correctly; but when the outer modal then closes and also calls `restoreFocus()`, the variable now holds the inner modal's trigger element rather than the element that opened the outer modal.
+**Source evidence:** `web/ui-core.js:30` — `let _focusedElementBeforeModal = null` — single variable. `openMasterCvModal()` and sub-modals in `master-cv.js` all call `setInitialFocus()` which overwrites this variable.
+**Recommended resolution:** Replace the single variable with a stack: `push` on open, `pop` on close. This correctly handles arbitrarily nested modal sequences.
+
+---
+
+## GAP-201: Clarifying Questions Shown All at Once — No ≤3-Per-Group Flow
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by ux-expert.
+**Affected stories:** US-U3 AC4 (Fail)
+`web/questions-panel.js:147` renders all clarifying questions simultaneously as a single scrollable list. The user story requires questions to be presented in groups of ≤3 with a "confirm and see next group" flow to reduce cognitive load. Users may see 10+ questions at once after analysis, which is overwhelming for first-time users and hides structure in what should be a guided dialogue.
+**Source evidence:** `web/questions-panel.js:147` — all questions rendered as single flat list. No pagination or group-by-3 logic present.
+**Recommended resolution:** Group questions into batches of ≤3. Show one batch at a time. Render a "Continue →" or "Done" button after each group that reveals the next. Track group progress with a counter ("Group 1 of 3").
+
+---
+
+## GAP-202: Relevance Scores in Review Tables Are Bare Integers With No Scale Label
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by ux-expert.
+**Affected stories:** US-U4 AC6 (Fail), H6 (Recognition rather than recall)
+The experience and skills review tables render relevance scores as bare integers (e.g., "72") with no denominator, grade label, colour band, or legend. Users have no way to know if 72 is high, low, or average without prior system knowledge. The `.confidence-badge` (high/medium/low) used in rewrite cards demonstrates the app already has a label-based score pattern.
+**Source evidence:** `web/review-table-base.js` — relevance column renders raw integer. No "/100", grade band, or inline legend per row. Contrast: `.confidence-badge` pattern in `web/rewrite-review.js`.
+**Recommended resolution:** Append "/100" to each score, or add a colour band (≥80: green, 60–79: amber, <60: red), or add a legend row below the table header. The simplest fix is appending "/100".
+
+---
+
+## GAP-203: Publications Always Included With No Role-Type Gate
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by hiring-manager.
+**Affected stories:** US-M (hiring manager, generated materials)
+`scripts/utils/cv_orchestrator.py:3444` — `_select_publications()` runs and includes publications whenever `publications.bib` is non-empty, regardless of whether the target role is research-oriented or industry/commercial. For industry roles (engineering, product, operations), a publications section is often a negative signal that suggests academic-world misalignment. No analysis flag, role-level check, or user prompt gates whether publications should appear.
+**Source evidence:** `scripts/utils/cv_orchestrator.py:3444` — `_select_publications()` called unconditionally when `publications.bib` exists.
+**Recommended resolution:** During job analysis, determine whether the role warrants a publications section (research/academic/scientist/faculty vs. industry). Surface a question to the user ("Include publications for this application?") or use `job_analysis.domain` to auto-gate. Allow per-application override.
+
+---
+
+## GAP-204: Cover Letter Closing Prompt Underspecified — "Call to Action" Not "Direct Interview Request"
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by hiring-manager.
+**Affected stories:** US-M6, US-P (persuasion-expert)
+`scripts/routes/master_data_routes.py:1630` — the cover letter generation prompt instructs the LLM to write a "call to action" closing. The user story and hiring-manager standards require the closing to contain a direct, specific interview request ("I would welcome the opportunity to discuss..."), not a generic call to action. Vague closings ("I look forward to hearing from you") score significantly lower with hiring managers.
+**Source evidence:** `scripts/routes/master_data_routes.py:1630` — prompt contains "call to action"; no "interview request" language.
+**Recommended resolution:** Replace "call to action" with explicit instruction: "Close with a specific, confident request for an interview or a conversation, naming the role. Avoid passive language like 'I look forward to your response.'"
+
+---
+
+## GAP-205: No Minimum 2-Bullet Floor Enforced Per Job Entry
+
+**Priority:** MED
+**Status:** DUPLICATE of GAP-81 — see GAP-81 for tracking.
+**Discovered:** 2026-06-29 (cycle 9) by hiring-manager.
+**Affected stories:** US-M (hiring manager, generated materials)
+Duplicate of the previously discovered GAP-81 (No Minimum Bullet Count Check Before Generation, discovered 2026-04-22). Both identify that experience entries with fewer than 2 bullets can be generated without any warning or gate. Tracking in GAP-81.
+
+---
+
+## GAP-206: Phase-Lock Indicator Absent From Master CV Tab — Edit Buttons Visible in All Phases
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by master-cv-curator.
+**Affected stories:** US-M1 AC2 (Master CV Curator)
+`scripts/routes/master_data_routes.py:164–177` — `_require_master_data_write_phase()` enforces phase gating server-side (writes only allowed in `init` and `refinement` phases). However, the Master CV tab UI (`web/master-cv.js`) shows all edit/add/delete buttons regardless of the current workflow phase. A user in `job_analysis` or `rewrite_review` phase sees fully active edit controls, submits a change, and receives a generic "❌ Error" alert (409 from the server) with no explanation.
+**Source evidence:** `web/master-cv.js` — edit buttons rendered without phase check. `scripts/routes/master_data_routes.py:164–177` — server enforces gate. `web/ui-helpers.js:31–37` — `showAlertModal()` for errors — no phase-specific messaging.
+**Recommended resolution:** In `master-cv.js`, check `window.__cvState?.phase` on tab open. If outside `init`/`refinement`, disable all write controls and show a banner: "Master CV editing is only available before job analysis begins or during the Refinement stage." Re-enable when the phase returns to an editable state.
+
+---
+
+## GAP-207: Backup History/Restore API Has No Frontend UI Surface
+
+**Priority:** HIGH
+**Status:** DUPLICATE of GAP-91 — see GAP-91 for tracking.
+**Discovered:** 2026-06-29 (cycle 9) by master-cv-curator.
+**Affected stories:** US-M (Master CV Curator — backup/restore)
+Duplicate of the previously discovered GAP-91 (No Backup History/Restore UI Despite Backend Support, discovered 2026-04-22). Both identify that `/api/master-data/history` and `/api/master-data/restore` exist but have no frontend surface. Tracking in GAP-91.
+
+---
+
+## GAP-208: BibTeX Import Returns Aggregate Error Counts Only — No Per-Key Detail
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by master-cv-curator.
+**Affected stories:** US-M4 AC3 (Master CV Curator — publications import)
+The BibTeX import flow (`/api/publications/import`) returns a summary of added/updated/skipped counts but no per-key error detail. When a BibTeX file has malformed entries or duplicate cite keys, users see only "3 skipped" with no indication of which keys failed or why. This makes it impossible to fix import errors without re-examining the full `.bib` file externally.
+**Source evidence:** Import response in `scripts/routes/master_data_routes.py` — returns aggregate counts. No per-key error list in response payload or in `web/master-cv.js` import result handler.
+**Recommended resolution:** Include a `skipped_keys` array in the import response listing each skipped cite key and the reason (duplicate, parse error, missing required field). Display this in the import result UI alongside the aggregate counts.
+
+---
+
+## GAP-209: Finalise Tab Status Vocabulary Mismatch — 3 Values vs. 6 Values in PATCH Endpoint
+
+**Priority:** HIGH
+**Status:** RESOLVED 2026-06-29 — Expanded the Finalise tab `<select id="finalise-status">` in `web/finalise.js` to include three additional options: "Interview scheduled" (`interview`), "Rejected" (`rejected`), "Accepted" (`accepted`). Updated status validation in `scripts/routes/generation_routes.py:1929–1930` to accept all six values. The Finalise tab and the PATCH endpoint now share a consistent 6-value vocabulary.
+**Discovered:** 2026-06-29 (cycle 9) by recruiter-ops.
+**Affected stories:** US-O (Recruiter-Ops — session management)
+The Finalise tab (`web/finalise.js:91–95`) presents a `<select>` with only three values: `draft`, `ready`, `sent`. The `PATCH /api/sessions/metadata` endpoint (`scripts/routes/session_routes.py`) and the session-switcher inline status widget (`web/session-switcher-ui.js`) accept and display six values: `draft`, `ready`, `sent`, `interview`, `rejected`, `accepted`. Status set post-archive via the session-switcher cannot be set during the Finalise workflow, and vice versa — users face a vocabulary split depending on which UI path they use.
+**Source evidence:** `web/finalise.js:91–95` — `<select>` has 3 options. `scripts/routes/generation_routes.py:1929` — validates against 3-value set. `web/session-switcher-ui.js` — `appStatusLabels` maps 6 values. `scripts/routes/session_routes.py` — PATCH accepts 6 values.
+**Recommended resolution:** Expand the Finalise tab `<select>` to include `interview`, `rejected`, `accepted`. Update the validation set in `generation_routes.py:1929` to match the 6-value set used by the PATCH endpoint. Ensure label display is consistent across both UI surfaces.
+
+---
+
+## GAP-210: Notes Field Not Editable Post-Archive — No Notes Widget in Session-Switcher UI
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by recruiter-ops.
+**Affected stories:** US-O (Recruiter-Ops — session notes)
+`PATCH /api/sessions/metadata` accepts a `notes` field and writes it to `metadata.json`. The session-switcher UI (`web/session-switcher-ui.js`) was extended with an inline status edit widget (GAP-103) but no corresponding notes edit widget. Users who want to annotate a saved application ("interviewed 2025-03-10, awaiting callback") have no UI path to do so after archiving.
+**Source evidence:** `scripts/routes/session_routes.py` — PATCH endpoint accepts `notes`. `web/session-switcher-ui.js` — inline status edit widget present; no notes textarea widget.
+**Recommended resolution:** Add a notes edit widget to the session-switcher saved-session row (following the same show/hide pattern as the status widget). A single-line or two-line textarea with "Save Notes" / "Cancel" is sufficient. Wire to `PATCH /api/sessions/metadata` with `{ path, notes }`.
+
+---
+
+## GAP-211: Non-Confidential Badge Lags After Provider Change — `setModel()` Doesn't Update Badge
+
+**Priority:** MED
+**Status:** RESOLVED 2026-06-29 — Added `globalThis.updateAuthBadge({}, effectiveProvider)` call in `setModel()` in `web/ui-core.js`, immediately before `_refreshCopilotAuthStatus()`. The badge now reflects the new provider as soon as the model switch POST succeeds, without requiring a page reload.
+**Discovered:** 2026-06-29 (cycle 9) by trust-compliance.
+**Affected stories:** US-C (Trust-Compliance — provider transparency)
+After a user switches the active LLM provider via the model wizard, the non-confidential badge (`#llm-non-confidential-badge`) is not updated until the next page reload or state refresh. `setModel()` in `web/ui-core.js` POSTs the new provider/model selection and updates internal state, but does not call `updateAuthBadge()` (or equivalent) after the POST succeeds. The badge therefore shows stale provider information while the user is actively working.
+**Source evidence:** `web/ui-core.js` — `setModel()` POST handler does not call `updateAuthBadge`. `web/app.js` or `web/ui-core.js` — `updateAuthBadge()` reads current provider from state and updates the badge element.
+**Recommended resolution:** In the `setModel()` POST success callback, call `updateAuthBadge({}, effectiveProvider)` (or the equivalent function that refreshes the non-confidential badge) after updating internal provider state.
+
+---
+
+## GAP-212: ATS DOCX `_setup_ats_styles` Never Sets `font.name` — Inherits Theme Font
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by hr-ats.
+**Affected stories:** US-H1 (ATS file ingestion)
+`scripts/utils/cv_orchestrator.py:3836–3867` (`_setup_ats_styles`) sets font sizes and bold/color properties for all ATS DOCX styles but never calls `font.name = 'Calibri'` (or any explicit ATS-safe font) on any style. The ATS DOCX document therefore inherits Word's default theme font (typically "Calibri Light" or whatever the host Word installation sets as default), which may not be Calibri/Arial/Times New Roman. By contrast, the human DOCX correctly calls `font.name = 'Calibri'` at line 4369. The existing `validate_ats_report` font check (GAP-87) focuses on PDF font embedding and does not validate the DOCX font name.
+**Source evidence:** `scripts/utils/cv_orchestrator.py:3836–3867` — no `font.name` assignment in `_setup_ats_styles`. Line 4369 — human DOCX sets `font.name = 'Calibri'`.
+**Recommended resolution:** Add explicit `font.name = 'Calibri'` to each style definition in `_setup_ats_styles`. Add a DOCX font-name check to `validate_ats_report` (check 1b) that reads paragraph font names from the first 10 paragraphs and warns if a non-ATS-safe family is detected.
+
+---
+
+## GAP-213: Publications Section Absent From ATS DOCX
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by hr-ats.
+**Affected stories:** US-H1, US-H2
+`_add_ats_additional_sections` in `scripts/utils/cv_orchestrator.py` adds certifications and awards to the ATS DOCX but does not add a publications section. Publications appear in the human-readable DOCX and HTML but are entirely absent from the ATS format. An ATS scanning for publication-related keywords ("journal", "proceedings", title words) will not find them, causing a missed keyword match for research-oriented roles.
+**Source evidence:** `scripts/utils/cv_orchestrator.py:_add_ats_additional_sections` — certifications and awards added; no publications block. Human DOCX at lines 4227–4248 adds publications.
+**Recommended resolution:** Add a publications block to `_add_ats_additional_sections` following the same flat-text pattern as other ATS sections (title + author list + venue on one line per entry). Guard with the same `_select_publications` call used by the human DOCX path.
+
+---
+
+## GAP-214: Synonym Expansion Not Applied in `compute_ats_score`
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by hr-ats.
+**Affected stories:** US-H4 (keyword matching and scoring)
+`_optimize_skills_for_ats` in `scripts/utils/cv_orchestrator.py:3914–3927` expands skill names via `_expansion_index` before selecting skills for the ATS DOCX. However, `compute_ats_score` in `scripts/utils/scoring.py:345–554` uses only raw string containment checks — it does not apply synonym expansion. A job keyword "Machine Learning" will not match a skill stored as "ML" in the ATS score computation, even though `_expansion_index` knows they are synonyms. This causes the ATS score to undercount keyword matches and misreports coverage to the user. Note: GAP-90 covers a related but distinct issue — the UI not showing synonym grouping in the validation report.
+**Source evidence:** `scripts/utils/scoring.py:345–554` — no synonym/expansion lookup in `compute_ats_score`. `scripts/utils/cv_orchestrator.py:3914–3927` — `_expansion_index` applied only during skill selection.
+**Recommended resolution:** Apply synonym expansion in `compute_ats_score` before string matching: for each job keyword, check it against both the raw skill list and all synonym expansions in `_expansion_index`. Mark expanded matches as "partial match via synonym" to preserve the distinction from exact matches.
+
+---
+
+## GAP-215: Skill Type UI Override Not Supported
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by hr-ats.
+**Affected stories:** US-H8 (hard/soft skill distinction)
+`web/skills-review.js:667–671` renders skill type as a display-only badge derived from job analysis lists (`hardSkillSet`/`softSkillSet`). No UI control allows users to reclassify a skill from hard to soft or vice versa. No backend route accepts a `skill_type` override. The `skill_qualifier_overrides` state field (`scripts/utils/conversation_manager.py:119`) covers proficiency/subskills/parenthetical but not `skill_type`. Note: GAP-89 covers persistence of `skill_type` to Master CV via harvest; this gap specifically covers the missing UI override mechanism.
+**Source evidence:** `web/skills-review.js:667–671` — badge rendered with no input control. No `skill_type` field in `skill_qualifier_overrides`. No backend route with `skill_type` in request body.
+**Recommended resolution:** Add a toggle button alongside each skill's type badge (hard ↔ soft). Store the override in `skill_qualifier_overrides` under `skill_type`. Propagate the override when rebuilding `hardSkillSet`/`softSkillSet` for ATS DOCX generation and JSON-LD annotation.
+
+---
+
+## GAP-216: ATS Match Score Weighting Is 70/30, Not Story-Required 2:1
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by hr-ats.
+**Affected stories:** US-H7 (ATS match score visibility)
+`scripts/utils/scoring.py:533–534` computes `overall = round(0.7 * hard_score + 0.3 * soft_score, 1)`. The user story US-H7 specifies "hard skill matches count twice as much as soft skill matches" — i.e., a 2:1 ratio, which is 66.7%/33.3%. The actual implementation uses 70%/30% (a 7:3 ratio). The maximum difference between the two formulas is ~3.4 percentage points, but the implementation does not match the documented specification.
+**Source evidence:** `scripts/utils/scoring.py:533–534` — `0.7 * hard_score + 0.3 * soft_score`.
+**Recommended resolution:** Change to `round((2 * hard_score + soft_score) / 3, 1)` to exactly implement the 2:1 specification. This is a one-line code change. Update the score formula comment and any displayed explanation of the scoring methodology.
+
+---
+
+## GAP-217: ATS 16-Check Validation Results Not Stored in `metadata.json`
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-29 (cycle 9) by hr-ats.
+**Affected stories:** US-H6 (ATS output validation report)
+`validate_ats_report` in `scripts/utils/cv_orchestrator.py:4686–5031` runs 16 checks and returns a full pass/warn/fail report structure. At generation time, only `metadata['date_overlap_warnings']` (line 2202) and the scalar `metadata['ats_score']` (via `_try_patch_metadata`, `generation_routes.py:1703–1704`) are persisted to `metadata.json`. The 16-check validation report list is never written to `metadata.json`. If a user archives and later returns to a session, the per-check validation detail is lost — only the aggregate ATS score is available.
+**Source evidence:** `scripts/utils/cv_orchestrator.py:2198–2210` — `metadata` dict written at generation; contains `ats_score` and `date_overlap_warnings` but not `ats_validation_report`. `scripts/routes/generation_routes.py:1703–1704` — `_try_patch_metadata` only patches `ats_score`.
+**Recommended resolution:** Add `metadata['ats_validation_report'] = validation_result` (or the serialized check list) to the generation metadata write. Include it in `_try_patch_metadata`. Surface the persisted validation data in the Finalise tab's readiness checklist when reviewing an archived session.

@@ -6,7 +6,7 @@
 
 # Resume Expert Review Status
 
-**Last Updated:** 2026-06-29 14:45 ET
+**Last Updated:** 2026-06-29 23:00 ET
 
 **Executive Summary:** The application demonstrates solid foundational architecture for most resume-expert concerns. The rewrite pipeline, skill deduplication, bullet reordering, and spell-check context handling are well-implemented. The primary gaps are: (1) required vs. preferred qualifications are parsed separately in the backend but are not displayed as visually distinct sections in the Analysis tab UI; (2) the publication selection algorithm is recency/type-biased rather than relevance-first, and there is no per-publication relevance rationale surfaced to the user; (3) `candidate_to_confirm` skill markers appear only in the review UI but are never filtered out of generated output documents; (4) the summary review system selects from stored variants but does not generate a role-specific rewrite with hook quality validation; and (5) page-length warnings exist post-generation but not pre-generation during customisation.
 

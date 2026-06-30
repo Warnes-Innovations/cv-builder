@@ -8,7 +8,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Persuasion Expert Review Status
 
-**Last Updated:** 2026-06-29 14:30 ET
+**Last Updated:** 2026-06-29 23:00 ET
 
 **Executive Summary:** The application has strong backend persuasion infrastructure — 8 static checks (`check_strong_action_verb`, `check_passive_voice`, `check_word_count`, `check_has_result_clause`, `check_hedging_language`, `check_car_structure`, `check_named_institution_position`, `check_summary_generic_phrases`) are implemented in `llm_client.py` and surfaced on the Rewrites tab with severity badges. `apply_rewrite_constraints` blocks numeric and proper-noun removal. Publication ranking via `rank_publications_for_job` ranks by job-relevance and exposes authority signals (first-author, journal/conference) in the review table. The cover letter generator has tone/opening style options and a real-time 4-point client-side validator (generic opener, company name, word count, CTA). Cross-document consistency checking (company, job title, ATS keywords, date formats) exists in the Finalise tab. However, several acceptance tests are not implemented: no check for "I" as first word of the cover letter; no identity-fragmentation warning for competing narrative threads; no forward-looking sentence gate in summary; no cross-document terminology harmonisation between screening answers and CV keywords; word count threshold mismatch (400 vs story's 300); and passive CTA patterns pass that should fail.
 
@@ -275,7 +275,7 @@ Review is source-only (no live generation run). Assessment based on prompts, con
 
 ---
 
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/llm_client.py, web/cover-letter.js, web/publications-review.js, scripts/routes/master_data_routes.py, scripts/routes/llm_routes.py, scripts/utils/headless_session.py, scripts/utils/agent_bridge.py, web/bundle.js
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/llm_client.py, web/cover-letter.js, web/publications-review.js, scripts/routes/master_data_routes.py, scripts/routes/review_routes.py, scripts/routes/llm_routes.py
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 |-------|---------|-----------|--------|------------|-------|

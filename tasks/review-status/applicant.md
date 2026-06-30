@@ -8,9 +8,11 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Applicant Review Status
 
-**Last Updated:** 2026-06-29 14:00 ET
+**Last Updated:** 2026-06-29 23:00 ET
 
 **Executive Summary:** The core CV generation workflow (US-A1 through US-A5c) is well-implemented and largely passes. Intake confirmation (GAP-23), mismatch callouts, prior-clarification pre-population, rewrite card UI (including GAP-178 `aria-pressed`), spell-check button relabeling (GAP-181), layout instruction LLM-clarification, and the harvest flow (US-A11) are all confirmed present. All six recent GAP fixes (GAP-166/174/176/178/179/180/181) are verified in source. Key remaining gaps: US-A3 publications lack up/down reorder controls; US-A3b category management is partial (rename/move/reorder present, but drag-and-drop and explicit "create new category" UI are absent, and no readability warning for long inline bullets); **US-A7 cover letter PDF output is missing** (only DOCX is produced by `master_data_routes.py:1619–1697`); US-A9 finalise summary omits total elapsed time; US-A10 natural-language master-data update and document ingestion are not implemented; US-A12 re-run lacks a keyboard-shortcut or menu alternative and the session audit log does not record re-run events with timestamps.
+
+**Cycle 8 revalidation (2026-06-29):** Source-first pass confirmed against the 7 prescribed files (web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py) plus route files discovered via import inspection. All prior findings remain accurate. No regressions detected. New observations added: (1) `screening_generate` route (master_data_routes.py:1845) does not explicitly inject `post_analysis_answers` or `cover_letter_text` into its LLM prompt — US-A8 criterion 4 should be re-examined; (2) mixed UK/US spelling ("Customise" vs "Customizations") across workflow nav, action buttons, and step-display map; (3) "LLM:" label in header pill exposes developer jargon; (4) Finalise tab is `style="display:none"` in index.html:223 and absent from STAGE_TABS['download'] in ui-core.js:357 — confirm it is programmatically un-hidden before the applicant reaches US-A9.
 
 ---
 

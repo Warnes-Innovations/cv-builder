@@ -8,9 +8,9 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Returning User Review Status
 
-**Last Updated:** 2026-06-29 14:30 ET
+**Last Updated:** 2026-06-29 23:00 ET
 
-**Executive Summary:** The returning-user experience is strong for session identity, stage visibility, and phase continuity. Five of nine criteria pass cleanly; four are partial. Since the previous review (2026-06-22), two fixes landed: GAP-180 raised the ↻ re-run button from opacity:0 to opacity:0.35 at rest, making it visible to mouse users without hover; and GAP-178 added `aria-pressed` state to rewrite review buttons. The ↻ button remains a native `<button>` element and is keyboard-reachable via Tab (CSS `:focus-visible` brings it to full opacity), so GAP-R3 is now resolved. GAP-RU-NEW1 (cold-restore of rewrite decisions from backend `approved_rewrites`) and the step-click vs. re-run tooltip-only distinction (GAP-R4) remain open. The core decision data (`window._savedDecisions`, `stale_steps`, `generationState` freshness chip) is fully restored on every page load; no decision summary banner exists yet (GAP-R1).
+**Executive Summary:** The returning-user experience is now strong across all three story areas. Since the previous review (2026-06-29 14:30 ET), four gaps have been resolved in the same day: GAP-110 adds a restored-decisions summary message to the conversation (`_appendRestoredDecisionsSummary`, `session-manager.js:415–436`); GAP-186 implements cold-restore of rewrite decisions from backend `rewrite_audit` when localStorage is empty (`rewrite-review.js:64–79`); GAP-111 adds `confirmDialog()` guard before move-to-trash (`_deleteSessionFromModal`); and GAP-112 replaces opaque/misleading short phase labels ("Custom", "Done") with "Customising", "Finalise", "Setup", "Spell Check". Seven of nine criteria now pass cleanly; two remain partial. The only remaining partial areas are: (1) the view-navigation vs. recomputation distinction for touch/keyboard users (GAP-R4 — tooltip-only, no persistent on-screen text); and (2) saved decisions in review tabs require individual tab visits to confirm (no per-tab count badge). No failures or unimplemented criteria remain.
 
 ---
 
@@ -24,25 +24,27 @@ As a returning user, I want to resume a saved session with immediate context abo
 
 #### US-S1.1 — Job identity is surfaced on resume — ✅ Pass
 
-On restore, `restoreBackendState()` (`session-manager.js:537`) calls `/api/status` and then `updatePositionTitle(statusData)` (`session-manager.js:619`). The position bar renders the role into `#position-title` (`index.html:75`) and company/date into `#position-company` (`index.html:80`, populated via `session-actions.js`). The session-switcher header chip is built by `buildSessionSwitcherLabel(status)` (`session-manager.js:71–78`) combining `positionName · phase`, so the returning user sees role name immediately on reload.
+On restore, `restoreBackendState()` (`session-manager.js:568`) calls `/api/status` and then `updatePositionTitle(statusData)` (`session-manager.js:650`). The position bar renders the role into `#position-title` (`index.html:76`) and company/date into `#position-company` (`index.html:81`, populated via `session-actions.js:161–171`). The session-switcher header chip is built by `buildSessionSwitcherLabel(status)` (`session-manager.js:71–78`) combining `positionName · phase`, so the returning user sees role name immediately on reload.
 
-When restoring from a saved file via `loadSessionFile()`, a confirmation message is appended to conversation: `"✅ Session restored: {position_name} ({phase_label})"` (`session-manager.js:747`), where phase labels are sourced from `SESSION_PHASE_LABELS` in `utils.js`.
+When restoring from a saved file via `loadSessionFile()`, a confirmation message is appended to conversation: `"✅ Session restored: {position_name} ({phase_label})"` (`session-manager.js:778`), where phase labels are sourced from `SESSION_PHASE_LABELS` in `utils.js`.
 
 ---
 
 #### US-S1.2 — Current workflow stage is visible on resume — ✅ Pass
 
-`_resolveRestoredPhase(statusData)` (`session-manager.js:373–394`) applies two defensive guards before setting phase, then `stateManager.setPhase(restoredPhase)` (`state-manager.js:316–322`) fires all `onPhaseChange` listeners including `updateWorkflowStepsClickable(phase)` (`ui-core.js:1891`). `updateWorkflowSteps(status)` (`workflow-steps.js:612–774`) sets `active`, `completed`, and `clickable` CSS classes on all 12 step pills, and reveals the step-bar with the correct current step highlighted.
+`_resolveRestoredPhase(statusData)` (`session-manager.js:376–397`) applies two defensive guards before setting phase, then `stateManager.setPhase(restoredPhase)` (`state-manager.js:316–322`) fires all `onPhaseChange` listeners. `updateWorkflowSteps(status)` (`workflow-steps.js:637–774`) sets `active`, `completed`, and `clickable` CSS classes on all 12 step pills with the correct current step highlighted.
 
-`_restoreTabForPhase(sessionPhase)` (`session-manager.js:352–371`) maps each backend phase to the correct viewer tab via `phaseTabMap` and calls `switchTab()`. `updateActionButtons(activeStep)` (`workflow-steps.js:770`) restores the primary action button set. Both in-memory restores and disk-file loads call this path.
+`_restoreTabForPhase(sessionPhase)` (`session-manager.js:355–374`) maps each backend phase to the correct viewer tab via `phaseTabMap` and calls `switchTab()`. `updateActionButtons(activeStep)` (`workflow-steps.js:770`) restores the primary action button set. Both in-memory restores and disk-file loads call this path.
 
 ---
 
-#### US-S1.3 — Previously completed work remains visible/discoverable — ⚠️ Partial
+#### US-S1.3 — Previously completed work remains visible/discoverable — ✅ Pass
 
-`_hydrateStatusTabState(statusData)` (`session-manager.js:520–534`) restores `analysis`, `customizations`, and `cv` tab data into `stateManager`. Completed steps receive `class="completed clickable"` (`workflow-steps.js:723`), making all prior results reachable via step-click. Conversation history is replayed from `/api/history` (`session-manager.js:424–451`).
+**GAP-110 RESOLVED (2026-06-29):** `_appendRestoredDecisionsSummary()` (`session-manager.js:415–436`) is now called from `restoreSession()` when `serverHasData` is true (`session-manager.js:487–489`). It appends a chat system message in the form `"📋 Restored at stage: {phaseLabel} — {expCount} experiences recommended, {skillCount} skills recommended, ATS score N%."` using data already in stateManager from the restore flow — no additional fetch needed.
 
-Gap: No human-readable summary of restored decisions is surfaced on return. A returning user must navigate to each review tab (exp-review, skills-review, rewrite, etc.) individually to verify prior decisions are intact. `_hydrateStatusDerivedState()` (`session-manager.js:474–518`) assembles `window._savedDecisions` with the complete decision map (experience, skill, achievement, publication decisions; `extra_skills`; `summary_focus_override`; intake; post-analysis Q&A) — the data is available but no count summary or "welcome back" status banner is rendered.
+`_hydrateStatusTabState(statusData)` (`session-manager.js:551–566`) still restores `analysis`, `customizations`, and `cv` tab data. Completed steps receive `class="completed clickable"` (`workflow-steps.js:723–725`), making all prior results reachable via step-click. Conversation history is replayed from `/api/history` (`session-manager.js:451–477`).
+
+Residual minor gap: no per-tab decision count badge (e.g., "4 of 8 accepted" on the Rewrites tab label). Individual tab visits are still required to see decision-level granularity.
 
 ---
 
@@ -76,7 +78,7 @@ The confirmation modal fires only for the ↻ recomputation path. Step-click vie
 
 Three mechanisms are in place:
 
-1. **Step bar ↻ button:** Completed steps in `RE_RUN_STEPS = {'analysis', 'customizations', 'rewrite', 'spell'}` render a `↻` native `<button>` with `opacity:0.35` at rest (`workflow-steps.js:730–733`, GAP-180 fix applied 2026-06-22). The button becomes fully opaque on CSS `:hover` and `:focus-visible` (`workflow-steps.js:762`). It carries `aria-label="Re-run {stepLabel}"` and, as a `<button>`, is Tab-accessible; keyboard focus brings it to full opacity via `:focus-visible`. Previously opacity was 0 (completely invisible); current 0.35 is a meaningful improvement but the ↻ icon at that opacity remains subtle on the step pill.
+1. **Step bar ↻ button:** Completed steps in `RE_RUN_STEPS = {'analysis', 'customizations', 'rewrite', 'spell'}` render a `↻` native `<button>` with `opacity:0.35` at rest (`workflow-steps.js:730–733`, GAP-180 fix applied 2026-06-22). The button becomes fully opaque on CSS `:hover` and `:focus-visible` (`workflow-steps.js:762`). It carries `aria-label="Re-run {stepLabel}"` and, as a `<button>`, is Tab-accessible; keyboard focus brings it to full opacity via `:focus-visible`.
 
 2. **Confirmation dialog titles:** `_showReRunConfirmModal` uses distinct heading text: "↻ Re-run {stepLabel}?" vs. "← Navigate back to {stepLabel}?" (`workflow-steps.js:147–149`).
 
@@ -92,19 +94,20 @@ As a returning user, I want to trust that my accepted rewrites, customisations, 
 
 ---
 
-#### US-S3.1 — Saved decisions can be re-observed when their stage is revisited — ⚠️ Partial
+#### US-S3.1 — Saved decisions can be re-observed when their stage is revisited — ✅ Pass
 
-`_hydrateStatusDerivedState()` (`session-manager.js:474–518`) restores the full decision payload to `window._savedDecisions` (all experience, skill, achievement, publication decisions; `extra_skills`; `summary_focus_override`; achievement edits; intake; post-analysis Q&A). These are applied correctly when revisiting their respective review tabs.
+`_hydrateStatusDerivedState()` (`session-manager.js:505–549`) restores the full decision payload to `window._savedDecisions` (all experience, skill, achievement, publication decisions; `extra_skills`; `summary_focus_override`; achievement edits; intake; post-analysis Q&A). These are applied correctly when revisiting their respective review tabs.
 
 **GAP-166 — CONFIRMED IMPLEMENTED (same-device page reload):**
 
-- `_persistDecisions()` (`rewrite-review.js:43–47`): writes `rewriteDecisions` to `localStorage` under key `rw_decisions_{sessionId}`. Called at `applyRewriteAction()` (line 356) and `saveRewriteEdit()` (line 386).
-- `_restoreDecisions()` (`rewrite-review.js:49–59`): reads from `localStorage` and merges into `rewriteDecisions`. Called at `renderRewritePanel()` line 186, after the card HTML is injected.
-- `_clearPersistedDecisions()` (`rewrite-review.js:61–65`): removes the key from `localStorage`. Called at `submitRewriteDecisions()` line 481 before proceeding to spell check.
+- `_persistDecisions()` (`rewrite-review.js:43–47`): writes `rewriteDecisions` to `localStorage` under key `rw_decisions_{sessionId}`. Called at `applyRewriteAction()` and `saveRewriteEdit()`.
+- `_restoreDecisions()` (`rewrite-review.js:52–80`): reads from `localStorage` and merges into `rewriteDecisions` first; if no entry found, falls back to `_backendRewriteAudit` for cold-restore (see GAP-186 below).
+- `_clearPersistedDecisions()` (`rewrite-review.js:82–86`): removes the key from `localStorage`. Called at `submitRewriteDecisions()`.
 
-**GAP-178 — CONFIRMED IMPLEMENTED:** `aria-pressed` state is now set on accept/edit/reject buttons in the rewrite panel at render time (`false`) and updated to `true` on the active button in `applyRewriteAction()` and `saveRewriteEdit()`.
+**GAP-186 — CONFIRMED IMPLEMENTED (2026-06-29, cold-restore):**
+On cold restore (cleared storage, different device, private/incognito window, or >24h elapsed), `_restoreDecisions()` now falls back to `_backendRewriteAudit` (populated at `rewrite-review.js:102` from `/api/rewrites` response) and seeds `rewriteDecisions` from `entry.outcome` and `entry.final` fields (`rewrite-review.js:64–79`). The backend `state['rewrite_audit']` carries the authoritative record of submitted decisions.
 
-Residual gap (GAP-RU-NEW1): `_restoreDecisions()` reads only from localStorage. On cold restore (cleared storage, different device, private/incognito window, or >24h elapsed), `rewriteDecisions` remains empty and the returning user must repeat all accept/reject decisions. The backend stores final submitted decisions in `state['approved_rewrites']` and `state['rewrite_audit']` but these are not used to seed the rewrite panel.
+**GAP-178 — CONFIRMED IMPLEMENTED:** `aria-pressed` state is set on accept/edit/reject buttons in the rewrite panel at render time (`false`) and updated to `true` on the active button in `applyRewriteAction()` and `saveRewriteEdit()`.
 
 ---
 
@@ -112,15 +115,17 @@ Residual gap (GAP-RU-NEW1): `_restoreDecisions()` reads only from localStorage. 
 
 `getLayoutFreshnessFromState(generationState)` (`state-manager.js:120–178`) computes `isStale` and `isCritical` by comparing `contentRevision` against `lastPreviewContentRevision` and `lastFinalContentRevision`. It produces human-readable labels: "Layout current" (fresh), "Layout outdated" (amber), "Files outdated" (critical/red).
 
-On resume, `restoreBackendState()` (`session-manager.js:563–611`) fetches `/api/cv/generation-state` and restores all generation state fields including revision counters, timestamps, and phase. The freshness chip (`index.html:95`) reflects the correct state immediately on page reload. `applyLayoutFreshnessNavigationState()` (`workflow-steps.js:60–93`) injects "Outdated" badges onto the Layout Review step pill and the Download tab label when final files are stale and critical.
+On resume, `restoreBackendState()` (`session-manager.js:593–643`) fetches `/api/cv/generation-state` and restores all generation state fields including revision counters, timestamps, and phase. The freshness chip (`index.html:96`) reflects the correct state immediately on page reload. `applyLayoutFreshnessNavigationState()` (`workflow-steps.js:60–93`) injects "Outdated" badges onto the Layout Review step pill and the Download tab label when final files are stale and critical.
 
 ---
 
 #### US-S3.3 — Session restoration does not mislead about what version is current — ✅ Pass
 
-`_resolveRestoredPhase(statusData)` (`session-manager.js:373–394`) applies two guards: (1) if `!statusData.job_analysis`, forces `PHASES.INIT` regardless of persisted phase; (2) if `phase` is `CUSTOMIZATION` or `REWRITE_REVIEW` but `!statusData.customizations`, falls back to `PHASES.JOB_ANALYSIS`. These prevent the UI from falsely representing that work completed by the backend is still available.
+`_resolveRestoredPhase(statusData)` (`session-manager.js:376–397`) applies two guards: (1) if `!statusData.job_analysis`, forces `PHASES.INIT` regardless of persisted phase; (2) if `phase` is `CUSTOMIZATION` or `REWRITE_REVIEW` but `!statusData.customizations`, falls back to `PHASES.JOB_ANALYSIS`. These prevent the UI from falsely representing that work completed by the backend is still available.
 
-`status.stale_steps` from `back_to_phase()` (`conversation_manager.py`) is rendered as amber `.stale` pills on the step bar (`workflow-steps.js:707, 738`), with screen-reader text "(stale — results may be outdated)" (`workflow-steps.js:745–749`). Conversation history is always restored from the server (`session-manager.js:424–451`), not from localStorage, so the narrative is authoritative.
+`status.stale_steps` from `back_to_phase()` (`conversation_manager.py:1457`) is rendered as amber `.stale` pills on the step bar (`workflow-steps.js:707, 738`), with screen-reader text "(stale — results may be outdated)" (`workflow-steps.js:745–749`). Conversation history is always restored from the server (`session-manager.js:451–477`), not from localStorage, so the narrative is authoritative.
+
+**GAP-112 — CONFIRMED IMPLEMENTED (2026-06-29):** `SESSION_PHASE_LABELS_SHORT` in `utils.js` now maps: `init` → "Setup", `customization` → "Customising", `rewrite_review` → "Rewrites", `spell_check` → "Spell Check", `refinement` → "Finalise". The previously misleading labels "Custom" and "Done" are removed.
 
 ---
 
@@ -132,76 +137,53 @@ No generated material artifacts (CV PDFs, DOCX files) are evaluated in this pers
 
 ## Additional Story Gaps / Proposed Story Items
 
-### GAP-R1 (MEDIUM) — No restored-decisions summary on return
-
-After session restore, no human-readable summary of recovered state is surfaced (e.g. "4 experiences selected, 12 skills, 7 rewrites approved"). The returning user must navigate to each review tab individually to verify prior work is intact. `_hydrateStatusDerivedState()` (`session-manager.js:474–518`) assembles the data in `window._savedDecisions`; it is not surfaced in the UI.
-
-> Proposed story: "As a returning user, I want a brief summary of my restored session decisions so that I can quickly verify my prior work is intact before continuing."
-
----
-
-### GAP-RU-NEW1 (MEDIUM) — Rewrite decisions not restored on cold reload (cross-device / cleared storage)
-
-The GAP-166 fix addresses same-device page reloads. On cold restore (cleared storage, different device, private/incognito window, or >24h elapsed), `rewriteDecisions` is reset to `{}` at `session-manager.js:740` before `renderRewritePanel()` is called, and `_restoreDecisions()` finds no localStorage key. The backend `state['approved_rewrites']` and `state['rewrite_audit']` fields carry the authoritative record of submitted decisions but are not used to seed the panel.
-
-> Proposed fix: In the `loadSessionFile()` path, seed `rewriteDecisions` from `statusData.approved_rewrites` mapped to `{id: ..., outcome: 'accept', final_text: ...}`. The localStorage path (GAP-166) would still win on same-device by overwriting the backend seed.
-
----
-
 ### GAP-R4 (MEDIUM) — Step-click vs. ↻ distinction is tooltip-only for touch/keyboard users
 
-`handleStepClick()` (`workflow-steps.js:813`) switches view without a modal (correct — no data changes). Tooltips via `_getStepTooltip()` (`workflow-steps.js:199`) distinguish "Click to view" from "Click ↻ to rerun from here", but only on hover. No persistent on-screen text differentiates view navigation from LLM recomputation.
+`handleStepClick()` (`workflow-steps.js:813`) switches view without a modal (correct — no data changes). Tooltips via `_getStepTooltip()` (`workflow-steps.js:199`) distinguish "Click to view" from "Click ↻ to rerun from here", but only on hover. No persistent on-screen text differentiates view navigation from LLM recomputation for touch or keyboard-primary users before interaction.
 
 > Proposed story: "As a returning user accessing the app on a tablet or by keyboard, I want re-run actions to be permanently discoverable so I can trigger a re-run without first hovering over a step."
 
 ---
 
-### GAP-R2b (LOW) — "Move to Trash" executes without confirmation
+### GAP-RU-DEC1 (LOW) — No per-tab decision count badges on tab labels
 
-In the sessions modal, the move-to-trash action fires the API directly without a confirmation dialog, unlike Delete Forever and Empty Trash which call `confirmDialog()` first. This is inconsistent with the destructive-action pattern used elsewhere.
-
----
-
-### GAP-R5 (LOW) — Abbreviated phase labels potentially opaque for occasional returning users
-
-`SESSION_PHASE_LABELS_SHORT` maps `refinement` → `"Done"` (misleading if further work is intended) and `customization` → `"Custom"` (non-obvious). These appear in the session-switcher header chip and sessions modal (`utils.js`).
-
----
-
-### GAP-R9 (LOW) — Remaining alert() calls in sessions modal
-
-Multiple `alert()` calls remain in the sessions modal for error cases. Browser `alert()` can be suppressed by the "Prevent this page from creating additional dialogs" setting. `showToast()` and `showAlertModal()` are available as drop-in replacements.
+After session restore, the returning user receives a summary message (GAP-110 resolved) with aggregate experience/skill counts. However, within individual review tabs (exp-review, skills-review, rewrite, ach-editor, publications-review), the tab labels carry no count badge (e.g., "7 Accepted" or "3/8") to convey completeness at a glance. The user must open each tab to verify the granular state of prior decisions.
 
 ---
 
 ## Previously Resolved Gaps (for continuity reference)
 
+- **GAP-R1 (RESOLVED 2026-06-29, GAP-110)** — `_appendRestoredDecisionsSummary()` (`session-manager.js:415–436`) is called after restore when `serverHasData=true`, appending a chat message with stage label, recommended experience count, recommended skill count, and ATS score.
 - **GAP-R2 (RESOLVED)** — "Delete" button relabelled to "Move to Trash"; full Trash/Restore/Delete-Forever flow implemented.
-- **GAP-R3 (RESOLVED as of 2026-06-22, GAP-180)** — ↻ re-run button opacity changed from 0 (fully hidden) to 0.35 (visible at rest). Button is a native `<button>` element and is Tab-keyboard-reachable; `:focus-visible` CSS brings it to full opacity. Discoverable without hover for both mouse and keyboard users.
+- **GAP-R2b (RESOLVED 2026-06-29, GAP-111)** — `_deleteSessionFromModal()` now guards with `confirmDialog()` before calling `/api/delete-session`, matching the pattern used by Delete Forever and Empty Trash.
+- **GAP-R3 (RESOLVED 2026-06-22, GAP-180)** — ↻ re-run button opacity changed from 0 (fully hidden) to 0.35 (visible at rest). Button is a native `<button>` and is Tab-keyboard-reachable; `:focus-visible` CSS brings it to full opacity.
+- **GAP-R5 (RESOLVED 2026-06-29, GAP-112)** — `SESSION_PHASE_LABELS_SHORT` updated: "Custom" → "Customising", "Done" → "Finalise", "Init" → "Setup", "Spell" → "Spell Check". Opaque and misleading labels removed.
 - **GAP-R7 (RESOLVED)** — `promptRenameCurrentSession()` rewrote header rename to inline `<input>` widget with ✓/✕ buttons; `window.prompt()` removed; errors route to `showToast()`.
 - **GAP-R8 (RESOLVED)** — `final_generation` phase added to both `SESSION_PHASE_LABELS` and `SESSION_PHASE_LABELS_SHORT` in `utils.js`.
-- **GAP-166 (PARTIALLY RESOLVED)** — `_persistDecisions()`, `_restoreDecisions()`, and `_clearPersistedDecisions()` are confirmed implemented and correctly wired in `web/rewrite-review.js` (lines 43–65, 186, 356, 386, 481). Same-device page-reload restore works. Cross-device / cold-reload restore from backend `approved_rewrites` is not yet implemented (see GAP-RU-NEW1 above).
-- **GAP-178 (RESOLVED as of 2026-06-22)** — `aria-pressed` state added to accept/edit/reject buttons in rewrite review panel.
+- **GAP-R9 (RESOLVED 2026-06-29)** — Multiple `alert()` calls in session-switcher replaced by `confirmDialog()` / `showToast()`.
+- **GAP-166 (RESOLVED for same-device reloads)** — `_persistDecisions()`, `_restoreDecisions()`, and `_clearPersistedDecisions()` are confirmed implemented and correctly wired in `web/rewrite-review.js` (lines 43–86, 102, 208).
+- **GAP-RU-NEW1 / GAP-186 (RESOLVED 2026-06-29)** — Cold-restore rewrite decisions now seed from backend `rewrite_audit` when localStorage has no entry (`rewrite-review.js:64–79`). Cross-device / incognito restore now works.
+- **GAP-178 (RESOLVED 2026-06-22)** — `aria-pressed` state added to accept/edit/reject buttons in rewrite review panel.
 
 ---
 
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-manager.js, web/workflow-steps.js, web/rewrite-review.js
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-manager.js, web/workflow-steps.js, web/rewrite-review.js, web/session-actions.js, web/session-switcher-ui.js
 
 | Story   | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 | ------- | ------- | ---------- | ------- | ----------- | ----- |
-| US-S1   | 2       | 1          | 0       | 0           | 0     |
+| US-S1   | 3       | 0          | 0       | 0           | 0     |
 | US-S2   | 1       | 2          | 0       | 0           | 0     |
-| US-S3   | 2       | 1          | 0       | 0           | 0     |
-| **Total** | **5** | **4**      | **0**   | **0**       | **0** |
+| US-S3   | 3       | 0          | 0       | 0           | 0     |
+| **Total** | **7** | **2**      | **0**   | **0**       | **0** |
 
 **Key evidence references:**
 
-- US-S1.1: job identity on restore — `session-manager.js:619`, `session-manager.js:71–78`
-- US-S1.2: stage visible on restore — `session-manager.js:352–371`, `workflow-steps.js:612–774`, `ui-core.js:1891`
-- US-S1.3: prior work discoverable (partial) — `session-manager.js:520–534`; no summary surfaced
+- US-S1.1: job identity on restore — `session-manager.js:650`, `session-manager.js:71–78`, `session-actions.js:132–179`
+- US-S1.2: stage visible on restore — `session-manager.js:355–397`, `workflow-steps.js:637–774`
+- US-S1.3: prior work visible with summary (GAP-110 resolved) — `session-manager.js:415–436`, `session-manager.js:487–489`
 - US-S2.1: back-nav warnings (partial) — `workflow-steps.js:138–188` (↻ modal); `workflow-steps.js:813` (step-click, no modal, hover-only distinction)
 - US-S2.2: context preserved on re-entry — `conversation_manager.py:1435–1468`, `workflow-steps.js:98–128`
-- US-S2.3: re-run vs nav distinction (partial) — `workflow-steps.js:147–149` (modal titles); `workflow-steps.js:730–733` (opacity:0.35 at rest, GAP-180 resolved); `workflow-steps.js:720–721` (iterating badge)
-- US-S3.1: decisions re-observable (partial) — GAP-166 confirmed at `rewrite-review.js:43–65, 186, 356, 386, 481`; GAP-178 aria-pressed confirmed; cold-restore gap remains (GAP-RU-NEW1)
-- US-S3.2: outputs connected to state — `state-manager.js:120–178`, `workflow-steps.js:60–93`, `session-manager.js:563–611`
-- US-S3.3: restore does not mislead — `session-manager.js:373–394`, `workflow-steps.js:707, 738`
+- US-S2.3: re-run vs nav distinction (partial) — `workflow-steps.js:147–149` (modal titles); `workflow-steps.js:730–733` (opacity:0.35 at rest); `workflow-steps.js:720–721` (iterating badge)
+- US-S3.1: decisions re-observable (GAP-166 + GAP-186 resolved) — `rewrite-review.js:52–79` (localStorage + cold-restore from `_backendRewriteAudit`)
+- US-S3.2: outputs connected to state — `state-manager.js:120–178`, `workflow-steps.js:60–93`, `session-manager.js:593–643`
+- US-S3.3: restore does not mislead (GAP-112 resolved) — `session-manager.js:376–397`, `workflow-steps.js:707, 738`, `utils.js:SESSION_PHASE_LABELS_SHORT`

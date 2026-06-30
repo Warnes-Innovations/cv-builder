@@ -92,6 +92,9 @@ async function populateFinaliseTab() {
           <option value="draft">Draft — not yet sent</option>
           <option value="ready" selected>Ready to send</option>
           <option value="sent">Sent</option>
+          <option value="interview">Interview scheduled</option>
+          <option value="rejected">Rejected</option>
+          <option value="accepted">Accepted</option>
         </select>
       </div>
 
