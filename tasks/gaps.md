@@ -336,9 +336,9 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-M4, US-R2
-**Status:** OPEN - discovered 2026-04-20; hiring-manager review found `.pub-venue-warn` CSS class is defined in `styles.css` but no code path adds it to a publication entry when venue/journal data is absent. Publications with missing venue information render without any visual warning. Re-confirmed cycle 8 (2026-06-29) by hr-ats persona: `venue_warning` field is computed at `cv_orchestrator.py:896` and returned in session state, but is never read by any frontend rendering code.
+**Status:** RESOLVED — `publications-review.js:138` reads `pub.venue_warning` and injects an amber ⚠ icon with a tooltip into the citation cell (`:146`). Backend computes `venue_warning` at `cv_orchestrator.py:896`. The cycle 8 review incorrectly reported this as OPEN; source code confirms it is implemented. (The `.pub-venue-warn` CSS class noted in the original report is unused — the inline `color:#dc7900` style is used instead.)
 **Description:** The warning system for incomplete publication entries is wired at the CSS level but dead at the code level. Authors can include publications with no journal, conference, or venue without receiving any feedback.
-**Recommended resolution:** In the publication rendering code (both in the review table and in the CV template), check for absent venue/journal fields and apply `.pub-venue-warn` styling (or an equivalent inline warning) to flag the entry.
+**Recommended resolution:** Resolved — see status above.
 
 ## GAP-30: Cover Letter Opening Hardwired as "Dear [name],"
 
@@ -1124,12 +1124,11 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 ## GAP-127: `candidate_to_confirm` Skills Not Rendered in Review UI and Not Excluded from Output
 
 **Priority:** HIGH
-**Status:** PARTIAL — UI fixed 2026-06-18; output exclusion pending (design decision)
+**Status:** RESOLVED 2026-06-29 — Both template rendering paths now filter `candidate_to_confirm` skills. HTML skills grid (`templates/cv-template.html:628`) and plaintext ATS block (`:777`) each wrap the skill emission in `{% if not skill.candidate_to_confirm %}`. A Jinja2 `namespace` variable tracks the first-emitted item in the plaintext comma-separated list to avoid leading commas. Skills flagged for confirmation remain visible in the review UI (with the ⚠ badge from the cycle 6 fix) so users can still confirm/delete them, but they are silently excluded from generated PDF/DOCX/HTML until confirmed.
 **Found:** 2026-06-18 cvUiReview
 `scripts/utils/cv_orchestrator.py:1779` sets a `candidate_to_confirm` flag on skill additions that have weak evidence. However, `web/` has zero references to `candidate_to_confirm` in any rendering code — the flag is never displayed to the user in the skills review tab. Furthermore, no output rendering code checks this flag before including the skill in generated PDF/DOCX/HTML. Skills with unconfirmed evidence are indistinguishable from confirmed skills in both the review UI and the generated artefacts.
-**Partial fix:** `web/skills-review.js` now reads `skill.candidate_to_confirm` and renders a `⚠ Verify evidence` badge (dark red, with explanatory tooltip) next to the skill name in the review table. Users can now visually identify and remove weak-evidence skills before generating output. Output-side exclusion not implemented — this is a design question (auto-exclude vs. show-and-let-user-decide); current behavior allows inclusion.
-**Cycle 8 update (2026-06-29):** resume-expert re-confirmed output exclusion is absent. `templates/cv-template.html:629` (hard skills loop) and `:777` (other skills loop) both iterate over `skills_by_category` with no `candidate_to_confirm` filter. Skills with unconfirmed evidence reach generated PDF/DOCX/HTML unless explicitly deleted by the user in the review tab.
-**Source evidence:** `scripts/utils/cv_orchestrator.py:1779`; `web/skills-review.js`; `templates/cv-template.html:629,777`; resume-expert.md 2026-06-29.
+**Partial fix (cycle 6):** `web/skills-review.js` now reads `skill.candidate_to_confirm` and renders a `⚠ Verify evidence` badge (dark red, with explanatory tooltip) next to the skill name in the review table. Users can now visually identify and remove weak-evidence skills before generating output.
+**Source evidence:** `scripts/utils/cv_orchestrator.py:1779`; `web/skills-review.js`; `templates/cv-template.html:628,777`.
 
 ## GAP-128: Rejected Rewrites Absent from `rewrite_audit`
 
