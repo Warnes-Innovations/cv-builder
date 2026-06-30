@@ -100,10 +100,12 @@ async function populateFinaliseTab() {
 
       <div style="margin-bottom:20px;">
         <label style="display:block;font-weight:600;margin-bottom:6px;" for="finalise-notes">Notes</label>
-        <textarea id="finalise-notes" rows="4"
+        <textarea id="finalise-notes" rows="4" maxlength="2000"
+          oninput="document.getElementById('finalise-notes-counter').textContent=this.value.length+' / 2000';document.getElementById('finalise-notes-counter').style.color=this.value.length>1800?'#dc2626':this.value.length>1600?'#d97706':'#6b7280'"
           style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:6px;
                  font-size:0.92em;resize:vertical;box-sizing:border-box;"
           placeholder="Recruiter name, salary info, follow-up date, interview notes…"></textarea>
+        <div id="finalise-notes-counter" style="text-align:right;font-size:0.8em;color:#6b7280;margin-top:2px;">0 / 2000</div>
       </div>
 
       <button id="finalise-btn" onclick="finaliseApplication()"
@@ -121,6 +123,27 @@ async function populateFinaliseTab() {
   _renderReadinessChecklist(files, statusData);
   if (statusData) _renderConsistencyReport(statusData);
   _renderRewriteAuditLog();
+  _restoreFinaliseMeta();
+}
+
+async function _restoreFinaliseMeta() {
+  try {
+    const res = await fetch('/api/finalise-meta');
+    if (!res.ok) return;
+    const data = await res.json();
+    const statusEl = document.getElementById('finalise-status');
+    const notesEl  = document.getElementById('finalise-notes');
+    if (statusEl && data.application_status) statusEl.value = data.application_status;
+    if (notesEl  && data.notes) {
+      notesEl.value = data.notes;
+      const counter = document.getElementById('finalise-notes-counter');
+      if (counter) {
+        const len = data.notes.length;
+        counter.textContent = `${len} / 2000`;
+        counter.style.color = len > 1800 ? '#dc2626' : len > 1600 ? '#d97706' : '#6b7280';
+      }
+    }
+  } catch (_) {}
 }
 
 // ── Submission readiness checklist ────────────────────────────────────────────

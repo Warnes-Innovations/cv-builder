@@ -213,6 +213,35 @@ function _openOnboardingFocusTrap(overlay) {
 }
 
 /**
+ * Show the welcome modal unconditionally (ignores the "don't show again" flag).
+ * Used by the Help button so users can always reopen onboarding mid-session.
+ */
+async function showWelcomeModal() {
+  let section = 'present';
+  try {
+    const res = await fetch('/api/setup/master-cv-status');
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (!data.exists) {
+        const pathEl = document.getElementById('onboarding-master-cv-path');
+        if (pathEl) pathEl.textContent = data.path || '(unknown)';
+        section = 'missing';
+      } else if (data.is_empty) {
+        section = 'empty';
+      }
+    }
+  } catch (_) {}
+  const statusEl = document.getElementById('onboarding-modal-status');
+  if (statusEl) statusEl.textContent = '';
+  _setWelcomeSection(section);
+  const overlay = document.getElementById('onboarding-modal-overlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    _openOnboardingFocusTrap(overlay);
+  }
+}
+
+/**
  * Close the welcome modal.
  * If "Don't show again" is checked, persists the dismissal in localStorage.
  */
@@ -937,6 +966,7 @@ export {
   onboardingCreateEmptyProfile,
   showOnboardingModal,
   maybeShowWelcomeModal,
+  showWelcomeModal,
   closeWelcomeModal,
   _claimCurrentSession,
   _resolveRestoredPhase,

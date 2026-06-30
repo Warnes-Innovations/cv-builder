@@ -133,7 +133,7 @@ function updatePositionTitle(status = {}) {
   const positionEl = document.getElementById('position-title');
   if (!positionEl) return;
 
-  const fallbackBrowserTitle = 'CV Generator — Professional Web UI';
+  const fallbackBrowserTitle = 'CV Builder — Professional Web UI';
   let label = (status.position_name || '').toString().trim();
   let company = '';
   let dateApplied = '';
@@ -159,7 +159,7 @@ function updatePositionTitle(status = {}) {
   }
 
   positionEl.textContent = label;
-  document.title = label ? `${label} — AI CV Customizer` : fallbackBrowserTitle;
+  document.title = label ? `${label} — CV Builder` : fallbackBrowserTitle;
 
   const positionCompanyEl = document.getElementById('position-company');
   if (positionCompanyEl) {

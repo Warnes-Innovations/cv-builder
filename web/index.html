@@ -10,7 +10,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>CV Generator — Professional Web UI</title>
+  <title>CV Builder — Professional Web UI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   
   <!-- Bootstrap 5 CSS (base framework; custom styles.css overrides below) -->
@@ -37,7 +37,7 @@
         <img src="/logo" alt="W" style="height: 48px; width: auto; display: block;" onerror="this.parentElement.style.display='none'">
       </div>
       <div>
-        <h1 style="margin: 0;">CV Customizer</h1>
+        <h1 style="margin: 0;">CV Builder</h1>
         <div id="header-session-name" style="font-size: 0.8em; opacity: 0.75;"></div>
       </div>
     </div>
@@ -60,6 +60,10 @@
         <span id="model-test-badge" title="Connection test result" style="display:none; font-size:0.85em;"></span>
         <span class="pill-chevron">&#9660;</span>
       </button>
+      <button id="help-btn" onclick="showWelcomeModal()"
+        class="header-pill-btn"
+        title="Reopen the getting-started guide"
+        aria-label="Help — reopen getting started guide">? Help</button>
       <button id="settings-btn" onclick="openSettingsModal()"
         class="header-pill-btn"
         title="Configure provider and generation defaults">⚙️ Settings</button>

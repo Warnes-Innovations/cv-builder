@@ -1877,6 +1877,29 @@ def create_blueprint(deps):
     # Finalise
     # ------------------------------------------------------------------
 
+    @bp.get("/api/finalise-meta")
+    def finalise_meta():
+        """Return saved application_status and notes from the current session's metadata.json."""
+        entry = get_session()
+        validate_owner(entry)
+        conversation = entry.manager
+        with entry.lock:
+            generated = conversation.state.get('generated_files')
+            if not generated or not generated.get('output_dir'):
+                return jsonify({'application_status': 'ready', 'notes': ''})
+            metadata_path = Path(generated['output_dir']) / 'metadata.json'
+            if not metadata_path.exists():
+                return jsonify({'application_status': 'ready', 'notes': ''})
+            try:
+                with open(metadata_path, encoding='utf-8') as f:
+                    meta = json.load(f)
+                return jsonify({
+                    'application_status': meta.get('application_status', 'ready'),
+                    'notes': meta.get('notes', ''),
+                })
+            except Exception:
+                return jsonify({'application_status': 'ready', 'notes': ''})
+
     @bp.post("/api/finalise")
     def finalise_application():
         """Finalise the application: update metadata, upsert response library, git commit."""
