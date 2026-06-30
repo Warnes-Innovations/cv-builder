@@ -300,6 +300,7 @@ async function initiateLayoutInstructions() {
         <div class="layout-input-pane">
           <h3>Layout Review</h3>
           <p class="layout-scope-label">💡 Describe a layout change (spacing, margins, column widths, section order). Text content is finalised — content edits are not applied here.</p>
+          <div id="layout-page-estimate" style="display:none;margin-bottom:10px;"></div>
 
           <div id="layout-stale-callout" class="layout-stale-callout" style="display:none;">
             <h4>Layout preview is out of date</h4>
@@ -471,6 +472,30 @@ async function initiateLayoutInstructions() {
   // Restore any prior instructions from session
   await restoreInstructionHistory();
   refreshLayoutReviewState();
+
+  // Show a proactive page-length estimate so users can adjust content before generating
+  _fetchPageEstimate();
+}
+
+async function _fetchPageEstimate() {
+  const banner = document.getElementById('layout-page-estimate');
+  if (!banner) return;
+  try {
+    const res = await fetch('/api/estimate-pages');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.ok || !data.estimated_pages) return;
+    const pages = data.estimated_pages;
+    const isOver = pages > 3;
+    const color = isOver ? '#92400e' : '#166534';
+    const bg    = isOver ? '#fef3c7' : '#f0fdf4';
+    const border = isOver ? '#fcd34d' : '#bbf7d0';
+    const msg   = isOver
+      ? `⚠ Estimated ~${pages} pages — senior candidate target is 2–3 pages. Consider reducing selected bullet points before generating.`
+      : `✓ Estimated ~${pages} pages — within the 2–3 page target for senior candidates.`;
+    banner.style.cssText = `display:block;padding:8px 12px;border-radius:6px;border:1px solid ${border};background:${bg};color:${color};font-size:0.87em;`;
+    banner.textContent = msg;
+  } catch (_) { /* silent — non-critical */ }
 }
 
 /**

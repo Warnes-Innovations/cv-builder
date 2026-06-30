@@ -2217,6 +2217,7 @@ For manual generation:
             },
             'files_generated': files_created,
             'date_overlap_warnings': date_overlap_warnings,
+            'summary_warnings': selected_content.get('summary_warnings', []),
         }
 
         metadata_file = job_output_dir / 'metadata.json'
@@ -3477,9 +3478,12 @@ Include one entry per candidate. Do not omit any candidate."""
                 selected_publications, float(max_pub_pages), int(chars_per_page)
             )
 
+        summary_warnings = self._validate_summary(selected_summary, job_analysis)
+
         return {
             'personal_info': self.master_data.get('personal_info', {}),
             'summary': selected_summary,
+            'summary_warnings': summary_warnings,
             'experiences': selected_experiences,
             'achievements': selected_achievements,
             'skills': selected_skills,
@@ -3525,6 +3529,48 @@ Include one entry per candidate. Do not omit any candidate."""
             total += max(len(str(name)), 6) + 10
 
         return total
+
+    @staticmethod
+    def _validate_summary(summary: Any, job_analysis: Dict) -> List[str]:
+        """Return a list of warning strings for summary quality issues."""
+        text = str(summary or '').strip()
+        if not text:
+            return ['Summary is empty.']
+        warnings: List[str] = []
+
+        # Check 1: summary must not open with first-person "I"
+        first_word = text.split()[0].rstrip('.,;:')
+        if first_word == 'I':
+            warnings.append(
+                'Summary opens with "I" — avoid first-person pronouns in professional summaries.'
+            )
+
+        # Check 2: word count in target range (40–250 words)
+        word_count = len(text.split())
+        if word_count < 40:
+            warnings.append(
+                f'Summary is short ({word_count} words) — aim for 40–250 words for a senior candidate.'
+            )
+        elif word_count > 250:
+            warnings.append(
+                f'Summary is long ({word_count} words) — aim for 40–250 words to keep recruiter attention.'
+            )
+
+        # Check 3: top-3 required skills from job analysis should appear in summary
+        required_skills: List[str] = [
+            s.lower() for s in (job_analysis or {}).get('required_skills', []) if s
+        ]
+        if required_skills:
+            top3 = required_skills[:3]
+            text_lower = text.lower()
+            missing = [s for s in top3 if s not in text_lower]
+            if missing:
+                warnings.append(
+                    f'Summary does not mention top required skill(s): {", ".join(missing)}. '
+                    'Consider weaving them in naturally.'
+                )
+
+        return warnings
 
     def _cap_cv_body_to_pages(
         self,

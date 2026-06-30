@@ -353,6 +353,17 @@ async function populateDownloadTab(cvData) {
   html += '<p style="font-size:0.83em;color:#94a3b8;margin-bottom:16px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0;">✅ <em>This is the <strong>completeness check</strong> step — ATS validation runs here and you can archive the application. To download files immediately after generation, use the <strong>Generated Files</strong> tab.</em></p>';
   html += _renderValidationSummary(checks, summary, pageCount, atsError);
 
+  const summaryWarnings = (cvData.metadata?.summary_warnings || []);
+  if (summaryWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Professional Summary quality notices (${summaryWarnings.length}):</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;">
+        ${summaryWarnings.map(w => `<li style="font-size:0.9em;">${escapeHtml(w)}</li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">These are advisory warnings — review the Summary tab if you wish to update the summary before submitting.</p>
+    </div>`;
+  }
+
   const overlapWarnings = (cvData.date_overlap_warnings || []);
   if (overlapWarnings.length) {
     html += `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:16px;">

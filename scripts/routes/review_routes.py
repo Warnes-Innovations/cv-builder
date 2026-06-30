@@ -2289,6 +2289,31 @@ def create_blueprint(deps):
         except Exception:
             return _internal_server_error('Failed to update layout settings.')
 
+    # ── Page-count estimation ────────────────────────────────────────────────
+
+    @bp.get("/api/estimate-pages")
+    def estimate_pages():
+        """Return an estimated page count based on current customisation selections."""
+        entry = _get_session()
+        conversation = entry.manager
+        try:
+            job_analysis = _coerce_to_dict(conversation.state.get('job_analysis') or {})
+            customizations = conversation.state.get('customizations') or {}
+            orc = conversation.orchestrator
+            content = orc.build_render_ready_content(job_analysis, customizations)
+            chars_per_page = orc.cfg.get('generation.cv_body_chars_per_page', 2500)
+            total_chars = orc._estimate_cv_body_chars(
+                content.get('summary'),
+                content.get('experiences', []),
+                content.get('achievements', []),
+                content.get('skills', []),
+            )
+            estimated_pages = round(total_chars / int(chars_per_page), 1)
+            return jsonify({'ok': True, 'estimated_pages': estimated_pages, 'chars': total_chars})
+        except Exception:
+            logger.exception('estimate_pages failed')
+            return jsonify({'ok': False, 'error': 'Estimate failed'}), 500
+
     # ── ATS validation + persuasion ──────────────────────────────────────────
 
     @bp.get("/api/ats-validate")
