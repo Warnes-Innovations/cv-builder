@@ -160,7 +160,7 @@ async function finalGenerationComplete() {
   try {
     const res = await apiCall('POST', '/api/final-generation-complete', {});
     if (!res?.ok) {
-      throw new Error(res?.error || 'Failed to advance to Finalise step.');
+      throw new Error(res?.error || 'Failed to advance to File Review step.');
     }
     stateManager.setPhase('refinement');
     switchTab('download');

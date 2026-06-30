@@ -1804,10 +1804,17 @@ Workflow step pills and tab labels include emoji characters (e.g., ✅, ↻, ⚠
 ## GAP-194: Two Overlapping Advance Buttons With Inconsistent Labels (GAP-U9 upgraded to Fail)
 
 **Priority:** HIGH
-**Status:** OPEN — Upgraded from Partial to Fail in cycle 8 (2026-06-29) by ux-expert. Originally tracked as US-U9 partial since cycle 4.
+**Status:** RESOLVED 2026-06-29 — Relabeled both buttons for clarity and visual distinction:
+
+- `#final-generate-proceed-btn`: "✅ Proceed to Finalise →" → "📥 Continue to File Review →" (distinct emoji, clearer destination)
+- `#finalise-action-btn`: "✅ Finalise" → "📦 Package Application Files" (action-oriented, no ✅ conflict)
+
+`#layout-btn` retains its dynamic ✅/⬇️/↻ labels unchanged. `updateActionButtons()` already ensures only one button is visible per stage — the fix is label clarity, not structural consolidation.
 **Affected stories:** US-U9, US-A5
 `web/index.html:188–189` — Two overlapping advance buttons appear at the Layout stage:
+
 - `#layout-btn` — label "✅ Confirm Layout" (advances to `spell_check` phase)
 - `#final-generate-proceed-btn` — label "✅ Proceed to Finalise →" (shown at a different moment but overlapping in DOM)
+
 The buttons have inconsistent labels, both use ✅ prefix, and the second label "Proceed to Finalise →" is misleading because the next step is spell check, not finalisation. The story requires a single unambiguous "Proceed to Final Generation" CTA at this step.
 **Recommended resolution:** Consolidate to a single advance button at this workflow stage. Relabel using the story's required text "Proceed to Final Generation" and remove the redundant `#final-generate-proceed-btn` or hide it until the correct phase. Ensure only one ✅ CTA is visible at any time.
