@@ -275,14 +275,14 @@ const SESSION_PHASE_LABELS = {
 // Intentionally separate from SESSION_PHASE_LABELS: the two sets serve different
 // UI contexts (space-constrained header chip vs. full workflow step label).
 const SESSION_PHASE_LABELS_SHORT = {
-  init:             'Init',
+  init:             'Setup',
   job_analysis:     'Analysis',
-  customization:    'Custom',
-  rewrite_review:   'Rewrite',
-  spell_check:      'Spell',
+  customization:    'Customising',
+  rewrite_review:   'Rewrites',
+  spell_check:      'Spell Check',
   generation:       'Generate',
   layout_review:    'Layout',
-  refinement:       'Done',
+  refinement:       'Finalise',
   final_generation: 'Final Gen',
 };
 

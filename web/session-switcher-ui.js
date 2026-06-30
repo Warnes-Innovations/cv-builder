@@ -553,6 +553,10 @@ async function submitSessionModalRename(path, idx) {
 
 async function _deleteSessionFromModal(path, event) {
   event.stopPropagation();
+  if (typeof confirmDialog === 'function') {
+    const ok = await confirmDialog('Move this session to Trash? You can restore it from the Trash view.');
+    if (!ok) return;
+  }
   try {
     const res  = await fetch('/api/delete-session', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },

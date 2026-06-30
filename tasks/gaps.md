@@ -999,7 +999,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** US-S3
-**Status:** OPEN - discovered 2026-04-22; returning user review found `_deleteSessionFromModal()` (`web/session-switcher-ui.js:317`) calls the delete API directly with no `confirmDialog()`. While the action is reversible (session goes to Trash), the red "Move to Trash" button immediately removes the session from the active list without user confirmation.
+**Status:** RESOLVED 2026-06-29 — Added `confirmDialog('Move this session to Trash? You can restore it from the Trash view.')` guard at the top of `_deleteSessionFromModal()` in `web/session-switcher-ui.js:557–560`. Matches the pattern already used by Delete Forever and Empty Trash.
 **Description:** Both "Delete Forever" and "Empty Trash" use `confirmDialog()` before proceeding. "Move to Trash" does not, creating an inconsistent behavior pattern.
 **Recommended resolution:** Add a `confirmDialog('Move this session to Trash? You can restore it from the Trash view.')` before the API call in `_deleteSessionFromModal()`.
 
@@ -1007,7 +1007,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-S1, US-O2
-**Status:** OPEN - discovered 2026-04-22; returning user and recruiter-ops reviews found `SESSION_PHASE_LABELS_SHORT` (`web/utils.js:274–285`) maps phase values to abbreviated labels: `customization` → "Custom", `rewrite_review` → "Rewrites", `refinement` → "Done". These appear in the session switcher header and session modal rows. "Custom" is non-obvious; "Done" is misleading for active-refinement sessions.
+**Status:** RESOLVED 2026-06-29 — Updated `SESSION_PHASE_LABELS_SHORT` in `web/utils.js:277–287`: `init` → "Setup", `customization` → "Customising", `rewrite_review` → "Rewrites", `spell_check` → "Spell Check", `refinement` → "Finalise", `final_generation` → "Final Gen". Ambiguous "Custom" and misleading "Done" are gone.
 **Recommended resolution:** Expand `SESSION_PHASE_LABELS_SHORT` to use more descriptive labels: "Customising", "Reviewing rewrites", "Finalising", "Generated". Update "Done" for `refinement` to "Finalise" or a phase-appropriate label.
 
 ## GAP-113: No Session Duplicate/Copy Action
@@ -1584,7 +1584,7 @@ Workflow step pills had `onclick` handlers but no `role="button"`, `tabindex`, o
 ## GAP-175: Professional Summary Specificity Validator Absent
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-20 (cycle 5). Re-confirmed cycle 8 (2026-06-29): `check_summary_generic_phrases` is called only inside `_rewrite_summary_handler()` (`conversation_manager.py:1324–1325`), not in the baseline summary selection path. A user's stored summary that is already generic will reach generated output without any specificity gate.
+**Status:** RESOLVED 2026-06-29 — Added `_checkSummarySpecificity(text)` and `_updateSummarySpecificityBadge(text)` in `web/summary-review.js`. The badge is inserted immediately after `#ai-summary-text` and updated in both `_showAISummary()` and `onSummaryTextChange()`. Three checks: (1) quantified claim (regex for numbers + units/%), (2) target role keyword from `window._lastAnalysisData.title`, (3) generic placeholder phrase detection. Pass shows a green ✓; each failure shows an amber ⚠ advisory. Does not block submission — advisory only.
 **Affected stories:** US-M1, US-P1
 `scripts/utils/conversation_manager.py:1325` — `check_summary_generic_phrases()` detects and blocks filler phrases like "seasoned professional", "results-driven", and "passionate about". However, the system has no complementary check that enforces the presence of positive specificity: the target job title (or equivalent), a quantified claim (numbers, percentages, years), or a concrete differentiator. A summary like "Experienced engineer who has worked on many challenging problems" passes all current checks despite being generic and unverifiable.
 **Cycle 8 additional evidence:** The fallback summary at `cv_orchestrator.py:197` is explicitly generic ("Experienced professional with a strong track record..."). If no specific summary is selected or rewritten, this placeholder can reach the generated PDF.

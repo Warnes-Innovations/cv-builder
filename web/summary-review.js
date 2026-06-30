@@ -158,6 +158,59 @@ function _showAISummary(text, statusLabel) {
   if (loadingEl) loadingEl.style.display = 'none';
   if (statusEl)  statusEl.textContent = statusLabel || '';
   window._aiGeneratedSummary = text;
+  _updateSummarySpecificityBadge(text);
+}
+
+// ── Summary specificity validator ─────────────────────────────────────────────
+
+function _checkSummarySpecificity(text) {
+  if (!text || !text.trim()) return [];
+  const warnings = [];
+  // Check 1: quantified claim (number, percentage, or year range)
+  const hasQuantified = /\b\d[\d,]*\s*(%|percent|yrs?|years?|months?|x\b|\+|k\b|m\b|\.\d)/i.test(text) ||
+                        /\b\d+\+\s*(years?|yrs?|months?)/i.test(text);
+  if (!hasQuantified) {
+    warnings.push('No quantified claim detected (e.g. "5+ years", "30% reduction", "$2M"). Adding a number strengthens credibility.');
+  }
+  // Check 2: target role keyword present
+  const analysis = window._lastAnalysisData ||
+    (window.pendingRecommendations && window.pendingRecommendations.job_analysis) || {};
+  const roleTitle = (analysis.title || analysis.job_title || '').toLowerCase().trim();
+  if (roleTitle && roleTitle.length > 3) {
+    const roleParts = roleTitle.split(/[\s/,]+/).filter(w => w.length > 3);
+    const inText = roleParts.some(part => text.toLowerCase().includes(part));
+    if (!inText) {
+      warnings.push(`Target role ("${escapeHtml(roleTitle)}") not mentioned — consider echoing the role or a synonym.`);
+    }
+  }
+  // Check 3: fallback generic placeholder
+  const genericPhrases = ['experienced professional', 'track record of success', 'seeking a challenging'];
+  for (const phrase of genericPhrases) {
+    if (text.toLowerCase().includes(phrase)) {
+      warnings.push(`Generic placeholder phrase detected ("${phrase}") — replace with specific achievements.`);
+    }
+  }
+  return warnings;
+}
+
+function _updateSummarySpecificityBadge(text) {
+  let badge = document.getElementById('summary-specificity-badge');
+  if (!badge) {
+    const textEl = document.getElementById('ai-summary-text');
+    if (!textEl || !textEl.parentNode) return;
+    badge = document.createElement('div');
+    badge.id = 'summary-specificity-badge';
+    badge.style.cssText = 'margin-top:6px;font-size:0.82em;';
+    textEl.parentNode.insertBefore(badge, textEl.nextSibling);
+  }
+  const warnings = _checkSummarySpecificity(text);
+  if (warnings.length === 0) {
+    badge.innerHTML = '<span style="color:#10b981;">✓ Summary has specific, quantified content.</span>';
+  } else {
+    badge.innerHTML = warnings.map(w =>
+      `<div style="color:#b45309;margin-top:2px;">⚠ ${w}</div>`
+    ).join('');
+  }
 }
 
 // ── Call generate-summary API ────────────────────────────────────────────────
@@ -271,6 +324,7 @@ function onSummaryTextChange() {
   const textEl = document.getElementById('ai-summary-text');
   if (!textEl) return;
   window._aiGeneratedSummary = textEl.value;
+  _updateSummarySpecificityBadge(textEl.value);
   clearTimeout(_summaryPersistTimer);
   _summaryPersistTimer = setTimeout(() => {
     saveSummaryFocusToBackend('ai_generated', textEl.value.trim());
@@ -318,5 +372,7 @@ export {
   onSummaryTextChange,
   selectSummaryKey,
   saveSummaryFocusToBackend,
+  _checkSummarySpecificity,
+  _updateSummarySpecificityBadge,
   submitSummaryFocusDecision,
 };
