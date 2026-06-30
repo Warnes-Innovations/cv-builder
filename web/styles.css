@@ -1449,6 +1449,11 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .instruction-text { font-weight: 500; color: #374151; margin-bottom: 3px; }
 .instruction-summary { color: #64748b; font-style: italic; margin-bottom: 6px; }
 
+@media (max-width: 1400px) {
+  .workflow-steps { gap: 16px; }
+  .workflow { padding: 14px 16px; }
+}
+
 @media (max-width: 1280px) {
   .layout-instruction-panel { gap: 16px; }
   .layout-input-pane { width: 300px; flex-basis: 300px; }

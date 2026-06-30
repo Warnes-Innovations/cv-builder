@@ -134,6 +134,13 @@ function switchTab(tab) {
   }
   stateManager.setCurrentTab(tab);
 
+  // Announce the tab change to screen readers (GAP-73)
+  const announcer = document.getElementById('workflow-stage-announcer');
+  if (announcer && activeTab) {
+    announcer.textContent = '';
+    setTimeout(() => { announcer.textContent = `Now viewing: ${activeTab.textContent.trim()}`; }, 50);
+  }
+
   // Sync view-cursor ring to the newly visible tab
   if (typeof _updateViewingIndicator === 'function') _updateViewingIndicator(tab);
 

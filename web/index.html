@@ -141,6 +141,9 @@
       <div class="step" id="step-harvest"        title="Harvest improvements"       onclick="handleStepClick('harvest')"><span aria-hidden="true">🌾</span> Harvest</div>
     </div>
   </nav>
+  <!-- Screen-reader-only live region for stage-change announcements (GAP-73) -->
+  <div id="workflow-stage-announcer" aria-live="polite" aria-atomic="true"
+       style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;"></div>
 
   <!-- Main Container -->
   <main class="main-container">

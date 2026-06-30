@@ -592,7 +592,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; frontend review found both `web/ui-core.js` and `web/ui-helpers.js` write modal message bodies via `innerHTML`, and `web/job-input.js` passes interpolated error/help text into those sinks.
+**Status:** RESOLVED 2026-06-29 — Added `_setModalText(el, message)` helper in `web/ui-helpers.js` that splits on `\n` and appends text nodes + `<br>` elements. `showAlertModal()` and `showConfirmModal()` now call `_setModalText()` instead of `.innerHTML = message.replace(/\n/g, '<br>')`. `ui-core.js` already used `textContent` throughout.
 **Description:** Error/help content can be rendered as HTML inside modal dialogs without sanitization, creating an avoidable XSS surface.
 **Recommended resolution:** Use `textContent` plus explicit line-break handling, or sanitize rich content before rendering it into modal bodies.
 
@@ -696,7 +696,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-X1, US-U7
-**Status:** OPEN - discovered 2026-04-22; accessibility specialist review found the `.workflow` div has no `aria-live` attribute. When the active stage changes, screen readers receive no notification.
+**Status:** RESOLVED 2026-06-29 — Added visually-hidden `<div id="workflow-stage-announcer" aria-live="polite" aria-atomic="true">` in `web/index.html` after `</nav>`. Wired in `switchTab()` in `web/review-table-base.js`: clears then re-sets `announcer.textContent` with a 50 ms timeout so screen readers detect the DOM mutation. Previously discovered 2026-04-22; accessibility specialist review found the `.workflow` div has no `aria-live` attribute. When the active stage changes, screen readers receive no notification.
 **Description:** Stage transitions are the most significant navigation events in the workflow. Without an `aria-live` region, screen reader users cannot detect when the application has advanced to a new stage.
 **Recommended resolution:** Add `aria-live="polite"` and `aria-atomic="true"` to a designated status region that announces stage changes (e.g., "Now at step 3: Customise").
 
@@ -1083,7 +1083,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-U8, H8
-**Status:** OPEN - discovered 2026-04-22; UX expert review found `web/styles.css:146` defines `.workflow-steps { display: flex; gap: 32px; }` without `flex-wrap: wrap`. With 8 step pills and 7 arrows at 32px gap, the workflow bar risks horizontal overflow on 1280px viewport widths.
+**Status:** RESOLVED 2026-06-29 — Added `@media (max-width: 1400px) { .workflow-steps { gap: 16px; } .workflow { padding: 14px 16px; } }` in `web/styles.css`. Previously discovered 2026-04-22; UX expert review found `web/styles.css:146` defines `.workflow-steps { display: flex; gap: 32px; }` without `flex-wrap: wrap`. With 8 step pills and 7 arrows at 32px gap, the workflow bar risks horizontal overflow on 1280px viewport widths.
 **Description:** At 1280px, the 8-step workflow bar may truncate or overflow without wrapping, hiding step pills from view. This creates an inconsistent experience for users on smaller laptop displays.
 **Recommended resolution:** Add `flex-wrap: wrap` or reduce `gap` to 16px at viewports ≤1400px via a media query. Alternatively, introduce abbreviated step labels at narrow widths.
 

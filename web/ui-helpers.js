@@ -19,9 +19,18 @@ import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
 // Alert modal (informational — single OK button)
 // ---------------------------------------------------------------------------
 
+function _setModalText(el, message) {
+  el.textContent = '';
+  const parts = String(message || '').split('\n');
+  parts.forEach((part, i) => {
+    el.appendChild(document.createTextNode(part));
+    if (i < parts.length - 1) el.appendChild(document.createElement('br'));
+  });
+}
+
 function showAlertModal(title, message) {
   document.getElementById('alert-modal-title').textContent = title;
-  document.getElementById('alert-modal-message').innerHTML = message.replace(/\n/g, '<br>');
+  _setModalText(document.getElementById('alert-modal-message'), message);
   document.getElementById('alert-modal-overlay').style.display = 'block';
   if (typeof setInitialFocus === 'function') setInitialFocus('alert-modal-overlay');
   if (typeof trapFocus === 'function') trapFocus('alert-modal-overlay');
@@ -42,7 +51,7 @@ let _confirmPreviousFocus = null;
 function showConfirmModal(title, message, okLabel = 'OK') {
   _confirmPreviousFocus = document.activeElement;
   document.getElementById('confirm-modal-title').textContent = title;
-  document.getElementById('confirm-modal-message').innerHTML = message.replace(/\n/g, '<br>');
+  _setModalText(document.getElementById('confirm-modal-message'), message);
   const okBtn = document.getElementById('confirm-modal-ok');
   if (okBtn) okBtn.textContent = okLabel;
   document.getElementById('confirm-modal-overlay').style.display = 'block';
