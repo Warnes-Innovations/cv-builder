@@ -196,7 +196,7 @@ function _renderDownloadGrid(files, checks, summary, generatedAt = null) {
       : '';
     const timestampLine = generatedLabel
       ? `<div style="font-size:0.75em;color:#9ca3af;margin-top:3px;">Generated ${generatedLabel}</div>`
-      : '';
+      : '<div style="font-size:0.75em;color:#c0c4cc;margin-top:3px;">Not yet generated</div>';
 
     const previewBadge = file.format === 'preview'
       ? '<span style="display:inline-block;margin-left:6px;font-size:0.75em;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 5px;vertical-align:middle;">Working file — not for submission</span>'

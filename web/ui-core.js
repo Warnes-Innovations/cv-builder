@@ -1971,7 +1971,9 @@ function updateWorkflowStepsClickable(currentPhase) {
     const el = document.getElementById(id);
     if (el) el.removeAttribute('aria-current');
   });
-  const activeStepId = postLayoutUnlocked ? null : sequentialSteps[currentIdx];
+  // For post-layout phases, mark step-download as the active step so screen readers
+  // have a programmatic current-position indicator.
+  const activeStepId = postLayoutUnlocked ? 'step-download' : sequentialSteps[currentIdx];
   if (activeStepId) {
     const activeEl = document.getElementById(activeStepId);
     if (activeEl) activeEl.setAttribute('aria-current', 'step');

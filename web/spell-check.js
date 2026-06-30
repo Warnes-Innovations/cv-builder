@@ -206,7 +206,17 @@ function renderSpellSuggestions(flaggedSections, totalSections, stats = {}, cust
     </div>
   `;
 
-  flaggedSections.forEach(({ section, suggestions }) => {
+  const _sugSeverity = (sug) => {
+    const rid = (sug.rule_id || '').toLowerCase();
+    const cat = (sug.category || '').toLowerCase();
+    if (/spell|typo|misspell/.test(rid) || /typo/.test(cat)) return 0;
+    if (/grammar|agreement|verb|tense|article/.test(rid) || /grammar/.test(cat)) return 1;
+    if (/style|redundan|wordy/.test(rid) || /style/.test(cat)) return 2;
+    return 3;
+  };
+
+  flaggedSections.forEach(({ section, suggestions: rawSuggestions }) => {
+    const suggestions = [...rawSuggestions].sort((a, b) => _sugSeverity(a) - _sugSeverity(b));
     html += `<div class="review-section" style="margin-bottom:24px;">
       <h3 style="font-size:1em;font-weight:700;color:#374151;margin-bottom:12px;">${escapeHtml(section.label)}</h3>
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.9em;white-space:pre-wrap;">${escapeHtml(section.text)}</div>
