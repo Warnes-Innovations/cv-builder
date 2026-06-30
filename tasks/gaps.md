@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-30 (cycle 13)
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-30 (cycle 14)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,18 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257.
+
+## 2026-06-30 (Cycle 14) Reconciliation Notes
+
+- **6 gaps resolved (fixes implemented this cycle):**
+  - **GAP-247 RESOLVED:** `showWelcomeModal()` added to `session-manager.js`; "? Help" button in header calls it unconditionally.
+  - **GAP-251 RESOLVED:** "CV Customizer" → "CV Builder" across `index.html` h1, `<title>`, `session-actions.js` document.title and fallback title.
+  - **GAP-235 RESOLVED:** `GET /api/finalise-meta` added to `generation_routes.py`; `_restoreFinaliseMeta()` called on Finalise tab load to pre-populate status/notes.
+  - **GAP-236 RESOLVED:** `maxlength="2000"` + live character counter added to `#finalise-notes` textarea; counter updates on restore.
+  - **GAP-234 RESOLVED:** Grade legend (≥75% Strong · 50–74% Partial · <50% Low) added inline in `_renderAtsReport()`.
+  - **GAP-249 RESOLVED:** `generateFinalOutputs()` auto-calls `POST /api/cv/confirm-layout` when no layout instructions have been added, skipping the redundant confirm click.
+- **1 stale spec fixed:** `user-story-hr-ats.md:77` updated to accept "Selected Publications" as a valid heading (matches GAP-218 fix).
+- **Most critical remaining open gaps (cycle 14):** GAP-252 (intake confirmation UI not connected), GAP-206 (phase-lock indicator), GAP-213 (publications absent from ATS DOCX), GAP-14 (workflow progress indicator), GAP-201 (clarifying questions all-at-once).
 
 ## 2026-06-30 (Cycle 13) Reconciliation Notes
 
@@ -2349,7 +2361,7 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-234: Relevance Score Unlabelled in Review Tables
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — cycle 14
 **Discovered:** 2026-06-30 (cycle 13) by ux-expert (US-U4.6).
 **Affected stories:** US-U4 (review UI clarity)
 `web/ats-modals.js:50–58` — experience/skill relevance scores are displayed as raw integers (e.g., "73") with no "/100" label and no grade legend (e.g., "70+ = Good", "50–69 = Fair", "<50 = Low"). Without domain knowledge a raw score is uninterpretable. Confirmed by UX Expert and Applicant sub-agents.
@@ -2361,7 +2373,7 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-235: Finalise Tab Notes Not Pre-Populated on Re-Open
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — cycle 14
 **Discovered:** 2026-06-30 (cycle 13) by recruiter-ops (US-O4).
 **Affected stories:** US-O4 (notes and context management)
 `web/finalise.js:42–52` — the Finalise tab initialises with a default status ("Ready to send") and an empty notes textarea on every tab load. There is no fetch of `metadata.json` or `session.json` on tab activation to restore previously saved notes. A user who enters submission-tracking notes, switches tabs, and returns finds the field blank.
@@ -2373,7 +2385,7 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-236: Notes Silently Truncated at 2000 Characters — No Counter or Warning
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — cycle 14
 **Discovered:** 2026-06-30 (cycle 13) by recruiter-ops (US-O4).
 **Affected stories:** US-O4 (notes and context management)
 `scripts/routes/session_routes.py:647` — the session notes field is truncated to 2000 characters server-side without surfacing a warning to the user. The `#finalise-notes` textarea has no `maxlength` attribute and no character counter. Users who paste long notes silently lose the trailing content with no error or warning.
@@ -2505,7 +2517,7 @@ During the Customise phase, users can select many bullets, publications, and ach
 ## GAP-247: No Help Reopen Trigger — Welcome Modal Cannot Be Reopened After Dismissal
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — cycle 14
 **Discovered:** 2026-06-30 (cycle 13) by heuristic sub-agent (H10 Critical) and first-time-user.
 **Affected stories:** US-F1 (first-run onboarding), US-F4 (help access mid-workflow)
 `web/index.html:317–399` — the welcome/onboarding modal shows on first load via `maybeShowWelcomeModal()` (`web/session-manager.js:169`). Once dismissed via the "Get Started" button there is no visible way to reopen it. No "Help" or "?" button exists in the UI. No command reference, keyboard shortcut guide, or help panel is accessible to a user mid-workflow.
@@ -2529,7 +2541,7 @@ During the Customise phase, users can select many bullets, publications, and ach
 ## GAP-249: Layout Confirm Step Redundant When No Layout Changes Made
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — cycle 14
 **Discovered:** 2026-06-30 (cycle 13) by ux-expert (US-U9.6).
 **Affected stories:** US-U9 (workflow efficiency)
 The Layout Review phase requires the user to click through a confirmation step even when they have made no layout instruction changes. The confirmation adds friction with no benefit when layout is unchanged from the default.
@@ -2553,7 +2565,7 @@ Clicking a previously completed workflow step in the pill bar silently re-enters
 ## GAP-251: Brand Name Inconsistency — "CV Customizer" vs "CV Builder"
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — cycle 14
 **Discovered:** 2026-06-30 (cycle 13) by applicant and heuristic sub-agent (H4).
 **Affected stories:** US-A1 (first impression consistency)
 The application header reads "CV Customizer" while the onboarding welcome modal calls it "CV Builder". These two names appear in the same user session and create confusion about what the product is called.
