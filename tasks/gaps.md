@@ -1739,7 +1739,8 @@ Role level is available from `job_analysis.role_level` / `job_analysis.domain` i
 ## GAP-189: Action-Verb Warnings in Experience Bullets Are Log-Only
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by hiring-manager.
+**Status:** RESOLVED 2026-06-29 — Added `_achVerbWarning()` in `web/achievements-review.js` with mirrored `_ACH_WEAK_VERBS` and `_ACH_STRONG_VERBS` sets (from `cv_orchestrator.py`). In `renderAchievementEditorRows()`: each bullet's textarea is now wrapped in a `flex-direction:column` div; when the first word is in `_ACH_WEAK_VERBS`, an amber warning badge appears below the textarea ("⚠ Weak opening verb"); when not in `_ACH_STRONG_VERBS`, a grey informational badge appears. Weak-verb bullets also get a yellow border. The check fires on render and on save. Backend `_enhance_achievement_for_ats` log warning remains; no backend change needed for UI surfacing.
+**Discovered:** 2026-06-29 (cycle 8) by hiring-manager.
 **Affected stories:** US-M2, US-R3
 `_enhance_achievement_for_ats()` (`scripts/utils/cv_orchestrator.py:3966–3970`) calls `logger.warning(f"Weak action verb: {verb}")` when it detects a weak opening verb in a bullet. This log entry is never surfaced to the user. The experience bullets review tab shows no indicator when a bullet's opening verb is flagged as weak (e.g. "Responsible for", "Helped", "Assisted").
 **Recommended resolution:** Store weak-verb flags in the bullet metadata (e.g., `bullet['weak_verb_warning'] = True`) and return this in the `/api/status` response. In the experience bullets review tab, display a small ⚠ badge next to flagged bullets with a tooltip: "Consider replacing the opening verb with a stronger action word."
@@ -1749,7 +1750,8 @@ Role level is available from `job_analysis.role_level` / `job_analysis.domain` i
 ## GAP-190: Phase Re-Run Events Not Written to Session Audit Log
 
 **Priority:** LOW
-**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by applicant.
+**Status:** RESOLVED 2026-06-29 — Added `rerun_log` append in `re_run_phase()` (`scripts/utils/conversation_manager.py:1570`), just before `_save_session()`. Each entry contains `phase` (resolved phase name), `timestamp` (UTC ISO-8601), and `triggered_by: 'user'`. Log is persisted in session state JSON.
+**Discovered:** 2026-06-29 (cycle 8) by applicant.
 **Affected stories:** US-A12, US-C2
 `re_run_phase()` (`scripts/utils/conversation_manager.py:1570–1576`) updates phase state and returns the result but does not write any timestamped entry to the session's audit trail. Users and compliance reviewers cannot determine from the session JSON when a phase was re-entered, how many times re-runs occurred, or which outcome was produced each time.
 **Recommended resolution:** Add a timestamped `rerun_log` entry to session state in `re_run_phase()`:

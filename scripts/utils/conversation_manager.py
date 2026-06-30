@@ -1567,6 +1567,12 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         else:
             return {'ok': False, 'error': f'Re-run not supported for phase: {resolved!r}'}
 
+        from datetime import datetime, timezone
+        self.state.setdefault('rerun_log', []).append({
+            'phase': str(resolved),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'triggered_by': 'user',
+        })
         self._save_session()
         return {
             'ok':           True,

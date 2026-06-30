@@ -521,6 +521,32 @@ async function buildAchievementsEditor() {
   experiences.forEach((_, expIdx) => renderAchievementEditorRows(expIdx));
 }
 
+// Verbs that generate a weak-verb warning badge in the bullet editor.
+const _ACH_WEAK_VERBS = new Set([
+  'assisted','contributed','helped','participated','supported',
+  'supervised','worked','collaborated','cooperated','was',
+]);
+const _ACH_STRONG_VERBS = new Set([
+  'accelerated','achieved','architected','automated','built',
+  'championed','coined','conceived','conducted','consolidated',
+  'created','cut','delivered','demonstrated','deployed',
+  'designed','developed','directed','doubled','drove',
+  'enabled','established','expanded','founded','generated',
+  'grew','implemented','improved','increased','integrated',
+  'invented','launched','led','managed','optimized','pioneered',
+  'provided','published','raised','reduced','refactored','scaled',
+  'secured','shipped','spearheaded','streamlined','taught',
+  'transformed','translated','tripled',
+]);
+
+function _achVerbWarning(text) {
+  const firstWord = (text || '').trim().split(/[\s,.:;]/)[0].toLowerCase().replace(/[^a-z]/g, '');
+  if (!firstWord) return null;
+  if (_ACH_WEAK_VERBS.has(firstWord)) return { level: 'weak',    word: firstWord };
+  if (!_ACH_STRONG_VERBS.has(firstWord)) return { level: 'neutral', word: firstWord };
+  return null;
+}
+
 /**
  * Render the editable achievement rows for one experience.
  */
@@ -538,18 +564,28 @@ function renderAchievementEditorRows(expIdx) {
   listEl.innerHTML = achs.map((entry, achIdx) => {
     const text = _achievementEntryText(entry);
     const hidden = _achievementEntryHidden(entry);
+    const verbWarn = _achVerbWarning(text);
+    const verbBadge = verbWarn
+      ? (verbWarn.level === 'weak'
+          ? `<div style="font-size:0.78em;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:2px 6px;margin-top:3px;" title="Opening verb '${verbWarn.word}' is weak — consider Led, Built, Drove, etc.">⚠ Weak opening verb — use a stronger action verb</div>`
+          : `<div style="font-size:0.78em;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:2px 6px;margin-top:3px;" title="'${verbWarn.word}' is not in the strong-verb list — verify it makes an impact statement">ℹ Opening verb not in strong-verb list</div>`
+        )
+      : '';
     return `
     <div id="ach-row-${expIdx}-${achIdx}" class="${hidden ? 'achievement-row-hidden' : ''}" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
       <div style="display:flex;flex-direction:column;gap:2px;padding-top:4px;">
-        <button class="icon-btn" title="Move up"   onclick="moveAchievement(${expIdx},${achIdx},-1)">▲</button>
-        <button class="icon-btn" title="Move down" onclick="moveAchievement(${expIdx},${achIdx},+1)">▼</button>
+        <button class="icon-btn" title="Move up"   aria-label="Move bullet up"   onclick="moveAchievement(${expIdx},${achIdx},-1)">▲</button>
+        <button class="icon-btn" title="Move down" aria-label="Move bullet down" onclick="moveAchievement(${expIdx},${achIdx},+1)">▼</button>
       </div>
+      <div style="flex:1;display:flex;flex-direction:column;">
       <textarea id="ach-text-${expIdx}-${achIdx}"
         rows="2"
-        style="flex:1;padding:6px 8px;border:1px solid ${hidden ? '#f59e0b' : '#d1d5db'};border-radius:6px;font-size:0.9em;resize:vertical;${hidden ? 'background:#fffbeb;color:#92400e;' : ''}"
+        style="width:100%;padding:6px 8px;border:1px solid ${hidden ? '#f59e0b' : verbWarn?.level === 'weak' ? '#fde68a' : '#d1d5db'};border-radius:6px;font-size:0.9em;resize:vertical;box-sizing:border-box;${hidden ? 'background:#fffbeb;color:#92400e;' : ''}"
         onchange="updateAchievementText(${expIdx},${achIdx},this.value)"
         onblur="updateAchievementText(${expIdx},${achIdx},this.value)"
       >${escapeHtml(text)}</textarea>
+      ${verbBadge}
+      </div>
       <div style="display:flex;flex-direction:column;gap:4px;padding-top:2px;">
         <button class="icon-btn ${hidden ? 'active' : ''}" title="${hidden ? 'Show bullet in generated CV' : 'Hide bullet from generated CV'}"
           onclick="toggleAchievementHidden(${expIdx},${achIdx})"
