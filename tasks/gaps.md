@@ -1965,7 +1965,7 @@ Workflow step pills use CSS class colours to distinguish active, completed, upco
 ## GAP-200: Single `_focusedElementBeforeModal` Variable Clobbered by Nested Modal Opens
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Replaced single `_focusedElementBeforeModal` and `_currentFocusTrapListener` variables with `_focusStack[]` and `_focusTrapStack[]` arrays in `web/ui-core.js`. All three `openModal` call sites push to the stacks; `restoreFocus()` pops both in LIFO order. Nested modal opens/closes now correctly restore focus.
 **Discovered:** 2026-06-29 (cycle 9) by accessibility-specialist.
 **Affected stories:** US-X2
 `web/ui-core.js:30` maintains a single module-level `_focusedElementBeforeModal` variable shared by all modal open/close paths. When a sub-modal is opened from within a primary modal (e.g., a publication editor modal opened from within the Master CV modal), the inner modal open overwrites the value saved by the outer modal. When the inner modal closes and calls `restoreFocus()`, focus returns correctly; but when the outer modal then closes and also calls `restoreFocus()`, the variable now holds the inner modal's trigger element rather than the element that opened the outer modal.
@@ -2075,7 +2075,7 @@ The Finalise tab (`web/finalise.js:91–95`) presents a `<select>` with only thr
 ## GAP-210: Notes Field Not Editable Post-Archive — No Notes Widget in Session-Switcher UI
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Added inline notes-edit widget to saved-session table rows in `web/session-switcher-ui.js`. A fa-note-sticky icon button triggers a two-row textarea pre-populated with existing notes, wired to PATCH /api/sessions/metadata with `{path, notes}`. `SessionItem.notes` added to `scripts/web_app.py` and the session list route now reads `notes` from `metadata.json` alongside `application_status`.
 **Discovered:** 2026-06-29 (cycle 9) by recruiter-ops.
 **Affected stories:** US-O (Recruiter-Ops — session notes)
 `PATCH /api/sessions/metadata` accepts a `notes` field and writes it to `metadata.json`. The session-switcher UI (`web/session-switcher-ui.js`) was extended with an inline status edit widget (GAP-103) but no corresponding notes edit widget. Users who want to annotate a saved application ("interviewed 2025-03-10, awaiting callback") have no UI path to do so after archiving.
@@ -2120,7 +2120,7 @@ After a user switches the active LLM provider via the model wizard, the non-conf
 ## GAP-214: Synonym Expansion Not Applied in `compute_ats_score`
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Added optional `synonym_map` parameter to `compute_ats_score()` in `scripts/utils/scoring.py`; pre-computes canonical→forms reverse index from `CVOrchestrator._expansion_index`; synonym-only matches get `match_type='synonym'` (counted as exact in `ats-refinement.js` summary bar). Route at `scripts/routes/generation_routes.py:1741` passes `synonym_map=conv.orchestrator._expansion_index`.
 **Discovered:** 2026-06-29 (cycle 9) by hr-ats.
 **Affected stories:** US-H4 (keyword matching and scoring)
 `_optimize_skills_for_ats` in `scripts/utils/cv_orchestrator.py:3914–3927` expands skill names via `_expansion_index` before selecting skills for the ATS DOCX. However, `compute_ats_score` in `scripts/utils/scoring.py:345–554` uses only raw string containment checks — it does not apply synonym expansion. A job keyword "Machine Learning" will not match a skill stored as "ML" in the ATS score computation, even though `_expansion_index` knows they are synonyms. This causes the ATS score to undercount keyword matches and misreports coverage to the user. Note: GAP-90 covers a related but distinct issue — the UI not showing synonym grouping in the validation report.
@@ -2156,7 +2156,7 @@ After a user switches the active LLM provider via the model wizard, the non-conf
 ## GAP-217: ATS 16-Check Validation Results Not Stored in `metadata.json`
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — Re-verified 2026-06-30; `scripts/routes/review_routes.py:2339` already calls `_try_patch_metadata(conversation, {'validation_results': ...})` immediately after the 16-check validation run. The full check list (including per-check status, message, and page count) is written to `metadata.json` at ATS-validate time. The gap was based on a stale code read before this was implemented.
 **Discovered:** 2026-06-29 (cycle 9) by hr-ats.
 **Affected stories:** US-H6 (ATS output validation report)
 `validate_ats_report` in `scripts/utils/cv_orchestrator.py:4686–5031` runs 16 checks and returns a full pass/warn/fail report structure. At generation time, only `metadata['date_overlap_warnings']` (line 2202) and the scalar `metadata['ats_score']` (via `_try_patch_metadata`, `generation_routes.py:1703–1704`) are persisted to `metadata.json`. The 16-check validation report list is never written to `metadata.json`. If a user archives and later returns to a session, the per-check validation detail is lost — only the aggregate ATS score is available.
@@ -2192,7 +2192,7 @@ After a user switches the active LLM provider via the model wizard, the non-conf
 ## GAP-220: `aria-current="step"` Not Set During Post-Layout Phases
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — `web/ui-core.js`: During post-layout phases (`final_generation`, `refinement`), `aria-current="step"` is now set on `#step-download` (the first post-layout step) instead of clearing all indicators. Previously `activeStepId = null` removed all `aria-current` attributes during these phases.
 **Discovered:** 2026-06-30 (cycle 11) by accessibility-specialist.
 **Affected stories:** US-X1.3
 `web/ui-core.js:1985` — `updateWorkflowStepsClickable()` resolves `activeStepId` to `null` for post-layout phases (`final_generation`, `refinement`). As a result, `aria-current` is cleared from all step pills during these phases, leaving screen reader users with no programmatic indication of current workflow position. The visual "active" state (blue background `.step.active`) is still set but is not communicated via ARIA.
@@ -2204,7 +2204,7 @@ After a user switches the active LLM provider via the model wizard, the non-conf
 ## GAP-221: Layout Review Iframe Missing `title` Attribute
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — Re-verified 2026-06-30; `web/layout-instruction.js:296` already has `title="CV Layout Preview"` on the `<iframe id="layout-preview">` element. The gap description was based on an unverified assumption. Source code confirms the attribute is present.
 **Discovered:** 2026-06-30 (cycle 11) by accessibility-specialist.
 **Affected stories:** US-X1 (WCAG 4.1.2 Name, Role, Value)
 The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title` attribute. WCAG 4.1.2 requires iframes to have a descriptive `title` attribute so screen reader users understand the frame's purpose when navigating. An untitled iframe is announced as just "frame" with no context.
@@ -2310,7 +2310,7 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-230: Rewrite Card Accepted/Rejected State Is Colour-Only
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Added `<span id="rw-decision-badge-{id}" aria-live="polite">` to the rewrite card header in `web/rewrite-review.js`. Badge shows "✓ Accepted", "✓ Accepted (edited)", or "✗ Rejected" text (colour supplementary) on decision; cleared on reset. Also restored on back-navigation via the existing `_restoreDecisions()` → `applyRewriteAction()` / `saveRewriteEdit()` replay path.
 **Discovered:** 2026-06-30 (cycle 11) by ux-expert and accessibility-specialist.
 **Affected stories:** US-U7.5 (colour-independence), US-X1 (WCAG 1.4.1 Use of Color)
 `web/styles.css:1241–1242` — `.rewrite-card.accepted` sets `border-color: #10b981; background: #f0fdf4` (green) and `.rewrite-card.rejected` sets `border-color: #ef4444; background: #fee2e2; opacity: 0.6` (red). The card-level accepted/rejected state is communicated entirely through colour and opacity. While the action buttons carry text labels (Accept / Reject / Edit), the whole-card visual state change adds no text badge or icon to communicate the decision state independently of colour. Users with protanopia or deuteranopia may not distinguish accepted (green) from rejected (red) cards.
@@ -2406,7 +2406,7 @@ The File Review tab lists `cv_preview.html` alongside final deliverables (`cv_at
 ## GAP-238: Dual-Tab Ambiguity — "Generated Files" and "File Review" Visible Simultaneously
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Renamed `web/download-tab.js` H1 to "File Review"; added an info callout explaining the distinction between the Generated Files tab (immediate downloads, HTML preview) and the File Review sub-tab (ATS checks, archive). Added HTML preview pane with toggle to `web/final-generate.js`.
 **Discovered:** 2026-06-30 (cycle 13) by recruiter-ops (US-O1).
 **Affected stories:** US-O1 (file output clarity)
 Both a "Generated Files" stage tab and a "File Review" tab within Finalise are visible at the same time after generation. They show overlapping file lists with no clear distinction of purpose. Users are unsure which tab to use when checking their output.
@@ -2418,7 +2418,7 @@ Both a "Generated Files" stage tab and a "File Review" tab within Finalise are v
 ## GAP-239: File Generation Timestamp Absent When metadata.generation_date is Null
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — `web/download-tab.js:197`: When `generatedLabel` is empty (generation_date is null), renders "Not yet generated" placeholder in muted grey instead of an empty cell, making the missing-timestamp state explicit.
 **Discovered:** 2026-06-30 (cycle 13) by recruiter-ops (US-O5).
 **Affected stories:** US-O5 (session traceability)
 When `metadata.generation_date` is null (e.g., session partially completed), the File Review shows file entries with no timestamp at all rather than a placeholder ("Not yet generated"). Users cannot tell whether a file is missing or just untracked.
@@ -2442,7 +2442,7 @@ Experience and skill review icon-buttons (`icon-btn`) that toggle "include/exclu
 ## GAP-241: No @media (prefers-contrast: more) Adaptation
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Added `@media (prefers-contrast: more)` block to `web/styles.css` (after the prefers-reduced-motion block): increases interactive element borders to 2px solid #000, forces body text to #000 on #fff, sets link colour to #00008b, enforces 2px borders on form inputs, and adds a 1px border on confidence badges.
 **Discovered:** 2026-06-30 (cycle 13) by accessibility-specialist (US-X1).
 **Affected stories:** US-X1 (WCAG 1.4 Distinguishable)
 `web/styles.css` has a `@media (prefers-reduced-motion: reduce)` block at line 1621–1630 but no `@media (prefers-contrast: more)` block. Users who enable high-contrast system preferences receive no adapted colour scheme; text and border contrast may be insufficient in their display context.
@@ -2478,7 +2478,7 @@ Achievement selection (`scripts/utils/cv_orchestrator.py`) ranks by relevance sc
 ## GAP-244: Spell Check Results Not Sorted by Severity
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Added `_sugSeverity()` ranking function in `renderSpellSuggestions()` (`web/spell-check.js`); each section's suggestions are cloned and stable-sorted before rendering: spelling (rule_id/category matches spell|typo) = 0, grammar = 1, style = 2, other = 3. Document order is preserved within each severity tier.
 **Discovered:** 2026-06-30 (cycle 13) by resume-expert.
 **Affected stories:** US-R7 (spell check flow)
 Spell check results are presented in document order. Spelling errors (highest severity) are interleaved with stylistic suggestions (lowest severity). Users must scan the entire list to find critical errors; less important suggestions consume attention before errors are addressed.
@@ -2502,7 +2502,7 @@ During the Customise phase, users can select many bullets, publications, and ach
 ## GAP-246: ATS Keyword List Not Deduplicated/Synonym-Grouped Before Display
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Added `_dedup()` helper in `web/ats-modals.js` applied to `req`, `pref`, and `keywords` arrays before rendering to eliminate case-insensitive duplicate keyword entries in ATS modals.
 **Discovered:** 2026-06-30 (cycle 13) by resume-expert and hr-ats.
 **Affected stories:** US-H1 (ATS keyword alignment)
 `web/ats-modals.js:50–58` — the ATS keyword list in the Analysis tab displays raw tokens from the LLM response including near-duplicates and variant forms (e.g., "Python", "python", "Python 3", "Python3"). These appear as separate entries, inflating the visual count and making the list hard to scan.
