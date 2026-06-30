@@ -49,3 +49,4 @@ htmlcov/
 tasks/e2e-test-report-*.md
 .specstory/history/
 .specstory/statistics.json
+llm-keys.zsh

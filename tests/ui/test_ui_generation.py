@@ -97,14 +97,19 @@ class TestGeneration:
         assert has_content, \
             "Download tab should show file links in the finalise stage"
 
-    def test_cv_tab_accessible_after_generation(self, generate_stage_page: Page):
-        """Generated CV tab (#tab-generate) is accessible in generate stage."""
-        expect(generate_stage_page.locator("#tab-generate")).to_be_visible()
-        generate_stage_page.locator("#tab-generate").click()
-        expect(generate_stage_page.locator("#document-content")).to_be_visible()
+    def test_cv_tab_accessible_after_generation(
+        self, generate_stage_page: Page
+    ):
+        """Generated Files tab is visible in generate stage."""
+        tab = generate_stage_page.locator("#tab-final_generate")
+        expect(tab).to_be_visible()
+        tab.click()
+        expect(
+            generate_stage_page.locator("#document-content")
+        ).to_be_visible()
 
     def test_generation_progress_feedback(self, seeded_page: Page):
-        """Generation shows progress feedback (loading or conversation message)."""
+        """Generation shows progress feedback."""
         seeded_page.locator("#generate-btn").click()
         seeded_page.wait_for_timeout(200)
         assert seeded_page.evaluate("() => document.readyState") == "complete"
@@ -186,7 +191,8 @@ class TestGeneration:
         )
         finalise_stage_page.route("**/api/finalise**", capture_finalise)
 
-        finalise_stage_page.locator("#tab-finalise").click()
+        # tab-finalise is hidden; navigate programmatically
+        finalise_stage_page.evaluate("() => switchTab('finalise')")
         finalise_stage_page.locator("#finalise-btn").click()
         expect(finalise_stage_page.locator("#finalise-result")).to_be_visible()
 
@@ -300,5 +306,5 @@ class TestDownloadTab:
         assert page.locator("#tab-editor").count() >= 1
 
     def test_generated_cv_tab_present(self, page: Page):
-        """Generated CV tab (#tab-generate) exists in DOM."""
-        assert page.locator("#tab-generate").count() >= 1
+        """Generated Files tab (#tab-final_generate) exists in DOM."""
+        assert page.locator("#tab-final_generate").count() >= 1

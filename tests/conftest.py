@@ -9,6 +9,7 @@ Shared pytest fixtures for the cv-builder test suite.
 """
 
 import os
+import shlex
 import socket
 import subprocess
 import sys
@@ -16,6 +17,60 @@ import tempfile
 import time
 from pathlib import Path
 from urllib.parse import urlparse
+
+
+# ---------------------------------------------------------------------------
+# LLM API key bootstrap
+# ---------------------------------------------------------------------------
+
+def _bootstrap_llm_keys() -> None:
+    """Source llm-keys.zsh (if present) and inject LLM API keys into the
+    current process environment so tests that probe real providers work
+    without requiring manual shell setup.
+
+    The key file is sourced with ENABLE_LLM_KEYS=1; only the specific known
+    key names are imported.  Existing env vars take priority (setdefault).
+    """
+    _KEY_NAMES = {
+        'GITHUB_MODELS_TOKEN',
+        'OPENAI_API_KEY',
+        'ANTHROPIC_API_KEY',
+        'GEMINI_API_KEY',
+        'GROQ_API_KEY',
+        'CLINE_API_KEY',
+    }
+
+    key_file = Path.home() / '.oh-my-zsh-custom' / 'llm-keys.zsh'
+    if not key_file.exists():
+        return
+
+    # Source the script in a subshell with ENABLE_LLM_KEYS=1 and collect the
+    # resulting environment as NUL-delimited "key=value" pairs.
+    env = os.environ.copy()
+    env['ENABLE_LLM_KEYS'] = '1'
+    try:
+        result = subprocess.run(
+            ['zsh', '-c', f'source {shlex.quote(str(key_file))} 2>/dev/null && env -0'],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=15,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return
+
+    if result.returncode != 0:
+        return
+
+    for item in result.stdout.split('\0'):
+        if '=' not in item:
+            continue
+        k, _, v = item.partition('=')
+        if k in _KEY_NAMES:
+            os.environ.setdefault(k, v)
+
+
+_bootstrap_llm_keys()
 
 import pytest
 import requests
