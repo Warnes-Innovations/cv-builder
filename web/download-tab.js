@@ -375,6 +375,17 @@ async function populateDownloadTab(cvData) {
     </div>`;
   }
 
+  const sparseExpWarnings = (cvData.metadata?.sparse_experience_warnings || []);
+  if (sparseExpWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Sparse experience entries (${sparseExpWarnings.length}) — fewer than 2 bullets:</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;list-style:none;">
+        ${sparseExpWarnings.map(w => `<li style="font-size:0.85em;margin-bottom:2px;"><strong>${escapeHtml(w.company)} · ${escapeHtml(w.title)}</strong> — ${w.bullet_count === 0 ? 'no bullets selected' : '1 bullet selected'}</li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">Include at least 2 bullets per role to demonstrate impact. Return to the Experience tab to add more.</p>
+    </div>`;
+  }
+
   const overlapWarnings = (cvData.date_overlap_warnings || []);
   if (overlapWarnings.length) {
     html += `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:16px;">

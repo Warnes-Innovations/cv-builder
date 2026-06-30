@@ -557,7 +557,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-G2
-**Status:** OPEN - discovered 2026-04-20; graphical designer review found the layout tab labels the font size control "Base font size (px)." Graphic designers habitually work in typographic points (12pt = 16px). A user entering "12" in a px field sets a font that appears tiny compared to their expectation.
+**Status:** RESOLVED — The layout tab shows "Base font size:" with the px input and a live-updating span `#font-size-pt-display` showing "px (N.N pt)". The `pxToPt()` helper (96px/in, 72pt/in convention) updates the display on every input event and on tab load. `web/layout-instruction.js:332` (static default) and lines 424–426, 529–533 (dynamic updates).
 **Description:** The CSS px unit is not the natural unit for typographic font size decisions. This label will cause confusion for any user with a design background.
 **Recommended resolution:** Display the pt equivalent alongside the px value (e.g., "12px (9pt)" or provide a pt input that converts to px internally). Alternatively, change the control to accept pt and convert internally.
 
@@ -837,7 +837,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-M2
-**Status:** OPEN - discovered 2026-04-22; hiring manager review found no validation check enforcing a minimum number of bullets per experience entry. Experience entries with 0 or 1 bullets can be included in the final CV without warning.
+**Status:** RESOLVED — 2026-06-30. Added `CVOrchestrator._detect_sparse_experiences()` static method that flags experience entries with fewer than 2 selected bullets. Called in `generate_cv()` alongside `_detect_date_overlaps` and `_detect_long_bullets`; results stored in `metadata.sparse_experience_warnings`. `web/download-tab.js` displays a yellow warning callout listing each sparse entry with a "Return to the Experience tab" prompt.
 **Description:** CVs with single-bullet or empty experience entries signal rushed preparation and are unprofessional. The pre-generation validation does not detect this condition.
 **Recommended resolution:** Add a validation check that flags experience entries with fewer than 2 bullets and surfaces a blocking or warning message in the ATS validation report.
 
@@ -869,7 +869,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** US-M2, US-R2
-**Status:** OPEN - discovered 2026-04-22; hiring manager review found no validation check for overly long bullet points (> 2 lines or > 35 words). Long bullets reduce scannability.
+**Status:** RESOLVED — Covered by GAP-267: `CVOrchestrator._detect_long_bullets()` flags bullets >200 characters (≈35 words at average word length), storing results in `metadata.long_bullet_warnings`. `web/download-tab.js` displays a warning callout per-entry with the character count and a preview of the offending text.
 **Description:** Best-practice CV bullets are 1–2 lines (15–30 words). The current pipeline has no check that flags bullets exceeding a reasonable length threshold.
 **Recommended resolution:** Add a bullet length check to the pre-generation or ATS validation step that warns when any bullet exceeds a configurable word-count threshold (e.g., 35 words).
 
@@ -2535,7 +2535,7 @@ The Layout Review phase requires the user to click through a confirmation step e
 ## GAP-250: Back-Navigation to Completed Step Fires Silently Without Confirmation
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. Updated `handleStepClick()` in `web/workflow-steps.js` to call the existing `_showReRunConfirmModal(step, 'back-nav', doNavigate)` when clicking a completed step that has downstream completed steps. The modal lists the downstream steps and offers Cancel / Proceed. Navigation is unchanged when no downstream steps are completed (no unnecessary friction for early-stage back-navigation).
 **Discovered:** 2026-06-30 (cycle 13) by heuristic sub-agent (H3).
 **Affected stories:** US-U3 (user control and freedom)
 Clicking a previously completed workflow step in the pill bar silently re-enters that step and may cause downstream state invalidation (e.g., backing into Customise re-enables re-run buttons without warning). There is no confirmation dialog explaining potential downstream impact.

@@ -853,12 +853,28 @@ function handleStepClick(step) {
     harvest:        'harvest',
   };
   const tabName = stepToTab[step];
-  if (tabName) {
-    if (typeof updateTabBarForStage === 'function') {
-      updateTabBarForStage(step);
-    }
+  if (!tabName) return;
+
+  const doNavigate = () => {
+    if (typeof updateTabBarForStage === 'function') updateTabBarForStage(step);
     switchTab(tabName);
+  };
+
+  // Show a downstream-awareness dialog when back-navigating to a completed step
+  // that has downstream completed steps (not when the step is active).
+  if (el.classList.contains('completed') && !el.classList.contains('active')) {
+    const stepIdx = _STEP_ORDER.indexOf(step);
+    const hasDownstreamCompleted = _STEP_ORDER.slice(stepIdx + 1).some(s => {
+      const downstream = document.getElementById(`step-${s}`);
+      return downstream && downstream.classList.contains('completed');
+    });
+    if (hasDownstreamCompleted) {
+      _showReRunConfirmModal(step, 'back-nav', doNavigate);
+      return;
+    }
   }
+
+  doNavigate();
 }
 
 // ── Exports ───────────────────────────────────────────────────────────────────

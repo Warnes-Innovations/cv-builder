@@ -2097,6 +2097,9 @@ For manual generation:
         long_bullet_warnings = self._detect_long_bullets(
             selected_content.get('experiences', [])
         )
+        sparse_experience_warnings = self._detect_sparse_experiences(
+            selected_content.get('experiences', [])
+        )
         if date_overlap_warnings:
             logger.warning(
                 "Employment date overlaps detected (%d): %s",
@@ -2221,6 +2224,7 @@ For manual generation:
             'files_generated': files_created,
             'date_overlap_warnings': date_overlap_warnings,
             'long_bullet_warnings': long_bullet_warnings,
+            'sparse_experience_warnings': sparse_experience_warnings,
             'summary_warnings': selected_content.get('summary_warnings', []),
         }
 
@@ -4724,6 +4728,27 @@ Include one entry per candidate. Do not omit any candidate."""
                         'bullet_text': text[:120] + '…' if len(text) > 120 else text,
                         'char_count': len(text),
                     })
+        return warnings
+
+    @staticmethod
+    def _detect_sparse_experiences(experiences: List[Dict], min_bullets: int = 2) -> List[Dict]:
+        """Return warnings for experience entries that have fewer than min_bullets selected bullets.
+
+        Each warning is {company, title, bullet_count}.
+        Entries with 0 or 1 bullets look sparse and may signal incomplete customisation.
+        """
+        warnings: List[Dict] = []
+        for exp in experiences or []:
+            if not isinstance(exp, dict):
+                continue
+            bullets = exp.get('ordered_achievements') or exp.get('achievements') or []
+            count = len(bullets)
+            if count < min_bullets:
+                warnings.append({
+                    'company':      exp.get('company', ''),
+                    'title':        exp.get('title', ''),
+                    'bullet_count': count,
+                })
         return warnings
 
     @staticmethod
