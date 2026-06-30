@@ -345,6 +345,7 @@ function renderRewriteCard(r, cardWarnings = []) {
         <span class="rewrite-card-type">${escapeHtml(typeLabel)}</span>
         <span class="rewrite-card-title">${escapeHtml(r.location || r.id)}</span>
         ${weakBadge}
+        <span id="rw-decision-badge-${cardId}" aria-live="polite" style="display:none;font-size:0.78em;font-weight:600;padding:1px 7px;border-radius:9px;margin-left:auto;"></span>
       </div>
       <div class="rewrite-card-body">
         <div class="rewrite-inline-diff" id="rw-diff-${cardId}"
@@ -386,6 +387,8 @@ function applyRewriteAction(id, outcome) {
     btn?.classList.remove('active');
     if (btn) btn.setAttribute('aria-pressed', 'false');
   });
+  const _decisionBadge = document.getElementById(`rw-decision-badge-${id}`);
+  if (_decisionBadge) _decisionBadge.style.display = 'none';
 
   if (outcome === 'edit') {
     // Hide the inline diff; show the editable textarea in its place.
@@ -420,6 +423,13 @@ function applyRewriteAction(id, outcome) {
     const activeBtn = document.getElementById(`rw-${outcome}-${id}`);
     activeBtn?.classList.add('active');
     if (activeBtn) activeBtn.setAttribute('aria-pressed', 'true');
+    const decBadge = document.getElementById(`rw-decision-badge-${id}`);
+    if (decBadge) {
+      decBadge.textContent = outcome === 'accept' ? '✓ Accepted' : '✗ Rejected';
+      decBadge.style.display = '';
+      decBadge.style.background = outcome === 'accept' ? '#bbf7d0' : '#fecaca';
+      decBadge.style.color      = outcome === 'accept' ? '#065f46' : '#991b1b';
+    }
     syncRewriteGlobals();
     updateRewriteTally();
   }
@@ -456,6 +466,13 @@ function saveRewriteEdit(id) {
   const saveEditBtn = document.getElementById(`rw-edit-${id}`);
   saveEditBtn?.classList.add('active');
   if (saveEditBtn) saveEditBtn.setAttribute('aria-pressed', 'true');
+  const editDecBadge = document.getElementById(`rw-decision-badge-${id}`);
+  if (editDecBadge) {
+    editDecBadge.textContent = '✓ Accepted (edited)';
+    editDecBadge.style.display = '';
+    editDecBadge.style.background = '#bbf7d0';
+    editDecBadge.style.color      = '#065f46';
+  }
   syncRewriteGlobals();
   updateRewriteTally();
 }
