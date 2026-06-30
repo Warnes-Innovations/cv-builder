@@ -69,7 +69,7 @@ async function buildSummaryFocusSection() {
     ${reorderingHTML}
     <div id="ai-summary-panel" style="border:1px solid #d1fae5;border-radius:8px;padding:16px;margin-bottom:20px;background:#f0fdf4;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <strong style="color:#065f46;">AI-Generated Summary</strong>
+        <strong style="color:#065f46;">🤖 AI-Proposed Summary</strong>
         <span id="ai-summary-status" style="font-size:0.8em;color:#6b7280;">Generating…</span>
       </div>
       <div id="ai-summary-loading" style="font-size:0.9em;color:#9ca3af;min-height:40px;"><em>Generating a tailored summary for this application…</em></div>
@@ -139,7 +139,7 @@ function _renderStoredSummaryRadios(professionalSummaries) {
       <label style="display:block;border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-bottom:8px;cursor:pointer;${checked ? 'border-color:#10b981;background:#f0fdf4;' : ''}">
         <input type="radio" name="summary_key" value="${escapeHtml(key)}" ${checked}
           onchange="selectSummaryKey('${escapeHtml(key)}')" style="margin-right:8px;">
-        <strong>${escapeHtml(label)}</strong>
+        <strong>${escapeHtml(label)}</strong> <span style="font-size:0.75em;padding:1px 6px;border-radius:999px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:600;">📄 From your Master CV</span>
         <p style="margin:6px 0 0;font-size:0.85em;color:#6b7280;">${escapeHtml(preview)}${preview.length === 200 ? '…' : ''}</p>
       </label>`;
   }).join('');

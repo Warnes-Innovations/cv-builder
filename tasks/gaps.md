@@ -1044,7 +1044,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-C1, US-C3
-**Status:** OPEN - discovered 2026-04-22; trust and compliance review found that when the LLM proposes a professional summary variant, the variant is presented in the Summary review tab without any "AI-proposed" label distinguishing it from user-authored summaries stored in `Master_CV_Data.json`.
+**Status:** RESOLVED 2026-06-29 — AI-generated panel heading changed from "AI-Generated Summary" to "🤖 AI-Proposed Summary" (`web/summary-review.js:72`). Stored master CV summary radio buttons now show a "📄 From your Master CV" badge next to the key label (`summary-review.js:142`). Previously discovered 2026-04-22; no label distinguished AI proposals from user-authored variants.
 **Description:** Users cannot distinguish between summaries they wrote and summaries the AI generated. This undermines the transparency model that the rest of the review flow (word-level diffs, confidence badges) is designed to enforce.
 **Recommended resolution:** Label AI-generated summary variants with an "🤖 AI-proposed" badge. User-authored summaries from master data should be labeled "📄 From your Master CV".
 
@@ -1052,7 +1052,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-C3
-**Status:** OPEN - discovered 2026-04-22; trust and compliance review found that `rewrite_audit` is persisted to `session.json` (`conversation_manager.py:920`) but is not exposed in any UI tab. Users who want to review the full record of what was proposed, accepted, edited, or rejected have no way to do so without inspecting `session.json` directly.
+**Status:** RESOLVED 2026-06-29 — Added `_renderRewriteAuditLog()` in `web/finalise.js` called from `populateFinaliseTab()`. Fetches `rewrite_audit` from `/api/rewrites`, renders a collapsible `<details>` table showing Field, Original, Final, and Outcome (✅ accepted / ✏️ edited / ❌ rejected) for each decision. Only shown when audit has at least one entry. Previously discovered 2026-04-22; `rewrite_audit` was persisted to session.json but never surfaced in the UI.
 **Description:** For compliance use cases (confirming what AI changes were accepted before submitting a CV to a regulated employer), the absence of an audit view is a gap. The data exists but is inaccessible through the UI.
 **Recommended resolution:** Add a collapsible "Rewrite audit log" section to the Finalise tab that renders the `rewrite_audit` array in a readable table: proposal, original text, final text, outcome (accepted/edited/rejected), timestamp.
 

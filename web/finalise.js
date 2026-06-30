@@ -81,6 +81,7 @@ async function populateFinaliseTab() {
 
     <div id="readiness-checklist"></div>
     <div id="consistency-report"></div>
+    <div id="rewrite-audit-log"></div>
 
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:24px;">
       <h3 style="margin:0 0 16px;">📋 Application Status</h3>
@@ -116,6 +117,7 @@ async function populateFinaliseTab() {
   content.innerHTML = html;
   _renderReadinessChecklist(files, statusData);
   if (statusData) _renderConsistencyReport(statusData);
+  _renderRewriteAuditLog();
 }
 
 // ── Submission readiness checklist ────────────────────────────────────────────
@@ -171,6 +173,52 @@ function _renderReadinessChecklist(files, statusData) {
         ❌ items must be resolved before submitting.
       </p>
     </div>`;
+}
+
+// ── Rewrite audit log ─────────────────────────────────────────────────────────
+
+async function _renderRewriteAuditLog() {
+  const el = document.getElementById('rewrite-audit-log');
+  if (!el) return;
+  try {
+    const res  = await fetch('/api/rewrites');
+    if (!res.ok) return;
+    const data = await res.json();
+    const audit = data.rewrite_audit || [];
+    if (audit.length === 0) return;
+    const rows = audit.map(entry => {
+      const outcome = entry.outcome || entry.decision || '—';
+      const icon = outcome === 'accepted' ? '✅' : outcome === 'edited' ? '✏️' : outcome === 'rejected' ? '❌' : '—';
+      const original  = escapeHtml((entry.original_text || entry.original || '').slice(0, 120));
+      const final     = escapeHtml((entry.final_text || entry.rewritten || entry.suggested || '').slice(0, 120));
+      const field     = escapeHtml(entry.field || entry.type || '—');
+      return `<tr>
+        <td style="padding:6px 8px;font-size:0.8em;color:#6b7280;">${field}</td>
+        <td style="padding:6px 8px;font-size:0.8em;color:#374151;">${original}${original.length === 120 ? '…' : ''}</td>
+        <td style="padding:6px 8px;font-size:0.8em;color:#374151;">${final}${final.length === 120 ? '…' : ''}</td>
+        <td style="padding:6px 8px;font-size:0.8em;text-align:center;">${icon} ${escapeHtml(outcome)}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <details style="margin-bottom:24px;">
+        <summary style="cursor:pointer;font-weight:600;font-size:0.95em;padding:10px 0;color:#374151;user-select:none;">
+          📋 Rewrite audit log (${audit.length} decision${audit.length !== 1 ? 's' : ''})
+        </summary>
+        <div style="overflow-x:auto;margin-top:10px;">
+          <table style="width:100%;border-collapse:collapse;font-size:0.85em;">
+            <thead>
+              <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
+                <th style="padding:8px;text-align:left;color:#374151;font-weight:600;">Field</th>
+                <th style="padding:8px;text-align:left;color:#374151;font-weight:600;">Original</th>
+                <th style="padding:8px;text-align:left;color:#374151;font-weight:600;">Final</th>
+                <th style="padding:8px;text-align:center;color:#374151;font-weight:600;">Outcome</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </details>`;
+  } catch { /* non-fatal */ }
 }
 
 // ── Finalise application ──────────────────────────────────────────────────────
