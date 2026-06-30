@@ -1,14 +1,43 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-30 (cycle 11)
+**Generated:** 2026-03-06 | **Last updated:** 2026-06-30 (cycle 13)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), 2026-06-29 (cycle 9), and 2026-06-30 (cycles 10–11)
-- independent heuristic UX evaluation (all cycles through 2026-06-30 cycle 11)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), 2026-06-29 (cycle 9), 2026-06-30 (cycles 10–11), 2026-06-30 (cycle 12), and 2026-06-30 (cycle 13)
+- independent heuristic UX evaluation (all cycles through 2026-06-30 cycle 13)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257.
+
+## 2026-06-30 (Cycle 13) Reconciliation Notes
+
+- **3 cycle-12 fixes confirmed resolved by independent source review:**
+  - **GAP-218 RESOLVED** — `cv_orchestrator.py:4880` now uses `_allowed = {'Publications', 'Selected Publications'}`. Confirmed by Hiring Manager, HR/ATS Specialist, and UX Expert sub-agents reading source directly.
+  - **GAP-219 RESOLVED** — `ats-modals.js:228–266` has full four-call focus management pattern: prior-focus save, `trapFocus`, Escape handler, `restoreFocus`. Confirmed by Accessibility Specialist (citing 4 individual elements), Heuristic, and UX Expert sub-agents.
+  - **GAP-225 RESOLVED** — `cv_orchestrator.py:3163` uses composite sort key `(-score, -date_ordinal)` via `_parse_end_date()`. Confirmed by Resume Expert and UX Expert sub-agents.
+- **Stale spec noted:** `tasks/user-story-hr-ats.md:77` spec table still lists "Selected Publications" as rejected — update needed to match the GAP-218 fix.
+- **24 new gaps added (GAP-234 through GAP-257):**
+  - UX / labelling (GAP-234): relevance score unlabelled — no "/100" or grade legend.
+  - Finalise / notes (GAP-235, GAP-236): notes not pre-populated on re-open; silent truncation at 2000 chars with no counter.
+  - File review clarity (GAP-237, GAP-238, GAP-239): preview HTML indistinguishable from final files; dual-tab ambiguity; generation timestamp absent when null.
+  - Accessibility (GAP-240, GAP-241): icon-btn active state missing `aria-pressed`; no `prefers-contrast: more` adaptation.
+  - Generated materials quality (GAP-242–246): summary post-generation validation absent; achievement diversity constraint absent; spell results unsorted; no page-length warning; ATS keyword list not deduplicated.
+  - Help / onboarding (GAP-247): no help reopen trigger — welcome modal cannot be reopened (H10 Critical).
+  - Silent UX surprises (GAP-248–250): auto-analyze fires without user confirmation; layout confirm redundant when unchanged; back-navigation fires silently.
+  - Brand / consistency (GAP-251): "CV Customizer" vs "CV Builder" name inconsistency.
+  - Workflow completeness (GAP-252, GAP-253): intake confirmation UI not connected; prior clarification answers not pre-populated.
+  - LLM prompt quality (GAP-254, GAP-255): analysis prompt lacks keyword-frequency weighting; no mid-sentence keyword placement check.
+  - Cross-document consistency (GAP-256, GAP-257): no terminology consistency enforcement across documents; no acronym-expansion-on-first-use check.
+- **Most critical open gaps (cycle 13):** GAP-247 (help reopen — H10 Critical), GAP-234 (relevance score unlabelled), GAP-252 (intake confirmation UI not connected), GAP-235 (Finalise notes not pre-populated), GAP-206 (phase-lock indicator), GAP-213 (publications absent from ATS DOCX).
+
+## 2026-06-30 (Cycle 12) Reconciliation Notes
+
+- **3 gaps resolved (fixes implemented and committed in 2990e3a):**
+  - **GAP-218:** ATS validator now accepts both `"Publications"` and `"Selected Publications"` — `cv_orchestrator.py:4880`.
+  - **GAP-219:** `openJobAnalysisModal()` now has full four-call focus management — `ats-modals.js:228–266`.
+  - **GAP-225:** Experience sort uses hybrid relevance+recency composite key — `cv_orchestrator.py:3163`.
+- **0 new gaps added this cycle** (cycle 12 was fix-only).
 
 ## 2026-06-30 (Cycle 11) Reconciliation Notes
 
@@ -2314,3 +2343,291 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 `scripts/utils/llm_client.py` — the 8 persuasion checks in `_check_persuasion_quality()` evaluate each bullet in isolation. No batch-level check verifies that a keyword adopted in one bullet (e.g., "machine learning") appears consistently across related bullets and the professional summary. `_renderConsistencyReport` (`web/cover-letter.js:348`) checks cross-document consistency but only for cover letter vs. CV, not within the CV itself.
 **Source evidence:** `scripts/utils/llm_client.py` — `_check_persuasion_quality()` operates per-bullet; no cross-bullet consistency pass. `web/cover-letter.js:348–469` — `_renderConsistencyReport` is CL-vs-CV only.
 **Recommended resolution:** After all per-bullet checks complete, run a batch consistency pass that identifies keyword variants (e.g., "ML" vs. "machine learning", "Python" vs. "Python 3") and surfaces a Rewrites tab warning: "Inconsistent terminology: 'ML' used in 2 bullets, 'machine learning' in 3 — consider standardizing."
+
+---
+
+## GAP-234: Relevance Score Unlabelled in Review Tables
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by ux-expert (US-U4.6).
+**Affected stories:** US-U4 (review UI clarity)
+`web/ats-modals.js:50–58` — experience/skill relevance scores are displayed as raw integers (e.g., "73") with no "/100" label and no grade legend (e.g., "70+ = Good", "50–69 = Fair", "<50 = Low"). Without domain knowledge a raw score is uninterpretable. Confirmed by UX Expert and Applicant sub-agents.
+**Source evidence:** `web/ats-modals.js:50–58` — score rendered as plain number; no unit label or legend anywhere in the review panel template.
+**Recommended resolution:** Append "/100" to each score display; add a compact legend row or tooltip ("70+ Good · 50–69 Fair · <50 Low") to the table header.
+
+---
+
+## GAP-235: Finalise Tab Notes Not Pre-Populated on Re-Open
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by recruiter-ops (US-O4).
+**Affected stories:** US-O4 (notes and context management)
+`web/finalise.js:42–52` — the Finalise tab initialises with a default status ("Ready to send") and an empty notes textarea on every tab load. There is no fetch of `metadata.json` or `session.json` on tab activation to restore previously saved notes. A user who enters submission-tracking notes, switches tabs, and returns finds the field blank.
+**Source evidence:** `web/finalise.js:42–52` — tab init code; no GET request to restore prior notes value.
+**Recommended resolution:** On Finalise tab open, call `/api/session/{id}/metadata` (or equivalent) and populate `#finalise-notes` and `#finalise-status` from the returned values before rendering.
+
+---
+
+## GAP-236: Notes Silently Truncated at 2000 Characters — No Counter or Warning
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by recruiter-ops (US-O4).
+**Affected stories:** US-O4 (notes and context management)
+`scripts/routes/session_routes.py:647` — the session notes field is truncated to 2000 characters server-side without surfacing a warning to the user. The `#finalise-notes` textarea has no `maxlength` attribute and no character counter. Users who paste long notes silently lose the trailing content with no error or warning.
+**Source evidence:** `scripts/routes/session_routes.py:647` — `[:2000]` slice on notes; `web/index.html` — `#finalise-notes` has no `maxlength` attribute.
+**Recommended resolution:** Add `maxlength="2000"` to the textarea; add a live character counter ("1543 / 2000") that turns amber at 80% and red at 100%.
+
+---
+
+## GAP-237: Preview HTML File Indistinguishable from Final Deliverables in File Review
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by recruiter-ops (US-O1).
+**Affected stories:** US-O1 (file output clarity)
+The File Review tab lists `cv_preview.html` alongside final deliverables (`cv_ats.docx`, `cv_branded.pdf`) without visual distinction. The preview file is an intermediate artifact for layout review, not a submission-ready file. Users reading the file list cannot easily tell which files to send to employers.
+**Source evidence:** `web/download-tab.js:42–68` — file list rendered from `cvData.files` array without file-type categorisation or "preview" vs "deliverable" labelling.
+**Recommended resolution:** Add a "Preview (not for submission)" badge or group preview files in a separate "Working Files" section in the File Review tab.
+
+---
+
+## GAP-238: Dual-Tab Ambiguity — "Generated Files" and "File Review" Visible Simultaneously
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by recruiter-ops (US-O1).
+**Affected stories:** US-O1 (file output clarity)
+Both a "Generated Files" stage tab and a "File Review" tab within Finalise are visible at the same time after generation. They show overlapping file lists with no clear distinction of purpose. Users are unsure which tab to use when checking their output.
+**Source evidence:** `web/ui-core.js:350–363` — `STAGE_TABS` includes both a "generate" stage tab and a "file-review" Finalise sub-tab; no disambiguation copy or tooltip.
+**Recommended resolution:** Either merge both views or clearly differentiate them with distinct labels and brief descriptions ("Download files" vs "Check completeness and archive").
+
+---
+
+## GAP-239: File Generation Timestamp Absent When metadata.generation_date is Null
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by recruiter-ops (US-O5).
+**Affected stories:** US-O5 (session traceability)
+When `metadata.generation_date` is null (e.g., session partially completed), the File Review shows file entries with no timestamp at all rather than a placeholder ("Not yet generated"). Users cannot tell whether a file is missing or just untracked.
+**Source evidence:** `web/download-tab.js` — generation timestamp rendered inline only when present; null case shows empty cell.
+**Recommended resolution:** Render "—" or "Not generated" when `generation_date` is null to make the missing-state explicit.
+
+---
+
+## GAP-240: Experience/Skill Icon-Button Active State Missing aria-pressed
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by accessibility-specialist (US-X3).
+**Affected stories:** US-X3 (ARIA state accuracy)
+Experience and skill review icon-buttons (`icon-btn`) that toggle "include/exclude" state do not carry `aria-pressed` to reflect the current toggle state. Sighted users see a visual colour change; keyboard and screen reader users have no programmatic indicator of state.
+**Source evidence:** `web/experience-review.js` and `web/skills-review.js` — icon-btn click handlers toggle inclusion state visually but no `aria-pressed` attribute update found in event handlers.
+**Recommended resolution:** On each toggle, set `el.setAttribute('aria-pressed', String(isIncluded))` on the button element, matching the pattern already used for rewrite buttons (`aria-pressed` added in GAP-178 fix).
+
+---
+
+## GAP-241: No @media (prefers-contrast: more) Adaptation
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by accessibility-specialist (US-X1).
+**Affected stories:** US-X1 (WCAG 1.4 Distinguishable)
+`web/styles.css` has a `@media (prefers-reduced-motion: reduce)` block at line 1621–1630 but no `@media (prefers-contrast: more)` block. Users who enable high-contrast system preferences receive no adapted colour scheme; text and border contrast may be insufficient in their display context.
+**Source evidence:** `web/styles.css` — no `prefers-contrast: more` media query found.
+**Recommended resolution:** Add a minimal `@media (prefers-contrast: more)` block that increases border contrast and ensures text-on-background ratios meet WCAG 1.4.6 (7:1) for body text and 4.5:1 for UI elements.
+
+---
+
+## GAP-242: Summary Post-Generation Validation Absent
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by resume-expert (US-R2).
+**Affected stories:** US-R2 (output quality standards)
+The professional summary is generated by the LLM and inserted into the CV without any post-generation validation pass. There is no check that: (a) the opening line is not "I", (b) the word count is within target range, or (c) the summary contains the top 3 job-specific keywords from the analysis. These constraints exist only in the LLM prompt; violations pass silently.
+**Source evidence:** `scripts/utils/cv_orchestrator.py` — summary generation path does not call any post-generation validation function for the summary section.
+**Recommended resolution:** After generating the summary, run the same `iFirstCheck` gate already applied to bullets, a word count gate (target ±20%), and a keyword-presence spot check.
+
+---
+
+## GAP-243: Achievement Selection Has No Diversity-Across-Impact-Types Constraint
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by resume-expert (US-R2).
+**Affected stories:** US-R2 (output quality — achievement diversity)
+Achievement selection (`scripts/utils/cv_orchestrator.py`) ranks by relevance score but applies no diversity constraint across impact types (e.g., revenue / cost / people-leadership / technical). A candidate with 8 revenue-impact achievements and 2 leadership achievements may get a CV with 5 revenue bullets and 0 leadership bullets even when the JD values both.
+**Source evidence:** `scripts/utils/cv_orchestrator.py` — `_select_achievements()` (or equivalent) ranks by relevance score only; no grouping by impact type.
+**Recommended resolution:** Classify achievements by impact type at selection time and apply a max-per-type cap (e.g., no more than 50% from one type when the JD values multiple types) before final ranking.
+
+---
+
+## GAP-244: Spell Check Results Not Sorted by Severity
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by resume-expert.
+**Affected stories:** US-R7 (spell check flow)
+Spell check results are presented in document order. Spelling errors (highest severity) are interleaved with stylistic suggestions (lowest severity). Users must scan the entire list to find critical errors; less important suggestions consume attention before errors are addressed.
+**Source evidence:** `web/spell-check.js` — results rendered from LanguageTool response array directly, no severity-sort applied.
+**Recommended resolution:** Re-sort results by severity before rendering: SPELLING first, then GRAMMAR, then STYLE, then LOCALE-SPECIFIC.
+
+---
+
+## GAP-245: No Proactive Page-Length Warning During Customisation
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by resume-expert (US-R2).
+**Affected stories:** US-R2 (CV length management)
+During the Customise phase, users can select many bullets, publications, and achievements with no indication that the result may exceed target page count. The first page-length signal arrives post-generation (in the ATS report). By that point, reducing length requires re-running generation.
+**Source evidence:** `web/experience-review.js`, `web/achievement-review.js` — selection UI has no running word count or page-estimate display. `scripts/utils/cv_orchestrator.py` — page-count check runs during generation only.
+**Recommended resolution:** Add a live estimated-page-count banner ("~1.8 pages based on selected content") to the Customise tab, updating as the user selects/deselects items.
+
+---
+
+## GAP-246: ATS Keyword List Not Deduplicated/Synonym-Grouped Before Display
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by resume-expert and hr-ats.
+**Affected stories:** US-H1 (ATS keyword alignment)
+`web/ats-modals.js:50–58` — the ATS keyword list in the Analysis tab displays raw tokens from the LLM response including near-duplicates and variant forms (e.g., "Python", "python", "Python 3", "Python3"). These appear as separate entries, inflating the visual count and making the list hard to scan.
+**Source evidence:** `web/ats-modals.js:50–58` — keyword list rendered from LLM response array without deduplication or synonym grouping.
+**Recommended resolution:** Case-normalise and deduplicate the keyword list before rendering; optionally group near-duplicates under a canonical form with a "(3 variants)" annotation.
+
+---
+
+## GAP-247: No Help Reopen Trigger — Welcome Modal Cannot Be Reopened After Dismissal
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by heuristic sub-agent (H10 Critical) and first-time-user.
+**Affected stories:** US-F1 (first-run onboarding), US-F4 (help access mid-workflow)
+`web/index.html:317–399` — the welcome/onboarding modal shows on first load via `maybeShowWelcomeModal()` (`web/session-manager.js:169`). Once dismissed via the "Get Started" button there is no visible way to reopen it. No "Help" or "?" button exists in the UI. No command reference, keyboard shortcut guide, or help panel is accessible to a user mid-workflow.
+**Source evidence:** `web/index.html:317–399` — modal markup; `web/session-manager.js:169` — `maybeShowWelcomeModal()` called only at startup; no other call site found. No help button found in `index.html` header or toolbar area.
+**Recommended resolution:** Add a "?" or "Help" button to the toolbar (near the session controls) that calls `showWelcomeModal()` directly. Alternatively render a persistent help-link that opens the modal or a command reference panel.
+
+---
+
+## GAP-248: Silent Auto-Analyze Fires on Page Load Without User Confirmation
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by heuristic sub-agent (H5) and applicant.
+**Affected stories:** US-A2 (job analysis initiation), US-U3 (user control)
+`web/app.js:88–95` — on page load, if a job description is present in the session but no analysis result exists, `analyzeJob()` fires automatically without user interaction. A returning user who intentionally left a description unanalyzed (e.g., mid-edit) will find that analysis has started without their knowledge.
+**Source evidence:** `web/app.js:88–95` — auto-fire logic on init path; no user-confirmation dialog or "would you like to analyze now?" prompt.
+**Recommended resolution:** Replace the auto-fire with a banner or toast: "Job description detected — click Analyze to begin." Let the user initiate analysis explicitly.
+
+---
+
+## GAP-249: Layout Confirm Step Redundant When No Layout Changes Made
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by ux-expert (US-U9.6).
+**Affected stories:** US-U9 (workflow efficiency)
+The Layout Review phase requires the user to click through a confirmation step even when they have made no layout instruction changes. The confirmation adds friction with no benefit when layout is unchanged from the default.
+**Source evidence:** `web/layout-instruction.js` — confirm step is always shown regardless of whether any instruction has been added or changed.
+**Recommended resolution:** Detect whether any layout instructions differ from defaults (or whether any were entered at all); if none, allow advancing directly to the next phase without a confirm dialog, or auto-confirm silently.
+
+---
+
+## GAP-250: Back-Navigation to Completed Step Fires Silently Without Confirmation
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by heuristic sub-agent (H3).
+**Affected stories:** US-U3 (user control and freedom)
+Clicking a previously completed workflow step in the pill bar silently re-enters that step and may cause downstream state invalidation (e.g., backing into Customise re-enables re-run buttons without warning). There is no confirmation dialog explaining potential downstream impact.
+**Source evidence:** `web/ui-core.js` — `_makeStepClickable()` handles click without checking for downstream invalidation or showing a warning dialog.
+**Recommended resolution:** When navigating backwards to a completed step that has downstream state, show a brief warning: "Going back to [Step Name] may require re-running downstream steps. Continue?"
+
+---
+
+## GAP-251: Brand Name Inconsistency — "CV Customizer" vs "CV Builder"
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by applicant and heuristic sub-agent (H4).
+**Affected stories:** US-A1 (first impression consistency)
+The application header reads "CV Customizer" while the onboarding welcome modal calls it "CV Builder". These two names appear in the same user session and create confusion about what the product is called.
+**Source evidence:** `web/index.html` — header element contains "CV Customizer"; welcome modal heading contains "CV Builder" (or vice versa — verify exact line numbers before fixing).
+**Recommended resolution:** Standardise on one name throughout all UI surfaces. "CV Builder" is the more commonly used name in documentation; update the header to match.
+
+---
+
+## GAP-252: Intake Confirmation UI Not Connected — API Exists but No Frontend Step
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by applicant (US-A2) and ux-expert.
+**Affected stories:** US-A2 (job analysis — intake confirmation)
+`scripts/web_app.py` has `GET /api/intake-metadata` and `POST /api/confirm-intake` endpoints, and `scripts/utils/conversation_manager.py` includes an intake-confirmation stage in the workflow model. However, no frontend step presents the extracted company name, role title, and target start date for user confirmation before analysis proceeds. The intake confirmation is silently skipped.
+**Source evidence:** `scripts/web_app.py` — `/api/intake-metadata` and `/api/confirm-intake` routes present. `web/app.js` — no call to either endpoint found in the frontend flow.
+**Recommended resolution:** After job description submission and before analysis, fetch `/api/intake-metadata`, display extracted values (company, role, date) in a confirmation card, and require the user to confirm or correct before calling `/api/confirm-intake` and proceeding.
+
+---
+
+## GAP-253: Prior Clarification Answers Not Pre-Populated on Re-Visit
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by applicant (US-A2).
+**Affected stories:** US-A2 (clarifying questions flow)
+The clarifying questions step shows blank input fields on every visit, even if the user previously answered the questions in this session. The backend stores answers in `session.json` and the API can return them, but the frontend never fetches and pre-populates them.
+**Source evidence:** `web/app.js` — clarifying question inputs rendered without a prior-answer fetch; no GET request to retrieve stored answers on question panel open.
+**Recommended resolution:** On clarifying question panel open, fetch any stored answers for the current session and pre-populate the input fields.
+
+---
+
+## GAP-254: Analysis Prompt Lacks Keyword-Frequency and Title-Position Weighting
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by resume-expert (US-R1) and hr-ats.
+**Affected stories:** US-R1 (domain/role inference quality)
+The job analysis LLM prompt does not instruct the model to weight keywords by frequency (a keyword appearing 5× in the JD is more important than one appearing 1×) or by position (title-section keywords outrank body-text keywords). As a result, rare but prominent title keywords may rank below frequent but generic body keywords.
+**Source evidence:** `scripts/utils/llm_client.py` — job analysis prompt section; no frequency or position weighting instruction found.
+**Recommended resolution:** Add prompt instruction: "Weight keywords by: (1) frequency of occurrence in the JD, (2) whether they appear in the job title or role level section. Surface top weighted keywords first."
+
+---
+
+## GAP-255: No Post-LLM Check That Introduced Keywords Appear Mid-Sentence vs Appended
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by resume-expert.
+**Affected stories:** US-R2 (rewrite quality)
+When the LLM rewrites bullets to incorporate missing ATS keywords, there is no post-generation check that keywords appear naturally mid-sentence rather than tacked on at the end (e.g., "Led team project management Python"). Keyword stuffing at sentence end passes all current persuasion checks.
+**Source evidence:** `scripts/utils/llm_client.py` — `_check_persuasion_quality()` has 8 checks but none specifically detect end-of-sentence keyword appending.
+**Recommended resolution:** Add a heuristic check: if the final 3 words of a rewritten bullet match ATS keywords that were absent from the original, flag as "keyword appended — review placement."
+
+---
+
+## GAP-256: No Cross-Document Terminology Consistency Enforcement
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by persuasion-expert (US-P4).
+**Affected stories:** US-P4 (cross-document coherence)
+The CV, cover letter, and screening question answers are generated sequentially but with no shared terminology constraint. A technology name ("TensorFlow" in CV, "TF" in cover letter, "deep learning frameworks" in screening answers) may vary without any cross-document check or warning.
+**Source evidence:** `web/cover-letter.js:348–469` — `_renderConsistencyReport` checks CL vs. CV for structural consistency but not for terminology consistency. No cross-document terminology check in the screening Q&A path.
+**Recommended resolution:** After all three documents are generated, run a batch term-normalisation check: identify the canonical form of each named technology/concept in the CV and flag divergences in the cover letter and screening answers.
+
+---
+
+## GAP-257: No Acronym-Expansion-on-First-Use Enforcement Across Generated Documents
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 13) by persuasion-expert.
+**Affected stories:** US-P3 (professional polish)
+Generated documents (CV, cover letter, screening answers) may use acronyms (e.g., "ATS", "KPI", "CI/CD") without expanding them on first use. This is standard professional writing practice and is particularly important in cover letters addressed to non-technical hiring managers.
+**Source evidence:** No acronym-expansion check found in `scripts/utils/llm_client.py`, `scripts/utils/cv_orchestrator.py`, or any route handler.
+**Recommended resolution:** Add an acronym-expansion prompt instruction to the cover letter and screening Q&A generators. For CV bullets, surface a review warning for common acronyms without prior expansion.

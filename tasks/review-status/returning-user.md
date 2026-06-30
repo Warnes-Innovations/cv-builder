@@ -8,9 +8,9 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Returning User Review Status
 
-**Last Updated:** 2026-06-30 09:55 ET
+**Last Updated:** 2026-06-30 (cycle 8 re-read)
 
-**Executive Summary:** The returning-user experience is strong across all three story areas. The current source-code read (2026-06-30) confirms seven of nine evaluated criteria pass cleanly; two remain partial. Both partial items are unchanged from the 2026-06-29 review: (1) the view-navigation vs. recomputation distinction remains hover/tooltip-only for touch and keyboard users (GAP-R4); and (2) saved decisions in individual review tabs require a tab visit to verify granular state — no per-tab count badge exists on tab labels (GAP-RU-DEC1). All previously resolved gaps (GAP-110, GAP-111, GAP-112, GAP-166, GAP-178, GAP-180, GAP-186, GAP-R2, GAP-R7, GAP-R8, GAP-R9) remain intact in the codebase as confirmed by this read. No regressions found.
+**Executive Summary:** The returning-user experience is strong across all three story areas. The current source-code read (2026-06-30, cycle 8) confirms seven of nine evaluated criteria pass cleanly; two remain partial. Both partial items are unchanged from the 2026-06-29 review: (1) the view-navigation vs. recomputation distinction remains hover/tooltip-only for touch and keyboard users (GAP-R4); and (2) saved decisions in individual review tabs require a tab visit to verify granular state — no per-tab count badge exists on tab labels (GAP-RU-DEC1). All previously resolved gaps (GAP-110, GAP-111, GAP-112, GAP-166, GAP-178, GAP-180, GAP-186, GAP-R2, GAP-R7, GAP-R8, GAP-R9) remain intact in the codebase as confirmed by this read. No regressions found. Line numbers updated to reflect current session-manager.js (functions shifted ~25 lines from prior read).
 
 ---
 
@@ -24,25 +24,25 @@ As a returning user, I want to resume a saved session with immediate context abo
 
 #### US-S1.1 — Job identity is surfaced on resume — ✅ Pass
 
-On restore, `restoreBackendState()` (`session-manager.js:568`) calls `/api/status` and then `updatePositionTitle(statusData)` (`session-manager.js:650`). The position bar renders the role into `#position-title` (`index.html:76`) and company/date into `#position-company` (`index.html:81`, populated via `session-actions.js:161–171`). The session-switcher header chip is built by `buildSessionSwitcherLabel(status)` (`session-manager.js:71–78`) combining `positionName · phase`, so the returning user sees role name immediately on reload.
+On restore, `restoreBackendState()` (`session-manager.js:593`) calls `/api/status` and then `updatePositionTitle(statusData)` (`session-manager.js:675`). The position bar renders the role into `#position-title` (`index.html:76`) and company/date into `#position-company` (`index.html:81`, populated via `session-actions.js:161–171`). The session-switcher header chip is built by `buildSessionSwitcherLabel(status)` (`session-manager.js:71–78`) combining `positionName · phase`, so the returning user sees role name immediately on reload.
 
-When restoring from a saved file via `loadSessionFile()`, a confirmation message is appended to conversation: `"✅ Session restored: {position_name} ({phase_label})"` (`session-manager.js:778`), where phase labels are sourced from `SESSION_PHASE_LABELS` in `utils.js`.
+When restoring from a saved file via `loadSessionFile()`, a confirmation message is appended to conversation: `"✅ Session restored: {position_name} ({phase_label})"` (`session-manager.js:803`), where phase labels are sourced from `SESSION_PHASE_LABELS` in `utils.js`.
 
 ---
 
 #### US-S1.2 — Current workflow stage is visible on resume — ✅ Pass
 
-`_resolveRestoredPhase(statusData)` (`session-manager.js:376–397`) applies two defensive guards before setting phase, then `stateManager.setPhase(restoredPhase)` (`state-manager.js:316–322`) fires all `onPhaseChange` listeners. `updateWorkflowSteps(status)` (`workflow-steps.js:637–774`) sets `active`, `completed`, and `clickable` CSS classes on all 12 step pills with the correct current step highlighted.
+`_resolveRestoredPhase(statusData)` (`session-manager.js:401–422`) applies two defensive guards before setting phase, then `stateManager.setPhase(restoredPhase)` (`state-manager.js:316–322`) fires all `onPhaseChange` listeners. `updateWorkflowSteps(status)` (`workflow-steps.js:637–774`) sets `active`, `completed`, and `clickable` CSS classes on all 12 step pills with the correct current step highlighted.
 
-`_restoreTabForPhase(sessionPhase)` (`session-manager.js:355–374`) maps each backend phase to the correct viewer tab via `phaseTabMap` and calls `switchTab()`. `updateActionButtons(activeStep)` (`workflow-steps.js:770`) restores the primary action button set. Both in-memory restores and disk-file loads call this path.
+`_restoreTabForPhase(sessionPhase)` (`session-manager.js:380–399`) maps each backend phase to the correct viewer tab via `phaseTabMap` and calls `switchTab()`. `updateActionButtons(activeStep)` (`workflow-steps.js:770`) restores the primary action button set. Both in-memory restores and disk-file loads call this path.
 
 ---
 
 #### US-S1.3 — Previously completed work remains visible/discoverable — ✅ Pass
 
-**GAP-110 RESOLVED (2026-06-29):** `_appendRestoredDecisionsSummary()` (`session-manager.js:415–436`) is now called from `restoreSession()` when `serverHasData` is true (`session-manager.js:487–489`). It appends a chat system message in the form `"📋 Restored at stage: {phaseLabel} — {expCount} experiences recommended, {skillCount} skills recommended, ATS score N%."` using data already in stateManager from the restore flow — no additional fetch needed.
+**GAP-110 RESOLVED (2026-06-29):** `_appendRestoredDecisionsSummary()` (`session-manager.js:440–461`) is now called from `restoreSession()` when `serverHasData` is true (`session-manager.js:512–514`). It appends a chat system message in the form `"📋 Restored at stage: {phaseLabel} — {expCount} experiences recommended, {skillCount} skills recommended, ATS score N%."` using data already in stateManager from the restore flow — no additional fetch needed.
 
-`_hydrateStatusTabState(statusData)` (`session-manager.js:551–566`) still restores `analysis`, `customizations`, and `cv` tab data. Completed steps receive `class="completed clickable"` (`workflow-steps.js:723–725`), making all prior results reachable via step-click. Conversation history is replayed from `/api/history` (`session-manager.js:451–477`).
+`_hydrateStatusTabState(statusData)` (`session-manager.js:576–591`) still restores `analysis`, `customizations`, and `cv` tab data. Completed steps receive `class="completed clickable"` (`workflow-steps.js:723–725`), making all prior results reachable via step-click. Conversation history is replayed from `/api/history` (`session-manager.js:475–502`).
 
 Residual minor gap: no per-tab decision count badge (e.g., "4 of 8 accepted" on the Rewrites tab label). Individual tab visits are still required to see decision-level granularity.
 
@@ -96,7 +96,7 @@ As a returning user, I want to trust that my accepted rewrites, customisations, 
 
 #### US-S3.1 — Saved decisions can be re-observed when their stage is revisited — ✅ Pass
 
-`_hydrateStatusDerivedState()` (`session-manager.js:505–549`) restores the full decision payload to `window._savedDecisions` (all experience, skill, achievement, publication decisions; `extra_skills`; `summary_focus_override`; achievement edits; intake; post-analysis Q&A). These are applied correctly when revisiting their respective review tabs.
+`_hydrateStatusDerivedState()` (`session-manager.js:530–574`) restores the full decision payload to `window._savedDecisions` (all experience, skill, achievement, publication decisions; `extra_skills`; `summary_focus_override`; achievement edits; intake; post-analysis Q&A). These are applied correctly when revisiting their respective review tabs.
 
 **GAP-166 — CONFIRMED IMPLEMENTED (same-device page reload):**
 
@@ -121,9 +121,9 @@ On resume, `restoreBackendState()` (`session-manager.js:593–643`) fetches `/ap
 
 #### US-S3.3 — Session restoration does not mislead about what version is current — ✅ Pass
 
-`_resolveRestoredPhase(statusData)` (`session-manager.js:376–397`) applies two guards: (1) if `!statusData.job_analysis`, forces `PHASES.INIT` regardless of persisted phase; (2) if `phase` is `CUSTOMIZATION` or `REWRITE_REVIEW` but `!statusData.customizations`, falls back to `PHASES.JOB_ANALYSIS`. These prevent the UI from falsely representing that work completed by the backend is still available.
+`_resolveRestoredPhase(statusData)` (`session-manager.js:401–422`) applies two guards: (1) if `!statusData.job_analysis`, forces `PHASES.INIT` regardless of persisted phase; (2) if `phase` is `CUSTOMIZATION` or `REWRITE_REVIEW` but `!statusData.customizations`, falls back to `PHASES.JOB_ANALYSIS`. These prevent the UI from falsely representing that work completed by the backend is still available.
 
-`status.stale_steps` from `back_to_phase()` (`conversation_manager.py:1457`) is rendered as amber `.stale` pills on the step bar (`workflow-steps.js:707, 738`), with screen-reader text "(stale — results may be outdated)" (`workflow-steps.js:745–749`). Conversation history is always restored from the server (`session-manager.js:451–477`), not from localStorage, so the narrative is authoritative.
+`status.stale_steps` from `back_to_phase()` (`conversation_manager.py:1457`) is rendered as amber `.stale` pills on the step bar (`workflow-steps.js:707, 738`), with screen-reader text "(stale — results may be outdated)" (`workflow-steps.js:745–749`). Conversation history is always restored from the server (`session-manager.js:475–502`), not from localStorage, so the narrative is authoritative.
 
 **GAP-112 — CONFIRMED IMPLEMENTED (2026-06-29):** `SESSION_PHASE_LABELS_SHORT` in `utils.js` now maps: `init` → "Setup", `customization` → "Customising", `rewrite_review` → "Rewrites", `spell_check` → "Spell Check", `refinement` → "Finalise". The previously misleading labels "Custom" and "Done" are removed.
 
@@ -178,12 +178,12 @@ After session restore, the returning user receives a summary message (GAP-110 re
 
 **Key evidence references:**
 
-- US-S1.1: job identity on restore — `session-manager.js:650`, `session-manager.js:71–78`, `session-actions.js:132–179`
-- US-S1.2: stage visible on restore — `session-manager.js:355–397`, `workflow-steps.js:637–774`
-- US-S1.3: prior work visible with summary (GAP-110 resolved) — `session-manager.js:415–436`, `session-manager.js:487–489`
+- US-S1.1: job identity on restore — `session-manager.js:675`, `session-manager.js:71–78`, `session-actions.js:132–179`
+- US-S1.2: stage visible on restore — `session-manager.js:380–422`, `workflow-steps.js:637–774`
+- US-S1.3: prior work visible with summary (GAP-110 resolved) — `session-manager.js:440–461`, `session-manager.js:512–514`
 - US-S2.1: back-nav warnings (partial) — `workflow-steps.js:138–188` (↻ modal); `workflow-steps.js:813` (step-click, no modal, hover-only distinction)
 - US-S2.2: context preserved on re-entry — `conversation_manager.py:1435–1468`, `workflow-steps.js:98–128`
 - US-S2.3: re-run vs nav distinction (partial) — `workflow-steps.js:147–149` (modal titles); `workflow-steps.js:730–733` (opacity:0.35 at rest); `workflow-steps.js:720–721` (iterating badge)
 - US-S3.1: decisions re-observable (GAP-166 + GAP-186 resolved) — `rewrite-review.js:52–79` (localStorage + cold-restore from `_backendRewriteAudit`)
-- US-S3.2: outputs connected to state — `state-manager.js:120–178`, `workflow-steps.js:60–93`, `session-manager.js:593–643`
-- US-S3.3: restore does not mislead (GAP-112 resolved) — `session-manager.js:376–397`, `workflow-steps.js:707, 738`, `utils.js:SESSION_PHASE_LABELS_SHORT`
+- US-S3.2: outputs connected to state — `state-manager.js:120–178`, `workflow-steps.js:60–93`, `session-manager.js:618–665`
+- US-S3.3: restore does not mislead (GAP-112 resolved) — `session-manager.js:401–422`, `workflow-steps.js:707, 738`, `utils.js:SESSION_PHASE_LABELS_SHORT`

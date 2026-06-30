@@ -1,306 +1,141 @@
 <!--
-Copyright (C) 2026 Gregory R. Warnes
-SPDX-License-Identifier: AGPL-3.0-or-later
-
-This file is part of CV-Builder.
-For commercial licensing, contact greg@warnes-innovations.com
+  Copyright (C) 2026 Gregory R. Warnes
+  SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# Persuasion Expert Review Status
+# Persuasion Expert UI Review
 
-**Last Updated:** 2026-06-30 09:45 ET
-
-**Executive Summary:** The application has strong backend persuasion infrastructure — 8 static checks (`check_strong_action_verb`, `check_passive_voice`, `check_word_count`, `check_has_result_clause`, `check_hedging_language`, `check_car_structure`, `check_named_institution_position`, `check_summary_generic_phrases`) are implemented in `llm_client.py` and surfaced on the Rewrites tab with severity badges. `apply_rewrite_constraints` blocks numeric and proper-noun removal. Publication ranking via `rank_publications_for_job` ranks by job-relevance and exposes authority signals (first-author, journal/conference) in the review table. The cover letter generator has tone/opening style options and a real-time 4-point client-side validator (generic opener, company name, word count, CTA). Cross-document consistency checking (company, job title, ATS keywords, date formats) exists in the Finalise tab. However, several acceptance tests are not implemented: no check for "I" as first word of the cover letter; no identity-fragmentation warning for competing narrative threads; no forward-looking sentence gate in summary; no cross-document terminology harmonisation between screening answers and CV keywords; word count threshold mismatch (400 vs story's 300); and passive CTA patterns pass that should fail.
-
----
-
-## Application Evaluation
-
-### US-P1: Narrative Arc and Identity Alignment
-
-**Criterion 1 — Identity match (summary opens as target role identity)**
-⚠️ Partial
-- `generate_professional_summary` (llm_client.py:844–858) prompts: "Open with a value-identity statement: strong verb + differentiating value claim … NOT a title + years-of-experience formula" — good LLM guidance.
-- No post-generation check verifies the produced summary actually opens with a value-identity statement. `check_summary_generic_phrases` only scans for filler phrases, not structure.
-
-**Criterion 2 — Arc coherence (progression, not flat inventory)**
-🔲 Not Implemented
-- No check or prompt guidance ensures that experience bullets, in aggregate, advance a single dominant narrative thread. `recommend_customizations` (llm_client.py:499–594) evaluates per-item relevance but not cross-item narrative coherence.
-
-**Criterion 3 — Future-pull framing (forward-looking sentence in summary)**
-🔲 Not Implemented
-- `generate_professional_summary` prompt (llm_client.py:851) instructs "Close with a forward-looking statement." This is prompt-only — no post-generation check verifies its presence ("positioned to…", "brings direct experience in…").
-
-**Criterion 4 — No identity fragmentation (warn if >2 equally-weighted narrative threads)**
-🔲 Not Implemented
-- No multi-thread detection logic exists anywhere in the Python backend or JS frontend.
-
-**Acceptance criteria summary for US-P1:**
-
-| Criterion | Status | Evidence |
-|---|---|---|
-| Summary opens with value-identity statement, not job title or name | ⚠️ Partial | Prompt instructs (llm_client.py:850); no post-check validates |
-| At least one forward-looking statement in summary | 🔲 Not Implemented | No post-generation check |
-| System warns if >2 equally-weighted narrative threads | 🔲 Not Implemented | No such logic exists |
-| Zero instances of "responsible for", "helped to", "assisted with", "was involved in" in proposed rewrites | ✅ Pass | `check_passive_voice` (llm_client.py:1136–1155) + `check_hedging_language` (1226–1266) catch all four; rewrite prompt explicitly forbids them (1820–1824) |
+**Persona:** Persuasion strategist (Scott Adams / Robert Cialdini school)
+**Reviewed:** 2026-06-30
+**Branch:** feature/multi-user-deployment
+**Source files examined:**
+- `web/index.html`, `web/app.js`, `web/ui-core.js`, `web/state-manager.js`
+- `scripts/web_app.py`, `scripts/utils/conversation_manager.py`, `scripts/utils/llm_client.py`
+- `scripts/routes/master_data_routes.py` (cover letter generation)
 
 ---
 
-### US-P2: Social Proof and Authority Signals
+## US-P1: Narrative Arc and Identity Alignment
 
-**Criterion 1 — Named institutions surface-level visible (first 15 words)**
-✅ Pass
-- `check_named_institution_position` (llm_client.py:1268–1323) checks branded orgs within first `max_position=15` words, flags if found later. Called for experience bullets (conversation_manager.py:1314–1316). Includes Pfizer, Genentech, major pharma, universities, top journals/conferences (llm_client.py:1289–1300). Result shown as a badge on Rewrites tab (bundle.js:14286).
+### Acceptance Criteria
 
-**Criterion 2 — Quantified impact preserved**
-✅ Pass
-- `apply_rewrite_constraints` (llm_client.py:913–961) rejects any proposal removing numeric tokens. Called in `_propose_rewrites_via_chat` (llm_client.py:1874–1884) filtering every proposal before storage.
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| P1-1 | Professional summary opens with a value-identity statement, not a job title or name | ✅ Pass | `llm_client.py` lines 855–863: `generate_professional_summary()` prompt explicitly instructs "Open with a value-identity statement: strong verb + differentiating value claim (e.g. 'Drives 3× revenue growth…', 'Builds ML pipelines that…') — NOT a title + years-of-experience formula" |
+| P1-2 | At least one forward-looking statement in the summary | ✅ Pass | `llm_client.py` line 865: Summary prompt includes "Close with a forward-looking statement aligned to the target role" |
+| P1-3 | System warns if more than two equally-weighted narrative threads are present | ❌ Fail | No multi-thread narrative detection exists anywhere in the codebase. The `check_summary_generic_phrases()` function (`llm_client.py` lines 1381–1413) only detects generic filler phrases; there is no narrative-thread-count analysis. |
+| P1-4 | Zero instances of "responsible for", "helped to", "assisted with", "was involved in" in proposed rewrites | ✅ Pass | `llm_client.py` lines 1145–1163 (`check_passive_voice()`): regex patterns `\bresponsible\s+for\b`, `\bhelped\s+(?:to\s+)?`, `\bwas\s+involved\s+in\b`, `\bassisted\s+(?:with|with)\b` all checked and flagged as `severity='warn'`. Rewrite prompt at lines 1832–1837 explicitly lists these as disallowed. |
 
-**Criterion 3 — External validation at appropriate prominence; proactive publication shortlist**
-⚠️ Partial
-- Publications ranked by job relevance via `rank_publications_for_job` (llm_client.py:1530–1694); LLM prompt asks for 1–10 relevance using domain + keyword alignment, not just recency or citation count. Satisfies the "ranked by job-relevance" criterion.
-- Publications review UI shows rank, relevance score, confidence, first-author badge, venue, rationale (publications-review.js:82–162). Conditional omission is visible with a divider row (publications-review.js:110–127). ✅
-- Gap: The ranking prompt (llm_client.py:1589–1612) does not explicitly instruct the LLM to use citation count or industry co-authorship as ranking inputs. These are post-hoc added from bibtex data (llm_client.py:1655–1666) but not given to the LLM for ranking decisions.
-
-**Criterion 4 — Publication authority signals surfaced per publication**
-⚠️ Partial
-- `authority_signals` built from `is_first_author` (LLM-determined) + `journal`/`booktitle` from bibtex (llm_client.py:1655–1666). First-author flag (★) shown in UI (publications-review.js:132).
-- Citation count and co-authorship signals are not surfaced even where present in bibtex `note` or custom fields.
-
-**Criterion 5 — Third-party language preserved**
-⚠️ Partial
-- `apply_rewrite_constraints` preserves proper nouns (llm_client.py:952–960), catching named organisations in "selected by…" phrases. However, the contextual third-party validation phrases themselves ("cited by", "invited to", "adopted by") are not specifically detected or guarded.
-
-**Criterion 6 — Specificity as credibility**
-✅ Pass
-- `apply_rewrite_constraints` blocks metric removal. `check_has_result_clause` (llm_client.py:1188–1223) flags bulletswith no quantified result.
-
-**Acceptance criteria summary for US-P2:**
-
-| Criterion | Status | Evidence |
-|---|---|---|
-| `apply_rewrite_constraints` rejects proposals removing numeric metric | ✅ Pass | llm_client.py:946–949 |
-| Named organisations within first 15 words | ✅ Pass | llm_client.py:1268–1323; conversation_manager.py:1314–1316 |
-| Conditional omission of Publications surfaced with rationale | ✅ Pass | publications-review.js:110–127; rationale column rendered |
-| Publication list ranked by job-relevance, not recency/citation | ✅ Pass | rank_publications_for_job; sorted by relevance_score desc (llm_client.py:1692–1693) |
-| Each recommended publication shows at least one authority signal | ⚠️ Partial | First-author + venue shown; citation count, co-authorship not available |
-| System flags bullets where number in master data absent in proposed rewrite | ✅ Pass | apply_rewrite_constraints blocks wholesale |
+**Summary:** 3/4 pass. The narrative-thread coherence check (P1-3) is not implemented; no code exists to detect "competing narratives" or count dominant narrative threads.
 
 ---
 
-### US-P3: Loss-Aversion and Urgency Framing
+## US-P2: Social Proof and Authority Signals
 
-**Criterion 1 — CAR (Challenge-Action-Result) structure proposed proactively**
-❌ Fail
-- `check_car_structure` (llm_client.py:1326–1368) detects CAR absence in *proposed* rewrites and flags it informational (severity: 'info', llm_client.py:1338). The check is reactive (what LLM proposed) not proactive (detect challenge language in master data and propose a CAR rewrite). Acceptance criterion says "System identifies and proposes CAR structure for bullets where challenge language exists in master data" — not met.
+### Acceptance Criteria
 
-**Criterion 2 — Cost-of-inaction signals preserved**
-⚠️ Partial
-- `apply_rewrite_constraints` preserves numbers and proper nouns. Contextual urgency phrases ("before FDA submission") are partially protected (proper noun "FDA" preserved) but the full contextual phrase is not guaranteed if the LLM restructures the sentence.
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| P2-1 | `apply_rewrite_constraints` rejects any proposal that removes or vagues-over a numeric metric | ✅ Pass | `llm_client.py` lines 923–971 (`apply_rewrite_constraints()`): `nums_orig.issubset(nums_prop)` check at lines 956–959 rejects any rewrite that drops a number from the original. Constraint enforced by `propose_rewrites()` at lines 1884–1893. |
+| P2-2 | Named recognisable organisations appear within the first 15 words of their respective bullet | ⚠️ Partial | `llm_client.py` lines 1278–1333 (`check_named_institution_position()`): checks a hardcoded list of branded orgs against first 15 words, flags as `severity='info'` (not 'warn'). The hardcoded list is incomplete — e.g. "BMS", "Roche", "AstraZeneca", "Penn" are absent. Flagged as info-only, not blocking. |
+| P2-3 | Conditional omission decisions for Publications/Awards surfaced to user with rationale, not silently dropped | ⚠️ Partial | Publication decisions recorded in `publication_decisions` state (conversation_manager.py line 111) and Publications review tab exists (`index.html` line 214). `rank_publications_for_job()` provides per-publication rationale (`llm_client.py` lines 1540–1703). However, no explicit UI warning is triggered when a publication is excluded — omissions are applied silently via `customizations['rejected_publications']` (conversation_manager.py lines 1083–1099) without a visible user-facing explanation at exclusion time. |
+| P2-4 | Publication recommendation list ranked by job-relevance (keyword + domain + authority signals), not recency or citation count | ✅ Pass | `llm_client.py` lines 1540–1703 (`rank_publications_for_job()`): LLM ranks by `relevance_score` 1–10 based on domain/skills/keywords match. Results sorted by `(-relevance_score, -year)` at line 1702. Prompt asks to "Select and rank up to N publications most relevant for this role." |
+| P2-5 | Each recommended publication shows at least one authority signal alongside its relevance rationale | ✅ Pass | `llm_client.py` lines 1665–1676: `authority_signals` list built per result — `first_author` (from LLM), `journal: {name}` or `conference: {name}`. `venue_warning` flags missing venue. Publications review tab available to display these. |
+| P2-6 | System flags bullets where a number is present in master data but absent in the proposed rewrite | ✅ Pass | `llm_client.py` lines 956–959 (`apply_rewrite_constraints()`): extracts numeric tokens from original; returns `False` (rewrite rejected) if original numbers not all present in proposed text. Every proposal filtered at lines 1884–1893. |
 
-**Criterion 3 — Differentiation from generics (at least one contrast signal in Skills or Summary)**
-🔲 Not Implemented
-- No check or prompt guidance for differentiation signals ("rare combination of…", contrast against typical applicant pool). `check_summary_generic_phrases` detects filler but not absence of differentiation.
-
-**Criterion 4 — Positive-sum framing ("increased X" preferred over "reduced Y")**
-🔲 Not Implemented
-- No check or prompt instruction prefers positive-sum framing. `check_has_result_clause` verifies presence of a metric, not its framing direction. Rewrite prompt (llm_client.py:1820–1828) includes no positive-sum preference.
-
-**Acceptance criteria summary for US-P3:**
-
-| Criterion | Status | Evidence |
-|---|---|---|
-| System identifies and proposes CAR structure for bullets with challenge language in master data | ❌ Fail | check_car_structure is reactive on proposed text only; llm_client.py:1326–1368 |
-| Rewrites prefer positive-sum metric framing | 🔲 Not Implemented | Not in prompts or checks |
-| Summary rewrite checked against generic filler phrases; flagged if >1 appears | ✅ Pass | check_summary_generic_phrases (llm_client.py:1371–1403), severity='warn' if >2 found |
+**Summary:** 4/6 pass, 2 partial. The hardcoded org list is narrow for life-science roles; publication omission rationale is available in state but not surfaced proactively when exclusions are applied.
 
 ---
 
-### US-P4: Rhetorical Quality of Bullet Points
+## US-P3: Loss-Aversion and Urgency Framing
 
-**Criterion 1 — Strong opening verb**
-✅ Pass
-- `check_strong_action_verb` (llm_client.py:1078–1114) — 130+ verb set, `_strip_intro_phrase` helper. Called in `run_persuasion_checks` (conversation_manager.py:1293–1295). Rewrite prompt explicitly instructs strong verbs (llm_client.py:1820). Displayed as badge on Rewrites tab (bundle.js:14286).
+### Acceptance Criteria
 
-**Criterion 2 — Front-loading (most impressive element appears first)**
-🔲 Not Implemented
-- No check evaluates whether the most impressive element appears early in the bullet. No "front-loading" heuristic exists.
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| P3-1 | System identifies and proposes CAR (Challenge-Action-Result) structure for experience bullets where challenge language exists in master data | ⚠️ Partial | `llm_client.py` lines 1335–1378 (`check_car_structure()`): detects CAR presence via regex on *proposed rewrites*; flags missing CAR as `severity='info'`. However, no proactive CAR suggestion occurs during the Customise phase where challenge language may exist in source master-data bullets. |
+| P3-2 | Rewrites prefer positive-sum metric framing ("increased X") over loss framing ("reduced Y") unless loss-framing is the impressive result | 🔲 Not Implemented | No positive-sum vs. loss-framing analysis exists in any check function. `check_has_result_clause()` (`llm_client.py` lines 1198–1233) treats "reduced" as a valid result indicator without distinguishing framing direction. The rewrite prompt does not instruct the LLM on framing preference. |
+| P3-3 | Summary rewrite is checked against a short list of generic filler phrases; flagged if more than one appears | ✅ Pass | `llm_client.py` lines 1380–1413 (`check_summary_generic_phrases()`): 19-item `_GENERIC_FILLER_PHRASES` set checked against summary text. `pass=False` if >1 filler found; `severity='warn'` if >2 found. Triggered in `run_persuasion_checks()` when `location == 'summary'` (conversation_manager.py line 1324). |
 
-**Criterion 3 — Conciseness (≤30 words)**
-✅ Pass
-- `check_word_count` (llm_client.py:1157–1186) flags bullets exceeding 30 words. Applied in `run_persuasion_checks` (conversation_manager.py:1301–1303).
-
-**Criterion 4 — Parallel structure within an experience**
-🔲 Not Implemented
-- No check evaluates grammatical parallel structure across bullets within a single experience. Each bullet is checked in isolation.
-
-**Acceptance criteria summary for US-P4:**
-
-| Criterion | Status | Evidence |
-|---|---|---|
-| Every proposed bullet begins with strong action verb | ✅ Pass | check_strong_action_verb, llm_client.py:1078–1114 |
-| System flags bullet exceeding 30 words for compression review | ✅ Pass | check_word_count, llm_client.py:1157–1186 |
-| System flags passive voice constructions in proposed rewrites | ✅ Pass | check_passive_voice, llm_client.py:1116–1155 |
-| System flags bullets where no result clause is present | ✅ Pass | check_has_result_clause, llm_client.py:1188–1223 |
+**Summary:** 1/3 pass, 1 partial, 1 not implemented. Positive-sum framing preference is entirely absent. CAR detection covers proposed rewrites but not source data where challenge language already exists.
 
 ---
 
-### US-P5: Cover Letter Persuasion Architecture
+## US-P4: Rhetorical Quality of Bullet Points
 
-**Criterion 1 — Opening pattern interrupt (not "I am writing to apply…")**
-⚠️ Partial
-- Three opening styles: formal salutation, attention hook, narrative opener (cover-letter.js:27–31). `_OPENING_GUIDANCE` (master_data_routes.py:98–102) instructs LLM appropriately for hook/narrative styles.
-- Client-side `_validateCoverLetter` (cover-letter.js:492–509) checks for 6 generic salutation patterns. However, the acceptance criterion "System rejects any draft where the first word is 'I' and offers a rewrite prompt" is NOT implemented — the validator checks generic salutations, not a leading "I" in the letter body.
+### Acceptance Criteria
 
-**Criterion 2 — One-paragraph value proposition (one focused point)**
-🔲 Not Implemented
-- Cover letter prompt says "3–4 paragraphs" (master_data_routes.py:1588) but does not constrain paragraph 2 to a single focused, provable claim. No post-generation structural check exists.
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| P4-1 | Every proposed bullet begins with a verb from an approved strong-action-verb list | ✅ Pass | `llm_client.py` lines 982–1044 (`_STRONG_ACTION_VERBS` set, ~120 verbs) and lines 1088–1124 (`check_strong_action_verb()`): first word extracted and checked against the set. Fails → `severity='warn'`. Applied to all rewrites in `run_persuasion_checks()` (conversation_manager.py line 1294). |
+| P4-2 | System flags any proposed bullet exceeding 30 words for compression review | ✅ Pass | `llm_client.py` lines 1167–1196 (`check_word_count(max_words=30)`): counts words after stripping intro phrase; flags as `severity='warn'`. Applied to all rewrites (conversation_manager.py line 1302). Rewrite prompt at line 1838 also instructs "Keep bullet text under 30 words". |
+| P4-3 | System flags passive voice constructions in proposed rewrites | ✅ Pass | `llm_client.py` lines 1126–1165 (`check_passive_voice()`): 7 passive patterns including "was responsible for", "was involved in", "was tasked with". Severity='warn'. Applied to all rewrites (conversation_manager.py line 1299). |
+| P4-4 | System flags bullets where no result clause (outcome, impact, or metric) is present | ✅ Pass | `llm_client.py` lines 1198–1233 (`check_has_result_clause()`): heuristic scan for number, outcome verbs, result connectors. Flags as `severity='info'`. Applied to all rewrites (conversation_manager.py line 1305). |
 
-**Criterion 3 — Mirroring JD language (2–3 verbatim phrases)**
-⚠️ Partial
-- Cover letter prompt includes `req_skills` and `keywords` from job analysis (master_data_routes.py:1548–1549, 1573–1575). This increases terminology alignment but does not explicitly instruct the LLM to mirror 2–3 exact JD phrases verbatim (not paraphrased) to trigger cognitive fluency.
-
-**Criterion 4 — Conciseness (≤4 paragraphs, ≤300 words)**
-⚠️ Partial
-- Backend prompt says "~250–300 words" (master_data_routes.py:1588). Client-side validator targets 250–400 words and flags red only at <200 or >450 (cover-letter.js:533–534). The story acceptance criterion says "exceeding 300 words triggers a compression review flag" — the UI allows to 400 before warning-level and 450 before fail-level.
-- Inconsistency: backend prompt (300) vs. frontend validator (400 upper).
-
-**Criterion 5 — Call to action (specific next step)**
-⚠️ Partial
-- `_validateCoverLetter` (cover-letter.js:542–555) checks for CTA patterns in the last paragraph. Cover letter prompt says "Close professionally with a call to action" (master_data_routes.py:1593).
-- Critical gap: "I look forward to hearing from you" (a passive CTA — explicitly listed as a failure mode in the story) matches `hear from you` (cover-letter.js:547) and passes the CTA check. The validator should flag this pattern as passive rather than passing it.
-
-**Acceptance criteria summary for US-P5:**
-
-| Criterion | Status | Evidence |
-|---|---|---|
-| System rejects any draft where first word is "I" and offers a rewrite prompt | ❌ Fail | cover-letter.js:492–509 — checks generic salutations only; no "I" first-word gate |
-| Cover letter references company name and one specific role requirement non-generically | ✅ Pass | Company name check (_validateCoverLetter:511–527); req_skills in prompt |
-| Word count check; >300 words triggers compression review flag | ⚠️ Partial | UI threshold is 400 (not 300); cover-letter.js:533–534 |
-| Closing sentence includes specific proposed next step (flagged if absent) | ⚠️ Partial | CTA check exists but "look forward to hearing from you" passes when it should fail; cover-letter.js:547 |
+**Summary:** 4/4 pass. The bullet rhetorical check suite is fully implemented. Note: all checks apply to *proposed rewrites only*, not to original master-data bullets.
 
 ---
 
-### US-P6: Consistency of Persuasive Register
+## US-P5: Cover Letter Persuasion Architecture
 
-**Criterion 1 — Confidence register uniform across documents**
-⚠️ Partial
-- Per-bullet passive/hedging checks exist. But no cross-document register alignment check: system does not compare summary confidence level against bullet language level and flag mismatches.
+### Acceptance Criteria
 
-**Criterion 2 — Role-level calibration**
-⚠️ Partial
-- `recommend_customizations` includes `role_level` in job analysis; summary prompt includes it. The LLM receives context but no post-generation check verifies output language matches the target seniority level.
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| P5-1 | System rejects any draft where the first word is "I" and offers a rewrite prompt | 🔲 Not Implemented | No post-generation first-word check exists. `master_data_routes.py` lines 1603–1654: prompt provides `_OPENING_GUIDANCE` styles (formal/hook/narrative) but there is no programmatic check that the generated letter does not begin with "I". No rejection or re-prompt logic exists. |
+| P5-2 | Cover letter references at least the company name and one specific role requirement in a non-generic way | ✅ Pass | `master_data_routes.py` lines 1609–1611: prompt includes company name and `req_skills` from job analysis. Line 1629: "Reference concrete skills and achievements from the candidate profile." Company context block is woven in when provided. No post-generation verification that company name appears in output. |
+| P5-3 | Word count check enforced; letter exceeding 300 words triggers a compression review flag | ❌ Fail | `master_data_routes.py` lines 111–122: `_cover_letter_word_count_instruction()` specifies word counts as a generation target — 300–400 words standard, 400–500 exec, 500–600 academic. This is a *generation instruction*, not a post-generation check. No code counts generated letter words or surfaces a compression flag. The user story specifies 300-word maximum; the code targets 300–400 minimum for standard roles — a directional mismatch. |
+| P5-4 | Closing sentence includes a specific proposed next step; flagged if absent | ⚠️ Partial | `master_data_routes.py` line 1630: prompt instructs "Close with a specific, confident request for an interview or a conversation about the role. Name the role explicitly. Avoid passive language such as 'I look forward to hearing from you.'" This is a generation instruction only — no post-generation check detects whether a CTA is absent or passive and flags it. |
 
-**Criterion 3 — Cross-document keyword consistency (CV, cover letter, screening)**
-⚠️ Partial
-- Cross-document consistency check in Finalise tab (`_renderConsistencyReport`, cover-letter.js:348–469) checks company name, job title, ATS keywords, date formats across CV + cover letter.
-- Gap: Screening answers NOT included. No terminology harmonisation feature for screening-answer divergence from CV keywords.
-- Gap: Cover letter core argument NOT cross-checked against summary framing.
+**Summary:** 1/4 pass, 1 partial, 1 fail, 1 not implemented. Cover letter generation relies entirely on prompt instructions with no post-generation validation. The "I as first word" gate (P5-1), the 300-word enforcement (P5-3), and the CTA presence check (P5-4) are all missing as executable guards.
 
-**Criterion 4 — Narrative thread continuity (summary → cover letter)**
-🔲 Not Implemented
-- No check verifies the dominant narrative thread from the CV summary echoes in the cover letter's core argument.
-
-**Acceptance criteria summary for US-P6:**
-
-| Criterion | Status | Evidence |
-|---|---|---|
-| Clarification-answer context applied consistently across all generated content | ⚠️ Partial | `post_analysis_answers` injected into cover letter prompt (master_data_routes.py:1538–1543) and recommend_customizations (llm_client.py:349–365); no cross-output consistency check |
-| Cover letter core argument cross-checked against summary framing; mismatch flagged | 🔲 Not Implemented | No such check |
-| Screening-answer terminology compared against CV keywords; harmonisation suggestion | 🔲 Not Implemented | Consistency report excludes screening data |
+**Additional finding — word count spec mismatch:** US-P5 specifies "maximum 300 words." The implementation targets 300–400 words for standard roles and up to 600 for academic roles. The spec and implementation are directionally misaligned; the app generates longer letters than the persona story requires.
 
 ---
 
-## Generated Materials Evaluation
+## US-P6: Consistency of Persuasive Register
 
-Review is source-only (no live generation run). Assessment based on prompts, constraints, and checks applied:
+### Acceptance Criteria
 
-**Professional Summary**
-- Prompt engineering is strong: value-identity opening, ATS keyword weaving (3–5), 1–2 quantified achievements, forward-looking close, no generic filler (llm_client.py:844–879). Aligned with US-P1 and US-P4.
-- Missing: no post-generation structural validation; compliance depends on LLM behavior.
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| P6-1 | System enforces that clarification-answer context is applied consistently across all generated content in the session | ⚠️ Partial | `post_analysis_answers` is passed to: summary generation (`llm_client.py` line 829), customization recommendations (conversation_manager.py line 763), and cover letter generation (`master_data_routes.py` lines 1562–1567). It is NOT passed to `propose_rewrites()` or to screening answer generation — so terminology consistency is not enforced across all touchpoints. |
+| P6-2 | Cover letter core argument is cross-checked against summary framing; mismatch flagged for user review | 🔲 Not Implemented | No cross-document comparison exists. Summary and cover letter are generated independently with no code that compares their core claims, terminology, or narrative angle. |
+| P6-3 | Prior screening-answer terminology compared against CV keyword choices; divergences presented as a harmonisation suggestion | 🔲 Not Implemented | No keyword comparison between screening answers and CV content exists. Screening responses are stored in `screening_responses` state (conversation_manager.py line 107) and a snippet is referenced in the cover letter prompt (lines 1879–1897), but only as contextual grounding — not as a keyword-harmonisation check. |
 
-**Experience Bullet Rewrites**
-- `apply_rewrite_constraints` is a robust gate: numbers, dates, proper nouns protected.
-- 8 persuasion checks are comprehensive and all surfaced in the Rewrites tab UI.
-- Rewrite prompt explicitly instructs active voice, no hedging, quantified results, strong verbs.
-- Missing: proactive CAR structure proposals, front-loading check, parallel structure check.
-
-**Cover Letter**
-- Opening style (3 options) + tone (5 options) give structural control.
-- Prompt includes company name, role, required skills, achievements, candidate context.
-- Real-time 4-point validator provides immediate feedback.
-- Critical gaps: "I" first-word gate; word count at 400 vs. story's 300; passive CTA passes.
-
-**Publications**
-- Ranking prompt is well-constructed; sorted relevance descending, year descending.
-- UI renders rank, citation, year, first-author flag, relevance /10, confidence, rationale, venue warning.
-- Divider separates recommended from non-recommended; user overrides all decisions.
-- Gap: citation count, co-authorship authority signals not surfaced.
+**Summary:** 0/3 pass, 1 partial, 2 not implemented. Cross-document consistency is the largest architectural gap. The `post_analysis_answers` thread is woven through several (but not all) generation steps. No semantic cross-referencing between the CV, cover letter, and screening answers exists.
 
 ---
 
-## Terminology / Label Clarity Assessment
+## Overall Findings
 
-| Location | Label | Assessment |
-|---|---|---|
-| publications-review.js:97 | Column header `1st★` | Ambiguous to non-researchers — should read "First Author" with title tooltip |
-| bundle.js:14162 | Persuasion flag types displayed as raw snake_case after `.replace(/_/g, " ")` | "car structure", "has result" are developer-centric. Better: "No Challenge-Action-Result structure", "Missing outcome/result" |
-| cover-letter.js:533 | Word count target "250–400" in UI | Inconsistent with backend prompt "~250–300 words" — confusing |
-| publications-review.js:99 | Column `Score` | No `title` attribute explaining it is job-relevance 1–10 |
-| cover-letter.js:547 | "hear from you" in CTA pass list | Passive phrase that story explicitly calls a failure mode |
+### Implemented and Working
+- **Bullet rhetorical checks** (US-P4): All 4 checks implemented and wired (`check_strong_action_verb`, `check_passive_voice`, `check_word_count`, `check_has_result_clause`).
+- **Rewrite constraint guard** (US-P2-1, P2-6): `apply_rewrite_constraints()` enforces numeric/proper-noun preservation on every proposed rewrite.
+- **Summary quality controls** (US-P1-1, P1-2, P1-4, P3-3): Summary prompt enforces value-identity opening, forward-looking close, and filters generic filler.
+- **Publication relevance ranking** (US-P2-4, P2-5): `rank_publications_for_job()` ranks by job-relevance with first-author and journal/conference authority signals.
 
----
+### Partial / Incomplete
+- **Named institution positioning** (US-P2-2): Hardcoded org list is too narrow; flagged as info-severity only, not blocking.
+- **Publication omission disclosure** (US-P2-3): Decisions tracked in state but no proactive UI warning when publications are excluded.
+- **CAR structure detection** (US-P3-1): Check exists for rewrites; no proactive identification of challenge language in source master data.
+- **Clarification-answer consistency** (US-P6-1): Passed to summary/customization/cover-letter but missing from rewrite proposals and screening.
+- **Cover letter CTA presence** (US-P5-4): Instructed in prompt but no post-generation programmatic check.
 
-## Additional Story Gaps / Proposed Story Items
+### Not Implemented (New Gaps)
 
-**GAP-PE-01 (High): "I"-as-first-word cover letter rejection** — Add one-regex check at start of `_validateCoverLetter`: if first non-whitespace word of the letter body is "I", show a fail state with a rewrite suggestion. One-line fix.
+| Gap ID | Story | Description |
+|--------|-------|-------------|
+| — | US-P1-3 | Narrative-thread coherence warning — no detection of multiple equally-weighted narrative threads in selected content |
+| — | US-P3-2 | Positive-sum framing preference — no framing direction analysis in checks or rewrite prompts |
+| — | US-P5-1 | Cover letter "I as first word" gate — no post-generation check with rewrite offer |
+| — | US-P5-3 | Cover letter word count enforcement — 300-word max not enforced; targets 300–400 (spec mismatch) |
+| — | US-P6-2 | Cover letter × summary cross-check — no cross-document narrative alignment check |
+| — | US-P6-3 | CV × screening terminology harmonisation — no keyword comparison across documents |
 
-**GAP-PE-02 (High): Word count threshold alignment** — Backend prompt says "~250–300 words"; frontend validator uses 400 as upper limit before fail. Align both to 300. Change cover-letter.js:533 `words <= 400` → `words <= 300` for the green zone.
-
-**GAP-PE-03 (High): Passive CTA fix** — Remove `hear from you` from the CTA pass patterns (cover-letter.js:547); add it to a separate "passive closing" fail list with message "Passive closing detected — use a specific, active next step."
-
-**GAP-PE-04 (Medium): JD phrase mirroring instruction** — Add to the cover letter generation prompt: "Use 2–3 phrases or terms from the job description verbatim (not paraphrased) in the body of the letter." One sentence added to master_data_routes.py:1588–1594.
-
-**GAP-PE-05 (Medium): Forward-looking sentence post-check** — After summary generation, scan for forward-looking indicators ("positioned to", "brings direct experience in", "will", "enable the team to"). If none found, append an informational badge in the Summary Review tab.
-
-**GAP-PE-06 (Medium): Positive-sum framing preference** — Add one sentence to `_propose_rewrites_via_chat` prompt: "Prefer positive-sum framing ('increased X by Y%') over loss framing ('reduced Y') unless the reduction itself is the impressive result."
-
-**GAP-PE-07 (Medium): Screening-to-CV keyword harmonisation** — US-P6 Criterion 3: compare `screening_responses` terminology against `ats_keywords` in the Finalise tab consistency report. Surface divergences as a "Terminology alignment" check row.
-
-**GAP-PE-08 (Low): CAR proactive proposal** — Add a proactive step in `_propose_rewrites_via_chat`: when the original bullet text contains challenge language keywords ("faced", "before deadline", "in response to"), propose a CAR-structured rewrite as an additional proposal.
-
-**GAP-PE-09 (Low): Publication column label** — Change `<th>1st★</th>` to `<th title="First-author publications carry stronger authority signals">First Author</th>`.
-
-**GAP-PE-10 (Low): Score column tooltip** — Add `title="Job relevance score: 1 (low) – 10 (high)"` to the Score column header in publications-review.js.
-
----
-
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/llm_client.py, web/cover-letter.js, web/publications-review.js, scripts/routes/master_data_routes.py, scripts/routes/review_routes.py, scripts/routes/llm_routes.py
-
-| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-|-------|---------|-----------|--------|------------|-------|
-| US-P1 | 1 | 1 | 0 | 3 | 0 |
-| US-P2 | 4 | 3 | 0 | 0 | 0 |
-| US-P3 | 1 | 1 | 1 | 2 | 0 |
-| US-P4 | 4 | 0 | 0 | 2 | 0 |
-| US-P5 | 1 | 3 | 1 | 1 | 0 |
-| US-P6 | 0 | 2 | 0 | 2 | 0 |
-
-**Key evidence references:**
-- `apply_rewrite_constraints`: llm_client.py:913–961
-- `check_strong_action_verb`: llm_client.py:1078–1114
-- `check_passive_voice`: llm_client.py:1116–1155
-- `check_word_count`: llm_client.py:1157–1186
-- `check_has_result_clause`: llm_client.py:1188–1223
-- `check_hedging_language`: llm_client.py:1225–1266
-- `check_named_institution_position`: llm_client.py:1268–1323
-- `check_car_structure`: llm_client.py:1326–1368 (informational severity only)
-- `check_summary_generic_phrases`: llm_client.py:1371–1403
-- `run_persuasion_checks`: conversation_manager.py:1234–1342
-- `rank_publications_for_job`: llm_client.py:1530–1694
-- `_validateCoverLetter`: web/cover-letter.js:487–570
-- `_renderConsistencyReport`: web/cover-letter.js:348–469
-- `_OPENING_GUIDANCE`: scripts/routes/master_data_routes.py:98–102
-- Cover letter prompt: scripts/routes/master_data_routes.py:1567–1594
-- Summary prompt: llm_client.py:844–879
-- Publications review UI: web/publications-review.js:82–162
+### Priority Assessment
+1. **HIGH** — Cover letter post-generation validation (P5-1/P5-3/P5-4): three missing runtime guards implementable as one validation function in `master_data_routes.py` after line 1644.
+2. **MED** — Positive-sum framing preference (P3-2): add a `check_metric_framing()` function to `llm_client.py` and update the rewrite prompt.
+3. **MED** — Publication omission disclosure (P2-3): surface a visible warning in the Publications review tab when entries are moved to `rejected_publications`.
+4. **LOW** — Cross-document consistency (P6-2/P6-3): architecturally new; would require a dedicated comparison pass after all three document types are generated.
+5. **LOW** — Narrative thread detection (P1-3): requires LLM-based semantic clustering of selected experiences; no existing hook.
