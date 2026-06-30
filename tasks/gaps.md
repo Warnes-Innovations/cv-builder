@@ -991,7 +991,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-S1, US-S3
-**Status:** OPEN - discovered 2026-04-22; returning user review found that after session restore, there is no human-readable summary of what was recovered. The user must navigate to every review tab individually to verify that prior decisions (experiences selected, skills, approved rewrites) are intact.
+**Status:** RESOLVED 2026-06-29 — Added `_appendRestoredDecisionsSummary()` called after `restoreBackendState()` returns `serverHasData=true` in `restoreSession()` (`web/session-manager.js`). Appends a system message: "📋 Restored at stage: {phaseLabel} — N experiences recommended, N skills recommended, ATS score N%." Uses data already present in stateManager after restore. Previously discovered 2026-04-22; restore only showed the raw phase name with no decision summary.
 **Description:** A returning user's first question after re-opening a session is "where did I leave off?" The current restore message answers "what stage" but not "what did I decide".
 **Recommended resolution:** After session restore, display a brief "Restored decisions" summary panel showing: N experiences selected (N recommended), N skills included, N/M rewrites approved, last activity timestamp. The panel should appear for the first visit after restoration and be dismissible.
 

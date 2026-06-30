@@ -412,6 +412,29 @@ async function ensureSessionContext() {
   return _claimCurrentSession(urlSessionId);
 }
 
+function _appendRestoredDecisionsSummary() {
+  const phase = stateManager.getPhase();
+  const customizations = stateManager.getTabData('customizations') || window.pendingRecommendations;
+  const parts = [];
+
+  if (customizations) {
+    const expCount = (customizations.recommended_experiences || []).length;
+    if (expCount > 0) parts.push(`${expCount} experience${expCount !== 1 ? 's' : ''} recommended`);
+    const skillCount = (customizations.recommended_skills || []).length;
+    if (skillCount > 0) parts.push(`${skillCount} skill${skillCount !== 1 ? 's' : ''} recommended`);
+  }
+
+  const ats = stateManager.getAtsScore();
+  if (ats && typeof ats.overall === 'number') {
+    parts.push(`ATS score ${Math.round(ats.overall)}%`);
+  }
+
+  if (parts.length > 0) {
+    const phaseLabel = SESSION_PHASE_LABELS_SHORT[phase] || String(phase).replace(/_/g, ' ');
+    appendMessage('system', `📋 Restored at stage: ${phaseLabel} — ${parts.join(', ')}.`);
+  }
+}
+
 async function restoreSession() {
   try {
     stateManager.setIsReconnecting(true);
@@ -459,6 +482,11 @@ async function restoreSession() {
 
     // Restore UI-only prefs (activeReviewPane) from localStorage.
     restoreTabData({ uiPrefsOnly: serverHasData });
+
+    // Show a restored-decisions summary when the backend had live session data.
+    if (serverHasData) {
+      _appendRestoredDecisionsSummary();
+    }
 
     stateManager.setIsReconnecting(false);
 
