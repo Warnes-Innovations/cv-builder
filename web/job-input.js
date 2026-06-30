@@ -70,7 +70,7 @@ async function populateJobTab() {
       html += '<div style="line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + _renderJobText(jobText) + '</div>';
 
       const analyzeBtn = data.phase === PHASES.INIT
-        ? '<button onclick="analyzeJob()" class="btn-primary" style="margin-right:8px;">🔍 Analyze Job</button>'
+        ? '<button onclick="analyzeJob()" class="btn-primary" style="margin-right:8px;">🔍 Analyse Job</button>'
         : '';
       html += '<div style="margin-top:20px;">' + analyzeBtn + '<button onclick="showLoadJobPanel()" class="btn-secondary">📥 Load Different Job</button></div>';
       content.innerHTML = html;
@@ -489,7 +489,7 @@ async function fetchJobFromURL() {
     } else {
       stateManager.setTabData('job', data.job_text);
       saveTabData();
-      appendMessage('assistant', `✅ ${data.message}! Fetched ${data.content_length || 'content'} characters. Review the job description below, then click "🔍 Analyze Job" to continue.`);
+      appendMessage('assistant', `✅ ${data.message}! Fetched ${data.content_length || 'content'} characters. Review the job description below, then click "🔍 Analyse Job" to continue.`);
       setLoading(false);
       switchTab('job');
       await populateJobTab();

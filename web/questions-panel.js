@@ -134,7 +134,7 @@ function populateQuestionsTab() {
   if (!content) return;
 
   if (!stateManager.getTabData('analysis')) {
-    content.innerHTML = '<div class="empty-state"><div class="icon">💬</div><h3>No Questions Yet</h3><p>Run "Analyze Job" first to generate clarifying questions.</p></div>';
+    content.innerHTML = '<div class="empty-state"><div class="icon">💬</div><h3>No Questions Yet</h3><p>Run "Analyse Job" first to generate clarifying questions.</p></div>';
     return;
   }
 

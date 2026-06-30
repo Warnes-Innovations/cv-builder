@@ -319,7 +319,7 @@ function renderHarvestTabHtml(enriched, analysisOk, analysisError) {
       </button>
       <button onclick="refreshHarvestAnalysis()"
         style="padding:10px 18px;font-size:0.9em;cursor:pointer;background:white;color:#475569;border:1px solid #cbd5e1;border-radius:6px;">
-        🔄 Re-analyze
+        🔄 Re-analyse
       </button>
       <span style="font-size:0.85em;color:#94a3b8;">
         ${totalCount} candidate${totalCount !== 1 ? 's' : ''}

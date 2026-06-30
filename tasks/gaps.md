@@ -2685,12 +2685,12 @@ The workflow step pill in the pill bar is labelled "Download" while the tab insi
 ## GAP-261: US/UK Spelling Inconsistency Throughout UI
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30
 **Discovered:** 2026-06-30 (cycle 14) by ux-expert.
 **Affected stories:** US-U4, US-G1 (brand consistency)
 "Analyze"/"Analyse" and "Customize"/"Customise" are used interchangeably across pill labels, tab names, and button text. This creates an inconsistent tone and makes the UI appear unpolished.
 **Source evidence:** `web/index.html` — mixed pill and tab labels. UX Expert noted the inconsistency; Graphical Designer confirmed (H4 — Consistency and Standards).
-**Recommended resolution:** Choose one spelling convention (US English recommended for broadest audience) and apply it globally across `web/index.html`, `web/styles.css`, and all JS label strings.
+**Resolution:** Standardised visible UI text to UK English (consistent with "Customise", "Finalise", "ATS-optimised" already in use). Changed "Analyze Job" → "Analyse Job" in `web/index.html`, `web/job-input.js`, `web/questions-panel.js`; "Re-analyze" → "Re-analyse" in `web/harvest.js`. JS function/ID names (`analyzeJob`, `analyze-btn`) left unchanged as they are internal identifiers.
 
 ## GAP-262: Error Messages in layout-instruction.js Dump Raw error.message With No Recovery Guidance
 
