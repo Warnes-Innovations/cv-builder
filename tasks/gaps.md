@@ -752,7 +752,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-G2, H4
-**Status:** OPEN - discovered 2026-04-22; graphical designer review found the Layout tab uses Bootstrap 5 button classes (`btn btn-primary`, `btn btn-warning`, etc.) while all other workflow tabs use the custom `.action-btn` / `.action-btn-secondary` CSS class system. This creates a ~2–4px height mismatch and visual inconsistency between tabs.
+**Status:** RESOLVED 2026-06-29 — Aligned `.btn-primary`, `.btn-secondary`, and `.btn-warning` CSS to match `.action-btn` system in `web/styles.css`: same padding (`10px 16px`), same `font-size: 14px`, added `:focus-visible` outline, disabled state opacity, and `:not(:disabled)` on hover rules. These classes are used broadly (34 instances across 12 JS files), not only in the layout tab. Previously discovered 2026-04-22; `.btn-*` classes used `20px` horizontal padding vs `.action-btn`'s `16px` and lacked disabled/focus states.
 **Description:** Users navigating from the Customise or Rewrite tab to the Layout tab see a different visual language for action buttons. The inconsistency reflects the Layout tab being implemented later with Bootstrap 5 while earlier tabs used the custom system.
 **Recommended resolution:** Align the Layout tab buttons with the `.action-btn` system used throughout the rest of the application. Alternatively document a decision to migrate all tabs to Bootstrap 5 and execute it consistently.
 
@@ -776,7 +776,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-M4
-**Status:** OPEN - discovered 2026-04-22; hiring manager review found the page count warning is wired to the Download tab (`web/download-tab.js`) but not shown during the Layout Review stage where the user is actively adjusting layout.
+**Status:** RESOLVED 2026-06-29 — Added page count badge to the layout preview status card in `renderLayoutPreviewStatus()` (`web/layout-instruction.js`). Badge shows exact or estimated page count from `generationState.pageCountExact/Estimate` with warning style (amber) when `pageWarning` is true. CSS `.layout-page-count-badge` and `.layout-page-count-badge.warn` added to `web/styles.css`. Previously discovered 2026-04-22; page count was only shown in download-tab.js.
 **Description:** The ideal time to inform users about page count problems is during Layout Review, when they can still make adjustments. Showing the warning only at Download forces an additional round-trip through the layout flow.
 **Recommended resolution:** Surface the page count validation result in the Layout Review tab header or beside the preview iframe. Update the layout freshness system to include a page-count-over-limit warning state.
 
@@ -784,7 +784,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-M6, US-P5
-**Status:** OPEN - discovered 2026-04-22; hiring manager review found no validation check that the cover letter body references at least one specific named achievement from the CV. Cover letters can pass all other validations while being generic and achievement-free.
+**Status:** RESOLVED 2026-06-29 — Added Rule 5 "Specific achievement" check to `_validateCoverLetter()` in `web/cover-letter.js`. Detects percentages, dollar amounts, quantified numbers, and action-result verbs (increased, reduced, delivered, launched, etc.). Shows warn (not fail) so it's advisory, not blocking. Previously discovered 2026-04-22; no achievement validation existed.
 **Description:** The most persuasive cover letters reference concrete achievements. The existing cover letter validation checks word count, company name, and CTA, but not whether specific achievements are cited.
 **Recommended resolution:** Add a cover letter body validation rule that checks for the presence of at least one quantified or named achievement (pattern: numbers, percentages, named project, "successfully", etc.) and warns if absent.
 
@@ -906,7 +906,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-W1, US-U5
-**Status:** OPEN - discovered 2026-04-22; power user and UX expert reviews found no bulk accept/reject control for the rewrite review panel. Bulk-accept exists for experience, skills, and achievements but not for rewrites. Sessions with 15–20 rewrite proposals require individual card-by-card attention.
+**Status:** RESOLVED 2026-06-29 — `acceptAllRewrites()` and `rejectAllRewrites()` buttons exist in the rewrite panel header at `web/rewrite-review.js:187–188`. Both skip already-decided cards. Previously discovered 2026-04-22; but bulk actions were already implemented.
 **Description:** The absence of bulk-accept for rewrites is the most significant workflow bottleneck for power users after keyboard shortcuts.
 **Recommended resolution:** Add "Accept All Recommended" and "Reject All" buttons to the rewrite review panel header, consistent with the pattern used in the skills review panel (`web/skills-review.js:941`). These should respect existing persuasion-warning gating.
 

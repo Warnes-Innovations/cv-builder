@@ -602,8 +602,25 @@ function _validateCoverLetter(text) {
         : 'No call-to-action found — add an interview request or proactive follow-up statement.',
   };
 
+  // ── Rule 5: Named or quantified achievement ───────────────────
+  const achievementPatterns = [
+    /\d+%/,                          // percentages
+    /\$[\d,]+/,                      // dollar amounts
+    /\d+ (times|x|fold|year|month|week|day|team|people|staff|client|customer|project|product|system|award|patent)/i,
+    /reduced|increased|grew|grew|doubled|tripled|saved|generated|delivered|launched|led|built|designed|architected|pioneered|won|awarded|earned|achieved/i,
+  ];
+  const hasAchievement = achievementPatterns.some(re => re.test(text));
+  const achievementCheck = {
+    pass: hasAchievement,
+    warn: !hasAchievement,
+    label: 'Specific achievement',
+    detail: hasAchievement
+      ? 'Contains a quantified or named achievement — good.'
+      : 'No quantified achievement detected — add at least one specific result (e.g., "increased revenue by 30%", "led a team of 8").',
+  };
+
   // ── Render ─────────────────────────────────────────────────────
-  const checks = [openingCheck, iFirstCheck, companyCheck, wordCountCheck, ctaCheck];
+  const checks = [openingCheck, iFirstCheck, companyCheck, wordCountCheck, ctaCheck, achievementCheck];
   container.innerHTML = checks.map(c => {
     const state = c.pass ? 'pass' : c.warn ? 'warn' : 'fail';
     return `<div class="cl-check ${state}">

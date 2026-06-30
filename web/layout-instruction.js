@@ -204,11 +204,20 @@ function renderLayoutPreviewStatus() {
   }
   const stageLabel = generationState.layoutConfirmed || generationState.phase === 'confirmed'
     ? 'Ready for final files' : 'Ready for layout review';
+  // Page count badge: shown when a page count is available from the preview
+  const pc = generationState.pageCountExact ?? generationState.pageCountEstimate;
+  let pageCountBadge = '';
+  if (pc !== null && pc !== undefined) {
+    const pcLabel  = generationState.pageCountExact !== null ? `${pc} page${pc !== 1 ? 's' : ''}` : `~${pc} page${pc !== 1 ? 's' : ''}`;
+    const pcWarn   = generationState.pageWarning;
+    pageCountBadge = `<span class="layout-page-count-badge${pcWarn ? ' warn' : ''}" title="${pcWarn ? 'Page count outside recommended range' : 'Page count within range'}">${pcWarn ? '⚠ ' : '📄 '}${escapeHtml(pcLabel)}</span>`;
+  }
   container.innerHTML = `
     <div class="layout-preview-status-card ${freshness.tone}">
       <div class="layout-preview-status-header">
         ${buildLayoutFreshnessChipMarkup(freshness)}
         <span class="layout-preview-status-stage">${escapeHtml(stageLabel)}</span>
+        ${pageCountBadge}
       </div>
       <div class="layout-preview-status-details">
         ${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}
