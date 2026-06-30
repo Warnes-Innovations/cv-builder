@@ -141,7 +141,10 @@ function _setWelcomeSection(section) {
       getStartedBtn.onclick = () => { closeWelcomeModal(); if (typeof openMasterCvModal === 'function') openMasterCvModal(); };
     } else {
       getStartedBtn.textContent = 'Get Started';
-      getStartedBtn.onclick = () => closeWelcomeModal();
+      getStartedBtn.onclick = () => {
+        closeWelcomeModal();
+        if (typeof switchTab === 'function') switchTab('job');
+      };
     }
   }
 }

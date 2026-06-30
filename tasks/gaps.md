@@ -392,7 +392,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** CRITICAL
 **Affected stories:** US-F4
-**Status:** OPEN - discovered 2026-04-20; first-time user review confirmed `cv_orchestrator.py:130–133` raises `FileNotFoundError("Master data file not found: ... Please create Master_CV_Data.json first.")` when `master_data_path` is absent. This propagates as a 500 error. No UI intercepts it, no onboarding redirect exists, and all three creation paths (LinkedIn export, resume import, manual) are entirely unimplemented.
+**Status:** RESOLVED 2026-06-29 — Full onboarding pipeline implemented: `maybeShowWelcomeModal()` in `web/session-manager.js:169` calls `/api/setup/master-cv-status` on every startup and shows appropriate section (present/empty/missing). `onboardingCreateEmptyProfile()` in `session-manager.js:211` calls `POST /api/setup/create-master-cv` to create a skeleton, then navigates to a new session. `createNewSessionAndNavigate()` handles `master_cv_missing` error from session creation. Backend endpoints at `session_routes.py:505` and `session_routes.py:532`. `ensure_master_cv_exists()` called at non-multi-user startup (web_app.py:695). Previously discovered 2026-04-20; first-time user review confirmed `cv_orchestrator.py:130–133` raises `FileNotFoundError` when `master_data_path` is absent.
 **Description:** A first-time user with no `Master_CV_Data.json` cannot use the application. The only guidance is a raw developer error message in the server log. This is a complete adoption blocker.
 **Recommended resolution:** Add an early-startup check for the master data file. If missing, redirect to a dedicated onboarding wizard before opening any session UI. Implement at minimum one creation path (structured JSON editor or guided form) and document the other two paths.
 
@@ -432,7 +432,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** CRITICAL
 **Affected stories:** US-M1, US-A10, US-A11
-**Status:** OPEN - discovered 2026-04-20; master CV curator review confirmed the backend correctly permits `/api/master-data/*` writes when `phase == 'init'` (`master_data_routes.py:129`), but `web/ui-core.js:358 STAGE_TABS` only exposes the Master CV tab in the `finalise` stage. The pre-job editing window is a backend contract with no frontend surface.
+**Status:** RESOLVED 2026-06-29 — Added `'master'` to the `job` stage in `STAGE_TABS` (`web/ui-core.js:351`). The Master CV tab is now visible whenever the user is on the Job stage (before starting analysis), giving access to the editor before any job session begins. Backend already permitted writes in `init`/`job` phase (`master_data_routes.py:129`). Previously discovered 2026-04-20; `STAGE_TABS` only exposed the Master CV tab in the `finalise` stage — the pre-job editing window had no frontend surface.
 **Description:** Users who want to update their master CV profile (add a new experience, update skills, fix a publication) before beginning job analysis have no way to access the Master CV editor. They must either complete a full job analysis first or reach the Finalise stage, which may already have customized the data.
 **Recommended resolution:** Expose the Master CV tab (or a dedicated "Maintain Master CV" link) in the `job` stage so users can update their profile before any job session begins. Alternatively, add a standalone "Maintain Master CV" view accessible from the header regardless of workflow stage.
 
@@ -496,7 +496,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-F2, US-A4b
-**Status:** OPEN - discovered 2026-04-20; first-time user and heuristic reviews confirmed that after `submitSpellCheckDecisions()` completes, the frontend immediately calls `generate_cv` with no user prompt, no summary of what will be generated, no indication of expected duration, and no opportunity for the user to make any further changes. The workflow documentation explicitly states: "The user does not manually move from Spell Check into Generate."
+**Status:** RESOLVED 2026-06-29 — `_confirmProceedToGenerate()` at `web/spell-check.js:356` shows a "Proceed to Generate?" modal before `sendAction('generate_cv')` fires. Modal displays current ATS score (if available), layout staleness warning (if stale), and requires explicit "Generate Now" button click. Tagline-confirmed gate also blocks generation if tagline hasn't been confirmed. Previously discovered 2026-04-20; earlier version auto-advanced without confirmation.
 **Description:** CV generation is the irreversible convergence of all prior decisions into output files. Silently triggering it after spell-check completion denies the user a final review opportunity. Users who realise they missed a customisation step have already passed the point of no return without knowing it.
 **Recommended resolution:** Insert a "Proceed to Generate?" confirmation step after spell-check completion. The prompt should summarize: number of CV formats to be generated, current ATS score, any active staleness warnings, and a "Generate Now" button. This also addresses the H3 (User control and freedom) heuristic finding.
 
@@ -720,7 +720,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-F1, US-F2
-**Status:** OPEN - discovered 2026-04-22; first-time user review confirmed the welcome modal (`index.html:258–325`) introduces the application but makes no mention of the LLM provider setup prerequisite. Users who have not configured a provider encounter an auth failure mid-workflow with no contextual guidance.
+**Status:** RESOLVED 2026-06-29 — Added a "Prerequisites" list box to the welcome modal in `web/index.html` between the 3-step workflow explanation and the status sections. Lists: (1) `Master_CV_Data.json` profile needed, (2) LLM provider must be configured via the ⚙ LLM button. Shows on every visit. Previously discovered 2026-04-22; welcome modal made no mention of LLM provider setup prerequisite.
 **Description:** The LLM provider is required for every analysis, rewrite, and generation action. Without guidance at onboarding, first-time users who have not configured a provider will start a job session and receive a cryptic authentication error after minutes of effort.
 **Recommended resolution:** Add a "Prerequisites" list to the welcome modal noting: (1) a `Master_CV_Data.json` file is needed and (2) an LLM provider must be configured via the LLM settings button. Link or highlight the LLM wizard button.
 
@@ -728,7 +728,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-F1, US-U1
-**Status:** OPEN - discovered 2026-04-22; first-time user review found the "✕ Get Started" button (`session-manager.js:155–179`) dismisses the welcome modal but does not navigate to the Job Input tab or trigger the New Session flow. Users are left on the default blank state.
+**Status:** RESOLVED 2026-06-29 — Updated the "present" state onclick in `_setWelcomeSection()` (`web/session-manager.js:143–146`) to call `switchTab('job')` after `closeWelcomeModal()`. Users with a populated Master CV profile are now navigated to the Job tab immediately on "Get Started". Previously discovered 2026-04-22; button only called `closeWelcomeModal()` and left the user on blank state.
 **Description:** After reading the welcome modal, a first-time user expects to be directed to the next action. Closing the modal and remaining on a blank screen provides no momentum.
 **Recommended resolution:** After dismissing the welcome modal via "Get Started", programmatically navigate to the Job Input tab (or trigger the New Session flow) so users immediately see their starting point.
 
