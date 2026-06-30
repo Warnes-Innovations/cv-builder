@@ -41,7 +41,7 @@ const _STEP_DISPLAY = {
   rewrite:        'Rewrite Review',
   spell:          'Spell Check',
   layout:         'Layout Review',
-  download:       'Download Files',
+  download:       'File Review',
   cover_letter:   'Cover Letter',
   screening:      'Screening',
   interview_prep: 'Interview Prep',
@@ -54,7 +54,7 @@ const _ACTION_LABELS = {
 };
 
 const _NAV_TAB_LABELS = {
-  download: '⬇️ Download Files',
+  download: '⬇️ File Review',
 };
 
 function applyLayoutFreshnessNavigationState() {

@@ -2675,12 +2675,12 @@ The `#finalise-notes-counter` `<div>` updates dynamically as the user types in t
 ## GAP-260: "Download" Step Pill and "File Review" Tab Use Different Names for Same Step
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30
 **Discovered:** 2026-06-30 (cycle 14) by recruiter-ops.
 **Affected stories:** US-O2, US-U4 (orientation and clarity)
 The workflow step pill in the pill bar is labelled "Download" while the tab inside the Finalise stage is labelled "File Review". Users navigating between the two surfaces see inconsistent labels for the same step, which causes disorientation.
 **Source evidence:** `web/index.html` — pill bar label; `web/finalise.js` — "File Review" tab. Dual naming confirmed by Recruiter Ops and Heuristic (H4 — Consistency and Standards).
-**Recommended resolution:** Standardise to a single label — "File Review" is more descriptive; update the pill bar to match, or change both to "Download & Review".
+**Resolution:** Pill bar step now labelled "File Review" to match the tab (updated `web/index.html:136`, `web/workflow-steps.js` — all 3 download label constants).
 
 ## GAP-261: US/UK Spelling Inconsistency Throughout UI
 
@@ -2715,12 +2715,12 @@ Two workflow step pills are visible in the pill bar and reachable by users, but 
 ## GAP-264: CSS Confidence Badge Only Handles 3 Levels; LLM Emits 5-Point Scale
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30
 **Discovered:** 2026-06-30 (cycle 14) by trust-compliance.
 **Affected stories:** US-C3 (AI confidence transparency)
 The CSS confidence badge classes cover only `confidence-high`, `confidence-medium`, and `confidence-low`. The LLM can output a 5-point confidence scale including "Very High" and "Very Low". Labels that map to `confidence-very-high` or `confidence-very-low` render without styling (plain text, no colour-coded badge).
 **Source evidence:** `web/styles.css` — search for `.confidence-` classes; Trust/Compliance persona found only 3 variants. LLM response schema allows 5 levels.
-**Recommended resolution:** Add `.confidence-very-high` and `.confidence-very-low` CSS classes to `web/styles.css` using appropriate colour tokens (e.g., darker green and darker red than the existing high/low variants).
+**Resolution:** Added `.confidence-very-high` (deeper green, bold) and `.confidence-very-low` (deeper red, bold) to `web/styles.css:730–742`.
 
 ## GAP-265: rewrite_audit Array Not Surfaced as In-UI Inspectable Log
 
@@ -2755,12 +2755,12 @@ The system does not check whether individual CV bullets exceed the recommended �
 ## GAP-268: "Don't Show Again" Label Contradicts "? Help" Button
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30
 **Discovered:** 2026-06-30 (cycle 14) by heuristic sub-agent.
 **Affected stories:** US-F1, US-S1 (help accessibility and onboarding)
 The welcome modal contains a "Don't show again" checkbox that, once checked, sets a localStorage flag. The cycle-14 fix (GAP-247) added a "? Help" header button that bypasses this flag — so the modal CAN be reopened regardless. But once the user has checked "Don't show again", the checkbox label is no longer accurate (it implies the modal is permanently suppressed, which it isn't via the Help button).
 **Source evidence:** `web/session-manager.js` — `showWelcomeModal()` bypasses localStorage flag; `web/index.html:63–66` — "? Help" button.
-**Recommended resolution:** Change the "Don't show again" checkbox label to something like "Don't show automatically on startup" or remove it in favour of the simpler "? Help" button as the sole re-access mechanism.
+**Resolution:** Label updated to "Don't show automatically on startup" at `web/index.html:392` — accurately describes the behaviour (suppresses auto-show, not the Help-button reopen path).
 
 ## GAP-269: 10 Customise Sub-Tabs Have No Completion Indicators
 
