@@ -4,11 +4,11 @@
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), 2026-06-29 (cycle 9), 2026-06-30 (cycles 10–11), 2026-06-30 (cycle 12), and 2026-06-30 (cycle 13)
-- independent heuristic UX evaluation (all cycles through 2026-06-30 cycle 13)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), 2026-06-29 (cycle 9), 2026-06-30 (cycles 10–11), 2026-06-30 (cycle 12), 2026-06-30 (cycle 13), and 2026-06-30 (cycle 14)
+- independent heuristic UX evaluation (all cycles through 2026-06-30 cycle 14)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270.
 
 ## 2026-06-30 (Cycle 14) Reconciliation Notes
 
@@ -20,7 +20,15 @@ This document tracks the gaps that still remain after reconciling the refreshed 
   - **GAP-234 RESOLVED:** Grade legend (≥75% Strong · 50–74% Partial · <50% Low) added inline in `_renderAtsReport()`.
   - **GAP-249 RESOLVED:** `generateFinalOutputs()` auto-calls `POST /api/cv/confirm-layout` when no layout instructions have been added, skipping the redundant confirm click.
 - **1 stale spec fixed:** `user-story-hr-ats.md:77` updated to accept "Selected Publications" as a valid heading (matches GAP-218 fix).
-- **Most critical remaining open gaps (cycle 14):** GAP-252 (intake confirmation UI not connected), GAP-206 (phase-lock indicator), GAP-213 (publications absent from ATS DOCX), GAP-14 (workflow progress indicator), GAP-201 (clarifying questions all-at-once).
+- **13 new gaps added (GAP-258 through GAP-270):**
+  - Accessibility (GAP-258, GAP-259): decorative ATS legend dots lack aria-hidden; notes counter lacks aria-live.
+  - UX consistency (GAP-260, GAP-261, GAP-268): dual naming for Download step; US/UK spelling mixed; "Don't show again" contradicts "? Help".
+  - Error recovery (GAP-262): 9+ raw error.message dumps in layout-instruction.js with no retry action.
+  - Workflow (GAP-263, GAP-269): two dead-end placeholder steps; 10 Customise sub-tabs have no completion indicators.
+  - Trust/Compliance (GAP-264, GAP-265): confidence CSS only handles 3 levels; rewrite_audit not surfaced as UI log.
+  - Generated quality (GAP-266, GAP-267): no minimum 2-bullets floor; no bullet line-length check.
+  - Infrastructure (GAP-270): CDN font dependency for WeasyPrint with no local fallback.
+- **Most critical remaining open gaps (cycle 14):** GAP-252 (intake confirmation UI not connected), GAP-206 (phase-lock indicator), GAP-213 (publications absent from ATS DOCX), GAP-262 (raw error messages), GAP-263 (dead-end placeholder steps), GAP-14 (workflow progress indicator), GAP-201 (clarifying questions all-at-once).
 
 ## 2026-06-30 (Cycle 13) Reconciliation Notes
 
@@ -2643,3 +2651,133 @@ The CV, cover letter, and screening question answers are generated sequentially 
 Generated documents (CV, cover letter, screening answers) may use acronyms (e.g., "ATS", "KPI", "CI/CD") without expanding them on first use. This is standard professional writing practice and is particularly important in cover letters addressed to non-technical hiring managers.
 **Source evidence:** No acronym-expansion check found in `scripts/utils/llm_client.py`, `scripts/utils/cv_orchestrator.py`, or any route handler.
 **Recommended resolution:** Add an acronym-expansion prompt instruction to the cover letter and screening Q&A generators. For CV bullets, surface a review warning for common acronyms without prior expansion.
+
+## GAP-258: Decorative ATS Legend Dots Lack aria-hidden
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by accessibility-specialist.
+**Affected stories:** US-X1 (keyboard and screen-reader navigation)
+The three colour-coded `●` characters in the ATS grade legend (`ats-modals.js:204–207`) are rendered as plain Unicode bullet characters. Screen readers announce them literally (e.g., "black circle") before reading the adjacent text, adding noise without meaning.
+**Source evidence:** `web/ats-modals.js:204–207` — `<span style="color:#10b981;">●</span>`, `<span style="color:#f59e0b;">●</span>`, `<span style="color:#ef4444;">●</span>` — none have `aria-hidden="true"`.
+**Recommended resolution:** Add `aria-hidden="true"` to each `<span>` containing `●`.
+
+## GAP-259: Finalise Notes Character Counter Has No aria-live
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by accessibility-specialist.
+**Affected stories:** US-X1, US-X3 (form feedback for screen readers)
+The `#finalise-notes-counter` `<div>` updates dynamically as the user types in the notes textarea, but has no `aria-live` attribute. Screen reader users do not hear the character count change, making the counter invisible to them.
+**Source evidence:** `web/finalise.js` — `<div id="finalise-notes-counter" style="...">0 / 2000</div>` — no `aria-live` or `role="status"` attribute.
+**Recommended resolution:** Add `aria-live="polite"` (or `role="status"`) to `#finalise-notes-counter`.
+
+## GAP-260: "Download" Step Pill and "File Review" Tab Use Different Names for Same Step
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by recruiter-ops.
+**Affected stories:** US-O2, US-U4 (orientation and clarity)
+The workflow step pill in the pill bar is labelled "Download" while the tab inside the Finalise stage is labelled "File Review". Users navigating between the two surfaces see inconsistent labels for the same step, which causes disorientation.
+**Source evidence:** `web/index.html` — pill bar label; `web/finalise.js` — "File Review" tab. Dual naming confirmed by Recruiter Ops and Heuristic (H4 — Consistency and Standards).
+**Recommended resolution:** Standardise to a single label — "File Review" is more descriptive; update the pill bar to match, or change both to "Download & Review".
+
+## GAP-261: US/UK Spelling Inconsistency Throughout UI
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by ux-expert.
+**Affected stories:** US-U4, US-G1 (brand consistency)
+"Analyze"/"Analyse" and "Customize"/"Customise" are used interchangeably across pill labels, tab names, and button text. This creates an inconsistent tone and makes the UI appear unpolished.
+**Source evidence:** `web/index.html` — mixed pill and tab labels. UX Expert noted the inconsistency; Graphical Designer confirmed (H4 — Consistency and Standards).
+**Recommended resolution:** Choose one spelling convention (US English recommended for broadest audience) and apply it globally across `web/index.html`, `web/styles.css`, and all JS label strings.
+
+## GAP-262: Error Messages in layout-instruction.js Dump Raw error.message With No Recovery Guidance
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by heuristic sub-agent.
+**Affected stories:** US-U6, US-A6 (error handling and recovery)
+Nine or more error catch blocks in `web/layout-instruction.js` append `error.message` directly to the chat or show it as a status string without providing a recovery action, retry button, or guidance on what the user should do next. This violates H9 (Help users recognise, diagnose, and recover from errors).
+**Source evidence:** `web/layout-instruction.js` — multiple `catch(e)` blocks using `_appendToChat(e.message)` or equivalent. Heuristic rated H9 as 🟠 Major.
+**Recommended resolution:** Replace raw error dumps with user-friendly messages that include: (1) a plain-language explanation of what failed, (2) a suggested next action, and (3) where possible, a retry button or CTA.
+
+## GAP-263: Two Placeholder Workflow Steps Are Dead Ends
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by heuristic sub-agent.
+**Affected stories:** US-F3, US-A5 (workflow orientation and momentum)
+Two workflow step pills are visible in the pill bar and reachable by users, but clicking them shows no content and provides no action — they are dead ends. Users who reach these steps after generating files find nothing actionable and no explanation.
+**Source evidence:** `web/ui-core.js` — pill bar step registration. Heuristic rated H3 (User control and freedom) as 🟡 Minor for this issue. First-Time User persona noted generation transitions have no inline explanatory text.
+**Recommended resolution:** Either implement the steps or replace them with a clear "coming soon" placeholder with a brief explanation. At minimum, clicking a dead-end step should not appear to succeed with no feedback.
+
+## GAP-264: CSS Confidence Badge Only Handles 3 Levels; LLM Emits 5-Point Scale
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by trust-compliance.
+**Affected stories:** US-C3 (AI confidence transparency)
+The CSS confidence badge classes cover only `confidence-high`, `confidence-medium`, and `confidence-low`. The LLM can output a 5-point confidence scale including "Very High" and "Very Low". Labels that map to `confidence-very-high` or `confidence-very-low` render without styling (plain text, no colour-coded badge).
+**Source evidence:** `web/styles.css` — search for `.confidence-` classes; Trust/Compliance persona found only 3 variants. LLM response schema allows 5 levels.
+**Recommended resolution:** Add `.confidence-very-high` and `.confidence-very-low` CSS classes to `web/styles.css` using appropriate colour tokens (e.g., darker green and darker red than the existing high/low variants).
+
+## GAP-265: rewrite_audit Array Not Surfaced as In-UI Inspectable Log
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by trust-compliance.
+**Affected stories:** US-C4 (audit trail visibility)
+The `rewrite_audit` array is computed and persisted in `session.json`, and is used for cold-restore of rewrite decisions, but is never displayed to the user as an inspectable audit log in the UI. Users have no way to see a history of AI rewrite actions taken on their content.
+**Source evidence:** `scripts/utils/conversation_manager.py` — `rewrite_audit` persisted; no audit log render found in `web/app.js`, `web/index.html`, or any route handler.
+**Recommended resolution:** Add a collapsible "Rewrite Audit Log" panel to the Rewrite Review tab, rendering the stored `rewrite_audit` entries in a readable timeline format.
+
+## GAP-266: No Minimum 2-Bullets-Per-Job Enforcement
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by hiring-manager.
+**Affected stories:** US-M3 (resume quality standards)
+A job entry in the generated CV can appear with 0 or 1 bullets if the user deselects all or all-but-one bullets during customisation. Hiring managers and ATS systems expect a minimum of 2 impact bullets per role; a role with a single bullet looks sparse and may be misread as a gap.
+**Source evidence:** No minimum-bullet check found in `scripts/utils/cv_orchestrator.py` bullet selection logic. Hiring Manager persona flagged this as a quality standard gap (🔲 Not Implemented).
+**Recommended resolution:** Add a validation check before generation: if a job entry has fewer than 2 selected bullets, warn the user (not a hard block) and suggest they either select more bullets or remove the entry.
+
+## GAP-267: No Bullet Line-Length Check
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by hiring-manager.
+**Affected stories:** US-M3 (resume quality standards)
+The system does not check whether individual CV bullets exceed the recommended ≤2-line target. Excessively long bullets reduce scannability, look unprofessional, and may wrap awkwardly in the generated DOCX.
+**Source evidence:** No line-length check found in `scripts/utils/cv_orchestrator.py` or any post-generation validation route.
+**Recommended resolution:** After generation, scan bullets in the ATS DOCX for character length >200 (approximate 2-line threshold at standard font size) and surface them as warnings in the ATS validator report.
+
+## GAP-268: "Don't Show Again" Label Contradicts "? Help" Button
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by heuristic sub-agent.
+**Affected stories:** US-F1, US-S1 (help accessibility and onboarding)
+The welcome modal contains a "Don't show again" checkbox that, once checked, sets a localStorage flag. The cycle-14 fix (GAP-247) added a "? Help" header button that bypasses this flag — so the modal CAN be reopened regardless. But once the user has checked "Don't show again", the checkbox label is no longer accurate (it implies the modal is permanently suppressed, which it isn't via the Help button).
+**Source evidence:** `web/session-manager.js` — `showWelcomeModal()` bypasses localStorage flag; `web/index.html:63–66` — "? Help" button.
+**Recommended resolution:** Change the "Don't show again" checkbox label to something like "Don't show automatically on startup" or remove it in favour of the simpler "? Help" button as the sole re-access mechanism.
+
+## GAP-269: 10 Customise Sub-Tabs Have No Completion Indicators
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by ux-expert and heuristic sub-agent.
+**Affected stories:** US-U3, US-A4 (progress visibility in customisation stage)
+The Customise stage has 10 sub-tabs. There is no visual indicator on any tab showing whether the user has reviewed its content, made changes, or confirmed their decisions. Users must remember which tabs they have visited and cannot tell at a glance whether they have completed the Customise stage.
+**Source evidence:** `web/ui-core.js:350–363` — sub-tab definitions; no completion badge or visited-state class found in `web/styles.css` or `web/app.js`. Heuristic rated H6 (Recognition rather than recall) as 🟡 Minor.
+**Recommended resolution:** Track which sub-tabs have been viewed (a simple `Set<string>` in client state). Apply a subtle visual indicator (e.g., a small checkmark or border accent) to visited tabs. For tabs with required decisions, add a count of pending items.
+
+## GAP-270: CDN Font Dependency for WeasyPrint — No Bundled Local Fallback
+
+**Priority:** MED
+**Status:** OPEN
+**Discovered:** 2026-06-30 (cycle 14) by hiring-manager.
+**Affected stories:** US-M2, US-H1 (generated materials quality and portability)
+The DOCX/PDF generation pipeline uses fonts loaded from Google Fonts CDN at WeasyPrint render time. In offline, air-gapped, or container-isolated deployments (including Docker), this request will fail silently, causing the generated PDF to fall back to system fonts that do not match the intended design and may have different metrics (causing reflow and layout shifts).
+**Source evidence:** `scripts/utils/cv_orchestrator.py` — WeasyPrint invocation; CSS template references to Google Fonts. Hiring Manager persona flagged this as a deployment risk.
+**Recommended resolution:** Bundle the required fonts (Google Noto or similar open-license fonts) under `web/fonts/` and update the CSS template to use local font paths. The `scripts/setup_languagetool.py` approach (one-time download) could be extended to pre-download fonts.

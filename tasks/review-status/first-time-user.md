@@ -8,7 +8,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # First-Time User Review Status
 
-**Last Updated:** 2026-06-30 10:45 ET
+**Last Updated:** 2026-06-30 ET (source-first review)
 
 **Executive Summary:** The onboarding modal (US-F1) is well implemented and covers the three main setup states. Progressive disclosure through the workflow (US-F2) is structurally sound — the tab bar and action buttons reveal in step with backend phase — but the workflow nav exposes all 12 steps simultaneously at all times, which is cognitively overloading for a new user who has not yet analyzed a job. The finalisation / confidence stage (US-F3) has the most significant gaps: the distinction between preview, confirmed layout, and final files is clear to developers reading the code but is not communicated plainly to users, and the post-generation steps (Cover Letter, Screening, Interview Prep, Thank You, Harvest) are presented with no indication of which are optional.
 
@@ -109,6 +109,39 @@ The Cover Letter, Screening, Interview Prep, Thank You, and Harvest steps are ne
 
 **G7 — "Harvest" terminology**
 "Harvest" is used in the onboarding modal body and the workflow nav but is not a standard job-search term. A subtitle or tooltip such as "Save improvements back to your master profile" would disambiguate without renaming the step.
+
+---
+
+---
+
+## Recent Changes Verification
+
+### GAP-247: "? Help" button in header reopens onboarding guide
+
+**Claimed:** A "? Help" button now appears in the header that calls `showWelcomeModal()`, allowing the onboarding guide to be reopened even after dismissal.
+
+✅ **Verified** — `web/index.html:63–66` contains:
+
+```html
+<button id="help-btn" onclick="showWelcomeModal()"
+  class="header-pill-btn"
+  title="Reopen the getting-started guide"
+  aria-label="Help — reopen getting started guide">? Help</button>
+```
+
+The button is positioned after the LLM selector in the header (`index.html:44–70`), making it persistently accessible at all times. `showWelcomeModal()` is defined at `session-manager.js:219–242` — it re-fetches master CV status, shows the appropriate modal section, and opens the focus trap. It ignores the `_WELCOME_DISMISSED_KEY` localStorage flag (unlike `maybeShowWelcomeModal`), so it always opens regardless of prior dismissal. The function is exported at `session-manager.js:968–969` and aliased on `globalThis` via `bundle.js:7504`.
+
+### GAP-251: Brand name consistently "CV Builder"
+
+**Claimed:** Brand name is now consistently "CV Builder" in the h1 header, document.title, and onboarding modal.
+
+✅ **Verified** — Three locations confirmed consistent:
+
+- `web/index.html:13`: `<title>CV Builder — Professional Web UI</title>`
+- `web/index.html:40`: `<h1 style="margin: 0;">CV Builder</h1>`
+- `web/index.html:322`: `<h2 id="onboarding-modal-title">👋 Welcome to CV Builder</h2>`
+
+The onboarding modal body text at `index.html:330` also reads "CV Builder uses AI to create tailored…", maintaining consistent branding throughout.
 
 ---
 

@@ -202,9 +202,9 @@ function _renderAtsReport(score) {
           <div style="font-size:0.9em;color:#475569;">Preferred skills: <strong>${soft}%</strong></div>
           <div style="font-size:0.75em;color:#94a3b8;margin-top:2px;">Basis: ${escapeHtml(score.basis || 'review')}</div>
           <div style="font-size:0.75em;color:#94a3b8;margin-top:4px;" title="Score thresholds">
-            <span style="color:#10b981;">●</span> ≥75% Strong match &nbsp;
-            <span style="color:#f59e0b;">●</span> 50–74% Partial match &nbsp;
-            <span style="color:#ef4444;">●</span> &lt;50% Low match
+            <span aria-hidden="true" style="color:#10b981;">●</span> ≥75% Strong match &nbsp;
+            <span aria-hidden="true" style="color:#f59e0b;">●</span> 50–74% Partial match &nbsp;
+            <span aria-hidden="true" style="color:#ef4444;">●</span> &lt;50% Low match
           </div>
         </div>
       </div>

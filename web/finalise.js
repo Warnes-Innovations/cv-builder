@@ -105,7 +105,7 @@ async function populateFinaliseTab() {
           style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:6px;
                  font-size:0.92em;resize:vertical;box-sizing:border-box;"
           placeholder="Recruiter name, salary info, follow-up date, interview notes…"></textarea>
-        <div id="finalise-notes-counter" style="text-align:right;font-size:0.8em;color:#6b7280;margin-top:2px;">0 / 2000</div>
+        <div id="finalise-notes-counter" aria-live="polite" style="text-align:right;font-size:0.8em;color:#6b7280;margin-top:2px;">0 / 2000</div>
       </div>
 
       <button id="finalise-btn" onclick="finaliseApplication()"

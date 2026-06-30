@@ -10,9 +10,14 @@
 
 **Last Updated:** 2026-06-30
 **Reviewed by:** Source-verified review cycle (Graphical Designer persona, US-G*)
-**Sources read:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, web/layout-instruction.js, web/download-tab.js, scripts/web_app.py, scripts/utils/conversation_manager.py, templates/cv-style.css
+**Sources read:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, web/layout-instruction.js, web/download-tab.js, web/ats-modals.js, web/cover-letter.js, web/final-generate.js, scripts/web_app.py, scripts/utils/conversation_manager.py, templates/cv-template.html
 
 **Executive Summary:** The application delivers a coherent, professionally-styled visual system for its primary workflow stages. Typography is well-differentiated, a consistent Slate-based color palette runs throughout, and the semantic status language (green/amber/red) is applied consistently across all surfaces. The main weaknesses from a graphical-design perspective are: (1) pervasive inline-style drift in modals and JS-rendered HTML that bypasses the CSS design system; (2) an emoji-dominant icon language jarring in a professional-facing product (Font Awesome is loaded but used only in one place); (3) no print styles exist in the main `styles.css` app shell (only the CV output template has `@media print`); (4) the two-panel main layout (`interaction-area` 40% / `viewer-area` 60%) has no responsive breakpoint — it stays side-by-side at all viewport widths down to the 500px `min-height` floor; and (5) the generated CV human-PDF uses the system-default `"Segoe UI", Arial, sans-serif` stack, which reads as office-suite default rather than intentional typographic design.
+
+**Recent-change verification (cycle 7):**
+
+- ✅ **Brand name "CV Builder"** — confirmed consistent in `<title>`, `<h1>`, onboarding modal `<h2>`, and `document.title` (session-actions.js:162). No occurrence of "CV Customizer" found.
+- ✅ **ATS grade legend** — colour-coded dot legend (● ≥75% green, ● 50–74% amber, ● <50% red) confirmed present in `_renderAtsReport` (ats-modals.js:204–208) immediately below the score breakdown. Legend colours match the badge threshold logic on line 174.
 
 ---
 
