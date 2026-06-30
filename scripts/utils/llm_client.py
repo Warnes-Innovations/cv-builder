@@ -284,7 +284,7 @@ class LLMClient(ABC):
 3. Domain focus (data science, biostatistics, ML engineering, etc.)
 4. Role level (IC, senior IC, staff, principal, leadership)
 5. Company culture indicators
-6. Top 10 keywords for ATS optimization
+6. Top 10 keywords for ATS optimization — rank by: (1) frequency of occurrence in the JD (a keyword appearing 5× outweighs one appearing 1×), then (2) positional prominence (job title / requirements section keywords outrank body-text mentions)
 
 IMPORTANT: The text may begin with a recruiter email or cover note (greeting, pleasantries,
 pay/contract details, etc.) followed by the actual job posting. Ignore any email preamble,
@@ -1411,6 +1411,35 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             'flag_type': 'generic_summary',
             'severity': severity,
             'details': f"Found {len(found_phrases)} generic filler phrase(s): {', '.join(found_phrases)}. Rewrite with specific value claims."
+        }
+
+    @staticmethod
+    def check_keyword_appended(proposed: str, original: str, ats_keywords: List[str]) -> Dict[str, Any]:
+        """Check whether ATS keywords were appended to the end of a rewritten bullet rather than woven in.
+
+        Flags when the final 3 tokens of *proposed* contain an ATS keyword that was absent from
+        *original* — a sign that the LLM tacked keywords on rather than integrating them naturally.
+        """
+        if not proposed or not ats_keywords:
+            return {'pass': True, 'flag_type': 'keyword_appended', 'severity': 'info', 'details': ''}
+
+        words = proposed.split()
+        tail  = ' '.join(words[-3:]).lower()
+        orig_lower = original.lower()
+        kw_lower   = [kw.lower() for kw in ats_keywords]
+
+        appended = [kw for kw in kw_lower if kw in tail and kw not in orig_lower]
+        if not appended:
+            return {'pass': True, 'flag_type': 'keyword_appended', 'severity': 'info', 'details': ''}
+
+        return {
+            'pass': False,
+            'flag_type': 'keyword_appended',
+            'severity': 'warn',
+            'details': (
+                f"Keyword(s) may be appended at end of bullet rather than woven in: "
+                f"{', '.join(appended)}. Consider integrating mid-sentence for natural flow."
+            ),
         }
 
     def _validate_with_repair(

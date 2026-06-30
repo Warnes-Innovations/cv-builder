@@ -2577,7 +2577,7 @@ The application header reads "CV Customizer" while the onboarding welcome modal 
 ## GAP-254: Analysis Prompt Lacks Keyword-Frequency and Title-Position Weighting
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. Updated item 6 of the `analyze_job_description()` prompt in `scripts/utils/llm_client.py` to instruct the model to rank `ats_keywords` by: (1) frequency of occurrence in the JD, (2) positional prominence (job title / requirements section keywords outrank body-text mentions).
 **Discovered:** 2026-06-30 (cycle 13) by resume-expert (US-R1) and hr-ats.
 **Affected stories:** US-R1 (domain/role inference quality)
 The job analysis LLM prompt does not instruct the model to weight keywords by frequency (a keyword appearing 5× in the JD is more important than one appearing 1×) or by position (title-section keywords outrank body-text keywords). As a result, rare but prominent title keywords may rank below frequent but generic body keywords.
@@ -2589,7 +2589,7 @@ The job analysis LLM prompt does not instruct the model to weight keywords by fr
 ## GAP-255: No Post-LLM Check That Introduced Keywords Appear Mid-Sentence vs Appended
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. Added `LLMClient.check_keyword_appended(proposed, original, ats_keywords)` static method in `scripts/utils/llm_client.py`. Checks whether any of the final 3 tokens of a rewritten bullet match an ATS keyword absent from the original; flags with `flag_type='keyword_appended'`, severity `'warn'`. Wired into `ConversationManager.run_persuasion_quality_checks()` for experience bullets when ATS keywords are available.
 **Discovered:** 2026-06-30 (cycle 13) by resume-expert.
 **Affected stories:** US-R2 (rewrite quality)
 When the LLM rewrites bullets to incorporate missing ATS keywords, there is no post-generation check that keywords appear naturally mid-sentence rather than tacked on at the end (e.g., "Led team project management Python"). Keyword stuffing at sentence end passes all current persuasion checks.
@@ -2613,7 +2613,7 @@ The CV, cover letter, and screening question answers are generated sequentially 
 ## GAP-257: No Acronym-Expansion-on-First-Use Enforcement Across Generated Documents
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. Added acronym-expansion instruction to both generators: cover letter prompt in `scripts/routes/master_data_routes.py:cover_letter_generate()` and screening-question prompt in `screening_generate()`. Both now include: "Acronyms: expand every acronym on first use — the reviewer may be a non-technical screener/HR reviewer."
 **Discovered:** 2026-06-30 (cycle 13) by persuasion-expert.
 **Affected stories:** US-P3 (professional polish)
 Generated documents (CV, cover letter, screening answers) may use acronyms (e.g., "ATS", "KPI", "CI/CD") without expanding them on first use. This is standard professional writing practice and is particularly important in cover letters addressed to non-technical hiring managers.

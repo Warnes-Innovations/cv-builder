@@ -1361,6 +1361,13 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 car_result = LLMClient.check_car_structure(proposed)
                 checks_to_run.append(car_result)
 
+            # Keyword appending (experience bullets — requires ATS keywords)
+            if 'exp' in location.lower():
+                ats_keywords = job_analysis.get('ats_keywords', []) if job_analysis else []
+                if ats_keywords:
+                    kw_append_result = LLMClient.check_keyword_appended(proposed, original, ats_keywords)
+                    checks_to_run.append(kw_append_result)
+
             # Generic phrases (summary only)
             if location == 'summary' or rewrite_type == 'summary':
                 generic_result = LLMClient.check_summary_generic_phrases(proposed)

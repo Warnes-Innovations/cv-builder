@@ -1637,6 +1637,7 @@ Do NOT include a date, address block, or subject line before the opening line.
 Reference concrete skills and achievements from the candidate profile.
 {"Weave in the company-specific context above to show genuine knowledge of the organisation." if company_context else ""}
 Close with a specific, confident request for an interview or a conversation about the role. Name the role explicitly. Avoid passive language such as "I look forward to hearing from you."
+Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (ATS)") — the reader may be a non-technical HR reviewer.
 """
 
             try:
@@ -1906,6 +1907,7 @@ Close with a specific, confident request for an interview or a conversation abou
                 + (f'\nCover letter excerpt (for tone/context):\n{cover_letter_snippet}\n' if cover_letter_snippet else '')
                 + prior_block
                 + '\nWrite only the response text. No preamble, labels, or meta-commentary.'
+                + '\nAcronyms: expand every acronym on first use (e.g., "Machine Learning (ML)") — the reviewer may be a non-technical screener.'
             )
 
             try:
