@@ -126,6 +126,45 @@ async function fetchAndReviewRewrites() {
   }
 }
 
+function _renderRewriteAuditLog() {
+  if (!_backendRewriteAudit || _backendRewriteAudit.length === 0) return '';
+
+  const OUTCOME_ICON = { accept: '✅', reject: '❌', edit: '✏️' };
+  const OUTCOME_LABEL = { accept: 'Accepted', reject: 'Rejected', edit: 'Edited' };
+
+  const rows = _backendRewriteAudit.map(entry => {
+    const icon  = OUTCOME_ICON[entry.outcome] || '❓';
+    const label = OUTCOME_LABEL[entry.outcome] || entry.outcome;
+    const loc   = escapeHtml(entry.location || entry.field || '');
+    const orig  = escapeHtml(entry.original || '');
+    const prop  = escapeHtml(entry.proposed || '');
+    const fin   = entry.outcome === 'edit' && entry.final
+      ? `<div style="margin-top:4px;color:#1d4ed8;font-size:0.85em;">Final: ${escapeHtml(entry.final)}</div>`
+      : '';
+    return `
+      <div style="border-bottom:1px solid #e2e8f0;padding:8px 0;font-size:0.88em;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span title="${label}">${icon}</span>
+          <strong style="color:#374151;">${label}</strong>
+          ${loc ? `<span style="color:#9ca3af;font-size:0.85em;">— ${loc}</span>` : ''}
+        </div>
+        <div style="color:#6b7280;text-decoration:line-through;font-size:0.85em;">${orig}</div>
+        <div style="color:#374151;font-size:0.85em;">${prop}</div>
+        ${fin}
+      </div>`;
+  }).join('');
+
+  return `
+    <details style="margin-top:24px;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;">
+      <summary style="cursor:pointer;font-weight:600;color:#374151;list-style:none;display:flex;align-items:center;gap:8px;">
+        <span>📋</span>
+        <span>Rewrite Audit Log (${_backendRewriteAudit.length} decision${_backendRewriteAudit.length === 1 ? '' : 's'})</span>
+        <span style="margin-left:auto;color:#9ca3af;font-size:0.85em;">▼ show</span>
+      </summary>
+      <div style="margin-top:12px;">${rows}</div>
+    </details>`;
+}
+
 function renderRewritePanel(rewrites, warnings = []) {
   _rewritePanelCache = { rewrites, warnings };
   // Build per-card warning index for Path 1 badges
@@ -202,6 +241,7 @@ function renderRewritePanel(rewrites, warnings = []) {
         `}
       </div>
     </div>
+    ${_renderRewriteAuditLog()}
   `;
 
   // Restore decisions persisted from a previous page load (GAP-166).

@@ -2716,12 +2716,9 @@ The CSS confidence badge classes cover only `confidence-high`, `confidence-mediu
 ## GAP-265: rewrite_audit Array Not Surfaced as In-UI Inspectable Log
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30; added `_renderRewriteAuditLog()` to both `web/rewrite-review.js` (inline string renderer called from `renderRewritePanel()`) and `web/finalise.js` (async DOM renderer called from `populateFinaliseTab()`). The Rewrite Review tab displays a collapsible "Rewrite Audit Log" `<details>` panel showing outcome icon (✅/❌/✏️), location, original text (strikethrough), proposed text, and final edited text per entry when `_backendRewriteAudit` is populated. The Finalise tab fetches `/api/rewrites` and renders the same audit in a `#rewrite-audit-log` element.
 **Discovered:** 2026-06-30 (cycle 14) by trust-compliance.
 **Affected stories:** US-C4 (audit trail visibility)
-The `rewrite_audit` array is computed and persisted in `session.json`, and is used for cold-restore of rewrite decisions, but is never displayed to the user as an inspectable audit log in the UI. Users have no way to see a history of AI rewrite actions taken on their content.
-**Source evidence:** `scripts/utils/conversation_manager.py` — `rewrite_audit` persisted; no audit log render found in `web/app.js`, `web/index.html`, or any route handler.
-**Recommended resolution:** Add a collapsible "Rewrite Audit Log" panel to the Rewrite Review tab, rendering the stored `rewrite_audit` entries in a readable timeline format.
 
 ## GAP-266: No Minimum 2-Bullets-Per-Job Enforcement
 
