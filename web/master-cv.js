@@ -71,6 +71,22 @@ async function populateMasterTab(container = null) {
   const achievements    = fullData.selected_achievements || [];
   const summaries       = fullData.professional_summaries || {};
 
+  const currentPhase = (typeof stateManager !== 'undefined' && stateManager.getPhase)
+    ? stateManager.getPhase()
+    : null;
+  const EDITABLE_PHASES = new Set(['init', 'refinement', null, undefined, '']);
+  const isEditable = EDITABLE_PHASES.has(currentPhase);
+
+  const phaseLockBanner = isEditable ? '' : `
+    <div role="status" aria-live="polite"
+         style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;
+                padding:10px 14px;margin-bottom:16px;font-size:0.88em;color:#991b1b;">
+      <strong>🔒 Read-only — editing locked</strong><br>
+      Master CV editing is only available before job analysis begins or during the
+      Refinement stage. The current stage is <strong>${escapeHtml(currentPhase || 'unknown')}</strong>.
+      Save or complete the current stage to re-enable editing.
+    </div>`;
+
   content.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
       <h1 style="margin:0;">📚 Master CV Profile</h1>
@@ -82,6 +98,8 @@ async function populateMasterTab(container = null) {
       This is your persistent master CV profile. Changes here update
       <code>Master_CV_Data.json</code> directly and persist across all sessions.
     </p>
+
+    ${phaseLockBanner}
 
     <!-- Governance banner -->
     <div class="master-governance-note" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:0.88em;color:#78350f;">
@@ -799,6 +817,19 @@ async function populateMasterTab(container = null) {
       </div>
     </div>
   `;
+  // Disable write controls when the workflow phase does not permit Master CV edits.
+  if (!isEditable) {
+    const SAFE_ONCLICK = /^(exportMasterCV|validatePublicationsBib)\(/;
+    content.querySelectorAll('button').forEach(btn => {
+      const onclick = (btn.getAttribute('onclick') || '').trim();
+      if (SAFE_ONCLICK.test(onclick)) return;
+      btn.disabled = true;
+      btn.style.opacity = '0.45';
+      btn.style.cursor = 'not-allowed';
+      btn.setAttribute('title', 'Editing locked — complete the current stage to re-enable');
+    });
+  }
+
   // Load publications asynchronously after the DOM is ready.
   loadPublications();
 }

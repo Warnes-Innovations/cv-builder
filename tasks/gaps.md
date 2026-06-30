@@ -2032,12 +2032,9 @@ Duplicate of the previously discovered GAP-81 (No Minimum Bullet Count Check Bef
 ## GAP-206: Phase-Lock Indicator Absent From Master CV Tab — Edit Buttons Visible in All Phases
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30; `populateMasterTab()` in `web/master-cv.js` now reads `stateManager.getPhase()` and computes `isEditable` (true only when phase is `init`, `refinement`, or null). When not editable: (1) a red 🔒 banner is injected above the governance note explaining the current phase and how to re-enable editing; (2) all `<button>` elements in the content area are set `disabled=true`, `opacity:0.45`, and `cursor:not-allowed`, except `exportMasterCV()` and `validatePublicationsBib()` which are read-only operations.
 **Discovered:** 2026-06-29 (cycle 9) by master-cv-curator.
 **Affected stories:** US-M1 AC2 (Master CV Curator)
-`scripts/routes/master_data_routes.py:164–177` — `_require_master_data_write_phase()` enforces phase gating server-side (writes only allowed in `init` and `refinement` phases). However, the Master CV tab UI (`web/master-cv.js`) shows all edit/add/delete buttons regardless of the current workflow phase. A user in `job_analysis` or `rewrite_review` phase sees fully active edit controls, submits a change, and receives a generic "❌ Error" alert (409 from the server) with no explanation.
-**Source evidence:** `web/master-cv.js` — edit buttons rendered without phase check. `scripts/routes/master_data_routes.py:164–177` — server enforces gate. `web/ui-helpers.js:31–37` — `showAlertModal()` for errors — no phase-specific messaging.
-**Recommended resolution:** In `master-cv.js`, check `window.__cvState?.phase` on tab open. If outside `init`/`refinement`, disable all write controls and show a banner: "Master CV editing is only available before job analysis begins or during the Refinement stage." Re-enable when the phase returns to an editable state.
 
 ---
 
