@@ -1598,19 +1598,19 @@ def create_blueprint(deps):
         data = request.get_json(silent=True) or {}
         row_type = data.get("type")
         ordered_ids = data.get("ordered_ids")
-        if row_type not in ("experience", "skill"):
+        if row_type not in ("experience", "skill", "publication"):
             return jsonify(
-                {"error": "type must be 'experience' or 'skill'"},
+                {"error": "type must be 'experience', 'skill', or 'publication'"},
             ), 400
         if ordered_ids is None:
             return jsonify({"error": "Missing ordered_ids"}), 400
         if not isinstance(ordered_ids, list):
             return jsonify({"error": "ordered_ids must be a list"}), 400
-        state_key = (
-            "experience_row_order"
-            if row_type == "experience"
-            else "skill_row_order"
-        )
+        state_key = {
+            "experience":  "experience_row_order",
+            "skill":       "skill_row_order",
+            "publication": "publication_row_order",
+        }[row_type]
         try:
             with entry.lock:
                 if ordered_ids:

@@ -2322,7 +2322,7 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-231: Cover Letter PDF Format Not Generated
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — Re-verified 2026-06-30; `scripts/routes/master_data_routes.py:1711–1744` already generates a PDF alongside the DOCX via a WeasyPrint subprocess call. The HTML is built from paragraphs with Calibri/print-ready CSS and passed to WeasyPrint. If generation fails, DOCX is still saved and a warning is logged. The gap description was based on a stale code read before this was implemented.
 **Discovered:** 2026-06-30 (cycle 11) by applicant (US-A7). See also GAP-185 from cycle 8.
 **Affected stories:** US-A7 (cover letter generation)
 `scripts/routes/master_data_routes.py:1619–1697` — cover letter generation saves only a `.docx` file. US-A7 acceptance criteria require both `.docx` and `.pdf` outputs. The cover letter PDF format is absent from the generation pipeline. GAP-185 tracked this from cycle 8; confirmed still open in cycle 11 source review.
@@ -2334,12 +2334,10 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-232: Publications Review Has No Reorder Controls
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED
 **Discovered:** 2026-06-30 (cycle 11) by applicant (US-A3).
+**Resolved:** 2026-06-30 (loop session) — Added ↑/↓ reorder buttons to each publication row in `web/publications-review.js`. `movePubRow()` swaps items in `window._publicationsOrdered`, calls `_rebuildPubTableBody()` to re-render the tbody in-place, and POSTs to `/api/reorder-rows` with `type="publication"`. Backend endpoint in `scripts/routes/session_routes.py` extended to accept `publication` type and persist `publication_row_order` to session state.
 **Affected stories:** US-A3 (review and approve content customizations)
-`web/publications-review.js` — has accept/reject/edit controls for each publication row but no up/down reorder buttons and no drag-and-drop reorder. US-A3 AC explicitly requires reorder controls for publications. The experience review and achievement review tables both have reorder controls (`experience-review.js`, `achievement-review.js`), but publications are the exception.
-**Source evidence:** `web/publications-review.js` — no up/down button handlers, no drag-and-drop event handlers anywhere in the file.
-**Recommended resolution:** Add up/down reorder buttons to each publication row in the review table, matching the pattern used in `experience-review.js`. Wire to a backend endpoint that persists reorder decisions to `session.json`.
 
 ---
 
