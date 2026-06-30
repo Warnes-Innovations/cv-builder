@@ -1694,7 +1694,8 @@ Four input elements use `outline: none` with `box-shadow` as the sole focus indi
 ## GAP-185: Cover Letter PDF Not Generated — Only DOCX Produced
 
 **Priority:** MEDIUM
-**Status:** OPEN — Discovered 2026-06-29 (cycle 8) by applicant.
+**Status:** RESOLVED 2026-06-29 — After DOCX save, `/api/cover-letter/save` now builds a minimal HTML representation of the cover letter (11pt Calibri, 2.5cm margins) and calls WeasyPrint in a subprocess (same crash-safe pattern as `cv_orchestrator._convert_html_to_pdf`). Both `.docx` and `.pdf` filenames are appended to `generated_files.files` and returned in the API response. WeasyPrint failure is caught and logged as a warning; DOCX is still saved in that case and `pdf_filename` returns `null`.
+**Discovered:** 2026-06-29 (cycle 8) by applicant.
 **Affected stories:** US-A7, US-O1
 `scripts/routes/master_data_routes.py:1619–1697` — the cover letter generation route produces only a DOCX file. No PDF conversion step exists for the cover letter. The download tab will show a `.docx` but no `.pdf`. The applicant story (US-A7) expects both formats to be available for submission.
 **Recommended resolution:** After generating the cover letter DOCX, run WeasyPrint or python-docx2pdf to produce a matching `.pdf` at the same output path, mirroring the pattern used for CV PDF generation.

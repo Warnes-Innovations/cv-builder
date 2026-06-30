@@ -1684,6 +1684,41 @@ Close professionally with a call to action.
                         run.font.name = 'Calibri'
                 doc.save(str(docx_path))
 
+                # Generate PDF via WeasyPrint (subprocess, crash-safe).
+                pdf_filename = filename.replace('.docx', '.pdf')
+                pdf_path     = output_dir / pdf_filename
+                html_paragraphs = ''.join(
+                    f'<p style="margin:0 0 0.5em 0">{para.replace(chr(38), "&amp;").replace("<", "&lt;").replace(">", "&gt;")}</p>'
+                    for para in text.split('\n')
+                )
+                cl_html = (
+                    '<!DOCTYPE html><html><head><meta charset="utf-8">'
+                    '<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;'
+                    'line-height:1.4;margin:2.5cm 2.5cm 2.5cm 2.5cm;color:#111;}'
+                    '@page{margin:2.5cm;}</style></head>'
+                    f'<body>{html_paragraphs}</body></html>'
+                )
+                import tempfile, os as _os
+                with tempfile.NamedTemporaryFile(
+                    mode='w', suffix='.html', delete=False, encoding='utf-8'
+                ) as tmp_html:
+                    tmp_html.write(cl_html)
+                    tmp_html_path = tmp_html.name
+                try:
+                    subprocess.run(
+                        [
+                            'python', '-c',
+                            'import sys, weasyprint; weasyprint.HTML(filename=sys.argv[1]).write_pdf(sys.argv[2])',
+                            tmp_html_path, str(pdf_path),
+                        ],
+                        check=True, capture_output=True, timeout=60,
+                    )
+                except Exception:
+                    logger.warning("Cover letter PDF generation failed; DOCX only saved.")
+                    pdf_filename = None
+                finally:
+                    _os.unlink(tmp_html_path)
+
                 metadata_path = output_dir / 'metadata.json'
                 if metadata_path.exists():
                     with open(metadata_path, encoding='utf-8') as f:
@@ -1702,8 +1737,10 @@ Close professionally with a call to action.
                     files_list = gen.setdefault('files', [])
                     if filename not in files_list:
                         files_list.append(filename)
+                    if pdf_filename and pdf_filename not in files_list:
+                        files_list.append(pdf_filename)
                 session_registry.touch(sid)
-                return jsonify({'ok': True, 'filename': filename})
+                return jsonify({'ok': True, 'filename': filename, 'pdf_filename': pdf_filename})
             except Exception as e:
                 logger.exception("Operation failed")
                 return jsonify({'ok': False, 'error': "Operation failed"}), 500
