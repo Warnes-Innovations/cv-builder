@@ -60,8 +60,11 @@ function _collectDownloadableFiles(cvData = {}) {
       format = 'docx';
     } else if (filename.endsWith('.html')) {
       icon = '🌐';
-      description = 'HTML format with embedded JSON-LD structured data';
-      format = 'html';
+      const isPreview = /preview/i.test(filename);
+      description = isPreview
+        ? 'Layout preview — intermediate working file, not for submission'
+        : 'HTML format with embedded JSON-LD structured data';
+      format = isPreview ? 'preview' : 'html';
     } else if (filename === 'job_description.txt') {
       icon = '📋';
       description = 'Original job description reference';
@@ -195,11 +198,15 @@ function _renderDownloadGrid(files, checks, summary, generatedAt = null) {
       ? `<div style="font-size:0.75em;color:#9ca3af;margin-top:3px;">Generated ${generatedLabel}</div>`
       : '';
 
+    const previewBadge = file.format === 'preview'
+      ? '<span style="display:inline-block;margin-left:6px;font-size:0.75em;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 5px;vertical-align:middle;">Working file — not for submission</span>'
+      : '';
+
     html += `
-      <div class="download-item" style="${blocked ? 'opacity:0.75;' : ''}">
+      <div class="download-item" style="${blocked ? 'opacity:0.75;' : ''}${file.format === 'preview' ? 'border-style:dashed;' : ''}">
         <div class="download-icon">${file.icon}</div>
         <div class="download-info">
-          <div class="download-name">${escapeHtml(file.filename)}</div>
+          <div class="download-name">${escapeHtml(file.filename)}${previewBadge}</div>
           <div class="download-description">${escapeHtml(file.description)}</div>
           ${timestampLine}
           ${blockedMessage}

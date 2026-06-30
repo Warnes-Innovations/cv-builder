@@ -554,10 +554,10 @@ function _validateCoverLetter(text) {
   const isAcademic  = /academic|research|faculty|professor|postdoc/.test(_roleDomain + ' ' + _roleLevel);
   const wcTarget    = isAcademic ? { lo: 500, hi: 600, warnLo: 400, warnHi: 650 }
                     : isExec     ? { lo: 400, hi: 500, warnLo: 300, warnHi: 550 }
-                                 : { lo: 300, hi: 400, warnLo: 250, warnHi: 450 };
+                                 : { lo: 250, hi: 300, warnLo: 200, warnHi: 400 };
   const wcLabel     = isAcademic ? `${wcTarget.lo}–${wcTarget.hi} (academic/research)`
                     : isExec     ? `${wcTarget.lo}–${wcTarget.hi} (executive)`
-                                 : `${wcTarget.lo}–${wcTarget.hi} (standard)`;
+                                 : `≤${wcTarget.hi} (standard)`;
 
   const words    = text.trim().split(/\s+/).filter(Boolean).length;
   const wcPct    = Math.min(100, (words / wcTarget.hi) * 100);
@@ -589,7 +589,7 @@ function _validateCoverLetter(text) {
     /i (plan|intend) to/i, /welcome the chance/i,
     /available (for|to)/i, /contact me/i,
   ];
-  // Passive CTAs: waiting for a response (warn — present but weak)
+  // Passive CTAs: waiting for a response (fail — story US-P5 requires rejection)
   const passiveCtaPatterns = [
     /hear from you/i, /look forward to (your|hearing)/i,
     /await(ing)? your/i, /hope to (hear|meet)/i,
@@ -598,13 +598,13 @@ function _validateCoverLetter(text) {
   const hasPassiveCta   = passiveCtaPatterns.some(re => re.test(lastPara));
   const ctaCheck = {
     pass: hasAssertiveCta,
-    warn: !hasAssertiveCta && hasPassiveCta,
+    fail: !hasAssertiveCta && hasPassiveCta,
     label: 'Call-to-action closing',
     detail: hasAssertiveCta
       ? 'Assertive call-to-action — takes initiative.'
       : hasPassiveCta
-        ? 'Passive closing detected ("I look forward to hearing from you") — consider an assertive follow-up: "I will contact your office next week."'
-        : 'No call-to-action found — add an interview request or proactive follow-up statement.',
+        ? 'Passive closing rejected — phrases like "I look forward to hearing from you" are too passive. Replace with a direct interview request: "I would welcome the opportunity to interview" or "I will follow up next week."'
+        : 'No call-to-action found — add a direct interview request or proactive follow-up statement.',
   };
 
   // ── Rule 5: Named or quantified achievement ───────────────────

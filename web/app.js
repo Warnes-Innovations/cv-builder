@@ -85,15 +85,18 @@ async function init() {
     }
   });
 
-  // Auto-analyze job if loaded but not analyzed (only if not reconnecting)
+  // Prompt user to analyze if a job description is loaded but not yet analyzed.
+  // Do NOT auto-fire — a returning user may have intentionally left it unanalyzed
+  // (e.g. mid-edit). Let them click Analyse Job explicitly (GAP-248).
   if (!stateManager.isReconnecting()) {
     const status = await fetchStatus();
     if (!status._error && status.job_description && !status.job_analysis) {
-      appendMessage('system', 'Auto-analyzing loaded job description...');
-      await analyzeJob();
-
-      // Don't auto-recommend - let user answer questions first
-      // User will type "proceed" when ready for recommendations
+      appendMessage('system', '📋 Job description detected — click <strong>Analyse Job</strong> when ready to begin.');
+      const analyzeBtn = document.getElementById('analyze-btn');
+      if (analyzeBtn) {
+        analyzeBtn.style.outline = '2px solid #3b82f6';
+        analyzeBtn.style.outlineOffset = '2px';
+      }
     } else if (status.job_analysis) {
       _appLog.info('Job analysis already complete, skipping auto-analysis');
     }

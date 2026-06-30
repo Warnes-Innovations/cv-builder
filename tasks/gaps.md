@@ -1977,7 +1977,7 @@ Workflow step pills use CSS class colours to distinguish active, completed, upco
 ## GAP-201: Clarifying Questions Shown All at Once — No ≤3-Per-Group Flow
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. Added group pagination (GROUP_SIZE=3) to `web/questions-panel.js`. `_currentGroup` tracks the current page; `renderQuestionsPanel()` shows only the current group of ≤3 questions. A "Continue →" button advances groups (saving answers to `window.questionAnswers`); "Submit Answers" appears only on the last group. `updateQProgress()` counts answers from DOM (current group) and `window.questionAnswers` (previous groups). Group counter shown: "Group N of M".
 **Discovered:** 2026-06-29 (cycle 9) by ux-expert.
 **Affected stories:** US-U3 AC4 (Fail)
 `web/questions-panel.js:147` renders all clarifying questions simultaneously as a single scrollable list. The user story requires questions to be presented in groups of ≤3 with a "confirm and see next group" flow to reduce cognitive load. Users may see 10+ questions at once after analysis, which is overwhelming for first-time users and hides structure in what should be a guided dialogue.
@@ -2224,8 +2224,9 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 
 ## GAP-223: Cover Letter Word Count Threshold Mismatch — Frontend 400 vs Backend 300
 
+
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. Changed standard-role `wcTarget` in `_validateCoverLetter()` (`web/cover-letter.js`) from `{ lo:300, hi:400, warnLo:250, warnHi:450 }` to `{ lo:250, hi:300, warnLo:200, warnHi:400 }`. Green zone now ≤300w, amber 300–400w, fail >400w, matching US-P5 ≤300-word target. Label updated to "≤300 (standard)".
 **Discovered:** 2026-06-30 (cycle 11) by persuasion-expert.
 **Affected stories:** US-P5 (cover letter conciseness)
 `web/cover-letter.js:550–566` — the frontend validator green zone for standard roles extends to 400 words (warn above 400, fail above 450). However, the backend generation prompt (`scripts/routes/master_data_routes.py:_cover_letter_word_count_instruction`) targets `~300–400 words` for standard roles. These are internally consistent for standard roles, but the persuasion story spec requires ≤300 words as the primary target. The frontend does not warn when the LLM overshoots 300 words.
@@ -2237,7 +2238,7 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-224: Passive Cover Letter CTA Shows Warning Instead of Fail
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. Changed `warn: !hasAssertiveCta && hasPassiveCta` to `fail: !hasAssertiveCta && hasPassiveCta` in `_validateCoverLetter()`. Updated detail message to explicitly state passive CTA is rejected with example of assertive alternative.
 **Discovered:** 2026-06-30 (cycle 11) by persuasion-expert.
 **Affected stories:** US-P5 (cover letter CTA)
 `web/cover-letter.js:578–603` — the CTA validator correctly identifies passive phrases ("hear from you", "look forward to", "await your") in `passiveCtaPatterns` (line 589). However, the result is `warn: !hasAssertiveCta && hasPassiveCta` — a warning level. The user story specifies that a passive CTA ("I look forward to hearing from you") must be rejected (fail), not merely warned. The current render logic shows a yellow warning rather than a hard failure, allowing passive closings to reach final output.
@@ -2393,7 +2394,7 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-237: Preview HTML File Indistinguishable from Final Deliverables in File Review
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. In `web/download-tab.js`, preview HTML files (matching `/preview/i`) now get `format='preview'`, a dashed card border, and a yellow "Working file — not for submission" badge next to the filename. Description updated to "Layout preview — intermediate working file, not for submission".
 **Discovered:** 2026-06-30 (cycle 13) by recruiter-ops (US-O1).
 **Affected stories:** US-O1 (file output clarity)
 The File Review tab lists `cv_preview.html` alongside final deliverables (`cv_ats.docx`, `cv_branded.pdf`) without visual distinction. The preview file is an intermediate artifact for layout review, not a submission-ready file. Users reading the file list cannot easily tell which files to send to employers.
@@ -2525,7 +2526,7 @@ During the Customise phase, users can select many bullets, publications, and ach
 ## GAP-248: Silent Auto-Analyze Fires on Page Load Without User Confirmation
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED — 2026-06-30. Replaced `analyzeJob()` auto-fire in `web/app.js` with a status message: "📋 Job description detected — click Analyse Job when ready to begin." and a blue outline highlight on the Analyse Job button. Users now initiate analysis explicitly.
 **Discovered:** 2026-06-30 (cycle 13) by heuristic sub-agent (H5) and applicant.
 **Affected stories:** US-A2 (job analysis initiation), US-U3 (user control)
 `web/app.js:88–95` — on page load, if a job description is present in the session but no analysis result exists, `analyzeJob()` fires automatically without user interaction. A returning user who intentionally left a description unanalyzed (e.g., mid-edit) will find that analysis has started without their knowledge.

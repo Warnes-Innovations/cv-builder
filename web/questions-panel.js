@@ -144,6 +144,7 @@ function populateQuestionsTab() {
     return;
   }
 
+  _currentGroup = 0;
   content.innerHTML = '<div class="analysis-page"><div class="analysis-section"><h2>💬 Clarifying Questions</h2><p style="color:#64748b; margin: 0;">Please answer each question to improve recommendation quality.</p></div></div>';
   renderQuestionsPanel();
 }
@@ -162,15 +163,28 @@ function renderQuestionsPanel() {
   const existing = content.querySelector('.questions-panel');
   if (existing) existing.remove();
 
-  const total = qs.length;
+  const total      = qs.length;
+  const numGroups  = Math.ceil(total / GROUP_SIZE);
+  // Clamp group index in case qs shrank since last render.
+  _currentGroup    = Math.min(_currentGroup, numGroups - 1);
+  const groupStart = _currentGroup * GROUP_SIZE;
+  const groupEnd   = Math.min(groupStart + GROUP_SIZE, total);
+  const groupQs    = qs.slice(groupStart, groupEnd);
+  const isLastGroup = _currentGroup === numGroups - 1;
+
   const existingAnswers = (window.questionAnswers && typeof window.questionAnswers === 'object')
-    ? window.questionAnswers
-    : {};
+    ? window.questionAnswers : {};
+
+  const groupLabel = numGroups > 1
+    ? `Group ${_currentGroup + 1} of ${numGroups}`
+    : `${total} question${total > 1 ? 's' : ''}`;
+
   let panelHtml = `<div class="questions-panel" id="questions-panel">
     <h2>💬 A few quick questions</h2>
-    <p class="q-progress" id="q-progress">Please answer all ${total} question${total > 1 ? 's' : ''} before proceeding.</p>`;
+    <p class="q-progress" id="q-progress">${groupLabel} — answer each to continue.</p>`;
 
-  qs.forEach((q, idx) => {
+  groupQs.forEach((q, localIdx) => {
+    const idx = groupStart + localIdx;
     const savedAnswer = (existingAnswers[q.type] || '').toString();
     const isAnswered  = savedAnswer.trim().length > 0;
     const renderedQuestion = renderQuestionMarkdown(q.question);
@@ -191,24 +205,46 @@ function renderQuestionsPanel() {
       </div>`;
   });
 
-  panelHtml += `<button class="questions-submit-btn" id="q-submit-btn" onclick="submitAllAnswers()" disabled>Submit Answers</button></div>`;
+  if (isLastGroup) {
+    panelHtml += `<button class="questions-submit-btn" id="q-submit-btn" onclick="submitAllAnswers()" disabled>Submit Answers</button>`;
+  } else {
+    panelHtml += `<button class="questions-submit-btn" id="q-submit-btn" onclick="advanceQGroup()" disabled>Continue → <span style="font-size:0.8em;font-weight:400;">(${groupEnd} of ${total} answered)</span></button>`;
+  }
+  panelHtml += '</div>';
 
   content.insertAdjacentHTML('beforeend', panelHtml);
 
   // Restore chip selection for any question whose saved answer matches a chip label.
-  qs.forEach((q, idx) => {
+  groupQs.forEach((q, localIdx) => {
+    const idx = groupStart + localIdx;
     const saved = (existingAnswers[q.type] || '').toString().trim();
     if (!saved) return;
     const item = document.getElementById(`q-item-${idx}`);
     if (!item) return;
     item.querySelectorAll('.q-chip').forEach(chip => {
-      if ((chip.textContent || '').trim() === saved) {
-        chip.classList.add('selected');
-      }
+      if ((chip.textContent || '').trim() === saved) chip.classList.add('selected');
     });
   });
 
   updateQProgress();
+}
+
+function advanceQGroup() {
+  // Flush current group's textarea values into window.questionAnswers before advancing.
+  const qs = window.postAnalysisQuestions || [];
+  const groupStart = _currentGroup * GROUP_SIZE;
+  const groupEnd   = Math.min(groupStart + GROUP_SIZE, qs.length);
+  for (let idx = groupStart; idx < groupEnd; idx++) {
+    const q  = qs[idx];
+    const ta = document.getElementById(`q-input-${idx}`);
+    if (q && ta && ta.value.trim()) {
+      if (!window.questionAnswers) window.questionAnswers = {};
+      window.questionAnswers[q.type] = ta.value.trim();
+    }
+  }
+  persistPostAnalysisState();
+  _currentGroup++;
+  renderQuestionsPanel();
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +321,10 @@ function selectQChip(btn, qIdx) {
   }
 }
 
+// Current question-group index (≤3-per-group flow, GAP-201).
+let _currentGroup = 0;
+const GROUP_SIZE = 3;
+
 // Debounce timer for persisting answers while the user types.
 let _persistDebounceTimer = null;
 
@@ -306,17 +346,37 @@ function onQInputChange(idx) {
 
 function updateQProgress() {
   const qs = window.postAnalysisQuestions || [];
-  const answered = qs.filter((_, idx) => {
-    const ta = document.getElementById(`q-input-${idx}`);
-    return ta && ta.value.trim().length > 0;
+  const storedAnswers = window.questionAnswers || {};
+  const groupStart = _currentGroup * GROUP_SIZE;
+  const groupEnd   = Math.min(groupStart + GROUP_SIZE, qs.length);
+
+  // Count answers: use DOM values for the current group (live), stored for others.
+  const answered = qs.filter((q, idx) => {
+    if (idx >= groupStart && idx < groupEnd) {
+      const ta = document.getElementById(`q-input-${idx}`);
+      return ta ? ta.value.trim().length > 0 : !!(storedAnswers[q.type] || '').trim();
+    }
+    return !!(storedAnswers[q.type] || '').trim();
   }).length;
+
+  const groupAnswered = qs.slice(groupStart, groupEnd).filter((q, li) => {
+    const ta = document.getElementById(`q-input-${groupStart + li}`);
+    return ta ? ta.value.trim().length > 0 : !!(storedAnswers[q.type] || '').trim();
+  }).length;
+
+  const numGroups  = Math.ceil(qs.length / GROUP_SIZE);
+  const groupLabel = numGroups > 1
+    ? `Group ${_currentGroup + 1} of ${numGroups}`
+    : `${qs.length} question${qs.length > 1 ? 's' : ''}`;
+
   const progressEl = document.getElementById('q-progress');
   if (progressEl) {
-    progressEl.textContent = `Answered ${answered} of ${qs.length}`;
+    progressEl.textContent = `${groupLabel} — ${answered} of ${qs.length} answered`;
   }
   const submitBtn = document.getElementById('q-submit-btn');
   if (submitBtn) {
-    submitBtn.disabled = answered < qs.length;
+    const currentGroupSize = groupEnd - groupStart;
+    submitBtn.disabled = groupAnswered < currentGroupSize;
   }
 }
 
