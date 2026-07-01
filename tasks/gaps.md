@@ -215,7 +215,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-R2, US-M4, US-U6
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; resume and hiring-manager reviews found page-count warnings in the UI, but length control is still heuristic and not enforced across staged preview, layout review, and final generation.
+**Status:** PARTIAL - updated 2026-07-01; page-count warnings ARE shown in Goals tab (`goals.js:385–396` — validates page limit inputs), Layout Review tab (`layout-instruction.js:213` — badge with ⚠ when outside range, based on `pageWarning`), and Download/File Review tab (`download-tab.js:82–93` — "⚠ Senior candidate target is 2–3 pages" when `pageCount < 1.5 || pageCount > 3`). Remaining: Preview generation stage does not show a page-count warning; enforcement is advisory throughout (no hard block on generation).
 **Description:** The app now estimates and reports page length, so the gap is narrower than before. What remains missing is a consistent rule that carries length checks through preview, layout iteration, and final output, with clear thresholds and stage-appropriate warnings or blocks.
 **Recommended resolution:** Promote page-count thresholds into the staged generation contract, show warnings during preview and layout review, and ensure final ATS validation uses the same thresholds and messaging.
 
@@ -231,7 +231,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-A3, US-R2, US-U4
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; applicant review confirmed bullet reordering within an experience entry works, but no reviewed controls were found for reordering experiences, achievements, skills, or publications as full rows.
+**Status:** PARTIAL - updated 2026-07-01; full-row drag reordering IS implemented for experiences (`experience-review.js:288`), skills (`skills-review.js:1027`), and publications (`publications-review.js:223`) via `POST /api/reorder-rows`. Achievements row-reorder NOT implemented — `achievements-review.js` has no `reorder-rows` call. Bullet reordering within experience entries also works.
 **Description:** The story requirements extend beyond intra-job bullet order. The current UI lets the user reorder bullets inside a role, but not reorder the higher-level content blocks that determine what rises or falls in the CV.
 **Recommended resolution:** Add row-level reorder controls for each major review table, persist those order decisions in session state, and ensure final generation respects them across HTML, PDF, and ATS DOCX.
 
