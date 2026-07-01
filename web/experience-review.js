@@ -57,6 +57,27 @@ async function getExperienceDetails(expId) {
   }
 }
 
+// ── Rerun snapshot (change badge for experiences) ────────────────────────────
+function _expSnapshotKey() {
+  try {
+    const sid = new URLSearchParams(window.location.search).get('session');
+    return sid ? `exp_snap_${sid}` : null;
+  } catch (_) { return null; }
+}
+function _saveExpSnapshot(recommendedIds) {
+  const key = _expSnapshotKey();
+  if (!key) return;
+  try { localStorage.setItem(key, JSON.stringify([...recommendedIds])); } catch (_) {}
+}
+function _getExpSnapshot() {
+  const key = _expSnapshotKey();
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? new Set(JSON.parse(raw)) : null;
+  } catch (_) { return null; }
+}
+
 // ── Build review table (fetch + initialise) ────────────────────────────────
 
 async function buildExperienceReviewTable() {
@@ -131,6 +152,13 @@ async function buildExperienceReviewTable() {
     }
   }
 
+  // Compute which recommendations are new since last render (rerun change badges)
+  const prevExpSnap = _getExpSnapshot();
+  const newRecommendedExps = prevExpSnap
+    ? new Set([...recommendedSet].filter(id => !prevExpSnap.has(id)))
+    : new Set();
+  _saveExpSnapshot(recommendedSet);
+
   // Initialise saved decisions
   const savedExpDecs = window._savedDecisions?.experience_decisions || {};
   for (const { id: expId } of window._experiencesOrdered) {
@@ -145,12 +173,12 @@ async function buildExperienceReviewTable() {
     userSelections.experiences[expId] = savedExpDecs[expId] || defaultAction;
   }
 
-  _renderExperienceTable(container, recommendedSet, data);
+  _renderExperienceTable(container, recommendedSet, data, newRecommendedExps);
 }
 
 // ── Render table HTML ──────────────────────────────────────────────────────
 
-function _renderExperienceTable(container, recommendedSet, data) {
+function _renderExperienceTable(container, recommendedSet, data, newRecommendedExps = new Set()) {
   if (!container) container = document.getElementById('experience-table-container');
   if (!container) return;
   if (!recommendedSet) recommendedSet = new Set((window.pendingRecommendations?.recommended_experiences) || []);
@@ -201,11 +229,14 @@ function _renderExperienceTable(container, recommendedSet, data) {
     const isFirst           = rowIdx === 0;
     const isLast            = rowIdx === exps.length - 1;
     const titleEsc          = escapeHtml(title);
+    const rerunNewBadge = newRecommendedExps.has(expId)
+      ? '<span class="rw-change-badge rw-change-new" aria-label="New recommendation since previous run">🆕 New</span>'
+      : '';
 
     tableHTML += `
       <tr data-exp-id="${expId}" data-start-date="${startDate}">
         <td>
-          <strong>${titleEsc}</strong><br>
+          <strong>${titleEsc}</strong>${rerunNewBadge}<br>
           <span style="color:#6b7280;">${escapeHtml(company)}</span>
         </td>
         <td style="white-space:nowrap;">${escapeHtml(duration)}</td>

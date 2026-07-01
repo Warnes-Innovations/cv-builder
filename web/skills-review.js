@@ -435,6 +435,27 @@ function _buildSkillCategoryManagerHtml() {
   `;
 }
 
+// ── Rerun snapshot (change badge for skills) ─────────────────────────────────
+function _skillSnapshotKey() {
+  try {
+    const sid = new URLSearchParams(window.location.search).get('session');
+    return sid ? `skill_snap_${sid}` : null;
+  } catch (_) { return null; }
+}
+function _saveSkillSnapshot(recommendedNames) {
+  const key = _skillSnapshotKey();
+  if (!key) return;
+  try { localStorage.setItem(key, JSON.stringify([...recommendedNames])); } catch (_) {}
+}
+function _getSkillSnapshot() {
+  const key = _skillSnapshotKey();
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? new Set(JSON.parse(raw)) : null;
+  } catch (_) { return null; }
+}
+
 // ── Build review table (fetch + initialise) ────────────────────────────────
 
 async function buildSkillsReviewTable() {
@@ -532,6 +553,13 @@ async function buildSkillsReviewTable() {
 
   const recommendedSet = new Set(data.recommended_skills || []);
 
+  // Compute which recommendations are new since last render (rerun change badges)
+  const prevSkillSnap = _getSkillSnapshot();
+  const newRecommendedSkills = prevSkillSnap
+    ? new Set([...recommendedSet].filter(name => !prevSkillSnap.has(name)))
+    : new Set();
+  _saveSkillSnapshot(recommendedSet);
+
   // Initialise saved decisions
   const savedSkillDecs = window._savedDecisions?.skill_decisions || {};
   for (const skill of window._skillsOrdered) {
@@ -548,12 +576,12 @@ async function buildSkillsReviewTable() {
     userSelections.skills[skillName] = savedSkillDecs[skillName] || defaultAction;
   }
 
-  _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet);
+  _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet, newRecommendedSkills);
 }
 
 // ── Render table HTML ──────────────────────────────────────────────────────
 
-function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet) {
+function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet, newRecommendedSkills = new Set()) {
   if (!container) container = document.getElementById('skills-table-container');
   if (!container) return;
   if (!recommendedSet) recommendedSet = new Set((window.pendingRecommendations?.recommended_skills) || []);
@@ -682,6 +710,9 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     const candidateBadge = isCandidateToConfirm
       ? '<span title="Weak evidence — confirm this skill is genuinely demonstrated in your experience before including it" style="margin-left:6px;font-size:10px;color:#9f1239;border:1px solid #9f1239;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Verify evidence</span>'
       : '';
+    const rerunNewBadge = newRecommendedSkills.has(skillName)
+      ? '<span class="rw-change-badge rw-change-new" aria-label="New recommendation since previous run">🆕 New</span>'
+      : '';
     const skillNameLower  = skillName.toLowerCase();
     const _typeOverride   = (window._skillTypeOverrides || {})[skillNameLower];
     const _baseType       = hardSkillSet.has(skillNameLower) ? 'hard'
@@ -732,7 +763,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
 
     tableHTML += `
       <tr data-skill="${skillNameEsc}" style="${rowStyle}">
-        <td><strong>${skillNameEsc}</strong>${skillTypeBadge}${newBadge}${candidateBadge}</td>
+        <td><strong>${skillNameEsc}</strong>${skillTypeBadge}${rerunNewBadge}${newBadge}${candidateBadge}</td>
         <td style="min-width:140px;">
           <input type="text" class="skill-category-input" data-skill="${skillNameEsc}"
             value="${escapeHtml(categoryKey)}"

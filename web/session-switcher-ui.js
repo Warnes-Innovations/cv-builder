@@ -371,10 +371,12 @@ function _renderSessionTableRow(row) {
   const appStatusLabels = {
     draft: 'Draft', ready: 'Ready', sent: 'Sent',
     interview: 'Interview', rejected: 'Rejected', accepted: 'Accepted',
+    parked: 'Parked',
   };
   const appStatusColors = {
     draft: '#94a3b8', ready: '#3b82f6', sent: '#22c55e',
     interview: '#a855f7', rejected: '#ef4444', accepted: '#059669',
+    parked: '#f97316',
   };
   const appStatus = row.applicationStatus || '';
   const appStatusBadge = appStatus && appStatusLabels[appStatus]
@@ -643,10 +645,12 @@ async function submitSessionStatusEdit(path, idx) {
   const _appStatusLabels = {
     draft: 'Draft', ready: 'Ready', sent: 'Sent',
     interview: 'Interview', rejected: 'Rejected', accepted: 'Accepted',
+    parked: 'Parked',
   };
   const _appStatusColors = {
     draft: '#94a3b8', ready: '#3b82f6', sent: '#22c55e',
     interview: '#a855f7', rejected: '#ef4444', accepted: '#059669',
+    parked: '#f97316',
   };
   try {
     const res  = await fetch('/api/sessions/metadata', {

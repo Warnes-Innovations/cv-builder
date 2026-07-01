@@ -319,7 +319,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A12, US-U1, US-A6
-**Status:** PARTIAL - updated 2026-07-01; rerun endpoints exist and preserve downstream state; all eligible stages now have ↻ affordances (analysis, customisations, rewrite, spell, layout — `workflow-steps.js:668`). Rewrite cards now show "🆕 New" or "↻ Updated" badges on reruns via localStorage snapshot comparison (`rewrite-review.js` — `_saveRewriteSnapshot` / `_getRewriteSnapshot` / `_clearRewriteSnapshot`). Remaining: no clarification-amend path for analysis reruns (user cannot edit prior answers before rerun); other review panels (skills, experience, achievements) do not yet show change badges.
+**Status:** PARTIAL - updated 2026-07-01 (cycle 20); rerun endpoints exist and preserve downstream state; all eligible stages now have ↻ affordances (analysis, customisations, rewrite, spell, layout — `workflow-steps.js:668`). Rewrite cards show "🆕 New" or "↻ Updated" badges on reruns via localStorage snapshot comparison (`rewrite-review.js`). Skills tab now shows "🆕 New" badges for newly recommended skills on reruns (`web/skills-review.js` — `_skillSnapshotKey` / `_saveSkillSnapshot` / `_getSkillSnapshot`). Experience tab now shows "🆕 New" badges for newly recommended experiences on reruns (`web/experience-review.js` — `_expSnapshotKey` / `_saveExpSnapshot` / `_getExpSnapshot`). Remaining: no clarification-amend path for analysis reruns; achievements panel does not yet show change badges.
 **Description:** The core rerun mechanism exists, so the original gap is no longer unresolved at the foundation level. What remains is story-complete UX and rerun context management across all eligible stages.
 **Recommended resolution:** Expose rerun on every supported completed stage, allow clarification editing as part of analysis reruns, and compare old vs new results so only changed or new items require re-review.
 
@@ -1277,7 +1277,7 @@ The application ships two CV output templates with different visual identities t
 ## GAP-134: No "Queued" Session Status in Schema
 
 **Priority:** LOW
-**Status:** Open
+**Status:** RESOLVED 2026-07-01 (cycle 20) — Added `"parked"` to `_VALID_STATUSES` in `scripts/routes/session_routes.py` and to both `appStatusLabels`/`_appStatusLabels` (label: "Parked") and `appStatusColors`/`_appStatusColors` (colour: `#f97316` orange) in `web/session-switcher-ui.js`. Users can now mark sessions as intentionally set aside for later. The status schema already contained `interview`, `rejected`, and `accepted` beyond the original report; `parked` completes the set.
 **Found:** 2026-06-18 cvUiReview
 The session status schema accepts only `draft`, `ready`, and `sent`. US-A1 implies a `queued` or `parked` state for sessions where intake is complete but the user has deliberately set them aside for later. Without this state, users have no way to mark sessions as intentionally pending.
 **Source evidence:** `scripts/routes/session_routes.py` (status enum); applicant.md 2026-06-18.
