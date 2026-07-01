@@ -637,7 +637,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; backend review confirmed SSRF checks exist, but found no test that mocks hostname resolution to a private IP after a public hostname is supplied.
+**Status:** RESOLVED 2026-06-30 — 5 regression tests added in `tests/test_security_regression.py::TestDnsRebindingSsrfRejection`. Covers: bare loopback IP, bare private IP, localhost name, public hostname resolving to 192.168.x.x (mocked), and public hostname resolving to 127.x.x.x (mocked). All assert HTTP 400 and "not permitted" error message.
 **Description:** A key security control is present in code but not pinned down with a regression test.
 **Recommended resolution:** Add a unit test that mocks DNS resolution and verifies private-IP rejection after hostname lookup.
 
@@ -645,7 +645,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; backend review found no targeted test that proves the wildcard static-file route rejects traversal inputs.
+**Status:** RESOLVED 2026-06-30 — 3 regression tests added in `tests/test_security_regression.py::TestStaticRoutePathTraversal`. Covers `/web/../etc/passwd`, URL-encoded traversal `%2e%2e%2f`, and double-dot beyond web root. All assert 400 or 404 (Flask/Werkzeug rejects these before the route handler).
 **Description:** The code appears safe via `send_from_directory`, but the safety property is not explicitly regression-tested.
 **Recommended resolution:** Add tests for `../` and similar traversal inputs against the static route handler.
 
@@ -653,7 +653,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; backend review found no test that exercises the non-fatal `git add` failure path in master-data saves.
+**Status:** RESOLVED 2026-06-30 — Test added in `tests/test_security_regression.py::TestSaveMasterGitAddFailure`. Mocks `subprocess.run` to return exit code 1, verifies `logger.warning` is called with "git add" in the message, and confirms the JSON file is written correctly to disk.
 **Description:** A subtle operational path exists without regression coverage.
 **Recommended resolution:** Add a test that mocks a failing `git add` subprocess and verifies the write succeeds with an explicit warning.
 
