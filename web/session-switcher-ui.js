@@ -239,15 +239,18 @@ function _normalizeSessionsForTable(activeSessions, savedSessions) {
   for (const s of activeSessions) {
     const ownership = getActiveSessionOwnershipMeta(s, { currentSessionId });
     rows.push({
-      type:         'active',
-      name:          s.position_name || 'Untitled',
-      phase:         s.phase         || '',
-      lastModified:  s.last_modified  ? new Date(s.last_modified) : null,
-      created:       s.created        ? new Date(s.created)       : null,
+      type:              'active',
+      name:               s.position_name || 'Untitled',
+      company:            s.company || '',
+      phase:              s.phase         || '',
+      applicationStatus:  s.application_status || '',
+      atsScore:           s.ats_score ?? null,
+      lastModified:       s.last_modified  ? new Date(s.last_modified) : null,
+      created:            s.created        ? new Date(s.created)       : null,
       ownership,
-      sessionId:     s.session_id,
-      path:          null,
-      idx:           null,
+      sessionId:          s.session_id,
+      path:               null,
+      idx:                null,
     });
   }
 
@@ -256,9 +259,11 @@ function _normalizeSessionsForTable(activeSessions, savedSessions) {
     rows.push({
       type:              'saved',
       name:               s.position_name || 'Untitled',
+      company:            s.company || '',
       phase:              s.phase         || '',
       applicationStatus:  s.application_status || '',
       notes:              s.notes || '',
+      atsScore:           s.ats_score ?? null,
       lastModified:       s.timestamp  ? new Date(s.timestamp)  : null,
       created:            createdIso   ? new Date(createdIso)   : null,
       ownership:          null,
@@ -348,8 +353,12 @@ function _renderSessionTableRow(row) {
 
   const rowClass = (row.type === 'active' && row.ownership.isCurrent) ? 'sm-tr sm-tr-current' : 'sm-tr';
 
+  const companySub = row.company
+    ? `<div style="font-size:0.8em;color:#94a3b8;margin-top:1px;">${escapeHtml(row.company)}</div>`
+    : '';
   const nameCell = row.type === 'saved'
     ? `<span id="sm-name-${row.idx}">${escapeHtml(row.name)}</span>` +
+      `${companySub}` +
       `<span id="sm-rename-${row.idx}" style="display:none;align-items:center;gap:4px;margin-top:3px;">` +
         `<input id="sm-input-${row.idx}" type="text" value="${escapeHtml(row.name)}" class="sm-key-input"` +
           ` data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}"` +
@@ -357,7 +366,7 @@ function _renderSessionTableRow(row) {
         `<button data-sm-action="submit-rename" data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}" class="sm-btn" title="Save rename" aria-label="Save rename">\u2713</button>` +
         `<button data-sm-action="cancel-rename" data-sm-idx="${row.idx}" class="sm-btn" title="Cancel rename" aria-label="Cancel rename">\u2715</button>` +
       `</span>`
-    : `<span>${escapeHtml(row.name)}</span>`;
+    : `<span>${escapeHtml(row.name)}</span>${companySub}`;
 
   const appStatusLabels = {
     draft: 'Draft', ready: 'Ready', sent: 'Sent',
@@ -409,10 +418,18 @@ function _renderSessionTableRow(row) {
       `<button data-sm-action="edit-notes" data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}" class="sm-btn sm-btn-icon" title="Edit notes" aria-label="Edit notes"><i class="fa-solid fa-note-sticky" aria-hidden="true"></i></button>`;
   }
 
+  const atsScoreLabel = row.atsScore != null
+    ? (() => {
+        const s = Number(row.atsScore);
+        const color = s >= 75 ? '#059669' : s >= 50 ? '#d97706' : '#dc2626';
+        return ` <span title="ATS match score" style="font-size:0.78em;padding:1px 5px;border-radius:9px;background:${color};color:#fff;vertical-align:middle;font-weight:600;">${s}%</span>`;
+      })()
+    : '';
+
   return `<div class="${rowClass}">` +
     `<span class="sm-td sm-td-name">${nameCell}</span>` +
     `<span class="sm-td sm-td-status">${statusPill}</span>` +
-    `<span class="sm-td sm-td-phase"><span id="sm-phase-${row.idx}">${phaseLabel}${appStatusBadge}</span>${statusEditWidget}${notesPreview}${notesEditWidget}</span>` +
+    `<span class="sm-td sm-td-phase"><span id="sm-phase-${row.idx}">${phaseLabel}${atsScoreLabel}${appStatusBadge}</span>${statusEditWidget}${notesPreview}${notesEditWidget}</span>` +
     `<span class="sm-td sm-td-date">${modLabel}</span>` +
     `<span class="sm-td sm-td-actions">${actionHtml}</span>` +
     `</div>`;

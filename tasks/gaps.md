@@ -1027,7 +1027,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-O4
-**Status:** OPEN - discovered 2026-04-22; recruiter-ops review found the session list is the only multi-application surface, showing only position name, phase, and timestamps with no ATS score, status, or action summary.
+**Status:** RESOLVED 2026-07-01 — Added company and ATS score to the sessions list. `SessionItem` dataclass (web_app.py) gains `ats_score: Optional[int]` and `company: str`. `session_routes.py:list_sessions()` now reads `ats_score` from `metadata.json` (handling both `int` and `{"overall": N}` shapes) and `company` from `state.job_analysis.company`. `session-switcher-ui.js:_normalizeSessionsForTable()` adds `company` and `atsScore` to row objects. `_renderSessionTableRow()` renders company as a sub-label under the role title and ATS score as a color-coded pill (green ≥75%, amber ≥50%, red <50%) next to the phase label. Existing application_status badge, action buttons, and sort/filter behavior are unchanged.
 **Description:** A user managing 5–10 simultaneous applications needs a consolidated pipeline view to track progress, identify actions needed, and assess overall campaign health.
 **Recommended resolution:** Add an "Applications" dashboard view that shows all sessions with columns for: company, role title, application status, ATS score, date last modified, and a quick-action button.
 

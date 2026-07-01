@@ -159,6 +159,8 @@ class SessionItem:
     has_customizations: bool
     application_status: str = ''
     notes: str = ''
+    ats_score: Optional[int] = None
+    company: str = ''
 
 
 @dataclass
