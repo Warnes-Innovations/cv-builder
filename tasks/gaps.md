@@ -885,7 +885,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-H1, US-H6
-**Status:** OPEN - discovered 2026-04-22; HR/ATS review found no validation check confirming the ATS PDF uses a standard ATS-safe font. Non-standard fonts can cause ATS character mis-parsing.
+**Status:** RESOLVED 2026-06-30 — Added check 17 ("ATS-safe fonts only") to `validate_ats_report()` in `scripts/utils/cv_orchestrator.py`. Reads all `run.font.name` values from every DOCX paragraph plus the Normal style default; validates each against a set of 11 known ATS-safe families (Arial, Calibri, Times New Roman, Helvetica, Georgia, Garamond, Verdana, Trebuchet MS, Courier New, Palatino, Book Antiqua). Returns `warn` with a list of non-standard font names if any are found; `warn` (not `fail`) because some ATS platforms handle them gracefully.
 **Description:** Some ATS platforms reject or misread PDFs with decorative or non-standard fonts. The ATS validation report checks structure, keywords, and contact fields but not font embedding or font family compliance.
 **Recommended resolution:** Add a font-family compliance check to ATS validation that reads the embedded font list from the generated ATS PDF and warns if non-standard fonts are detected.
 
@@ -1136,7 +1136,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** US-C3
-**Status:** OPEN - discovered 2026-04-22; trust and compliance review found the generated CV files contain no metadata, footer, or header indicating AI assistance. For contexts where AI-assisted content authorship requires disclosure (academic submissions, grant applications, some government roles), users have no opt-in mechanism.
+**Status:** RESOLVED 2026-06-30 — Added `ai_attribution` toggle to the Settings modal (`web/index.html`, `web/ui-core.js`). When enabled: (1) ATS DOCX sets `core_properties.keywords = "AI-assisted"` and `core_properties.subject` to a disclosure string; (2) Human DOCX appends "Generated with AI assistance" to the footer alongside the generation timestamp; both also set DOCX document properties. Backend plumbing: `POST /api/generation-settings` accepts `ai_attribution` and stores it in session state and `customizations`; `GET /api/status` returns `ai_attribution`; `StatusResponse` dataclass updated. Defaults to off.
 **Recommended resolution:** Add an optional "AI-assisted" disclosure setting (default off). When enabled, include a document property and optionally a footer note in generated PDF/DOCX files noting that AI assistance was used.
 
 ## GAP-120: Tab `<div>` Elements Keyboard-Inaccessible — CRITICAL

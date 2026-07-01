@@ -138,6 +138,7 @@ function _collectSettingsPayloadFromForm() {
         human_pdf: Boolean(document.getElementById('settings-format-human-pdf')?.checked),
         human_docx: Boolean(document.getElementById('settings-format-human-docx')?.checked),
       },
+      ai_attribution: Boolean(document.getElementById('settings-gen-ai-attribution')?.checked),
     },
   };
 }
@@ -184,6 +185,7 @@ function _renderSettingsToForm(payload) {
   setChecked('settings-format-ats-docx', formats.ats_docx);
   setChecked('settings-format-human-pdf', formats.human_pdf);
   setChecked('settings-format-human-docx', formats.human_docx);
+  setChecked('settings-gen-ai-attribution', generation.ai_attribution);
 
   const retryPolicy = _getRetryPolicyFromStorage();
   setValue('settings-retry-base-ms', retryPolicy.baseMs);
@@ -204,8 +206,11 @@ function _renderSettingsToForm(payload) {
 async function reloadSettingsModal() {
   try {
     _setSettingsStatus('Loading settings...', 'info');
-    const result = await fetchSettings();
+    const [result, status] = await Promise.all([fetchSettings(), fetchStatus().catch(() => null)]);
     _renderSettingsToForm(result);
+    // ai_attribution is per-session, not in config.yaml — read from session status
+    const attrEl = document.getElementById('settings-gen-ai-attribution');
+    if (attrEl && status) attrEl.checked = Boolean(status.ai_attribution);
     _setSettingsStatus('Settings loaded.', 'success');
   } catch (error) {
     _setSettingsStatus(`Failed to load settings: ${error.message || error}`, 'error');
@@ -221,10 +226,15 @@ async function saveSettingsModal() {
     }
     _setSettingsStatus('Saving settings...', 'info');
     const payload = _collectSettingsPayloadFromForm();
+    const aiAttribution = Boolean(payload.generation?.ai_attribution);
     const result = await updateSettings(payload);
     _saveRetryPolicyToStorage(_collectRetryPolicyFromForm());
     _settingsData = result;
     _renderSettingsToForm(result);
+    // ai_attribution is per-session state, not a config.yaml key — save it separately
+    try {
+      await apiCall('POST', '/api/generation-settings', { ai_attribution: aiAttribution });
+    } catch (_) { /* non-fatal */ }
     _setSettingsStatus('Settings saved successfully.', 'success');
   } catch (error) {
     _setSettingsStatus(`Failed to save settings: ${error.message || error}`, 'error');

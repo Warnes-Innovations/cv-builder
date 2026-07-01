@@ -765,6 +765,7 @@ def create_blueprint(deps):
             job_url=conversation.state.get("job_url"),
             generation_goals=conversation.state.get("generation_goals") or None,
             skill_qualifier_overrides=conversation.state.get("skill_qualifier_overrides") or {},
+            ai_attribution=bool(conversation.state.get("ai_attribution", False)),
         )))
 
     @bp.get("/api/context-stats")
@@ -865,6 +866,9 @@ def create_blueprint(deps):
                     return jsonify({"error": "skills_section_title must not be empty"}), 400
                 conversation.state["skills_section_title"] = raw
                 customizations["skills_section_title"] = raw
+            if "ai_attribution" in data:
+                conversation.state["ai_attribution"] = bool(data["ai_attribution"])
+                customizations["ai_attribution"] = bool(data["ai_attribution"])
             conversation._save_session()
         session_registry.touch(sid)
         cfg_default = get_config().get("generation.max_skills", 20)
@@ -872,6 +876,7 @@ def create_blueprint(deps):
             "ok": True,
             "max_skills": int(conversation.state.get("max_skills") or cfg_default),
             "skills_section_title": conversation.state.get("skills_section_title") or "Skills",
+            "ai_attribution": bool(conversation.state.get("ai_attribution", False)),
         })
 
     @bp.post("/api/post-analysis-responses")

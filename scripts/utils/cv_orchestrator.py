@@ -2125,7 +2125,8 @@ For manual generation:
             base_font_size=customizations.get('base_font_size'),
             customizations=customizations,
         )
-        cv_data['achievements']   = selected_content.get('achievements', [])
+        cv_data['achievements']    = selected_content.get('achievements', [])
+        cv_data['ai_attribution']  = bool(customizations.get('ai_attribution', False))
         cv_data['json_ld_str']    = self._build_json_ld(cv_data, job_analysis)
         # duckflow:
         #   id: cv_render.scripts_utils_cv_orchestrator.L1684
@@ -2168,6 +2169,7 @@ For manual generation:
         #     - "artifact:selected_content[\"skills_section_title\"]"
         #   notes: "Carries the user-selected skills title into the ATS DOCX generation payload."
         selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
+        selected_content['ai_attribution'] = bool(customizations.get('ai_attribution', False))
         ats_file, ats_score_at_generation = self._generate_ats_docx(
             selected_content,
             job_analysis,
@@ -3907,8 +3909,13 @@ Include one entry per candidate. Do not omit any candidate."""
         
         filename = f"CV_{company}_{role}_{timestamp}_ATS.docx"
         filepath = output_dir / filename
+
+        if content.get('ai_attribution'):
+            doc.core_properties.keywords = 'AI-assisted'
+            doc.core_properties.subject  = 'CV generated with AI assistance using cv-builder'
+
         doc.save(str(filepath))
-        
+
         # Validate ATS compatibility
         ats_score = self._validate_ats_compatibility(content, job_analysis)
         logger.info("Generated ATS DOCX: %s (ATS Score: %d/100)", filename, ats_score)
@@ -4702,15 +4709,20 @@ Include one entry per candidate. Do not omit any candidate."""
                         run = p.add_run(citation)
                         run.font.size = Pt(10)
 
-        # ── Footer: generation timestamp ─────────────────────────────────────
+        # ── Footer: generation timestamp (+ optional AI attribution) ─────────
+        _attr_text = '  ·  Generated with AI assistance' if content.get('ai_attribution') else ''
         for sec in doc.sections:
             footer = sec.footer
             fp = footer.paragraphs[0]
             fp.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            run = fp.add_run(f"{timestamp}")
+            run = fp.add_run(f"{timestamp}{_attr_text}")
             run.font.size = Pt(8)
             run.font.color.rgb = RGBColor(0xCC, 0xCC, 0xCC)
             run.font.italic = True
+
+        if content.get('ai_attribution'):
+            doc.core_properties.keywords = 'AI-assisted'
+            doc.core_properties.subject  = 'CV generated with AI assistance using cv-builder'
 
         doc.save(str(filepath))
         logger.info("Human DOCX: %s", filename)
@@ -5138,6 +5150,37 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                     _chk('docx_publications_heading', 'Publications heading text', 'docx',
                          'fail',
                          f'Heading "{wrong[0]}" must be "Publications" or "Selected Publications"')
+
+            # 17 — ATS-safe font compliance (GAP-87)
+            _ATS_SAFE_FONTS = frozenset({
+                'arial', 'calibri', 'times new roman', 'helvetica',
+                'georgia', 'garamond', 'verdana', 'trebuchet ms',
+                'courier new', 'palatino', 'book antiqua',
+            })
+            _font_names: set = set()
+            for _p in paragraphs:
+                for _run in _p.runs:
+                    _fn = (_run.font.name or '').strip().lower()
+                    if _fn:
+                        _font_names.add(_fn)
+            # Also check the document default font
+            _def_font = (
+                doc.styles['Normal'].font.name if 'Normal' in doc.styles else None
+            )
+            if _def_font:
+                _font_names.add(_def_font.strip().lower())
+            if not _font_names:
+                _chk('docx_ats_safe_fonts', 'ATS-safe fonts only', 'docx', 'warn',
+                     'No explicit font names found in DOCX runs — default theme font assumed')
+            else:
+                _non_ats = sorted(_fn for _fn in _font_names if _fn not in _ATS_SAFE_FONTS)
+                if not _non_ats:
+                    _chk('docx_ats_safe_fonts', 'ATS-safe fonts only', 'docx', 'pass',
+                         f'All fonts ATS-safe: {", ".join(sorted(_font_names))}')
+                else:
+                    _chk('docx_ats_safe_fonts', 'ATS-safe fonts only', 'docx', 'warn',
+                         (f'Non-standard fonts detected: {", ".join(_non_ats)}'
+                          ' — some ATS engines may mis-parse these'))
 
         except Exception as exc:
             for name, label in DOCX_CHECKS:
