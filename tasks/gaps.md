@@ -621,7 +621,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; backend review found no explicit CORS configuration. The app is safe in its normal localhost usage model, but there is no explicit browser-origin restriction if deployment settings change.
+**Status:** RESOLVED 2026-06-30 — Added Host-header validation `before_request` hook in `scripts/web_app.py` (inside `create_app()`). When `CV_WEB_HOST` is a loopback address (default `127.0.0.1`), the hook rejects requests whose `Host` header is not `localhost`, `127.0.0.1`, or `::1`, returning HTTP 400. Controlled by `CV_ALLOWED_HOSTS` env var: set to `*` to disable (reverse-proxy deployments), or a comma-separated list of permitted hostnames. 7 regression tests added in `tests/test_host_validation.py`.
 **Description:** Security posture depends on deployment assumptions rather than a declared loopback-only origin policy.
 **Recommended resolution:** Add explicit CORS/origin restrictions for loopback origins and document the expected hosting model.
 
@@ -966,7 +966,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** US-P3
-**Status:** OPEN - discovered 2026-04-22; persuasion expert review found no guidance or validation rule encouraging positive-sum framing of metrics. The persuasion check suite covers action verbs and CAR structure but not framing polarity.
+**Status:** RESOLVED 2026-06-30 — Added `LLMClient.check_positive_metric_framing(text)` static method in `scripts/utils/llm_client.py`. Flags bullets that pair a negative-framing verb (reduced, cut, eliminated, decreased, slashed, trimmed, shrunk) with a quantified metric (%, $, ×, million, etc.), suggesting positive-sum rewrites such as "freed up 30%" or "delivered a 30% saving". Wired into `run_persuasion_quality_checks()` in `scripts/utils/conversation_manager.py` for experience bullets. 6 unit tests added in `tests/test_llm_client.py`.
 **Description:** Negative-framing metrics (cuts, reductions, eliminations) can create unfavorable impressions even when the underlying achievement is positive. Persuasion-optimal CVs frame all quantified outcomes in additive, growth-oriented terms.
 **Recommended resolution:** Add a positive-sum framing check to the persuasion heuristic suite. Flag bullets where a quantified negative outcome (reduced, cut, eliminated, decreased) appears without a corresponding positive consequence.
 
@@ -990,7 +990,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** US-W1
-**Status:** OPEN - discovered 2026-04-22; power user review found no bulk accept/reject for the publications review table. Each publication must be individually toggled. Publications tables can contain 20–30 entries.
+**Status:** RESOLVED 2026-06-30 — Added a bulk-action toolbar above the publications table in `web/publications-review.js`. Three buttons: "Accept Recommended" (sets decisions to match the LLM recommendation), "Accept All", and "Reject All". Implemented as `bulkPubAction(mode)` function exported from the module and exposed on `globalThis` via `src/main.js`. Buttons are rendered in the same `<div>` row as the filter input, right-aligned with `margin-left:auto`.
 **Recommended resolution:** Add bulk-accept (accept all recommended) and bulk-reject (reject all non-recommended) controls to the publications review table header.
 
 ## GAP-101: No Forward Stage Skip Mechanism

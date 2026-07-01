@@ -86,12 +86,21 @@ async function buildPublicationsReviewTable() {
 
   let tableHTML = `
     <p style="color:#6b7280;font-size:0.9em;margin-bottom:12px;">${contextNote}</p>
-    <div style="margin-bottom:10px;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
       <label style="font-size:0.9em;color:#374151;">Filter publications:
         <input type="search" id="pub-filter-input" placeholder="Type to filter…"
           style="margin-left:8px;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:0.9em;"
           oninput="filterPublicationsTable(this.value)">
       </label>
+      <span style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+        <span style="font-size:0.82em;color:#6b7280;">Bulk:</span>
+        <button class="action-btn secondary" style="font-size:0.8em;padding:4px 10px;"
+          onclick="bulkPubAction('recommended')" title="Accept all recommended and reject the rest">Accept Recommended</button>
+        <button class="action-btn secondary" style="font-size:0.8em;padding:4px 10px;"
+          onclick="bulkPubAction('accept-all')" title="Accept all publications">Accept All</button>
+        <button class="action-btn secondary" style="font-size:0.8em;padding:4px 10px;"
+          onclick="bulkPubAction('reject-all')" title="Reject all publications">Reject All</button>
+      </span>
     </div>
     <table id="publications-review-table" class="review-table">
       <thead>
@@ -281,6 +290,35 @@ function handlePubAction(citeKey, accept) {
   if (btn) btn.classList.add('active');
 }
 
+// ── Bulk actions ─────────────────────────────────────────────────────────────
+
+function bulkPubAction(mode) {
+  const pubs = window._publicationsOrdered || [];
+  if (!pubs.length) return;
+
+  pubs.forEach(pub => {
+    const citeKey = pub.cite_key;
+    let accept;
+    if (mode === 'recommended') {
+      accept = pub.is_recommended !== false;
+    } else if (mode === 'accept-all') {
+      accept = true;
+    } else {
+      accept = false;
+    }
+    window.publicationDecisions[citeKey] = accept;
+    // Update button states in the DOM
+    const row = document.querySelector(`tr[data-cite-key="${CSS.escape(citeKey)}"]`);
+    if (!row) return;
+    row.querySelectorAll('.icon-btn[data-action="accept"],[data-action="reject"]').forEach(btn => btn.classList.remove('active'));
+    const target = row.querySelector(`[data-action="${accept ? 'accept' : 'reject'}"]`);
+    if (target) target.classList.add('active');
+  });
+
+  const accepted = Object.values(window.publicationDecisions).filter(Boolean).length;
+  showToast(`Bulk action applied: ${accepted} accepted, ${pubs.length - accepted} excluded`);
+}
+
 // ── Submit decisions ─────────────────────────────────────────────────────────
 
 async function submitPublicationDecisions() {
@@ -335,6 +373,7 @@ async function submitPublicationDecisions() {
 
 export {
   buildPublicationsReviewTable,
+  bulkPubAction,
   filterPublicationsTable,
   handlePubAction,
   submitPublicationDecisions,

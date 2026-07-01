@@ -1368,6 +1368,11 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                     kw_append_result = LLMClient.check_keyword_appended(proposed, original, ats_keywords)
                     checks_to_run.append(kw_append_result)
 
+            # Positive-sum metric framing (experience bullets with quantified results)
+            if 'exp' in location.lower() or 'bullet' in rewrite_type.lower():
+                framing_result = LLMClient.check_positive_metric_framing(proposed)
+                checks_to_run.append(framing_result)
+
             # Generic phrases (summary only)
             if location == 'summary' or rewrite_type == 'summary':
                 generic_result = LLMClient.check_summary_generic_phrases(proposed)

@@ -1442,6 +1442,36 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             ),
         }
 
+    @staticmethod
+    def check_positive_metric_framing(text: str) -> Dict[str, Any]:
+        """Check whether quantified metrics use positive-sum framing.
+
+        Negative-framing verbs (reduced, cut, eliminated) before a numeric result
+        can create an unfavourable impression even for genuine achievements.  Flags
+        bullets that pair a negative-framing verb with a percentage or number so the
+        writer can consider reframing in additive terms (e.g. 'freed up 30%' instead
+        of 'cut costs by 30%').
+        """
+        import re
+        if not text or not text.strip():
+            return {'pass': True, 'flag_type': 'negative_metric_framing', 'severity': 'info', 'details': ''}
+
+        negative_verbs = r'\b(?:cut|cuts|cutting|reduce[sd]?|reducing|reduction|eliminat(?:ed|ing|e)|decreas(?:ed|ing|e)|shrunk|shrank|shrink(?:ing)?|slash(?:ed|ing)?|trim(?:med|ming)?)\b'
+        has_metric     = bool(re.search(r'\d+\s*%|\d+\s*x\b|\$\s*\d|\d+\s*(?:million|billion|thousand|k\b)', text, re.IGNORECASE))
+
+        if has_metric and re.search(negative_verbs, text, re.IGNORECASE):
+            return {
+                'pass': False,
+                'flag_type': 'negative_metric_framing',
+                'severity': 'info',
+                'details': (
+                    'Metric uses negative-sum framing (e.g. "reduced by 30%"). '
+                    'Consider positive-sum reframing: "freed up 30%", "reclaimed", '
+                    '"improved efficiency by 30%", or "delivered a 30% saving".'
+                ),
+            }
+        return {'pass': True, 'flag_type': 'negative_metric_framing', 'severity': 'info', 'details': ''}
+
     def _validate_with_repair(
         self,
         data: Any,

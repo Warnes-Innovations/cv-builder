@@ -591,6 +591,29 @@ def create_app(args) -> Flask:
     )
     init_auth(app)
 
+    # ── Host-header validation (DNS-rebinding protection) ────────────────────
+    # When CV_ALLOWED_HOSTS is unset and the app binds to loopback, only allow
+    # requests whose Host header matches known loopback patterns.  Set
+    # CV_ALLOWED_HOSTS=* to disable the check (e.g. when behind a reverse proxy).
+    _loopback_hosts = {'localhost', '127.0.0.1', '::1', '[::1]'}
+    _raw_allowed = os.getenv('CV_ALLOWED_HOSTS', '')
+    _allowed_hosts: Optional[set] = None  # None = disabled
+    if _raw_allowed == '*':
+        _allowed_hosts = None  # explicitly disabled
+    elif _raw_allowed:
+        _allowed_hosts = {h.strip().lower() for h in _raw_allowed.split(',') if h.strip()}
+    elif os.getenv('CV_WEB_HOST', '127.0.0.1') in ('127.0.0.1', '::1', 'localhost'):
+        _allowed_hosts = _loopback_hosts
+
+    @app.before_request
+    def _validate_host():
+        if _allowed_hosts is None:
+            return
+        host = (request.host or '').lower().split(':')[0]
+        if host not in _allowed_hosts:
+            from flask import abort as _abort  # noqa: PLC0415
+            _abort(400, description=f'Request rejected: Host "{host}" is not in the allowed list.')
+
     @app.before_request
     def _load_user():
         load_user_from_session()
