@@ -2233,5 +2233,53 @@ class TestCvBodyPageCap(unittest.TestCase):
                 self.assertIn(opening.lower(), self.orc._STRONG_VERBS_LOWER)
 
 
+class TestDetectYearOnlyDates(unittest.TestCase):
+    """Unit tests for CVOrchestrator._detect_year_only_dates (GAP-88)."""
+
+    def _run(self, experiences):
+        return CVOrchestrator._detect_year_only_dates(experiences)
+
+    def test_empty_list_returns_empty(self):
+        self.assertEqual(self._run([]), [])
+
+    def test_month_year_start_not_flagged(self):
+        exp = [{'company': 'Acme', 'title': 'Dev', 'start_date': 'Jan 2020', 'end_date': '2023'}]
+        result = self._run(exp)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['field'], 'end_date')
+
+    def test_year_only_start_date_flagged(self):
+        exp = [{'company': 'Acme', 'title': 'Dev', 'start_date': '2018', 'end_date': 'Present'}]
+        result = self._run(exp)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['field'], 'start_date')
+        self.assertEqual(result[0]['date_value'], '2018')
+        self.assertEqual(result[0]['company'], 'Acme')
+
+    def test_year_only_both_dates_flagged(self):
+        exp = [{'company': 'Corp', 'title': 'Lead', 'start_date': '2015', 'end_date': '2019'}]
+        result = self._run(exp)
+        self.assertEqual(len(result), 2)
+        fields = {w['field'] for w in result}
+        self.assertEqual(fields, {'start_date', 'end_date'})
+
+    def test_iso_date_not_flagged(self):
+        exp = [{'company': 'X', 'title': 'Y', 'start_date': '2020-01', 'end_date': '2022-06'}]
+        self.assertEqual(self._run(exp), [])
+
+    def test_present_not_flagged(self):
+        exp = [{'company': 'X', 'title': 'Y', 'start_date': '2021', 'end_date': 'Present'}]
+        result = self._run(exp)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['field'], 'start_date')
+
+    def test_missing_dates_not_flagged(self):
+        exp = [{'company': 'X', 'title': 'Y'}]
+        self.assertEqual(self._run(exp), [])
+
+    def test_non_dict_entry_skipped(self):
+        self.assertEqual(self._run(['not a dict']), [])
+
+
 if __name__ == "__main__":
     unittest.main()

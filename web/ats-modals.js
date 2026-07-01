@@ -19,6 +19,37 @@ import { refreshAtsScore, updateAtsBadge } from './ats-refinement.js';
 import { stateManager } from './state-manager.js';
 import { escapeHtml } from './utils.js';
 
+let _atsSynonymMapCache = null;
+
+async function _loadAtsSynonymMap() {
+  if (_atsSynonymMapCache) return _atsSynonymMapCache;
+  try {
+    const sessionId = stateManager?.getSessionId?.();
+    const url = sessionId ? `/api/synonym-map?session_id=${encodeURIComponent(sessionId)}` : '/api/synonym-map';
+    const res = await fetch(url);
+    if (!res.ok) return (_atsSynonymMapCache = {});
+    const raw = await res.json();
+    const aliasToCanon = {};
+    const canonToAliases = {};
+    Object.entries(raw).forEach(([alias, canon]) => {
+      aliasToCanon[alias.toLowerCase()] = canon;
+      const cl = canon.toLowerCase();
+      (canonToAliases[cl] = canonToAliases[cl] || []).push(alias);
+    });
+    _atsSynonymMapCache = { aliasToCanon, canonToAliases };
+  } catch (_) { _atsSynonymMapCache = {}; }
+  return _atsSynonymMapCache;
+}
+
+function _kwSynAnnotation(kw, synMap) {
+  if (!synMap || (!synMap.aliasToCanon && !synMap.canonToAliases)) return '';
+  const kl = (kw || '').toLowerCase();
+  if (synMap.aliasToCanon && synMap.aliasToCanon[kl]) return `= ${synMap.aliasToCanon[kl]}`;
+  const aliases = synMap.canonToAliases && synMap.canonToAliases[kl];
+  if (aliases && aliases.length) return `also: ${aliases.join(', ')}`;
+  return '';
+}
+
 const ATS_GROUPS = [
   ['hard', 'Hard Requirements'],
   ['soft', 'Preferred Skills'],
@@ -57,7 +88,7 @@ function _keywordStatusBadge(keyword) {
   return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-size:0.8em;font-weight:600;">Exact match</span>';
 }
 
-function _renderKeywordGroup(title, keywords) {
+function _renderKeywordGroup(title, keywords, synMap) {
   if (keywords.length === 0) return '';
 
   const exactCount = keywords.filter(_isExactMatch).length;
@@ -83,14 +114,20 @@ function _renderKeywordGroup(title, keywords) {
         </thead>
         <tbody>
           ${sorted.map(keyword => {
+            const kw = keyword.keyword || keyword.term || '';
             const sections = Array.isArray(keyword.matched_in_sections) && keyword.matched_in_sections.length > 0
               ? keyword.matched_in_sections.join(', ')
               : 'Not found';
+            const synAnnot = _kwSynAnnotation(kw, synMap);
+            const synHtml = synAnnot
+              ? `<div style="font-size:0.78em;color:#64748b;margin-top:2px;" title="Synonym grouping">${escapeHtml(synAnnot)}</div>`
+              : '';
             return `
               <tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;">
                 <td style="padding:8px;">
-                  <div style="font-weight:600;color:#1e293b;">${escapeHtml(keyword.keyword || keyword.term || '')}</div>
+                  <div style="font-weight:600;color:#1e293b;">${escapeHtml(kw)}</div>
                   <div style="font-size:0.8em;color:#94a3b8;text-transform:capitalize;">${escapeHtml(_keywordType(keyword))}</div>
+                  ${synHtml}
                 </td>
                 <td style="padding:8px;">${_keywordStatusBadge(keyword)}</td>
                 <td style="padding:8px;color:#475569;">${escapeHtml(sections)}</td>
@@ -126,9 +163,11 @@ async function openAtsReportModal() {
   if (typeof trapFocus === 'function') trapFocus('ats-report-modal-overlay');
   const body = document.getElementById('ats-report-modal-body');
 
+  const synMap = await _loadAtsSynonymMap();
+
   const cached = stateManager?.getAtsScore?.();
   if (cached) {
-    body.innerHTML = _renderAtsReport(cached);
+    body.innerHTML = _renderAtsReport(cached, synMap);
     return;
   }
 
@@ -144,7 +183,7 @@ async function openAtsReportModal() {
     if (data.ok && data.ats_score) {
       stateManager?.setAtsScore?.(data.ats_score);
       updateAtsBadge(data.ats_score);
-      body.innerHTML = _renderAtsReport(data.ats_score);
+      body.innerHTML = _renderAtsReport(data.ats_score, synMap);
     } else {
       body.innerHTML = `<p style="padding:24px;color:#ef4444;">Could not load ATS report: ${escapeHtml(data.error || 'unknown error')}</p>`;
     }
@@ -166,7 +205,7 @@ function closeAtsReportModal() {
 /**
  * Render an ATS score object into HTML for the modal body.
  */
-function _renderAtsReport(score) {
+function _renderAtsReport(score, synMap) {
   const overall = Math.round(score.overall ?? 0);
   const hard = Math.round(score.hard_requirement_score ?? 0);
   const soft = Math.round(score.soft_requirement_score ?? 0);
@@ -177,7 +216,7 @@ function _renderAtsReport(score) {
   const missingKw = keywords.filter(keyword => _keywordStatus(keyword) === 'missing');
   const missingHard = missingKw.filter(keyword => _keywordType(keyword) === 'hard');
   const keywordGroups = ATS_GROUPS
-    .map(([type, title]) => _renderKeywordGroup(title, keywords.filter(keyword => _keywordType(keyword) === type)))
+    .map(([type, title]) => _renderKeywordGroup(title, keywords.filter(keyword => _keywordType(keyword) === type), synMap))
     .join('');
 
   const sectionScores = score.section_scores || {};

@@ -893,7 +893,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-H5
-**Status:** OPEN - discovered 2026-04-22; HR/ATS review found experience entries with year-only dates (e.g., "2020–2022") pass ATS date validation. Many ATS platforms require month/year format for accurate tenure calculation.
+**Status:** RESOLVED 2026-06-30 — Added `CVOrchestrator._detect_year_only_dates(experiences)` static method (`scripts/utils/cv_orchestrator.py`). Called alongside `_detect_long_bullets` and `_detect_sparse_experiences` during generation; results stored in `metadata.json` as `year_only_date_warnings`. Frontend callout added to download tab (`web/download-tab.js`) displaying company/role, affected field (start or end), and the raw year value with advice to use Month YYYY format.
 **Description:** Year-only dates are ambiguous for employment duration calculation. ATS systems often parse this as invalid or estimate incorrectly.
 **Recommended resolution:** Add a date-format validation check that flags year-only date entries and recommends month/year format for all experience start and end dates.
 
@@ -909,7 +909,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-H4, US-R1
-**Status:** OPEN - discovered 2026-04-22; HR/ATS and resume expert reviews found that while the synonym map (`scripts/data/synonym_map.json`) is used for ATS score computation, the validation report does not show synonym grouping. Users see separate entries for "ML" and "Machine Learning" without grouping.
+**Status:** RESOLVED 2026-06-30 — `openAtsReportModal()` in `web/ats-modals.js` now fetches `GET /api/synonym-map` (cached in `_atsSynonymMapCache`) before rendering. The synonym map is passed to `_renderAtsReport(score, synMap)` → `_renderKeywordGroup(title, keywords, synMap)`. Each keyword row shows a small grey annotation: aliases display "= Canonical Term" and canonical terms display "also: alias1, alias2". The existing match_type='synonym' badge for partial/synonym matches remains unchanged.
 **Description:** Without synonym grouping in the validation report, users cannot verify that their synonym-matched keywords are being counted correctly or identify which canonical term to use for maximum ATS compatibility.
 **Recommended resolution:** Update the ATS validation report and analysis tab keyword display to group synonym pairs, showing the canonical term with aliases. Mark each keyword as "matched via synonym" or "exact match".
 

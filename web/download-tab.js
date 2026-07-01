@@ -386,6 +386,17 @@ async function populateDownloadTab(cvData) {
     </div>`;
   }
 
+  const yearOnlyDateWarnings = (cvData.metadata?.year_only_date_warnings || []);
+  if (yearOnlyDateWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Year-only dates detected (${yearOnlyDateWarnings.length}) — month/year format recommended:</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;list-style:none;">
+        ${yearOnlyDateWarnings.map(w => `<li style="font-size:0.85em;margin-bottom:2px;"><strong>${escapeHtml(w.company)} · ${escapeHtml(w.title)}</strong> — ${w.field === 'start_date' ? 'start' : 'end'} date is "${escapeHtml(w.date_value)}"</li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">Year-only dates reduce chronological precision. Update to Month YYYY format (e.g. "Jan 2020") in the Master CV for best ATS compatibility.</p>
+    </div>`;
+  }
+
   const overlapWarnings = (cvData.date_overlap_warnings || []);
   if (overlapWarnings.length) {
     html += `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:16px;">

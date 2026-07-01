@@ -2100,6 +2100,9 @@ For manual generation:
         sparse_experience_warnings = self._detect_sparse_experiences(
             selected_content.get('experiences', [])
         )
+        year_only_date_warnings = self._detect_year_only_dates(
+            selected_content.get('experiences', [])
+        )
         if date_overlap_warnings:
             logger.warning(
                 "Employment date overlaps detected (%d): %s",
@@ -2226,6 +2229,7 @@ For manual generation:
             'date_overlap_warnings': date_overlap_warnings,
             'long_bullet_warnings': long_bullet_warnings,
             'sparse_experience_warnings': sparse_experience_warnings,
+            'year_only_date_warnings': year_only_date_warnings,
             'summary_warnings': selected_content.get('summary_warnings', []),
         }
 
@@ -4753,6 +4757,33 @@ Include one entry per candidate. Do not omit any candidate."""
                     'title':        exp.get('title', ''),
                     'bullet_count': count,
                 })
+        return warnings
+
+    @staticmethod
+    def _detect_year_only_dates(experiences: List[Dict]) -> List[Dict]:
+        """Return warnings for experience entries whose start/end dates are year-only (e.g. "2020").
+
+        ATS parsers and recruiters expect month/year format. Year-only dates reduce precision
+        and can make chronological ordering ambiguous. Each warning is
+        {company, title, field, date_value}.
+        """
+        import re as _re2
+        _year_only = _re2.compile(r'^\d{4}$')
+        warnings: List[Dict] = []
+        for exp in experiences or []:
+            if not isinstance(exp, dict):
+                continue
+            company = exp.get('company', '')
+            title   = exp.get('title', '')
+            for field in ('start_date', 'end_date'):
+                val = str(exp.get(field) or '').strip()
+                if val and _year_only.match(val):
+                    warnings.append({
+                        'company':    company,
+                        'title':      title,
+                        'field':      field,
+                        'date_value': val,
+                    })
         return warnings
 
     @staticmethod
