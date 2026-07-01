@@ -132,7 +132,7 @@ def test_ats_docx_is_generated(orchestrator, selected_content, job_analysis, tmp
     out_dir = tmp_path / "ats_out"
     out_dir.mkdir()
 
-    ats_file = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
+    ats_file, _ = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
 
     assert ats_file.exists(), f"Expected ATS DOCX at {ats_file}"
     assert ats_file.stat().st_size > 0, "ATS DOCX is empty"
@@ -150,7 +150,7 @@ def test_ats_docx_sections_use_heading1(orchestrator, selected_content, job_anal
     out_dir = tmp_path / "ats_out_h1"
     out_dir.mkdir()
 
-    ats_file = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
+    ats_file, _ = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
     doc = Document(str(ats_file))
 
     heading1_texts = [p.text.strip() for p in doc.paragraphs if p.style.name == "Heading 1"]
@@ -179,7 +179,7 @@ def test_ats_docx_uses_skills_heading(orchestrator, selected_content, job_analys
     out_dir = tmp_path / "ats_out_skills_heading"
     out_dir.mkdir()
 
-    ats_file = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
+    ats_file, _ = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
     doc = Document(str(ats_file))
 
     heading1_texts = [p.text.strip() for p in doc.paragraphs if p.style.name == "Heading 1"]
@@ -210,7 +210,7 @@ def test_ats_docx_soft_skill_section(orchestrator, job_analysis, tmp_path):
         "achievements": [], "publications": [],
     }
 
-    ats_file = orchestrator._generate_ats_docx(content_with_soft, job_analysis, out_dir)
+    ats_file, _ = orchestrator._generate_ats_docx(content_with_soft, job_analysis, out_dir)
     doc = Document(str(ats_file))
 
     heading1_texts = [p.text.strip() for p in doc.paragraphs if p.style.name == "Heading 1"]
@@ -238,7 +238,7 @@ def test_ats_docx_phone_normalized(orchestrator, job_analysis, tmp_path):
         "experiences": [], "skills": [], "education": [],
         "certifications": [], "awards": [], "achievements": [], "publications": [],
     }
-    ats_file = orchestrator._generate_ats_docx(content_parentheses_phone, job_analysis, out_dir)
+    ats_file, _ = orchestrator._generate_ats_docx(content_parentheses_phone, job_analysis, out_dir)
     doc = Document(str(ats_file))
     full_text = "\n".join(p.text for p in doc.paragraphs)
     assert "585-678-6661" in full_text, "Normalized phone not found in ATS DOCX"
@@ -252,7 +252,7 @@ def test_ats_docx_job_entry_one_line(orchestrator, selected_content, job_analysi
     out_dir = tmp_path / "ats_out_entry"
     out_dir.mkdir()
 
-    ats_file = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
+    ats_file, _ = orchestrator._generate_ats_docx(selected_content, job_analysis, out_dir)
     doc = Document(str(ats_file))
     full_text = "\n".join(p.text for p in doc.paragraphs)
     # First experience: Chief Scientific Officer | TNT³ | Remote | 2024-01 – Present

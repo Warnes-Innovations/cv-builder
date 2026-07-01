@@ -2161,7 +2161,7 @@ For manual generation:
         #     - "artifact:selected_content[\"skills_section_title\"]"
         #   notes: "Carries the user-selected skills title into the ATS DOCX generation payload."
         selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
-        ats_file = self._generate_ats_docx(
+        ats_file, ats_score_at_generation = self._generate_ats_docx(
             selected_content,
             job_analysis,
             job_output_dir
@@ -2221,6 +2221,7 @@ For manual generation:
                 'skills_count': len(selected_content['skills']),
                 'achievements_count': len(selected_content['achievements'])
             },
+            'ats_score': ats_score_at_generation,
             'files_generated': files_created,
             'date_overlap_warnings': date_overlap_warnings,
             'long_bullet_warnings': long_bullet_warnings,
@@ -3753,8 +3754,11 @@ Include one entry per candidate. Do not omit any candidate."""
         content: Dict,
         job_analysis: Dict,
         output_dir: Path
-    ) -> Path:
-        """Generate ATS-optimized DOCX with enhanced formatting and validation."""
+    ) -> tuple:
+        """Generate ATS-optimized DOCX with enhanced formatting and validation.
+
+        Returns (filepath, ats_score) so callers can persist the score to metadata.
+        """
         from docx import Document
         from docx.shared import Pt
         from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
@@ -3899,8 +3903,8 @@ Include one entry per candidate. Do not omit any candidate."""
         # Validate ATS compatibility
         ats_score = self._validate_ats_compatibility(content, job_analysis)
         logger.info("Generated ATS DOCX: %s (ATS Score: %d/100)", filename, ats_score)
-        
-        return filepath
+
+        return filepath, ats_score
     
     def _setup_ats_styles(self, doc):
         """Set up ATS-optimized document styles."""

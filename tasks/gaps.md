@@ -437,7 +437,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-H6, US-A9
-**Status:** OPEN - discovered 2026-04-20; HR/ATS review found `cv_orchestrator.py:1878` does not persist `ats_score` and `validation_results` to `metadata.json` at generation time. The ATS badge value is computed and shown live but not written to the archival metadata record.
+**Status:** RESOLVED — 2026-06-30. Modified `CVOrchestrator._generate_ats_docx()` to return `(filepath, ats_score)` tuple. The call site in `generate_cv()` captures `ats_score_at_generation` and writes it to `metadata.json` as `'ats_score'`. The full `validation_results` dict is available via `/api/validate-ats` on demand but is not separately duplicated into metadata to avoid bloat.
 **Description:** ATS score and validation results are ephemeral — they are displayed during the session but not persisted to the generation artifact. If the session is closed, the score cannot be recovered from the archive. The audit trail is broken.
 **Recommended resolution:** After generation completes and ATS scoring runs, write both `ats_score` and `validation_results` to `metadata.json` in the generation output directory. See also GAP-04 (validation coverage) for the related completeness gap.
 
@@ -445,7 +445,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-H2, US-R2
-**Status:** OPEN - discovered 2026-04-20; HR/ATS review found no code path checks for overlapping date ranges across experience entries before generation. Erroneous overlaps (e.g., two full-time roles in the same period) are silently included in the generated CV.
+**Status:** RESOLVED — re-verified 2026-06-30. `CVOrchestrator._detect_date_overlaps()` (`scripts/utils/cv_orchestrator.py:4755`) was implemented in a prior batch; called in `generate_cv()` at line 2094. Results stored in `metadata.json` as `date_overlap_warnings` and displayed in a callout in `web/download-tab.js`. The gap was based on a stale pre-implementation snapshot.
 **Description:** Overlapping employment dates are a common CV integrity problem that human reviewers and ATS systems both flag. The current pipeline has no detection and generates CVs with overlapping dates without warning.
 **Recommended resolution:** During the pre-generation validation step, check all experience entries for date range overlaps and surface any detected overlaps as a blocking or warning validation result.
 
