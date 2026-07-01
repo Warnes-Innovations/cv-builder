@@ -53,7 +53,7 @@ function _kwSynAnnotation(kw, synMap) {
 const ATS_GROUPS = [
   ['hard', 'Hard Requirements'],
   ['soft', 'Preferred Skills'],
-  ['bonus', 'Bonus Keywords'],
+  ['bonus', '★ Bonus Keywords'],
 ];
 
 function _keywordStatus(keyword) {
@@ -80,12 +80,12 @@ function _keywordSortValue(keyword) {
 
 function _keywordStatusBadge(keyword) {
   if (_keywordStatus(keyword) === 'missing') {
-    return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:0.8em;font-weight:600;">Missing</span>';
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:0.8em;font-weight:600;">❌ Missing</span>';
   }
   if (_isPartialMatch(keyword)) {
-    return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:0.8em;font-weight:600;">Partial match</span>';
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:0.8em;font-weight:600;">⚠ Partial</span>';
   }
-  return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-size:0.8em;font-weight:600;">Exact match</span>';
+  return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-size:0.8em;font-weight:600;">✅ Matched</span>';
 }
 
 function _renderKeywordGroup(title, keywords, synMap) {

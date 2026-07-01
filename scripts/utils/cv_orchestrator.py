@@ -5213,7 +5213,26 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                      'No ATS keywords defined in job analysis')
             else:
                 text_lower = docx_text.lower()
-                missing = [kw for kw in ats_kws if kw not in text_lower]
+
+                def _kw_in_text(kw: str, txt: str) -> bool:
+                    """Case-insensitive match with hyphen/slash variant normalization."""
+                    if kw in txt:
+                        return True
+                    # Slash form: any part of "ml/mlops" matches "mlops" or "ml"
+                    for part in kw.split('/'):
+                        part = part.strip()
+                        if part and len(part) > 1 and part in txt:
+                            return True
+                    # Hyphen equivalence: "scikit-learn" matches "scikit learn" or "scitkitlearn"
+                    hyph_space = kw.replace('-', ' ')
+                    hyph_none  = kw.replace('-', '')
+                    if hyph_space != kw and hyph_space in txt:
+                        return True
+                    if hyph_none != kw and len(hyph_none) > 2 and hyph_none in txt:
+                        return True
+                    return False
+
+                missing = [kw for kw in ats_kws if not _kw_in_text(kw, text_lower)]
                 if not missing:
                     _chk('ats_keyword_presence', 'ATS keyword presence', 'all', 'pass',
                          f'All {len(ats_kws)} ATS keywords present')

@@ -466,6 +466,19 @@ def compute_ats_score(
         """
         kw_lower = keyword.lower().strip()
         kw_words = [w for w in kw_lower.split() if len(w) > 2]
+        # Pre-compute hyphen/slash variant forms for this keyword
+        _kw_variants = {kw_lower}
+        for _part in kw_lower.split('/'):
+            _part = _part.strip()
+            if _part and len(_part) > 1:
+                _kw_variants.add(_part)
+        _hyph_space = kw_lower.replace('-', ' ')
+        _hyph_none  = kw_lower.replace('-', '')
+        if _hyph_space != kw_lower:
+            _kw_variants.add(_hyph_space)
+        if _hyph_none != kw_lower and len(_hyph_none) > 2:
+            _kw_variants.add(_hyph_none)
+
         matched_in: List[str] = []
         partial_in: List[str] = []
 
@@ -474,7 +487,11 @@ def compute_ats_score(
                 matched_in.append(sec)
                 continue
             # Substring containment (handles compound terms like "machine learning")
-            whole_match = any(kw_lower in term or term in kw_lower for term in terms)
+            # Also checks hyphen/slash-normalised variants
+            whole_match = any(
+                any(v in term or term in v for term in terms)
+                for v in _kw_variants
+            )
             if whole_match:
                 matched_in.append(sec)
                 continue
