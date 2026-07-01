@@ -1979,7 +1979,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 self.session_dir.mkdir(parents=True, exist_ok=True)
             
             if self.session_id is None:
-                self.session_id = uuid.uuid4().hex[:8]
+                self.session_id = uuid.uuid4().hex
 
             session_data = {
                 'session_id': self.session_id,
@@ -2265,7 +2265,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             self.session_id = session_data['session_id']
             logger.debug("load_session: loaded session_id=%s from file", self.session_id)
         else:
-            self.session_id = uuid.uuid4().hex[:8]
+            self.session_id = uuid.uuid4().hex
             logger.debug(
                 "load_session: generated new session_id=%s (backward compat)",
                 self.session_id

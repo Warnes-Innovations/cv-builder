@@ -133,7 +133,7 @@ class SessionRegistry:
         instantiate ConversationManager + CVOrchestrator, registers the
         entry, and returns ``(session_id, entry)``.
         """
-        session_id = uuid.uuid4().hex[:8]
+        session_id = uuid.uuid4().hex
         now = datetime.now()
 
         manager, orchestrator = self._build_objects(config)

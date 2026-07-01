@@ -112,6 +112,40 @@ describe('closeAlertModal', () => {
   })
 })
 
+// ── HTML injection regression (GAP-65) ───────────────────────────────────
+
+describe('modal HTML injection regression (GAP-65)', () => {
+  beforeEach(() => { buildAlertModal(); buildConfirmModal(); })
+
+  it('showAlertModal does not inject raw HTML into title', () => {
+    showAlertModal('<img src=x onerror=alert(1)>', 'safe message')
+    const titleEl = document.getElementById('alert-modal-title')
+    expect(titleEl.innerHTML).not.toContain('<img')
+    expect(titleEl.textContent).toContain('<img src=x')
+  })
+
+  it('showAlertModal does not inject raw HTML into message', () => {
+    showAlertModal('Title', '<script>evil()</script>')
+    const msgEl = document.getElementById('alert-modal-message')
+    expect(msgEl.innerHTML).not.toContain('<script>')
+    expect(msgEl.textContent).toContain('<script>evil()</script>')
+  })
+
+  it('showConfirmModal does not inject raw HTML into title', () => {
+    showConfirmModal('<b onclick=evil()>click</b>', 'safe')
+    const titleEl = document.getElementById('confirm-modal-title')
+    expect(titleEl.innerHTML).not.toContain('<b ')
+    expect(titleEl.textContent).toContain('<b onclick=evil()>')
+  })
+
+  it('showConfirmModal does not inject raw HTML into message', () => {
+    showConfirmModal('Title', '<img src=x onerror=xss()>')
+    const msgEl = document.getElementById('confirm-modal-message')
+    expect(msgEl.innerHTML).not.toContain('<img')
+    expect(msgEl.textContent).toContain('<img src=x')
+  })
+})
+
 // ── showConfirmModal / closeConfirmModal ──────────────────────────────────
 
 describe('showConfirmModal', () => {

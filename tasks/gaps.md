@@ -629,7 +629,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; backend review found session IDs are truncated to 8 hex characters.
+**Status:** RESOLVED 2026-06-30 — Changed all three generation sites from `uuid.uuid4().hex[:8]` (32 bits) to `uuid.uuid4().hex` (full 128-bit UUID, 32 hex chars). Sites updated: `scripts/utils/session_registry.py:136`, `scripts/utils/conversation_manager.py:1982`, `scripts/utils/conversation_manager.py:2268`. Existing sessions are unaffected (IDs are read verbatim from `session.json`).
 **Description:** Current session IDs are adequate for a single-user localhost tool, but would be too guessable if the app were ever port-forwarded or exposed remotely.
 **Recommended resolution:** Increase session ID entropy to at least 64 bits or full UUID length and document any migration implications.
 
@@ -701,7 +701,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; frontend review found `tests/js/ui-helpers.test.js` asserts current `innerHTML` behavior but does not include an escaping/sanitization regression test.
+**Status:** RESOLVED 2026-06-30 — Added 4 HTML-injection regression tests in `tests/js/ui-helpers.test.js` (describe block: "modal HTML injection regression (GAP-65)"). Tests pass `<img src=x onerror=...>` and `<script>...</script>` payloads into both `showAlertModal` and `showConfirmModal` titles and messages; assert `innerHTML` does not contain the raw tag and `textContent` contains the literal source. Confirms `_setModalText()` (which uses `document.createTextNode`) correctly prevents XSS injection.
 **Description:** The current unsafe modal rendering path is not guarded by a regression test that would fail if raw HTML is injected.
 **Recommended resolution:** Add tests that pass HTML-looking content into alert/confirm helpers and assert it is escaped or sanitized before render.
 
