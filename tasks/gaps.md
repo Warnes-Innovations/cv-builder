@@ -741,7 +741,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; CI/CD review found local coverage scripts exist, but PR workflows do not publish coverage reports or failure artifacts.
+**Status:** RESOLVED 2026-06-30 — Added `--junit-xml=test-results/python-pr.xml` to the `python-tests` job in `integration-harness.yml` and an `upload-artifact@v4` step (name: `python-pr-results`) that uploads `test-results/` on every run including failures.
 **Description:** Reviewers get pass/fail signals but limited diagnostic context and no coverage visibility during PR review.
 **Recommended resolution:** Publish junit/coverage artifacts on PR runs and consider enforcing minimum thresholds.
 

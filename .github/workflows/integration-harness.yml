@@ -61,10 +61,19 @@ jobs:
 
       - name: Run Python unit tests
         run: |
+          mkdir -p test-results
           python -m pytest -q \
             --ignore=tests/ui \
             --deselect tests/test_api_integration.py::TestModelAPI::test_model_switch_error_uses_selected_provider_label \
+            --junit-xml=test-results/python-pr.xml \
             tests/
+
+      - name: Upload Python test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-pr-results
+          path: test-results/
 
   js-tests:
     name: JavaScript unit tests
