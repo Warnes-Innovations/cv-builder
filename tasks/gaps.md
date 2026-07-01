@@ -207,7 +207,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-H6, US-A5c
-**Status:** PARTIAL - updated 2026-07-01; ATS validation now runs at generation time — `validate_ats_report()` called in `generate_cv()` after all files are written (`cv_orchestrator.py:2217–2222`); results persisted to `metadata.json` as `ats_validation` object with `checks`, `page_count`, and `summary`. Remaining: several of the 16 checks are incomplete or advisory-only (keyword-density, PDF font embedding, full Heading 1 enforcement, complete JSON-LD required-field validation).
+**Status:** PARTIAL - updated 2026-07-01; ATS validation runs at generation time and results are persisted. Added `ats_keyword_density` check (top 5 keywords each appearing ≥2 times — warns on thin coverage) and `docx_year_only_dates` check (warns when year-only dates like "2020" are found without month). Added `pdf_fonts_embedded` check (verifies /FontDescriptor /FontFile* entries per page). Heading 1 enforcement already present at line 5207. Remaining: complete JSON-LD required-field validation beyond name+email (telephone, etc.) — very low priority.
 **Description:** The validation framework is real and user-visible, but it does not yet satisfy the full acceptance surface. Missing or incomplete areas include keyword-density checking, PDF font embedding validation, full Heading 1 enforcement, complete JSON-LD required-field validation, and generation-time persistence into `metadata.json`.
 **Recommended resolution:** Trigger ATS validation automatically after final generation, expand the validator to cover the missing checks, and persist validation results at generation time rather than only during finalise.
 

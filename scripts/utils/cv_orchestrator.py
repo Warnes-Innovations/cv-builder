@@ -5270,6 +5270,42 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                          (f'{len(missing)}/{len(ats_kws)} keywords missing: '
                           f'{", ".join(missing[:5])}{"…" if len(missing) > 5 else ""}'))
 
+            # 8b — keyword density (top 5 ATS keywords should appear ≥2 times)
+            if ats_kws:
+                top_kws = ats_kws[:5]
+                thin = []
+                for kw in top_kws:
+                    # Count occurrences using split to avoid partial matches
+                    count = text_lower.count(kw)
+                    # Slash/hyphen variants
+                    for part in kw.split('/'):
+                        part = part.strip()
+                        if part and len(part) > 1 and part != kw:
+                            count += text_lower.count(part)
+                    hyph_space = kw.replace('-', ' ')
+                    if hyph_space != kw:
+                        count += text_lower.count(hyph_space)
+                    if count < 2:
+                        thin.append(f'"{kw}" ({count}×)')
+                if not thin:
+                    _chk('ats_keyword_density', 'ATS keyword density', 'docx', 'pass',
+                         f'Top {len(top_kws)} keywords each appear ≥2 times')
+                else:
+                    _chk('ats_keyword_density', 'ATS keyword density', 'docx', 'warn',
+                         f'Low-frequency keywords: {", ".join(thin[:3])} — consider reinforcing')
+
+            # 7b — year-only dates (warn: ATS parsers expect month+year)
+            _year_only_re = _re.compile(
+                r'(?<!\d)\b(19|20)\d{2}\b(?!\s*[-–—]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December|\d))'
+            )
+            year_only_matches = _year_only_re.findall(docx_text)
+            if year_only_matches:
+                _chk('docx_year_only_dates', 'No year-only date entries', 'docx', 'warn',
+                     f'{len(year_only_matches)} year-only date(s) detected — add month for better ATS parsing')
+            else:
+                _chk('docx_year_only_dates', 'No year-only date entries', 'docx', 'pass',
+                     'All dates include month and year')
+
             # 16 — publications heading
             pub_headings = [p for p in heading_paras if 'publication' in p.text.lower()]
             if not pub_headings:
@@ -5445,6 +5481,48 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
         except Exception as exc:
             _chk('pdf_us_letter', 'PDF page size is US Letter', 'pdf', 'fail',
                  f'PDF check error: {exc}')
+
+    # ── PDF font embedding check ───────────────────────────────────────────
+    if pdf_path is None:
+        _chk('pdf_fonts_embedded', 'PDF fonts embedded', 'pdf', 'fail', 'PDF file not found')
+    else:
+        try:
+            import pypdf as _pypdf3
+            _reader3 = _pypdf3.PdfReader(str(pdf_path))
+            # Walk the /Font resource dictionary for each page
+            _unembedded: list = []
+            _seen_fonts: set = set()
+            for _page in _reader3.pages:
+                _res = _page.get('/Resources', {})
+                _font_dict = _res.get('/Font', {})
+                for _fname, _fobj in _font_dict.items():
+                    try:
+                        _font_name = str(_fobj.get('/BaseFont', _fname) or _fname)
+                        if _font_name in _seen_fonts:
+                            continue
+                        _seen_fonts.add(_font_name)
+                        # A font is embedded if it has a /FontDescriptor with /FontFile*
+                        _fd = _fobj.get('/FontDescriptor', {})
+                        _has_file = any(
+                            k in _fd for k in ('/FontFile', '/FontFile2', '/FontFile3')
+                        )
+                        if not _has_file:
+                            _unembedded.append(_font_name.lstrip('/'))
+                    except Exception:
+                        pass
+            if not _seen_fonts:
+                _chk('pdf_fonts_embedded', 'PDF fonts embedded', 'pdf', 'warn',
+                     'No font resources found in PDF — font embedding status unknown')
+            elif not _unembedded:
+                _chk('pdf_fonts_embedded', 'PDF fonts embedded', 'pdf', 'pass',
+                     f'All {len(_seen_fonts)} font(s) embedded')
+            else:
+                _names = ', '.join(_unembedded[:3])
+                _chk('pdf_fonts_embedded', 'PDF fonts embedded', 'pdf', 'warn',
+                     f'{len(_unembedded)} font(s) not embedded: {_names} — text may not extract correctly')
+        except Exception as exc:
+            _chk('pdf_fonts_embedded', 'PDF fonts embedded', 'pdf', 'warn',
+                 f'Font embedding check failed: {str(exc)[:100]}')
 
     # ── Page Count Validation ──────────────────────────────────────────────
     # Check CV length against ideal and absolute limits
