@@ -2214,6 +2214,13 @@ For manual generation:
         progress_docx_human['elapsed_ms'] = int((time.time() - progress_docx_human['start_time']) * 1000)
         generation_progress.append(progress_docx_human)
         files_created.append(human_docx.name)
+
+        # Run full ATS validation report now that all output files exist.
+        try:
+            _ats_checks, _ats_page_count = validate_ats_report(job_output_dir, job_analysis)
+        except Exception:
+            _ats_checks, _ats_page_count = [], None
+
         # Save metadata
         metadata = {
             'generation_date': datetime.now().isoformat(),
@@ -2239,6 +2246,15 @@ For manual generation:
             'rewrite_audit_mismatches': rewrite_audit_mismatches,
             'summary_warnings': selected_content.get('summary_warnings', []),
             'publication_warnings': selected_content.get('publication_warnings', []),
+            'ats_validation': {
+                'checks': _ats_checks,
+                'page_count': _ats_page_count,
+                'summary': {
+                    'pass': sum(1 for c in _ats_checks if c['status'] == 'pass'),
+                    'warn': sum(1 for c in _ats_checks if c['status'] == 'warn'),
+                    'fail': sum(1 for c in _ats_checks if c['status'] == 'fail'),
+                },
+            } if _ats_checks else None,
         }
 
         metadata_file = job_output_dir / 'metadata.json'

@@ -18,6 +18,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
   - **GAP-101 RESOLVED:** `highest_phase` watermark tracked in `conversation_manager.py._set_phase()`; exposed via `StatusResponse.highest_phase`; `workflow-steps.js` computes `.forward-skip` class and ⏩ badge for previously-completed-but-now-ahead steps; `handleStepClick()` shows `confirmDialog` before jumping forward.
   - **GAP-24 RESOLVED:** All original claims source-verified as already implemented. Added the one genuinely missing piece: `publication_warnings` list in `build_render_ready_content()` (`cv_orchestrator.py:3503–3508`) surfaced in `download-tab.js` as a ⚠ venue completeness panel.
   - **GAP-14 RESOLVED:** `RE_RUN_STEPS` extended to include `'layout'` (`workflow-steps.js:668`). Restore summary now includes position name and approved-rewrites count (`session-manager.js:469–490`, `_hydrateStatusDerivedState` stores `window._restoredPositionName`).
+  - **GAP-04 (partial advance):** ATS validation now runs at generation time — full 16-check report persisted to `metadata.json` as `ats_validation` object (`cv_orchestrator.py:2217–2222`). Missing-checks sub-items remain.
 - **0 new gaps added this cycle** (cycle 16 was fix-only).
 - **Most critical remaining open gaps (cycle 16):** GAP-252 (intake confirmation UI not connected), GAP-206 (phase-lock indicator), GAP-213 (publications absent from ATS DOCX), GAP-262 (raw error messages in layout-instruction.js), GAP-263 (dead-end placeholder steps), GAP-14 (workflow progress indicator), GAP-201 (clarifying questions all-at-once).
 
@@ -190,7 +191,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A6, US-A12, US-U1
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; applicant review confirmed `back_to_phase()` and `re_run_phase()` exist, but layout-only refinement is not routed into a working layout-review loop and per-cycle metadata refresh was not source-verified.
+**Status:** PARTIAL - updated 2026-07-01; `back_to_phase()` and `re_run_phase()` exist; layout-only refinement IS routed — `_ALLOWED_TRANSITIONS[None]` includes `Phase.LAYOUT_REVIEW` (`conversation_manager.py:65`), so layout re-entry works from any phase; ↻ button on Layout step added via GAP-14 fix (`workflow-steps.js:668`); `metadata.json` is written fresh on every `generate_cv()` call. Remaining: changed-item highlighting (new vs existing items not visually differentiated after rerun — same as GAP-18 remaining item).
 **Description:** Targeted re-entry is no longer missing, but the workflow is still incomplete. Earlier-stage re-entry works for analysis/customization/rewrite paths, while layout-only refinement, changed-item highlighting, and archive/metadata refresh guarantees remain unresolved.
 **Recommended resolution:** Preserve the existing re-entry APIs, then add layout-only routing, changed-vs-unchanged review highlighting, and explicit archive/metadata update rules for every regeneration cycle.
 
@@ -198,7 +199,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A9
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; applicant review confirmed finalise writes status/notes and creates a git commit, but Drive sync is still absent and the summary view does not show the requested keyword-match score.
+**Status:** PARTIAL - updated 2026-07-01; finalise writes status/notes and creates git commit; ATS score IS shown in the archive result card via `_renderFinaliseAtsItems(atsScore, atsKeywords)` (`web/finalise.js:316`). Remaining: Google Drive sync still absent (local-app deployment does not include Drive integration; deferred to multi-user deployment phase).
 **Description:** The finalise flow is no longer blank, but it is not complete relative to the story. The archive metadata is updated and git commit automation exists, yet the Google Drive sync leg and the hiring-facing summary of match quality are still missing.
 **Recommended resolution:** Extend finalise to perform Drive sync with visible success/failure handling and add a post-generation summary card that surfaces ATS match score, missing hard requirements, and archived artefact status.
 
@@ -206,7 +207,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-H6, US-A5c
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; HR/ATS review confirmed the ATS validation report exists, but it runs when the Download tab opens instead of automatically after generation, and several required checks remain incomplete or missing.
+**Status:** PARTIAL - updated 2026-07-01; ATS validation now runs at generation time — `validate_ats_report()` called in `generate_cv()` after all files are written (`cv_orchestrator.py:2217–2222`); results persisted to `metadata.json` as `ats_validation` object with `checks`, `page_count`, and `summary`. Remaining: several of the 16 checks are incomplete or advisory-only (keyword-density, PDF font embedding, full Heading 1 enforcement, complete JSON-LD required-field validation).
 **Description:** The validation framework is real and user-visible, but it does not yet satisfy the full acceptance surface. Missing or incomplete areas include keyword-density checking, PDF font embedding validation, full Heading 1 enforcement, complete JSON-LD required-field validation, and generation-time persistence into `metadata.json`.
 **Recommended resolution:** Trigger ATS validation automatically after final generation, expand the validator to cover the missing checks, and persist validation results at generation time rather than only during finalise.
 
@@ -495,7 +496,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-F1
-**Status:** PARTIAL - updated 2026-04-22; first-time user review confirmed the welcome/onboarding modal is now implemented (`session-manager.js:155–179`, `index.html:258–325`). The modal provides an app description and a "Get Started" button. Remaining issues: LLM provider setup is never mentioned as a prerequisite; the "Get Started" button closes the modal but does NOT navigate to the Job tab; the modal cannot be re-opened from anywhere in the UI. These remaining issues are tracked as GAP-76, GAP-77.
+**Status:** RESOLVED 2026-07-01 — all three remaining issues are now closed: (1) LLM provider prerequisite added to welcome modal (GAP-76, resolved 2026-06-29); (2) "Get Started" navigates to Job tab (GAP-77, resolved 2026-06-29); (3) modal re-openable via "? Help" button (GAP-247, resolved 2026-06-30).
 **Description:** First-time users cannot identify what the application does, what prerequisites exist, or how to start without external documentation. Undefined terms ("ATS," "Harvest," "Master CV," "Customise") appear immediately in the tab bar.
 **Recommended resolution:** Add a first-visit welcome screen that explains the application's purpose in one sentence, lists the two prerequisites (Master CV file and LLM provider), and provides a clear "Get started" CTA. Add inline definitions or tooltips for jargon terms ("ATS," "Harvest") on first encounter.
 
@@ -559,7 +560,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-C2, US-P3
-**Status:** PARTIAL - updated 2026-04-22; submission gating was added (commit `732a431`) — `submitBtn.disabled` is true while `persuasionWarningsAcknowledged === false`. However, the warning panel is collapsed by default (`rewrite-review.js:85`, `style="display:none"`) and the "✓ Acknowledged" button lives inside the collapsed section (`rewrite-review.js:92–96`). Users can trigger the acknowledgement by clicking the toggle without reading the warning content. The structural bypass remains open.
+**Status:** RESOLVED 2026-07-01 — re-verified: `submitBtn.disabled = (pending > 0) || !persuasionWarningsAcknowledged` (`rewrite-review.js:502`). The submit button is hard-disabled until the user expands the warning panel and clicks "✓ Acknowledged" (`rewrite-review.js:206`), which calls `setPersuasionWarningsAcknowledged(true)`. The "toggle without reading" bypass described in the gap report is not possible — the toggle only shows/hides the panel; clicking the toggle does not set `persuasionWarningsAcknowledged`. A `confirmModal` secondary guard at line 510–517 handles the edge case where the flag is false at submit time.
 **Description:** The persuasion warning system is present but easily bypassed by collapsing the panel. This violates the trust and compliance story requirement that users must acknowledge warnings before submitting rewrite decisions.
 **Recommended resolution:** Gate the rewrite decision submission button on at least one of: (a) the warning panel being expanded, or (b) the "Acknowledged" button having been clicked. Store the acknowledgement in session state to persist across page refreshes.
 
