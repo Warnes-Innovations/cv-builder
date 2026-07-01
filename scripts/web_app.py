@@ -144,6 +144,7 @@ class StatusResponse:
     generation_goals: Optional[Dict[str, Any]]
     skill_qualifier_overrides: Dict[str, Dict[str, Any]]
     ai_attribution: bool
+    highest_phase: Optional[str]
 
 
 @dataclass

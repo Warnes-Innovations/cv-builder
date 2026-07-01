@@ -997,7 +997,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-W1, US-W3
-**Status:** OPEN - discovered 2026-04-22; power user review found no mechanism to skip forward from a completed stage to a non-adjacent later stage. Users who want to jump from Customise directly to Spell Check must proceed through the normal sequential workflow.
+**Status:** RESOLVED 2026-07-01 — Added `highest_phase` watermark to session state (tracked in `conversation_manager.py:_set_phase()`). `StatusResponse` (`scripts/web_app.py`) and `/api/status` (`scripts/routes/status_routes.py`) now return `highest_phase`. Frontend `updateWorkflowSteps()` (`web/workflow-steps.js`) applies `.forward-skip` class to steps that were previously completed but are ahead of the current phase; `handleStepClick()` shows a `confirmDialog` ("Jump ahead?") before navigating. Styled with dashed blue border + ⏩ badge in `web/styles.css`.
 **Description:** Power users iterating on a specific aspect of their CV need to jump stages. The current workflow forces sequential progression even when intermediate stages are already completed.
 **Recommended resolution:** Allow forward-skip navigation when all intermediate stages have been previously completed. Guard forward-skip with a lightweight confirmation if any intermediate stage data may be stale.
 

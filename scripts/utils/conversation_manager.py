@@ -74,6 +74,13 @@ class ConversationManager:
         Phase.REFINEMENT:       set(),
     }
 
+    # Ordered phases for forward-skip watermark tracking (GAP-101).
+    _PHASE_ORDER: ClassVar[list] = [
+        Phase.INIT, Phase.JOB_ANALYSIS, Phase.CUSTOMIZATION, Phase.REWRITE_REVIEW,
+        Phase.SPELL_CHECK, Phase.GENERATION, Phase.LAYOUT_REVIEW,
+        Phase.FINAL_GENERATION, Phase.REFINEMENT,
+    ]
+
     def __init__(
         self,
         orchestrator: CVOrchestrator,
@@ -180,6 +187,19 @@ class ConversationManager:
                 {p.value for p in allowed} if allowed else "(none)",
             )
         self.state['phase'] = new_phase
+        # Track the highest phase ever reached so the UI can offer forward-skip
+        # navigation back to previously completed stages (GAP-101).
+        try:
+            new_idx = self._PHASE_ORDER.index(new_phase)
+            cur_highest = self.state.get('highest_phase', '')
+            try:
+                cur_idx = self._PHASE_ORDER.index(Phase(cur_highest))
+            except (ValueError, KeyError):
+                cur_idx = -1
+            if new_idx > cur_idx:
+                self.state['highest_phase'] = new_phase.value
+        except ValueError:
+            pass
 
     def _is_input_terminator(self, upper: str) -> bool:
         """Return True if *upper* is a recognised multi-line input terminator."""

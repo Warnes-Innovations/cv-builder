@@ -766,6 +766,7 @@ def create_blueprint(deps):
             generation_goals=conversation.state.get("generation_goals") or None,
             skill_qualifier_overrides=conversation.state.get("skill_qualifier_overrides") or {},
             ai_attribution=bool(conversation.state.get("ai_attribution", False)),
+            highest_phase=conversation.state.get("highest_phase") or None,
         )))
 
     @bp.get("/api/context-stats")

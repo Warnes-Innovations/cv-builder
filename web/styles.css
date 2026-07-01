@@ -155,6 +155,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .step.upcoming { background: #f8fafc; color: #cbd5e1; }
 .step.stale { background: #fffbeb; color: #92400e; cursor: pointer; }
 .step.stale-critical { background: #fef2f2; color: #b91c1c; cursor: pointer; }
+.step.forward-skip { background: #eff6ff; color: #1e40af; cursor: pointer; border: 1px dashed #93c5fd; }
+.step.forward-skip:hover { filter: brightness(0.93); }
 
 /* View-cursor ring: solid blue on whichever step is currently visible */
 .step.viewing { box-shadow: 0 0 0 2px #3b82f6; transition: box-shadow 0.2s ease; }
@@ -1441,6 +1443,7 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 .dirty-phases-callout h4 { margin: 0 0 6px; font-size: 14px; color: #9a3412; }
 .dirty-phases-callout p { margin: 0 0 10px; font-size: 13px; line-height: 1.5; color: #7c2d12; }
 .step-stale-badge { background: #fed7aa; color: #7c2d12; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 600; vertical-align: middle; }
+.step-fwd-badge { background: #dbeafe; color: #1e40af; border-radius: 4px; padding: 1px 4px; font-size: 10px; font-weight: 600; vertical-align: middle; }
 .layout-preview-status { margin-bottom: 8px; }
 .layout-preview-status-card { padding: 10px 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc; }
 .layout-preview-status-card.fresh { background: #f0fdf4; border-color: #bbf7d0; }

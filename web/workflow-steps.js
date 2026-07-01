@@ -632,6 +632,29 @@ async function resetBulletOrder(expId) {
   }
 }
 
+// ── Forward-skip phase watermark (GAP-101) ────────────────────────────────────
+
+// Backend phase ordering (matches conversation_manager.py _PHASE_ORDER).
+const _PHASE_PROGRESSION = [
+  'init', 'job_analysis', 'customization', 'rewrite_review',
+  'spell_check', 'generation', 'layout_review', 'final_generation', 'refinement',
+];
+
+// Minimum highestPhase index required for each step to be forward-skippable.
+const _STEP_FWD_PHASE_MIN = {
+  analysis:       1,   // job_analysis
+  customizations: 2,   // customization
+  rewrite:        3,   // rewrite_review
+  spell:          4,   // spell_check
+  layout:         5,   // generation
+  download:       7,   // final_generation
+  cover_letter:   7,
+  screening:      7,
+  interview_prep: 7,
+  thank_you:      7,
+  harvest:        7,
+};
+
 // ── Workflow step bar ─────────────────────────────────────────────────────────
 
 function updateWorkflowSteps(status) {
@@ -680,6 +703,11 @@ function updateWorkflowSteps(status) {
     harvest:        postLayout,
   };
 
+  // Forward-skip watermark (GAP-101): steps previously reached but not currently
+  // "done" according to the current phase are still navigable with a confirmation.
+  const highestPhaseIdx = _PHASE_PROGRESSION.indexOf(status.highest_phase || '');
+  const currentPhaseIdx = _PHASE_PROGRESSION.indexOf(phase);
+
   // Determine the active step from the backend phase string.
   const phaseToStep = {
     'init':             'job',
@@ -710,7 +738,7 @@ function updateWorkflowSteps(status) {
     if (!el) return;
     // Upcoming steps are fixed — never change their class.
     if (UPCOMING.has(step)) return;
-    el.classList.remove('active', 'completed', 'clickable', 'upcoming', 'stale');
+    el.classList.remove('active', 'completed', 'clickable', 'upcoming', 'stale', 'forward-skip');
 
     let label = STEP_LABELS[step] || step;
 
@@ -732,6 +760,11 @@ function updateWorkflowSteps(status) {
           onclick="event.stopPropagation();confirmReRunPhase('${step}')"
           style="font-size:0.8em;opacity:0.35;transition:opacity 0.15s;margin-left:2px;cursor:pointer;background:none;border:none;padding:0;color:inherit;line-height:1;">↻</button>`;
       }
+    } else if (highestPhaseIdx >= 0 && (_STEP_FWD_PHASE_MIN[step] ?? Infinity) <= highestPhaseIdx
+               && highestPhaseIdx > currentPhaseIdx) {
+      // Forward-skip: step was completed in a prior iteration but is ahead of current phase.
+      el.classList.add('forward-skip', 'clickable');
+      label += ' <span class="step-inline-badge step-fwd-badge" title="Previously completed — click to jump ahead">⏩</span>';
     }
 
     // Apply stale class for steps downstream of a re-run
@@ -742,10 +775,12 @@ function updateWorkflowSteps(status) {
     const isStaleCritical = el.classList.contains('stale-critical');
     const isActive        = el.classList.contains('active');
     const isCompleted     = el.classList.contains('completed');
+    const isFwdSkip       = el.classList.contains('forward-skip');
     const srState = isStaleCritical ? ' (critical — review required)'
       : isStale     ? ' (stale — results may be outdated)'
       : isActive    ? ' (current step)'
       : isCompleted ? ' (completed)'
+      : isFwdSkip   ? ' (previously completed — click to jump ahead)'
       : '';
     if (srState) label += `<span class="sr-only">${srState}</span>`;
 
@@ -806,6 +841,28 @@ function applyDirtyPhaseNavigationState() {
   });
 }
 
+// ── Step navigation helper ────────────────────────────────────────────────────
+
+function _doStepNavigate(step) {
+  const stepToTab = {
+    analysis:       'analysis',
+    customizations: 'goals',
+    rewrite:        'rewrite',
+    spell:          'spell',
+    layout:         'layout',
+    download:       'final_generate',
+    cover_letter:   'cover-letter',
+    screening:      'screening',
+    interview_prep: 'interview-prep',
+    thank_you:      'thank-you',
+    harvest:        'harvest',
+  };
+  const tabName = stepToTab[step];
+  if (!tabName) return;
+  if (typeof updateTabBarForStage === 'function') updateTabBarForStage(step);
+  switchTab(tabName);
+}
+
 // ── Step click (back-nav) ─────────────────────────────────────────────────────
 
 // Back-navigation: clicking a completed workflow step navigates to its viewer tab.
@@ -820,6 +877,20 @@ function handleStepClick(step) {
       switchTab('job');
     } else {
       showLoadJobPanel();
+    }
+    return;
+  }
+
+  // Forward-skip: previously reached stage that is ahead of current phase.
+  if (el.classList.contains('forward-skip')) {
+    const label = _STEP_DISPLAY[step] || step;
+    if (typeof confirmDialog === 'function') {
+      confirmDialog(
+        `Jump ahead to ${label}?\n\nIntermediate stages may need re-running if you make changes here.`,
+        { confirmLabel: 'Jump ahead', cancelLabel: 'Stay here' }
+      ).then(confirmed => { if (confirmed) _doStepNavigate(step); });
+    } else {
+      _doStepNavigate(step);
     }
     return;
   }
