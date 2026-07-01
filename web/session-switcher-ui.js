@@ -342,6 +342,7 @@ function _renderSessionTableRow(row) {
     actionHtml =
       `<button data-sm-action="load"   data-sm-path="${ep}" class="sm-btn sm-btn-open sm-btn-icon" title="Load session" aria-label="Load session"><i class="fa-solid fa-folder-open" aria-hidden="true"></i></button>` +
       `<button data-sm-action="rename" data-sm-path="${ep}" data-sm-idx="${idx}" class="sm-btn sm-btn-icon" title="Rename session" aria-label="Rename session"><i class="fa-solid fa-pencil" aria-hidden="true"></i></button>` +
+      `<button data-sm-action="duplicate" data-sm-path="${ep}" class="sm-btn sm-btn-icon" title="Duplicate session" aria-label="Duplicate session"><i class="fa-solid fa-copy" aria-hidden="true"></i></button>` +
       `<button data-sm-action="delete" data-sm-path="${ep}" class="sm-btn sm-btn-danger sm-btn-icon" title="Move to Trash" aria-label="Move session to Trash"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>`;
   }
 
@@ -481,6 +482,7 @@ function _handleSessionModalClick(e) {
   else if (action === 'submit-notes')  submitSessionNotesEdit(path, idx);
   else if (action === 'cancel-notes')  cancelSessionNotesEdit(idx);
   else if (action === 'load')          loadSessionAndCloseModal(path);
+  else if (action === 'duplicate')     _duplicateSessionFromModal(path);
   else if (action === 'delete')        _deleteSessionFromModal(path, e);
 }
 
@@ -718,6 +720,24 @@ async function _deleteSessionFromModal(path, event) {
   } catch (e) { if (typeof showToast === 'function') showToast(`Error: ${e.message}`, 'error'); }
 }
 
+// ── Duplicate session ─────────────────────────────────────────────────────────
+
+async function _duplicateSessionFromModal(path) {
+  try {
+    const res  = await fetch('/api/sessions/duplicate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      await _renderSessionsModalBody();
+      if (typeof showToast === 'function') showToast(`Session duplicated: "${data.new_name}"`);
+    } else {
+      if (typeof showToast === 'function') showToast(`Failed to duplicate session: ${data.error || 'Unknown error'}`, 'error');
+    }
+  } catch (e) { if (typeof showToast === 'function') showToast(`Error: ${e.message}`, 'error'); }
+}
+
 // ── Trash badge ───────────────────────────────────────────────────────────────
 
 async function _refreshTrashBadge() {
@@ -924,6 +944,7 @@ export {
   cancelSessionModalRename,
   submitSessionModalRename,
   _deleteSessionFromModal,
+  _duplicateSessionFromModal,
   _refreshTrashBadge,
   openTrashView,
   closeTrashView,

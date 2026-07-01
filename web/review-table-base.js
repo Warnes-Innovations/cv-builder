@@ -318,7 +318,17 @@ function populateAnalysisTab(result) {
     html += `<h1>${data.title || 'Role'}</h1>`;
     if (data.company) html += `<p class="company">🏢 ${data.company}</p>`;
     html += '<div class="meta">';
-    if (data.domain)     html += `<span class="meta-chip">🔬 ${data.domain}</span>`;
+    if (data.domain) {
+      const conf = data.domain_confidence;
+      let confLabel = '';
+      let confTitle = '';
+      if (typeof conf === 'number') {
+        if (conf >= 0.8) { confLabel = ''; confTitle = `Domain confidence: High (${Math.round(conf * 100)}%)`; }
+        else if (conf >= 0.6) { confLabel = ' ⚠'; confTitle = `Domain confidence: Medium (${Math.round(conf * 100)}%) — verify this is correct`; }
+        else { confLabel = ' ⚠'; confTitle = `Domain confidence: Low (${Math.round(conf * 100)}%) — the JD spans multiple domains; consider overriding`; }
+      }
+      html += `<span class="meta-chip" title="${escapeHtml(confTitle || 'Inferred technical domain')}">🔬 ${escapeHtml(data.domain)}${confLabel}</span>`;
+    }
     if (data.role_level) html += `<span class="meta-chip">📊 ${data.role_level}</span>`;
     if (data.suggested_summary) html += `<span class="meta-chip">💬 ${data.suggested_summary}</span>`;
     html += '</div></div>';

@@ -431,6 +431,52 @@ def create_blueprint(deps):
             logger.exception("Failed to rename session")
             return jsonify({"error": "Failed to rename session."}), 500
 
+    @bp.post("/api/sessions/duplicate")
+    def duplicate_session():
+        """Deep-copy a session directory to a new session ID.
+
+        Body: { "path": "<session.json relative path>" }
+        Returns: { "ok": true, "new_path": "<new session.json path>" }
+        """
+        import shutil as _shutil
+        import uuid as _uuid
+        data       = request.get_json(silent=True) or {}
+        path_param = data.get("path")
+        if not path_param:
+            return jsonify({"error": "Missing path"}), 400
+
+        output_base = _output_base()
+        safe_path   = _resolve_session_path(output_base, path_param)
+        if safe_path is None or not safe_path.exists():
+            return jsonify({"error": "Session file not found."}), 404
+
+        try:
+            src_dir  = safe_path.parent
+            new_id   = _uuid.uuid4().hex[:12]
+            new_name = f"{src_dir.name}_copy_{new_id}"
+            dest_dir = output_base / new_name
+            _shutil.copytree(str(src_dir), str(dest_dir))
+
+            # Update session.json: new session_id + append " (Copy)" to position_name
+            new_session_file = dest_dir / "session.json"
+            if new_session_file.exists():
+                with open(new_session_file, "r", encoding="utf-8") as f:
+                    sdata = json.load(f)
+                sdata["session_id"]    = new_id
+                state = sdata.get("state") or {}
+                orig_name = state.get("position_name") or src_dir.name
+                state["position_name"] = f"{orig_name} (Copy)"
+                sdata["state"]         = state
+                with open(new_session_file, "w", encoding="utf-8") as f:
+                    json.dump(sdata, f, indent=2, default=str)
+
+            new_rel = str(new_session_file.relative_to(output_base))
+            logger.info("Duplicated session %s → %s", src_dir.name, new_name)
+            return jsonify({"ok": True, "new_path": new_rel, "new_name": state.get("position_name", new_name)})
+        except Exception:
+            logger.exception("Failed to duplicate session")
+            return jsonify({"error": "Failed to duplicate session."}), 500
+
     @bp.get("/api/positions")
     def positions():
         entry = _get_session()

@@ -1059,7 +1059,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-R1
-**Status:** OPEN - discovered 2026-04-22; resume expert review found the domain badge in the analysis tab shows only the inferred value with no confidence level or disambiguation pathway. Ambiguous domain inferences are silently applied.
+**Status:** RESOLVED 2026-06-30 — The domain chip in `populateAnalysisTab` (`web/review-table-base.js:321`) now shows a confidence indicator. `domain_confidence` (already returned by the LLM as a 0–1 float) is read from the analysis data: ≥0.8 = no annotation; 0.6–0.8 = "⚠" + medium-confidence tooltip; <0.6 = "⚠" + low-confidence tooltip advising the user to verify the domain. The `title` attribute carries the full explanation.
 **Description:** The analysis prompt infers a technical domain that affects keyword weighting and skill ordering. When this inference is ambiguous or wrong, users have no signal to challenge it and no mechanism to override it.
 **Recommended resolution:** Include a `domain_confidence` field (High/Medium/Low) in the job analysis response and display it alongside the domain badge. For Low confidence, add an inline "Is this correct?" override that lets users select from alternatives or enter a custom domain.
 
@@ -1090,7 +1090,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** US-W3, US-S3
-**Status:** OPEN - discovered 2026-04-22; returning user review found the sessions modal offers Load, Rename, and Move to Trash but no Duplicate. Users who want to try a different customization approach cannot create a copy without starting a new session from scratch.
+**Status:** RESOLVED 2026-06-30 — Added `POST /api/sessions/duplicate` endpoint in `scripts/routes/session_routes.py`. Deep-copies the session directory under a new UUID-based name, updates `session_id` and `position_name` (" (Copy)" suffix) in the new `session.json`. Added a copy icon button (`data-sm-action="duplicate"`) to each saved-session row in the sessions modal (`web/session-switcher-ui.js`). `_duplicateSessionFromModal()` calls the endpoint and refreshes the modal on success.
 **Recommended resolution:** Add a "Duplicate session" action to the sessions modal row that creates a deep copy of the session directory and state file under a new session ID and name.
 
 ## GAP-114: Session Rename Uses `window.prompt()` Instead of In-App Modal
