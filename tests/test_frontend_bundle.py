@@ -344,6 +344,10 @@ class TestMainStartupBanner(unittest.TestCase):
             port=5050,
             debug=False,
         )
-        banner_text = mock_print.call_args.args[0]
-        self.assertIn('│ bundle   │ rebuilt', banner_text)
-        self.assertIn('│ built at │ 2026-03-23T10:15:00-04:00', banner_text)
+        # Check any print call (not just the last) because _evict_port() may
+        # also call print() when a process is already bound to the port.
+        all_printed = ' '.join(
+            call.args[0] for call in mock_print.call_args_list if call.args
+        )
+        self.assertIn('│ bundle   │ rebuilt', all_printed)
+        self.assertIn('│ built at │ 2026-03-23T10:15:00-04:00', all_printed)
