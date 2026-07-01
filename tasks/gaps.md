@@ -917,7 +917,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-M1, US-A10
-**Status:** OPEN - discovered 2026-04-22; master CV curator review confirmed the backend creates timestamped backup files before every `_save_master` write, but no UI surfaces the backup list or allows the user to restore a prior version.
+**Status:** RESOLVED — 2026-06-30. Added `openBackupHistoryModal()` and `restoreBackup(filename)` functions in `web/master-cv.js`. The modal fetches `GET /api/master-data/history` and renders a table of backups with timestamps, file sizes, and Restore buttons. Restore calls `POST /api/master-data/restore` with confirmation dialog; creates a safety backup of the current version first. A "🕐 Backups" button was added to the Master CV tab header alongside the Export JSON button.
 **Description:** The safety net for master data modifications exists but is invisible. Users who accidentally overwrite or corrupt their master CV data have no way to restore a backup without directly accessing the filesystem.
 **Recommended resolution:** Add a "Backup history" section to the Master CV tab (or a dedicated modal) that lists all available backups with timestamps and provides a "Restore this version" action. The restore action should create a new backup of the current state before restoring.
 

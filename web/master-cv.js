@@ -90,9 +90,14 @@ async function populateMasterTab(container = null) {
   content.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
       <h1 style="margin:0;">📚 Master CV Profile</h1>
-      <button class="action-btn secondary" onclick="exportMasterCV()" aria-label="Download Master_CV_Data.json">
-        ⬇️ Export JSON
-      </button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="action-btn secondary" onclick="openBackupHistoryModal()" aria-label="View backup history">
+          🕐 Backups
+        </button>
+        <button class="action-btn secondary" onclick="exportMasterCV()" aria-label="Download Master_CV_Data.json">
+          ⬇️ Export JSON
+        </button>
+      </div>
     </div>
     <p style="color:#6b7280;margin-bottom:12px;">
       This is your persistent master CV profile. Changes here update
@@ -819,7 +824,7 @@ async function populateMasterTab(container = null) {
   `;
   // Disable write controls when the workflow phase does not permit Master CV edits.
   if (!isEditable) {
-    const SAFE_ONCLICK = /^(exportMasterCV|validatePublicationsBib)\(/;
+    const SAFE_ONCLICK = /^(exportMasterCV|validatePublicationsBib|openBackupHistoryModal|restoreBackup)\(/;
     content.querySelectorAll('button').forEach(btn => {
       const onclick = (btn.getAttribute('onclick') || '').trim();
       if (SAFE_ONCLICK.test(onclick)) return;
@@ -2437,6 +2442,91 @@ async function deleteMasterCertification(idx, name) {
   );
 }
 
+// ── Backup History ────────────────────────────────────────────────────────────
+
+async function openBackupHistoryModal() {
+  const overlay = document.createElement('div');
+  overlay.id = 'backup-history-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-labelledby="backup-modal-title"
+         style="background:#fff;border-radius:10px;padding:24px 28px;max-width:560px;width:94%;
+                max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h3 id="backup-modal-title" style="margin:0;font-size:1.1em;color:#1e293b;">🕐 Backup History</h3>
+        <button id="backup-modal-close" style="background:none;border:none;font-size:1.3em;cursor:pointer;color:#64748b;" aria-label="Close">✕</button>
+      </div>
+      <p style="font-size:0.88em;color:#64748b;margin-bottom:16px;">
+        A backup is created automatically before every save. Restoring will preserve the current version as a new backup first.
+      </p>
+      <div id="backup-list-body" style="font-size:0.9em;">Loading…</div>
+    </div>`;
+  document.body.appendChild(overlay);
+  if (typeof trapFocus === 'function') trapFocus('backup-history-overlay');
+  const close = () => { overlay.remove(); if (typeof restoreFocus === 'function') restoreFocus(); };
+  document.getElementById('backup-modal-close').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+
+  try {
+    const res = await fetch('/api/master-data/history');
+    const data = await res.json();
+    const body = document.getElementById('backup-list-body');
+    if (!body) return;
+    if (!data.ok || !data.snapshots?.length) {
+      body.textContent = 'No backups found.';
+      return;
+    }
+    const rows = data.snapshots.map(s => {
+      const dt = new Date(s.mtime * 1000).toLocaleString();
+      const kb = (s.size / 1024).toFixed(1);
+      return `<tr>
+        <td style="padding:6px 8px;color:#1e293b;">${escapeHtml(dt)}</td>
+        <td style="padding:6px 8px;color:#64748b;white-space:nowrap;">${kb} KB</td>
+        <td style="padding:6px 8px;">
+          <button class="action-btn secondary" style="padding:3px 10px;font-size:0.82em;"
+            onclick="restoreBackup(${JSON.stringify(s.filename)})">Restore</button>
+        </td>
+      </tr>`;
+    }).join('');
+    body.innerHTML = `<table style="width:100%;border-collapse:collapse;">
+      <thead><tr style="border-bottom:1px solid #e2e8f0;">
+        <th style="padding:4px 8px;text-align:left;color:#475569;font-weight:600;">Saved</th>
+        <th style="padding:4px 8px;text-align:left;color:#475569;font-weight:600;">Size</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  } catch (_) {
+    const body = document.getElementById('backup-list-body');
+    if (body) body.textContent = 'Failed to load backup history.';
+  }
+}
+
+async function restoreBackup(filename) {
+  const confirmed = await (typeof confirmDialog === 'function'
+    ? confirmDialog('Restore this backup? The current version will be saved as a new backup first.')
+    : Promise.resolve(window.confirm('Restore this backup? The current version will be saved as a new backup first.')));
+  if (!confirmed) return;
+  try {
+    const res = await fetch('/api/master-data/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('backup-history-overlay')?.remove();
+      if (typeof restoreFocus === 'function') restoreFocus();
+      showAlertModal('✅ Restored', 'Master CV restored from backup. Reload the tab to see the updated data.');
+    } else {
+      showAlertModal('❌ Error', data.error || 'Restore failed.');
+    }
+  } catch (_) {
+    showAlertModal('❌ Error', 'Failed to restore backup.');
+  }
+}
+
 async function exportMasterCV() {
   try {
     const sessionId = window._currentSessionId;
@@ -2578,6 +2668,8 @@ export {
   saveMasterCertification,
   deleteMasterCertification,
   exportMasterCV,
+  openBackupHistoryModal,
+  restoreBackup,
   deleteMasterAchievement,
   deleteMasterSummary,
   loadPublications,
