@@ -1576,6 +1576,11 @@ def create_blueprint(deps):
                 )
 
             tone_hint = _TONE_GUIDANCE.get(tone, '')
+            # Auto-enrich the tone hint with culture signals from job analysis
+            culture_cues = job_analysis.get('culture_indicators') or []
+            if culture_cues:
+                cue_str = ', '.join(culture_cues[:5])
+                tone_hint = (tone_hint + f' Culture signals from JD: {cue_str}.').strip()
             company   = job_analysis.get('company', 'the company')
             role      = job_analysis.get('title', 'the position')
             keywords  = ', '.join((job_analysis.get('ats_keywords') or [])[:12])

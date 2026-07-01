@@ -1159,8 +1159,21 @@ def _harvest_add_skill(master: Dict, skill_name: Any) -> bool:
 
 
 def _harvest_add_summary_variant(master: Dict, new_summary: str) -> bool:
-    """Store ``new_summary`` as a named variant in master data."""
+    """Store ``new_summary`` as a named variant in master data.
+
+    Preserves the existing format: appends to a list if the field is a list;
+    adds a new key to the dict if the field is a dict.  This prevents the
+    format flip (dict→list) that caused GAP-94 rendering failures.
+    """
     variants = master.get('professional_summaries')
+    if isinstance(variants, dict):
+        if new_summary in variants.values():
+            return False
+        next_key = f'variant_{len(variants) + 1}'
+        while next_key in variants:
+            next_key = f'variant_{len(variants) + len(next_key)}'
+        variants[next_key] = new_summary
+        return True
     if isinstance(variants, list):
         if new_summary not in variants:
             variants.append(new_summary)

@@ -845,7 +845,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-M6, US-P5
-**Status:** OPEN - discovered 2026-04-22; hiring manager review found the cover letter generation prompt uses a fixed tone regardless of job analysis results. Culture indicators and company communication style identified in the analysis are not used to adjust cover letter formality.
+**Status:** RESOLVED 2026-06-30 — `culture_indicators` from job analysis are now injected into the tone hint sent to the cover letter LLM (`scripts/routes/master_data_routes.py`). Up to 5 culture signals (e.g. "fast-paced", "academic rigor", "async-first") are appended to the existing tone-style line so the LLM can calibrate formality and vocabulary automatically, while the user's explicit tone override still takes priority.
 **Description:** A cover letter for a startup engineering role should differ tonally from one for a pharmaceutical director role. The analysis data necessary to make this inference is available but unused.
 **Recommended resolution:** Include `culture_indicators` and `communication_style` fields from the job analysis in the cover letter generation prompt. Add a tone preference override in the cover letter settings.
 
@@ -941,7 +941,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-M2, US-A11
-**Status:** OPEN - discovered 2026-04-22; master CV curator review found that summary variants stored in `Master_CV_Data.json` can exist as a list (string array) in the original format but may be written back as a dict (keyed variants) after harvest. This inconsistency can cause rendering failures in the Summary review tab for sessions opened after harvest.
+**Status:** RESOLVED 2026-06-30 — Fixed `_harvest_add_summary_variant()` in `scripts/routes/generation_routes.py` to preserve the existing field format. If `professional_summaries` is a dict it adds a new key (`variant_N`) rather than replacing with a list. If it is a list it appends as before. This prevents the dict→list format flip that caused GAP-94. 2 new tests in `tests/test_finalise.py::TestHarvestAddSummaryVariant` cover the dict path.
 **Description:** The `summaries` field in master data has two valid formats (list vs dict), and the harvest write-back may produce a different format than was originally present.
 **Recommended resolution:** Standardize the `summaries` field to a single canonical format in `MASTER_CV_DATA_SPECIFICATION.md` and `master_data_validator.py`, then update the harvest write-back and all read paths to use that format consistently.
 
