@@ -391,13 +391,18 @@ function applyRewriteAction(id, outcome) {
   if (_decisionBadge) _decisionBadge.style.display = 'none';
 
   if (outcome === 'edit') {
-    // Hide the inline diff; show the editable textarea in its place.
+    // Keep the inline diff visible as a reference; show the editable textarea below it.
     const currentText = afterEl.querySelector(`#rw-after-text-${id}`)?.textContent
                      ?? rewriteDecisions[id]?.final_text
                      ?? '';
-    if (diffEl) diffEl.style.display = 'none';
+    if (diffEl) {
+      diffEl.style.display = '';
+      diffEl.style.opacity = '0.55';
+      diffEl.style.borderLeft = '3px solid #93c5fd';
+    }
     afterEl.style.display = 'block';
     afterEl.innerHTML = `
+      <div style="font-size:0.78em;color:#6b7280;margin-bottom:4px;">✎ Your edit (AI suggestion shown above for reference):</div>
       <textarea id="rw-textarea-${id}">${escapeHtml(currentText)}</textarea>
       <button class="rw-save-edit-btn" style="margin-top:6px"
               onclick="saveRewriteEdit('${id}')">Save</button>
@@ -413,8 +418,8 @@ function applyRewriteAction(id, outcome) {
       const txt = textarea.value;
       afterEl.innerHTML = `<span id="rw-after-text-${id}">${escapeHtml(txt)}</span>`;
     }
-    // Re-show the inline diff panel; hide the edit area.
-    if (diffEl) diffEl.style.display = '';
+    // Re-show the inline diff panel at full opacity; hide the edit area.
+    if (diffEl) { diffEl.style.display = ''; diffEl.style.opacity = ''; diffEl.style.borderLeft = ''; }
     afterEl.style.display = 'none';
 
     rewriteDecisions[id] = { outcome, final_text: null };
@@ -462,11 +467,13 @@ function saveRewriteEdit(id) {
   afterEl.innerHTML = `<span id="rw-after-text-${id}">${escapeHtml(editedText)}</span>`;
   afterEl.style.display = 'none';
 
-  // Regenerate the inline diff against the original text and re-show it.
+  // Regenerate the inline diff against the original text and re-show it (full opacity).
   if (diffEl) {
     const original = diffEl.dataset.original || '';
     diffEl.innerHTML = renderDiffHtml(computeWordDiff(original, editedText));
     diffEl.style.display = '';
+    diffEl.style.opacity = '';
+    diffEl.style.borderLeft = '';
   }
 
   rewriteDecisions[id] = { outcome: 'edit', final_text: editedText };
