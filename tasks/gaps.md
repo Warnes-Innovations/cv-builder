@@ -877,7 +877,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** LOW
 **Affected stories:** US-M3, US-R5
-**Status:** OPEN - discovered 2026-04-22; hiring manager review found skill categories are ordered by the user's existing master data category order, not by relevance to the target role. The most relevant skill category for a given role may appear last.
+**Status:** RESOLVED 2026-06-30 — Added `ConversationManager._rank_skill_categories_by_relevance()` static method (`scripts/utils/conversation_manager.py`). Called after `_normalize_recommendations()` in `_handle_recommend_customizations()`. Scores each category by counting recommended skills whose name overlaps with ATS keywords (+2) or are simply recommended (+1). Result stored in `recommendations['skill_category_order']` and `state['skill_category_order']`. Frontend (`web/skills-review.js`) applies the backend `skill_category_order` from `stateManager.getTabData('customizations')` to `window._skillCategoryOrder` on first table load.
 **Description:** Job analysis identifies which skills are most important for a role. This ranking is not used to re-order skill categories in the generated CV or in the skill review table.
 **Recommended resolution:** After job analysis, compute a per-category relevance score based on how many required/preferred skills belong to each category. Use this to suggest a re-ordered category display in the skills review tab and in the generated CV.
 

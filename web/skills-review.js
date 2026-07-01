@@ -516,6 +516,12 @@ async function buildSkillsReviewTable() {
       return aOrder - bOrder;
     });
     window._skillsOrdered = [...allSkills.filter(s => s._isNew), ...sortedMaster];
+
+    // Apply job-analysis-derived category order from backend (GAP-86)
+    const backendOrder = (stateManager.getTabData('customizations') || {}).skill_category_order;
+    if (Array.isArray(backendOrder) && backendOrder.length > 0) {
+      window._skillCategoryOrder = backendOrder;
+    }
   } else {
     const knownNames = new Set(window._skillsOrdered.map(s => (typeof s === 'string' ? s : s.name || s)));
     for (const sk of allSkills) {

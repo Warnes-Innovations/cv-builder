@@ -873,6 +873,17 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         self._normalize_recommendations(recommendations)
         self.state['customizations'] = recommendations
 
+        # Derive skill category order from job-analysis relevance (GAP-86)
+        if 'skill_category_order' not in recommendations or not recommendations['skill_category_order']:
+            ranked = self._rank_skill_categories_by_relevance(
+                recommendations,
+                self.orchestrator.master_data,
+                self.state.get('job_analysis') or {},
+            )
+            if ranked:
+                recommendations['skill_category_order'] = ranked
+                self.state['skill_category_order'] = ranked
+
         # Restore page budget into the new customizations dict — the LLM
         # output does not include user-set page constraints.
         if page_budget:
@@ -884,6 +895,50 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             'text': f"✓ Customization recommendations generated ({len(recommendations.get('recommended_experiences', []))} experiences, {len(recommendations.get('recommended_skills', []))} skills).",
             'context_data': {'customizations': recommendations},
         }
+
+    @staticmethod
+    def _rank_skill_categories_by_relevance(
+        recommendations: Dict,
+        master_data: Dict,
+        job_analysis: Dict,
+    ) -> list:
+        """Return skill categories sorted by relevance to the target role.
+
+        Score = number of recommended skills in each category whose name
+        overlaps with ATS keywords from the job analysis.  Categories with
+        at least one recommended skill appear first (in score order), then
+        remaining categories in their original master-data order.
+        """
+        ats_kws = {kw.lower() for kw in (job_analysis.get('ats_keywords') or [])}
+        recommended_names = {
+            s.lower() if isinstance(s, str) else str(s.get('name', '')).lower()
+            for s in (recommendations.get('recommended_skills') or [])
+        }
+
+        # Build category → score mapping from master data
+        category_scores: dict = {}
+        category_seen_order: list = []
+        master_skills = master_data.get('skills') or []
+        if isinstance(master_skills, dict):
+            master_skills = list(master_skills.values())
+        for skill in master_skills:
+            if not isinstance(skill, dict):
+                continue
+            cat = (skill.get('category') or 'General').strip()
+            if cat not in category_scores:
+                category_scores[cat] = 0
+                category_seen_order.append(cat)
+            name_lower = str(skill.get('name', '')).lower()
+            if name_lower in recommended_names:
+                # +2 if also an ATS keyword, +1 if only recommended
+                if any(name_lower in kw or kw in name_lower for kw in ats_kws):
+                    category_scores[cat] += 2
+                else:
+                    category_scores[cat] += 1
+
+        if not category_scores:
+            return []
+        return sorted(category_seen_order, key=lambda c: -category_scores.get(c, 0))
 
     @staticmethod
     def _estimate_cv_body_pages(
