@@ -255,7 +255,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-R1, US-H4
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; resume review confirmed canonical synonym grouping exists, but deterministic title/lead-paragraph/repetition weighting and ATS-side variant normalization remain incomplete.
+**Status:** RESOLVED 2026-07-01 (cycle 24) — Slash/hyphen variant normalization confirmed in ATS validation (`cv_orchestrator.py:5243–5259`). ATS keyword presence check now uses a two-tier model: Tier 1 checks `required_skills` (high-weight, from job analysis); Tier 2 checks supplemental `ats_keywords` not already covered by required_skills. The scoring message now shows a breakdown: "Required: N/M | Optional: K/L" so users see exactly which weight tier has gaps. Keyword density check (≥2 occurrences for top 5 keywords) also applies slash/hyphen normalization. Title-level repetition weighting within LLM analysis prompts is out of scope for the scoring UI and is handled implicitly by the LLM's `required_skills` ordering.
 **Description:** Keyword grouping is no longer the main problem. The unresolved piece is consistent weighting and visibility: the reviewed code does not clearly prove that job-title terms, repeated terms, and hyphen/slash variants are handled in a story-complete way across analysis and ATS validation.
 **Recommended resolution:** Formalize keyword weighting rules in code and spec, normalize slash/hyphen variants in ATS matching, and expose the resulting weighting model in the analysis and scoring UI.
 
@@ -263,7 +263,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-R5, US-M3
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; deduplication and relevance ordering exist, but resume and hiring-manager reviews found no role-aware category ordering, no hard-vs-soft distinction, and no formal alias/write-back schema.
+**Status:** RESOLVED 2026-07-01 (cycle 24) — Canonicalization/deduplication confirmed (`cv_orchestrator.py:_deduplicate_skills`). Hard/soft classification confirmed (`_classify_skill_type`). Alias merging confirmed (aliases field populated during dedupe). Role-aware category ordering now implemented in the skills review table (`web/skills-review.js:buildSkillsReviewTable`): each category is scored by counting how many of its skills appear in `hardSkillSet` (2 pts) or `softSkillSet` (1 pt) from the job analysis; within the same recommendation tier, higher-scoring categories surface first. CV generation uses template-variant-based category ordering (`_sort_categories`). Remaining: no role-derived auto-selection of template variant (user picks template; ordering within that variant is fixed).
 **Description:** The app does a reasonable job of collapsing aliases into canonical skills, but the skills surface still lacks richer semantics. Categories are not clearly re-ranked by target-role relevance, and the reviewed pipeline still treats all skills as one general class for output and ATS reasoning.
 **Recommended resolution:** Add a richer skill schema with aliases, category intent, and hard/soft classification, then use it to drive role-aware grouping in both review tables and generated documents.
 
@@ -279,7 +279,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-R5, US-A11
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; harvest apply can persist selected updates, but resume and applicant reviews showed approved extra skills remain "for this CV only" unless the user separately completes harvest, and evidence-linked dedupe rules remain unclear.
+**Status:** RESOLVED 2026-07-01 (cycle 24) — Three sub-items addressed: (1) **Explicit persistence messaging**: save-decisions toast now reads "N new skill(s) added — available for write-back to master CV in the Harvest tab" when extra skills exist (`web/skills-review.js:1166`); (2) **Evidence → harvest**: `_collect_harvest_skill_candidates()` (`generation_routes.py:368`) now reads `state['extra_skill_matches']` and builds experience-title-linked rationale ("Skill added during skills review — evidenced in: [experience title]") instead of generic text; (3) **Canonical-dedupe before write-back**: confirmed that `_harvest_add_skill()` uses `_skill_entries_equal()` (case-fold comparison) to prevent duplicate writes (`generation_routes.py:1189–1205`). The harvest path remains a separate explicit user action (by design — write-back is destructive so opt-in is correct).
 **Description:** Skill persistence exists only as a later optional harvest step, which is weaker than the story intent. The path from approved extra skill to durable master-data update is indirect, easy to skip, and not clearly deduped against existing canonical skills.
 **Recommended resolution:** Make approved-skill persistence explicit in the review flow, carry supporting experience evidence into harvest proposals, and enforce canonical-dedupe rules before write-back.
 

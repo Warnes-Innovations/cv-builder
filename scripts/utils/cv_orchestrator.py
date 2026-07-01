@@ -5232,9 +5232,10 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 _chk('docx_date_format_consistent', 'Consistent date formats', 'docx', 'fail',
                      f'Mixed formats — {" and ".join(sorted(found_fmts))} — standardise to one')
 
-            # 8 — ATS keywords
-            ats_kws = [k.lower() for k in job_analysis.get('ats_keywords', [])[:15]]
-            if not ats_kws:
+            # 8 — ATS keywords (two-tier: required-skill keywords take priority)
+            req_skills = [s.lower() for s in job_analysis.get('required_skills', [])[:10]]
+            ats_kws    = [k.lower() for k in job_analysis.get('ats_keywords', [])[:15]]
+            if not ats_kws and not req_skills:
                 _chk('ats_keyword_presence', 'ATS keyword presence', 'all', 'warn',
                      'No ATS keywords defined in job analysis')
             else:
@@ -5258,16 +5259,35 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                         return True
                     return False
 
-                missing = [kw for kw in ats_kws if not _kw_in_text(kw, text_lower)]
+                # Tier 1: required-skill keywords (high-weight; should all be present)
+                req_set      = set(req_skills)
+                missing_req  = [kw for kw in req_skills if not _kw_in_text(kw, text_lower)]
+                # Tier 2: supplemental ATS keywords not already covered by required_skills
+                supplemental = [kw for kw in ats_kws if kw not in req_set][:10]
+                missing_supp = [kw for kw in supplemental if not _kw_in_text(kw, text_lower)]
+                all_checked  = req_skills + supplemental
+                missing      = missing_req + missing_supp
+
+                tier_parts = []
+                if req_skills:
+                    tier_parts.append(f'Required: {len(req_skills) - len(missing_req)}/{len(req_skills)}')
+                if supplemental:
+                    tier_parts.append(f'Optional: {len(supplemental) - len(missing_supp)}/{len(supplemental)}')
+                tier_note = ' | '.join(tier_parts)
+
                 if not missing:
                     _chk('ats_keyword_presence', 'ATS keyword presence', 'all', 'pass',
-                         f'All {len(ats_kws)} ATS keywords present')
-                elif len(missing) <= max(1, len(ats_kws) // 3):
+                         f'All {len(all_checked)} keywords present ({tier_note})')
+                elif not missing_req and missing_supp:
                     _chk('ats_keyword_presence', 'ATS keyword presence', 'all', 'warn',
-                         f'{len(missing)} keyword(s) missing: {", ".join(missing[:5])}')
+                         f'Required skills all present; {len(missing_supp)} optional keyword(s) missing: '
+                         f'{", ".join(missing_supp[:5])}{"…" if len(missing_supp) > 5 else ""}')
+                elif len(missing) <= max(1, len(all_checked) // 3):
+                    _chk('ats_keyword_presence', 'ATS keyword presence', 'all', 'warn',
+                         f'{len(missing)} keyword(s) missing ({tier_note}): {", ".join(missing[:5])}')
                 else:
                     _chk('ats_keyword_presence', 'ATS keyword presence', 'all', 'fail',
-                         (f'{len(missing)}/{len(ats_kws)} keywords missing: '
+                         (f'{len(missing)}/{len(all_checked)} keywords missing ({tier_note}): '
                           f'{", ".join(missing[:5])}{"…" if len(missing) > 5 else ""}'))
 
             # 8b — keyword density (top 5 ATS keywords should appear ≥2 times)

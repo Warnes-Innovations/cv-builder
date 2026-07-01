@@ -529,12 +529,28 @@ async function buildSkillsReviewTable() {
   if (!window._skillsOrdered) {
     const recommendationOrder = { 'Emphasize': 0, 'Include': 1, 'De-emphasize': 2, 'Omit': 3 };
     const masterSkills  = allSkills.filter(s => !s._isNew);
+
+    // Role-aware category scoring: categories with more required/nice-to-have job skills rank higher
+    const categoryScores = {};
+    for (const skill of masterSkills) {
+      const cat  = typeof skill === 'object' ? (skill.category || '') : '';
+      const name = (typeof skill === 'string' ? skill : skill.name || skill).toLowerCase();
+      if (cat) {
+        categoryScores[cat] = (categoryScores[cat] || 0)
+          + (hardSkillSet.has(name) ? 2 : softSkillSet.has(name) ? 1 : 0);
+      }
+    }
+
     const sortedMaster  = masterSkills.slice().sort((a, b) => {
       const aName  = typeof a === 'string' ? a : a.name || a;
       const bName  = typeof b === 'string' ? b : b.name || b;
-      const aOrder = recommendationOrder[getSkillRecommendation(aName, data)] ?? 3;
-      const bOrder = recommendationOrder[getSkillRecommendation(bName, data)] ?? 3;
-      return aOrder - bOrder;
+      const aRec   = recommendationOrder[getSkillRecommendation(aName, data)] ?? 3;
+      const bRec   = recommendationOrder[getSkillRecommendation(bName, data)] ?? 3;
+      if (aRec !== bRec) return aRec - bRec;
+      // Within the same recommendation tier, surface role-relevant categories first
+      const aCat   = typeof a === 'object' ? (a.category || '') : '';
+      const bCat   = typeof b === 'object' ? (b.category || '') : '';
+      return (categoryScores[bCat] || 0) - (categoryScores[aCat] || 0);
     });
     window._skillsOrdered = [...allSkills.filter(s => s._isNew), ...sortedMaster];
 
@@ -1163,7 +1179,9 @@ async function submitSkillDecisions() {
 
     if (response.ok) {
       stateManager.markContentChanged();
-      const extraNote = extraSkills.length > 0 ? ` (${extraSkills.length} session-only skill(s) added for this CV only)` : '';
+      const extraNote = extraSkills.length > 0
+        ? ` (${extraSkills.length} new skill(s) added — available for write-back to master CV in the Harvest tab)`
+        : '';
       showToast(`Skill decisions saved (${count} items)${extraNote}`);
       scheduleAtsRefresh();
       // Persist saved decisions locally so the UI reflects them immediately

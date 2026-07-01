@@ -365,11 +365,26 @@ def _collect_harvest_skill_candidates(conversation) -> List[Dict[str, Any]]:
             existing['label'] = f"New skill — {skill_name}"
             existing['rationale'] = rationale
 
+    extra_skill_matches = state.get('extra_skill_matches') or {}
+    # Build experience-id → title lookup for richer harvest rationale
+    _exp_list  = conversation.orchestrator.master_data.get('experience') or []
+    _exp_title = {str(e.get('id', '')): str(e.get('title', '')) for e in _exp_list if e.get('id')}
+
+    def _skill_evidence_rationale(raw_skill: Any) -> str:
+        sk_name = raw_skill if isinstance(raw_skill, str) else (
+            raw_skill.get('name', '') if isinstance(raw_skill, dict) else ''
+        )
+        exp_ids = extra_skill_matches.get(sk_name) or []
+        if exp_ids:
+            titles = [_exp_title.get(str(eid), eid) for eid in exp_ids[:3]]
+            return f'Skill added during skills review — evidenced in: {", ".join(t for t in titles if t)}.'
+        return 'Skill was added during the skills review step.'
+
     for raw_skill in materialized.get('extra_skills') or []:
-        _add_skill_candidate(raw_skill, 'new_skill', 'Skill was added during the skills review step.')
+        _add_skill_candidate(raw_skill, 'new_skill', _skill_evidence_rationale(raw_skill))
 
     for raw_skill in customizations.get('new_skills_added') or []:
-        _add_skill_candidate(raw_skill, 'new_skill', 'Skill was added during the skills review step.')
+        _add_skill_candidate(raw_skill, 'new_skill', _skill_evidence_rationale(raw_skill))
 
     post_answers = state.get('post_analysis_answers') or {}
     for key, val in post_answers.items():
