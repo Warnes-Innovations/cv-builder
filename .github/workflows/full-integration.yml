@@ -8,7 +8,7 @@ name: Full Integration Suite
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/multi-user-deployment]
   schedule:
     # Nightly at 02:00 UTC
     - cron: '0 2 * * *'
