@@ -31,6 +31,7 @@ function syncRewriteGlobals() {
   window._rewritePanelCache = _rewritePanelCache;
   window.acceptAllRewrites = acceptAllRewrites;
   window.rejectAllRewrites = rejectAllRewrites;
+  window.toggleRewriteCompactMode = toggleRewriteCompactMode;
 }
 
 function _decisionsKey() {
@@ -272,6 +273,7 @@ function renderRewritePanel(rewrites, warnings = []) {
         <span class="tally-pending">⏳ Pending: <strong id="tally-pending">${rewrites.length}</strong></span>
         <button class="rw-bulk-btn" onclick="acceptAllRewrites()" title="Accept all pending suggestions">✓ Accept All</button>
         <button class="rw-bulk-btn rw-bulk-reject" onclick="rejectAllRewrites()" title="Reject all pending suggestions">✗ Reject All</button>
+        <button class="rw-compact-toggle" id="rw-compact-btn" onclick="toggleRewriteCompactMode()" title="Switch to compact single-line view for rapid review">⊞ Compact</button>
         <button class="submit-rewrites-btn" id="submit-rewrites-btn" disabled
                 onclick="submitRewriteDecisions()">Submit All Decisions</button>
       </div>
@@ -669,6 +671,19 @@ function rejectAllRewrites() {
   updateRewriteTally();
 }
 
+/** Toggle compact (single-line) card display for rapid review. */
+function toggleRewriteCompactMode() {
+  const cards = document.getElementById('rewrite-cards');
+  const btn   = document.getElementById('rw-compact-btn');
+  if (!cards) return;
+  const isCompact = cards.classList.toggle('compact-mode');
+  if (btn) {
+    btn.classList.toggle('active', isCompact);
+    btn.textContent = isCompact ? '⊟ Full View' : '⊞ Compact';
+    btn.title = isCompact ? 'Switch to full card view' : 'Switch to compact single-line view for rapid review';
+  }
+}
+
 export {
   rewriteDecisions,
   _rewritePanelCache,
@@ -685,6 +700,7 @@ export {
   submitRewriteDecisions,
   acceptAllRewrites,
   rejectAllRewrites,
+  toggleRewriteCompactMode,
 };
 
 syncRewriteGlobals();

@@ -223,7 +223,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-A4, US-U5
-**Status:** PARTIAL - updated 2026-07-01; added `_scrollToNextPendingRewrite(afterId)` — after each accept or reject decision, auto-scrolls to next undecided card. Edit mode now keeps diff visible at 55% opacity with a blue left border as a reference panel above the textarea (`applyRewriteAction` / `saveRewriteEdit` — `rewrite-review.js:394–411`); saves restore diff to full opacity. "Accept All" / "Reject All" bulk buttons already implemented. Remaining: compact/side-by-side review layout not implemented.
+**Status:** RESOLVED 2026-07-01 (cycle 22) — Added "⊞ Compact" toggle button to the rewrite tally bar (`web/rewrite-review.js:275`). `toggleRewriteCompactMode()` toggles a `.compact-mode` CSS class on `#rewrite-cards`. In compact mode each card collapses to a single-line diff (via `-webkit-line-clamp: 1`) with rationale, keywords, persuasion badges, and the "Reconsider inclusion" link hidden (`web/styles.css`). Toggling back restores the full card view. All prior rewrite-review efficiency work (auto-scroll to next pending, edit-mode diff reference panel, Accept All / Reject All) remains intact.
 **Description:** The rewrite review surface is functional, but it still falls short of the more refined UX criteria. Users can review, edit, accept, and reject proposals, yet editing interrupts comparison context and larger rewrite batches lack an efficient rapid-review mode.
 **Recommended resolution:** Keep inline diff as the default, preserve before/after context while editing, and add a keyboard-friendly sequential review mode for larger rewrite sets.
 

@@ -1298,6 +1298,20 @@ details.rewrite-rationale summary { cursor: pointer; color: #374151; font-weight
 /* Back-link to Customise */
 .rw-back-link { font-size: 12px; color: #64748b; text-decoration: none; margin-left: auto; white-space: nowrap; }
 .rw-back-link:hover { color: #3b82f6; text-decoration: underline; }
+/* Compact-view toggle button */
+.rw-compact-toggle { padding: 5px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; font-size: 13px; font-weight: 600; color: #64748b; transition: all 0.15s; }
+.rw-compact-toggle:hover { background: #f1f5f9; border-color: #94a3b8; }
+.rw-compact-toggle.active { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+/* Compact mode — collapses each card to a single-line row */
+#rewrite-cards.compact-mode .rewrite-card { margin-bottom: 4px; border-radius: 6px; }
+#rewrite-cards.compact-mode .rewrite-card-header { padding: 6px 12px; }
+#rewrite-cards.compact-mode .rewrite-card-body { padding: 0 12px 6px; }
+#rewrite-cards.compact-mode .rewrite-inline-diff { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; padding: 4px 8px; margin-bottom: 4px; font-size: 0.85em; }
+#rewrite-cards.compact-mode .rewrite-keywords { display: none; }
+#rewrite-cards.compact-mode details.rewrite-rationale { display: none; }
+#rewrite-cards.compact-mode .rewrite-persuasion-badges { display: none; }
+#rewrite-cards.compact-mode .rw-back-link { display: none; }
+#rewrite-cards.compact-mode .rewrite-actions { padding-bottom: 4px; }
 
 /* ===== DOWNLOAD SECTION ===== */
 .download-section { margin: 24px 0; }
