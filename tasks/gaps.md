@@ -1043,7 +1043,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-R1, US-H4
-**Status:** OPEN - discovered 2026-04-22; resume expert and HR/ATS reviews confirmed the synonym map (`scripts/data/synonym_map.json`) is used for ATS scoring but the analysis UI displays each keyword variant separately. Users see "ML" and "Machine Learning" as distinct entries without any grouping or annotation.
+**Status:** RESOLVED 2026-06-30 — `populateAnalysisTab` in `web/review-table-base.js` now fetches `GET /api/synonym-map` (already implemented) once per session and annotates each ATS keyword badge. Aliases show their canonical expansion (e.g. "ML = Machine Learning"); canonical terms show their known aliases (e.g. "Machine Learning (ML, AI)"). Annotations appear as small grey text inside each keyword badge and as a `title` tooltip. The synonym map is cached in `_synonymMapCache` after the first fetch.
 **Description:** Without synonym grouping in the analysis display, users cannot determine which keyword variants are being resolved together and cannot make informed decisions about which form to use in their CV text.
 **Recommended resolution:** Update `populateAnalysisTab` (`web/review-table-base.js`) to group canonical keywords with their synonym aliases. Mark each keyword as "exact match", "synonym match", or "partial match".
 

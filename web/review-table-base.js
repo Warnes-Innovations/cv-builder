@@ -294,7 +294,40 @@ async function showTableBasedReview() {
 
 // ── Analysis tab ──────────────────────────────────────────────────────────
 
-function populateAnalysisTab(result) {
+// Cached synonym map: alias (lower) → canonical, and canonical (lower) → [aliases]
+let _synonymMapCache = null;
+async function _loadSynonymMap() {
+  if (_synonymMapCache) return _synonymMapCache;
+  try {
+    const sessionId = stateManager.getSessionId && stateManager.getSessionId();
+    const url = sessionId ? `/api/synonym-map?session_id=${encodeURIComponent(sessionId)}` : '/api/synonym-map';
+    const res  = await fetch(url);
+    if (!res.ok) return (_synonymMapCache = {});
+    const raw  = await res.json();
+    const aliasToCanon = {};
+    const canonToAliases = {};
+    Object.entries(raw).forEach(([alias, canon]) => {
+      aliasToCanon[alias.toLowerCase()] = canon;
+      const cl = canon.toLowerCase();
+      (canonToAliases[cl] = canonToAliases[cl] || []).push(alias);
+    });
+    _synonymMapCache = { aliasToCanon, canonToAliases };
+  } catch (_) { _synonymMapCache = {}; }
+  return _synonymMapCache;
+}
+
+function _kwSynonymAnnotation(kw, synMap) {
+  if (!synMap || (!synMap.aliasToCanon && !synMap.canonToAliases)) return '';
+  const kl = kw.toLowerCase();
+  // Is kw an alias? Show canonical form.
+  if (synMap.aliasToCanon[kl]) return ` = ${synMap.aliasToCanon[kl]}`;
+  // Is kw a canonical form? Show aliases.
+  const aliases = synMap.canonToAliases && synMap.canonToAliases[kl];
+  if (aliases && aliases.length) return ` (${aliases.join(', ')})`;
+  return '';
+}
+
+async function populateAnalysisTab(result) {
   const content = document.getElementById('document-content');
   try {
     // result may already be a parsed object (e.g. coming from stateManager) or a
@@ -368,12 +401,16 @@ function populateAnalysisTab(result) {
       html += '</ul></div>';
     }
 
-    // ── Section 4: ATS Keywords with rank badges ──────────────────────────
+    // ── Section 4: ATS Keywords with rank badges and synonym annotations ──
     const atsKws = Array.isArray(data.ats_keywords) ? data.ats_keywords : [];
     if (atsKws.length > 0) {
+      const synMap = await _loadSynonymMap();
       html += '<div class="analysis-section"><h2>🔑 ATS Keywords <small style="font-weight:400;color:#64748b;font-size:12px;">(higher rank = higher priority)</small></h2><div class="kw-badges">';
       atsKws.forEach((kw, idx) => {
-        html += `<span class="kw-badge"><span class="kw-rank">#${idx + 1}</span>${kw}</span>`;
+        const annotation = _kwSynonymAnnotation(kw, synMap);
+        const titleAttr  = annotation ? ` title="Synonym: ${escapeHtml(kw + annotation)}"` : '';
+        const annotHtml  = annotation ? `<span style="font-size:10px;color:#64748b;margin-left:3px;">${escapeHtml(annotation)}</span>` : '';
+        html += `<span class="kw-badge"${titleAttr}><span class="kw-rank">#${idx + 1}</span>${escapeHtml(kw)}${annotHtml}</span>`;
       });
       html += '</div></div>';
     }
