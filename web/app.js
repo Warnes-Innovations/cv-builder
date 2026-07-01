@@ -124,7 +124,22 @@ function setupEventListeners() {
   document.getElementById('analyze-btn').addEventListener('click', analyzeJob);
   document.getElementById('recommend-btn').addEventListener('click', () => sendAction('recommend_customizations'));
   document.getElementById('generate-btn').addEventListener('click', async () => {
-    // Check if we need to sync review decisions to backend before generating CV
+    // Soft gate: warn if customisation items have never been individually reviewed (GAP-116)
+    const reviewed = window._explicitlyReviewed || { experiences: new Set(), skills: new Set() };
+    const totalExp = (window._experiencesOrdered || []).length;
+    const totalSkill = Object.keys(userSelections?.skills || {}).length;
+    const unreviewedExp = totalExp - reviewed.experiences.size;
+    const unreviewedSkill = totalSkill - reviewed.skills.size;
+    const unreviewedTotal = Math.max(0, unreviewedExp) + Math.max(0, unreviewedSkill);
+    if (unreviewedTotal > 0) {
+      const parts = [];
+      if (unreviewedExp > 0) parts.push(`${unreviewedExp} experience entr${unreviewedExp === 1 ? 'y' : 'ies'}`);
+      if (unreviewedSkill > 0) parts.push(`${unreviewedSkill} skill${unreviewedSkill === 1 ? '' : 's'}`);
+      const ok = window.confirm(
+        `${parts.join(' and ')} not individually reviewed — the AI's recommendation will be used for these.\n\nProceed anyway?`
+      );
+      if (!ok) return;
+    }
     if (userSelections && (Object.keys(userSelections.experiences).length > 0 || Object.keys(userSelections.skills).length > 0)) {
       appendMessage('system', 'Applying your review decisions...');
       // Decisions were already submitted via submitExperienceDecisions/submitSkillDecisions

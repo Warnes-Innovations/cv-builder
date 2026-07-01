@@ -768,11 +768,15 @@ function handleActionClick(itemId, action, type) {
   clickedBtn.classList.add('active');
   if (clickedBtn.hasAttribute('aria-pressed')) clickedBtn.setAttribute('aria-pressed', 'true');
 
-  // Store selection
+  // Store selection and record explicit review
   if (type === 'experience') {
     userSelections.experiences[itemId] = action;
+    window._explicitlyReviewed = window._explicitlyReviewed || { experiences: new Set(), skills: new Set() };
+    window._explicitlyReviewed.experiences.add(itemId);
   } else {
     userSelections.skills[itemId] = action;
+    window._explicitlyReviewed = window._explicitlyReviewed || { experiences: new Set(), skills: new Set() };
+    window._explicitlyReviewed.skills.add(itemId);
   }
   _updatePageEstimate();
 }

@@ -1112,7 +1112,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-C2, US-A3
-**Status:** OPEN - discovered 2026-04-22; trust and compliance review confirmed that the experience, skill, and achievement review panels allow users to proceed to generation without making explicit decisions on any individual item. Undecided items silently default to the LLM's `recommendation` field without user confirmation.
+**Status:** RESOLVED 2026-06-30 — `handleActionClick()` in `web/review-table-base.js` now records each individual item click into `window._explicitlyReviewed.{experiences,skills}` Sets. The generate button handler in `web/app.js` computes unreviewed counts before calling `fetchAndReviewRewrites()`; if any items remain unreviewed, a `window.confirm()` soft gate displays "X experience entries / Y skills not individually reviewed — the AI's recommendation will be used for these. Proceed anyway?" Users can dismiss to return and review, or confirm to proceed.
 **Description:** The rewrite review panel requires explicit per-item decisions before submission is enabled. The customization stage has no equivalent gate. This asymmetry means users can produce a final CV where all customization decisions were made by the LLM without any user review.
 **Recommended resolution:** Add a soft gate to the Generate action that warns when any customization section has items that have never been individually reviewed. Display a count: "3 experience recommendations not reviewed — proceed anyway?" The rewrite panel's existing gate pattern is the reference implementation.
 
