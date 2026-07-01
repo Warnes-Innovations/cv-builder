@@ -1253,7 +1253,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 ## GAP-131: No Blocking Gate at Customise Stage
 
 **Priority:** MED
-**Status:** Open
+**Status:** RESOLVED 2026-07-01 — Added advisory warning to `_confirmProceedToGenerate()` in `web/spell-check.js`. After the tagline hard-gate check, the modal now reads `decisions_confirmed` from `/api/status` and adds "⚠ No customisation sections reviewed — experience, skill, and achievement selections are all LLM defaults." when none of `experiences`, `skills`, or `achievements` appear in `decisions_confirmed`. The warning is informational (non-blocking) because the tagline hard block already prevents completely unreviewed generation; the new message ensures users are aware of un-reviewed defaults without adding friction for intentional skip. Tagline hard block still enforced.
 **Found:** 2026-06-18 cvUiReview
 Users can proceed from the Customise stage to CV generation without visiting or making any decision on experience, skill, or achievement items. All customisation decisions silently inherit LLM defaults. There is no progress gate or minimum-decision requirement (e.g., "Review at least one experience item") before the Generate button becomes active at the Customise stage.
 **Source evidence:** `web/app.js:123–130`; trust-compliance.md 2026-06-18.

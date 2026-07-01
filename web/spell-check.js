@@ -376,6 +376,7 @@ async function _confirmProceedToGenerate() {
   const atsScore = stateManager.getAtsScore();
   const freshness = stateManager.getLayoutFreshness();
   const genState = stateManager.getGenerationState();
+  const decisionsConfirmed = status?.decisions_confirmed || {};
   const lines = ['Your CV is ready to generate.'];
   if (atsScore !== null && atsScore !== undefined && typeof atsScore.overall === 'number') {
     lines.push(`Current ATS score: ${Math.round(atsScore.overall)}%`);
@@ -387,6 +388,10 @@ async function _confirmProceedToGenerate() {
   }
   if (freshness.isStale) {
     lines.push(`⚠ ${freshness.ariaLabel}`);
+  }
+  const reviewedSections = ['experiences', 'skills', 'achievements'].filter(k => decisionsConfirmed[k]);
+  if (reviewedSections.length === 0) {
+    lines.push('⚠ No customisation sections reviewed — experience, skill, and achievement selections are all LLM defaults.');
   }
   lines.push('\nProceed?');
   return showConfirmModal('📄 Proceed to Generate?', lines.join('\n'), 'Generate Now');
