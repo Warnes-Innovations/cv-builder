@@ -10,13 +10,36 @@ Session management routes — list, load, save, delete, rename, trash, new/claim
 import json
 import logging
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from flask import Blueprint, jsonify, request
 from werkzeug.utils import safe_join
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Session-listing cache (GAP-53) — avoids rglob on every request
+# ---------------------------------------------------------------------------
+_SESSION_LIST_CACHE: dict[str, tuple[float, Any]] = {}
+_SESSION_LIST_TTL: float = 5.0
+
+
+def _session_list_cache_get(key: str):
+    entry = _SESSION_LIST_CACHE.get(key)
+    if entry and time.monotonic() - entry[0] < _SESSION_LIST_TTL:
+        return entry[1]
+    return None
+
+
+def _session_list_cache_set(key: str, value) -> None:
+    _SESSION_LIST_CACHE[key] = (time.monotonic(), value)
+
+
+def _session_list_cache_invalidate(key: str) -> None:
+    _SESSION_LIST_CACHE.pop(key, None)
 
 
 def _load_json_guarded(path, timeout_sec: float = 0.5):
@@ -110,6 +133,7 @@ def create_blueprint(deps):
         try:
             with entry.lock:
                 conversation._save_session()
+            _session_list_cache_invalidate(str(_output_base()))
             session_file = str(conversation.session_dir / "session.json") if conversation.session_dir else None
             return jsonify({"ok": True, "session_file": session_file})
         except Exception:
@@ -121,6 +145,11 @@ def create_blueprint(deps):
         """List saved sessions, most recent first."""
         try:
             output_base = _output_base()
+            cache_key = str(output_base)
+            cached = _session_list_cache_get(cache_key)
+            if cached is not None:
+                return jsonify(cached)
+
             trash_dir   = output_base / '.trash'
             sessions = []
             if output_base.exists():
@@ -153,7 +182,9 @@ def create_blueprint(deps):
                         ))
                     except Exception:
                         logger.debug("Skipping unreadable session file during list: %s", session_file, exc_info=True)
-            return jsonify(SessionListResponse(sessions=sessions[:20]).to_dict())
+            response_dict = SessionListResponse(sessions=sessions[:20]).to_dict()
+            _session_list_cache_set(cache_key, response_dict)
+            return jsonify(response_dict)
         except Exception:
             logger.exception("Failed to list sessions")
             return jsonify({"error": "Failed to list sessions."}), 500
@@ -625,6 +656,7 @@ def create_blueprint(deps):
                 "error": "master_cv_missing",
                 "master_cv_path": str(p),
             }), 503
+        _session_list_cache_invalidate(str(_output_base()))
         return jsonify({"ok": True, "session_id": sid, "redirect_url": f"/?session={sid}"})
 
     @bp.post("/api/sessions/claim")

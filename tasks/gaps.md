@@ -605,7 +605,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; backend review found the session-listing endpoints repeatedly call `rglob("session.json")` with no caching.
+**Status:** RESOLVED 2026-06-30 — Added module-level `_SESSION_LIST_CACHE` dict with 5-second TTL in `scripts/routes/session_routes.py`. `GET /api/sessions` checks the cache first and only runs `rglob("session.json")` on a cache miss. Cache is invalidated immediately on `POST /api/save` and `POST /api/sessions/new` to prevent stale results after mutations.
 **Description:** Session browsing scales linearly with on-disk session count because the directory tree is rescanned on each request.
 **Recommended resolution:** Add a short-lived cache or timestamp-based invalidation layer for session discovery results.
 
