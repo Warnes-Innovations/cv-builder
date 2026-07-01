@@ -19,7 +19,6 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import ClassVar, Dict, List, Optional
-import readline  # Enable line editing and history for input()
 
 from .llm_client import LLMClient, LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
 from .cv_orchestrator import CVOrchestrator
@@ -2201,21 +2200,20 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             return False
 
     def _setup_readline(self):
-        """Configure readline and load input history."""
+        """Configure readline and load input history (CLI only)."""
         try:
-            # Ensure parent exists
+            import readline  # noqa: PLC0415
             self.history_file.parent.mkdir(parents=True, exist_ok=True)
-            # Load history if available
             if self.history_file.exists():
                 readline.read_history_file(str(self.history_file))
             readline.set_history_length(1000)
         except Exception:
-            # Silently ignore if readline is unavailable or fails
             pass
 
     def _save_readline_history(self):
-        """Persist readline input history to file."""
+        """Persist readline input history to file (CLI only)."""
         try:
+            import readline  # noqa: PLC0415
             readline.write_history_file(str(self.history_file))
         except Exception:
             pass

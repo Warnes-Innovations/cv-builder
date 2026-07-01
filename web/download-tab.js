@@ -397,6 +397,17 @@ async function populateDownloadTab(cvData) {
     </div>`;
   }
 
+  const rewriteAuditMismatches = (cvData.metadata?.rewrite_audit_mismatches || []);
+  if (rewriteAuditMismatches.length) {
+    html += `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Rewrite content mismatch (${rewriteAuditMismatches.length}) — accepted rewrites not found in generated text:</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;list-style:none;">
+        ${rewriteAuditMismatches.map(m => `<li style="font-size:0.85em;margin-bottom:6px;"><strong>${escapeHtml(m.location || m.type)}</strong><br><span style="color:#374151;">Expected: <em>"${escapeHtml((m.expected || '').slice(0, 120))}${(m.expected || '').length > 120 ? '…' : ''}"</em></span><br><span style="color:#9ca3af;">Actual: <em>"${escapeHtml((m.actual || '').slice(0, 120))}${(m.actual || '').length > 120 ? '…' : ''}"</em></span></li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#7f1d1d;">These accepted rewrites may not have been applied. Re-generate the CV or check the rewrite review step.</p>
+    </div>`;
+  }
+
   const overlapWarnings = (cvData.date_overlap_warnings || []);
   if (overlapWarnings.length) {
     html += `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:16px;">

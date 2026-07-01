@@ -2103,6 +2103,10 @@ For manual generation:
         year_only_date_warnings = self._detect_year_only_dates(
             selected_content.get('experiences', [])
         )
+        rewrite_audit_mismatches = self._verify_rewrite_audit_alignment(
+            selected_content,
+            rewrite_audit or [],
+        )
         if date_overlap_warnings:
             logger.warning(
                 "Employment date overlaps detected (%d): %s",
@@ -2230,6 +2234,7 @@ For manual generation:
             'long_bullet_warnings': long_bullet_warnings,
             'sparse_experience_warnings': sparse_experience_warnings,
             'year_only_date_warnings': year_only_date_warnings,
+            'rewrite_audit_mismatches': rewrite_audit_mismatches,
             'summary_warnings': selected_content.get('summary_warnings', []),
         }
 
@@ -4856,6 +4861,84 @@ Include one entry per candidate. Do not omit any candidate."""
                         ),
                     })
         return warnings
+
+    @staticmethod
+    def _verify_rewrite_audit_alignment(
+        selected_content: Dict,
+        rewrite_audit: List[Dict],
+    ) -> List[Dict]:
+        """Compare accepted/edited rewrite audit entries against the generated content.
+
+        For each audit entry where ``outcome`` is ``'accept'`` or ``'edit'``, the
+        expected final text is looked up in *selected_content* at the location
+        described by the entry's ``type`` and ``location`` fields.  Any divergence
+        between the expected text and the actual rendered text is returned as a
+        mismatch warning.
+
+        Returns a list of dicts: {id, type, location, expected, actual}.
+        """
+        mismatches: List[Dict] = []
+
+        def _norm(text: str) -> str:
+            return ' '.join((text or '').split())
+
+        for entry in rewrite_audit or []:
+            outcome = entry.get('outcome', '')
+            if outcome not in ('accept', 'edit'):
+                continue
+
+            if outcome == 'accept':
+                expected = entry.get('proposed', '') or ''
+            else:
+                expected = entry.get('final', '') or ''
+
+            if not expected:
+                continue
+
+            kind     = entry.get('type', '')
+            loc      = entry.get('location', '')
+            entry_id = entry.get('id', '<unknown>')
+            actual   = None
+
+            if kind == 'summary' or loc == 'summary':
+                actual = selected_content.get('summary', '') or ''
+
+            elif kind == 'bullet':
+                m = re.match(r'^([^.]+)\.achievements\[(\d+)\]$', loc)
+                if m:
+                    exp_id  = m.group(1)
+                    ach_idx = int(m.group(2))
+                    for exp in selected_content.get('experiences', []):
+                        if exp.get('id') == exp_id:
+                            achs = exp.get('achievements', [])
+                            if 0 <= ach_idx < len(achs):
+                                ach = achs[ach_idx]
+                                actual = ach.get('text', '') if isinstance(ach, dict) else str(ach)
+                            break
+
+            elif kind == 'skill_rename':
+                original = entry.get('original', '')
+                for skill in selected_content.get('skills', []):
+                    if isinstance(skill, dict) and skill.get('name') == expected:
+                        actual = expected
+                        break
+                    if isinstance(skill, dict) and skill.get('name') == original:
+                        actual = original
+                        break
+
+            if actual is None:
+                continue
+
+            if _norm(actual) != _norm(expected):
+                mismatches.append({
+                    'id':       entry_id,
+                    'type':     kind,
+                    'location': loc,
+                    'expected': expected,
+                    'actual':   actual,
+                })
+
+        return mismatches
 
 
 # ── Module-level ATS validation ──────────────────────────────────────────────

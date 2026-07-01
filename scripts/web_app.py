@@ -80,14 +80,6 @@ from utils.bibtex_parser import (
 from utils.session_registry import (
     SessionRegistry, SessionNotFoundError, SessionOwnedError
 )
-from routes.generation_routes import (
-    _compile_harvest_candidates,
-    _harvest_add_skill,
-    _harvest_add_summary_variant,
-    _harvest_apply_bullet,
-)
-
-
 # ---------------------------------------------------------------------------
 # API response DTOs — typed dataclasses for the most critical endpoints.
 #
@@ -528,34 +520,6 @@ def _maybe_refresh_dynamic_cache_in_background(provider: str) -> None:
         name=f"model-catalog-{provider}",
     )
     t.start()
-
-
-def _text_similarity(query: str, target: str) -> float:
-    """Simple word-overlap similarity score (0–1) for response library search."""
-    _STOP = {
-        'a', 'an', 'the', 'and', 'or', 'for', 'in', 'of', 'to', 'is',
-        'are', 'was', 'were', 'i', 'my', 'your', 'we', 'our', 'this',
-        'that', 'it', 'with', 'as', 'by', 'at', 'on', 'be', 'have',
-        'has', 'had', 'do', 'does', 'did', 'will', 'would', 'can',
-        'could', 'should', 'may', 'might', 'from', 'into', 'about',
-    }
-    def _tok(s: str) -> set:
-        return {w.lower() for w in re.findall(r'\w+', s) if w.lower() not in _STOP and len(w) > 2}
-    q_tok = _tok(query)
-    t_tok = _tok(target)
-    if not q_tok or not t_tok:
-        return 0.0
-    return len(q_tok & t_tok) / max(len(q_tok), len(t_tok))
-
-
-_SCREENING_FORMAT_GUIDANCE: dict = {
-    'direct':    ('Direct/Concise',    '150–200 words',
-                  'Be clear and direct. State the answer, give one concrete example, close concisely.'),
-    'star':      ('STAR',              '250–350 words',
-                  'Use the STAR framework: Situation, Task, Action, Result. 1–2 sentences each.'),
-    'technical': ('Technical Detail', '400–500 words',
-                  'Provide full technical depth: context, methodology, tools/technologies, outcomes with metrics.'),
-}
 
 
 def _web_app_build_objects(args, auth_manager):

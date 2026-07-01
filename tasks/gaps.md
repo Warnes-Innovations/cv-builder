@@ -391,7 +391,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-R7, US-A5c
-**Status:** OPEN - discovered 2026-04-20; resume expert review found no automated check that verifies the generated CV text for each bullet matches the accepted `rewrite_audit[*].final` value. Silently divergent generated text is undetected.
+**Status:** RESOLVED 2026-06-30 — `CVOrchestrator._verify_rewrite_audit_alignment(selected_content, rewrite_audit)` added to `scripts/utils/cv_orchestrator.py`. Called in `generate_cv()` after `build_render_ready_content()`; result stored as `metadata['rewrite_audit_mismatches']`. `web/download-tab.js` renders a red callout block listing each mismatch with expected vs actual text. 9 unit tests added in `tests/test_cv_orchestrator.py::TestVerifyRewriteAuditAlignment`.
 **Description:** The rewrite audit stores the user-approved final text per bullet, but there is no post-generation step that diffs the generated document text against those approved values and flags discrepancies.
 **Recommended resolution:** After generation, compare each generated bullet span against the corresponding `rewrite_audit[*].final` value and surface any mismatch as a validation warning before allowing finalisation.
 
@@ -581,7 +581,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; backend review found `_text_similarity` and `_SCREENING_FORMAT_GUIDANCE` are duplicated between `scripts/web_app.py` and `scripts/routes/master_data_routes.py`, creating drift risk for shared logic and prompt guidance.
+**Status:** RESOLVED 2026-06-30 — The `_text_similarity` function and `_SCREENING_FORMAT_GUIDANCE` dict in `scripts/web_app.py` were dead code (defined but never called there); the only actual callers are in `scripts/routes/master_data_routes.py` which already has its own copies. Removed both dead definitions from `web_app.py`, eliminating the duplication.
 **Description:** Shared backend utility logic is copied into multiple modules rather than extracted into one supported utility location.
 **Recommended resolution:** Move the duplicated helpers into a shared utility module and update both callers to import the same implementation.
 
@@ -589,7 +589,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; backend review found readline setup, CLI prompts, and interactive methods live inside `scripts/utils/conversation_manager.py`, which is also imported by the web app.
+**Status:** RESOLVED 2026-06-30 — Removed the top-level `import readline` from `scripts/utils/conversation_manager.py`. Replaced it with lazy `import readline` inside `_setup_readline()` and `_save_readline_history()` — the only two methods that use it. The web-app import path no longer triggers readline initialisation at startup. The CLI-only interactive methods (`start_interactive`, `_get_multiline_input`, `_handle_quit_confirmation`) remain in ConversationManager for now; a full adapter-module split is tracked as a follow-up if needed.
 **Description:** CLI-specific concerns are mixed into a core session/state class used by the Flask application, increasing startup overhead and coupling two runtimes.
 **Recommended resolution:** Move CLI-only behavior into a dedicated runner or adapter module and keep `ConversationManager` focused on shared orchestration/state responsibilities.
 
@@ -597,7 +597,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; backend review found `scripts/web_app.py` imports private helper functions from `scripts/routes/generation_routes.py`, breaking blueprint encapsulation.
+**Status:** RESOLVED 2026-06-30 — The `from routes.generation_routes import (_compile_harvest_candidates, _harvest_add_skill, _harvest_add_summary_variant, _harvest_apply_bullet)` block in `scripts/web_app.py` was dead code (imported but never called in that module). Removed the import entirely. Blueprint encapsulation is now clean.
 **Description:** The main Flask app reaches into route-internal helpers instead of depending on a stable shared service boundary.
 **Recommended resolution:** Extract shared harvest/generation helpers into a neutral support module and stop importing private route internals into `web_app.py`.
 

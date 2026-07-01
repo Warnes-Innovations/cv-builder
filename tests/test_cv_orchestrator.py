@@ -2281,5 +2281,79 @@ class TestDetectYearOnlyDates(unittest.TestCase):
         self.assertEqual(self._run(['not a dict']), [])
 
 
+class TestVerifyRewriteAuditAlignment(unittest.TestCase):
+    """Unit tests for CVOrchestrator._verify_rewrite_audit_alignment (GAP-27)."""
+
+    def _run(self, selected_content, rewrite_audit):
+        return CVOrchestrator._verify_rewrite_audit_alignment(selected_content, rewrite_audit)
+
+    def _summary_content(self, text):
+        return {'summary': text, 'experiences': [], 'skills': []}
+
+    def test_empty_audit_returns_empty(self):
+        self.assertEqual(self._run({'summary': 'foo'}, []), [])
+
+    def test_rejected_entry_ignored(self):
+        audit = [{'id': 'r1', 'type': 'summary', 'location': 'summary',
+                  'proposed': 'new text', 'final': None, 'outcome': 'reject'}]
+        self.assertEqual(self._run(self._summary_content('old text'), audit), [])
+
+    def test_accepted_summary_matches(self):
+        audit = [{'id': 'a1', 'type': 'summary', 'location': 'summary',
+                  'proposed': 'polished summary', 'final': None, 'outcome': 'accept'}]
+        result = self._run(self._summary_content('polished summary'), audit)
+        self.assertEqual(result, [])
+
+    def test_accepted_summary_mismatch_detected(self):
+        audit = [{'id': 'a1', 'type': 'summary', 'location': 'summary',
+                  'proposed': 'polished summary', 'final': None, 'outcome': 'accept'}]
+        result = self._run(self._summary_content('different text'), audit)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['id'], 'a1')
+        self.assertEqual(result[0]['expected'], 'polished summary')
+        self.assertEqual(result[0]['actual'], 'different text')
+
+    def test_edited_summary_uses_final(self):
+        audit = [{'id': 'e1', 'type': 'summary', 'location': 'summary',
+                  'proposed': 'original proposed', 'final': 'user edited', 'outcome': 'edit'}]
+        result = self._run(self._summary_content('user edited'), audit)
+        self.assertEqual(result, [])
+
+    def test_bullet_matches(self):
+        content = {
+            'summary': '',
+            'skills': [],
+            'experiences': [
+                {'id': 'exp_001', 'achievements': [{'text': 'Led team of 5'}, {'text': 'Shipped product'}]},
+            ],
+        }
+        audit = [{'id': 'b1', 'type': 'bullet', 'location': 'exp_001.achievements[1]',
+                  'proposed': 'Shipped product', 'final': None, 'outcome': 'accept'}]
+        self.assertEqual(self._run(content, audit), [])
+
+    def test_bullet_mismatch_detected(self):
+        content = {
+            'summary': '',
+            'skills': [],
+            'experiences': [
+                {'id': 'exp_001', 'achievements': [{'text': 'Led team'}]},
+            ],
+        }
+        audit = [{'id': 'b1', 'type': 'bullet', 'location': 'exp_001.achievements[0]',
+                  'proposed': 'Led cross-functional team of 5 engineers', 'final': None, 'outcome': 'accept'}]
+        result = self._run(content, audit)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['expected'], 'Led cross-functional team of 5 engineers')
+
+    def test_whitespace_normalised_no_mismatch(self):
+        audit = [{'id': 'a1', 'type': 'summary', 'location': 'summary',
+                  'proposed': 'polished  summary', 'final': None, 'outcome': 'accept'}]
+        result = self._run(self._summary_content('polished summary'), audit)
+        self.assertEqual(result, [])
+
+    def test_none_audit_returns_empty(self):
+        self.assertEqual(self._run({'summary': 'x'}, None), [])
+
+
 if __name__ == "__main__":
     unittest.main()
