@@ -665,7 +665,7 @@ function updateWorkflowSteps(status) {
   const UPCOMING = new Set();
 
   // Steps that support LLM re-execution via /api/re-run-phase
-  const RE_RUN_STEPS = new Set(['analysis', 'customizations', 'rewrite', 'spell']);
+  const RE_RUN_STEPS = new Set(['analysis', 'customizations', 'rewrite', 'spell', 'layout']);
 
   // Base label for each step (used when injecting ↻ button)
   const STEP_LABELS = {

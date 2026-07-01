@@ -1,14 +1,25 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-01 (cycle 15)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-01 (cycle 16)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), 2026-06-29 (cycle 9), 2026-06-30 (cycles 10–11), 2026-06-30 (cycle 12), 2026-06-30 (cycle 13), and 2026-06-30 (cycle 14)
-- independent heuristic UX evaluation (all cycles through 2026-06-30 cycle 14)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), 2026-06-29 (cycle 9), 2026-06-30 (cycles 10–11), 2026-06-30 (cycle 12), 2026-06-30 (cycle 13), 2026-06-30 (cycle 14), and 2026-07-01 (cycle 15–16)
+- independent heuristic UX evaluation (all cycles through 2026-07-01 cycle 16)
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270.
+
+## 2026-07-01 (Cycle 16) Reconciliation Notes
+
+- **5 gaps resolved (fixes implemented this cycle):**
+  - **GAP-69 RESOLVED:** GitHub Actions `codeql`, `js-tests`, and `integration-harness` jobs deduplicated into three reusable workflows (`.github/workflows/reusable-codeql.yml`, `reusable-js-unit-tests.yml`, `reusable-html-harness.yml`). Both `full-integration.yml` and `integration-harness.yml` call them via `uses:`.
+  - **GAP-71 RESOLVED:** `scripts/requirements.txt` now includes `anthropic>=0.18.0`, `openai>=1.0.0`, and `sentence-transformers>=2.2.0`; intentional CI vs conda splits documented in both requirements file headers and `.github/copilot-instructions.md`.
+  - **GAP-101 RESOLVED:** `highest_phase` watermark tracked in `conversation_manager.py._set_phase()`; exposed via `StatusResponse.highest_phase`; `workflow-steps.js` computes `.forward-skip` class and ⏩ badge for previously-completed-but-now-ahead steps; `handleStepClick()` shows `confirmDialog` before jumping forward.
+  - **GAP-24 RESOLVED:** All original claims source-verified as already implemented. Added the one genuinely missing piece: `publication_warnings` list in `build_render_ready_content()` (`cv_orchestrator.py:3503–3508`) surfaced in `download-tab.js` as a ⚠ venue completeness panel.
+  - **GAP-14 RESOLVED:** `RE_RUN_STEPS` extended to include `'layout'` (`workflow-steps.js:668`). Restore summary now includes position name and approved-rewrites count (`session-manager.js:469–490`, `_hydrateStatusDerivedState` stores `window._restoredPositionName`).
+- **0 new gaps added this cycle** (cycle 16 was fix-only).
+- **Most critical remaining open gaps (cycle 16):** GAP-252 (intake confirmation UI not connected), GAP-206 (phase-lock indicator), GAP-213 (publications absent from ATS DOCX), GAP-262 (raw error messages in layout-instruction.js), GAP-263 (dead-end placeholder steps), GAP-14 (workflow progress indicator), GAP-201 (clarifying questions all-at-once).
 
 ## 2026-06-30 (Cycle 14) Reconciliation Notes
 
@@ -275,7 +286,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-U1, US-A12
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; workflow chips, active/completed states, and guarded back-navigation exist, but restore messaging lacks richer context and not every completed stage exposes a visible re-run affordance.
+**Status:** RESOLVED 2026-07-01 — `RE_RUN_STEPS` extended to include `'layout'` (`workflow-steps.js:668`) so the ↻ button now appears on all completed eligible steps (analysis, customisations, rewrite, spell, layout). Restore summary enhanced (`session-manager.js:469–490`): `_hydrateStatusDerivedState` stores `window._restoredPositionName` from `statusData.position_name`; `_appendRestoredDecisionsSummary` includes position name ("Restored for [Role] at stage: …") and approved-rewrites count alongside ATS score and experience/skill counts.
 **Description:** The workflow indicator is no longer missing, but it is not yet complete as an orientation system. The stage chips do not fully cover the story's requirements for rerun discoverability, rich session restore context, and stage-specific user confidence.
 **Recommended resolution:** Add explicit rerun affordances for all eligible completed stages, expand restore messaging with last activity and preserved decisions, and align step labels with the actual stage names and actions.
 
@@ -307,7 +318,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A12, US-U1, US-A6
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; rerun endpoints exist and preserve downstream state, but applicant review found rerun affordances only for some stages, no clear clarification-amend path for analysis reruns, and no changed-item highlighting.
+**Status:** PARTIAL - updated 2026-07-01; rerun endpoints exist and preserve downstream state; all eligible stages now have ↻ affordances (analysis, customisations, rewrite, spell, layout — `workflow-steps.js:668`). Remaining: no clarification-amend path for analysis reruns (user cannot edit prior answers before rerun) and no changed-item highlighting (new vs existing results not visually differentiated).
 **Description:** The core rerun mechanism exists, so the original gap is no longer unresolved at the foundation level. What remains is story-complete UX and rerun context management across all eligible stages.
 **Recommended resolution:** Expose rerun on every supported completed stage, allow clarification editing as part of analysis reruns, and compare old vs new results so only changed or new items require re-review.
 
@@ -359,9 +370,16 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A3, US-R2, US-M4, US-M7
-**Status:** OPEN - discovered 2026-03-19 11:36 ET; applicant, resume, and hiring-manager reviews confirmed ranked publication review exists, but final omission rules, metadata persistence, heading/count rendering, first-author visibility, and role-type gating remain incomplete. See also GAP-28, GAP-29 (new bugs in the rendering path).
+**Status:** RESOLVED 2026-07-01 — all originally claimed missing items are now confirmed implemented. See resolution evidence below.
 **Description:** Publication recommendation is one of the stronger current review surfaces, but the end-to-end publication workflow is still broken at the edges. The reviewed code does not prove that rejecting all publications removes the section, that selected publications persist under the expected metadata key, or that final outputs correctly render the heading ("Selected Publications" for subset, "Publications" for full list), venue/year completeness, and first-author signal.
-**Recommended resolution:** Carry publication decisions into the required metadata structure, enforce section omission when nothing is selected, render the correct section heading per updated US-M7 (subset vs full), and add explicit role-type gating plus first-author and venue completeness checks before generation.
+**Resolution evidence:**
+
+- Section omission: `cv_orchestrator.py:4697` — `if publications:` guards the template section; when `accepted_publications = []` the list is empty.
+- Metadata persistence: `session_data_view.py:616–644` — `publication_decisions` → `accepted_publications`/`rejected_publications` in customizations.
+- Heading rendering: Fixed via GAP-28 (closed 2026-04-21). `cv_orchestrator.py:4699` renders `"Selected Publications"` vs `"Publications"` correctly.
+- First-author visibility: `publications-review.js:154,251` — `is_first_author` flag shown as `★/☆` in review UI.
+- Role-type gating: `conversation_manager.py:762–771` — `include_publications` clarifying question for non-research domains; `session_data_view.py:642–644` sets `accepted_publications = []` when user answers "No — omit".
+- Venue completeness warning: `cv_orchestrator.py:3503–3508` (added 2026-07-01) — `publication_warnings` list added to `build_render_ready_content()` return dict and propagated to `metadata` in `generate_cv()`; `download-tab.js:367–376` renders the ⚠ warning panel before generation summary.
 
 ---
 

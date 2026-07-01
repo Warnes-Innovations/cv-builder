@@ -364,6 +364,17 @@ async function populateDownloadTab(cvData) {
     </div>`;
   }
 
+  const publicationWarnings = (cvData.metadata?.publication_warnings || []);
+  if (publicationWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Publication venue information incomplete (${publicationWarnings.length}):</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;">
+        ${publicationWarnings.map(w => `<li style="font-size:0.9em;">${escapeHtml(w)}</li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">Add missing journal or conference names to your Master CV before submitting — incomplete venue details weaken credibility.</p>
+    </div>`;
+  }
+
   const longBulletWarnings = (cvData.metadata?.long_bullet_warnings || []);
   if (longBulletWarnings.length) {
     html += `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">

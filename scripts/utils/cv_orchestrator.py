@@ -2238,6 +2238,7 @@ For manual generation:
             'year_only_date_warnings': year_only_date_warnings,
             'rewrite_audit_mismatches': rewrite_audit_mismatches,
             'summary_warnings': selected_content.get('summary_warnings', []),
+            'publication_warnings': selected_content.get('publication_warnings', []),
         }
 
         metadata_file = job_output_dir / 'metadata.json'
@@ -3502,6 +3503,14 @@ Include one entry per candidate. Do not omit any candidate."""
 
         summary_warnings = self._validate_summary(selected_summary, job_analysis)
 
+        publication_warnings = []
+        for pub in selected_publications:
+            raw = self.publications.get(pub.get('key') or '')
+            if raw and raw.get('venue_warning'):
+                publication_warnings.append(
+                    f"“{pub.get('title') or pub.get('key') or '?'}”: {raw['venue_warning']}"
+                )
+
         return {
             'personal_info': self.master_data.get('personal_info', {}),
             'summary': selected_summary,
@@ -3513,6 +3522,7 @@ Include one entry per candidate. Do not omit any candidate."""
             'education': self.master_data.get('education', []),
             'certifications': self.master_data.get('certifications', []),
             'publications': selected_publications,
+            'publication_warnings': publication_warnings,
             'awards': self.master_data.get('awards', [])
         }
 

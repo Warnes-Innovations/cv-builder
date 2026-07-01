@@ -478,6 +478,11 @@ function _appendRestoredDecisionsSummary() {
     if (skillCount > 0) parts.push(`${skillCount} skill${skillCount !== 1 ? 's' : ''} recommended`);
   }
 
+  const decisions = window._savedDecisions || {};
+  const approvedRewrites = Array.isArray(window.approvedRewrites) ? window.approvedRewrites.length
+    : Object.keys(decisions.experience_decisions || {}).length;
+  if (approvedRewrites > 0) parts.push(`${approvedRewrites} rewrite${approvedRewrites !== 1 ? 's' : ''} approved`);
+
   const ats = stateManager.getAtsScore();
   if (ats && typeof ats.overall === 'number') {
     parts.push(`ATS score ${Math.round(ats.overall)}%`);
@@ -485,7 +490,8 @@ function _appendRestoredDecisionsSummary() {
 
   if (parts.length > 0) {
     const phaseLabel = SESSION_PHASE_LABELS_SHORT[phase] || String(phase).replace(/_/g, ' ');
-    appendMessage('system', `📋 Restored at stage: ${phaseLabel} — ${parts.join(', ')}.`);
+    const positionCtx = window._restoredPositionName ? ` for ${window._restoredPositionName}` : '';
+    appendMessage('system', `📋 Restored${positionCtx} at stage: ${phaseLabel} — ${parts.join(', ')}.`);
   }
 }
 
@@ -600,6 +606,7 @@ function _hydrateStatusDerivedState(statusData) {
   window.questionAnswers = (statusData.post_analysis_answers && typeof statusData.post_analysis_answers === 'object')
     ? statusData.post_analysis_answers
     : {};
+  window._restoredPositionName = statusData.position_name || null;
 }
 
 function _hydrateStatusTabState(statusData) {
