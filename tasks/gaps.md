@@ -191,7 +191,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A6, US-A12, US-U1
-**Status:** PARTIAL - updated 2026-07-01; `back_to_phase()` and `re_run_phase()` exist; layout-only refinement IS routed; ↻ button on Layout step added. Rewrite cards now show 🆕/↻ change badges on reruns (GAP-18 fix). Remaining: other review panels (skills, experience, achievements) do not yet show change badges after rerun; no clarification-amend path for analysis reruns.
+**Status:** PARTIAL - updated 2026-07-01 (cycle 21); `back_to_phase()` and `re_run_phase()` exist; layout-only refinement IS routed; ↻ button on Layout step added. Rewrite cards show 🆕/↻ change badges on reruns. Skills, experience, and achievements review panels now all show "🆕 New" change badges on reruns via localStorage snapshot comparison (GAP-18 cycle 20–21). Remaining: no clarification-amend path for analysis reruns.
 **Description:** Targeted re-entry is no longer missing, but the workflow is still incomplete. Earlier-stage re-entry works for analysis/customization/rewrite paths, while layout-only refinement, changed-item highlighting, and archive/metadata refresh guarantees remain unresolved.
 **Recommended resolution:** Preserve the existing re-entry APIs, then add layout-only routing, changed-vs-unchanged review highlighting, and explicit archive/metadata update rules for every regeneration cycle.
 
@@ -319,7 +319,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A12, US-U1, US-A6
-**Status:** PARTIAL - updated 2026-07-01 (cycle 20); rerun endpoints exist and preserve downstream state; all eligible stages now have ↻ affordances (analysis, customisations, rewrite, spell, layout — `workflow-steps.js:668`). Rewrite cards show "🆕 New" or "↻ Updated" badges on reruns via localStorage snapshot comparison (`rewrite-review.js`). Skills tab now shows "🆕 New" badges for newly recommended skills on reruns (`web/skills-review.js` — `_skillSnapshotKey` / `_saveSkillSnapshot` / `_getSkillSnapshot`). Experience tab now shows "🆕 New" badges for newly recommended experiences on reruns (`web/experience-review.js` — `_expSnapshotKey` / `_saveExpSnapshot` / `_getExpSnapshot`). Remaining: no clarification-amend path for analysis reruns; achievements panel does not yet show change badges.
+**Status:** PARTIAL - updated 2026-07-01 (cycle 21); rerun endpoints exist and preserve downstream state; all eligible stages now have ↻ affordances (analysis, customisations, rewrite, spell, layout — `workflow-steps.js:668`). Rewrite cards show "🆕 New" or "↻ Updated" badges on reruns via localStorage snapshot comparison (`rewrite-review.js`). Skills, experience, and achievements review panels all show "🆕 New" badges for newly recommended items on reruns (`web/skills-review.js` — `_skillSnapshotKey`; `web/experience-review.js` — `_expSnapshotKey`; `web/achievements-review.js` — `_achSnapshotKey`). Remaining: no clarification-amend path for analysis reruns (user cannot edit prior clarification answers before rerun).
 **Description:** The core rerun mechanism exists, so the original gap is no longer unresolved at the foundation level. What remains is story-complete UX and rerun context management across all eligible stages.
 **Recommended resolution:** Expose rerun on every supported completed stage, allow clarification editing as part of analysis reruns, and compare old vs new results so only changed or new items require re-review.
 

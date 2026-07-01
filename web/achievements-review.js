@@ -50,6 +50,8 @@ let _rewriteSuggestionHistory = [];
 let _lastRewriteLogId = null;
 // Callbacks for the active rewrite modal: { experienceIndex, onAccept }
 let _rewriteCallbacks = null;
+// Tracks achievements that are newly recommended since the previous render (for 🆕 badges)
+let _newRecommendedAchs = new Set();
 
 function _normalizeAchievementEditEntry(entry) {
   if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
@@ -93,6 +95,26 @@ async function fetchJsonWithTimeout(url, opts = {}, timeout = 7000) {
     clearTimeout(id);
     throw err;
   }
+}
+
+function _achSnapshotKey() {
+  try {
+    const sid = new URLSearchParams(window.location.search).get('session');
+    return sid ? `ach_snap_${sid}` : null;
+  } catch (_) { return null; }
+}
+function _saveAchSnapshot(recommendedIds) {
+  const key = _achSnapshotKey();
+  if (!key) return;
+  try { localStorage.setItem(key, JSON.stringify([...recommendedIds])); } catch (_) {}
+}
+function _getAchSnapshot() {
+  const key = _achSnapshotKey();
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? new Set(JSON.parse(raw)) : null;
+  } catch (_) { return null; }
 }
 
 async function buildAchievementsReviewTable() {
@@ -172,6 +194,12 @@ async function buildAchievementsReviewTable() {
       if (!(s._suggId in window.achievementDecisions)) window.achievementDecisions[s._suggId] = 'include';
     });
 
+    const prevAchSnap = _getAchSnapshot();
+    _newRecommendedAchs = prevAchSnap
+      ? new Set([...recommendedSet].filter(id => !prevAchSnap.has(id)))
+      : new Set();
+    _saveAchSnapshot(recommendedSet);
+
     _renderAchievementsReviewTable(container);
   } catch (err) {
     /* eslint-disable-next-line no-console */
@@ -219,6 +247,9 @@ function _renderAchievementsReviewTable(container) {
     const reasoning      = getAchievementReasoning(id, data, ach);
     const defaultAction  = window.achievementDecisions[id] || 'include';
     const confidenceBadge = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
+    const rerunNewBadge = _newRecommendedAchs.has(id)
+      ? '<span class="rw-change-badge rw-change-new" aria-label="New recommendation since previous run">🆕 New</span>'
+      : '';
     const isFirst = rowIdx === 0;
     const isLast  = rowIdx === orderedAchs.length - 1;
 
@@ -229,7 +260,7 @@ function _renderAchievementsReviewTable(container) {
             type="text" value="${escapeHtml(title)}"
             style="width:100%;font-weight:600;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.9em;box-sizing:border-box;"
             onblur="saveTopLevelAchievementField('${escapeHtml(id)}', 'title', this.value)"
-            aria-label="Achievement title">
+            aria-label="Achievement title">${rerunNewBadge}
           <textarea id="ach-desc-${escapeHtml(id)}"
             rows="2"
             style="width:100%;margin-top:4px;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.85em;resize:vertical;box-sizing:border-box;"
@@ -976,6 +1007,9 @@ async function saveAchievementEditsAndContinue() {
 
 export {
   fetchJsonWithTimeout,
+  _achSnapshotKey,
+  _saveAchSnapshot,
+  _getAchSnapshot,
   buildAchievementsReviewTable,
   _renderAchievementsReviewTable,
   bulkAchievementAction,
