@@ -2355,5 +2355,97 @@ class TestVerifyRewriteAuditAlignment(unittest.TestCase):
         self.assertEqual(self._run({'summary': 'x'}, None), [])
 
 
+class TestAchievementDiversity(unittest.TestCase):
+    """Unit tests for CVOrchestrator achievement diversity helpers (GAP-243)."""
+
+    def _ach(self, text):
+        return {'text': text, 'id': text[:10]}
+
+    def _scored(self, texts):
+        return [(self._ach(t), float(10 - i)) for i, t in enumerate(texts)]
+
+    def test_classify_financial(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Grew sales revenue by $2M'),
+            'financial'
+        )
+
+    def test_classify_leadership(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Led team of 8 engineers'),
+            'leadership'
+        )
+
+    def test_classify_technical(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Architected microservices platform'),
+            'technical'
+        )
+
+    def test_classify_cost(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Reduced cloud costs by 40%'),
+            'cost'
+        )
+
+    def test_classify_customer(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Improved NPS score by 15 points'),
+            'customer'
+        )
+
+    def test_classify_process_fallback(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Streamlined onboarding process'),
+            'process'
+        )
+
+    def test_no_cap_when_fewer_than_3_types(self):
+        # Only technical and process — cap not applied
+        texts = [
+            'Built API gateway',
+            'Deployed microservices',
+            'Developed CI pipeline',
+            'Implemented feature flags',
+            'Built monitoring dashboard',
+        ]
+        result = CVOrchestrator._apply_achievement_diversity(self._scored(texts), max_ach=3)
+        self.assertEqual(len(result), 3)
+        # Should just be top-3 in order
+        self.assertEqual(result[0]['text'], texts[0])
+
+    def test_diversity_cap_applied_with_3_types(self):
+        # 4 financial + 2 leadership + 2 technical → cap at 50% = 2 per type for max_ach=4
+        texts = [
+            'Grew revenue by $1M',
+            'Grew revenue by $2M',
+            'Grew revenue by $3M',
+            'Grew revenue by $4M',
+            'Led team of 5',
+            'Led team of 10',
+            'Built system',
+            'Deployed platform',
+        ]
+        result = CVOrchestrator._apply_achievement_diversity(self._scored(texts), max_ach=4)
+        self.assertEqual(len(result), 4)
+        financial = sum(1 for a in result
+                        if CVOrchestrator._classify_achievement_impact(a['text']) == 'financial')
+        self.assertLessEqual(financial, 2)
+
+    def test_max_ach_zero_returns_empty(self):
+        result = CVOrchestrator._apply_achievement_diversity(self._scored(['Built x']), max_ach=0)
+        self.assertEqual(result, [])
+
+    def test_overflow_backfills_remaining_slots(self):
+        # 5 financial, 1 each of 3 other types → after cap, backfill with financial
+        texts = [
+            'Revenue up $1M', 'Revenue up $2M', 'Revenue up $3M',
+            'Revenue up $4M', 'Revenue up $5M',
+            'Led team', 'Built system', 'Improved NPS',
+        ]
+        result = CVOrchestrator._apply_achievement_diversity(self._scored(texts), max_ach=6)
+        self.assertEqual(len(result), 6)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -42,8 +42,8 @@ from unittest.mock import MagicMock, patch, mock_open
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
-from scripts.web_app import (
-    create_app,
+from scripts.web_app import create_app
+from scripts.routes.generation_routes import (
     _harvest_apply_bullet,
     _harvest_add_skill,
     _harvest_add_summary_variant,

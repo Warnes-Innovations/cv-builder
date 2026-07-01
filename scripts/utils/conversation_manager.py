@@ -1446,6 +1446,61 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                         'details':   check_result.get('details', ''),
                     })
 
+        # ── Batch terminology consistency check (GAP-233) ─────────────────────
+        # Detect common tech/domain abbreviation variants used inconsistently
+        # across the full set of proposed rewrites.
+        _VARIANT_GROUPS: List[tuple] = [
+            ('ml', 'machine learning'),
+            ('ai', 'artificial intelligence'),
+            ('nlp', 'natural language processing'),
+            ('dl', 'deep learning'),
+            ('llm', 'large language model'),
+            ('ui', 'user interface'),
+            ('ux', 'user experience'),
+            ('api', 'application programming interface'),
+            ('db', 'database'),
+            ('k8s', 'kubernetes'),
+            ('aws', 'amazon web services'),
+            ('gcp', 'google cloud platform'),
+            ('ci/cd', 'continuous integration'),
+            ('oop', 'object-oriented programming'),
+        ]
+
+        all_proposed = [
+            (r.get('id', ''), r.get('location', ''), r.get('proposed', ''))
+            for r in rewrites
+        ]
+
+        for short_form, long_form in _VARIANT_GROUPS:
+            short_pattern = re.compile(
+                r'\b' + re.escape(short_form) + r'\b', re.IGNORECASE
+            )
+            long_pattern = re.compile(
+                r'\b' + re.escape(long_form) + r'\b', re.IGNORECASE
+            )
+            short_ids = [
+                (rid, loc) for rid, loc, text in all_proposed
+                if short_pattern.search(text)
+            ]
+            long_ids = [
+                (rid, loc) for rid, loc, text in all_proposed
+                if long_pattern.search(text)
+            ]
+            if short_ids and long_ids:
+                warnings_list.append({
+                    'id':        'batch_consistency',
+                    'location':  'batch',
+                    'flag_type': 'terminology_inconsistency',
+                    'severity':  'info',
+                    'original':  '',
+                    'proposed':  '',
+                    'details': (
+                        f'Inconsistent terminology: "{short_form.upper()}" used in '
+                        f'{len(short_ids)} bullet(s), "{long_form}" in {len(long_ids)} — '
+                        f'consider standardising to one form throughout.'
+                    ),
+                })
+
         return warnings_list
 
     # ── Phase re-entry / iterative refinement ────────────────────────────────

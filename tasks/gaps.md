@@ -2336,7 +2336,7 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ## GAP-233: No Batch Terminology Consistency Check Across Rewrites
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Added batch terminology consistency check at the end of `ConversationManager.run_persuasion_checks()` (`scripts/utils/conversation_manager.py`). After all per-bullet persuasion checks complete, scans all proposed texts for 14 common tech abbreviation variant pairs (ML/machine learning, AI/artificial intelligence, NLP/natural language processing, k8s/kubernetes, etc.) using case-insensitive word-boundary regex. When both short and long forms appear across different rewrites, emits a `terminology_inconsistency` warning with `flag_type='terminology_inconsistency'`, `severity='info'`, and a human-readable details string. The existing Rewrites tab already renders these warnings. 5 unit tests added in `tests/test_conversation_manager.py::TestTerminologyConsistencyCheck`.
 **Discovered:** 2026-06-30 (cycle 11) by resume-expert.
 **Affected stories:** US-R3 (resume quality standards — terminology consistency)
 `scripts/utils/llm_client.py` — the 8 persuasion checks in `_check_persuasion_quality()` evaluate each bullet in isolation. No batch-level check verifies that a keyword adopted in one bullet (e.g., "machine learning") appears consistently across related bullets and the professional summary. `_renderConsistencyReport` (`web/cover-letter.js:348`) checks cross-document consistency but only for cover letter vs. CV, not within the CV itself.
@@ -2454,7 +2454,7 @@ Experience and skill review icon-buttons (`icon-btn`) that toggle "include/exclu
 ## GAP-243: Achievement Selection Has No Diversity-Across-Impact-Types Constraint
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Added `CVOrchestrator._classify_achievement_impact(text)` (keyword-based heuristic classifying into 6 buckets: financial, leadership, cost, customer, technical, process) and `CVOrchestrator._apply_achievement_diversity(scored, max_ach, max_type_fraction=0.5)`. When at least 3 distinct impact types are present, no single type may fill more than 50% of `max_ach` slots; remaining slots are backfilled in score order. `build_render_ready_content()` now calls `_apply_achievement_diversity()` instead of bare `scored_achievements[:max_ach]`. 10 unit tests in `tests/test_cv_orchestrator.py::TestAchievementDiversity`.
 **Discovered:** 2026-06-30 (cycle 13) by resume-expert (US-R2).
 **Affected stories:** US-R2 (output quality — achievement diversity)
 Achievement selection (`scripts/utils/cv_orchestrator.py`) ranks by relevance score but applies no diversity constraint across impact types (e.g., revenue / cost / people-leadership / technical). A candidate with 8 revenue-impact achievements and 2 leadership achievements may get a CV with 5 revenue bullets and 0 leadership bullets even when the JD values both.

@@ -3275,7 +3275,9 @@ Include one entry per candidate. Do not omit any candidate."""
             scored_achievements.append((ach, llm_score + keyword_score + semantic_score))
 
         scored_achievements.sort(key=lambda x: x[1], reverse=True)
-        selected_achievements = [ach for ach, _ in scored_achievements[:max_ach]]
+        selected_achievements = self._apply_achievement_diversity(
+            scored_achievements, max_ach
+        )
 
         # Prepend extra_achievements: LLM-suggested achievements not in master CV that the user approved
         extra_achievements = customizations.get('extra_achievements', [])
@@ -4727,6 +4729,95 @@ Include one entry per candidate. Do not omit any candidate."""
         doc.save(str(filepath))
         logger.info("Human DOCX: %s", filename)
         return filepath
+
+    # ── Achievement diversity helpers (GAP-243) ───────────────────────────────
+
+    @staticmethod
+    def _classify_achievement_impact(text: str) -> str:
+        """Classify an achievement bullet into one of six impact-type buckets.
+
+        Buckets: financial, leadership, cost, customer, technical, process.
+        Classification is heuristic (keyword-based) and used only for
+        diversity capping — it does not affect the rendered output.
+        """
+        t = (text or '').lower()
+        if any(k in t for k in ('revenue', 'sales', ' $ ', '$', 'profit', 'arr',
+                                  'mrr', 'usd', 'eur', 'gbp', 'pipeline')):
+            return 'financial'
+        if any(k in t for k in ('led ', 'managed ', 'team of', 'hired', 'mentored',
+                                  'coached', 'headcount', 'direct report', 'people leader')):
+            return 'leadership'
+        if any(k in t for k in ('cost', 'saved ', 'saving', 'reduced ', 'reduction',
+                                  'efficiency gain', 'overhead')):
+            return 'cost'
+        if any(k in t for k in ('customer', 'user', 'client', 'nps ', 'satisfaction',
+                                  'retention', 'churn', 'support ticket')):
+            return 'customer'
+        if any(k in t for k in ('built ', 'developed ', 'designed ', 'implemented ',
+                                  'deployed ', 'architected ', 'launched ')):
+            return 'technical'
+        return 'process'
+
+    @classmethod
+    def _apply_achievement_diversity(
+        cls,
+        scored: List[tuple],
+        max_ach: int,
+        max_type_fraction: float = 0.5,
+    ) -> List[Dict]:
+        """Select up to *max_ach* achievements with a per-impact-type diversity cap.
+
+        When there are at least 3 distinct impact types represented across all
+        scored achievements, no single type may account for more than
+        *max_type_fraction* (default 50%) of the final selection.  When fewer
+        than 3 types are present the cap is not applied (not enough diversity
+        to enforce it meaningfully).
+
+        Args:
+            scored:            List of (achievement_dict, score) sorted descending.
+            max_ach:           Maximum number of achievements to return.
+            max_type_fraction: Maximum fraction per impact type (default 0.5).
+
+        Returns:
+            List of achievement dicts, length ≤ max_ach.
+        """
+        if max_ach <= 0:
+            return []
+
+        # Classify every candidate
+        classified = [
+            (ach, score, cls._classify_achievement_impact(
+                ach.get('text', '') if isinstance(ach, dict) else str(ach)
+            ))
+            for ach, score in scored
+        ]
+
+        distinct_types = {t for _, _, t in classified}
+        if len(distinct_types) < 3:
+            # Not enough diversity to apply cap — fall back to straight top-N
+            return [ach for ach, _, _ in classified[:max_ach]]
+
+        cap = max(1, int(max_ach * max_type_fraction))
+        type_counts: Dict[str, int] = {}
+        selected: List[Dict] = []
+        overflow: List[Dict] = []
+
+        for ach, _score, itype in classified:
+            if len(selected) >= max_ach:
+                break
+            if type_counts.get(itype, 0) < cap:
+                selected.append(ach)
+                type_counts[itype] = type_counts.get(itype, 0) + 1
+            else:
+                overflow.append(ach)
+
+        # Backfill remaining slots with overflow in score order
+        for ach in overflow:
+            if len(selected) >= max_ach:
+                break
+            selected.append(ach)
+
+        return selected
 
     # ── Pre-generation validation ─────────────────────────────────────────────
 

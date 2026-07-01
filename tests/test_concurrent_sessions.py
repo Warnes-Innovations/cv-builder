@@ -2052,7 +2052,7 @@ def test_phase_navigation_and_review_routes_update_session_state(build_app):
             },
         )
         assert generation_settings.status_code == 200
-        assert generation_settings.get_json() == {"ok": True, "max_skills": 7, "skills_section_title": "Skills"}
+        assert generation_settings.get_json() == {"ok": True, "max_skills": 7, "skills_section_title": "Skills", "ai_attribution": False}
         assert manager.state["max_skills"] == 7
 
         # skills_section_title persists via generation-settings

@@ -821,5 +821,68 @@ class TestCompleteLayoutReview(unittest.TestCase):
             mock_save.assert_called_once()
 
 
+class TestTerminologyConsistencyCheck(unittest.TestCase):
+    """Unit tests for GAP-233 batch terminology consistency check in run_persuasion_checks."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm = _make_manager(self.tmp)
+        # Configure LLM mock to pass all per-bullet checks
+        for method in (
+            'check_strong_action_verb', 'check_passive_voice', 'check_word_count',
+            'check_has_result_clause', 'check_hedging_language',
+            'check_named_institution_position', 'check_car_structure',
+            'check_keyword_appended', 'check_positive_metric_framing',
+            'check_summary_generic_phrases',
+        ):
+            getattr(self.cm.llm, method).return_value = {'pass': True}
+
+    def _run(self, rewrites):
+        return self.cm.run_persuasion_checks(rewrites, {}, {})
+
+    @staticmethod
+    def _make_rewrites(texts):
+        return [
+            {'id': f'r{i}', 'type': 'bullet', 'location': f'exp_001.achievements[{i}]',
+             'original': 'old', 'proposed': t}
+            for i, t in enumerate(texts)
+        ]
+
+    def _consistency_warnings(self, texts):
+        rewrites = self._make_rewrites(texts)
+        return [w for w in self._run(rewrites)
+                if w.get('flag_type') == 'terminology_inconsistency']
+
+    def test_no_inconsistency_no_warning(self):
+        self.assertEqual(len(self._consistency_warnings(['Led ML projects', 'Built ML pipeline'])), 0)
+
+    def test_ml_inconsistency_detected(self):
+        warnings = self._consistency_warnings([
+            'Led ML model training',
+            'Applied machine learning techniques',
+        ])
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('ML', warnings[0]['details'])
+        self.assertIn('machine learning', warnings[0]['details'])
+
+    def test_kubernetes_k8s_inconsistency_detected(self):
+        warnings = self._consistency_warnings([
+            'Deployed services to k8s clusters',
+            'Managed Kubernetes workloads',
+        ])
+        self.assertEqual(len(warnings), 1)
+
+    def test_empty_rewrites_returns_no_warnings(self):
+        self.assertEqual(self._consistency_warnings([]), [])
+
+    def test_single_form_used_consistently_no_warning(self):
+        warnings = self._consistency_warnings([
+            'Built API endpoints',
+            'Designed REST API',
+            'Secured API gateway',
+        ])
+        self.assertEqual(warnings, [])
+
+
 if __name__ == '__main__':
     unittest.main()
