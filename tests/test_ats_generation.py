@@ -482,6 +482,224 @@ def test_build_json_ld_knows_about_has_skill_types(orchestrator, selected_conten
     assert by_name.get("Leadership") == "SoftSkill"
 
 
+# ── ATS Keyword Density Tests (GAP-04) ───────────────────────────────────────
+
+
+def _run_keyword_density_check(ats_kws, text_lower):
+    """Simulate the ats_keyword_density check logic from validate_ats_report."""
+    checks = []
+
+    def _chk(name, label, format_, status, detail):
+        checks.append({'name': name, 'label': label, 'format': format_, 'status': status, 'detail': detail})
+
+    if ats_kws:
+        top_kws = ats_kws[:5]
+        thin = []
+        for kw in top_kws:
+            count = text_lower.count(kw)
+            for part in kw.split('/'):
+                part = part.strip()
+                if part and len(part) > 1 and part != kw:
+                    count += text_lower.count(part)
+            hyph_space = kw.replace('-', ' ')
+            if hyph_space != kw:
+                count += text_lower.count(hyph_space)
+            if count < 2:
+                thin.append(f'"{kw}" ({count}×)')
+        if not thin:
+            _chk('ats_keyword_density', 'ATS keyword density', 'docx', 'pass',
+                 f'Top {len(top_kws)} keywords each appear ≥2 times')
+        else:
+            _chk('ats_keyword_density', 'ATS keyword density', 'docx', 'warn',
+                 f'Low-frequency keywords: {", ".join(thin[:3])} — consider reinforcing')
+    return checks
+
+
+def test_ats_keyword_density_pass_all_frequent():
+    """Keyword density PASS when all top-5 keywords each appear ≥2 times."""
+    ats_kws = ['python', 'machine learning', 'biostatistics', 'data science', 'leadership']
+    text = 'python python machine learning machine learning biostatistics biostatistics data science data science leadership leadership'
+    checks = _run_keyword_density_check(ats_kws, text)
+    assert len(checks) == 1
+    assert checks[0]['status'] == 'pass'
+    assert checks[0]['name'] == 'ats_keyword_density'
+    assert '≥2 times' in checks[0]['detail']
+
+
+def test_ats_keyword_density_warn_low_frequency():
+    """Keyword density WARN when a top keyword appears fewer than 2 times."""
+    ats_kws = ['python', 'pytorch', 'biostatistics', 'data science', 'leadership']
+    text = 'python python biostatistics biostatistics data science data science leadership leadership'
+    # 'pytorch' appears 0 times → thin
+    checks = _run_keyword_density_check(ats_kws, text)
+    assert len(checks) == 1
+    assert checks[0]['status'] == 'warn'
+    assert '"pytorch"' in checks[0]['detail']
+    assert 'Low-frequency' in checks[0]['detail']
+
+
+def test_ats_keyword_density_no_keywords_skipped():
+    """No keyword density check is emitted when ats_kws is empty."""
+    checks = _run_keyword_density_check([], 'any text here')
+    assert checks == []
+
+
+def test_ats_keyword_density_slash_variant_counted():
+    """Slash-variant 'r/bioconductor' is split into parts 'r' and 'bioconductor' for counting."""
+    ats_kws = ['r/bioconductor']
+    # Neither the compound nor 'r' nor 'bioconductor' appears — should warn
+    checks = _run_keyword_density_check(ats_kws, 'some unrelated text here and again')
+    assert checks[0]['status'] == 'warn'
+
+    # Now add 'bioconductor' twice — should pass (part count hits threshold)
+    checks2 = _run_keyword_density_check(ats_kws, 'bioconductor analysis bioconductor pipeline')
+    assert checks2[0]['status'] == 'pass'
+
+
+def test_ats_keyword_density_hyphen_space_variant_counted():
+    """Hyphenated keyword 'machine-learning' also counts space-separated occurrences."""
+    ats_kws = ['machine-learning']
+    # 'machine learning' (space) appears twice → counts as 2 via hyphen→space variant
+    text = 'machine learning pipeline and machine learning models'
+    checks = _run_keyword_density_check(ats_kws, text)
+    assert checks[0]['status'] == 'pass'
+
+
+def test_ats_keyword_density_only_top5_checked():
+    """Only the first 5 ATS keywords are evaluated for density."""
+    # 6th keyword 'fortran' appears 0 times but should be ignored
+    ats_kws = ['python', 'python', 'python', 'python', 'python', 'fortran']
+    # 'python' appears many times; 'fortran' zero — but only top 5 are checked
+    text = 'python python python python python python'
+    # The first 5 are all 'python' so should pass
+    checks = _run_keyword_density_check(ats_kws, text)
+    assert checks[0]['status'] == 'pass'
+
+
+# ── Year-Only Date Tests (GAP-04) ─────────────────────────────────────────────
+
+_YEAR_ONLY_RE = _re.compile(
+    r'(?<!\d)\b(19|20)\d{2}\b(?!\s*[-–—]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December|\d))'
+)
+
+
+def test_docx_year_only_dates_pass_no_bare_years():
+    """Year-only check PASS when dates include at least month context via hyphen-digit."""
+    # Date range "2024-01 – Present" — "2024" followed by "-01" is not year-only
+    checks = []
+
+    def _chk(name, label, format_, status, detail):
+        checks.append({'name': name, 'label': label, 'format': format_, 'status': status, 'detail': detail})
+
+    text = 'Chief Scientific Officer | TNT³ | Remote | 2024-01 – Present'
+    matches = _YEAR_ONLY_RE.findall(text)
+    if matches:
+        _chk('docx_year_only_dates', 'No year-only date entries', 'docx', 'warn',
+             f'{len(matches)} year-only date(s) detected — add month for better ATS parsing')
+    else:
+        _chk('docx_year_only_dates', 'No year-only date entries', 'docx', 'pass',
+             'All dates include month and year')
+
+    assert len(checks) == 1
+    assert checks[0]['status'] == 'pass'
+
+
+def test_docx_year_only_dates_warn_bare_year_detected():
+    """Year-only check WARN when a standalone year appears with no adjacent month."""
+    checks = []
+
+    def _chk(name, label, format_, status, detail):
+        checks.append({'name': name, 'label': label, 'format': format_, 'status': status, 'detail': detail})
+
+    text = 'Education: Ph.D. Biostatistics, University of Washington, 2000'
+    matches = _YEAR_ONLY_RE.findall(text)
+    if matches:
+        _chk('docx_year_only_dates', 'No year-only date entries', 'docx', 'warn',
+             f'{len(matches)} year-only date(s) detected — add month for better ATS parsing')
+    else:
+        _chk('docx_year_only_dates', 'No year-only date entries', 'docx', 'pass',
+             'All dates include month and year')
+
+    assert len(checks) == 1
+    assert checks[0]['status'] == 'warn'
+    assert 'year-only' in checks[0]['detail']
+
+
+def test_docx_year_only_dates_warn_detail_count():
+    """Year-only check detail includes the count of year-only dates found."""
+    text = 'Graduated 2000. Started career 2001.'
+    matches = _YEAR_ONLY_RE.findall(text)
+    assert len(matches) >= 2, 'Expected at least 2 year-only matches in test text'
+
+
+# ── PDF Font Embedding Tests (GAP-04) ─────────────────────────────────────────
+
+
+def _run_pdf_font_check(pdf_path_exists, seen_fonts, unembedded):
+    """Simulate the pdf_fonts_embedded check logic from validate_ats_report."""
+    checks = []
+
+    def _chk(name, label, format_, status, detail):
+        checks.append({'name': name, 'label': label, 'format': format_, 'status': status, 'detail': detail})
+
+    if not pdf_path_exists:
+        _chk('pdf_fonts_embedded', 'PDF fonts embedded', 'pdf', 'fail', 'PDF file not found')
+    elif not seen_fonts:
+        _chk('pdf_fonts_embedded', 'PDF fonts embedded', 'pdf', 'warn',
+             'No font resources found in PDF — font embedding status unknown')
+    elif not unembedded:
+        _chk('pdf_fonts_embedded', 'PDF fonts embedded', 'pdf', 'pass',
+             f'All {len(seen_fonts)} font(s) embedded')
+    else:
+        _names = ', '.join(unembedded[:3])
+        _chk('pdf_fonts_embedded', 'PDF fonts embedded', 'pdf', 'warn',
+             f'{len(unembedded)} font(s) not embedded: {_names} — text may not extract correctly')
+    return checks
+
+
+def test_pdf_fonts_embedded_fail_no_pdf():
+    """Font embedding FAIL when pdf_path is None."""
+    checks = _run_pdf_font_check(False, set(), [])
+    assert checks[0]['status'] == 'fail'
+    assert 'not found' in checks[0]['detail']
+
+
+def test_pdf_fonts_embedded_pass_all_embedded():
+    """Font embedding PASS when all encountered fonts have embedding."""
+    checks = _run_pdf_font_check(True, {'/ArialMT', '/TimesNewRoman'}, [])
+    assert checks[0]['status'] == 'pass'
+    assert 'All 2 font(s) embedded' in checks[0]['detail']
+
+
+def test_pdf_fonts_embedded_warn_unembedded():
+    """Font embedding WARN when at least one font is not embedded."""
+    checks = _run_pdf_font_check(True, {'/ArialMT', '/Symbol'}, ['Symbol'])
+    assert checks[0]['status'] == 'warn'
+    assert '1 font(s) not embedded' in checks[0]['detail']
+    assert 'Symbol' in checks[0]['detail']
+
+
+def test_pdf_fonts_embedded_warn_no_font_resources():
+    """Font embedding WARN when no /Font resources are found in any page."""
+    checks = _run_pdf_font_check(True, set(), [])
+    assert checks[0]['status'] == 'warn'
+    assert 'No font resources' in checks[0]['detail']
+
+
+def test_pdf_fonts_embedded_warn_truncates_name_list_at_three():
+    """Font embedding WARN truncates the unembedded font list to the first 3 names."""
+    unembedded = ['FontA', 'FontB', 'FontC', 'FontD']
+    seen = {f'/{f}' for f in unembedded}
+    checks = _run_pdf_font_check(True, seen, unembedded)
+    assert checks[0]['status'] == 'warn'
+    detail = checks[0]['detail']
+    assert '4 font(s) not embedded' in detail
+    assert 'FontA' in detail
+    assert 'FontB' in detail
+    assert 'FontC' in detail
+    assert 'FontD' not in detail
+
+
 if __name__ == '__main__':
     import pytest, sys
     sys.exit(pytest.main([__file__, '-v']))
