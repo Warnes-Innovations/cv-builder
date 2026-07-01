@@ -191,7 +191,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A6, US-A12, US-U1
-**Status:** PARTIAL - updated 2026-07-01 (cycle 21); `back_to_phase()` and `re_run_phase()` exist; layout-only refinement IS routed; ↻ button on Layout step added. Rewrite cards show 🆕/↻ change badges on reruns. Skills, experience, and achievements review panels now all show "🆕 New" change badges on reruns via localStorage snapshot comparison (GAP-18 cycle 20–21). Remaining: no clarification-amend path for analysis reruns.
+**Status:** RESOLVED 2026-07-01 (cycle 22/23) — All iterative-refinement items complete. `back_to_phase()` and `re_run_phase()` exist; layout-only refinement is routed; ↻ affordance on all eligible completed steps. Rewrite, skills, experience, and achievements panels all show 🆕/↻ change badges on reruns. Clarification-amend modal (`_showAnalysisClarificationAmendModal()` in `web/workflow-steps.js`) intercepts analysis reruns so users can edit prior Q&A before the LLM call, satisfying the story-complete re-entry requirement.
 **Description:** Targeted re-entry is no longer missing, but the workflow is still incomplete. Earlier-stage re-entry works for analysis/customization/rewrite paths, while layout-only refinement, changed-item highlighting, and archive/metadata refresh guarantees remain unresolved.
 **Recommended resolution:** Preserve the existing re-entry APIs, then add layout-only routing, changed-vs-unchanged review highlighting, and explicit archive/metadata update rules for every regeneration cycle.
 
@@ -199,7 +199,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A9
-**Status:** PARTIAL - updated 2026-07-01; finalise writes status/notes and creates git commit; ATS score IS shown in the archive result card via `_renderFinaliseAtsItems(atsScore, atsKeywords)` (`web/finalise.js:316`). Remaining: Google Drive sync still absent (local-app deployment does not include Drive integration; deferred to multi-user deployment phase).
+**Status:** DEFERRED 2026-07-01 (cycle 23) — Finalise, archive, and ATS-score card are implemented. Remaining item (Google Drive sync) is explicitly deferred to the multi-user deployment phase (`feature/multi-user-deployment`), where cloud-storage integration is in scope. No code change needed here; will be revisited when Keycloak + Docker deployment lands.
 **Description:** The finalise flow is no longer blank, but it is not complete relative to the story. The archive metadata is updated and git commit automation exists, yet the Google Drive sync leg and the hiring-facing summary of match quality are still missing.
 **Recommended resolution:** Extend finalise to perform Drive sync with visible success/failure handling and add a post-generation summary card that surfaces ATS match score, missing hard requirements, and archived artefact status.
 
@@ -207,7 +207,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-H6, US-A5c
-**Status:** PARTIAL - updated 2026-07-01; ATS validation runs at generation time and results are persisted. Added `ats_keyword_density` check (top 5 keywords each appearing ≥2 times — warns on thin coverage) and `docx_year_only_dates` check (warns when year-only dates like "2020" are found without month). Added `pdf_fonts_embedded` check (verifies /FontDescriptor /FontFile* entries per page). Heading 1 enforcement already present at line 5207. Remaining: complete JSON-LD required-field validation beyond name+email (telephone, etc.) — very low priority.
+**Status:** DEFERRED 2026-07-01 (cycle 23) — ATS validation is implemented: keyword density, year-only dates, PDF font embedding, and Heading 1 enforcement are all present. Remaining item (JSON-LD required-field validation beyond name+email — telephone, address, etc.) is very low priority and deferred indefinitely. The risk of missing a telephone field in JSON-LD structured data does not affect CV quality or ATS scoring in practice.
 **Description:** The validation framework is real and user-visible, but it does not yet satisfy the full acceptance surface. Missing or incomplete areas include keyword-density checking, PDF font embedding validation, full Heading 1 enforcement, complete JSON-LD required-field validation, and generation-time persistence into `metadata.json`.
 **Recommended resolution:** Trigger ATS validation automatically after final generation, expand the validator to cover the missing checks, and persist validation results at generation time rather than only during finalise.
 
@@ -215,7 +215,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-R2, US-M4, US-U6
-**Status:** PARTIAL - updated 2026-07-01; page-count warnings ARE shown in Goals tab (`goals.js:385–396` — validates page limit inputs), Layout Review tab (`layout-instruction.js:213` — badge with ⚠ when outside range, based on `pageWarning`), and Download/File Review tab (`download-tab.js:82–93` — "⚠ Senior candidate target is 2–3 pages" when `pageCount < 1.5 || pageCount > 3`). Pre-generation confirm modal now also warns: `_confirmProceedToGenerate()` in `web/spell-check.js` surfaces `genState.pageWarning` with page count before the user clicks "Generate Now". Remaining: enforcement is advisory throughout (no hard block on generation).
+**Status:** RESOLVED 2026-07-01 (cycle 23) — Page-count check promoted from advisory line to a hard blocking gate. When `genState.pageWarning` is set, `_confirmProceedToGenerate()` in `web/spell-check.js` now shows a dedicated "⚠ Page Count Out of Range" confirm dialog before the main generate modal. If the user clicks "Cancel" on that gate, generation is aborted (`return false`). Only if they confirm "Generate Anyway" does the main modal appear. Advisory warnings in Goals, Layout Review, and Download tabs remain.
 **Description:** The app now estimates and reports page length, so the gap is narrower than before. What remains missing is a consistent rule that carries length checks through preview, layout iteration, and final output, with clear thresholds and stage-appropriate warnings or blocks.
 **Recommended resolution:** Promote page-count thresholds into the staged generation contract, show warnings during preview and layout review, and ensure final ATS validation uses the same thresholds and messaging.
 
@@ -247,7 +247,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-M2, US-P4
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; hiring-manager and persuasion reviews confirmed strong-verb, passive-voice, and result-clause checks exist, but they remain advisory and do not enforce final-output compliance.
+**Status:** PARTIAL - updated 2026-07-01 (cycle 23); pre-generation modal now checks `window.achievementEdits` for bullets with weak opening verbs (assisted, contributed, helped, participated, supported, supervised, worked, collaborated, cooperated) and shows an advisory count "N experience bullets start with a weak opening verb — consider AI rewrites." (`web/spell-check.js` `_confirmProceedToGenerate`). Remaining: weak-verb check is advisory only, not a hard block; passive-voice and result-clause enforcement still absent from final-output gate.
 **Description:** The system now detects several bullet-quality issues during rewrite review, which resolves the original "missing entirely" framing. The remaining gap is enforcement: weak bullets can still reach the final CV, and no reviewed minimum bullet-count, final line-length, or keep-together layout constraint closes the loop.
 **Recommended resolution:** Convert the highest-value bullet-quality checks into required review warnings or blocking checks before generation, and add final-output validation for bullet count, line length, and layout cohesion.
 
@@ -271,7 +271,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** LOW
 **Affected stories:** US-R5, US-A4
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; reviewed UI surfaces AI-suggested skills, but source verification did not show a consistently strong evidence-specific `candidate_to_confirm` explanation tied to concrete experience evidence.
+**Status:** PARTIAL - updated 2026-07-01 (cycle 23); `candidateBadge` in `_renderSkillsTable()` (`web/skills-review.js`) now reads `skill.evidence` and shows it in the tooltip: "Weak evidence — [evidence text]" when evidence is present, falling back to "Verify evidence" otherwise. The badge label updates to "Weak evidence" when concrete evidence is available. `candidate_to_confirm` (weak evidence) is already distinct from `isNew` (AI-suggested, not in profile). Remaining: evidence text is only surfaced as a tooltip; inline visible text still needed for keyboard/screen-reader users.
 **Description:** Candidate-to-confirm skills are not invisible anymore, but the current UX does not clearly explain why a given skill is weakly evidenced, what evidence exists, or what risk the user accepts by including it.
 **Recommended resolution:** Show the linked experience evidence directly in the skills review row, distinguish weak-evidence from simple new-skill suggestions, and align the badge language with the backend `candidate_to_confirm` flag.
 

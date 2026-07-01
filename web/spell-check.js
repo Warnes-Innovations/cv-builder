@@ -384,7 +384,12 @@ async function _confirmProceedToGenerate() {
   if (genState.pageWarning) {
     const pc = genState.pageCountExact ?? genState.pageCountEstimate;
     const pcLabel = pc !== null ? (genState.pageCountExact !== null ? `${pc}` : `~${pc}`) : null;
-    lines.push(`⚠ Page count${pcLabel ? ` (${pcLabel})` : ''} is outside the recommended range — consider adjusting layout instructions.`);
+    const okPage = await showConfirmModal(
+      '⚠ Page Count Out of Range',
+      `The CV is estimated at ${pcLabel ? `${pcLabel} page${pc !== 1 ? 's' : ''}` : 'an unusual page count'}, which is outside the recommended range for a senior candidate (2–3 pages).\n\nConsider adjusting your layout instructions before generating.\n\nProceed anyway?`,
+      'Generate Anyway'
+    );
+    if (!okPage) return false;
   }
   if (freshness.isStale) {
     lines.push(`⚠ ${freshness.ariaLabel}`);
@@ -392,6 +397,19 @@ async function _confirmProceedToGenerate() {
   const reviewedSections = ['experiences', 'skills', 'achievements'].filter(k => decisionsConfirmed[k]);
   if (reviewedSections.length === 0) {
     lines.push('⚠ No customisation sections reviewed — experience, skill, and achievement selections are all LLM defaults.');
+  }
+  const _weakVerbSet = new Set(['assisted','contributed','helped','participated','supported','supervised','worked','collaborated','cooperated']);
+  let weakBulletCount = 0;
+  Object.values(window.achievementEdits || {}).forEach(list => {
+    (list || []).forEach(e => {
+      const txt = typeof e === 'string' ? e : ((e && e.text) || '');
+      if (!txt.trim() || (e && e.hidden)) return;
+      const fw = txt.trim().split(/[\s,.:;]/)[0].toLowerCase().replace(/[^a-z]/g, '');
+      if (_weakVerbSet.has(fw)) weakBulletCount++;
+    });
+  });
+  if (weakBulletCount > 0) {
+    lines.push(`⚠ ${weakBulletCount} experience bullet${weakBulletCount > 1 ? 's start' : ' starts'} with a weak opening verb — consider AI rewrites in the Experience Bullets editor.`);
   }
   lines.push('\nProceed?');
   return showConfirmModal('📄 Proceed to Generate?', lines.join('\n'), 'Generate Now');

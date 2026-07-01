@@ -707,8 +707,9 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
         ? '<span title="Added for this session only" style="margin-left:6px;font-size:10px;color:#0f766e;border:1px solid #0f766e;border-radius:3px;padding:1px 5px;cursor:help;">Session only</span>'
         : '<span title="AI suggested — not yet in CV profile" style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>')
       : '';
+    const _evidenceText = isCandidateToConfirm && typeof skill === 'object' ? String(skill.evidence || '').trim() : '';
     const candidateBadge = isCandidateToConfirm
-      ? '<span title="Weak evidence — confirm this skill is genuinely demonstrated in your experience before including it" style="margin-left:6px;font-size:10px;color:#9f1239;border:1px solid #9f1239;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Verify evidence</span>'
+      ? `<span title="${escapeHtml(_evidenceText ? `Weak evidence — ${_evidenceText}` : 'Weak evidence — confirm this skill is genuinely demonstrated in your experience before including it')}" style="margin-left:6px;font-size:10px;color:#9f1239;border:1px solid #9f1239;border-radius:3px;padding:1px 5px;cursor:help;">⚠ ${_evidenceText ? 'Weak evidence' : 'Verify evidence'}</span>`
       : '';
     const rerunNewBadge = newRecommendedSkills.has(skillName)
       ? '<span class="rw-change-badge rw-change-new" aria-label="New recommendation since previous run">🆕 New</span>'
