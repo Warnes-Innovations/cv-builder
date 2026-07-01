@@ -749,7 +749,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; CI/CD review found GitHub Actions uses pip-only installs from `scripts/requirements.txt`, while repo guidance emphasizes the local `cvgen` environment.
+**Status:** RESOLVED 2026-07-01 — Added `anthropic>=0.18.0`, `openai>=1.0.0`, and `sentence-transformers>=2.2.0` (lazy-imported LLM clients) to `scripts/requirements.txt`; added `docxtpl>=0.20.0` to `scripts/requirements-conda.txt`; updated both file headers to document intentional splits. Added parity note to `.github/copilot-instructions.md` explaining CI vs conda environment differences.
 **Description:** CI and local development use different environment construction paths, increasing the chance of environment-specific failures.
 **Recommended resolution:** Either narrow the gap between CI and local environment setup or document and validate the supported differences explicitly.
 

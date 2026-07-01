@@ -2,15 +2,22 @@
 #
 # PURPOSE: Pip packages to install AFTER conda has set up the base environment.
 #          Excludes spacy, blis, and language-tool-python (managed by conda-forge
-#          to avoid macOS compilation issues). Adds additional LLM API clients not
-#          needed in CI.
+#          to avoid macOS compilation issues). Includes LLM API clients.
 #
 # EXECUTION ORDER (local conda setup):
-#   1. conda create -n cvgen python=3.9 spacy -c conda-forge --override-channels -y
+#   1. conda create -n cvgen python=3.9 spacy language-tool-python -c conda-forge --override-channels -y
 #   2. conda activate cvgen
 #   3. pip install -r scripts/requirements-conda.txt
 #
 # For CI / pure-pip environments, use scripts/requirements.txt instead.
+# See GAP-71 in tasks/gaps.md for parity notes.
+#
+# KNOWN DIFFERENCES vs requirements.txt (intentional):
+#   - spacy, blis: managed by conda-forge (avoids macOS compilation issues)
+#   - language-tool-python: managed by conda-forge
+#   - gunicorn: production server; not needed locally
+#   - authlib, flask-login, psycopg2-binary: multi-user deployment deps; not needed locally
+#   - llm-sanitizer: prompt-injection detection; available via pip if needed locally
 
 # LLM API Clients
 openai>=1.0.0
@@ -24,6 +31,7 @@ google-auth-oauthlib>=1.1.0
 
 # Document Generation
 python-docx>=0.8.11
+docxtpl>=0.20.0
 weasyprint>=60.0
 pypandoc>=1.11
 mammoth>=1.6.0

@@ -52,6 +52,7 @@ master_data['achievements'].append(new_achievement)  # Never during job customiz
   - ✅ CORRECT: `conda run -n cvgen python -m pytest tests/`
   - ❌ INCORRECT: `python scripts/web_app.py`  # Uses wrong environment
   - Why: The cvgen environment contains all required dependencies (Flask, WeasyPrint, pytest, etc.) with pinned versions.
+  - **CI vs local parity**: CI uses `scripts/requirements.txt` (pip-only); local uses `scripts/requirements-conda.txt` (pip inside conda). Key differences are intentional — see file headers for details. The two requirement files are kept in sync for shared deps; only the conda-specific compilation targets (spacy, blis, language-tool-python) and deployment-only deps (gunicorn, authlib, psycopg2-binary) are intentionally split.
 - Start web app: `python scripts/web_app.py --llm-provider github`.
 - If `--llm-provider` is omitted, `llm.default_provider` must be configured via env/config.
 - zsh tip: if shell autocorrect changes `github` to `.github`, escape or quote the provider value, e.g. `python scripts/web_app.py --llm-provider \github` (or `--llm-provider 'github'`).
