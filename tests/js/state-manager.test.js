@@ -151,19 +151,9 @@ describe('stateManager tab state', () => {
     expect(stateManager.getCurrentTab()).toBe('rewrites')
   })
 
-  it('mirrors currentTab onto globalThis for legacy modules', () => {
-    stateManager.setCurrentTab('analysis')
-    expect(globalThis.currentTab).toBe('analysis')
-  })
-
   it('derives the current workflow step from phase', () => {
     stateManager.setPhase('job_analysis')
     expect(stateManager.getCurrentStage()).toBe('analysis')
-  })
-
-  it('mirrors the derived workflow step onto globalThis for legacy modules', () => {
-    stateManager.setPhase('layout_review')
-    expect(globalThis.currentStage).toBe('layout')
   })
 
   it('setCurrentTab persists the value to localStorage', () => {
@@ -200,10 +190,6 @@ describe('stateManager tab state', () => {
     expect(saved.tabData.analysis).toEqual({ result: 'ok' })
   })
 
-  it('mirrors tabData onto globalThis for legacy modules', () => {
-    stateManager.setTabData('analysis', { result: 'ok' })
-    expect(globalThis.tabData.analysis).toEqual({ result: 'ok' })
-  })
 })
 
 // ── loading state ─────────────────────────────────────────────────────────────
@@ -376,7 +362,6 @@ describe('loadStateFromLocalStorage', () => {
     const result = loadStateFromLocalStorage()
     expect(result).toBe(true)
     expect(stateManager.getTabData('analysis')).toEqual({ score: 80 })
-    expect(globalThis.tabData.analysis).toEqual({ score: 80 })
     expect(stateManager.getCurrentStage()).toBe('analysis')
     expect(stateManager.getCurrentTab()).toBe('analysis')
   })

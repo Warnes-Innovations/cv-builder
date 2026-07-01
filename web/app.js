@@ -158,3 +158,5 @@ function setupEventListeners() {
 }
 
 // Tests now import helper functions from their canonical ES modules directly.
+
+export { init, setupEventListeners };

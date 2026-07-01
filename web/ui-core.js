@@ -1984,7 +1984,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (typeof init === 'function') init();
 });
 
 // ── ES module exports ──────────────────────────────────────────────────────

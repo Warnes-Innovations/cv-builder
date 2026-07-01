@@ -192,7 +192,6 @@ function emitGenerationStateChanged() {
 // Global state variables (moved into module for clarity)
 let currentTab = 'job';
 let isLoading = false;
-globalThis.isLoading = isLoading;
 let tabData = {
   analysis: null,
   customizations: null,
@@ -212,61 +211,6 @@ const _phaseChangeListeners = [];
 let currentModelProvider = null;
 let currentModelName = null;
 
-function installLegacyStateGlobals() {
-  const bindings = {
-    isLoading: {
-      get: () => isLoading,
-      set: (value) => { isLoading = Boolean(value); },
-    },
-    tabData: {
-      get: () => tabData,
-      set: (value) => {
-        tabData = value && typeof value === 'object'
-          ? value
-          : { analysis: null, customizations: null, cv: null };
-      },
-    },
-    currentTab: {
-      get: () => currentTab,
-      set: (value) => { currentTab = value; },
-    },
-    currentStage: {
-      get: () => getWorkflowStepForPhase(lastKnownPhase),
-      set: () => {},
-    },
-    interactiveState: {
-      get: () => interactiveState,
-      set: (value) => {
-        if (value && typeof value === 'object') {
-          interactiveState = value;
-        }
-      },
-    },
-    sessionId: {
-      get: () => sessionId,
-      set: (value) => { sessionId = value; },
-    },
-    lastKnownPhase: {
-      get: () => lastKnownPhase,
-      set: (value) => { lastKnownPhase = value; },
-    },
-    isReconnecting: {
-      get: () => isReconnecting,
-      set: (value) => { isReconnecting = Boolean(value); },
-    },
-  };
-
-  Object.entries(bindings).forEach(([name, descriptor]) => {
-    Object.defineProperty(globalThis, name, {
-      configurable: true,
-      enumerable: true,
-      get: descriptor.get,
-      set: descriptor.set,
-    });
-  });
-}
-
-installLegacyStateGlobals();
 
 // Staged generation state (GAP-20): tracks preview → confirm → final pipeline.
 // Synced from /api/cv/generation-state on page load and after key transitions.
@@ -287,7 +231,6 @@ const stateManager = {
   isLoading: () => isLoading,
   setLoading: (loading) => {
     isLoading = loading;
-    globalThis.isLoading = loading;
   },
 
   // Tab data (analysis, customizations, CV)
@@ -424,7 +367,6 @@ const stateManager = {
 function initializeState() {
   currentTab = 'job';
   isLoading = false;
-  globalThis.isLoading = false;
   tabData = {
     analysis: null,
     customizations: null,

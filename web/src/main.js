@@ -83,6 +83,9 @@ import * as Harvest            from '../harvest.js';
 import * as SessionSwitcherUi  from '../session-switcher-ui.js';
 import * as KeyboardShortcuts  from '../keyboard-shortcuts.js';
 
+// ── App orchestrator (folded into bundle — GAP-64) ────────────────────────────
+import * as App from '../app.js';
+
 // ── Assign all exports to globalThis ─────────────────────────────────────────
 // Phase 2 modules first; phase 3 domain modules follow so fully-featured
 // implementations override any placeholder stubs (e.g. showSessionConflictBanner
@@ -99,4 +102,7 @@ Object.assign(globalThis,
   RewriteReview, SpellCheck, DownloadTab, FinalGenerate, WorkflowSteps, MasterCv,
   CoverLetter, ScreeningQuestions, Finalise, InterviewPrep, ThankYou, Harvest,
   SessionSwitcherUi, KeyboardShortcuts,
+  App,
 );
+
+document.addEventListener('DOMContentLoaded', App.init);
