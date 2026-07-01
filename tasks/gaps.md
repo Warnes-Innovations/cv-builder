@@ -549,7 +549,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-C1
-**Status:** OPEN - discovered 2026-04-20; trust and compliance review found no notice in the app informing users that their CV content and job descriptions are transmitted to the configured external LLM provider. The localhost URL and single-user framing imply that data stays local.
+**Status:** RESOLVED — re-verified 2026-06-30. `web/job-analysis.js:99–102` shows a one-time disclosure message in the chat panel on the first `analyzeJob()` call and persists an acknowledgement flag in `localStorage` (`StorageKeys.LLM_DISCLOSURE_SHOWN`). The gap was stale.
 **Description:** Users who have not read the configuration documentation may not know that submitting a job description or CV content sends that data to an external API (OpenAI, Anthropic, GitHub Models, etc.). This is a data governance transparency gap.
 **Recommended resolution:** Display a brief disclosure on the first LLM call of a session (or on initial LLM configuration) noting that content is transmitted to the configured provider. Persist an acknowledgement flag in the session.
 
@@ -781,7 +781,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-X3
-**Status:** OPEN - discovered 2026-04-22; accessibility specialist review found a CSS rule for `[aria-invalid="true"]` exists in `web/styles.css` but `aria-invalid` is never set dynamically by any JavaScript code. Form validation errors are communicated via CSS class changes only.
+**Status:** RESOLVED — re-verified 2026-06-30. `web/job-input.js:550–568` — `_showFieldError()` sets `aria-invalid="true"` on invalid inputs and `aria-invalid="false"` on clear. This is the primary job-text intake form. Master CV modal forms use `showAlertModal()` for errors (accessible via focus-trapped dialog), which is an acceptable pattern. The CSS rule `[aria-invalid="true"]` in `web/styles.css:1555–1556` is exercised by job-input validation.
 **Description:** Screen readers use `aria-invalid` to announce validation errors. Without it, users relying on assistive technology receive no error announcement beyond visual styling.
 **Recommended resolution:** In all form validation handlers, set `element.setAttribute('aria-invalid', 'true')` on error and `element.removeAttribute('aria-invalid')` on correction. The CSS rule already handles the visual response.
 
@@ -813,7 +813,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** US-F1, US-F2
-**Status:** OPEN - discovered 2026-04-22; first-time user and heuristic reviews found no inline definitions or tooltips for "ATS", "Harvest", "Master CV", or "Session" on any first-encounter screen.
+**Status:** RESOLVED — 2026-06-30. Added definitional `title` attributes to: ATS score badge ("Applicant Tracking System (ATS) match score — percentage of job keywords present in your CV"), ATS Report button ("View ATS (Applicant Tracking System) match report"), and Harvest step pill ("Harvest improvements — save refined bullets, new skills, and summary variants back to your Master CV for future applications"). These are the three key jargon terms identified in the gap; "Master CV" and "Session" already have descriptive tooltips from prior work.
 **Description:** Key terms — particularly "ATS" (Applicant Tracking System) and "Harvest improvements" — have no definition on first encounter. Users unfamiliar with recruitment technology cannot determine their meaning from context.
 **Recommended resolution:** Add glossary tooltips or `title` attributes with one-sentence definitions for: ATS, Harvest, Master CV, Session. Alternatively, add a "?" help icon adjacent to each jargon term.
 
@@ -821,7 +821,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-F3, US-U6
-**Status:** OPEN - discovered 2026-04-22; first-time user and UX expert reviews found no explanation of the staged generation pipeline: HTML preview → layout confirmation → final file generation. Users who click "Generate CV" do not know whether they are producing a draft preview or final submission-ready files.
+**Status:** RESOLVED — 2026-06-30. Added stage-context `title` tooltips to all three pipeline buttons in `web/index.html` and `web/spell-check.js`: "Generate Preview →" (Step 1 of 3 — HTML preview), "Open Layout Review →" (Step 2 of 3 — adjust layout settings), "Confirm Layout" (Step 3 of 3 — produce final DOCX/PDF). The button labels already differentiated the steps; the tooltips now explain what each step produces.
 **Description:** The distinction between the HTML preview, layout-reviewed output, and final generation is not communicated. First-time users face three generation-related actions with overlapping terminology and no explanation of the sequence.
 **Recommended resolution:** Add an informational banner or tooltip before the Generate step explaining the three-stage pipeline. Update action button labels to include stage context (e.g., "Generate Preview", "Confirm Layout", "Generate Final Files").
 

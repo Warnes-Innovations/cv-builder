@@ -89,7 +89,7 @@
     <div class="position-bar-actions">
       <!-- Metrics: ATS badge + keyword counts + page length + freshness chip -->
       <div id="ats-score-header" class="ats-score-header" style="display:none;">
-        <div id="ats-score-badge" class="ats-score-badge" aria-label="ATS match score" style="display:none;">
+        <div id="ats-score-badge" class="ats-score-badge" aria-label="ATS match score" title="Applicant Tracking System (ATS) match score — percentage of job keywords present in your CV" style="display:none;">
           <span class="ats-score-value" id="ats-score-value">--</span>
           <span class="ats-score-label">ATS</span>
         </div>
@@ -104,7 +104,7 @@
       <button id="master-cv-bar-btn" onclick="openMasterCvModal()"
         title="View and edit your master CV profile"
         style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;color:#475569;font-size:0.8em;padding:2px 7px;line-height:1.6;">📚 Master CV</button>
-      <button id="ats-report-btn" onclick="openAtsReportModal()" title="View ATS report"
+      <button id="ats-report-btn" onclick="openAtsReportModal()" title="View ATS (Applicant Tracking System) match report — keyword analysis and compliance checks"
         style="display:none;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;color:#475569;font-size:0.8em;padding:2px 7px;line-height:1.6;">ATS Report</button>
       <button id="job-analysis-btn" onclick="openJobAnalysisModal()" title="View job analysis"
         style="display:none;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;color:#475569;font-size:0.8em;padding:2px 7px;line-height:1.6;">Job Analysis</button>
@@ -143,7 +143,7 @@
       <div class="arrow">→</div>
       <div class="step" id="step-thank_you"      title="Thank you letter"           onclick="handleStepClick('thank_you')"><span aria-hidden="true">🙏</span> Thank You</div>
       <div class="arrow">→</div>
-      <div class="step" id="step-harvest"        title="Harvest improvements"       onclick="handleStepClick('harvest')"><span aria-hidden="true">🌾</span> Harvest</div>
+      <div class="step" id="step-harvest"        title="Harvest improvements — save refined bullets, new skills, and summary variants back to your Master CV for future applications"       onclick="handleStepClick('harvest')"><span aria-hidden="true">🌾</span> Harvest</div>
     </div>
   </nav>
   <!-- Screen-reader-only live region for stage-change announcements (GAP-73) -->
@@ -191,10 +191,10 @@
           <button class="action-btn primary" id="recommend-btn"         style="display:none">⚙️ Recommend Customizations</button>
           <button class="action-btn primary" id="generate-btn"          style="display:none">✏️ Review Rewrites</button>
           <button class="action-btn primary" id="rewrite-btn"           style="display:none">Continue to Spell Check →</button>
-          <button class="action-btn primary" id="spell-btn"             style="display:none">Generate Preview →</button>
-          <button class="action-btn primary" id="generate-proceed-btn"  style="display:none">🎨 Open Layout Review →</button>
-          <button class="action-btn primary" id="layout-btn"                    style="display:none"><span aria-hidden="true">✅</span> Confirm Layout</button>
-          <button class="action-btn primary" id="final-generate-proceed-btn" style="display:none"><span aria-hidden="true">📥</span> Continue to File Review →</button>
+          <button class="action-btn primary" id="spell-btn"             style="display:none" title="Step 1 of 3: Generate an HTML preview to review the layout before final DOCX/PDF files are produced">Generate Preview →</button>
+          <button class="action-btn primary" id="generate-proceed-btn"  style="display:none" title="Step 2 of 3: Review and adjust layout settings — font size, margins, and CV organisation">🎨 Open Layout Review →</button>
+          <button class="action-btn primary" id="layout-btn"                    style="display:none" title="Step 3 of 3: Confirm layout and produce final submission-ready DOCX and PDF files"><span aria-hidden="true">✅</span> Confirm Layout</button>
+          <button class="action-btn primary" id="final-generate-proceed-btn" style="display:none" title="View and download your final DOCX and PDF files"><span aria-hidden="true">📥</span> Continue to File Review →</button>
           <button class="action-btn primary" id="finalise-action-btn"         style="display:none"><span aria-hidden="true">📦</span> Package Application Files</button>
         </div>
       </div>

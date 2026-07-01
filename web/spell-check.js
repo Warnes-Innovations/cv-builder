@@ -145,7 +145,7 @@ function renderSpellCheckZeroState(message, statsLine = '', customDictSize = 0) 
       <h2 style="color:#166534;">${escapeHtml(message)}</h2>
       ${statsParts.join('\n')}
       <p style="color:#6b7280;margin:16px 0 24px;">Continue when you are ready to generate your CV.</p>
-      <button class="submit-btn" onclick="submitEmptySpellCheck()">Generate Preview →</button>
+      <button class="submit-btn" onclick="submitEmptySpellCheck()" title="Generate an HTML preview of your CV — you will review the layout before final DOCX/PDF files are produced">Generate Preview →</button>
     </div>
   `;
 }
