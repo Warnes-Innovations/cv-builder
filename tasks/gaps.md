@@ -901,7 +901,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-H8, US-R5
-**Status:** OPEN - discovered 2026-04-22; HR/ATS review found that even when the LLM classifies skills as hard or soft during the session, the `skill_type` classification is not written back to `Master_CV_Data.json` via the harvest flow. Classifications are ephemeral session-only data.
+**Status:** RESOLVED 2026-06-30 — Added `skill_type_update` harvest candidate type. `_collect_harvest_skill_type_candidates()` in `scripts/routes/generation_routes.py` compares `skill_qualifier_overrides[name].skill_type` (session) against the master data value; candidates are generated where they differ. `_harvest_update_skill_type()` writes the `skill_type` field to the matching skill in master data (list or dict format). `harvest_apply()` now handles `skill_type_update` candidates. Session skill-type overrides are now surfaced in the harvest panel and persisted to `Master_CV_Data.json` on apply.
 **Description:** Hard/soft skill classification affects ATS output structure and section labeling. Without persisting this, every session must reclassify from scratch.
 **Recommended resolution:** Add `skill_type` as a harvest-eligible field. Include skill type overrides in the harvest candidates panel and write them to `Master_CV_Data.json` when the user applies harvest.
 

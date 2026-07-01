@@ -979,6 +979,84 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
     }
 
 
+def _collect_harvest_skill_type_candidates(conversation) -> List[Dict[str, Any]]:
+    """Return skill_type_update candidates for skills whose hard/soft type was overridden in session.
+
+    Only surfaces a candidate when the session override differs from the value
+    already stored in master data (or when master has no skill_type at all).
+    """
+    state          = conversation.state or {}
+    qualifier_ovrs = state.get('skill_qualifier_overrides') or {}
+    master         = getattr(conversation.orchestrator, 'master_data', None) or {}
+
+    # Build a lookup of master skill name (lower) → skill dict
+    master_skill_lookup: Dict[str, Any] = {}
+    raw_skills = master.get('skills', [])
+    if isinstance(raw_skills, list):
+        for sk in raw_skills:
+            if isinstance(sk, str):
+                master_skill_lookup[sk.lower()] = {}
+            elif isinstance(sk, dict):
+                name = (sk.get('name') or '').strip().lower()
+                if name:
+                    master_skill_lookup[name] = sk
+    elif isinstance(raw_skills, dict):
+        for cat_val in raw_skills.values():
+            for sk in (cat_val if isinstance(cat_val, list) else []):
+                if isinstance(sk, str):
+                    master_skill_lookup[sk.lower()] = {}
+                elif isinstance(sk, dict):
+                    name = (sk.get('name') or '').strip().lower()
+                    if name:
+                        master_skill_lookup[name] = sk
+
+    candidates = []
+    for skill_name, overrides in qualifier_ovrs.items():
+        session_type = overrides.get('skill_type')
+        if session_type not in ('hard', 'soft'):
+            continue
+        master_sk = master_skill_lookup.get(skill_name.lower()) or {}
+        master_type = (master_sk.get('skill_type') or '').lower()
+        if master_type == session_type:
+            continue  # already matches — nothing to persist
+        candidates.append({
+            'id':        f"skill_type_{skill_name.replace(' ', '_')}",
+            'type':      'skill_type_update',
+            'label':     f'Classify "{skill_name}" as {session_type} skill',
+            'original':  master_type or '(unset)',
+            'proposed':  session_type,
+            'skill_name': skill_name,
+            'rationale': (
+                f'You classified "{skill_name}" as a {session_type} skill during this session. '
+                'Persisting this avoids re-classifying on every application.'
+            ),
+        })
+    return candidates
+
+
+def _harvest_update_skill_type(master: Dict, skill_name: str, skill_type: str) -> bool:
+    """Write skill_type to the named skill in master data.  Returns True if changed."""
+    def _try_update_list(skill_list: list) -> bool:
+        for sk in skill_list:
+            if not isinstance(sk, dict):
+                continue
+            if (sk.get('name') or '').strip().lower() == skill_name.lower():
+                if sk.get('skill_type') == skill_type:
+                    return False
+                sk['skill_type'] = skill_type
+                return True
+        return False
+
+    raw = master.get('skills', [])
+    if isinstance(raw, list):
+        return _try_update_list(raw)
+    if isinstance(raw, dict):
+        for cat_val in raw.values():
+            if isinstance(cat_val, list) and _try_update_list(cat_val):
+                return True
+    return False
+
+
 def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
     """Return candidate write-back items for the current session."""
     candidates: List[Dict[str, Any]] = []
@@ -1004,6 +1082,7 @@ def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
         })
 
     candidates.extend(_collect_harvest_skill_candidates(conversation))
+    candidates.extend(_collect_harvest_skill_type_candidates(conversation))
 
     summary_rewrite = next(
         (rw for rw in approved_rewrites if rw.get('section') == 'summary'), None
@@ -2218,6 +2297,18 @@ def create_blueprint(deps):
                     elif ctype in ('new_skill', 'skill_gap_confirmed'):
                         skill_name = cand.get('proposed_skill', cand['proposed'])
                         applied    = _harvest_add_skill(master, skill_name)
+                        diff_summary.append({
+                            'id':      cand['id'],
+                            'type':    ctype,
+                            'applied': applied,
+                            'label':   cand['label'],
+                        })
+                    elif ctype == 'skill_type_update':
+                        applied = _harvest_update_skill_type(
+                            master,
+                            cand['skill_name'],
+                            cand['proposed'],
+                        )
                         diff_summary.append({
                             'id':      cand['id'],
                             'type':    ctype,
