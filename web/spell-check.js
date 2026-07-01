@@ -375,9 +375,15 @@ async function _confirmProceedToGenerate() {
   }
   const atsScore = stateManager.getAtsScore();
   const freshness = stateManager.getLayoutFreshness();
+  const genState = stateManager.getGenerationState();
   const lines = ['Your CV is ready to generate.'];
   if (atsScore !== null && atsScore !== undefined && typeof atsScore.overall === 'number') {
     lines.push(`Current ATS score: ${Math.round(atsScore.overall)}%`);
+  }
+  if (genState.pageWarning) {
+    const pc = genState.pageCountExact ?? genState.pageCountEstimate;
+    const pcLabel = pc !== null ? (genState.pageCountExact !== null ? `${pc}` : `~${pc}`) : null;
+    lines.push(`⚠ Page count${pcLabel ? ` (${pcLabel})` : ''} is outside the recommended range — consider adjusting layout instructions.`);
   }
   if (freshness.isStale) {
     lines.push(`⚠ ${freshness.ariaLabel}`);

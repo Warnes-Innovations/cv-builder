@@ -191,7 +191,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A6, US-A12, US-U1
-**Status:** PARTIAL - updated 2026-07-01; `back_to_phase()` and `re_run_phase()` exist; layout-only refinement IS routed — `_ALLOWED_TRANSITIONS[None]` includes `Phase.LAYOUT_REVIEW` (`conversation_manager.py:65`), so layout re-entry works from any phase; ↻ button on Layout step added via GAP-14 fix (`workflow-steps.js:668`); `metadata.json` is written fresh on every `generate_cv()` call. Remaining: changed-item highlighting (new vs existing items not visually differentiated after rerun — same as GAP-18 remaining item).
+**Status:** PARTIAL - updated 2026-07-01; `back_to_phase()` and `re_run_phase()` exist; layout-only refinement IS routed; ↻ button on Layout step added. Rewrite cards now show 🆕/↻ change badges on reruns (GAP-18 fix). Remaining: other review panels (skills, experience, achievements) do not yet show change badges after rerun; no clarification-amend path for analysis reruns.
 **Description:** Targeted re-entry is no longer missing, but the workflow is still incomplete. Earlier-stage re-entry works for analysis/customization/rewrite paths, while layout-only refinement, changed-item highlighting, and archive/metadata refresh guarantees remain unresolved.
 **Recommended resolution:** Preserve the existing re-entry APIs, then add layout-only routing, changed-vs-unchanged review highlighting, and explicit archive/metadata update rules for every regeneration cycle.
 
@@ -215,7 +215,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-R2, US-M4, US-U6
-**Status:** PARTIAL - updated 2026-07-01; page-count warnings ARE shown in Goals tab (`goals.js:385–396` — validates page limit inputs), Layout Review tab (`layout-instruction.js:213` — badge with ⚠ when outside range, based on `pageWarning`), and Download/File Review tab (`download-tab.js:82–93` — "⚠ Senior candidate target is 2–3 pages" when `pageCount < 1.5 || pageCount > 3`). Remaining: Preview generation stage does not show a page-count warning; enforcement is advisory throughout (no hard block on generation).
+**Status:** PARTIAL - updated 2026-07-01; page-count warnings ARE shown in Goals tab (`goals.js:385–396` — validates page limit inputs), Layout Review tab (`layout-instruction.js:213` — badge with ⚠ when outside range, based on `pageWarning`), and Download/File Review tab (`download-tab.js:82–93` — "⚠ Senior candidate target is 2–3 pages" when `pageCount < 1.5 || pageCount > 3`). Pre-generation confirm modal now also warns: `_confirmProceedToGenerate()` in `web/spell-check.js` surfaces `genState.pageWarning` with page count before the user clicks "Generate Now". Remaining: enforcement is advisory throughout (no hard block on generation).
 **Description:** The app now estimates and reports page length, so the gap is narrower than before. What remains missing is a consistent rule that carries length checks through preview, layout iteration, and final output, with clear thresholds and stage-appropriate warnings or blocks.
 **Recommended resolution:** Promote page-count thresholds into the staged generation contract, show warnings during preview and layout review, and ensure final ATS validation uses the same thresholds and messaging.
 
@@ -295,7 +295,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-U7
-**Status:** PARTIAL - updated 2026-07-01; modal focus management and validation wiring confirmed; added `aria-label` and `aria-pressed` to per-bullet icon-only buttons in `achievements-review.js:590–598` (hide/show, AI rewrite, delete). Spot-checked master-cv.js, publications-review.js, and achievements-review.js row controls — all already have `aria-label`. Remaining: keyboard/focus consistency for reorder and review actions across all tabs; some controls rely on `title` only (no `aria-label`).
+**Status:** PARTIAL - updated 2026-07-01; modal focus management and validation wiring confirmed; added `aria-label` and `aria-pressed` to per-bullet icon-only buttons in `achievements-review.js:590–598` (hide/show, AI rewrite, delete). Added `aria-label="Delete permanently"` to ✕ icon button in trash panel (`session-switcher-ui.js:844`). Spot-checked master-cv.js, publications-review.js, and achievements-review.js row controls — all already have `aria-label`. Remaining: keyboard/focus consistency for reorder and review actions across all tabs.
 **Description:** Accessibility is no longer a blank slate. The reviewed app includes meaningful focus-trap and validation support, but several important controls still rely on weak semantics, incomplete labels, or uneven keyboard behavior.
 **Recommended resolution:** Add `aria-label` coverage to every icon-only action, normalize visible focus styles across all interactive elements, and ensure every reorder and review action is fully keyboard operable.
 
@@ -319,7 +319,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A12, US-U1, US-A6
-**Status:** PARTIAL - updated 2026-07-01; rerun endpoints exist and preserve downstream state; all eligible stages now have ↻ affordances (analysis, customisations, rewrite, spell, layout — `workflow-steps.js:668`). Remaining: no clarification-amend path for analysis reruns (user cannot edit prior answers before rerun) and no changed-item highlighting (new vs existing results not visually differentiated).
+**Status:** PARTIAL - updated 2026-07-01; rerun endpoints exist and preserve downstream state; all eligible stages now have ↻ affordances (analysis, customisations, rewrite, spell, layout — `workflow-steps.js:668`). Rewrite cards now show "🆕 New" or "↻ Updated" badges on reruns via localStorage snapshot comparison (`rewrite-review.js` — `_saveRewriteSnapshot` / `_getRewriteSnapshot` / `_clearRewriteSnapshot`). Remaining: no clarification-amend path for analysis reruns (user cannot edit prior answers before rerun); other review panels (skills, experience, achievements) do not yet show change badges.
 **Description:** The core rerun mechanism exists, so the original gap is no longer unresolved at the foundation level. What remains is story-complete UX and rerun context management across all eligible stages.
 **Recommended resolution:** Expose rerun on every supported completed stage, allow clarification editing as part of analysis reruns, and compare old vs new results so only changed or new items require re-review.
 
@@ -346,7 +346,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 **Severity:** HIGH
 **Affected stories:** US-H4, US-H7, US-A9
 **See also:** [tasks/ui-review.md](ui-review.md#top-gaps)
-**Status:** PARTIAL - re-verified 2026-03-27; the app now has a real backend scoring model (`compute_ats_score` via `POST /api/cv/ats-score`), an ATS badge (overall %) in the position bar row, per-keyword matched/partial/missing + section provenance in the ATS Report modal and ATS Score tab, debounced score refresh after all major review checkpoints (analysis, skills, rewrites, spell-check, experience, achievements, layout confirmation, post-generation), and ATS score persisted to `generation_state` and `metadata.json`. The remaining gap is that score refresh was not triggered after summary focus selection in `summary-review.js`; that is fixed as of 2026-03-27/commit tbd.
+**Status:** RESOLVED 2026-07-01 — source-verified: `scheduleAtsRefresh('review_checkpoint')` is called in `summary-review.js` at lines 261, 289, and 358 (after summary select, after summary edit save, and after rewrite). The "commit tbd" note was stale — the fix was already present. All checkpoints wired: analysis, skills, rewrites, spell-check, experience, achievements, summary, layout confirmation, post-generation.
 **Description:** Earlier wording that treated this gap as fully absent is no longer accurate. The scoring infrastructure, badge display, and live-refresh wiring are all real. The last-mile issue was that selecting a summary variant (which contributes to ATS keyword matching via the `selected_summary` field) did not schedule a refresh; that is corrected.
 **Recommended resolution:** Persisted score details in generation metadata and final summaries are present. Hard-vs-soft skill typing in generated ATS DOCX output remains open under GAP-22.
 

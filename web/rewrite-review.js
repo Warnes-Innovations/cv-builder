@@ -85,6 +85,37 @@ function _clearPersistedDecisions() {
   try { localStorage.removeItem(key); } catch (_) {}
 }
 
+// ── Rewrite snapshot (changed-item highlighting) ────────────────────────────
+function _snapshotKey() {
+  try {
+    const sid = new URLSearchParams(window.location.search).get('session');
+    return sid ? `rw_snapshot_${sid}` : null;
+  } catch (_) { return null; }
+}
+
+function _saveRewriteSnapshot(rewrites) {
+  const key = _snapshotKey();
+  if (!key) return;
+  const map = {};
+  for (const r of rewrites) {
+    const cardId = String(r.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+    map[cardId] = r.proposed || '';
+  }
+  try { localStorage.setItem(key, JSON.stringify(map)); } catch (_) {}
+}
+
+function _getRewriteSnapshot() {
+  const key = _snapshotKey();
+  if (!key) return null;
+  try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; }
+}
+
+function _clearRewriteSnapshot() {
+  const key = _snapshotKey();
+  if (!key) return;
+  try { localStorage.removeItem(key); } catch (_) {}
+}
+
 async function fetchAndReviewRewrites() {
   const loadingMsg = appendLoadingMessage('Checking for text improvements...');
   setLoading(true, 'Reviewing rewrites…');
@@ -211,6 +242,22 @@ function renderRewritePanel(rewrites, warnings = []) {
     `;
   }
 
+  // Compute per-card change status relative to previous render's snapshot.
+  const prevSnapshot = _getRewriteSnapshot();
+  const changeStatusMap = {};
+  if (prevSnapshot) {
+    for (const r of rewrites) {
+      const cardId = String(r.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+      if (!(cardId in prevSnapshot)) {
+        changeStatusMap[cardId] = 'new';
+      } else if (prevSnapshot[cardId] !== (r.proposed || '')) {
+        changeStatusMap[cardId] = 'updated';
+      }
+    }
+  }
+  // Save current rewrites as snapshot for next render comparison.
+  _saveRewriteSnapshot(rewrites);
+
   content.innerHTML = warningsHtml + `
     <div id="rewrite-panel">
       <h1>✏️ Review Text Improvements</h1>
@@ -230,7 +277,10 @@ function renderRewritePanel(rewrites, warnings = []) {
       </div>
       <div id="rewrite-cards">
         ${hasRewrites
-    ? rewrites.map(r => renderRewriteCard(r, _warningsByRewriteId[r.id] || [])).join('')
+    ? rewrites.map(r => {
+        const cardId = String(r.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+        return renderRewriteCard(r, _warningsByRewriteId[r.id] || [], changeStatusMap[cardId] || null);
+      }).join('')
     : `
           <div class="empty-state" style="margin-top:24px;">
             <div class="icon">✏️</div>
@@ -321,11 +371,16 @@ function renderDiffHtml(tokens) {
   }).join('');
 }
 
-function renderRewriteCard(r, cardWarnings = []) {
+function renderRewriteCard(r, cardWarnings = [], changeStatus = null) {
   const isWeakSkillAdd = r.type === 'skill_add' && r.evidence_strength === 'weak';
   const weakBadge     = isWeakSkillAdd
     ? `<span class="weak-badge">⚠ Candidate to confirm</span>`
     : '';
+  const changeBadge   = changeStatus === 'new'
+    ? `<span class="rw-change-badge rw-change-new" aria-label="New suggestion not in previous run">🆕 New</span>`
+    : changeStatus === 'updated'
+      ? `<span class="rw-change-badge rw-change-updated" aria-label="Suggestion changed since previous run">↻ Updated</span>`
+      : '';
   // Keyword pills with position-based rank badge (#1, #2, …)
   const keywordPills  = (r.keywords_introduced || [])
     .map((k, idx) => `<span class="rewrite-keyword"><span class="kw-rank">#${idx + 1}</span>${escapeHtml(k)}</span>`)
@@ -344,7 +399,7 @@ function renderRewriteCard(r, cardWarnings = []) {
       <div class="rewrite-card-header">
         <span class="rewrite-card-type">${escapeHtml(typeLabel)}</span>
         <span class="rewrite-card-title">${escapeHtml(r.location || r.id)}</span>
-        ${weakBadge}
+        ${weakBadge}${changeBadge}
         <span id="rw-decision-badge-${cardId}" aria-live="polite" style="display:none;font-size:0.78em;font-weight:600;padding:1px 7px;border-radius:9px;margin-left:auto;"></span>
       </div>
       <div class="rewrite-card-body">
@@ -580,6 +635,7 @@ async function submitRewriteDecisions() {
     const rejected = data.rejected_count || 0;
     stateManager.markContentChanged();
     _clearPersistedDecisions();
+    _clearRewriteSnapshot();
     appendMessage('assistant', `✅ Rewrite decisions recorded: ${accepted} accepted, ${rejected} rejected. Starting spell check…`);
     scheduleAtsRefresh('review_checkpoint');
     switchTab('spell');

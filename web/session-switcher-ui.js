@@ -841,7 +841,7 @@ async function _renderTrashView() {
             <button data-trash-action="restore" data-trash-path="${ep}"
               style="background:#dbeafe;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;">Restore</button>
             <button data-trash-action="delete-forever" data-trash-path="${ep}"
-              style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:6px 8px;font-size:13px;cursor:pointer;" title="Delete permanently">✕</button>
+              style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:6px 8px;font-size:13px;cursor:pointer;" title="Delete permanently" aria-label="Delete permanently">✕</button>
           </div>
         </td>
       </tr>`;

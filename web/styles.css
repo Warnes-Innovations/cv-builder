@@ -1261,6 +1261,9 @@ kbd { display: inline-block; padding: 1px 5px; border: 1px solid #d1d5db; border
 .rewrite-card-type  { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; background: #e2e8f0; padding: 2px 8px; border-radius: 12px; }
 .rewrite-card-title { font-weight: 600; font-size: 0.95em; color: #1e293b; }
 .weak-badge { background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
+.rw-change-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
+.rw-change-new { background: #dcfce7; color: #15803d; }
+.rw-change-updated { background: #dbeafe; color: #1d4ed8; }
 .rewrite-card-body  { padding: 0 16px 14px; }
 .rewrite-inline-diff { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; font-size: 0.9em; line-height: 1.6; margin-bottom: 10px; word-wrap: break-word; }
 del.diff-removed { text-decoration: line-through; color: #dc2626; background: #fee2e2; border-radius: 2px; padding: 0 2px; }
