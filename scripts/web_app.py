@@ -736,10 +736,17 @@ def create_app(args) -> Flask:
     )
     app.session_registry = session_registry  # exposed for test access
 
+    _last_eviction_time: list = [0.0]
+    _EVICTION_INTERVAL_S: float = 60.0
+
     @app.before_request
     def _evict_idle_sessions():
-        """Lazily evict stale sessions on every request."""
-        session_registry.evict_idle()
+        """Lazily evict stale sessions — throttled to once per minute."""
+        import time as _time
+        now = _time.monotonic()
+        if now - _last_eviction_time[0] >= _EVICTION_INTERVAL_S:
+            _last_eviction_time[0] = now
+            session_registry.evict_idle()
 
     # ── Session helpers ──────────────────────────────────────────────────────
 

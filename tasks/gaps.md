@@ -613,7 +613,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; backend review found idle-session eviction runs from a per-request hook with no throttle.
+**Status:** RESOLVED 2026-06-30 — Added `_last_eviction_time` closure list and `_EVICTION_INTERVAL_S = 60.0` constant in `create_app()` (`scripts/web_app.py`). The `_evict_idle_sessions` before-request hook now calls `session_registry.evict_idle()` only when at least 60 seconds have elapsed since the last scan (checked via `time.monotonic()`).
 **Description:** Every request pays for a registry-wide eviction scan even when no eviction is needed.
 **Recommended resolution:** Add a minimum interval between eviction scans or move the sweep to a periodic background task.
 
