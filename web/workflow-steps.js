@@ -273,7 +273,125 @@ function _updateViewingIndicator(tabName) {
 
 // ── Re-run phase ──────────────────────────────────────────────────────────────
 
+/**
+ * Show an amend-clarifications modal before re-running the analysis phase.
+ * Calls onProceed() if the user confirms (with or without updating answers).
+ */
+async function _showAnalysisClarificationAmendModal(onProceed) {
+  const questions = window.postAnalysisQuestions || [];
+  const answers   = window.questionAnswers || {};
+
+  // No prior questions — skip the modal and proceed directly.
+  if (!questions.length) { await onProceed(); return; }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'clar-amend-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;overflow-y:auto;';
+
+  const formRows = questions.map((q, i) => {
+    const qtype  = q.type || `clarification_${i + 1}`;
+    const qtext  = escapeHtml(q.question || '');
+    const curAns = escapeHtml(answers[qtype] || '');
+    const choices = Array.isArray(q.choices) ? q.choices : [];
+
+    if (choices.length) {
+      const radios = choices.map(c => `
+        <label style="display:flex;align-items:center;gap:6px;margin-bottom:4px;cursor:pointer;">
+          <input type="radio" name="clar-${escapeHtml(qtype)}" value="${escapeHtml(c)}"
+            ${answers[qtype] === c ? 'checked' : ''} style="flex-shrink:0;">
+          <span style="font-size:0.9em;">${escapeHtml(c)}</span>
+        </label>`).join('');
+      return `
+        <div style="margin-bottom:14px;">
+          <label style="font-weight:600;font-size:0.9em;display:block;margin-bottom:6px;">${qtext}</label>
+          ${radios}
+        </div>`;
+    }
+    return `
+      <div style="margin-bottom:14px;">
+        <label for="clar-ans-${escapeHtml(qtype)}" style="font-weight:600;font-size:0.9em;display:block;margin-bottom:4px;">${qtext}</label>
+        <textarea id="clar-ans-${escapeHtml(qtype)}" name="clar-${escapeHtml(qtype)}" rows="2"
+          style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:0.9em;resize:vertical;"
+        >${curAns}</textarea>
+      </div>`;
+  }).join('');
+
+  overlay.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-labelledby="clar-amend-title"
+         style="background:#fff;border-radius:10px;padding:24px 28px;max-width:500px;width:94%;
+                box-shadow:0 20px 60px rgba(0,0,0,0.3);margin:20px auto;">
+      <h3 id="clar-amend-title" style="margin:0 0 6px;font-size:1.1em;color:#1e293b;">↻ Amend Clarification Answers</h3>
+      <p style="margin:0 0 16px;font-size:0.85em;color:#6b7280;">
+        Update your answers before rerunning analysis, or keep them as-is.
+      </p>
+      <form id="clar-amend-form" onsubmit="return false;">
+        ${formRows}
+      </form>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;">
+        <button id="clar-amend-cancel" class="btn-secondary">Cancel</button>
+        <button id="clar-amend-keep"   class="btn-secondary">Keep Existing Answers</button>
+        <button id="clar-amend-save"   class="btn-primary">Update &amp; Rerun</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  if (typeof _focusedElementBeforeModal !== 'undefined') window._focusedElementBeforeModal = document.activeElement;
+  if (typeof trapFocus === 'function') trapFocus('clar-amend-overlay');
+  overlay.querySelector('#clar-amend-save').focus();
+
+  function closeModal() {
+    overlay.remove();
+    if (typeof restoreFocus === 'function') restoreFocus();
+  }
+
+  overlay.querySelector('#clar-amend-cancel').addEventListener('click', closeModal);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+  overlay.querySelector('#clar-amend-keep').addEventListener('click', () => {
+    closeModal();
+    onProceed();
+  });
+
+  overlay.querySelector('#clar-amend-save').addEventListener('click', async () => {
+    const form    = document.getElementById('clar-amend-form');
+    const updated = {};
+    questions.forEach((q, i) => {
+      const qtype = q.type || `clarification_${i + 1}`;
+      const el    = form.querySelector(`[name="clar-${qtype}"]`);
+      if (!el) return;
+      if (el.type === 'radio') {
+        const checked = form.querySelector(`[name="clar-${qtype}"]:checked`);
+        if (checked) updated[qtype] = checked.value;
+      } else {
+        const val = el.value.trim();
+        if (val) updated[qtype] = val;
+      }
+    });
+
+    closeModal();
+    try {
+      await fetch('/api/post-analysis-responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questions, answers: updated }),
+      });
+      window.questionAnswers = updated;
+    } catch (_e) { /* silent — proceed with whatever the backend already has */ }
+    await onProceed();
+  });
+}
+
 async function reRunPhase(step) {
+  // Intercept analysis reruns to let the user amend prior clarification answers.
+  if (step === 'analysis') {
+    await _showAnalysisClarificationAmendModal(() => _executeReRunPhase('analysis'));
+    return;
+  }
+  await _executeReRunPhase(step);
+}
+
+async function _executeReRunPhase(step) {
   const loadingMsg = appendLoadingMessage(`↻ Re-running ${step}…`);
   setLoading(true, `Re-running ${step}…`);
   try {
@@ -956,8 +1074,10 @@ export {
   _ACTION_LABELS,
   backToPhase,
   _showReRunConfirmModal,
+  _showAnalysisClarificationAmendModal,
   confirmReRunPhase,
   reRunPhase,
+  _executeReRunPhase,
   _getStepTooltip,
   _updateViewingIndicator,
   _highlightChangedItems,
