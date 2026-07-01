@@ -99,14 +99,28 @@ async function buildExperienceReviewTable() {
         return ai - bi;
       });
     } else {
-      // Default: present/current positions first, then reverse-chronological
+      // Default: sort by LLM recommendation strength first, then reverse-chronological
+      const _ACTION_RANK = { emphasize: 0, include: 1, 'de-emphasize': 2, exclude: 3 };
       const _parseEndKey = (exp) => {
         const raw = (exp.details?.end_date || exp.details?.end || '').trim().toLowerCase();
         if (!raw || ['present', 'current', 'now', 'ongoing'].includes(raw)) return '9999-12';
         if (/^\d{4}$/.test(raw)) return raw + '-12';
         return raw;
       };
-      experiencesWithDetails.sort((a, b) => _parseEndKey(b).localeCompare(_parseEndKey(a)));
+      const _getActionRank = (exp) => {
+        const rec = getExperienceRecommendation(exp.id, data);
+        if (!rec) return 1; // default to 'include' rank when no recommendation
+        if (rec === 'Emphasize')    return 0;
+        if (rec === 'Include')      return 1;
+        if (rec === 'De-emphasize') return 2;
+        if (rec === 'Omit')         return 3;
+        return 1;
+      };
+      experiencesWithDetails.sort((a, b) => {
+        const rankDiff = _getActionRank(a) - _getActionRank(b);
+        if (rankDiff !== 0) return rankDiff;
+        return _parseEndKey(b).localeCompare(_parseEndKey(a));
+      });
     }
     window._experiencesOrdered = experiencesWithDetails;
   } else {

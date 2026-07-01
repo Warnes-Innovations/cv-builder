@@ -1051,7 +1051,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-R2, US-U4
-**Status:** OPEN - discovered 2026-04-22; resume expert review found `buildExperienceReviewTable` (`web/experience-review.js:83–89`) sorts experiences by `start_date` descending on first load. The LLM recommendation provides relevance signal, but the visual default privileges recency.
+**Status:** RESOLVED — 2026-06-30. Updated the default sort in `buildExperienceReviewTable()` (`web/experience-review.js`): when no saved row order exists, experiences now sort by LLM recommendation strength (Emphasize=0, Include=1, De-emphasize=2, Omit=3) as primary key, with reverse-chronological end-date as secondary key. Uses `getExperienceRecommendation(expId, data)` which is already in scope. User-saved orders are still restored first.
 **Description:** For career-changers or those with highly relevant older roles, the recency-biased default sort means the most relevant experience may appear at the bottom of the review table.
 **Recommended resolution:** Change the default sort order on first load to order by LLM recommendation strength (Emphasize > Include > De-emphasize > Omit) as the primary key, with recency as a secondary key. Show a "Sorted by relevance" label and allow users to switch to recency sort.
 
