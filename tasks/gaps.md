@@ -1285,7 +1285,7 @@ The session status schema accepts only `draft`, `ready`, and `sent`. US-A1 impli
 ## GAP-135: Intake Confirmation Fields Not Inline-Editable
 
 **Priority:** MED
-**Status:** Open
+**Status:** FALSE POSITIVE — RESOLVED 2026-07-01. Source-verified: `_showIntakeConfirmCard()` in `web/message-dispatch.js:438–459` renders an editable card with fully functional `<input type="text">` elements for Role/Job Title and Company, plus `<input type="date">` for Date Applied. The original report looked in `web/job-input.js` but the implementation lives in `web/message-dispatch.js`. All three fields are freely editable before the user clicks "Confirm & Continue".
 **Found:** 2026-06-18 cvUiReview
 After URL fetch populates the job intake confirmation card (company, role, date, location, salary fields), those fields are displayed as read-only text. US-U2 AC4 requires that these extracted fields be inline-editable so the user can correct extraction errors without re-fetching. `web/job-input.js:49–84` and `web/review-table-base.js:222–248` show no inline edit mechanism for the confirmation card fields.
 **Source evidence:** `web/job-input.js:49–84`; ux-expert.md 2026-06-18.
@@ -1343,7 +1343,7 @@ The publication CRUD modal in `web/master-cv.js` loads the `editor` BibTeX field
 ## GAP-142: Bulk BibTeX Import Skips Per-Entry Required-Field Validation
 
 **Priority:** MED
-**Status:** Open
+**Status:** RESOLVED 2026-07-01 — Added per-entry required-field validation in `POST /api/master-data/publications/import` (`scripts/routes/master_data_routes.py`). After parsing, each entry is checked for: non-empty `title`, non-empty `year`, and at least one of `authors` or `editor`. Entries failing any check are logged as warnings and collected in `invalid` / `invalid_keys` response fields rather than silently imported. Both frontend import handlers (`master-cv.js:_importPublications()` and `convertPublicationText()`) now show the rejected count and key list in the confirmation modal.
 **Found:** 2026-06-18 cvUiReview
 `POST /api/master-data/publications/import` at `scripts/routes/master_data_routes.py:1375–1415` validates that the uploaded file parses as valid BibTeX but does not validate required fields (title, year, author or editor) on a per-entry basis. Entries missing required fields are imported silently and may produce malformed citations in the generated CV.
 **Source evidence:** `scripts/routes/master_data_routes.py:1375–1415`; master-cv-curator.md 2026-06-18.

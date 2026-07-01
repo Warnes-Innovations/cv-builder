@@ -1415,10 +1415,32 @@ def create_blueprint(deps):
         added = 0
         updated = 0
         skipped = 0
+        invalid = 0
         added_keys: list = []
         updated_keys: list = []
         skipped_keys: list = []
+        invalid_keys: list = []
         for key, pub in imported.items():
+            # Validate required fields per entry before importing
+            missing_fields = []
+            if not str(pub.get("title", "") or "").strip():
+                missing_fields.append("title")
+            if not str(pub.get("year", "") or "").strip():
+                missing_fields.append("year")
+            has_author = bool(str(pub.get("authors", "") or "").strip())
+            has_editor = bool(str((pub.get("fields") or {}).get("editor", "") or "").strip())
+            if not has_author and not has_editor:
+                missing_fields.append("author/editor")
+            if missing_fields:
+                logger.warning(
+                    "BibTeX import: entry %r missing required fields: %s",
+                    key,
+                    ", ".join(missing_fields),
+                )
+                invalid += 1
+                invalid_keys.append(key)
+                continue
+
             if key in pubs:
                 if overwrite:
                     pubs[key] = pub
@@ -1448,10 +1470,12 @@ def create_blueprint(deps):
             "added": added,
             "updated": updated,
             "skipped": skipped,
+            "invalid": invalid,
             "total": len(pubs),
             "added_keys": added_keys,
             "updated_keys": updated_keys,
             "skipped_keys": skipped_keys,
+            "invalid_keys": invalid_keys,
         })
 
     @bp.post("/api/master-data/publications/convert")

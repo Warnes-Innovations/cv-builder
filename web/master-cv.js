@@ -1344,13 +1344,17 @@ async function importPublicationsBib() {
         `${data.updated || 0} updated`,
         `${data.skipped || 0} skipped`,
       ];
+      if (data.invalid) parts.push(`${data.invalid} rejected (missing required fields)`);
       const skippedDetail = (data.skipped_keys?.length)
         ? `\n\nSkipped (already exist — enable "Overwrite" to update):\n• ${data.skipped_keys.join('\n• ')}`
+        : '';
+      const invalidDetail = (data.invalid_keys?.length)
+        ? `\n\nRejected (missing title, year, or author):\n• ${data.invalid_keys.join('\n• ')}`
         : '';
       _setPublicationStatus('master-pub-import-status', `✅ Imported: ${parts.join(', ')}.`, '#15803d');
       _setMasterChangeNotice('Publications', 'imported');
       await loadPublications();
-      showAlertModal('✅ Imported', `Imported BibTeX entries: ${parts.join(', ')}.${skippedDetail}`);
+      showAlertModal('✅ Imported', `Imported BibTeX entries: ${parts.join(', ')}.${skippedDetail}${invalidDetail}`);
       closeImportPublicationsModal();
     } else {
       _setPublicationStatus('master-pub-import-status', `❌ ${data.error || 'Import failed'}`, '#dc2626');
@@ -1450,13 +1454,17 @@ async function importConvertedPublicationText() {
         `${data.updated || 0} updated`,
         `${data.skipped || 0} skipped`,
       ];
+      if (data.invalid) parts.push(`${data.invalid} rejected (missing required fields)`);
       const skippedDetail = (data.skipped_keys?.length)
         ? `\n\nSkipped (already exist — enable "Overwrite" to update):\n• ${data.skipped_keys.join('\n• ')}`
+        : '';
+      const invalidDetail = (data.invalid_keys?.length)
+        ? `\n\nRejected (missing title, year, or author):\n• ${data.invalid_keys.join('\n• ')}`
         : '';
       _setPublicationStatus('master-pub-convert-status', `✅ Imported preview: ${parts.join(', ')}.`, '#15803d');
       _setMasterChangeNotice('Publications', 'imported');
       await loadPublications();
-      showAlertModal('✅ Imported', `Imported generated BibTeX: ${parts.join(', ')}.${skippedDetail}`);
+      showAlertModal('✅ Imported', `Imported generated BibTeX: ${parts.join(', ')}.${skippedDetail}${invalidDetail}`);
       closeConvertPublicationsModal();
     } else {
       _setPublicationStatus('master-pub-convert-status', `❌ ${data.error || 'Import failed'}`, '#dc2626');
