@@ -223,7 +223,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-A4, US-U5
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; applicant review passed the core rewrite card workflow, but UX review found edit mode hides the diff context and no sequential "approve and next" or compact review flow was source-verified.
+**Status:** PARTIAL - updated 2026-07-01; added `_scrollToNextPendingRewrite(afterId)` in `web/rewrite-review.js` — after each accept or reject decision, auto-scrolls to the next undecided card (smooth scroll). "Accept All" / "Reject All" bulk buttons at top already implemented. Remaining: edit mode still hides the diff context (textarea replaces the diff panel); compact/side-by-side review layout not implemented.
 **Description:** The rewrite review surface is functional, but it still falls short of the more refined UX criteria. Users can review, edit, accept, and reject proposals, yet editing interrupts comparison context and larger rewrite batches lack an efficient rapid-review mode.
 **Recommended resolution:** Keep inline diff as the default, preserve before/after context while editing, and add a keyboard-friendly sequential review mode for larger rewrite sets.
 

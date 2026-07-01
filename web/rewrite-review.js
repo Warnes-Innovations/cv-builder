@@ -432,6 +432,21 @@ function applyRewriteAction(id, outcome) {
     }
     syncRewriteGlobals();
     updateRewriteTally();
+    _scrollToNextPendingRewrite(id);
+  }
+}
+
+function _scrollToNextPendingRewrite(afterId) {
+  const allCards = document.querySelectorAll('[id^="rw-card-"]');
+  let found = false;
+  for (const card of allCards) {
+    const id = card.id.replace('rw-card-', '');
+    if (id === afterId) { found = true; continue; }
+    if (!found) continue;
+    if (!rewriteDecisions[id]) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
   }
 }
 
