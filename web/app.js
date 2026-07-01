@@ -153,6 +153,8 @@ function setupEventListeners() {
   document.getElementById('layout-btn').addEventListener('click', handleLayoutPrimaryAction);
   document.getElementById('final-generate-proceed-btn').addEventListener('click', finalGenerationComplete);
   document.getElementById('finalise-action-btn').addEventListener('click', () => switchTab('finalise'));
+
+  if (typeof initKeyboardShortcuts === 'function') initKeyboardShortcuts();
 }
 
 // Tests now import helper functions from their canonical ES modules directly.

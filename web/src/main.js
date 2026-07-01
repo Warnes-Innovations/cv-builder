@@ -80,7 +80,8 @@ import * as ThankYou           from '../thank-you.js';
 import * as Harvest            from '../harvest.js';
 
 // ── Tier 7 ────────────────────────────────────────────────────────────────────
-import * as SessionSwitcherUi from '../session-switcher-ui.js';
+import * as SessionSwitcherUi  from '../session-switcher-ui.js';
+import * as KeyboardShortcuts  from '../keyboard-shortcuts.js';
 
 // ── Assign all exports to globalThis ─────────────────────────────────────────
 // Phase 2 modules first; phase 3 domain modules follow so fully-featured
@@ -97,5 +98,5 @@ Object.assign(globalThis,
   ExperienceReview, SkillsReview, AchievementsReview, TaglineReview, SummaryReview, PublicationsReview, ReviewIcons,
   RewriteReview, SpellCheck, DownloadTab, FinalGenerate, WorkflowSteps, MasterCv,
   CoverLetter, ScreeningQuestions, Finalise, InterviewPrep, ThankYou, Harvest,
-  SessionSwitcherUi,
+  SessionSwitcherUi, KeyboardShortcuts,
 );

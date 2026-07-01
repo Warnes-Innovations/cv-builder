@@ -113,6 +113,9 @@ function _updateVisitedTabIndicators() {
 }
 
 function switchTab(tab) {
+  // Clear keyboard-focused card state when leaving a review tab
+  if (typeof resetCardFocus === 'function') resetCardFocus();
+
   // Save unsaved user input from the tab we are leaving
   _saveDraftInputsForTab(stateManager.getCurrentTab());
 

@@ -440,6 +440,39 @@ function _renderConsistencyReport(statusData) {
     });
   }
 
+  // \u2500\u2500 5. Cross-document terminology consistency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  const sqTexts = [...document.querySelectorAll('textarea[id^="sc-text-"]')]
+    .map(el => el.value.toLowerCase()).filter(Boolean);
+  const allDocText = [cvText, clText, ...sqTexts];
+
+  const _TERM_PAIRS = [
+    ['machine learning', 'ml'], ['artificial intelligence', 'ai'],
+    ['natural language processing', 'nlp'], ['deep learning', 'dl'],
+    ['large language model', 'llm'], ['user interface', 'ui'],
+    ['user experience', 'ux'], ['application programming interface', 'api'],
+    ['kubernetes', 'k8s'], ['continuous integration', 'ci/cd'],
+  ];
+  const termMismatches = [];
+  for (const [long, short] of _TERM_PAIRS) {
+    const re = new RegExp(`\\b${short.replace('/', '\\/')}\\b`);
+    if (allDocText.some(t => t.includes(long)) && allDocText.some(t => re.test(t))) {
+      termMismatches.push(`\u201c${long}\u201d / \u201c${short.toUpperCase()}\u201d`);
+    }
+  }
+  if (termMismatches.length > 0) {
+    checks.push({
+      status: 'warn',
+      label:  'Terminology consistency',
+      detail: `Mixed forms detected across documents: ${termMismatches.join('; ')}. Standardise to one form per concept.`,
+    });
+  } else if (allDocText.some(t => t.length > 50)) {
+    checks.push({
+      status: 'pass',
+      label:  'Terminology consistency',
+      detail: 'No mixed abbreviation/expansion pairs detected across CV, cover letter, and screening answers.',
+    });
+  }
+
   // ── Render ────────────────────────────────────────────────────────
   const icons = { pass: '\u2705', warn: '\u26a0\ufe0f', fail: '\u274c' };
   const overallFail   = checks.some(c => c.status === 'fail');
@@ -456,7 +489,7 @@ function _renderConsistencyReport(statusData) {
         <span class="cr-badge cr-${overallStatus}">${escapeHtml(overallMsg)}</span>
       </div>
       <p style="color:#6b7280;font-size:0.83em;margin:0 0 12px;">
-        Checks company name, job title, ATS keywords, and date formatting across CV and cover letter.
+        Checks company name, job title, ATS keywords, date formatting, and terminology consistency across CV, cover letter, and screening answers.
       </p>
       <div class="cr-checks">
         ${checks.map(c => `

@@ -974,7 +974,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** HIGH
 **Affected stories:** US-W1, US-W3, US-U7
-**Status:** OPEN - discovered 2026-04-22; power user review found no keyboard accelerators for any workflow step, action button, or review operation. High-throughput users who process multiple CVs per day must use a mouse for every navigation and decision action.
+**Status:** RESOLVED 2026-06-30 — Added `web/keyboard-shortcuts.js` module. `initKeyboardShortcuts()` registers a global `keydown` handler called from `app.js:init()`. Shortcuts: `Ctrl+Enter` triggers the primary action button for the current tab (via `_TAB_ACTION_BTN` map); `↑`/`↓` navigate between `.rewrite-card` / `.spell-card` elements; `A` accepts the focused card; `R` rejects the focused card; `?` toggles a floating help panel listing all shortcuts. Single-key shortcuts are suppressed when focus is in a text input or a modal is open. Tab change calls `resetCardFocus()` from `review-table-base.js:switchTab()`. `kb-focused` CSS class highlights the keyboard-active card with a blue outline. `kbd` element style added to `web/styles.css`.
 **Description:** The absence of any keyboard shortcut support creates a speed bottleneck for power users and an access barrier for users with motor impairments.
 **Recommended resolution:** Implement keyboard shortcuts for: advance to next step (`Ctrl+→`), trigger action button (`Ctrl+Enter`), accept current item (`A`), reject current item (`R`), and navigate between review cards (`↑`/`↓`). Publish shortcuts in a keyboard shortcut reference panel.
 
@@ -2601,7 +2601,7 @@ When the LLM rewrites bullets to incorporate missing ATS keywords, there is no p
 ## GAP-256: No Cross-Document Terminology Consistency Enforcement
 
 **Priority:** MED
-**Status:** OPEN
+**Status:** RESOLVED 2026-06-30 — Added cross-document terminology consistency check as item #5 in `_renderConsistencyReport()` (`web/cover-letter.js`). Collects text from CV (tab data), cover letter textarea, and all screening Q&A response textareas (`sc-text-*`). Checks 10 abbreviation/expansion pairs (ml/machine learning, ai/artificial intelligence, nlp, dl, llm, ui, ux, api, k8s/kubernetes, ci/cd/continuous integration). If both the long and short forms appear across the document set, a `warn` row is added to the consistency report. If no conflicts are found (and documents are non-trivial in length), a `pass` row is shown. The panel description updated to mention screening answers. Complementary backend batch check added in GAP-233 (conversation_manager.py).
 **Discovered:** 2026-06-30 (cycle 13) by persuasion-expert (US-P4).
 **Affected stories:** US-P4 (cross-document coherence)
 The CV, cover letter, and screening question answers are generated sequentially but with no shared terminology constraint. A technology name ("TensorFlow" in CV, "TF" in cover letter, "deep learning frameworks" in screening answers) may vary without any cross-document check or warning.
