@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-06-30 (cycle 14)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-01 (cycle 15)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -733,7 +733,7 @@ This behavior must not be reversed. The count suffix `(N)` was intentionally rem
 
 **Severity:** MEDIUM
 **Affected stories:** Technical review follow-up
-**Status:** OPEN - discovered 2026-04-20; CI/CD review found CodeQL, Python setup, JS setup, and harness steps repeated across the PR and full workflows.
+**Status:** RESOLVED 2026-07-01 — Extracted three fully duplicated jobs (`codeql`, `js-tests`, `integration-harness`) into reusable workflows: `.github/workflows/reusable-codeql.yml`, `.github/workflows/reusable-js-unit-tests.yml`, `.github/workflows/reusable-html-harness.yml`. Both `full-integration.yml` and `integration-harness.yml` now call these via `uses:`.
 **Description:** Workflow duplication increases maintenance cost and the risk that one pipeline is updated while the other silently drifts.
 **Recommended resolution:** Extract shared job logic into a reusable workflow or composite action.
 
