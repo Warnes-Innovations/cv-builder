@@ -588,12 +588,15 @@ function renderAchievementEditorRows(expIdx) {
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;padding-top:2px;">
         <button class="icon-btn ${hidden ? 'active' : ''}" title="${hidden ? 'Show bullet in generated CV' : 'Hide bullet from generated CV'}"
+          aria-label="${hidden ? 'Show bullet in generated CV' : 'Hide bullet from generated CV'}" aria-pressed="${hidden}"
           onclick="toggleAchievementHidden(${expIdx},${achIdx})"
           style="color:${hidden ? '#b45309' : '#64748b'};">${eyeSlashIcon()}</button>
         <button class="icon-btn" title="Ask AI to rewrite"
+          aria-label="Ask AI to rewrite this bullet"
           onclick="rewriteAchievementWithLLM(${expIdx},${achIdx})"
           >✨</button>
         <button class="icon-btn" title="Delete"
+          aria-label="Delete this bullet"
           onclick="deleteAchievement(${expIdx},${achIdx})"
           style="color:#ef4444;">🗑</button>
       </div>

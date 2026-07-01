@@ -295,7 +295,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-U7
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; modal focus management and validation wiring exist, but icon-only review controls still miss `aria-label` coverage and keyboard/reorder/focus behavior is inconsistent across primary controls.
+**Status:** PARTIAL - updated 2026-07-01; modal focus management and validation wiring confirmed; added `aria-label` and `aria-pressed` to per-bullet icon-only buttons in `achievements-review.js:590–598` (hide/show, AI rewrite, delete). Spot-checked master-cv.js, publications-review.js, and achievements-review.js row controls — all already have `aria-label`. Remaining: keyboard/focus consistency for reorder and review actions across all tabs; some controls rely on `title` only (no `aria-label`).
 **Description:** Accessibility is no longer a blank slate. The reviewed app includes meaningful focus-trap and validation support, but several important controls still rely on weak semantics, incomplete labels, or uneven keyboard behavior.
 **Recommended resolution:** Add `aria-label` coverage to every icon-only action, normalize visible focus styles across all interactive elements, and ensure every reorder and review action is fully keyboard operable.
 
