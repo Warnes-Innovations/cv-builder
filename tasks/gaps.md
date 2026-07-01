@@ -231,7 +231,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-A3, US-R2, US-U4
-**Status:** PARTIAL - updated 2026-07-01; full-row drag reordering IS implemented for experiences (`experience-review.js:288`), skills (`skills-review.js:1027`), and publications (`publications-review.js:223`) via `POST /api/reorder-rows`. Achievements row-reorder NOT implemented — `achievements-review.js` has no `reorder-rows` call. Bullet reordering within experience entries also works.
+**Status:** RESOLVED 2026-07-01 — full-row reorder confirmed for ALL content types: experiences (`experience-review.js:288`), skills (`skills-review.js:1027`), publications (`publications-review.js:223`) via `POST /api/reorder-rows`; achievements via ↑/↓ buttons (`achievements-review.js:249–250, 293–294`) calling `moveAchievementRow`/`moveSuggestedAchievementRow`. Bullet reordering within experience entries also works. The original gap claim that "no controls were found for reordering full rows" was stale.
 **Description:** The story requirements extend beyond intra-job bullet order. The current UI lets the user reorder bullets inside a role, but not reorder the higher-level content blocks that determine what rises or falls in the CV.
 **Recommended resolution:** Add row-level reorder controls for each major review table, persist those order decisions in session state, and ensure final generation respects them across HTML, PDF, and ATS DOCX.
 
