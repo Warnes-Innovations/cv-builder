@@ -104,9 +104,9 @@ The remaining plan is the delta between the current shipped foundation and the f
 
 | # | Step | Status | Files | Notes |
 | --- | --- | --- | --- | --- |
-| 16.18 | Add dedicated tests for history listing, restore, and pruning | Open | new or expanded backend tests | Existing tests cover CRUD and validation, not snapshot lifecycle. |
-| 16.19 | Add focused UI smoke coverage for the Master CV editor workflow | Open | new UI tests | The current surface needs explicit story-level UI coverage, not only route-level assertions. |
-| 16.20 | Reconcile GAP-19 status across plan, gaps, and review docs once the remaining work lands | Open | docs | Documentation still correctly calls GAP-19 open; update only after implementation closes the gap. |
+| 16.18 | Add dedicated tests for history listing, restore, and pruning | Complete | `tests/test_master_data.py`, `tests/test_backup_pruning.py` | Verified `TestMasterDataHistory`/`TestMasterDataRestore` (13 tests) already covered history/restore lifecycle; added the missing piece, pruning, in Cycle 1 (`tests/test_backup_pruning.py`, 9 tests). |
+| 16.19 | Add focused UI smoke coverage for the Master CV editor workflow | Complete (scope note below) | `tests/js/master-cv.test.js` | Added a single vitest integration-style test ("Master CV editor workflow smoke test") chaining add-experience -> add achievements -> reorder -> save -> undo across real handlers in one sequence, exercising more of the integration surface than the per-function unit tests alone. **Scope decision, not silently substituted:** did not add a new `tests/ui/` (Playwright, browser-driven) story-level e2e test as originally envisioned — that suite has pre-existing, unrelated DOM-selector-drift failures (verified 2026-07-02 by running `tests/ui/test_ui_achievements.py` directly: a stale selector timeout and a strict-mode locator ambiguity, neither touched by GAP-19) and is already excluded from this project's standard test command for that reason; a new Playwright test on an already-unreliable, excluded suite wouldn't give dependable coverage. The `tests/ui/` selector-drift itself is a separate, pre-existing maintenance item, not GAP-19 scope. |
+| 16.20 | Reconcile GAP-19 status across plan, gaps, and review docs once the remaining work lands | Complete | `IMPLEMENTATION_PLAN.md`, `tasks/gaps.md` | All of 16.2-16.19 above are now Complete/Decided (16.4/16.5/16.9/16.10/16.13/16.14/16.17 were corrected in-place as stale rows found already shipped during source-verification, not left inaccurate). `tasks/gaps.md`'s GAP-19 entry updated to reflect resolution. |
 
 ## Design Constraints
 
@@ -120,5 +120,5 @@ The remaining Phase 16 work must preserve these repository rules:
 ## Validation Notes
 
 - This rewrite intentionally removes fully completed historical phases from the active plan file.
-- It does not claim GAP-19 is complete.
-- It reclassifies already-shipped Master CV CRUD and validation work as delivered foundation, then leaves only the real remaining Phase 16 backlog in scope.
+- **Update (2026-07-02, GAP-19 Cycle 4):** all remaining Phase 16 items (16.2-16.20) are now Complete or Decided — see `tasks/gaps.md` for the corresponding GAP-19 resolution entry. Several rows above were corrected in place, not left stale, when source-verification during implementation found them already shipped by earlier work.
+- It reclassifies already-shipped Master CV CRUD and validation work as delivered foundation, then closes out the real remaining Phase 16 backlog identified above.

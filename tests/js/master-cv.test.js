@@ -1637,3 +1637,102 @@ describe('master CV JSON import', () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Master CV editor workflow smoke test (GAP-19 16.19).
+//
+// tests/ui/ (Playwright, browser-driven) is where a true story-level e2e
+// workflow test would normally live, but that suite has pre-existing,
+// unrelated DOM-selector-drift failures (verified 2026-07-02: running
+// tests/ui/test_ui_achievements.py directly fails on a stale selector and a
+// strict-mode locator ambiguity, neither touched by GAP-19) and is already
+// excluded from this project's standard test command for that reason. Adding
+// a new Playwright test on top of an already-unreliable, excluded suite
+// wouldn't give reliable coverage. Instead, this is a single vitest test that
+// chains multiple real handlers together in one realistic sequence (add an
+// experience with achievements -> reorder -> save -> undo), exercising more
+// of the integration surface than the per-function unit tests above, using
+// the one test runner this project's tooling can actually verify passes.
+// ---------------------------------------------------------------------------
+
+describe('Master CV editor workflow smoke test', () => {
+  it('add experience with achievements, reorder, save, then undo restores the prior version', async () => {
+    document.body.innerHTML = `
+      <div id="document-content"></div>
+      <h2 id="master-exp-modal-title"></h2>
+      <div id="master-exp-modal-overlay" style="display:none;"></div>
+      <input type="hidden" id="exp-modal-id" />
+      <input id="exp-title-input" />
+      <input id="exp-company-input" />
+      <input id="exp-city-input" />
+      <input id="exp-state-input" />
+      <input id="exp-start-input" />
+      <input id="exp-end-input" />
+      <select id="exp-type-input"><option value="full_time">Full-time</option></select>
+      <input id="exp-importance-input" value="5" />
+      <input id="exp-tags-input" />
+      <div id="exp-achievements-editor-list"></div>
+      <input id="exp-ach-new-input" />
+    `
+    window._masterExperienceFullData = []
+
+    const emptyFullData = {
+      personal_info: {}, experience: [], skills: [],
+      education: [], awards: [], selected_achievements: [],
+      professional_summaries: {},
+    }
+    let saved = false
+    const mockFetch = vi.fn().mockImplementation((url, opts) => {
+      if (url === '/api/master-data/overview') return Promise.resolve({ json: async () => ({}) })
+      if (url === '/api/master-data/full') return Promise.resolve({ json: async () => emptyFullData })
+      if (url === '/api/master-data/publications') return Promise.resolve({ json: async () => ({ ok: true, publications: [] }) })
+      if (url === '/api/master-data/experience' && opts?.method === 'POST') {
+        saved = true
+        return Promise.resolve({ json: async () => ({ ok: true, action: 'added', id: 'exp_new' }) })
+      }
+      if (url === '/api/master-data/history') {
+        return Promise.resolve({ json: async () => ({
+          ok: true,
+          snapshots: saved ? [{ filename: 'Master_CV_20260101T000000Z.json', mtime: 1234567890, size: 10 }] : [],
+        }) })
+      }
+      if (url === '/api/master-data/restore') {
+        return Promise.resolve({ json: async () => ({ ok: true, restored_from: 'Master_CV_20260101T000000Z.json', safety_backup: 'Master_CV_20260102T000000Z.json' }) })
+      }
+      throw new Error(`Unexpected fetch in workflow smoke test: ${url}`)
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    window.confirm = vi.fn(() => true)
+
+    // 1. Start a new experience and add two achievements.
+    showAddExperienceModal()
+    document.getElementById('exp-title-input').value = 'Senior Engineer'
+    document.getElementById('exp-company-input').value = 'Acme'
+    document.getElementById('exp-ach-new-input').value = 'Shipped the platform migration'
+    _addExpAchievement()
+    document.getElementById('exp-ach-new-input').value = 'Mentored two junior engineers'
+    _addExpAchievement()
+
+    // 2. Reorder: the second achievement should move above the first.
+    _moveExpAchievement(1, -1)
+    const rowsBeforeSave = document.querySelectorAll('.exp-ach-text-input')
+    expect(rowsBeforeSave[0].value).toBe('Mentored two junior engineers')
+    expect(rowsBeforeSave[1].value).toBe('Shipped the platform migration')
+
+    // 3. Save — posts the experience with achievements in the reordered order.
+    await saveMasterExperience()
+    const expCall = mockFetch.mock.calls.find(([url, opts]) => url === '/api/master-data/experience' && opts?.method === 'POST')
+    expect(expCall).toBeDefined()
+    const savedBody = JSON.parse(expCall[1].body)
+    expect(savedBody.experience.achievements).toEqual([
+      'Mentored two junior engineers',
+      'Shipped the platform migration',
+    ])
+
+    // 4. Undo the save — restores the most recent snapshot and re-renders.
+    await undoMasterDataChange()
+    expect(showAlertModalMock).toHaveBeenCalledWith('✅ Undone', expect.any(String))
+    const redoBtn = document.getElementById('master-cv-redo-btn')
+    expect(redoBtn.disabled).toBe(false)
+  })
+})
