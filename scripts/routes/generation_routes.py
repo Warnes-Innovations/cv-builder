@@ -861,7 +861,7 @@ def _persist_layout_baseline(
     digest = build_layout_digest(preview_html)
     exact = _compute_exact_page_count(conversation, preview_html)
     page_count = exact.get('page_count')
-    _domain = (conversation.job_analysis or {}).get('domain', '')
+    _domain = ((conversation.state.get('job_analysis') or {}).get('domain', ''))
 
     gen = conversation.state.setdefault('generation_state', {})
     gen.update({
@@ -983,7 +983,7 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
     if page_count_value is None:
         page_count_value = round(float(estimate['estimated_pages']), 1)
 
-    _domain = (conversation.job_analysis or {}).get('domain', '')
+    _domain = ((conversation.state.get('job_analysis') or {}).get('domain', ''))
     gen.update({
         'layout_template_version': LAYOUT_TEMPLATE_VERSION,
         'layout_template_update_note': LAYOUT_TEMPLATE_UPDATE_NOTE,
