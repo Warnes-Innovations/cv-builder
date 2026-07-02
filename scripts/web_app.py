@@ -71,6 +71,7 @@ from utils.pricing_cache import (
 )
 from utils.spell_checker import SpellChecker
 from utils.master_data_validator import validate_master_data_file
+from utils.backup_helpers import prune_backups as _prune_backups
 from utils.bibtex_parser import (
     parse_bibtex_file,
     format_publication,
@@ -1231,6 +1232,16 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
             shutil.copy2(backup_path, master_path)
         msg = "; ".join(validation.errors) or "master data validation failed"
         raise ValueError(f"Master data validation failed after write: {msg}")
+
+    # Prune only after a successful write+validation, so a pruning bug can
+    # never run concurrently with the rollback path above that depends on
+    # backup_path still existing.
+    if backup_path is not None:
+        try:
+            config = get_config()
+            _prune_backups(backup_path.parent, config.master_data_backup_retention_days, config.master_data_backup_max_count)
+        except Exception:
+            logger.warning("Backup pruning failed", exc_info=True)
 
     subprocess.run(
         ['git', '-C', str(master_path.parent), 'add', master_path.name],

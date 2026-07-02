@@ -21,6 +21,7 @@ from utils.bibtex_parser import (
     parse_bibtex_file,
     serialize_publications_to_bibtex,
 )
+from utils.backup_helpers import prune_backups as _prune_backups
 from utils.git_helpers import git_commit_error as _git_commit_error, git_push_if_remote as _git_push_if_remote
 from utils.llm_client import LLMError
 from utils.master_data_mutations import _apply_master_data_change
@@ -63,6 +64,16 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
             f"Master data failed schema validation after write; backup restored. "
             f"Errors: {'; '.join(result.errors)}"
         )
+
+    # Prune only after a successful write+validation, so a pruning bug can
+    # never run concurrently with the rollback path above that depends on
+    # backup_path still existing.
+    try:
+        from utils.config import get_config
+        cfg = get_config()
+        _prune_backups(backup_dir, cfg.master_data_backup_retention_days, cfg.master_data_backup_max_count)
+    except Exception:
+        logger.warning("Backup pruning failed", exc_info=True)
 
     git_result = subprocess.run(
         ['git', '-C', str(master_path.parent), 'add', master_path.name],

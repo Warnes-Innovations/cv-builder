@@ -36,6 +36,8 @@ import {
   saveMasterSkill,
   deleteMasterSkill,
   deleteMasterSummary,
+  undoMasterDataChange,
+  redoMasterDataChange,
 } from '../../web/master-cv.js'
 
 // ---------------------------------------------------------------------------
@@ -57,6 +59,15 @@ vi.stubGlobal('restoreFocus', vi.fn())
 vi.stubGlobal('setInitialFocus', vi.fn())
 vi.stubGlobal('trapFocus', vi.fn())
 vi.stubGlobal('_focusedElementBeforeModal', null)
+// populateMasterTab()'s template calls these two (from web/master-data-ai-update.js)
+// as bare globals, matching how web/src/main.js wires them onto window in
+// production. Without a stub here, every test that exercises the real
+// populateMasterTab() throws a swallowed ReferenceError partway through
+// rendering — the loading spinner never gets replaced by real content, and
+// callers' own try/catch masks it as a generic error alongside any real
+// success alert already fired earlier in the same handler.
+vi.stubGlobal('renderMasterDataAiUpdatePanel', () => '')
+vi.stubGlobal('renderMasterDataAiUpdateDisabledNote', () => '')
 
 // Mutable stubs — replaced per-describe via beforeEach
 let showAlertModalMock = vi.fn()
@@ -973,5 +984,161 @@ describe('publications UI flows', () => {
     expect(firstCallBody.overwrite).toBe(true)
     expect(firstCallBody.bibtex_text).toContain('@article{doe2025')
     expect(document.getElementById('master-pub-convert-status').textContent).toContain('Imported preview')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// undoMasterDataChange / redoMasterDataChange (GAP-19 16.7)
+//
+// _masterCvRedoBackup is module-private state, not reset between tests by
+// vitest — populateMasterTab() (called by every mutating handler above)
+// resets it to null on every render except the one call inside
+// undoMasterDataChange() itself, so by the time this describe block runs the
+// module should already be back at its null baseline. The redo-dependent
+// tests below still run after the tests that establish a redo target, to
+// avoid relying on that carried-over state for the negative cases.
+// ---------------------------------------------------------------------------
+
+describe('undoMasterDataChange / redoMasterDataChange', () => {
+  const emptyFullData = {
+    personal_info: {}, experience: [], skills: [],
+    education: [], awards: [], selected_achievements: [],
+    professional_summaries: {},
+  }
+
+  function makeFetchMock({ snapshots = [], restoreResponses = [] } = {}) {
+    let restoreCallIndex = 0
+    return vi.fn().mockImplementation((url) => {
+      if (url === '/api/master-data/overview') {
+        return Promise.resolve({ json: async () => ({}) })
+      }
+      if (url === '/api/master-data/full') {
+        return Promise.resolve({ json: async () => emptyFullData })
+      }
+      if (url === '/api/master-data/history') {
+        return Promise.resolve({ json: async () => ({ ok: true, snapshots }) })
+      }
+      if (url === '/api/master-data/restore') {
+        const resp = restoreResponses[restoreCallIndex] ?? restoreResponses[restoreResponses.length - 1]
+        restoreCallIndex += 1
+        return Promise.resolve({ json: async () => resp })
+      }
+      if (url === '/api/master-data/publications') {
+        // populateMasterTab() fires this off (unawaited) at the end of its
+        // own render; harmless here, just needs a response so it doesn't
+        // surface as noise in mockFetch's call history.
+        return Promise.resolve({ json: async () => ({ ok: true, publications: [] }) })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+    window.confirm = vi.fn(() => true)
+  })
+
+  it('shows "nothing to undo" and does not call restore when there are no snapshots', async () => {
+    const mockFetch = makeFetchMock({ snapshots: [] })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await undoMasterDataChange()
+
+    expect(showAlertModalMock).toHaveBeenCalledWith(
+      expect.stringContaining('Nothing to undo'),
+      expect.any(String)
+    )
+    expect(mockFetch).not.toHaveBeenCalledWith('/api/master-data/restore', expect.anything())
+  })
+
+  it('does not call restore when the user declines the confirm dialog', async () => {
+    window.confirm = vi.fn(() => false)
+    const mockFetch = makeFetchMock({
+      snapshots: [{ filename: 'Master_CV_20260101T000000Z.json', mtime: 1234567890, size: 10 }],
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await undoMasterDataChange()
+
+    expect(mockFetch).not.toHaveBeenCalledWith('/api/master-data/restore', expect.anything())
+  })
+
+  it('shows "nothing to redo" and does not call restore when there is no redo target', async () => {
+    const mockFetch = makeFetchMock()
+    vi.stubGlobal('fetch', mockFetch)
+
+    await redoMasterDataChange()
+
+    expect(showAlertModalMock).toHaveBeenCalledWith(
+      expect.stringContaining('Nothing to redo'),
+      expect.any(String)
+    )
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('restores the most recent snapshot, refreshes the tab, and enables Redo', async () => {
+    const mockFetch = makeFetchMock({
+      snapshots: [{ filename: 'Master_CV_20260101T000000Z.json', mtime: 1234567890, size: 10 }],
+      restoreResponses: [{
+        ok: true,
+        restored_from: 'Master_CV_20260101T000000Z.json',
+        safety_backup: 'Master_CV_20260102T000000Z.json',
+      }],
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await undoMasterDataChange()
+    await flushPromises()
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/master-data/restore',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ filename: 'Master_CV_20260101T000000Z.json' }),
+      })
+    )
+    expect(showAlertModalMock).toHaveBeenCalledWith(
+      expect.stringContaining('Undone'),
+      expect.any(String)
+    )
+    const redoBtn = document.getElementById('master-cv-redo-btn')
+    expect(redoBtn.disabled).toBe(false)
+  })
+
+  it('redo restores the undo safety backup and re-disables itself afterward', async () => {
+    const mockFetch = makeFetchMock({
+      snapshots: [{ filename: 'Master_CV_20260101T000000Z.json', mtime: 1234567890, size: 10 }],
+      restoreResponses: [
+        {
+          ok: true,
+          restored_from: 'Master_CV_20260101T000000Z.json',
+          safety_backup: 'Master_CV_20260102T000000Z.json',
+        },
+        { ok: true, restored_from: 'Master_CV_20260102T000000Z.json' },
+      ],
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await undoMasterDataChange()
+    await flushPromises()
+    await redoMasterDataChange()
+    await flushPromises()
+
+    // Not toHaveBeenLastCalledWith: populateMasterTab()'s own unawaited
+    // loadPublications() fire-and-forget call may land after this in the
+    // mock's call history once microtasks flush.
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/master-data/restore',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ filename: 'Master_CV_20260102T000000Z.json' }),
+      })
+    )
+    expect(showAlertModalMock).toHaveBeenCalledWith(
+      expect.stringContaining('Redone'),
+      expect.any(String)
+    )
+    const redoBtn = document.getElementById('master-cv-redo-btn')
+    expect(redoBtn.disabled).toBe(true)
   })
 })

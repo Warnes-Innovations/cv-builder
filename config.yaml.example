@@ -20,6 +20,10 @@ data:
   master_cv:    ~/CV/Master_CV_Data.json
   publications: ~/CV/publications.bib
   output_dir:   ~/CV/cv-builder
+  # Master CV data backup retention (backups live under <data_root>/backups/).
+  # 0 disables that pruning rule; both rules apply independently.
+  backup_retention_days: 30   # delete backups older than N days
+  backup_max_count:      50   # keep at most N backups regardless of age
 
 # ── LLM settings ──────────────────────────────────────────────────────────────
 # default_provider must be set (no built-in default).

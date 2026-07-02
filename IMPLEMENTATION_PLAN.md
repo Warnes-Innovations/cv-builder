@@ -68,18 +68,18 @@ The remaining plan is the delta between the current shipped foundation and the f
 | # | Step | Status | Files | Notes |
 | --- | --- | --- | --- | --- |
 | 16.1 | Reframe the current Master CV tab as the active Phase 16 base | Complete | `IMPLEMENTATION_PLAN.md` | This document now treats existing Master CV CRUD as delivered foundation, not future work. |
-| 16.2 | Clarify governance boundary in the UI between session-only edits and durable master-data edits | Open | `web/master-cv.js`, `web/finalise.js`, `web/index.html` | The product still needs clearer user guidance about when a change affects `Master_CV_Data.json` or `publications.bib`. |
+| 16.2 | Clarify governance boundary in the UI between session-only edits and durable master-data edits | Complete | `web/master-cv.js` | Governance banner now explicitly contrasts durable Master CV edits against session-only choices and points to the Finalise step's harvest flow as the sanctioned bridge; verified `web/finalise.js`'s existing copy ("optionally write any improvements back to Master CV Data") already conveys the session-only side adequately, so no change was needed there. |
 | 16.3 | Decide whether to keep the current single-tab surface or refactor to a dedicated sub-tabbed editor shell | Open | `web/master-cv.js`, `web/styles.css` | Existing sections work, but the GAP-19 target expects a more structured, scalable editing mode. |
 
 ### 16.2 History, Restore, And Undo/Redo
 
 | # | Step | Status | Files | Notes |
 | --- | --- | --- | --- | --- |
-| 16.4 | Add a server-side history listing endpoint for master-data and publication backups | Open | `scripts/routes/master_data_routes.py`, publication routes | No user-facing history browser exists yet. |
-| 16.5 | Add restore endpoints for named backup snapshots | Open | `scripts/routes/master_data_routes.py`, publication routes | Current backup creation exists, but restore remains manual or offline. |
-| 16.6 | Add backup pruning rules and config support | Open | `scripts/utils/config.py`, shared history helper | Backups exist, but retention policy and pruning are not implemented. |
-| 16.7 | Add explicit undo/redo UI backed by snapshot history | Open | `web/master-cv.js`, `web/styles.css` | The planned split-button history UX does not exist yet. |
-| 16.8 | Add scoped keyboard shortcuts for editor-level undo/redo behavior | Open | `web/master-cv.js` | No story-complete keyboard or history model exists yet. |
+| 16.4 | Add a server-side history listing endpoint for master-data and publication backups | Complete | `scripts/routes/master_data_routes.py` | Verified already shipped (`GET /api/master-data/history`) with a working `web/master-cv.js` browser (`openBackupHistoryModal()`) — this row was stale relative to the actual codebase; corrected during GAP-19 Cycle 1 source-verification rather than left inaccurate. |
+| 16.5 | Add restore endpoints for named backup snapshots | Complete | `scripts/routes/master_data_routes.py` | Verified already shipped (`POST /api/master-data/restore`, `restoreBackup()`) — same stale-row correction as 16.4. |
+| 16.6 | Add backup pruning rules and config support | Complete | `scripts/utils/config.py`, `scripts/utils/backup_helpers.py` | Added `Config.master_data_backup_retention_days`/`master_data_backup_max_count` (env var → `config.yaml` `data.*` → default-30-days/50-count precedence) and a shared `prune_backups()` helper called from both `_save_master` implementations (`scripts/web_app.py` and `scripts/routes/master_data_routes.py`) after each backup write. Tests: `tests/test_backup_pruning.py`. |
+| 16.7 | Add explicit undo/redo UI backed by snapshot history | Complete | `web/master-cv.js` | Added single-level Undo/Redo toolbar buttons reusing the existing `/api/master-data/history` + `/api/master-data/restore` endpoints (no new backend surface) — Undo restores the most recent snapshot, Redo restores the safety backup that restore itself took of the pre-undo state. Known v1 limitation: single-level only; further-back recovery remains available via the existing "🕐 Backups" history modal. Tests: `tests/js/master-cv.test.js`. |
+| 16.8 | Add scoped keyboard shortcuts for editor-level undo/redo behavior | Complete | `web/keyboard-shortcuts.js` | Added `Ctrl+Z`/`Ctrl+Shift+Z`, scoped to when the Master CV modal is open, no nested sub-modal (e.g. backup history) is stacked on top, and focus isn't in a text field (native browser text-undo still wins there). Tests: `tests/js/keyboard-shortcuts.test.js`. |
 
 ### 16.3 Story-Complete Structured Editing
 

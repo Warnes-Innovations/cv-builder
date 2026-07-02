@@ -160,7 +160,23 @@ class Config:
         if configured:
             return str(Path(configured).expanduser())
         return str(Path(self.data_root) / 'cv-builder')
-    
+
+    @property
+    def master_data_backup_retention_days(self) -> int:
+        """Days to retain Master CV data backups before pruning (0 disables age-based pruning)."""
+        days = os.getenv('CV_MASTER_DATA_BACKUP_RETENTION_DAYS')
+        if days:
+            return int(days)
+        return self.get('data.backup_retention_days', 30)
+
+    @property
+    def master_data_backup_max_count(self) -> int:
+        """Max number of Master CV data backups to keep regardless of age (0 disables count-based pruning)."""
+        count = os.getenv('CV_MASTER_DATA_BACKUP_MAX_COUNT')
+        if count:
+            return int(count)
+        return self.get('data.backup_max_count', 50)
+
     # LLM settings
     @property
     def llm_provider(self) -> Optional[str]:

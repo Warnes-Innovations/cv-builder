@@ -12,7 +12,9 @@
  * Dependencies (resolved through globalThis at runtime):
  *   escapeHtml, showToast, showAlertModal, confirmDialog,
  *   appendLoadingMessage, removeLoadingMessage,
- *   setLoading, switchTab, appendMessage
+ *   setLoading, switchTab, appendMessage,
+ *   renderMasterDataAiUpdatePanel, renderMasterDataAiUpdateDisabledNote
+ *     (from web/master-data-ai-update.js, GAP-01)
  */
 
 let _masterChangeNotice = '';
@@ -20,6 +22,17 @@ let _masterChangeNotice = '';
 // Tracks the active render target: modal body div when opened from header,
 // null when rendered into the normal tab viewer.
 let _masterCvActiveContainer = null;
+
+// Filename of the safety backup created by the most recent undo, restorable
+// via redo. Single-level by design (GAP-19 16.7 v1 scope) — further-back
+// recovery remains available via the full "🕐 Backups" history modal.
+// Reset to null at the top of every populateMasterTab() re-render so any
+// other save action (structured edit, AI-update confirm, harvest apply)
+// invalidates a stale redo target. undoMasterDataChange() sets
+// _masterCvSuppressRedoReset before its own populateMasterTab() call so its
+// freshly-set redo target survives that one render.
+let _masterCvRedoBackup = null;
+let _masterCvSuppressRedoReset = false;
 
 function _setMasterChangeNotice(section, action) {
   const cleanSection = String(section || 'Master CV').trim();
@@ -38,6 +51,11 @@ function _renderMasterChangeNotice() {
 
 async function populateMasterTab(container = null) {
   if (container !== null) _masterCvActiveContainer = container;
+  if (_masterCvSuppressRedoReset) {
+    _masterCvSuppressRedoReset = false;
+  } else {
+    _masterCvRedoBackup = null;
+  }
   const content = _masterCvActiveContainer || document.getElementById('document-content');
   content.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading master CV data…</p></div>';
 
@@ -91,6 +109,14 @@ async function populateMasterTab(container = null) {
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
       <h1 style="margin:0;">📚 Master CV Profile</h1>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="master-cv-undo-btn" class="action-btn secondary" onclick="undoMasterDataChange()"
+            aria-label="Undo the most recent Master CV change" title="Undo (Ctrl+Z)">
+          ↩ Undo
+        </button>
+        <button id="master-cv-redo-btn" class="action-btn secondary" onclick="redoMasterDataChange()"
+            aria-label="Redo the previously undone Master CV change" title="Redo (Ctrl+Shift+Z)"${!_masterCvRedoBackup ? ' disabled' : ''}>
+          ↪ Redo
+        </button>
         <button class="action-btn secondary" onclick="openBackupHistoryModal()" aria-label="View backup history">
           🕐 Backups
         </button>
@@ -108,10 +134,13 @@ async function populateMasterTab(container = null) {
 
     <!-- Governance banner -->
     <div class="master-governance-note" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:0.88em;color:#78350f;">
-      <strong>⚠️ Persistent storage:</strong> Edits on this tab write directly to
-      <code>Master_CV_Data.json</code> and are not scoped to any session.
-      Job-specific customisations (skills, experience picks, summaries) are stored
-      exclusively in the active session and never written here automatically.
+      <strong>⚠️ Persistent storage — this tab only:</strong> Edits made here (the structured
+      editors below, and "Update via AI") write directly to <code>Master_CV_Data.json</code>
+      immediately and persist across every future job application.
+      Job-specific choices you make elsewhere in the app — which skills/experiences to feature,
+      rewritten bullet text, cover-letter tone — live only in the current session and are
+      <em>never</em> written here automatically. To carry a session's improvements into your
+      permanent profile, use "📥 Update Master CV Data" on the Finalise step.
     </div>
 
     ${isEditable ? renderMasterDataAiUpdatePanel() : renderMasterDataAiUpdateDisabledNote()}
@@ -2537,6 +2566,75 @@ async function restoreBackup(filename) {
   }
 }
 
+// ── Undo / Redo (GAP-19 16.7) ───────────────────────────────────────────────
+// Single-level: Undo restores the most recent backup snapshot (i.e. the
+// state before the last save); Redo restores the safety backup the restore
+// endpoint took of the pre-undo state. Both reuse the existing
+// /api/master-data/history + /api/master-data/restore endpoints rather than
+// adding new backend surface — see _masterCvRedoBackup above for the reset
+// contract with populateMasterTab().
+
+async function undoMasterDataChange() {
+  try {
+    const res = await fetch('/api/master-data/history');
+    const data = await res.json();
+    if (!data.ok || !data.snapshots?.length) {
+      showAlertModal('ℹ️ Nothing to undo', 'No backup snapshots are available yet.');
+      return;
+    }
+    const mostRecent = data.snapshots[0]; // history route returns newest-first
+    const when = new Date(mostRecent.mtime * 1000).toLocaleString();
+    const confirmed = await (typeof confirmDialog === 'function'
+      ? confirmDialog(`Undo the most recent change? This restores the version saved ${when}. The current version will be saved as a new backup first.`)
+      : Promise.resolve(window.confirm(`Undo the most recent change? This restores the version saved ${when}.`)));
+    if (!confirmed) return;
+
+    const restoreRes = await fetch('/api/master-data/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: mostRecent.filename }),
+    });
+    const restoreData = await restoreRes.json();
+    if (restoreData.ok) {
+      // Must be set *before* populateMasterTab() renders the Redo button,
+      // not after — the button's disabled state is baked into that render.
+      _masterCvRedoBackup = restoreData.safety_backup || null;
+      _masterCvSuppressRedoReset = true;
+      await populateMasterTab();
+      showAlertModal('✅ Undone', 'Master CV reverted to the previous saved version.');
+    } else {
+      showAlertModal('❌ Error', restoreData.error || 'Undo failed.');
+    }
+  } catch (_) {
+    showAlertModal('❌ Error', 'Failed to undo.');
+  }
+}
+
+async function redoMasterDataChange() {
+  if (!_masterCvRedoBackup) {
+    showAlertModal('ℹ️ Nothing to redo', 'There is no undone change to restore.');
+    return;
+  }
+  try {
+    const res = await fetch('/api/master-data/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: _masterCvRedoBackup }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // Deliberately do not re-arm redo — this restore consumes the redo
+      // target, and populateMasterTab()'s default reset clears it.
+      await populateMasterTab();
+      showAlertModal('✅ Redone', 'Master CV restored to the version before the undo.');
+    } else {
+      showAlertModal('❌ Error', data.error || 'Redo failed.');
+    }
+  } catch (_) {
+    showAlertModal('❌ Error', 'Failed to redo.');
+  }
+}
+
 async function exportMasterCV() {
   try {
     const sessionId = window._currentSessionId;
@@ -2680,6 +2778,8 @@ export {
   exportMasterCV,
   openBackupHistoryModal,
   restoreBackup,
+  undoMasterDataChange,
+  redoMasterDataChange,
   deleteMasterAchievement,
   deleteMasterSummary,
   loadPublications,
