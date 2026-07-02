@@ -136,7 +136,7 @@ async function sessionAwareFetch(input, init = {}) {
   const [nextInput, nextInit] = _buildSessionAwareRequest(input, init);
   let resp = await _nativeFetch(nextInput, nextInit);
   if (resp.status === 409) {
-    const shouldRetry = await handle409Conflict(nextInput, nextInit);
+    const shouldRetry = await handle409Conflict(nextInput, nextInit, resp);
     if (shouldRetry) resp = await _nativeFetch(nextInput, nextInit);
   }
   return resp;

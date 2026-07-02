@@ -39,9 +39,19 @@ function _shouldHandleBusyConflict(args) {
  * Returns a Promise<boolean> — true means "retry", false means "dismiss".
  * Called from api-client.js inside sessionAwareFetch so the full fetch pipeline
  * is owned by a single module-level window.fetch assignment there.
+ *
+ * @param {string|Request} input - The request URL/object (used for path filtering).
+ * @param {object} init - The fetch init options.
+ * @param {Response} [response] - The 409 response (used to check conflict_type).
  */
-async function handle409Conflict(input, init) {
+async function handle409Conflict(input, init, response) {
   if (!_shouldHandleBusyConflict([input, init])) return false;
+  if (response) {
+    try {
+      const body = await response.clone().json();
+      if (body && body.conflict_type && body.conflict_type !== 'session_ownership') return false;
+    } catch (_) { /* non-JSON body — proceed to banner */ }
+  }
   showSessionConflictBanner();
   return new Promise(resolve => _conflictRetryQueue.push(resolve));
 }

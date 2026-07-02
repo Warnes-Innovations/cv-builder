@@ -136,6 +136,45 @@ describe('conflictDismiss', () => {
   })
 })
 
+// ── handle409Conflict ─────────────────────────────────────────────────────
+
+describe('handle409Conflict', () => {
+  beforeEach(buildConflictBanner)
+
+  it('shows banner and resolves true on retry for session_ownership 409', async () => {
+    const resp = { clone: () => ({ json: async () => ({ conflict_type: 'session_ownership' }) }) }
+    const p = mod.handle409Conflict('/api/chat', {}, resp)
+    // Yield twice: once for the json() promise to settle, once for the catch/then to run
+    await Promise.resolve(); await Promise.resolve()
+    expect(document.getElementById('session-conflict-banner').style.display).toBe('block')
+    mod.conflictRetryNow()
+    expect(await p).toBe(true)
+  })
+
+  it('returns false immediately for phase_enforcement 409 without showing banner', async () => {
+    const resp = { clone: () => ({ json: async () => ({ conflict_type: 'phase_enforcement' }) }) }
+    const result = await mod.handle409Conflict('/api/chat', {}, resp)
+    expect(result).toBe(false)
+    expect(document.getElementById('session-conflict-banner').style.display).not.toBe('block')
+  })
+
+  it('shows banner for non-JSON 409 body (fail open)', async () => {
+    const resp = { clone: () => ({ json: async () => { throw new SyntaxError('not json') } }) }
+    const p = mod.handle409Conflict('/api/chat', {}, resp)
+    // Yield twice to let the json() rejection propagate through the catch block
+    await Promise.resolve(); await Promise.resolve()
+    expect(document.getElementById('session-conflict-banner').style.display).toBe('block')
+    mod.conflictDismiss()
+    expect(await p).toBe(false)
+  })
+
+  it('returns false without showing banner for /api/sessions/claim', async () => {
+    const result = await mod.handle409Conflict('/api/sessions/claim', {})
+    expect(result).toBe(false)
+    expect(document.getElementById('session-conflict-banner').style.display).not.toBe('block')
+  })
+})
+
 // ── llmFetch ──────────────────────────────────────────────────────────────
 
 describe('llmFetch', () => {
