@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 32)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 33)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,13 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295.
+
+## 2026-07-02 (Cycle 33) Reconciliation Notes
+
+CSS token layer expansion (GAP-133 PARTIAL → more complete PARTIAL).
+
+- **GAP-133 PARTIAL (extended)** — Added 37 semantic tokens to `:root` in `web/styles.css` covering success/error/warn/info state families plus white, black, and gray/slate scale. Raw hex literals reduced from ~460 to 148 total in styles.css (68% reduction). Remaining 148 are low-frequency long-tail values (all ≤4 occurrences each). Token count: 45 total (8 original + 37 new). index.html inline styles (~227) deferred — require per-element class extraction.
+- **Test suite:** 1430 passed.
 
 ## 2026-07-02 (Cycle 32) Reconciliation Notes
 
@@ -1329,7 +1336,7 @@ Users can proceed from the Customise stage to CV generation without visiting or 
 ## GAP-133: No CSS Design Token Layer
 
 **Priority:** MED
-**Status:** PARTIAL 2026-07-01 (cycle 28) — `:root {}` block added to `web/styles.css` with 8 CSS custom properties for the highest-frequency colors (covering ~297 occurrences): `--cv-border` (#e2e8f0 ×64), `--cv-accent` (#3b82f6 ×55), `--cv-bg-light` (#f8fafc ×42), `--cv-text-secondary` (#64748b ×41), `--cv-text-primary` (#1e293b ×33), `--cv-bg-subtle` (#f1f5f9 ×23), `--cv-text-muted` (#475569 ×22), `--cv-accent-hover` (#1d4ed8 ×17). All occurrences of these 8 values outside `:root` replaced with `var(...)`. ~91 remaining distinct color literals in `web/styles.css` and ~227 inline `style=""` attributes in `web/index.html` remain for incremental tokenization.
+**Status:** PARTIAL 2026-07-02 (cycle 33) — Token layer expanded to 45 CSS custom properties in `:root` (8 original + 37 new semantic tokens for success/error/warn/info state families plus white, black, and gray/slate scale). Raw hex literals in `web/styles.css` reduced from ~460 to 148 total (68% coverage); remaining 99 distinct values each appear ≤4 times. Original 8 tokens (cycle 28) covered primary palette. New tokens cover: `--cv-white`, `--cv-black`, `--cv-success-*` (6 shades), `--cv-error-*` (5 shades), `--cv-warn-*` (5 shades), `--cv-info-*` (5 shades), `--cv-slate-{300,400,700}`, `--cv-gray-{300,500,700}`. Remaining ~148 raw literals are low-frequency long-tail colors (≤4 each). ~227 inline `style=""` attributes in `web/index.html` remain as a separate follow-up (requires per-element class extraction).
 **Found:** 2026-06-18 cvUiReview
 `web/styles.css` contains approximately 50 hard-coded hex color literals scattered across rules. `web/index.html` contains approximately 216 inline `style=""` attributes. No `:root {}` CSS custom properties block exists. Any color, spacing, or typography change requires grep-and-replace across multiple files with high risk of missed instances, and brand changes are impractical to apply consistently.
 **Source evidence:** `web/styles.css` (`:root {}` block added line 18); `web/index.html` (~227 inline styles still pending); graphical-designer.md 2026-06-18.
