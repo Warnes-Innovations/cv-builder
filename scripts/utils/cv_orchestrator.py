@@ -4398,15 +4398,50 @@ Include one entry per candidate. Do not omit any candidate."""
                     finding_by_bullet[key] = new_finding
                     strong_count -= 1
 
+        # Narrative-thread advisory (GAP-281): warn when ≥3 themes are equally weighted.
+        # Count bullets that mention each `relevant_for` tag. If the top 3 tags
+        # all fall within 20% of the leading tag's count AND total tagged bullets ≥ 10,
+        # emit a narrative_thread advisory in the summary.
+        theme_counts: Counter = Counter()
+        for exp in experiences:
+            achievements = exp.get('ordered_achievements') or exp.get('achievements') or []
+            for ach in achievements:
+                if not isinstance(ach, dict):
+                    continue
+                for theme in (ach.get('relevant_for') or []):
+                    theme_counts[theme.lower().strip()] += 1
+        narrative_thread_advisory = None
+        if len(theme_counts) >= 3:
+            top_themes = theme_counts.most_common(3)
+            top_count = top_themes[0][1]
+            tagged_total = sum(theme_counts.values())
+            if (
+                tagged_total >= 10
+                and top_count > 0
+                and all(c >= top_count * 0.8 for _, c in top_themes)
+            ):
+                theme_labels = ', '.join(t for t, _ in top_themes)
+                narrative_thread_advisory = {
+                    'type':     'narrative_thread',
+                    'severity': 'advisory',
+                    'detail': (
+                        f'Three narrative threads have similar weight: {theme_labels}. '
+                        'A focused CV typically emphasises 1–2 primary themes. '
+                        'Consider trimming or re-framing bullets to reinforce a clearer story.'
+                    ),
+                    'theme_counts': {t: c for t, c in top_themes},
+                }
+
         return {
             'findings': findings,
             'summary':  {
-                'total_bullets': total_bullets,
-                'flagged':       len(findings),
-                'strong_count':  strong_count,
+                'total_bullets':           total_bullets,
+                'flagged':                 len(findings),
+                'strong_count':            strong_count,
+                'narrative_thread_advisory': narrative_thread_advisory,
             },
         }
-    
+
     def _add_ats_additional_sections(self, doc, content: Dict, job_analysis: Dict):
         """Add additional sections that improve ATS scoring."""
         

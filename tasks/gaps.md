@@ -2860,7 +2860,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-281: No Narrative-Thread Counter in Persuasion Check
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02. Added narrative-thread counting to `check_persuasion()` in `scripts/utils/cv_orchestrator.py:4400–4425`. Uses `relevant_for` tags on achievements; if ≥3 themes are within 20% of the top theme's bullet count and ≥10 tagged bullets exist, a `narrative_thread_advisory` dict is added to the summary. Surfaced in the download tab persuasion panel (`web/download-tab.js:308–313`) as an amber advisory bar below the findings list.
 **Discovered:** 2026-07-01 (cycle 29) by persuasion-expert.
 **Description:** Story US-P1 requires a warning when the CV presents more than 2 equally-weighted narrative threads (e.g., simultaneous emphasis on management, technical depth, and sales). No such check is implemented in `check_persuasion()` or elsewhere in `cv_orchestrator.py`.
 **Affected stories:** US-P1

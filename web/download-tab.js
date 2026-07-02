@@ -309,6 +309,15 @@ async function _fetchPersuasionHtml() {
       html += '<div style="padding:12px 16px;color:#10b981;font-size:0.9em;">All bullets meet persuasiveness criteria.</div>';
     }
 
+    // Narrative-thread advisory (GAP-281)
+    const nta = summary.narrative_thread_advisory;
+    if (nta) {
+      html += `<div style="padding:10px 16px;background:#fef9c3;border-top:1px solid #fde68a;">
+        <span style="font-weight:600;color:#92400e;">🧵 Narrative focus advisory:</span>
+        <span style="font-size:0.9em;color:#78350f;margin-left:6px;">${escapeHtml(nta.detail)}</span>
+      </div>`;
+    }
+
     html += '</div>';
     return html;
   } catch (error) {

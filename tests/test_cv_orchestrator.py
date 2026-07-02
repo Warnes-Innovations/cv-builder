@@ -2007,10 +2007,10 @@ class TestCheckPersuasion(unittest.TestCase):
         result = self.orc.check_persuasion([])
 
         self.assertEqual(result["findings"], [])
-        self.assertEqual(
-            result["summary"],
-            {"total_bullets": 0, "flagged": 0, "strong_count": 0},
-        )
+        self.assertEqual(result["summary"]["total_bullets"], 0)
+        self.assertEqual(result["summary"]["flagged"], 0)
+        self.assertEqual(result["summary"]["strong_count"], 0)
+        self.assertIsNone(result["summary"]["narrative_thread_advisory"])
 
     def test_strong_quantified_bullet_counts_as_strong(self):
         experiences = [
