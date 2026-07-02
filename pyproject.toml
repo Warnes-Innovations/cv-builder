@@ -20,6 +20,11 @@ dependencies = [
     "mcp>=1.8",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pylint>=4.0",
+]
+
 [project.scripts]
 cv-cli = "scripts.cli:main"
 cv-mcp = "scripts.mcp_server:main"
@@ -27,3 +32,21 @@ cv-mcp = "scripts.mcp_server:main"
 [tool.setuptools.packages.find]
 where   = ["."]
 include = ["scripts*"]
+
+# Scoped to duplicate-code detection only (R0801) — deliberately not the
+# full pylint rule set, which would flag hundreds of unrelated style/design
+# issues across the codebase. This complements scripts/lint_duplicate_
+# definitions.py (same *name* in two files) by catching copy-pasted logic
+# that shares no name at all. See AGENTS.md, "Avoid Duplicate Helper/
+# Function Definitions Across Files".
+[tool.pylint.main]
+disable = ["all"]
+enable = ["duplicate-code"]
+ignore = ["__pycache__", ".mypy_cache"]
+
+[tool.pylint.similarities]
+min-similarity-lines = 6
+ignore-comments = true
+ignore-docstrings = true
+ignore-imports = true
+ignore-signatures = true

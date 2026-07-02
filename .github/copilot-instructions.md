@@ -87,6 +87,7 @@ the tests.
   - **Session-free endpoints** (model/pricing metadata): `/api/model-catalog`, `/api/pricing`, `/api/models`.
   - All other API routes require a valid `session_id`; never bypass `_get_session()` in new routes.
 - **Rewrite audit key**: field is `final_text` in the spec but `final` in code (renamed in commit `576b75f`). Do not revert.
+- **Known shadowing incidents — duplicate helper defined in two files**: this codebase has repeatedly split the *same* helper across two modules during refactors, where the later-loaded copy silently overrides the earlier one at runtime, quietly reverting whatever fix landed in the "losing" copy. Confirmed past cases: `toggleChat` (`web/ui-core.js` vs `web/ui-helpers.js`, GAP-146), `showAlertModal`/`closeAlertModal` (same file pair, GAP-48), and `_save_master` (`scripts/master_data_routes.py` vs `scripts/web_app.py`, GAP-43 — **still open**, needs consolidation). See "When modifying code" below for the required check before adding any new helper/export. Automated checks exist for this — run `npm run lint:duplication` (or the individual `lint:duplicates` [exact-name JS/Python duplicates], `lint:duplicate-functions` [eslint-plugin-sonarjs, near-identical JS function bodies], `lint:duplicate-code` [jscpd, copy-pasted blocks across JS+Python], `lint:duplicate-code:py` [pylint `duplicate-code`/R0801] scripts) before committing changes that add or move helpers.
 
 ## Configuration
 
@@ -185,6 +186,9 @@ Slash commands are available from the shared prompt set in `~/src/agent-config/.
 - **Always validate JSON from LLM agents at CLI/MCP boundaries.** All `*_submit` tools, `inject_llm_result`, and any CLI command that accepts LLM-provided JSON must parse and validate compliance before storing, raising a clear `InvalidResultError` / HTTP 400 rather than propagating a confusing downstream failure.
   - ✅ CORRECT: `result = validate_agent_json(raw, schema=JobAnalysisResponse); session.inject_llm_result(op, result)`
   - ❌ INCORRECT: `session.state['analysis'] = json.loads(raw)` — bypasses schema check, silently stores malformed data
+- **Before adding a new function, global export, or route handler, grep for an existing definition of the same name first** (`grep -rn "functionName" web/*.js` for frontend, `grep -rn "def _save_master\|def function_name" scripts/` for backend). Load/import order determines which copy wins when two modules both define the same name — the duplicate silently shadows the other at runtime, so tests can pass while the "losing" copy's behavior (and any bugfix in it) is dead code. If a duplicate already exists:
+  - ✅ CORRECT: Fix or extend the single canonical definition; have the other module `import`/reference it rather than redefining it.
+  - ❌ INCORRECT: Add a second same-named function/export in another file "to keep things working" — this is how GAP-146, GAP-48, and GAP-43 (see gotcha above) each happened.
 
 
 - Begin every multi-step or code-change response by stating which copilot-instructions.md sections apply and which Agent Skills apply

@@ -1,0 +1,15 @@
+{
+  "threshold": 0,
+  "reporters": ["console"],
+  "ignore": [
+    "**/bundle.js",
+    "**/web/tests/**",
+    "**/tests/**",
+    "**/__pycache__/**",
+    "**/.mypy_cache/**",
+    "**/node_modules/**"
+  ],
+  "format": ["javascript", "python"],
+  "minLines": 5,
+  "minTokens": 50
+}
