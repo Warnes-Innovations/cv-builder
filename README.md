@@ -644,6 +644,13 @@ npm run build
 | [PROJECT_SPECIFICATION.md](PROJECT_SPECIFICATION.md) | Full product specification |
 | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Active implementation backlog |
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, test-running
+instructions, coding conventions, and the data-contract maintenance rule.
+
+Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating.
+
 ## License
 
 Copyright (C) 2026 Gregory R. Warnes  

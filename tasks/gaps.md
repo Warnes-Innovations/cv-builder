@@ -10,6 +10,13 @@
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review.
 
+## 2026-07-02 (Cycle 37) Reconciliation Notes
+
+Contributor documentation: 1 gap resolved.
+
+- **GAP-296 RESOLVED** — Added `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/bug_report.md`, `.github/ISSUE_TEMPLATE/feature_request.md`, and a Contributing section in `README.md`.
+- **Test suite:** 1432 passed.
+
 ## 2026-07-02 (Cycle 36) Reconciliation Notes
 
 Persuasion and housekeeping: 1 partial gap advanced, 2 stale OPEN statuses corrected.
@@ -3075,7 +3082,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-296: No Contribution Documentation for External Contributors
 
 **Priority:** HIGH
-**Status:** OPEN — 2026-07-02.
+**Status:** RESOLVED — 2026-07-02 (cycle 37). Added `CONTRIBUTING.md` (local setup, test-running, JS build, coding conventions, data-contract rule, commit style, PR workflow); `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1); `.github/pull_request_template.md`; `.github/ISSUE_TEMPLATE/bug_report.md`; `.github/ISSUE_TEMPLATE/feature_request.md`; brief Contributing section added to `README.md` pointing to both docs.
 **Discovered:** 2026-07-02 by ci-cd-engineer (scope extension).
 **Description:** The repository has no `CONTRIBUTING.md`, no GitHub issue or PR templates, and no `CODE_OF_CONDUCT.md`; `README.md` has zero contributor-facing content (confirmed via grep for "contribut": no matches). Existing developer-facing guidance (`CLAUDE.md`, `.github/copilot-instructions.md`) is written for AI coding agents, not human external contributors, and includes repo-specific rules (e.g. updating `MASTER_CV_DATA_SPECIFICATION.md`/`master_data_validator.py`/the JSON schema together whenever the master-data contract changes) that an outside contributor has no way to discover without reading agent-instruction files not aimed at them. The project's CI fork-PR posture is otherwise sound (uses the safe `pull_request` trigger, not `pull_request_target`; no workflow references `secrets.*`, so nothing can leak to a fork PR's run) — this gap is entirely about missing documentation, not CI security.
 **Affected stories:** Technical review follow-up (ci-cd-engineer, marketing US-MK3)
