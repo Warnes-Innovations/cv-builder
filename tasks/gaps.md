@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 34)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 40)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,16 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review.
+
+## 2026-07-02 (Cycle 40) Reconciliation Notes
+
+Questions UX polish + CSS token additions: GAP-133 further advanced, GAP-16 sub-item confirmed resolved.
+
+- **GAP-133 PARTIAL (extended)** — Added 3 new semantic tokens to `:root` in `web/styles.css`: `--cv-error-strong` (#b91c1c, red-700, critical/stale text), `--cv-success-deep` (#14532d, green-900, success text on dark bg), `--cv-slate-950` (#0f172a, slate-950, near-black shell bg). All 14 occurrences of these 3 hex values replaced with `var()` references; 3 occurrences of `#ffffff`/`#fff` (the gradient-literal variant) also replaced with `var(--cv-white)`. Total raw hex in styles.css reduced from 148 to ~134.
+- **questions-panel.js Continue button UX fix** — Removed misleading count annotation "(N of M answered)" from the Continue → button; it showed the target group-end index as if it were the current answered count, which was factually wrong before any questions were answered. The `q-progress` paragraph already shows live "Group N of M — X of Y answered" text; the button now says simply "Continue →".
+- **GAP-16 sub-item confirmed resolved via GAP-201** — "wall-of-questions clarifications" sub-item of GAP-16 is addressed by GAP-201 (RESOLVED 2026-06-30, GROUP_SIZE=3 pagination). Remaining GAP-16 items (fragmented navigation, dense shell chrome, missing inline preview/versioning, weak responsive behavior) are large structural changes.
+- **Status inventory (cycle 40):** Only 4 open/partial gaps remain: GAP-01 (OPEN, in progress by separate agent), GAP-16 (PARTIAL, structural UX), GAP-19 (PARTIAL, depends on GAP-01), GAP-133 (PARTIAL, 227 inline styles in index.html deferred; ~134 raw hex in styles.css remain).
+- **Test suite:** 1432 passed.
 
 ## 2026-07-02 (Cycle 39) Reconciliation Notes
 
@@ -1379,7 +1389,7 @@ Users can proceed from the Customise stage to CV generation without visiting or 
 ## GAP-133: No CSS Design Token Layer
 
 **Priority:** MED
-**Status:** PARTIAL 2026-07-02 (cycle 33) — Token layer expanded to 45 CSS custom properties in `:root` (8 original + 37 new semantic tokens for success/error/warn/info state families plus white, black, and gray/slate scale). Raw hex literals in `web/styles.css` reduced from ~460 to 148 total (68% coverage); remaining 99 distinct values each appear ≤4 times. Original 8 tokens (cycle 28) covered primary palette. New tokens cover: `--cv-white`, `--cv-black`, `--cv-success-*` (6 shades), `--cv-error-*` (5 shades), `--cv-warn-*` (5 shades), `--cv-info-*` (5 shades), `--cv-slate-{300,400,700}`, `--cv-gray-{300,500,700}`. Remaining ~148 raw literals are low-frequency long-tail colors (≤4 each). ~227 inline `style=""` attributes in `web/index.html` remain as a separate follow-up (requires per-element class extraction).
+**Status:** PARTIAL 2026-07-02 (cycle 40) — Token layer expanded to 48 CSS custom properties in `:root` (cycle 33: 45; cycle 40: added `--cv-error-strong` #b91c1c, `--cv-success-deep` #14532d, `--cv-slate-950` #0f172a). Raw hex literals in `web/styles.css` reduced from ~460 to ~134 (71% coverage). Remaining values are all ≤3 occurrences each. ~227 inline `style=""` attributes in `web/index.html` remain as a separate follow-up (deferred to after GAP-01 lands to avoid merge conflicts).
 **Found:** 2026-06-18 cvUiReview
 `web/styles.css` contains approximately 50 hard-coded hex color literals scattered across rules. `web/index.html` contains approximately 216 inline `style=""` attributes. No `:root {}` CSS custom properties block exists. Any color, spacing, or typography change requires grep-and-replace across multiple files with high risk of missed instances, and brand changes are impractical to apply consistently.
 **Source evidence:** `web/styles.css` (`:root {}` block added line 18); `web/index.html` (~227 inline styles still pending); graphical-designer.md 2026-06-18.

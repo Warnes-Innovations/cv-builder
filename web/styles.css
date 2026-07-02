@@ -60,6 +60,9 @@
   --cv-error-bg-lt:            #fee2e2;   /* red-100    — light error background */
   --cv-error-text:             #991b1b;   /* red-800    — error text */
   --cv-error-light:            #ef4444;   /* red-400    — light error accent */
+  --cv-error-strong:           #b91c1c;   /* red-700    — critical/stale error text */
+  --cv-success-deep:           #14532d;   /* green-900  — success text on dark bg */
+  --cv-slate-950:              #0f172a;   /* slate-950  — near-black / dark shell bg */
   --cv-black:                  #000;   /* black — deep overlay / shadow */
 }
 
@@ -169,7 +172,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .layout-freshness-chip:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08); }
 .layout-freshness-chip.fresh { background: #ecfdf5; border-color: var(--cv-success-border); color: var(--cv-success-text); }
 .layout-freshness-chip.stale { background: var(--cv-warn-bg); border-color: var(--cv-warn-light); color: var(--cv-warn-text); animation: stale-chip-pulse 1.2s ease-out 1; }
-.layout-freshness-chip.critical { background: var(--cv-error-bg); border-color: var(--cv-error-border); color: #b91c1c; animation: stale-chip-pulse 1.2s ease-out 1; }
+.layout-freshness-chip.critical { background: var(--cv-error-bg); border-color: var(--cv-error-border); color: var(--cv-error-strong); animation: stale-chip-pulse 1.2s ease-out 1; }
 .layout-freshness-icon { font-size: 13px; line-height: 1; }
 @keyframes stale-chip-pulse {
   0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.25); }
@@ -205,7 +208,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .step.completed:hover { filter: brightness(0.93); }
 .step.upcoming { background: var(--cv-bg-light); color: var(--cv-slate-300); }
 .step.stale { background: var(--cv-warn-bg); color: var(--cv-warn-text); cursor: pointer; }
-.step.stale-critical { background: var(--cv-error-bg); color: #b91c1c; cursor: pointer; }
+.step.stale-critical { background: var(--cv-error-bg); color: var(--cv-error-strong); cursor: pointer; }
 .step.forward-skip { background: var(--cv-info-bg); color: var(--cv-info-dark); cursor: pointer; border: 1px dashed var(--cv-info-light); }
 .step.forward-skip:hover { filter: brightness(0.93); }
 
@@ -249,7 +252,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .session-switcher-row:last-child { border-bottom: none; }
 .session-switcher-row-main { min-width: 0; flex: 1; }
 .session-switcher-row-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
-.session-switcher-row-title strong { color: #0f172a; font-size: 14px; }
+.session-switcher-row-title strong { color: var(--cv-slate-950); font-size: 14px; }
 .session-switcher-row-meta { font-size: 12px; color: var(--cv-text-secondary); line-height: 1.5; }
 .session-switcher-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .session-switcher-link,
@@ -268,7 +271,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .session-status-saved { color: var(--cv-text-muted); background: var(--cv-border); }
 .session-switcher-landing-shell { max-width: 1040px; margin: 32px auto; padding: 0 12px; }
 .session-switcher-landing-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
-.session-switcher-landing-copy h2 { margin: 0 0 8px; color: #0f172a; }
+.session-switcher-landing-copy h2 { margin: 0 0 8px; color: var(--cv-slate-950); }
 .session-switcher-landing-copy p { margin: 0; color: var(--cv-text-secondary); }
 .session-switcher-landing-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
@@ -367,7 +370,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 }
 .sm-recent-item:hover { background: var(--cv-info-bg); border-color: var(--cv-info-border); color: var(--cv-accent-hover); }
 .sm-recent-current { background: var(--cv-success-bg); border-color: var(--cv-success-bg-lt); color: var(--cv-success-text); }
-.sm-recent-current:hover { background: var(--cv-success-bg-md); border-color: var(--cv-success-border); color: #14532d; }
+.sm-recent-current:hover { background: var(--cv-success-bg-md); border-color: var(--cv-success-border); color: var(--cv-success-deep); }
 .sm-recent-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .sm-recent-dot-current { background: #22c55e; }
 .sm-recent-dot-other   { background: var(--cv-slate-400); }
@@ -464,7 +467,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 
 /* ===== LLM RAW INTERACTION LOG ===== */
 .message.llm-raw .content {
-  background: #0f172a;
+  background: var(--cv-slate-950);
   color: var(--cv-slate-400);
   padding: 10px 14px;
   border-radius: 8px;
@@ -694,7 +697,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .tab.active { color: var(--cv-accent); border-bottom-color: var(--cv-accent); background: var(--cv-white); }
 .tab--visited:not(.active)::after { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--cv-success); margin-left: 5px; vertical-align: middle; opacity: 0.8; }
 .tab-stale { color: var(--cv-warn-text); }
-.tab-stale-critical { color: #b91c1c; }
+.tab-stale-critical { color: var(--cv-error-strong); }
 .tab-stale-badge {
   display: inline-flex;
   align-items: center;
@@ -781,7 +784,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 }
 .confidence-very-high {
   background: var(--cv-success-bg-lt);
-  color: #14532d;
+  color: var(--cv-success-deep);
   border: 1px solid var(--cv-success-border);
   font-weight: 600;
 }
@@ -1016,7 +1019,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 
 /* ===== MODEL WIZARD ===== */
 .model-wizard-body {
-  background: linear-gradient(180deg, var(--cv-bg-light) 0%, #ffffff 180px);
+  background: linear-gradient(180deg, var(--cv-bg-light) 0%, var(--cv-white) 180px);
 }
 .model-wizard-progress {
   display: flex;
@@ -1133,7 +1136,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
   box-shadow: 0 10px 24px rgba(22, 163, 74, 0.24);
 }
 .model-wizard-success h3 {
-  color: #14532d;
+  color: var(--cv-success-deep);
   font-size: 24px;
 }
 .model-wizard-success p {
@@ -1185,7 +1188,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
   border-width: 3px;
 }
 .wizard-busy-message {
-  color: #0f172a;
+  color: var(--cv-slate-950);
   font-size: 14px;
   font-weight: 600;
 }
@@ -1478,15 +1481,15 @@ details.rewrite-rationale summary { cursor: pointer; color: var(--cv-gray-700); 
 .preview-output-card-header h4 { margin: 0; font-size: 13px; font-weight: 700; color: var(--cv-text-primary); }
 .preview-output-card-note { font-size: 12px; color: var(--cv-text-secondary); }
 .preview-output-status { display: flex; flex-direction: column; gap: 8px; }
-.preview-output-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px; background: #ffffff; border: 1px solid var(--cv-border); border-radius: 6px; }
+.preview-output-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px; background: var(--cv-white); border: 1px solid var(--cv-border); border-radius: 6px; }
 .preview-output-copy { min-width: 0; flex: 1 1 auto; }
 .preview-output-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .preview-output-detail { font-size: 12px; color: var(--cv-text-secondary); line-height: 1.4; word-break: break-word; }
 .preview-output-badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 700; }
 .preview-output-badge.is-ready { background: #ecfdf5; color: var(--cv-success-text); }
-.preview-output-badge.is-failed { background: var(--cv-error-bg); color: #b91c1c; }
+.preview-output-badge.is-failed { background: var(--cv-error-bg); color: var(--cv-error-strong); }
 .preview-output-badge-link { text-decoration: none; }
-.preview-output-badge-link:hover { background: var(--cv-success-bg-md); color: #14532d; }
+.preview-output-badge-link:hover { background: var(--cv-success-bg-md); color: var(--cv-success-deep); }
 .preview-output-badge-link:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
 .preview-output-empty { font-size: 12px; color: var(--cv-text-secondary); line-height: 1.5; }
 .layout-scope-label { font-size: 12px; color: var(--cv-text-secondary); background: var(--cv-sky-bg); border: 1px solid #bae6fd; border-radius: 6px; padding: 6px 10px; margin: 0; }

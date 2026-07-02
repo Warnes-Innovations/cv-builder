@@ -208,7 +208,7 @@ function renderQuestionsPanel() {
   if (isLastGroup) {
     panelHtml += `<button class="questions-submit-btn" id="q-submit-btn" onclick="submitAllAnswers()" disabled>Submit Answers</button>`;
   } else {
-    panelHtml += `<button class="questions-submit-btn" id="q-submit-btn" onclick="advanceQGroup()" disabled>Continue → <span style="font-size:0.8em;font-weight:400;">(${groupEnd} of ${total} answered)</span></button>`;
+    panelHtml += `<button class="questions-submit-btn" id="q-submit-btn" onclick="advanceQGroup()" disabled>Continue →</button>`;
   }
   panelHtml += '</div>';
 
