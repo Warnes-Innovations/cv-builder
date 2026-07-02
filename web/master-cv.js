@@ -114,6 +114,8 @@ async function populateMasterTab(container = null) {
       exclusively in the active session and never written here automatically.
     </div>
 
+    ${isEditable ? renderMasterDataAiUpdatePanel() : renderMasterDataAiUpdateDisabledNote()}
+
     ${_renderMasterChangeNotice()}
 
     <!-- Profile overview card -->
