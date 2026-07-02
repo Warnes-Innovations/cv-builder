@@ -2102,8 +2102,8 @@ def create_blueprint(deps):
                 app_status  = body.get('status', 'ready')
                 notes       = body.get('notes', '')
 
-                if app_status not in ('draft', 'ready', 'sent', 'interview', 'rejected', 'accepted'):
-                    return jsonify({'error': "status must be 'draft', 'ready', 'sent', 'interview', 'rejected', or 'accepted'"}), 400
+                if app_status not in ('draft', 'ready', 'sent', 'queued', 'interview', 'rejected', 'accepted', 'parked'):
+                    return jsonify({'error': "status must be one of: draft, ready, sent, queued, interview, rejected, accepted, parked"}), 400
 
                 output_dir   = Path(generated['output_dir'])
                 metadata_path = output_dir / 'metadata.json'

@@ -181,6 +181,8 @@ async function showLoadJobPanel() {
       </div>
     </div>
   `;
+  // Show minimum-length hint immediately on first render (GAP-288).
+  _updatePasteCharCount();
 }
 
 // ---------------------------------------------------------------------------
@@ -326,7 +328,7 @@ function _updatePasteCharCount() {
   const n = val.length;
   if (n === 0) {
     countEl.style.color = '#94a3b8';
-    countEl.textContent = '';
+    countEl.textContent = `Paste the full job description (minimum ${PASTE_MIN_CHARS} characters for best results)`;
   } else if (n < PASTE_MIN_CHARS) {
     countEl.style.color = '#ef4444';
     countEl.textContent = `${n} / ${PASTE_MIN_CHARS} minimum — Too short, aim for at least ${PASTE_MIN_CHARS} characters`;

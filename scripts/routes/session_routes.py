@@ -718,7 +718,7 @@ def create_blueprint(deps):
         if new_status is None and new_notes is None:
             return jsonify({"error": "Provide at least one of: application_status, notes"}), 400
 
-        _VALID_STATUSES = {"", "draft", "ready", "sent", "interview", "rejected", "accepted", "parked"}
+        _VALID_STATUSES = {"", "draft", "ready", "sent", "queued", "interview", "rejected", "accepted", "parked"}
         if new_status is not None and new_status not in _VALID_STATUSES:
             return jsonify({"error": f"Invalid application_status '{new_status}'"}), 400
 

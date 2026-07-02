@@ -369,12 +369,12 @@ function _renderSessionTableRow(row) {
     : `<span>${escapeHtml(row.name)}</span>${companySub}`;
 
   const appStatusLabels = {
-    draft: 'Draft', ready: 'Ready', sent: 'Sent',
+    draft: 'Draft', ready: 'Ready', sent: 'Sent', queued: 'Queued',
     interview: 'Interview', rejected: 'Rejected', accepted: 'Accepted',
     parked: 'Parked',
   };
   const appStatusColors = {
-    draft: '#94a3b8', ready: '#3b82f6', sent: '#22c55e',
+    draft: '#94a3b8', ready: '#3b82f6', sent: '#22c55e', queued: '#eab308',
     interview: '#a855f7', rejected: '#ef4444', accepted: '#059669',
     parked: '#f97316',
   };
@@ -643,12 +643,12 @@ async function submitSessionStatusEdit(path, idx) {
   if (!sel) return;
   const newStatus = sel.value;
   const _appStatusLabels = {
-    draft: 'Draft', ready: 'Ready', sent: 'Sent',
+    draft: 'Draft', ready: 'Ready', sent: 'Sent', queued: 'Queued',
     interview: 'Interview', rejected: 'Rejected', accepted: 'Accepted',
     parked: 'Parked',
   };
   const _appStatusColors = {
-    draft: '#94a3b8', ready: '#3b82f6', sent: '#22c55e',
+    draft: '#94a3b8', ready: '#3b82f6', sent: '#22c55e', queued: '#eab308',
     interview: '#a855f7', rejected: '#ef4444', accepted: '#059669',
     parked: '#f97316',
   };
