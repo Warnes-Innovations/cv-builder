@@ -158,6 +158,36 @@ def _text_similarity(query: str, target: str) -> float:
     return len(q_tok & t_tok) / max(len(q_tok), len(t_tok))
 
 
+def _section_item_count(value: Any) -> int:
+    """Rough size indicator for a top-level master-data section, for the
+    import-preview summary. Not a full recursive diff — item/field-level
+    diffing within a changed section is a known v1 limitation (GAP-19
+    16.16); this gives the user enough signal ("Experience: 5 -> 7 entries")
+    to decide whether the uploaded file looks right before confirming."""
+    if isinstance(value, (list, dict)):
+        return len(value)
+    if value in (None, '', {}):
+        return 0
+    return 1
+
+
+def _import_diff_summary(current: Dict[str, Any], new: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Per-top-level-key changed/count summary comparing current vs. an
+    uploaded full master-data document (GAP-19 16.16)."""
+    all_keys = sorted(set(current.keys()) | set(new.keys()))
+    summary = []
+    for key in all_keys:
+        cur_val = current.get(key)
+        new_val = new.get(key)
+        summary.append({
+            'section':       key,
+            'changed':       cur_val != new_val,
+            'current_count': _section_item_count(cur_val),
+            'new_count':      _section_item_count(new_val),
+        })
+    return summary
+
+
 def create_blueprint(deps):
     bp = Blueprint('master_data_routes', __name__)
 
@@ -734,6 +764,117 @@ def create_blueprint(deps):
                 'commit_hash':   commit_hash,
                 'git_error':     git_error,
                 'push_error':    push_error,
+            })
+
+    @bp.post("/api/master-data/import-preview")
+    def master_data_import_preview():
+        """Read-only section-level diff summary for a full-file JSON import (GAP-19 16.16).
+
+        Does not write anything. The client resends the same `data` payload to
+        /api/master-data/import-confirm to actually apply it — no server-side
+        staging, since the uploaded document is already held client-side.
+        """
+        entry = get_session()
+        validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
+        orchestrator = entry.orchestrator
+        req = request.get_json(silent=True) or {}
+        new_data = req.get('data')
+        if not isinstance(new_data, dict):
+            return jsonify({"ok": False, "error": "data must be a JSON object"}), 400
+
+        result = validate_master_data(new_data)
+        if not result.valid:
+            return jsonify({
+                "ok": False,
+                "error": "Uploaded data failed schema validation",
+                "validation_errors": result.errors,
+            }), 400
+
+        try:
+            current, _ = load_master(orchestrator.master_data_path)
+        except Exception:
+            logger.exception("Failed to load current master data for import preview")
+            return jsonify({"ok": False, "error": "Failed to load current master data"}), 500
+
+        return jsonify({"ok": True, "sections": _import_diff_summary(current, new_data)})
+
+    @bp.post("/api/master-data/import-confirm")
+    def master_data_import_confirm():
+        """Replace the entire master CV data file with an uploaded, previously-
+        previewed document, then back up, validate, and git-commit (GAP-19 16.16).
+
+        This is a full-file replace, not a merge — the import-preview step's
+        section-level diff is the user's chance to catch an unintended
+        overwrite before this call, since there is no per-item undo for a
+        full-file replace beyond the existing Backup History / Undo affordance.
+        """
+        entry = get_session()
+        validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
+        orchestrator = entry.orchestrator
+        with entry.lock:
+            req = request.get_json(silent=True) or {}
+            new_data = req.get('data')
+            if not isinstance(new_data, dict):
+                return jsonify({"ok": False, "error": "data must be a JSON object"}), 400
+
+            result = validate_master_data(new_data)
+            if not result.valid:
+                return jsonify({
+                    "ok": False,
+                    "error": "Uploaded data failed schema validation",
+                    "validation_errors": result.errors,
+                }), 400
+
+            master_path = Path(orchestrator.master_data_path)
+            try:
+                save_master(new_data, master_path)
+            except ValueError as e:
+                # save_master already restored the backup on schema-validation failure.
+                return jsonify({"ok": False, "error": str(e)}), 422
+            except Exception:
+                logger.exception("Failed to save master data during import-confirm")
+                return jsonify({"ok": False, "error": "Failed to save master data"}), 500
+
+            orchestrator.master_data = new_data
+
+            commit_subject = f"chore: Import full master CV data ({datetime.now().strftime('%Y-%m-%d')})"
+            commit_hash = None
+            git_error = None
+            push_error = None
+            try:
+                subprocess.run(
+                    ['git', '-C', str(master_path.parent), 'add', master_path.name],
+                    check=True, capture_output=True,
+                )
+                result_proc = subprocess.run(
+                    ['git', '-C', str(master_path.parent), 'commit', '-m', commit_subject],
+                    capture_output=True, text=True,
+                )
+                if result_proc.returncode == 0:
+                    m = re.search(r'\b([0-9a-f]{7,40})\b', result_proc.stdout)
+                    commit_hash = m.group(1) if m else None
+                    push_error = _git_push_if_remote(str(master_path.parent))
+                else:
+                    git_error = _git_commit_error(
+                        'Git commit failed. See server logs for details.',
+                        result_proc.stderr.strip() or result_proc.stdout.strip(),
+                    )
+            except Exception as git_exc:
+                logger.warning("Git commit raised unexpectedly: %s", git_exc)
+                git_error = _git_commit_error('Git commit failed. See server logs for details.', str(git_exc))
+
+            session_registry.touch(entry.session_id)
+            return jsonify({
+                'ok':          True,
+                'commit_hash': commit_hash,
+                'git_error':   git_error,
+                'push_error':  push_error,
             })
 
     @bp.post("/api/master-data/personal-info")

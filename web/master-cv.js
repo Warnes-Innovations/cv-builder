@@ -124,9 +124,17 @@ async function populateMasterTab(container = null) {
         <button class="action-btn secondary" onclick="openBackupHistoryModal()" aria-label="View backup history">
           🕐 Backups
         </button>
+        <button class="action-btn secondary" onclick="openFullDataPreviewModal()" aria-label="Preview full master CV data">
+          👁 Preview Full Data
+        </button>
         <button class="action-btn secondary" onclick="exportMasterCV()" aria-label="Download Master_CV_Data.json">
           ⬇️ Export JSON
         </button>
+        <button class="action-btn secondary" onclick="triggerMasterCvImport()" aria-label="Import a full Master_CV_Data.json file"${isEditable ? '' : ' disabled'}>
+          ⬆️ Import JSON
+        </button>
+        <input type="file" id="master-cv-import-file-input" accept="application/json,.json" style="display:none;"
+            onchange="handleMasterCvImportFile(event)" />
       </div>
     </div>
     <p style="color:#6b7280;margin-bottom:12px;">
@@ -879,7 +887,7 @@ async function populateMasterTab(container = null) {
   `;
   // Disable write controls when the workflow phase does not permit Master CV edits.
   if (!isEditable) {
-    const SAFE_ONCLICK = /^(exportMasterCV|validatePublicationsBib|openBackupHistoryModal|restoreBackup)\(/;
+    const SAFE_ONCLICK = /^(exportMasterCV|validatePublicationsBib|openBackupHistoryModal|restoreBackup|openFullDataPreviewModal)\(/;
     content.querySelectorAll('button').forEach(btn => {
       const onclick = (btn.getAttribute('onclick') || '').trim();
       if (SAFE_ONCLICK.test(onclick)) return;
@@ -2770,6 +2778,172 @@ async function exportMasterCV() {
   }
 }
 
+// ── Full data preview (GAP-19 16.15) ────────────────────────────────────────
+
+async function openFullDataPreviewModal() {
+  const overlay = document.createElement('div');
+  overlay.id = 'master-cv-preview-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-labelledby="master-cv-preview-title"
+         style="background:#fff;border-radius:10px;padding:24px 28px;max-width:760px;width:94%;
+                max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h3 id="master-cv-preview-title" style="margin:0;font-size:1.1em;color:#1e293b;">👁 Full Master CV Data (read-only)</h3>
+        <button id="master-cv-preview-close" style="background:none;border:none;font-size:1.3em;cursor:pointer;color:#64748b;" aria-label="Close">✕</button>
+      </div>
+      <p style="font-size:0.85em;color:#64748b;margin-bottom:12px;">
+        The complete, unfiltered contents of <code>Master_CV_Data.json</code> — including any fields the structured editors above don't surface.
+      </p>
+      <pre id="master-cv-preview-body" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;font-size:0.8em;line-height:1.5;white-space:pre-wrap;word-break:break-word;">Loading…</pre>
+    </div>`;
+  document.body.appendChild(overlay);
+  if (typeof trapFocus === 'function') trapFocus('master-cv-preview-overlay');
+  const close = () => { overlay.remove(); if (typeof restoreFocus === 'function') restoreFocus(); };
+  document.getElementById('master-cv-preview-close').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+
+  try {
+    const res = await fetch('/api/master-data/full');
+    const data = await res.json();
+    const body = document.getElementById('master-cv-preview-body');
+    if (body) body.textContent = JSON.stringify(data, null, 2);
+  } catch (_) {
+    const body = document.getElementById('master-cv-preview-body');
+    if (body) body.textContent = 'Failed to load master CV data.';
+  }
+}
+
+// ── Full-file JSON import with diff review (GAP-19 16.16) ──────────────────
+//
+// Not a merge: import-confirm replaces the entire file. The import-preview
+// step's section-level changed/count summary is the user's chance to catch
+// an unintended overwrite before confirming — full field-level diffing
+// within a changed section is a known v1 limitation (the same posture
+// already accepted for other advisory-only review surfaces in this tab).
+
+let _masterCvImportData = null;
+
+function triggerMasterCvImport() {
+  document.getElementById('master-cv-import-file-input')?.click();
+}
+
+function handleMasterCvImportFile(event) {
+  const file = event.target?.files?.[0];
+  event.target.value = ''; // allow re-selecting the same filename later
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    let parsed;
+    try {
+      parsed = JSON.parse(String(reader.result));
+    } catch (_) {
+      showAlertModal('❌ Error', 'That file is not valid JSON.');
+      return;
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      showAlertModal('❌ Error', 'Expected a JSON object (Master_CV_Data.json shape), not an array or scalar.');
+      return;
+    }
+    await _submitMasterCvImportPreview(parsed);
+  };
+  reader.onerror = () => showAlertModal('❌ Error', 'Failed to read the selected file.');
+  reader.readAsText(file);
+}
+
+async function _submitMasterCvImportPreview(parsed) {
+  try {
+    const res = await fetch('/api/master-data/import-preview', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: parsed }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      const detail = (data.validation_errors || []).join('; ');
+      showAlertModal('❌ Error', detail ? `${data.error}: ${detail}` : (data.error || 'Import preview failed.'));
+      return;
+    }
+    _masterCvImportData = parsed;
+    _showMasterCvImportPreviewModal(data.sections || []);
+  } catch (_) {
+    showAlertModal('❌ Error', 'Failed to preview the import.');
+  }
+}
+
+function _showMasterCvImportPreviewModal(sections) {
+  const overlay = document.createElement('div');
+  overlay.id = 'master-cv-import-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  const changedSections = sections.filter((s) => s.changed);
+  const rows = sections.map((s) => `
+    <tr style="${s.changed ? 'background:var(--cv-warning-bg, #fffbeb);' : ''}">
+      <td style="padding:6px 8px;color:#1e293b;">${escapeHtml(s.section)}</td>
+      <td style="padding:6px 8px;text-align:center;color:#64748b;">${s.current_count}</td>
+      <td style="padding:6px 8px;text-align:center;color:#64748b;">${s.new_count}</td>
+      <td style="padding:6px 8px;">${s.changed ? '⚠ changed' : '—'}</td>
+    </tr>`).join('');
+  overlay.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-labelledby="master-cv-import-title"
+         style="background:#fff;border-radius:10px;padding:24px 28px;max-width:640px;width:94%;
+                max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <h3 id="master-cv-import-title" style="margin:0 0 12px;font-size:1.1em;color:#1e293b;">⬆️ Import Master CV Data — Review</h3>
+      <div role="alert" style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:0.86em;color:#991b1b;">
+        <strong>This replaces the entire file</strong>, not just the changed sections. A backup is created
+        automatically before the write — see 🕐 Backups above to restore it if needed.
+      </div>
+      <p style="font-size:0.85em;color:#64748b;margin-bottom:8px;">
+        ${changedSections.length ? `${changedSections.length} section(s) would change:` : 'No sections would change — the uploaded file matches the current data.'}
+      </p>
+      <table style="width:100%;border-collapse:collapse;font-size:0.85em;margin-bottom:16px;">
+        <thead><tr style="border-bottom:1px solid #e2e8f0;">
+          <th style="padding:4px 8px;text-align:left;color:#475569;">Section</th>
+          <th style="padding:4px 8px;color:#475569;">Current</th>
+          <th style="padding:4px 8px;color:#475569;">New</th>
+          <th style="padding:4px 8px;text-align:left;color:#475569;"></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="action-btn" id="master-cv-import-cancel">Cancel</button>
+        <button class="action-btn primary" id="master-cv-import-confirm"${changedSections.length ? '' : ' disabled'}>Confirm Import</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  if (typeof trapFocus === 'function') trapFocus('master-cv-import-overlay');
+  const close = () => { overlay.remove(); _masterCvImportData = null; if (typeof restoreFocus === 'function') restoreFocus(); };
+  document.getElementById('master-cv-import-cancel').addEventListener('click', close);
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  document.getElementById('master-cv-import-confirm').addEventListener('click', () => confirmMasterCvImport());
+}
+
+async function confirmMasterCvImport() {
+  if (!_masterCvImportData) return;
+  try {
+    const res = await fetch('/api/master-data/import-confirm', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: _masterCvImportData }),
+    });
+    const data = await res.json();
+    document.getElementById('master-cv-import-overlay')?.remove();
+    _masterCvImportData = null;
+    if (typeof restoreFocus === 'function') restoreFocus();
+    if (data.ok) {
+      _setMasterChangeNotice('Master CV Data', 'imported');
+      showAlertModal(
+        '✅ Imported',
+        `Master CV data replaced.${data.commit_hash ? ` Commit: ${data.commit_hash.slice(0, 10)}.` : ''}${data.git_error ? ` (git warning: ${data.git_error})` : ''}`
+      );
+      await populateMasterTab();
+    } else {
+      const detail = (data.validation_errors || []).join('; ');
+      showAlertModal('❌ Error', detail ? `${data.error}: ${detail}` : (data.error || 'Import failed.'));
+    }
+  } catch (_) {
+    showAlertModal('❌ Error', 'Failed to import master CV data.');
+  }
+}
+
 // ---- Achievement/Summary delete handlers ----
 
 async function deleteMasterAchievement(id, title) {
@@ -2898,6 +3072,10 @@ export {
   restoreBackup,
   undoMasterDataChange,
   redoMasterDataChange,
+  openFullDataPreviewModal,
+  triggerMasterCvImport,
+  handleMasterCvImportFile,
+  confirmMasterCvImport,
   deleteMasterAchievement,
   deleteMasterSummary,
   loadPublications,

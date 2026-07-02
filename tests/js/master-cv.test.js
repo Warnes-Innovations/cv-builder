@@ -46,6 +46,9 @@ import {
   deleteMasterSummary,
   undoMasterDataChange,
   redoMasterDataChange,
+  openFullDataPreviewModal,
+  handleMasterCvImportFile,
+  confirmMasterCvImport,
 } from '../../web/master-cv.js'
 
 // ---------------------------------------------------------------------------
@@ -1416,5 +1419,221 @@ describe('undoMasterDataChange / redoMasterDataChange', () => {
     )
     const redoBtn = document.getElementById('master-cv-redo-btn')
     expect(redoBtn.disabled).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// openFullDataPreviewModal (GAP-19 16.15)
+// ---------------------------------------------------------------------------
+
+describe('openFullDataPreviewModal', () => {
+  afterEach(() => {
+    document.getElementById('master-cv-preview-overlay')?.remove()
+  })
+
+  it('renders the full master data as formatted JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ personal_info: { name: 'Jane Doe' }, skills: ['Python'] }),
+    }))
+
+    await openFullDataPreviewModal()
+    await flushPromises()
+
+    const body = document.getElementById('master-cv-preview-body')
+    expect(body.textContent).toContain('"name": "Jane Doe"')
+    expect(body.textContent).toContain('"Python"')
+  })
+
+  it('shows a failure message if the fetch fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')))
+
+    await openFullDataPreviewModal()
+    await flushPromises()
+
+    expect(document.getElementById('master-cv-preview-body').textContent).toContain('Failed to load')
+  })
+
+  it('close button removes the overlay', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({}) }))
+
+    await openFullDataPreviewModal()
+    document.getElementById('master-cv-preview-close').click()
+
+    expect(document.getElementById('master-cv-preview-overlay')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Full-file JSON import (GAP-19 16.16): handleMasterCvImportFile,
+// confirmMasterCvImport, and the review-modal it renders.
+// ---------------------------------------------------------------------------
+
+describe('master CV JSON import', () => {
+  // FileReader.readAsText() in jsdom completes asynchronously and its timing
+  // relative to a single setTimeout(...,0) flush isn't reliable under load
+  // (observed flaky across runs) — poll for the expected side effect instead
+  // of assuming a fixed number of flushPromises() ticks is enough.
+  async function waitFor(conditionFn, { timeout = 1000, interval = 5 } = {}) {
+    const start = Date.now()
+    while (Date.now() - start < timeout) {
+      if (conditionFn()) return
+      await new Promise((resolve) => setTimeout(resolve, interval))
+    }
+    throw new Error('waitFor: condition not met within timeout')
+  }
+
+  function makeFileEvent(text) {
+    return {
+      target: {
+        files: [new File([text], 'Master_CV_Data.json', { type: 'application/json' })],
+        value: 'Master_CV_Data.json',
+      },
+    }
+  }
+
+  afterEach(() => {
+    document.getElementById('master-cv-import-overlay')?.remove()
+  })
+
+  it('shows an error and makes no request for invalid JSON', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    handleMasterCvImportFile(makeFileEvent('{not valid json'))
+    await waitFor(() => showAlertModalMock.mock.calls.length > 0)
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(showAlertModalMock).toHaveBeenCalledWith('❌ Error', expect.stringContaining('not valid JSON'))
+  })
+
+  it('shows an error and makes no request for a JSON array', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    handleMasterCvImportFile(makeFileEvent('[1, 2, 3]'))
+    await waitFor(() => showAlertModalMock.mock.calls.length > 0)
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(showAlertModalMock).toHaveBeenCalledWith('❌ Error', expect.stringContaining('JSON object'))
+  })
+
+  it('does nothing when no file was selected', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    handleMasterCvImportFile({ target: { files: [], value: '' } })
+    await flushPromises()
+
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('resets the file input value so re-selecting the same filename works', () => {
+    const event = makeFileEvent('{"experience": []}')
+    handleMasterCvImportFile(event)
+    expect(event.target.value).toBe('')
+  })
+
+  it('shows validation errors and no modal when the backend rejects the import preview', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: false, error: 'Uploaded data failed schema validation', validation_errors: ['experience must be a list'] }),
+    }))
+
+    handleMasterCvImportFile(makeFileEvent('{"experience": "nope"}'))
+    await waitFor(() => showAlertModalMock.mock.calls.length > 0)
+
+    expect(showAlertModalMock).toHaveBeenCalledWith('❌ Error', expect.stringContaining('experience must be a list'))
+    expect(document.getElementById('master-cv-import-overlay')).toBeNull()
+  })
+
+  it('renders the review modal with section rows on a successful preview', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({
+        ok: true,
+        sections: [
+          { section: 'experience', changed: true, current_count: 1, new_count: 2 },
+          { section: 'skills', changed: false, current_count: 3, new_count: 3 },
+        ],
+      }),
+    }))
+
+    handleMasterCvImportFile(makeFileEvent('{"experience": [], "skills": []}'))
+    await waitFor(() => document.getElementById('master-cv-import-overlay') !== null)
+
+    const overlay = document.getElementById('master-cv-import-overlay')
+    expect(overlay.textContent).toContain('experience')
+    expect(overlay.textContent).toContain('1 section(s) would change')
+    const confirmBtn = document.getElementById('master-cv-import-confirm')
+    expect(confirmBtn.disabled).toBe(false)
+  })
+
+  it('disables Confirm Import when nothing would change', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: true, sections: [{ section: 'skills', changed: false, current_count: 3, new_count: 3 }] }),
+    }))
+
+    handleMasterCvImportFile(makeFileEvent('{"skills": []}'))
+    await waitFor(() => document.getElementById('master-cv-import-overlay') !== null)
+
+    expect(document.getElementById('master-cv-import-confirm').disabled).toBe(true)
+  })
+
+  it('cancel button removes the overlay without calling import-confirm', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: true, sections: [{ section: 'skills', changed: true, current_count: 1, new_count: 2 }] }),
+    }))
+    handleMasterCvImportFile(makeFileEvent('{"skills": []}'))
+    await waitFor(() => document.getElementById('master-cv-import-overlay') !== null)
+
+    const mockConfirmFetch = vi.fn()
+    vi.stubGlobal('fetch', mockConfirmFetch)
+    document.getElementById('master-cv-import-cancel').click()
+
+    expect(document.getElementById('master-cv-import-overlay')).toBeNull()
+    expect(mockConfirmFetch).not.toHaveBeenCalled()
+  })
+
+  it('confirmMasterCvImport posts the previewed data and shows the commit result on success', async () => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+    const previewedData = { skills: ['Rust'] }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: true, sections: [{ section: 'skills', changed: true, current_count: 0, new_count: 1 }] }),
+    }))
+    handleMasterCvImportFile(makeFileEvent(JSON.stringify(previewedData)))
+    await waitFor(() => document.getElementById('master-cv-import-overlay') !== null)
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === '/api/master-data/overview') return Promise.resolve({ json: async () => ({}) })
+      if (url === '/api/master-data/full') return Promise.resolve({
+        json: async () => ({
+          personal_info: {}, experience: [], skills: [],
+          education: [], awards: [], selected_achievements: [],
+          professional_summaries: {},
+        }),
+      })
+      if (url === '/api/master-data/publications') return Promise.resolve({ json: async () => ({ ok: true, publications: [] }) })
+      if (url === '/api/master-data/import-confirm') return Promise.resolve({
+        json: async () => ({ ok: true, commit_hash: 'abc1234567890', git_error: null }),
+      })
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await confirmMasterCvImport()
+    await waitFor(() => mockFetch.mock.calls.some(([url]) => url === '/api/master-data/import-confirm'))
+    await flushPromises()
+
+    const importCall = mockFetch.mock.calls.find(([url]) => url === '/api/master-data/import-confirm')
+    expect(JSON.parse(importCall[1].body)).toEqual({ data: previewedData })
+    expect(document.getElementById('master-cv-import-overlay')).toBeNull()
+    expect(showAlertModalMock).toHaveBeenCalledWith('✅ Imported', expect.stringContaining('abc1234567'))
+  })
+
+  it('confirmMasterCvImport does nothing if there is no previewed data pending', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    await confirmMasterCvImport()
+
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 })
