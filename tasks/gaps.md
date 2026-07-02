@@ -2887,7 +2887,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-284: "queued" Application Status Absent from Lifecycle
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02. Added 'queued' (amber badge #eab308) between 'sent' and 'interview' in both `appStatusLabels`/`appStatusColors` dicts in `web/session-switcher-ui.js`; added to `_VALID_STATUSES` in `scripts/routes/session_routes.py:721` and the finalise status allowlist in `scripts/routes/generation_routes.py:2105`.
 **Discovered:** 2026-07-01 (cycle 29) by applicant.
 **Description:** The application status lifecycle has six values (draft, ready, sent, interview, rejected, accepted) but omits "queued" — used by applicants who have submitted but are awaiting ATS screening. US-A1 references this status.
 **Affected stories:** US-A1
@@ -2923,7 +2923,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-288: Paste-Text Input Shows Character Count But No Minimum-Length Hint
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02. `_updatePasteCharCount()` in `web/job-input.js:327–329` now shows a grey hint ("Paste the full job description (minimum 200 characters for best results)") when the textarea is empty. `showLoadJobPanel()` calls `_updatePasteCharCount()` immediately after rendering so the hint appears before any typing.
 **Discovered:** 2026-07-01 (cycle 29) by ux-expert, first-time-user.
 **Description:** The job description paste textarea shows an ARIA-live character count (`job-input.js:119–120`) but gives no minimum-length guidance. Users submitting very short job descriptions receive no warning until the LLM produces a poor analysis.
 **Affected stories:** US-U2, US-F1
