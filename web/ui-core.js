@@ -345,6 +345,10 @@ function restoreFocus() {
   if (listener) document.removeEventListener('keydown', listener);
 }
 
+function pushFocusStack(el) {
+  _focusStack.push(el || document.activeElement);
+}
+
 /** Maps each workflow stage (top bar) to the tabs shown in the second nav bar. */
 const STAGE_TABS = {
   job:            ['job', 'master'],
@@ -1955,7 +1959,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
   // Focus / accessibility
-  setInitialFocus, trapFocus, restoreFocus,
+  setInitialFocus, trapFocus, restoreFocus, pushFocusStack,
   // Dialogs & modals
   confirmDialog, openModal, closeModal, closeAllModals,
   showSessionConflictBanner,

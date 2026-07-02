@@ -246,13 +246,13 @@ function renderSpellSuggestions(flaggedSections, totalSections, stats = {}, cust
                   value="${escapeHtml(reps[0] || '')}"
                   style="flex:1;font-size:0.88em;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;"
                   onkeydown="if(event.key==='Enter'){event.preventDefault();applyCustomSpellCorrection('${escapeHtml(section.id)}',${idx});}">
-                <button class="icon-btn" onclick="applyCustomSpellCorrection('${escapeHtml(section.id)}',${idx})" title="Apply custom correction">Apply</button>
+                <button class="icon-btn" onclick="applyCustomSpellCorrection('${escapeHtml(section.id)}',${idx})" title="Apply custom correction" aria-label="Apply custom correction">Apply</button>
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="icon-btn" onclick="dismissSpellSuggestion('${escapeHtml(sugId)}', '${escapeHtml(section.id)}', ${idx}, '${escapeHtml(sug.flagged)}')"
-                    title="Ignore this suggestion">Ignore</button>
+                    title="Ignore this suggestion" aria-label="Ignore this suggestion">Ignore</button>
                 <button class="icon-btn" onclick="addSpellWord('${escapeHtml(sug.flagged)}', '${escapeHtml(sugId)}')"
-                    title="Add to custom dictionary">Add to Dictionary</button>
+                    title="Add to custom dictionary" aria-label="Add to custom dictionary">Add to Dictionary</button>
               </div>
             </div>
           </div>

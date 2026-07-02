@@ -282,7 +282,7 @@ async function populateMasterTab(container = null) {
       </div>
       <p style="color:#6b7280;font-size:0.9em;margin-bottom:12px;">
         These are cross-role highlights shown in the Achievements review during customisation.
-        The Harvest feature (Finalise tab) can add new ones from your current session.
+        The Harvest feature (Harvest tab) can add new ones from your current session.
       </p>
       <div id="master-achievements-container">
         ${_renderMasterAchievementsTable(achievements)}

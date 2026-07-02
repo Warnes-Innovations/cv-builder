@@ -170,7 +170,7 @@ def create_blueprint(deps):
         return jsonify({
             "error": (
                 "Master data can only be modified before job analysis begins or from the "
-                "post-job finalise workflow."
+                "Harvest step."
             ),
             "phase": current_phase or None,
             "conflict_type": "phase_enforcement",

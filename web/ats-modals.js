@@ -18,6 +18,7 @@
 import { refreshAtsScore, updateAtsBadge } from './ats-refinement.js';
 import { stateManager } from './state-manager.js';
 import { escapeHtml } from './utils.js';
+import { trapFocus, restoreFocus, pushFocusStack } from './ui-core.js';
 
 let _atsSynonymMapCache = null;
 
@@ -142,8 +143,6 @@ function _renderKeywordGroup(title, keywords, synMap) {
 // ATS Report Modal
 // ---------------------------------------------------------------------------
 
-let _atsModalPreviousFocus = null;
-
 /**
  * Open the ATS Report modal. Renders the cached ATS score from state, or
  * fetches a fresh score if none is cached.
@@ -153,14 +152,14 @@ function _atsEscapeHandler(e) {
 }
 
 async function openAtsReportModal() {
-  _atsModalPreviousFocus = document.activeElement;
+  pushFocusStack(document.activeElement);
   const overlay = document.getElementById('ats-report-modal-overlay');
   overlay.style.display = 'flex';
   document.addEventListener('keydown', _atsEscapeHandler);
   // Move focus to the Close button in the modal footer
   const closeBtn = overlay.querySelector('.modal-footer .action-btn');
   if (closeBtn) closeBtn.focus();
-  if (typeof trapFocus === 'function') trapFocus('ats-report-modal-overlay');
+  trapFocus('ats-report-modal-overlay');
   const body = document.getElementById('ats-report-modal-body');
 
   const synMap = await _loadAtsSynonymMap();
@@ -195,11 +194,7 @@ async function openAtsReportModal() {
 function closeAtsReportModal() {
   document.getElementById('ats-report-modal-overlay').style.display = 'none';
   document.removeEventListener('keydown', _atsEscapeHandler);
-  if (typeof restoreFocus === 'function') restoreFocus();
-  if (_atsModalPreviousFocus && typeof _atsModalPreviousFocus.focus === 'function') {
-    _atsModalPreviousFocus.focus();
-  }
-  _atsModalPreviousFocus = null;
+  restoreFocus();
 }
 
 /**
@@ -269,20 +264,18 @@ function _renderAtsReport(score, synMap) {
 /**
  * Open the Job Analysis modal. Reuses tabData.analysis if available.
  */
-let _jobAnalysisPreviousFocus = null;
-
 function _jobAnalysisEscapeHandler(e) {
   if (e.key === 'Escape') closeJobAnalysisModal();
 }
 
 function openJobAnalysisModal() {
-  _jobAnalysisPreviousFocus = document.activeElement;
+  pushFocusStack(document.activeElement);
   const overlay = document.getElementById('job-analysis-modal-overlay');
   overlay.style.display = 'flex';
   document.addEventListener('keydown', _jobAnalysisEscapeHandler);
   const closeBtn = overlay.querySelector('.modal-footer .action-btn');
   if (closeBtn) closeBtn.focus();
-  if (typeof trapFocus === 'function') trapFocus('job-analysis-modal-overlay');
+  trapFocus('job-analysis-modal-overlay');
   const body = document.getElementById('job-analysis-modal-body');
 
   const analysis = stateManager.getTabData('analysis');
@@ -302,11 +295,7 @@ function openJobAnalysisModal() {
 function closeJobAnalysisModal() {
   document.getElementById('job-analysis-modal-overlay').style.display = 'none';
   document.removeEventListener('keydown', _jobAnalysisEscapeHandler);
-  if (typeof restoreFocus === 'function') restoreFocus();
-  if (_jobAnalysisPreviousFocus && typeof _jobAnalysisPreviousFocus.focus === 'function') {
-    _jobAnalysisPreviousFocus.focus();
-  }
-  _jobAnalysisPreviousFocus = null;
+  restoreFocus();
 }
 
 /**

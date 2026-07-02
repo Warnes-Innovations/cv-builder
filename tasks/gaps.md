@@ -2770,7 +2770,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-271: Focus Outline Removed on Intake Form Inputs — WCAG 2.1 AA Violation
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02; replaced `outline: none` with `outline: 2px solid var(--cv-accent); outline-offset: 2px` in `web/styles.css` `.intake-field-row input:focus`.
 **Discovered:** 2026-07-01 (cycle 29) by accessibility-specialist, ux-expert.
 **Description:** `styles.css:1651` sets `outline: none` on `.intake-field-row input:focus` with no visual replacement. This removes the keyboard focus indicator for all intake form fields, violating WCAG 2.1 Success Criterion 2.4.7 (Level AA).
 **Affected stories:** US-X3, US-U7
@@ -2779,7 +2779,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-272: Spell-Check Action Buttons Missing aria-label
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02; added `aria-label` matching each button's `title` attribute in `web/spell-check.js` (Apply custom correction, Ignore this suggestion, Add to custom dictionary).
 **Discovered:** 2026-07-01 (cycle 29) by accessibility-specialist.
 **Description:** The "Apply", "Ignore", and "Add to Dictionary" buttons in the spell-check UI (`spell-check.js:~249–255`) use the `title` attribute only. Screen readers announce `title` inconsistently and it does not satisfy WCAG 4.1.2 (Name, Role, Value). Each button needs an explicit `aria-label`.
 **Affected stories:** US-X3
@@ -2788,7 +2788,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-273: ATS Modal Focus Stack Bug — restoreFocus Returns to Wrong Element
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02; exported `pushFocusStack()` from `ui-core.js`; imported and called in both `openAtsReportModal()` and `openJobAnalysisModal()` in `ats-modals.js` before `trapFocus()`; removed now-redundant module-level `_atsModalPreviousFocus` / `_jobAnalysisPreviousFocus` variables and their manual `.focus()` fallback calls from close functions.
 **Discovered:** 2026-07-01 (cycle 29) by accessibility-specialist.
 **Description:** `openAtsReportModal()` and `openJobAnalysisModal()` in `ats-modals.js` call `trapFocus` without first pushing the currently focused element to `_focusStack`. When the modal closes, `restoreFocus()` pops an unrelated entry and returns focus to the wrong element.
 **Affected stories:** US-X2
@@ -2851,7 +2851,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-280: Duplicate @keyframes spin Definitions in styles.css
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02; removed duplicate `@keyframes spin` at line 1494; removed `@keyframes llm-spin` at line 574; replaced `animation: llm-spin` with `animation: spin` at the LLM spinner element. Single `@keyframes spin` at line 929 remains.
 **Discovered:** 2026-07-01 (cycle 29) by graphical-designer.
 **Description:** `@keyframes spin` is defined twice in `web/styles.css` (lines 930 and 1494). `@keyframes llm-spin` at line 574 is also redundant with `spin`. This is dead CSS that increases file size and maintenance overhead.
 **Affected stories:** US-G3 (CSS maintainability)
@@ -2896,7 +2896,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-285: Stale "Finalise tab" Label in master-cv.js
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02; `web/master-cv.js:285` updated to "The Harvest feature (Harvest tab)…". Also fixed matching stale text in `scripts/routes/master_data_routes.py` and `scripts/routes/generation_routes.py` where 409 error messages said "post-job finalise workflow" — updated to "Harvest step".
 **Discovered:** 2026-07-01 (cycle 29) by master-cv-curator.
 **Description:** `web/master-cv.js:~285` contains the text "The Harvest feature (Finalise tab)…". The tab is now labeled "Harvest" in the UI. This creates a confusing internal mismatch visible in tooltip or help text.
 **Affected stories:** US-MC3

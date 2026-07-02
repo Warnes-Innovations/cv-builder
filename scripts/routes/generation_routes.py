@@ -1287,13 +1287,13 @@ def create_blueprint(deps):
     save_master = deps.get('save_master')
 
     def _require_harvest_apply_phase(entry):
-        """Allow harvest write-back only from the post-job finalise window."""
+        """Allow harvest write-back only from the Harvest (refinement) step."""
         raw_phase = (entry.manager.state or {}).get('phase')
         current_phase = str(getattr(raw_phase, 'value', raw_phase) or '').strip()
         if current_phase == 'refinement':
             return None
         return jsonify({
-            'error': 'Harvest write-back is only available from the post-job finalise workflow.',
+            'error': 'Harvest write-back is only available from the Harvest step.',
             'phase': current_phase or None,
         }), 409
 
