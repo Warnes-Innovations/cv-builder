@@ -1261,18 +1261,17 @@ Users can proceed from the Customise stage to CV generation without visiting or 
 ## GAP-132: Two Divergent CV Output Templates with Different Visual Identities
 
 **Priority:** HIGH
-**Status:** Open
-**Found:** 2026-06-18 cvUiReview
-The application ships two CV output templates with different visual identities that produce visually inconsistent output for the same session: (1) `templates/cv-template.html` — uses Inter font family, `rem` units, CSS custom properties, `#2980b9` blue, flex `32% / 68%` two-column layout; (2) `templates/cv-style.css` / layout preview — uses Segoe UI/Arial, `pt` units, no CSS custom properties, `#2c5aa0` blue, grid `2.8fr / 1.2fr`. A user reviewing the HTML preview sees a different visual product than what appears in the DOCX download.
-**Source evidence:** `templates/cv-template.html`; `templates/cv-style.css`; graphical-designer.md 2026-06-18.
+**Status:** RESOLVED 2026-07-01 (cycle 28) — `_create_fallback_html_file()` in `cv_orchestrator.py` now renders `cv-template.html` via Jinja2 (same as the primary generation path) so the Quarto fallback and primary path are visually identical. A secondary fallback to the simple string-builder remains only if Jinja2 rendering itself throws. `cv-style.css` brand colors updated from `#2c5aa0` to `#2980b9` and font changed from Segoe UI to Inter for the rare triple-failure case.
+**Source evidence:** `templates/cv-template.html`; `templates/cv-style.css`; `scripts/utils/cv_orchestrator.py:_create_fallback_html_file()`; graphical-designer.md 2026-06-18.
+**Note:** `cv-style.css` is only referenced by the Quarto fallback path `_create_fallback_html()` — NOT by the layout preview or DOCX generation. The original gap description conflated this with the HTML-preview vs DOCX difference (which is expected given different rendering engines).
 
 ## GAP-133: No CSS Design Token Layer
 
 **Priority:** MED
-**Status:** Open
+**Status:** PARTIAL 2026-07-01 (cycle 28) — `:root {}` block added to `web/styles.css` with 8 CSS custom properties for the highest-frequency colors (covering ~297 occurrences): `--cv-border` (#e2e8f0 ×64), `--cv-accent` (#3b82f6 ×55), `--cv-bg-light` (#f8fafc ×42), `--cv-text-secondary` (#64748b ×41), `--cv-text-primary` (#1e293b ×33), `--cv-bg-subtle` (#f1f5f9 ×23), `--cv-text-muted` (#475569 ×22), `--cv-accent-hover` (#1d4ed8 ×17). All occurrences of these 8 values outside `:root` replaced with `var(...)`. ~91 remaining distinct color literals in `web/styles.css` and ~227 inline `style=""` attributes in `web/index.html` remain for incremental tokenization.
 **Found:** 2026-06-18 cvUiReview
-`web/styles.css` contains approximately 50 hard-coded hex colour literals scattered across rules. `web/index.html` contains approximately 216 inline `style=""` attributes. No `:root {}` CSS custom properties block exists. Any colour, spacing, or typography change requires grep-and-replace across multiple files with high risk of missed instances, and brand changes are impractical to apply consistently.
-**Source evidence:** `web/styles.css` (no `:root {}`); `web/index.html` (~216 inline styles); graphical-designer.md 2026-06-18.
+`web/styles.css` contains approximately 50 hard-coded hex color literals scattered across rules. `web/index.html` contains approximately 216 inline `style=""` attributes. No `:root {}` CSS custom properties block exists. Any color, spacing, or typography change requires grep-and-replace across multiple files with high risk of missed instances, and brand changes are impractical to apply consistently.
+**Source evidence:** `web/styles.css` (`:root {}` block added line 18); `web/index.html` (~227 inline styles still pending); graphical-designer.md 2026-06-18.
 
 ## GAP-134: No "Queued" Session Status in Schema
 
@@ -1293,7 +1292,7 @@ After URL fetch populates the job intake confirmation card (company, role, date,
 ## GAP-136: No Post-Generation Cover Letter Word Count Enforcement
 
 **Priority:** MED
-**Status:** RESOLVED 2026-06-29 — Source-verified false positive. `_validateCoverLetter()` in `web/cover-letter.js:543–576` already implements role-differentiated word count validation with a colour-coded progress bar: standard 300–400w, executive 400–500w, academic 500–600w, each with warn zones. The check runs on every textarea `input` event (line 275) and on post-generation populate (line 479 — called after the LLM returns the letter). The `wcStatus` pass/warn/fail gates match US-P5 AC3 exactly.
+**Status:** RESOLVED 2026-06-29 — Source-verified false positive. `_validateCoverLetter()` in `web/cover-letter.js:543–576` already implements role-differentiated word count validation with a color-coded progress bar: standard 300–400w, executive 400–500w, academic 500–600w, each with warn zones. The check runs on every textarea `input` event (line 275) and on post-generation populate (line 479 — called after the LLM returns the letter). The `wcStatus` pass/warn/fail gates match US-P5 AC3 exactly.
 **Found:** 2026-06-18 cvUiReview
 US-P5 AC3 requires a programmatic check that the generated cover letter falls within the target word count range for the role type. Currently, the only mechanism is the LLM prompt instruction (`master_data_routes.py:1566`). No post-generation validation counts words and warns or blocks if the output is outside range. LLMs routinely deviate from length instructions.
 **Source evidence:** `scripts/routes/master_data_routes.py:1566`; persuasion-expert.md 2026-06-18.
@@ -1319,7 +1318,7 @@ US-P1 AC1 requires the summary to open with a value-identity-first framing (e.g.
 **Priority:** MED
 **Status:** RESOLVED 2026-06-29 — Added `post_analysis_answers: Dict = None` parameter to `generate_professional_summary` in `scripts/utils/llm_client.py:754`. When provided, builds a "CANDIDATE CONTEXT (from interview Q&A)" block (up to 6 Q&A pairs) injected into both the fresh and refinement prompt paths. Route `POST /api/generate-summary` (`scripts/routes/master_data_routes.py:1175`) now reads `post_analysis_answers` from `conversation.state` and passes it through.
 **Found:** 2026-06-18 cvUiReview
-Clarification answers (`post_analysis_answers`) are injected into the cover letter and screening question prompts but are absent from the `generate_professional_summary` call at `scripts/utils/llm_client.py:754`. The summary LLM therefore lacks the user's clarification context (e.g., "I led the team during the reorg") that was provided during the analysis phase. This context is material to producing a personalised, accurate summary.
+Clarification answers (`post_analysis_answers`) are injected into the cover letter and screening question prompts but are absent from the `generate_professional_summary` call at `scripts/utils/llm_client.py:754`. The summary LLM therefore lacks the user's clarification context (e.g., "I led the team during the reorg") that was provided during the analysis phase. This context is material to producing a personalized, accurate summary.
 **Source evidence:** `scripts/utils/llm_client.py:754`; persuasion-expert.md 2026-06-18.
 
 ## GAP-140: Icon-Only Controls Missing `aria-label`

@@ -1158,21 +1158,36 @@ class CVOrchestrator:
             return self._create_fallback_html_file(work_dir, template_file.stem)
     
     def _create_fallback_html_file(self, work_dir: Path, base_name: str) -> Path:
-        """Create fallback HTML file when Quarto is unavailable.""" 
+        """Create fallback HTML file when Quarto is unavailable.
+
+        Renders cv-template.html via Jinja2 so the output matches the primary
+        generation path visually.  Falls back to _create_fallback_html() only
+        when the Jinja2 render itself fails.
+        """
         html_output = work_dir / f"{base_name}.html"
-        
-        # Read CV data from the JSON file
+
         data_file = work_dir / 'temp_cv_data.json'
         if data_file.exists():
             with open(data_file, 'r', encoding='utf-8') as f:
                 cv_data = json.load(f)
         else:
             cv_data = {'personal_info': {'name': 'CV Data Error'}, 'professional_summary': 'Data loading failed'}
-        
-        html_content = self._create_fallback_html(cv_data)
+
+        template_file = Path(__file__).parent.parent.parent / 'templates' / 'cv-template.html'
+        html_content = None
+        if template_file.exists():
+            try:
+                from .template_renderer import load_template, render_template  # noqa: PLC0415
+                template = load_template(str(template_file))
+                html_content = render_template(template, cv_data)
+            except Exception as exc:
+                logger.warning("Jinja2 render failed in Quarto fallback (%s); using simple HTML", exc)
+
+        if html_content is None:
+            html_content = self._create_fallback_html(cv_data)
+
         html_output.write_text(html_content, encoding='utf-8')
         logger.info("Created fallback HTML: %s", html_output.name)
-        
         return html_output
 
     def _create_fallback_html(self, cv_data: Dict) -> str:
