@@ -10,6 +10,13 @@
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review.
 
+## 2026-07-02 (Cycle 38) Reconciliation Notes
+
+Persuasion completion + status corrections: 1 gap fully resolved, status corrections.
+
+- **GAP-17 RESOLVED** — Added filler-phrase check (Rule 7) to `_validateCoverLetter()` in `web/cover-letter.js`. Updated status to reflect that cover-letter persuasion (6 rules added in cycles 28–32) and cross-document consistency (5 checks) were already implemented; GAP-17 status had not been updated to reflect these. All heuristic-feasible persuasion checks are now in place. LLM-based tone/register consistency is explicitly out of scope.
+- **Test suite:** 1432 passed.
+
 ## 2026-07-02 (Cycle 37) Reconciliation Notes
 
 Contributor documentation: 1 gap resolved.
@@ -409,7 +416,7 @@ Full 15-persona + heuristic `/cvUiReview` run (all agents spawned in parallel on
 
 **Severity:** MEDIUM
 **Affected stories:** US-P1, US-P2, US-P3, US-P4, US-P5, US-P6
-**Status:** PARTIAL - updated 2026-07-02 (cycle 36). `check_persuasion()` now has 8 advisory checks: weak/passive opening verb, no strong verb, no quantification, vague language, too short, repeated opening verb (≥3 in a role), **negative framing** (new — detects defensive/compensatory phrasing like "despite limited resources", flags with positive-reframe suggestion), and **narrative-arc advisory** (new — cross-experience check: if most recent role's strong-verb ratio is ≥30% lower than older roles, emits `narrative_arc_advisory` in summary; rendered in persuasion panel alongside `narrative_thread_advisory`). Remaining: cover-letter persuasion checks, cross-document register consistency.
+**Status:** RESOLVED — 2026-07-02 (cycle 38). `check_persuasion()` has 8 advisory checks (weak/passive verb, no strong verb, no metric, vague language, too short, repeated verb, negative framing, narrative-arc advisory). Cover-letter persuasion is covered by `_validateCoverLetter()` in `web/cover-letter.js` (7 rules: salutation, I-first body, company reference ≥2×, role-differentiated word count, assertive CTA, quantified achievement, **filler phrases** — new in cycle 38). Cross-document consistency is covered by `runCrossDocumentChecks()` in `web/cover-letter.js` (5 checks: company name, job title, ATS keywords, date format, terminology). Cross-document *register* consistency (tone/formality matching) remains out of scope — requires LLM; all heuristic-feasible persuasion checks are now in place.
 **Description:** Persuasion logic now exists in enough places that the old "artefacts do not exist anywhere" wording is obsolete. The current gap is that the rules are incomplete and often non-blocking, so the system can still produce rhetorically weak content even after warning about it.
 **Recommended resolution:** Expand persuasion validation to cover narrative arc, positive-sum framing, cover-letter openings/closings, and consistency between CV, cover letter, and screening responses.
 

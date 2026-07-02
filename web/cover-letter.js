@@ -657,8 +657,30 @@ function _validateCoverLetter(text) {
       : 'No quantified achievement detected — add at least one specific result (e.g., "increased revenue by 30%", "led a team of 8").',
   };
 
+  // ── Rule 7: Generic filler phrases (GAP-17) ──────────────────
+  const _CL_FILLER = [
+    'i am writing to apply', 'i am excited to apply', 'i am pleased to apply',
+    'please find my', 'attached please find', 'enclosed please find',
+    'this letter is to express', 'i feel i would be a great fit',
+    'i believe i would be a perfect fit', 'i am confident that i',
+    'results-driven', 'detail-oriented', 'seasoned professional',
+    'passionate about', 'dynamic professional', 'highly motivated',
+    'team player', 'self-starter', 'hard working',
+  ];
+  const _textLc    = text.toLowerCase();
+  const foundFill  = _CL_FILLER.filter(p => _textLc.includes(p));
+  const fillerCheck = {
+    pass: foundFill.length === 0,
+    warn: foundFill.length > 0 && foundFill.length <= 2,
+    fail: foundFill.length > 2,
+    label: 'Filler phrases',
+    detail: foundFill.length === 0
+      ? 'No generic filler phrases detected — good.'
+      : `Generic phrase${foundFill.length > 1 ? 's' : ''} detected: ${foundFill.slice(0, 3).map(p => `“${p}”`).join(', ')}${foundFill.length > 3 ? '…' : ''} — replace with specific value claims.`,
+  };
+
   // ── Render ─────────────────────────────────────────────────────
-  const checks = [openingCheck, iFirstCheck, companyCheck, wordCountCheck, ctaCheck, achievementCheck];
+  const checks = [openingCheck, iFirstCheck, companyCheck, wordCountCheck, ctaCheck, achievementCheck, fillerCheck];
   container.innerHTML = checks.map(c => {
     const state = c.pass ? 'pass' : c.warn ? 'warn' : 'fail';
     return `<div class="cl-check ${state}">
