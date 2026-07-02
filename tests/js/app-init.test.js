@@ -48,6 +48,7 @@ import * as CoverLetter           from '../../web/cover-letter.js'
 import * as ScreeningQuestions    from '../../web/screening-questions.js'
 import * as Finalise              from '../../web/finalise.js'
 import * as SessionSwitcherUi     from '../../web/session-switcher-ui.js'
+import * as Harvest               from '../../web/harvest.js'
 
 // ── Global stubs required by module-level code ────────────────────────────────
 
@@ -60,7 +61,11 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const STANDALONE_WEB_MODULES = new Set(['app.js', 'bundle.js'])
+// bundle.js is the generated build artifact, never imported by main.js —
+// app.js IS imported (`import * as App from '../app.js'`, main.js:89, the
+// Phase 3 modularisation entry point), so it belongs in the expected set,
+// not excluded from it.
+const STANDALONE_WEB_MODULES = new Set(['bundle.js'])
 
 // ── Helper: check all exports in a namespace are non-null ─────────────────────
 
@@ -99,6 +104,11 @@ describe('Tier 1 — FetchUtils', () => {
   it('exports at least one symbol', () => assertAllExports(FetchUtils, 'FetchUtils'))
   it('exports llmFetch', () => {
     expect(typeof FetchUtils.llmFetch).toBe('function')
+  })
+  it('exports showSessionConflictBanner, conflictRetryNow, conflictDismiss', () => {
+    expect(typeof FetchUtils.showSessionConflictBanner).toBe('function')
+    expect(typeof FetchUtils.conflictRetryNow).toBe('function')
+    expect(typeof FetchUtils.conflictDismiss).toBe('function')
   })
 })
 
@@ -268,21 +278,32 @@ describe('Tier 6 — Finalise', () => {
   it('exports finaliseApplication', () => {
     expect(typeof Finalise.finaliseApplication).toBe('function')
   })
-  it('exports applyHarvestSelections', () => {
-    expect(typeof Finalise.applyHarvestSelections).toBe('function')
-  })
+  // applyHarvestSelections is Harvest's export, not Finalise's — see the
+  // Harvest tier below. Finalise's button shares the same onclick and always
+  // resolved to Harvest's version at runtime; Finalise no longer carries its
+  // own (unreachable, divergent) duplicate.
 })
 
 describe('Tier 7 — SessionSwitcherUi', () => {
   it('exports openSessionsModal', () => {
     expect(typeof SessionSwitcherUi.openSessionsModal).toBe('function')
   })
-  it('exports showSessionConflictBanner', () => {
-    expect(typeof SessionSwitcherUi.showSessionConflictBanner).toBe('function')
+  // showSessionConflictBanner/conflictRetryNow/conflictDismiss are
+  // FetchUtils's exports (it owns handle409Conflict, the actual trigger) —
+  // see Tier 1 below. SessionSwitcherUi no longer carries its own duplicate,
+  // which had a separate retry queue that handle409Conflict never fed,
+  // meaning "Retry Now" could silently never resolve the retried request.
+})
+
+describe('Tier 8 — Harvest', () => {
+  it('exports populateHarvestTab', () => {
+    expect(typeof Harvest.populateHarvestTab).toBe('function')
   })
-  it('exports conflictRetryNow and conflictDismiss', () => {
-    expect(typeof SessionSwitcherUi.conflictRetryNow).toBe('function')
-    expect(typeof SessionSwitcherUi.conflictDismiss).toBe('function')
+  it('exports applyHarvestSelections', () => {
+    expect(typeof Harvest.applyHarvestSelections).toBe('function')
+  })
+  it('exports refreshHarvestAnalysis', () => {
+    expect(typeof Harvest.refreshHarvestAnalysis).toBe('function')
   })
 })
 
@@ -341,7 +362,7 @@ describe('main.js globalThis assignment', () => {
       'populateScreeningTab',   // screening-questions
       'finaliseApplication',    // finalise
       'openSessionsModal',      // session-switcher-ui
-      'conflictRetryNow',       // session-switcher-ui
+      'conflictRetryNow',       // fetch-utils
     ]
     for (const key of expected) {
       expect(merged, `merged surface should contain ${key}`).toHaveProperty(key)

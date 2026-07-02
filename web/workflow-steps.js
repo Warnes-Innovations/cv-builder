@@ -177,7 +177,7 @@ function _showReRunConfirmModal(step, mode, onConfirm) {
 
   document.body.appendChild(overlay);
   _focusedElementBeforeModal = document.activeElement;
-  trapFocus('rerun-confirm-overlay');
+  if (typeof trapFocus === 'function') trapFocus('rerun-confirm-overlay');
   document.getElementById('rerun-proceed-btn').focus();
 
   const close = () => { overlay.remove(); restoreFocus(); };
@@ -624,8 +624,8 @@ async function showBulletReorder(expId, expTitle) {
       </div>
     </div>`;
   document.body.appendChild(modal);
-  trapFocus('bullet-reorder-modal');
-  setInitialFocus('bullet-reorder-modal');
+  if (typeof trapFocus === 'function') trapFocus('bullet-reorder-modal');
+  if (typeof setInitialFocus === 'function') setInitialFocus('bullet-reorder-modal');
 
   // Close on Escape
   const escHandler = (e) => {
@@ -1091,4 +1091,5 @@ export {
   resetBulletOrder,
   updateWorkflowSteps,
   handleStepClick,
+  _ACTION_LABELS,
 };

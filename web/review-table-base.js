@@ -176,6 +176,7 @@ async function loadTabContent(tab) {
   const content = document.getElementById('document-content');
   const tabData = ensureTabDataState();
 
+  try {
   switch (tab) {
     case 'job':
       await populateJobTab();
@@ -277,6 +278,16 @@ async function loadTabContent(tab) {
     case 'screening':
       await populateScreeningTab();
       break;
+  }
+  } catch (error) {
+    log.error(`Error loading tab ${tab}:`, error);
+    // textContent, not innerHTML — a thrown error message must never be
+    // interpreted as HTML (e.g. an error string containing a stray <img>).
+    const errorMessage = document.createElement('p');
+    errorMessage.style.cssText = 'padding: 20px; color: #c41e3a;';
+    errorMessage.textContent = `Error loading content: ${error.message}`;
+    content.appendChild(errorMessage);
+    return;
   }
 
   // Restore unsaved user input for the newly loaded tab

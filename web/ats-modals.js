@@ -162,22 +162,27 @@ async function openAtsReportModal() {
   trapFocus('ats-report-modal-overlay');
   const body = document.getElementById('ats-report-modal-body');
 
-  const synMap = await _loadAtsSynonymMap();
-
+  // A cached score renders immediately using whatever synonym map is already
+  // cached (or none) rather than blocking on a network round-trip for it —
+  // the annotations are an enrichment, not required for _renderAtsReport to
+  // work, and a cached-score open should be instant.
   const cached = stateManager?.getAtsScore?.();
   if (cached) {
-    body.innerHTML = _renderAtsReport(cached, synMap);
+    body.innerHTML = _renderAtsReport(cached, _atsSynonymMapCache || {});
     return;
   }
 
   body.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:24px;color:#6b7280;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;flex-shrink:0;"></div><span>Fetching ATS score…</span></div>';
   try {
     const sessionId = stateManager?.getSessionId?.();
-    const res = await fetch('/api/cv/ats-score', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, basis: 'review_checkpoint' }),
-    });
+    const [synMap, res] = await Promise.all([
+      _loadAtsSynonymMap(),
+      fetch('/api/cv/ats-score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, basis: 'review_checkpoint' }),
+      }),
+    ]);
     const data = await res.json();
     if (data.ok && data.ats_score) {
       stateManager?.setAtsScore?.(data.ats_score);

@@ -461,73 +461,13 @@ async function showHarvestSection() {
   }
 }
 
-// ── Apply harvest selections ──────────────────────────────────────────────────
-
-async function applyHarvestSelections() {
-  const checkboxes   = document.querySelectorAll('input[data-harvest-id]:checked');
-  const selectedIds  = Array.from(checkboxes).map(cb => cb.dataset.harvestId);
-  const resultDiv    = document.getElementById('harvest-result');
-  const applyBtn     = document.getElementById('harvest-apply-btn');
-
-  if (selectedIds.length === 0) {
-    resultDiv.innerHTML = `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;
-      padding:10px 16px;color:#92400e;">No items selected. Tick the checkboxes for changes you want to keep.</div>`;
-    return;
-  }
-
-  applyBtn.disabled    = true;
-  applyBtn.textContent = '⏳ Applying…';
-  resultDiv.innerHTML  = '';
-
-  try {
-    const res  = await fetch('/api/harvest/apply', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ selected_ids: selectedIds }),
-    });
-    const data = await res.json();
-
-    if (!res.ok || !data.ok) {
-      resultDiv.innerHTML = `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;
-        padding:12px 16px;color:#991b1b;">
-        ❌ ${escapeHtml(data.error || 'Apply failed')}
-      </div>`;
-      applyBtn.disabled    = false;
-      applyBtn.textContent = '📥 Apply Selected Updates';
-      return;
-    }
-
-    const count    = data.written_count ?? 0;
-    const hash     = data.commit_hash
-      ? `<code style="font-size:0.85em;">${escapeHtml(data.commit_hash)}</code>`
-      : '(no commit)';
-    const gitWarn  = data.git_error
-      ? `<p style="color:#d97706;font-size:0.87em;margin-top:8px;">⚠ Git: ${escapeHtml(data.git_error)}</p>`
-      : '';
-    const diffRows = (data.diff_summary || []).map(d =>
-      `<li>${d.applied ? '✅' : '⚠'} ${escapeHtml(d.label)}${d.applied ? '' : ' (no match found)'}</li>`
-    ).join('');
-
-    resultDiv.innerHTML = `
-      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px 20px;">
-        <strong>✅ ${count} item${count !== 1 ? 's' : ''} written to master CV data.</strong>
-        <ul style="margin:8px 0 0;padding-left:20px;font-size:0.9em;line-height:1.8;">${diffRows}</ul>
-        <p style="margin:8px 0 0;font-size:0.87em;color:#166534;">Git commit: ${hash}</p>
-        ${gitWarn}
-      </div>`;
-
-    applyBtn.disabled    = false;
-    applyBtn.textContent = '✅ Applied';
-    applyBtn.style.background = '#059669';
-  } catch (err) {
-    resultDiv.innerHTML = `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;
-      padding:12px 16px;color:#991b1b;">
-      ❌ Network error: ${escapeHtml(err.message)}
-    </div>`;
-    applyBtn.disabled    = false;
-    applyBtn.textContent = '📥 Apply Selected Updates';
-  }
-}
+// applyHarvestSelections() (bound via the button's onclick above) lives in
+// web/harvest.js, not here — this file used to carry its own divergent
+// duplicate (different confirm/message copy, no confirm-modal step), but
+// since both files render a button with the same onclick and window resolves
+// bare identifiers at click time, harvest.js's version was always the one
+// actually invoked in production regardless; this copy was unreachable dead
+// code. Removed; see web/harvest.js.
 
 // ── Exports ───────────────────────────────────────────────────────────────────
 

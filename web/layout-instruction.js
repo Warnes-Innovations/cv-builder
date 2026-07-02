@@ -1322,7 +1322,7 @@ async function generateFinalOutputs() {
     switchTab('final_generate');
     appendMessage('assistant', '✅ Final files generated from the confirmed layout.');
   } catch (error) {
-    appendMessage('system', `❌ Could not generate final files. Try clicking Generate again. If layout confirmation is needed first, click Confirm Layout, then try again.`);
+    appendMessage('system', `❌ Could not generate final files: ${error.message} Try clicking Generate again. If layout confirmation is needed first, click Confirm Layout, then try again.`);
   } finally {
     showProcessing(false);
   }

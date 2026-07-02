@@ -213,6 +213,22 @@ describe('switchTab', () => {
     await expect(loadTabContent('download')).resolves.toBeUndefined()
     expect(document.getElementById('document-content').innerHTML).toContain('Download')
   })
+
+  it('renders a thrown error as text, not HTML (ported from ui-core.test.js — see web/ui-core.js header comment)', async () => {
+    vi.stubGlobal(
+      'populateJobTab',
+      vi.fn(async () => {
+        throw new Error('<img src=x onerror=alert(1)>')
+      }),
+    )
+
+    await loadTabContent('job')
+
+    const content = document.getElementById('document-content')
+    expect(content.innerHTML).not.toContain('<img src=x onerror=alert(1)>')
+    expect(content.textContent).toContain('Error loading content: <img src=x onerror=alert(1)>')
+    expect(content.querySelector('img')).toBeNull()
+  })
 })
 
 // ── populateAnalysisTab ───────────────────────────────────────────────────
@@ -240,8 +256,9 @@ describe('populateAnalysisTab', () => {
     expect(html).toContain('Docker')
   })
 
-  it('renders ATS keywords with rank badges', () => {
-    populateAnalysisTab({ title: 'Dev', required_skills: [], ats_keywords: ['ML', 'NLP'] })
+  it('renders ATS keywords with rank badges', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
+    await populateAnalysisTab({ title: 'Dev', required_skills: [], ats_keywords: ['ML', 'NLP'] })
     const html = document.getElementById('document-content').innerHTML
     expect(html).toContain('#1')
     expect(html).toContain('ML')

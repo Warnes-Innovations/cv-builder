@@ -38,6 +38,9 @@ beforeEach(() => {
   vi.stubGlobal('parseRewritesResponse', d => d)
   vi.stubGlobal('PHASES', { GENERATION: 'generation' })
 
+  // jsdom does not implement Element.scrollIntoView; _scrollToNextPendingRewrite calls it.
+  Element.prototype.scrollIntoView = vi.fn()
+
   globalThis.fetch = vi.fn()
 })
 
@@ -187,12 +190,13 @@ describe('applyRewriteAction', () => {
     expect(card.classList.contains('rejected')).toBe(true)
   })
 
-  it('on edit: shows the textarea and hides the diff', () => {
+  it('on edit: shows the textarea and keeps the diff visible (dimmed) as reference', () => {
     applyRewriteAction('test1', 'edit')
     const afterEl = document.getElementById('rw-after-test1')
     const diffEl  = document.getElementById('rw-diff-test1')
     expect(afterEl.style.display).toBe('block')
-    expect(diffEl.style.display).toBe('none')
+    expect(diffEl.style.display).toBe('')
+    expect(diffEl.style.opacity).toBe('0.55')
   })
 
   it('does not throw when card is absent', () => {
