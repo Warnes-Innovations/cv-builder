@@ -75,6 +75,31 @@ def _skill_name(skill: Any) -> str:
     return str(skill or '').strip()
 
 
+def _find_stored_skill(master: Dict[str, Any], name: str) -> Optional[Dict[str, Any]]:
+    """Return the actual stored skill entry matching `name`, if it's a dict.
+
+    `_harvest_add_skill` normalizes its input into a *new* dict before
+    appending/merging — the caller's original `proposed` dict is never the
+    object actually stored, so provenance must be attached by looking the
+    real entry back up post-write, not by mutating the input.
+    """
+    target = name.strip().casefold()
+    if not target:
+        return None
+    skills = master.get('skills')
+    if isinstance(skills, list):
+        for s in skills:
+            if isinstance(s, dict) and _skill_name(s).casefold() == target:
+                return s
+    elif isinstance(skills, dict):
+        for cat_val in skills.values():
+            items = cat_val.get('skills', []) if isinstance(cat_val, dict) else (cat_val if isinstance(cat_val, list) else [])
+            for s in items:
+                if isinstance(s, dict) and _skill_name(s).casefold() == target:
+                    return s
+    return None
+
+
 def _skill_already_present(master: Dict[str, Any], skill_value: Any) -> bool:
     """True if a skill with the same (case-insensitive) name already exists.
 
@@ -193,8 +218,12 @@ def _apply_master_data_change(
                 return False
             already_present = _skill_already_present(master, skill_value)
             applied = _harvest_add_skill(master, skill_value)
-            if applied and isinstance(skill_value, dict):
-                _attach_provenance(skill_value, provenance)
+            if applied:
+                # `_harvest_add_skill` normalizes its input into a *new* dict
+                # before storing it — attach provenance to the actual stored
+                # entry (found by name), not the (discarded) input dict.
+                stored = _find_stored_skill(master, _skill_name(skill_value))
+                _attach_provenance(stored, provenance)
             # `_harvest_add_skill` returns False both for "already present, no-op
             # merge" and for malformed input — but malformed input was already
             # ruled out above (skill_value is a valid dict/str), so a False here
