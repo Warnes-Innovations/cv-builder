@@ -318,6 +318,15 @@ async function _fetchPersuasionHtml() {
       </div>`;
     }
 
+    // Narrative-arc advisory (GAP-17): recent role should show strongest verbs
+    const naa = summary.narrative_arc_advisory;
+    if (naa) {
+      html += `<div style="padding:10px 16px;background:#fff7ed;border-top:1px solid #fed7aa;">
+        <span style="font-weight:600;color:#9a3412;">📈 Narrative arc advisory:</span>
+        <span style="font-size:0.9em;color:#7c2d12;margin-left:6px;">${escapeHtml(naa.detail)}</span>
+      </div>`;
+    }
+
     html += '</div>';
     return html;
   } catch (error) {

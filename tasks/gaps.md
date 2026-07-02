@@ -8,7 +8,16 @@
 - independent heuristic UX evaluation (all cycles through 2026-07-01 cycle 29)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review.
+
+## 2026-07-02 (Cycle 36) Reconciliation Notes
+
+Persuasion and housekeeping: 1 partial gap advanced, 2 stale OPEN statuses corrected.
+
+- **GAP-17 PARTIAL → more complete** — Added `negative_framing` per-bullet check (defensive/compensatory phrasing) and `narrative_arc_advisory` cross-experience check (most recent role should have strongest verbs) to `check_persuasion()`. Frontend renders `narrative_arc_advisory` in the persuasion panel. Still missing: cover-letter and cross-document checks.
+- **GAP-278 status corrected** — Entry block still showed OPEN; changed to RESOLVED (backend + frontend implemented in cycle 32, entry block was never updated).
+- **GAP-289 status corrected** — Same stale OPEN; changed to RESOLVED (session-actions.js step-progress labels implemented in cycle 32).
+- **Test suite:** 1432 passed.
 
 ## 2026-07-02 (Cycle 35) Reconciliation Notes
 
@@ -393,7 +402,7 @@ Full 15-persona + heuristic `/cvUiReview` run (all agents spawned in parallel on
 
 **Severity:** MEDIUM
 **Affected stories:** US-P1, US-P2, US-P3, US-P4, US-P5, US-P6
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; updated 2026-07-01 (cycle 27). `check_persuasion()` now has 6 advisory checks per experience: weak opening verb, no strong verb, no quantification, vague language, too short, and **repeated opening verb** (new in cycle 27 — flags 2nd+ occurrences when the same action verb opens ≥3 bullets in a role, issue type `repeated_verb`). Still missing: narrative-arc scoring, positive-sum framing, cover-letter persuasion checks, and cross-document register consistency.
+**Status:** PARTIAL - updated 2026-07-02 (cycle 36). `check_persuasion()` now has 8 advisory checks: weak/passive opening verb, no strong verb, no quantification, vague language, too short, repeated opening verb (≥3 in a role), **negative framing** (new — detects defensive/compensatory phrasing like "despite limited resources", flags with positive-reframe suggestion), and **narrative-arc advisory** (new — cross-experience check: if most recent role's strong-verb ratio is ≥30% lower than older roles, emits `narrative_arc_advisory` in summary; rendered in persuasion panel alongside `narrative_thread_advisory`). Remaining: cover-letter persuasion checks, cross-document register consistency.
 **Description:** Persuasion logic now exists in enough places that the old "artefacts do not exist anywhere" wording is obsolete. The current gap is that the rules are incomplete and often non-blocking, so the system can still produce rhetorically weak content even after warning about it.
 **Recommended resolution:** Expand persuasion validation to cover narrative arc, positive-sum framing, cover-letter openings/closings, and consistency between CV, cover letter, and screening responses.
 
@@ -2899,7 +2908,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-278: skill_type Classification Not Written Back to Master CV via Harvest
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02 (cycle 32). Backend generates `skill_type_update` harvest candidates in `_collect_harvest_skill_type_candidates()` (`generation_routes.py:997`) and applies them via `_harvest_update_skill_type()` (`generation_routes.py:1052`). Frontend display config added: `skill_type_update` added to `HARVEST_TYPE_CONFIG`, `HARVEST_TYPE_DESCRIPTIONS`, and `HARVEST_SOURCE_BADGE` in `web/harvest.js`. (Status was erroneously left as OPEN when cycle 32 reconciliation notes were written.)
 **Discovered:** 2026-07-01 (cycle 29) by hr-ats.
 **Description:** `_classify_skill_type()` computes hard/soft classification at render time from the `skill_type` field or heuristics. If `skill_type` is absent, classification is ephemeral — recomputed each run. The harvest workflow does not write back `skill_type` to `Master_CV_Data.json`, so user-confirmed or heuristic-derived classifications are lost between sessions.
 **Affected stories:** US-H8
@@ -2998,7 +3007,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-289: No Named Generation Step Progress in LLM Busy Overlay
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02 (cycle 32). Inside the generation polling loop in `web/session-actions.js`, `_updateLLMStatusBar(true, label)` is called each polling tick with the active step name and position (e.g., "Generating CV: ats docx (1 of 3)…"). (Status was erroneously left as OPEN when cycle 32 reconciliation notes were written.)
 **Discovered:** 2026-07-01 (cycle 29) by ux-expert.
 **Description:** The `#llm-busy-overlay` shows a spinner, elapsed time, and a slow-mode badge but does not display named steps for long multi-step generation sequences (e.g., "Step 1 of 3: Generating HTML preview…"). Users have no indication of how far along the generation pipeline is.
 **Affected stories:** US-U6, US-F3
@@ -3056,3 +3065,27 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 **Discovered:** 2026-07-01 (cycle 29) by applicant.
 **Description:** When the user submits an ambiguous layout instruction (e.g., "make it look better"), the response flows through the conversation panel as a backend chat reply with no structured clarification prompt or follow-up question. The user must re-read the message and manually rephrase their instruction.
 **Affected stories:** US-A5b, US-U9
+
+---
+
+## Open Source Readiness Additions (GAP-296–GAP-297)
+
+*Added 2026-07-02 by the ci-cd-engineer persona, extended ahead of inviting outside users/contributors to the project (`tasks/review-status/ci-cd-engineer.md` §6). See also GAP-01–GAP-295 above, which predate this scope extension.*
+
+## GAP-296: No Contribution Documentation for External Contributors
+
+**Priority:** HIGH
+**Status:** OPEN — 2026-07-02.
+**Discovered:** 2026-07-02 by ci-cd-engineer (scope extension).
+**Description:** The repository has no `CONTRIBUTING.md`, no GitHub issue or PR templates, and no `CODE_OF_CONDUCT.md`; `README.md` has zero contributor-facing content (confirmed via grep for "contribut": no matches). Existing developer-facing guidance (`CLAUDE.md`, `.github/copilot-instructions.md`) is written for AI coding agents, not human external contributors, and includes repo-specific rules (e.g. updating `MASTER_CV_DATA_SPECIFICATION.md`/`master_data_validator.py`/the JSON schema together whenever the master-data contract changes) that an outside contributor has no way to discover without reading agent-instruction files not aimed at them. The project's CI fork-PR posture is otherwise sound (uses the safe `pull_request` trigger, not `pull_request_target`; no workflow references `secrets.*`, so nothing can leak to a fork PR's run) — this gap is entirely about missing documentation, not CI security.
+**Affected stories:** Technical review follow-up (ci-cd-engineer, marketing US-MK3)
+**Fix:** Add `CONTRIBUTING.md` covering local setup, coding conventions, test-running instructions, and the data-contract-maintenance rule; add `.github/pull_request_template.md` and an issue template; add `CODE_OF_CONDUCT.md`; add a short contributor-facing section to `README.md` distinct from the end-user setup path.
+
+## GAP-297: No PR-Time Failure Digest for First-Time Contributors
+
+**Priority:** LOW
+**Status:** OPEN — 2026-07-02.
+**Discovered:** 2026-07-02 by ci-cd-engineer (scope extension).
+**Description:** The PR workflow (`.github/workflows/integration-harness.yml`) runs CodeQL, Python tests, JS tests, and the HTML integration harness, surfacing failures only as raw GitHub Actions log output. A contributor unfamiliar with the codebase has no job-summary or PR-comment digest pointing at what actually failed and why, unlike the richer artifact/coverage reporting already tracked for the full workflow under GAP-70.
+**Affected stories:** Technical review follow-up (ci-cd-engineer)
+**Fix:** Add a PR-time job summary (`$GITHUB_STEP_SUMMARY`) or failure-digest PR comment summarizing which check failed and pointing at the relevant log section, once external PR volume makes this worth the maintenance cost.

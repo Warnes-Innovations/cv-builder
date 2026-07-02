@@ -4176,6 +4176,15 @@ Include one entry per candidate. Do not omit any candidate."""
         re.IGNORECASE,
     )
 
+    _NEGATIVE_FRAMING_RE = re.compile(
+        r'\b(despite|although|even though|in spite of|rather than|instead of'
+        r'|unfortunately|was not (able|allowed|given)'
+        r'|without (adequate|sufficient|proper) (resources?|budget|support|time)'
+        r'|limited (budget|resources?|support|headcount)'
+        r'|lack of|no (budget|resources?|dedicated|formal))\b',
+        re.IGNORECASE,
+    )
+
     @classmethod
     def _opening_text_for_verb_check(cls, text: str) -> str:
         """Return text with an optional leading descriptor label removed.
@@ -4366,6 +4375,18 @@ Include one entry per candidate. Do not omit any candidate."""
                         ),
                     })
 
+                # Negative / defensive framing — positive-sum bullets focus on what was achieved
+                neg_match = self._NEGATIVE_FRAMING_RE.search(text)
+                if neg_match:
+                    issues.append({
+                        'type':       'negative_framing',
+                        'severity':   'info',
+                        'suggestion': (
+                            f'Phrase "{neg_match.group(0)}" frames the bullet defensively. '
+                            'Rewrite to focus on what you achieved rather than constraints.'
+                        ),
+                    })
+
                 if not issues:
                     strong_count += 1
                 else:
@@ -4452,13 +4473,59 @@ Include one entry per candidate. Do not omit any candidate."""
                     'theme_counts': {t: c for t, c in top_themes},
                 }
 
+        # Narrative-arc advisory: most recent role should show strongest action verbs.
+        # Uses start_year/end_year from each experience to determine temporal order.
+        narrative_arc_advisory = None
+        _current_year = datetime.now().year
+
+        def _verb_strength_score(achs: List) -> Optional[float]:
+            total_a, strong_a = 0, 0
+            for ach in achs:
+                text_a = (ach.get('text', '') if isinstance(ach, dict) else str(ach)).strip()
+                if not text_a:
+                    continue
+                total_a += 1
+                fw_a = self._opening_word_for_verb_check(text_a).lower()
+                if fw_a in self._STRONG_VERBS_LOWER:
+                    strong_a += 1
+            return strong_a / total_a if total_a >= 2 else None
+
+        timed_exps: List[Tuple] = []
+        for exp in experiences:
+            end_y = exp.get('end_year') or (_current_year if exp.get('current') else None)
+            start_y = exp.get('start_year')
+            sort_key = (end_y or start_y or 0, start_y or 0)
+            achs_e = exp.get('ordered_achievements') or exp.get('achievements') or []
+            score = _verb_strength_score(achs_e)
+            if score is not None and sort_key[0] > 0:
+                timed_exps.append((sort_key, score))
+
+        if len(timed_exps) >= 3:
+            timed_exps.sort(key=lambda x: x[0], reverse=True)  # most recent first
+            recent_score = timed_exps[0][1]
+            older_avg = sum(s for _, s in timed_exps[1:]) / (len(timed_exps) - 1)
+            if older_avg > 0 and recent_score < older_avg * 0.70:
+                narrative_arc_advisory = {
+                    'type':     'narrative_arc',
+                    'severity': 'advisory',
+                    'detail': (
+                        f'Your most recent role uses strong action verbs in '
+                        f'{round(recent_score * 100)}% of bullets, '
+                        f'compared to {round(older_avg * 100)}% for earlier roles. '
+                        'A compelling CV shows growing impact in recent roles — '
+                        'consider replacing weak verbs in your most recent role with '
+                        'stronger action verbs (e.g. Led, Built, Delivered, Drove).'
+                    ),
+                }
+
         return {
             'findings': findings,
             'summary':  {
-                'total_bullets':           total_bullets,
-                'flagged':                 len(findings),
-                'strong_count':            strong_count,
+                'total_bullets':             total_bullets,
+                'flagged':                   len(findings),
+                'strong_count':              strong_count,
                 'narrative_thread_advisory': narrative_thread_advisory,
+                'narrative_arc_advisory':    narrative_arc_advisory,
             },
         }
 
