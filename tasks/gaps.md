@@ -10,6 +10,13 @@
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295.
 
+## 2026-07-02 (Cycle 35) Reconciliation Notes
+
+Bullet quality: 1 gap resolved.
+
+- **GAP-09 RESOLVED** — Passive-voice detection added to `_achVerbWarning()` (new `_ACH_PASSIVE_STARTS` set: was/were/is/are/been → rose-red badge + border in bullet editor). Eliminated duplicate `_weakVerbSet` in `spell-check.js` by exporting `_achVerbWarning` from achievements-review. Pre-gen modal now shows separate passive and weak counts.
+- **Test suite:** 1432 passed.
+
 ## 2026-07-02 (Cycle 34) Reconciliation Notes
 
 Accessibility fix: 1 gap resolved.
@@ -322,7 +329,7 @@ Full 15-persona + heuristic `/cvUiReview` run (all agents spawned in parallel on
 
 **Severity:** MEDIUM
 **Affected stories:** US-M2, US-P4
-**Status:** PARTIAL - updated 2026-07-01 (cycle 23); pre-generation modal now checks `window.achievementEdits` for bullets with weak opening verbs (assisted, contributed, helped, participated, supported, supervised, worked, collaborated, cooperated) and shows an advisory count "N experience bullets start with a weak opening verb — consider AI rewrites." (`web/spell-check.js` `_confirmProceedToGenerate`). Remaining: weak-verb check is advisory only, not a hard block; passive-voice and result-clause enforcement still absent from final-output gate.
+**Status:** RESOLVED — 2026-07-02 (cycle 35). Added passive-voice detection (`_ACH_PASSIVE_STARTS` set covering was/were/is/are/been) to `_achVerbWarning()` in `web/achievements-review.js`; passive bullets now render with a distinct rose-red badge and border in the bullet editor. Eliminated the duplicate weak-verb set in `web/spell-check.js` by using the shared `_achVerbWarning` (exported from achievements-review). Pre-gen modal now reports passive and weak counts separately. Result-clause enforcement and hard-block remain out of scope (advisory is sufficient for an interactive editor).
 **Description:** The system now detects several bullet-quality issues during rewrite review, which resolves the original "missing entirely" framing. The remaining gap is enforcement: weak bullets can still reach the final CV, and no reviewed minimum bullet-count, final line-length, or keep-together layout constraint closes the loop.
 **Recommended resolution:** Convert the highest-value bullet-quality checks into required review warnings or blocking checks before generation, and add final-output validation for bullet count, line length, and layout cohesion.
 

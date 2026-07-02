@@ -553,9 +553,10 @@ async function buildAchievementsEditor() {
 }
 
 // Verbs that generate a weak-verb warning badge in the bullet editor.
+const _ACH_PASSIVE_STARTS = new Set(['was','were','is','are','been']);
 const _ACH_WEAK_VERBS = new Set([
   'assisted','contributed','helped','participated','supported',
-  'supervised','worked','collaborated','cooperated','was',
+  'supervised','worked','collaborated','cooperated',
 ]);
 const _ACH_STRONG_VERBS = new Set([
   'accelerated','achieved','architected','automated','built',
@@ -573,6 +574,7 @@ const _ACH_STRONG_VERBS = new Set([
 function _achVerbWarning(text) {
   const firstWord = (text || '').trim().split(/[\s,.:;]/)[0].toLowerCase().replace(/[^a-z]/g, '');
   if (!firstWord) return null;
+  if (_ACH_PASSIVE_STARTS.has(firstWord)) return { level: 'passive', word: firstWord };
   if (_ACH_WEAK_VERBS.has(firstWord)) return { level: 'weak',    word: firstWord };
   if (!_ACH_STRONG_VERBS.has(firstWord)) return { level: 'neutral', word: firstWord };
   return null;
@@ -597,7 +599,9 @@ function renderAchievementEditorRows(expIdx) {
     const hidden = _achievementEntryHidden(entry);
     const verbWarn = _achVerbWarning(text);
     const verbBadge = verbWarn
-      ? (verbWarn.level === 'weak'
+      ? (verbWarn.level === 'passive'
+          ? `<div style="font-size:0.78em;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:4px;padding:2px 6px;margin-top:3px;" title="Bullet opens with passive voice ('${verbWarn.word}') — rewrite with an active opening verb">⚠ Passive voice — rewrite with an active opening verb</div>`
+          : verbWarn.level === 'weak'
           ? `<div style="font-size:0.78em;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:2px 6px;margin-top:3px;" title="Opening verb '${verbWarn.word}' is weak — consider Led, Built, Drove, etc.">⚠ Weak opening verb — use a stronger action verb</div>`
           : `<div style="font-size:0.78em;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:2px 6px;margin-top:3px;" title="'${verbWarn.word}' is not in the strong-verb list — verify it makes an impact statement">ℹ Opening verb not in strong-verb list</div>`
         )
@@ -611,7 +615,7 @@ function renderAchievementEditorRows(expIdx) {
       <div style="flex:1;display:flex;flex-direction:column;">
       <textarea id="ach-text-${expIdx}-${achIdx}"
         rows="2"
-        style="width:100%;padding:6px 8px;border:1px solid ${hidden ? '#f59e0b' : verbWarn?.level === 'weak' ? '#fde68a' : '#d1d5db'};border-radius:6px;font-size:0.9em;resize:vertical;box-sizing:border-box;${hidden ? 'background:#fffbeb;color:#92400e;' : ''}"
+        style="width:100%;padding:6px 8px;border:1px solid ${hidden ? '#f59e0b' : verbWarn?.level === 'passive' ? '#fecdd3' : verbWarn?.level === 'weak' ? '#fde68a' : '#d1d5db'};border-radius:6px;font-size:0.9em;resize:vertical;box-sizing:border-box;${hidden ? 'background:#fffbeb;color:#92400e;' : ''}"
         onchange="updateAchievementText(${expIdx},${achIdx},this.value)"
         onblur="updateAchievementText(${expIdx},${achIdx},this.value)"
       >${escapeHtml(text)}</textarea>
@@ -1007,6 +1011,7 @@ async function saveAchievementEditsAndContinue() {
 
 export {
   fetchJsonWithTimeout,
+  _achVerbWarning,
   _achSnapshotKey,
   _saveAchSnapshot,
   _getAchSnapshot,

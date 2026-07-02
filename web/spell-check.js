@@ -398,18 +398,21 @@ async function _confirmProceedToGenerate() {
   if (reviewedSections.length === 0) {
     lines.push('⚠ No customisation sections reviewed — experience, skill, and achievement selections are all LLM defaults.');
   }
-  const _weakVerbSet = new Set(['assisted','contributed','helped','participated','supported','supervised','worked','collaborated','cooperated']);
-  let weakBulletCount = 0;
+  let weakBulletCount = 0, passiveBulletCount = 0;
   Object.values(window.achievementEdits || {}).forEach(list => {
     (list || []).forEach(e => {
       const txt = typeof e === 'string' ? e : ((e && e.text) || '');
       if (!txt.trim() || (e && e.hidden)) return;
-      const fw = txt.trim().split(/[\s,.:;]/)[0].toLowerCase().replace(/[^a-z]/g, '');
-      if (_weakVerbSet.has(fw)) weakBulletCount++;
+      const warn = typeof _achVerbWarning === 'function' ? _achVerbWarning(txt) : null;
+      if (warn?.level === 'passive') passiveBulletCount++;
+      else if (warn?.level === 'weak') weakBulletCount++;
     });
   });
-  if (weakBulletCount > 0) {
-    lines.push(`⚠ ${weakBulletCount} experience bullet${weakBulletCount > 1 ? 's start' : ' starts'} with a weak opening verb — consider AI rewrites in the Experience Bullets editor.`);
+  if (weakBulletCount > 0 || passiveBulletCount > 0) {
+    const parts = [];
+    if (passiveBulletCount > 0) parts.push(`${passiveBulletCount} with passive voice`);
+    if (weakBulletCount > 0) parts.push(`${weakBulletCount} with weak opening verb${weakBulletCount !== 1 ? 's' : ''}`);
+    lines.push(`⚠ ${parts.join(', ')} in experience bullets — consider AI rewrites in the Experience Bullets editor.`);
   }
   lines.push('\nProceed?');
   return showConfirmModal('📄 Proceed to Generate?', lines.join('\n'), 'Generate Now');
