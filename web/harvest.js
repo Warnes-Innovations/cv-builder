@@ -28,17 +28,20 @@ const HARVEST_TYPE_CONFIG = {
   new_skill:           { label: 'Skills',                 icon: '🛠️',  sort: 2, displayType: 'skill'               },
   skill_gap_confirmed: { label: 'Skills',                 icon: '🛠️',  sort: 2, displayType: 'skill'               },
   summary_variant:     { label: 'Professional Summary',   icon: '📝',  sort: 3, displayType: 'summary_variant'     },
+  skill_type_update:   { label: 'Skill Classification',   icon: '🏷️',  sort: 4, displayType: 'skill_type_update'  },
 };
 
 const HARVEST_TYPE_DESCRIPTIONS = {
-  improved_bullet:  'Rewritten achievement bullets you approved in the Rewrites step. Promoting updates the bullet text in your master CV.',
-  skill:            'Skills absent from your master CV — either added (🆕 Added) during the Skills Review or confirmed when asked (✅ Confirmed). Promoting adds them to your skills section.',
-  summary_variant:  'A rewritten version of your professional summary. Promoting stores it as a named variant in your master CV.',
+  improved_bullet:      'Rewritten achievement bullets you approved in the Rewrites step. Promoting updates the bullet text in your master CV.',
+  skill:                'Skills absent from your master CV — either added (🆕 Added) during the Skills Review or confirmed when asked (✅ Confirmed). Promoting adds them to your skills section.',
+  summary_variant:      'A rewritten version of your professional summary. Promoting stores it as a named variant in your master CV.',
+  skill_type_update:    'Hard/soft skill classifications you changed during this session. Promoting persists the new type so it is not re-classified on every application.',
 };
 
 const HARVEST_SOURCE_BADGE = {
   new_skill:           '<span style="font-size:0.75em;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 6px;margin-left:6px;white-space:nowrap;">🆕 Added</span>',
   skill_gap_confirmed: '<span style="font-size:0.75em;background:#dcfce7;color:#166534;border-radius:4px;padding:1px 6px;margin-left:6px;white-space:nowrap;">✅ Confirmed</span>',
+  skill_type_update:   '<span style="font-size:0.75em;background:#fef9c3;color:#854d0e;border-radius:4px;padding:1px 6px;margin-left:6px;white-space:nowrap;">🏷️ Reclassified</span>',
 };
 
 const REC_CONFIG = {

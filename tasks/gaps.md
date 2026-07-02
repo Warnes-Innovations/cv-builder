@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 30)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 32)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,16 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295.
+
+## 2026-07-02 (Cycle 32) Reconciliation Notes
+
+Medium-gap batch: 4 gaps resolved.
+
+- **GAP-278 RESOLVED** — skill_type harvest now surfaced: added `skill_type_update` to `HARVEST_TYPE_CONFIG`, `HARVEST_TYPE_DESCRIPTIONS`, and `HARVEST_SOURCE_BADGE` in `web/harvest.js`. Users can now see and promote reclassified skill types from the Harvest modal.
+- **GAP-289 RESOLVED** — named generation step progress: inside the generation polling loop in `web/session-actions.js`, `_updateLLMStatusBar(true, label)` is now called each polling tick with the active step name and position (e.g., "Generating CV: ats docx (1 of 3)...").
+- **GAP-282 RESOLVED** — publication omission rationale now surfaced: `_select_publications()` in `cv_orchestrator.py` adds `relevance_score` (0-10, normalized from heuristic score) and `rationale` to every returned dict. Fallback path in `review_routes.py` calls `_select_publications(max_count=None)` to get all pubs with scores, partitioning into recommended/not-recommended so both groups show real scores and rationale in the publications-review table.
+- **GAP-295 RESOLVED** — layout-refine clarification loop was already implemented end-to-end (`apply_layout_instruction()` returns `error: 'clarify'` + `clarification_question`; `showClarificationDialog()` in `layout-instruction.js` renders an inline panel) but the first `/api/cv/layout-refine` error handler was silently dropping `clarification_question` (returning `question: null`). Fixed with one line in `generation_routes.py:1648`.
+- **Test suite:** 1430 passed.
 
 ## 2026-07-02 (Cycle 31) Reconciliation Notes
 
@@ -2904,7 +2914,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-282: Publication Omission Rationale Not Surfaced to User
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02 (cycle 32). `_select_publications()` in `cv_orchestrator.py` now returns `relevance_score` (0-10 normalized from raw heuristic score) and `rationale` (e.g., "Heuristic: recent (2023), journal article, 2 keyword matches") in every pub dict. The fallback path in `review_routes.py` calls `_select_publications(max_count=None)` to score all publications and partitions into recommended (top 15) and not-recommended (rest) — both groups show real scores and rationale in the Score and Reasoning columns of `publications-review.js`. LLM path similarly gets heuristic scores for non-recommended entries.
 **Discovered:** 2026-07-01 (cycle 29) by persuasion-expert, resume-expert.
 **Description:** `_select_publications()` ranks publications by relevance and may silently exclude low-ranked entries. Users accept/reject the presented shortlist without seeing per-item relevance scores or the reason why specific publications were excluded from the shortlist.
 **Affected stories:** US-R2, US-P2
@@ -3021,8 +3031,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-295: Layout-Refine Has No Clarification Loop for Ambiguous Instructions
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02 (cycle 32). The clarification loop was already fully implemented: `apply_layout_instruction()` in `cv_orchestrator.py` returns `{error: 'clarify', clarification_question: "..."}` when `requires_clarification` is true, and `showClarificationDialog()` in `web/layout-instruction.js:1155` renders an inline amber panel with the question and a textarea for the user's clarification. The bug was that the first `/api/cv/layout-refine` error handler at `generation_routes.py:1648` used `result.get("question")` (which is `None` for the `clarify` error), silently returning `question: null` to the frontend. Fixed to `result.get("question") or result.get("clarification_question")`.
 **Discovered:** 2026-07-01 (cycle 29) by applicant.
 **Description:** When the user submits an ambiguous layout instruction (e.g., "make it look better"), the response flows through the conversation panel as a backend chat reply with no structured clarification prompt or follow-up question. The user must re-read the message and manually rephrase their instruction.
 **Affected stories:** US-A5b, US-U9
-**Fix:** When the layout backend returns a `clarification_needed` signal, render a structured clarification prompt UI (matching the job analysis clarification pattern) instead of a bare chat message.

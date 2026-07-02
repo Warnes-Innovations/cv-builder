@@ -1645,7 +1645,7 @@ def create_blueprint(deps):
             response_payload = {
                 "ok":           False,
                 "error":        result["error"],
-                "question":     result.get("question"),
+                "question":     result.get("question") or result.get("clarification_question"),
                 "details":      result.get("details"),
                 "raw_response": result.get("raw_response"),
             }

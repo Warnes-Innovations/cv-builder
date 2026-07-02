@@ -3735,51 +3735,69 @@ Include one entry per candidate. Do not omit any candidate."""
                 return pubs[:max(i, 1)]  # always include at least one entry
         return pubs
 
-    def _select_publications(self, job_analysis: Dict, max_count: int = 10) -> List[Dict]:
-        """Select most relevant publications."""
+    def _select_publications(self, job_analysis: Dict, max_count: Optional[int] = 10) -> List[Dict]:
+        """Select most relevant publications, sorted by heuristic relevance score.
+
+        When *max_count* is None, all publications are returned (sorted by score),
+        which lets callers partition them into recommended/excluded with full scores.
+        """
         if not self.publications:
             return []
-        
+
         domain = job_analysis.get('domain', '')
         keywords = set(job_analysis.get('ats_keywords', []))
-        
+
         scored_pubs = []
         for key, pub in self.publications.items():
             score = 0.0
+            reasons: list[str] = []
 
             # Recent publications score higher
             year = self._publication_year_value(pub)
             if year is not None:
                 if year >= 2020:
                     score += 30
+                    reasons.append(f'recent ({year})')
                 elif year >= 2015:
                     score += 20
+                    reasons.append(f'recent ({year})')
                 elif year >= 2010:
                     score += 10
+                    reasons.append(f'{year}')
 
             # Type bonus
             if pub['type'] == 'article':
                 score += 25
+                reasons.append('journal article')
             elif pub['type'] in ['inproceedings', 'conference']:
                 score += 20
+                reasons.append('conference paper')
 
             # Keyword matches
             title_lower = pub['title'].lower()
             matches = sum(1 for kw in keywords if kw.lower() in title_lower)
             score += matches * 5
+            if matches:
+                reasons.append(f'{matches} keyword match{"es" if matches > 1 else ""}')
 
             # Domain-specific
             if domain == 'genomics' and any(
                 term in title_lower for term in ['genom', 'gene', 'dna', 'rna']
             ):
                 score += 15
+                reasons.append('domain match')
 
-            scored_pubs.append((key, pub, score))
+            # Normalise to 0–10 scale (raw max ≈ 70)
+            normalized = min(10.0, round(score / 7, 1))
+            rationale = ('Heuristic: ' + ', '.join(reasons)) if reasons else 'Heuristic: no strong match'
+
+            scored_pubs.append((key, pub, score, normalized, rationale))
 
         scored_pubs.sort(key=lambda x: x[2], reverse=True)
 
+        limit = max_count  # None → return all
         selected = []
-        for key, pub, score in scored_pubs[:max_count]:
+        for key, pub, _raw, normalized, rationale in scored_pubs[:limit]:
             formatted = format_publication(pub, style='apa')
             year_value = pub.get('year', '')
             if not str(year_value or '').strip():
@@ -3797,6 +3815,8 @@ Include one entry per candidate. Do not omit any candidate."""
                 'institution': pub.get('institution', ''),
                 'school': pub.get('school', ''),
                 'fields': pub.get('fields', {}),
+                'relevance_score': normalized,
+                'rationale': rationale,
             })
 
         return selected

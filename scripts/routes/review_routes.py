@@ -1372,12 +1372,15 @@ def create_blueprint(deps):
                     "Publication ranking failed; using score-based fallback",
                     exc_info=True,
                 )
-                selected = orchestrator._select_publications(
+                # Fetch ALL publications with heuristic scores; partition into
+                # recommended (top 15) and not-recommended (rest) so both
+                # groups show real relevance scores and rationale in the UI.
+                all_scored = orchestrator._select_publications(
                     job_analysis,
-                    max_count=15,
+                    max_count=None,
                 )
                 recommendations = []
-                for pub in selected:
+                for pub in all_scored[:15]:
                     cite_key = pub.get('key', '')
                     raw_pub  = orchestrator.publications.get(cite_key, {})
                     recommendations.append({
@@ -1390,7 +1393,7 @@ def create_blueprint(deps):
                         'is_first_author':   _is_first_author(raw_pub.get('authors', '')),
                         'relevance_score':   pub.get('relevance_score', 5),
                         'confidence':        'Medium',
-                        'rationale':         '',
+                        'rationale':         pub.get('rationale', ''),
                         'authority_signals': [],
                         'venue_warning': (
                             ''
@@ -1402,48 +1405,23 @@ def create_blueprint(deps):
                             else 'No venue found'
                         ),
                         'formatted_citation': pub.get('formatted', ''),
+                        'is_recommended':    True,
                     })
-                source = "fallback"
-
-            recommended_keys = {r['cite_key'] for r in recommendations}
-            for r in recommendations:
-                r['is_recommended'] = True
-
-            if orchestrator.publications:
-                try:
-                    from utils.bibtex_parser import (
-                        format_publication as _fmt_pub,
-                    )
-                except ImportError:
-                    _fmt_pub = None
                 not_recommended = []
-                for key, pub in orchestrator.publications.items():
-                    if key in recommended_keys:
-                        continue
-                    if _fmt_pub:
-                        try:
-                            formatted = _fmt_pub(pub, style='apa')
-                        except Exception:
-                            formatted = ''
-                    else:
-                        formatted = ''
-                    if not formatted:
-                        formatted = (
-                            f"{pub.get('authors', '')} "
-                            f"({pub.get('year', '')}). "
-                            f"{pub.get('title', '')}"
-                        ).strip('. ')
+                for pub in all_scored[15:]:
+                    cite_key = pub.get('key', '')
+                    raw_pub  = orchestrator.publications.get(cite_key, {})
                     not_recommended.append({
-                        'cite_key':          key,
+                        'cite_key':          cite_key,
                         'title':             pub.get('title', ''),
                         'venue': (
                             pub.get('journal') or pub.get('booktitle') or ''
                         ),
                         'year':              pub.get('year', ''),
-                        'is_first_author':   _is_first_author(pub.get('authors', '')),
-                        'relevance_score':   0,
+                        'is_first_author':   _is_first_author(raw_pub.get('authors', '')),
+                        'relevance_score':   pub.get('relevance_score', 0),
                         'confidence':        '',
-                        'rationale':         '',
+                        'rationale':         pub.get('rationale', ''),
                         'authority_signals': [],
                         'venue_warning': (
                             ''
@@ -1454,13 +1432,66 @@ def create_blueprint(deps):
                             )
                             else 'No venue found'
                         ),
-                        'formatted_citation': formatted,
+                        'formatted_citation': pub.get('formatted', ''),
                         'is_recommended':    False,
                     })
                 not_recommended.sort(
-                    key=lambda pub: -int(str(pub['year']).strip() or '0'),
+                    key=lambda p: -float(p.get('relevance_score') or 0),
                 )
                 recommendations.extend(not_recommended)
+                source = "fallback"
+
+            # For the LLM path: tag recs as recommended and append non-recommended
+            # pubs (with heuristic scores from _select_publications).
+            if source == 'llm':
+                recommended_keys = {r['cite_key'] for r in recommendations}
+                for r in recommendations:
+                    r['is_recommended'] = True
+
+                if orchestrator.publications:
+                    all_scored = orchestrator._select_publications(
+                        job_analysis,
+                        max_count=None,
+                    )
+                    score_map = {p['key']: p for p in all_scored}
+                    not_recommended = []
+                    for scored_pub in all_scored:
+                        key = scored_pub['key']
+                        if key in recommended_keys:
+                            continue
+                        raw_pub = orchestrator.publications.get(key, {})
+                        not_recommended.append({
+                            'cite_key':          key,
+                            'title':             scored_pub.get('title', ''),
+                            'venue': (
+                                scored_pub.get('journal')
+                                or scored_pub.get('booktitle')
+                                or ''
+                            ),
+                            'year':              scored_pub.get('year', ''),
+                            'is_first_author':   _is_first_author(
+                                raw_pub.get('authors', '')
+                            ),
+                            'relevance_score':   scored_pub.get('relevance_score', 0),
+                            'confidence':        '',
+                            'rationale':         scored_pub.get('rationale', ''),
+                            'authority_signals': [],
+                            'venue_warning': (
+                                ''
+                                if (
+                                    scored_pub.get('journal')
+                                    or scored_pub.get('booktitle')
+                                    or scored_pub.get('fields', {}).get('type') == 'software'
+                                )
+                                else 'No venue found'
+                            ),
+                            'formatted_citation': scored_pub.get('formatted', ''),
+                            'is_recommended':    False,
+                        })
+                    not_recommended.sort(
+                        key=lambda p: -float(p.get('relevance_score') or 0),
+                    )
+                    recommendations.extend(not_recommended)
 
             conversation.state['publication_recommendations'] = recommendations
             conversation._save_session()

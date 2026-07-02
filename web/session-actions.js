@@ -71,6 +71,15 @@ async function sendAction(action) {
           const statusData = parseStatusResponse(await statusRes.json());
           const progress   = statusData.generation_progress || [];
           if (progress.length > 0) {
+            const total = progress.length;
+            const doneCount = progress.filter(p => p.status === 'complete').length;
+            const active = progress.find(p => p.status !== 'complete');
+            const stepLabel = active
+              ? `${active.step.replace(/_/g, ' ')} (${doneCount + 1} of ${total})`
+              : `${total} of ${total} complete`;
+            if (typeof _updateLLMStatusBar === 'function') {
+              _updateLLMStatusBar(true, `Generating CV: ${stepLabel}…`);
+            }
             const steps = progress.map(p =>
               `${p.status === 'complete' ? '✓' : '⏳'} ${p.step.replace(/_/g, ' ')} ${p.elapsed_ms ? `(${p.elapsed_ms}ms)` : ''}`
             ).join(' • ');

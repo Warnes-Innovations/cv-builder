@@ -455,12 +455,12 @@ def setup_logging(config: Optional[Config] = None) -> None:
         return
 
     root.setLevel(level)
-    root.addFilter(_RequestContextFilter())
 
     # Always add a console handler.
     ch = logging.StreamHandler()
     ch.setLevel(level)
     ch.setFormatter(fmt)
+    ch.addFilter(_RequestContextFilter())
     root.addHandler(ch)
 
     # Optionally add a rotating file handler.
@@ -487,6 +487,7 @@ def setup_logging(config: Optional[Config] = None) -> None:
             fh = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=3)
             fh.setLevel(level)
             fh.setFormatter(fmt)
+            fh.addFilter(_RequestContextFilter())
             root.addHandler(fh)
         except OSError as exc:
             root.warning("Could not open log file %s: %s", log_file, exc)
