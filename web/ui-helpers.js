@@ -113,10 +113,13 @@ function refreshLayoutStatusUI() {
   if (layoutBtn) {
     if (freshness.isStale) {
       layoutBtn.textContent = '↻ Regenerate Preview';
+      layoutBtn.title = 'Preview is out of date — regenerate before confirming layout';
     } else if (generationState.layoutConfirmed || generationState.phase === 'confirmed') {
       layoutBtn.textContent = '⬇️ Generate Final Files';
+      layoutBtn.title = 'Layout confirmed — produce final submission-ready DOCX and PDF files';
     } else {
       layoutBtn.textContent = '✅ Confirm Layout';
+      layoutBtn.title = 'Step 2 of 3: Confirm the layout looks right before generating final files';
     }
   }
 }
