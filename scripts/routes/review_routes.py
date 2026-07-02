@@ -2340,7 +2340,15 @@ def create_blueprint(deps):
                 content.get('skills', []),
             )
             estimated_pages = round(total_chars / int(chars_per_page), 1)
-            return jsonify({'ok': True, 'estimated_pages': estimated_pages, 'chars': total_chars})
+            domain = job_analysis.get('domain', '')
+            from scripts.routes.generation_routes import _page_warning
+            return jsonify({
+                'ok': True,
+                'estimated_pages': estimated_pages,
+                'chars': total_chars,
+                'domain': domain,
+                'page_length_warning': _page_warning(estimated_pages, domain),
+            })
         except Exception:
             logger.exception('estimate_pages failed')
             return jsonify({'ok': False, 'error': 'Estimate failed'}), 500

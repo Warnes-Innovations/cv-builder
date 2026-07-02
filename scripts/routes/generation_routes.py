@@ -828,10 +828,28 @@ def _compute_exact_page_count(conversation, preview_html: str) -> Dict[str, Any]
         }
 
 
-def _page_warning(page_count: Optional[float]) -> bool:
+_RESEARCH_DOMAIN_TERMS = (
+    'research', 'academic', 'science', 'scientist', 'statistics',
+    'biostat', 'genomic', 'clinical', 'epidemiol', 'faculty',
+    'bioinformat', 'computational biology', 'drug discovery',
+)
+
+
+def _page_warning(page_count: Optional[float], domain: str = '') -> bool:
+    """Return True when the page count is outside the recommended range.
+
+    Industry/corporate roles: warn below 2 or above 3 pages.
+    Research/academic domains have no upper-page-limit — comprehensive CVs
+    are expected; only warn when the CV is implausibly short (< 2 pages).
+    """
     if page_count is None:
         return False
-    return float(page_count) < 2.0 or float(page_count) > 3.0
+    pages = float(page_count)
+    domain_lower = (domain or '').lower()
+    is_research = any(t in domain_lower for t in _RESEARCH_DOMAIN_TERMS)
+    if is_research:
+        return pages < 2.0
+    return pages < 2.0 or pages > 3.0
 
 
 def _persist_layout_baseline(
@@ -843,6 +861,7 @@ def _persist_layout_baseline(
     digest = build_layout_digest(preview_html)
     exact = _compute_exact_page_count(conversation, preview_html)
     page_count = exact.get('page_count')
+    _domain = (conversation.job_analysis or {}).get('domain', '')
 
     gen = conversation.state.setdefault('generation_state', {})
     gen.update({
@@ -857,7 +876,7 @@ def _persist_layout_baseline(
         'page_count_confidence': 1.0 if page_count is not None else None,
         'page_count_source': 'exact' if page_count is not None else 'unknown',
         'page_count_needs_exact_recheck': False,
-        'page_length_warning': _page_warning(page_count),
+        'page_length_warning': _page_warning(page_count, _domain),
         'page_count_renderer': exact.get('renderer'),
         'page_count_renderer_detail': exact.get('renderer_detail', ''),
     })
@@ -964,6 +983,7 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
     if page_count_value is None:
         page_count_value = round(float(estimate['estimated_pages']), 1)
 
+    _domain = (conversation.job_analysis or {}).get('domain', '')
     gen.update({
         'layout_template_version': LAYOUT_TEMPLATE_VERSION,
         'layout_template_update_note': LAYOUT_TEMPLATE_UPDATE_NOTE,
@@ -972,7 +992,7 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
         'page_count_confidence': estimate['confidence'],
         'page_count_source': page_count_source,
         'page_count_needs_exact_recheck': estimate['needs_exact_recheck'],
-        'page_length_warning': _page_warning(page_count_value),
+        'page_length_warning': _page_warning(page_count_value, _domain),
         'page_count_renderer': exact_renderer,
         'page_count_renderer_detail': exact_renderer_detail,
     })
@@ -985,7 +1005,7 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
         'page_count_confidence': estimate['confidence'],
         'page_count_source': page_count_source,
         'page_count_needs_exact_recheck': estimate['needs_exact_recheck'],
-        'page_length_warning': _page_warning(page_count_value),
+        'page_length_warning': _page_warning(page_count_value, _domain),
         'baseline_exact_page_count': baseline_exact_page_count,
         'layout_template_version': LAYOUT_TEMPLATE_VERSION,
         'layout_template_update_note': LAYOUT_TEMPLATE_UPDATE_NOTE,
