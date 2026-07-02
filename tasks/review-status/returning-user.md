@@ -8,9 +8,11 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Returning User Review Status
 
-**Last Updated:** 2026-06-30 (cycle 9 independent re-read)
+**Last Updated:** 2026-07-01 (cycle 10 independent re-read)
 
-**Executive Summary:** The returning-user experience is strong across all three story areas. This independent source-first read (2026-06-30, cycle 9) confirms seven of nine evaluated criteria pass cleanly; two remain partial. Both partial items are unchanged from cycle 8: (1) the view-navigation vs. recomputation distinction remains hover/tooltip-only for touch and keyboard users (GAP-R4); and (2) saved decisions in individual review tabs require a tab visit to verify granular state — no per-tab count badge exists on tab labels (GAP-RU-DEC1). All previously resolved gaps (GAP-110, GAP-111, GAP-112, GAP-166, GAP-178, GAP-180, GAP-186, GAP-R2, GAP-R7, GAP-R8, GAP-R9) remain intact in the codebase as confirmed by this read. No regressions found. Line numbers corrected to current session-manager.js positions.
+**Executive Summary (cycle 10, 2026-07-01):** Independent source-first re-read confirms all cycle-9 findings intact. Seven of nine criteria pass; two remain partial (GAP-R4, GAP-RU-DEC1). One new medium-severity observation added: tab content panels (Rewrites, Spell Check) lack an inline "Outdated" watermark when the parent step is stale after an upstream re-run — only the step pill turns amber. No regressions found against previously resolved gaps. Line-number references updated to match current codebase state.
+
+**Previous summary (cycle 9, 2026-06-30):** Independent source-first read confirms seven of nine evaluated criteria pass cleanly; two remain partial. Both partial items are unchanged from cycle 8: (1) the view-navigation vs. recomputation distinction remains hover/tooltip-only for touch and keyboard users (GAP-R4); and (2) saved decisions in individual review tabs require a tab visit to verify granular state — no per-tab count badge exists on tab labels (GAP-RU-DEC1). All previously resolved gaps (GAP-110, GAP-111, GAP-112, GAP-166, GAP-178, GAP-180, GAP-186, GAP-R2, GAP-R7, GAP-R8, GAP-R9) remain intact in the codebase as confirmed by this read. No regressions found. Line numbers corrected to current session-manager.js positions.
 
 ---
 
@@ -135,6 +137,18 @@ No generated material artifacts (CV PDFs, DOCX files) are evaluated in this pers
 
 ---
 
+## Cycle 10 New Observation (2026-07-01)
+
+### GAP-S3-A (MEDIUM) — Tab content panels lack inline "Outdated" watermark when step is stale
+
+When an upstream phase is re-run, the backend sets `stale_steps` which causes the downstream step pill to turn amber (`.stale` class, amber background `#fffbeb`). However, the tab content panels for those stale steps (notably Rewrites and Spell Check) render without any inline notice that their displayed content is from a prior iteration. Once the user clicks the stale step pill and lands on the tab, the data is displayed without a "Outdated — re-run needed" banner or watermark. The workflow step pill's amber colour is visible in the nav bar while viewing the tab, which provides _some_ signal, but there is no in-context callout within the panel itself.
+
+This is distinct from the Layout/Files freshness handling (US-S3.2, PASS) where `applyLayoutFreshnessNavigationState()` injects "Outdated" badges on both the pill and the Layout tab label. That pattern is not replicated for earlier workflow steps.
+
+> Proposed story: "As a returning user who re-ran Analysis, I want the Rewrites tab content to carry an inline banner noting that these rewrites are based on the previous customisation run, so I know to re-run Rewrites before treating them as current."
+
+---
+
 ## Additional Story Gaps / Proposed Story Items
 
 ### GAP-R4 (MEDIUM) — Step-click vs. ↻ distinction is tooltip-only for touch/keyboard users
@@ -166,6 +180,8 @@ After session restore, the returning user receives a summary message (GAP-110 re
 - **GAP-178 (RESOLVED 2026-06-22)** — `aria-pressed` state added to accept/edit/reject buttons in rewrite review panel.
 
 ---
+
+**Reviewed against (cycle 10, 2026-07-01):** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-manager.js, web/workflow-steps.js, web/session-switcher-ui.js, web/utils.js
 
 **Reviewed against (cycle 9, 2026-06-30):** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-manager.js, web/workflow-steps.js, web/rewrite-review.js, web/session-actions.js, web/session-switcher-ui.js
 

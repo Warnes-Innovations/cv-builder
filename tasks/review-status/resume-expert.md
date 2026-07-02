@@ -3,312 +3,226 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# Resume Optimisation Expert — UI Review
-**Persona:** US-R* (Resume Expert)
-**Review date:** 2026-06-30
+# CV Builder UI Review — Resume Expert Persona
+
+**Reviewer:** Resume Optimisation Expert (certified professional résumé writer / career strategist)
+**Review date:** 2026-07-01
 **Branch:** feature/multi-user-deployment
-**Reviewer:** Source-verified (Claude Code)
 
 ---
 
-## US-R1: Job Description Analysis Quality
+## Application Evaluation
 
-### Criterion 1.1 — Required vs. preferred split (visually distinct sections)
-**Status: ✅ Pass**
+### US-R1: Job Description Analysis Quality
 
-`bundle.js:3640–3659` renders `required_skills` in a `skill-grid` block under "🎯 Required Skills" and `preferred_skills` + `nice_to_have_requirements` combined under "⭐ Preferred / Nice-to-Have". Must-have requirements appear in a third block "✅ Must-Have Requirements" (`bundle.js:3677–3684`). Three visually distinct sections are present.
+**Criterion 1 — Required vs. preferred split**
+PASS. `LLMClient.analyze_job_description` uses a structured JSON schema that maps `required_skills` to must-have skills and `preferred_skills` / `nice_to_have_requirements` to nice-to-haves (llm_client.py lines 305–310). The downstream selection logic in `_select_content_hybrid` (cv_orchestrator.py lines 3176–3180) keeps these lists separate: only `must_have_requirements` and `nice_to_have_requirements` are combined for relevance scoring after the split.
 
-`llm_client.py:281–310` — `analyze_job_description()` prompt separates `required_skills`, `preferred_skills`, `must_have_requirements`, and `nice_to_have_requirements` into four distinct JSON keys.
+**Criterion 2 — Keyword deduplication**
+PASS. A synonym map (`scripts/data/synonym_map.json`) is loaded at init and an `_expansion_index` dict maps all aliases to a canonical form (cv_orchestrator.py lines 120–127). `canonical_skill_name()` and `_deduplicate_skills()` normalise skill names on that index before display and scoring. `_ach_relevance()` also resolves synonyms when sorting bullets by keyword overlap.
 
-### Criterion 1.2 — Keyword deduplication / synonym grouping
-**Status: ⚠️ Partial**
+**Criterion 3 — Domain inference accuracy**
+PASS. The analysis schema includes `domain_confidence` (float 0.0–1.0, llm_client.py line 303). When `domain_confidence < 0.7`, the conversation manager (conversation_manager.py lines 733–747) prepends a `domain_clarification` question to the post-analysis Q&A so the user can correct the inference.
 
-`cv_orchestrator.py:116–120` loads `scripts/data/synonym_map.json` and builds `self._expansion_index` for downstream scoring. Synonym expansion is used in `_ach_relevance()` (line 3213) and `_deduplicate_skills()` (lines 503–593). However, the analysis phase does not deduplicate keywords: `analyze_job_description()` (`llm_client.py:298–310`) asks for `ats_keywords` as "top 10" without a synonym-grouping instruction. No post-processing merges "ML" + "Machine Learning" in the displayed keyword list.
+**Criterion 4 — Keyword frequency weighting**
+PARTIAL. `ats_keywords` (top 10) are extracted by the LLM. The scoring function uses this set for matching but there is no explicit "mention-count" or "title-position" weighting in the orchestrator. The system relies on LLM discretion to surface the most important keywords first rather than a positional weight algorithm. The UI does not show which keywords were ranked higher due to first-paragraph or title placement.
 
-**Missing:** No structural synonym-grouping applied to `ats_keywords` before display in the Analysis tab.
+**Acceptance criteria summary:**
 
-### Criterion 1.3 — Domain inference with confidence level; ambiguous cases prompt user
-**Status: ⚠️ Partial**
+- Required/preferred in distinct structures: YES
+- Synonyms grouped: YES (synonym_map + canonical_skill_name)
+- Domain inference with confidence + user prompt when ambiguous: YES
+- Keyword positional weighting surfaced to user: NOT VERIFIED (LLM implicit only)
 
-`llm_client.py:303` returns `domain` as a free-text string only. No `domain_confidence` field is extracted. `bundle.js:3626` renders `data.domain` as a metadata chip with no confidence annotation. The post-analysis question flow may surface clarifying questions, but there is no code that checks domain confidence and conditionally prompts the user when confidence is low.
-
-**Missing:** Domain confidence not extracted from LLM; no threshold-based conditional clarification prompt.
-
-### Criterion 1.4 — Keyword frequency weighting
-**Status: ⚠️ Partial**
-
-`analyze_job_description()` (`llm_client.py:281–310`) requests "top 10 keywords" and the Analysis tab shows rank by array position (`bundle.js:3664`, `#1`…`#10`). There is no explicit frequency/title-position weighting instruction in the prompt. The LLM is expected to rank by importance, but no code enforces it.
-
-**Missing:** No explicit frequency-weighting instruction; relies on LLM judgment.
+**Failure-mode check:** Treating preferred as must-haves — guarded by separate schema fields. Missing implicit requirements — LLM prompt captures culture_indicators and free-text requirements. Duplicated synonym keywords — handled by expansion index.
 
 ---
 
-## US-R2: Content Selection Strategy
+### US-R2: Content Selection Strategy
 
-### Criterion 2.1 — Recency bias check — relevance-primary
-**Status: ✅ Pass — GAP-225 Confirmed Fixed**
+**Criterion 1 — Recency bias check**
+PASS. `_select_content_hybrid` at line 3231 sorts experiences by `(-relevance_score, -end_date_ordinal)`. Relevance is primary; recency is a tie-breaker only.
 
-`cv_orchestrator.py:3144–3165` hybrid sort:
-```python
-scored_experiences.sort(
-    key=lambda x: (-x[1], -_parse_end_date(x[0]).toordinal()),
-)
-```
-Score = `llm_score + keyword_score + semantic_score`. Recency (`-date_ordinal`) is strictly secondary, only breaking ties. The old reverse-chrono override is gone.
+**Criterion 2 — Achievement ordering within a job**
+PASS. When no user-defined order exists, bullets are sorted by `_ach_relevance()` (keyword-overlap with ATS keywords) descending (cv_orchestrator.py lines 3275–3285). User-defined explicit ordering via the UI overrides this.
 
-### Criterion 2.2 — Achievement ordering within a job (most relevant bullet first)
-**Status: ✅ Pass**
+**Criterion 3 — Section inclusion logic for Publications**
+PARTIAL PASS. A publications-gate question is added to the post-analysis Q&A when the candidate has publications but the inferred domain is non-research (conversation_manager.py lines 751–771). This is correct gating. However, the acceptance criterion requires a *ranked shortlist with per-item relevance scores and rationale*; the system provides user-driven accept/reject via `publication_decisions` without an LLM-generated per-item rationale.
 
-`cv_orchestrator.py:3207–3217`: when no user-defined order exists in `achievement_orders`, bullets are sorted by `_ach_relevance()` which counts keyword overlap with synonym expansion via `self._expansion_index`. Applied before generation.
+**Criterion 4 — Publication selection quality**
+PARTIAL. `_select_publications()` (cv_orchestrator.py lines 3738–3802) scores publications on: recency tier (+30/+20/+10), entry type bonus (+25/+20), and ATS-keyword title matches (+5 per hit). It also applies a one-domain bonus for genomics. First-author status is detected for template rendering only — not used as a selection factor. Per-item rationale is not exposed to the user. The acceptance criterion for "ranked publication shortlist with per-item relevance scores and rationale" is not met.
 
-### Criterion 2.3 — Section inclusion logic with rationale (Publications, etc.)
-**Status: ✅ Pass**
+**Criterion 5 — Completeness without bloat**
+PASS. A page-count iteration loop in `_handle_recommend_customizations` (conversation_manager.py lines 848–890) re-calls the LLM when estimated body pages are >25% over or <75% under budget. `_cap_cv_body_to_pages` (cv_orchestrator.py) enforces a hard budget by trimming in order (skills → achievements → bullets → experience entries). Page-count warnings are shown in the UI.
 
-`publications-review.js:137` renders `pub.rationale` per item. `review_routes.py:1293–1457` serves LLM-ranked recommendations with confidence, rationale, first-author flag, and score. The UI shows recommended vs. non-recommended with a divider, pre-set accept/reject defaults, and per-item reasoning.
+**Criterion 6 — Achievements diversity**
+PASS. `_apply_achievement_diversity()` is called after scoring (cv_orchestrator.py line 3308) to enforce diversity across impact types.
 
-### Criterion 2.4 — Publication shortlist quality: relevance-ranked, not all-or-nothing
-**Status: ✅ Pass**
-
-`llm_client.py:1599–1704` — `rank_publications_for_job()` sends up to 60 publications to the LLM with domain, title, required skills, and ATS keywords. Returns per-item `relevance_score` (1–10), `confidence`, `is_first_author`, `rationale`. Results sorted by `(-relevance_score, -year)`. Publications are never silently included or excluded; the user sees a ranked shortlist with explicit accept/reject controls.
-
-### Criterion 2.5 — Completeness without bloat: page length warning
-**Status: ⚠️ Partial**
-
-Post-generation: `web_app.py:5022–5041` — ATS validation includes `cv_page_count` check (configurable `ideal_min`/`ideal_max`, defaults 2–3); flags `warn` for 1 page, `fail` for >4 pages. This runs **after** PDF generation.
-
-Pre-generation: `cv_orchestrator.py:3397–3414` applies `_cap_cv_body_to_pages()` when `max_cv_pages` is configured but shows no user-facing warning.
-
-**Missing:** No proactive length warning during the customisation phase; warning is post-generation only.
-
-### Criterion 2.6 — Selected Achievements: diverse impact types
-**Status: ⚠️ Partial**
-
-`cv_orchestrator.py:3225–3240` scores achievements by combined LLM + keyword + semantic score. No constraint enforces diversity across technical/leadership/business impact types. The system may favour keyword-dense achievements from a single domain.
-
-**Missing:** No diversity-across-impact-types constraint in achievement selection.
+**Failure-mode check:** Lazy inclusion — guarded by Omit decision mechanism. Missing bullet reordering — implemented. Silent publication omission/inclusion — guarded by gate question and count/page cap; but per-item rationale shortlist is absent.
 
 ---
 
-## US-R3: Rewrite Quality and Constraint Adherence
+### US-R3: Rewrite Quality and Constraint Adherence
 
-### Criterion 3.1 — Factual preservation: apply_rewrite_constraints catches violations
-**Status: ✅ Pass**
+**Criterion 1 — Factual preservation**
+PASS. `apply_rewrite_constraints()` (llm_client.py line 924) rejects any proposal that removes numeric tokens, percentages, or dates from the original text. `apply_approved_rewrites()` (cv_orchestrator.py line 1698) calls this gate for every item; non-compliant items are skipped with a logged warning.
 
-`llm_client.py:923–971` — `apply_rewrite_constraints()` (static method) checks:
-1. All numeric tokens (`r'\d[\d,\.]*%?'`) from original are present in proposed (lines 956–959).
-2. All Title-Case proper-name tokens (not in stop-word list) survive (lines 961–969).
+**Criterion 2 — Naturalness**
+PASS (with runtime LLM caveat). `check_keyword_appended()` flags rewrites where a keyword appears as a sentence-end appendage (llm_client.py line 1417). The persuasion-check pipeline surfaces these as warnings in the rewrite review UI.
 
-Applied at proposal time (`llm_client.py:1885–1893`) and again at application time (`cv_orchestrator.py:1678–1684`).
+**Criterion 3 — Keyword integration**
+PASS. `check_keyword_appended()` detects and flags appended keywords. Persuasion warnings displayed in rewrite review tab.
 
-### Criterion 3.2 — Naturalness (no keyword stuffing)
-**Status: ⚠️ Partial**
+**Criterion 4 — No fabrication**
+PASS for skill_add. When `evidence_strength == "weak"`, the skill entry receives `candidate_to_confirm: True` (cv_orchestrator.py line 1799). This flag is displayed in the skills review UI as an amber "⚠ Weak evidence" / "⚠ Verify evidence" badge with tooltip showing the evidence text (skills-review.js lines 727–728).
 
-`llm_client.py:1832–1838` instructs active voice, strong action verbs, no hedging, bullets under 30 words. No automated post-processing check validates that keywords appear mid-sentence rather than appended.
+**Criterion 5 — Terminology consistency**
+PASS. `run_persuasion_checks` includes a batch terminology-consistency check (conversation_manager.py lines 1469–1522) that detects when both abbreviated and expanded forms of the same term (e.g., "ML" / "Machine Learning") appear in different rewrites and surfaces an `info`-severity warning.
 
-### Criterion 3.3 — Keyword integration (mid-sentence, not appendage)
-**Status: ⚠️ Partial** (same as 3.2 — prompt-level guidance only, no structural check)
+**Criterion 6 — Acronym expansion**
+PARTIAL (LLM quality only). No explicit rule-based enforcement of first-use expansion (e.g., "MLOps (ML Operations)") exists. This depends on LLM instruction compliance.
 
-### Criterion 3.4 — No fabrication: skill_add must cite evidence
-**Status: ✅ Pass**
-
-`llm_client.py:743–748` — `propose_rewrites()` schema requires `evidence` (comma-separated exp IDs) and `evidence_strength` for `skill_add`.
-`cv_orchestrator.py:1776–1790` — `apply_approved_rewrites()` stores `evidence` and sets `candidate_to_confirm: True` when `evidence_strength == "weak"`.
-Rewrite prompt at line 1854 instructs LLM to supply experience IDs as evidence.
-
-### Criterion 3.5 — Terminology consistency across rewrites
-**Status: 🔲 Not Implemented**
-
-No code validates that a keyword adopted in one bullet is consistently used across the summary and other bullets. The LLM processes all rewrites in one batch, providing implicit consistency, but no post-processing cross-field consistency check exists.
-
-### Criterion 3.6 — Acronym expansion on first use
-**Status: 🔲 Not Implemented**
-
-No constraint in `apply_rewrite_constraints()`, the LLM prompt, or post-processing enforces acronym-expansion-on-first-use.
+**Failure-mode check:** Metric removal — blocked by `apply_rewrite_constraints`. Appended keyword — flagged by `check_keyword_appended`. Skill hallucination — guarded by `candidate_to_confirm` and evidence citation. Terminology inconsistency — flagged by batch consistency check.
 
 ---
 
-## US-R4: Professional Summary Effectiveness
+### US-R4: Professional Summary Effectiveness
 
-### Criterion 4.1 — Hook quality (role type + years + differentiator)
-**Status: ⚠️ Partial**
+**Criterion 1 — Hook quality**
+PARTIAL (LLM quality). `_validate_summary()` (cv_orchestrator.py lines 3595–3634) checks: opens with "I" (warns), word count (40–250 range), and top-3 required skills present. It does not verify that the opening line contains role type + years of experience + differentiator as the acceptance criterion requires.
 
-`llm_client.py:856–864` — generation prompt explicitly prohibits "title + years" opening formula and requires a "value-identity statement: strong verb + differentiating value claim". Years of experience is not required in the opening. No post-generation structural validation of the opening line.
+**Criterion 2 — Keyword coverage**
+PASS. `_validate_summary()` explicitly checks that the top-3 required skills from `job_analysis.required_skills` appear in the summary text and warns if missing.
 
-### Criterion 4.2 — Keyword coverage
-**Status: ✅ Pass**
+**Criterion 3 — No fluff**
+PASS. `check_summary_generic_phrases()` (via persuasion checks) flags phrases like "results-driven", "passionate about" with `warn` severity when more than 2 are found.
 
-`llm_client.py:860` — "Weave in 3–5 of the provided ATS keywords naturally". Keywords provided at line 869.
+**Criterion 4 — Leadership scope**
+PARTIAL (LLM quality). No code-level enforcement — relies on LLM following system prompt instructions.
 
-### Criterion 4.3 — No fluff
-**Status: ✅ Pass**
+**Criterion 5 — Length**
+PARTIAL. `_validate_summary()` enforces a word count range (40–250 words) but the criterion requires 4–6 *lines*. A 250-word paragraph block could still violate the 4–6 line intent. No line-count check exists.
 
-Both generation and refinement prompts (`llm_client.py:841, 863`) explicitly forbid "passionate", "results-driven", "hard-working". `llm_client.py:1054–1061` includes a `_FLUFF_PHRASES` list used in persuasion quality checks.
-
-### Criterion 4.4 — Leadership scope stated
-**Status: ⚠️ Partial**
-
-`role_level` is passed to the prompt (`llm_client.py:822–826`) but no explicit instruction mandates team size / budget / scope when `role_level` is "Leadership" or "Principal".
-
-### Criterion 4.5 — Length (4–6 lines)
-**Status: ⚠️ Partial**
-
-Prompt requires "3–5 sentences (≈80–150 words)" (`llm_client.py:857–858`). The acceptance criterion says "4–6 lines". These overlap but are not identical. No post-generation line-count validation.
-
-### AC: Role-specific summary
-**Status: ✅ Pass**
-
-`session_data_view.py:352–361` — `professional_summaries()` overlays session variants over master variants. `cv_orchestrator.py:3380–3393` uses `SessionDataView.selected_summary()` to resolve the active summary variant without modifying master data.
-
-### AC: System does not inject "results-driven" filler
-**Status: ✅ Pass** (prompt-level prohibition at `llm_client.py:841, 863`)
+**Failure-mode check:** Same summary for all roles — guarded by session-specific `summary_focus` and `ai_recommended` key mechanisms. Opening with name/title — "I" is caught; "Gregory Warnes is a…" pattern is not. Comma-separated keyword dump — flagged by generic_phrases check.
 
 ---
 
-## US-R5: Skills Section Optimisation
+### US-R5: Skills Section Optimisation
 
-### Criterion 5.1 — Terminology alignment
-**Status: ✅ Pass**
+**Criterion 1 — Terminology alignment**
+PASS. `_deduplicate_skills()` canonicalises to synonym map preferred names. The `skill_rename` rewrite type allows aligning display names to job posting terminology.
 
-`cv_orchestrator.py:3268–3280` — skills scored by `calculate_skill_score()` against job keywords. Recommended skills prepended. `skill_rename` rewrite type (`cv_orchestrator.py:1737–1773`) enables renaming to job-preferred phrasing.
+**Criterion 2 — No fabrication**
+PASS. Only skills from `Master_CV_Data.json` (via `SessionDataView.normalized_skills()`) or explicitly approved extra skills enter the pipeline. `candidate_to_confirm` marks unverified additions.
 
-### Criterion 5.2 — No fabrication
-**Status: ✅ Pass**
+**Criterion 3 — Grouping logic**
+PASS. `_sort_categories()` applies template-variant-specific priority orders (e.g., academic: Research first; standard: Core Expertise first) and `_rank_skill_categories_by_relevance()` derives a session-specific category order from ATS keyword overlap.
 
-Only master CV skills or explicitly user-approved `extra_skills` (via customisations) are included. `skill_add` rewrites require evidence IDs.
+**Criterion 4 — Density without redundancy**
+PASS. `_deduplicate_skills()` merges synonym entries. `_group_inline_skills()` combines skills sharing a `group` key into a single inline entry with canonical name and parenthetical aliases.
 
-### Criterion 5.3 — Grouping logic
-**Status: ✅ Pass**
+**Criterion 5 — Candidate-to-confirm handling**
+PASS (review-time UI). The amber "⚠ Weak evidence" / "⚠ Verify evidence" badge with evidence tooltip is rendered in the skills review tab (skills-review.js lines 727–728).
 
-`cv_orchestrator.py:590–593` — `_group_skills_by_category()` calls `_deduplicate_skills()` with synonym map. Skills review UI shows AI-suggested grouping changes with ATS impact (`skills-review.js:710–713`).
-
-### Criterion 5.4 — Density without redundancy
-**Status: ✅ Pass**
-
-`cv_orchestrator.py:503–593` — `_deduplicate_skills()` canonicalises via synonym map. CV template renders grouped skills as comma-separated values (`cv-template.html:628`, `{% if not skill.candidate_to_confirm %}`).
-
-### Criterion 5.5 — Candidate-to-confirm handling
-**Status: ✅ Pass (Review UI) + ✅ Pass (Output Documents)**
-
-**Review UI:** `skills-review.js:633, 663–664` — `candidateBadge` rendered as `'⚠ Verify evidence'` in red (#9f1239) with tooltip.
-
-**Output documents:** `cv-template.html:628` — Jinja guard `{% if not skill.candidate_to_confirm %}` excludes unconfirmed skills from human CV HTML. Line 777 repeats the guard for ATS DOCX plain-text. Unconfirmed skills never appear in PDF, DOCX, or HTML output.
-
-### All US-R5 Acceptance Criteria: ✅ Pass
+**OPEN ISSUE:** The acceptance criterion states candidate-to-confirm items must "never appear in generated output documents — all generated PDF, DOCX, and HTML files must contain only clean, unmarked text." The `candidate_to_confirm` flag is a review-step affordance only (correct), meaning the skill itself can appear in output without its badge. However, no code path enforces that an unconfirmed skill is *excluded* from generated documents by default — it passes through if the user has not explicitly omitted it. Whether this constitutes a gap depends on the intended workflow: if "candidate to confirm" means "the user must confirm it before it can appear in output," then an exclusion-by-default mechanism is missing. If it means "flag it for the user to decide," then the current behaviour is correct. The acceptance criterion wording ("never appear in generated output documents") suggests the former intent.
 
 ---
 
-## US-R6: Rewrite Audit Traceability
+### US-R6: Rewrite Audit Traceability
 
-### Criterion 6.1 — rewrite_audit contains every proposal
-**Status: ✅ Pass**
+**Criterion 1 — Full traceability**
+PASS. `submit_rewrite_decisions()` (conversation_manager.py lines 1229–1281) builds `rewrite_audit` with every decision merged with its original proposal. Saved to `metadata.json` at generation time.
 
-`conversation_manager.py:1138–1157` — `submit_rewrite_decisions()` builds `audit` by iterating all decisions (line 1144–1148), including rejections. Stored at `self.state['rewrite_audit']`.
+**Criterion 2 — Rejected rewrites reverted**
+PASS. Only items where `outcome != 'reject'` are added to `approved_rewrites`; rejected items are audited but never applied.
 
-`cv_orchestrator.py:2194` — `rewrite_audit` written to `metadata.json`.
+**Criterion 3 — Edited rewrites**
+PASS. When `outcome == 'edit'` and `final_text` is not None, `proposed` is replaced with `final_text` before adding to `approved_rewrites` (conversation_manager.py lines 1265–1268).
 
-### Criterion 6.2 — Rejected rewrites revert to original
-**Status: ✅ Pass**
+**Criterion 4 — Audit completeness**
+PASS. All decisions including rejections are recorded in `rewrite_audit`. `_verify_rewrite_audit_alignment()` runs at generation time and logs mismatches to metadata.
 
-`conversation_manager.py:1150` — only non-rejected items enter `approved_rewrites`. `apply_approved_rewrites()` applies only approved items; rejected proposals never modify content.
-
-### Criterion 6.3 — Edited rewrites use user's final text
-**Status: ✅ Pass**
-
-`conversation_manager.py:1152–1153` — `if outcome == 'edit' and final is not None: approved_entry['proposed'] = final`.
-
-### Criterion 6.4 — Audit completeness including rejections
-**Status: ✅ Pass**
-
-`audit.append({**proposal, 'outcome': outcome, 'final': final})` called for every decision, including `reject` (`conversation_manager.py:1144–1148`).
-
-### All US-R6 Acceptance Criteria: ✅ Pass
+**Failure-mode check:** All acceptance criteria met.
 
 ---
 
-## US-R7: Spell & Grammar Check Quality
+### US-R7: Spell & Grammar Check Quality
 
-### Criterion 7.1 — No false positives on technical vocabulary
-**Status: ✅ Pass**
+**Criterion 1 — No false positives on technical vocabulary**
+PASS. `_prepopulate_spell_dict()` (review_routes.py lines 78–156) seeds the custom dictionary from all master CV data: skill names, company names, candidate name, institution names, certification issuers, and languages. Flagged words in the custom dictionary are silently skipped (spell_checker.py lines 210–214).
 
-`spell_checker.py:210–214` — skips any flagged word whose normalized form is in `custom_lower`. `review_routes.py:78–156` — `_prepopulate_spell_dict()` seeds dictionary from master CV skills, companies, institutions, certifications.
+**Criterion 2 — No false positives on proper nouns**
+PASS (via pre-population). All `experience[*].company` and `personal_info.name` values are added to the custom dictionary.
 
-### Criterion 7.2 — No false positives on proper nouns
-**Status: ✅ Pass**
+**Criterion 3 — Fragment tolerance in bullets**
+PASS. `SpellChecker.SUPPRESSED_BULLET_RULES` (spell_checker.py lines 30–36) explicitly suppresses `SENTENCE_FRAGMENT`, `PUNCTUATION_PARAGRAPH`, `UPPERCASE_SENTENCE_START`, `WORD_CONTAINS_UNDERSCORE`, and `EN_UNPAIRED_BRACKETS` when `context == 'bullet'`.
 
-Same mechanism as 7.1. Company names seeded via `review_routes.py:116–122`.
+**Criterion 4 — Skill names grammar-only check**
+PASS. When `context == 'skill'`, all non-spelling LanguageTool matches are dropped (spell_checker.py lines 207–208).
 
-### Criterion 7.3 — Fragment tolerance in bullets
-**Status: ✅ Pass**
+**Criterion 5 — Corrections do not alter approved rewrite text beyond flagged span**
+PASS. `_apply_spell_fixes_to_text()` applies fixes in reverse offset order and validates each fix against the expected original span before substituting.
 
-`spell_checker.py:30–36` — `SUPPRESSED_BULLET_RULES` frozenset: `SENTENCE_FRAGMENT`, `PUNCTUATION_PARAGRAPH`, `UPPERCASE_SENTENCE_START`, `WORD_CONTAINS_UNDERSCORE`, `EN_UNPAIRED_BRACKETS`. Suppressed when `context == 'bullet'` (line 203–204).
+**Criterion 6 — Custom dictionary seeded correctly**
+PASS. `_prepopulate_spell_dict()` seeds from master data (name, skills, companies, institutions, languages). Called at spell-check initiation.
 
-### Criterion 7.4 — Skill names receive spelling-only checking
-**Status: ✅ Pass**
+**Criterion 7 — Severity calibration**
+PASS. `spell-check.js` line 219 sorts suggestions by `_sugSeverity()`: spelling/typo (0) → grammar (1) → style (2) → other (3). Spelling errors surface first.
 
-`spell_checker.py:206–208` — `if context == 'skill' and not self._is_spelling_rule(m): continue`.
+**Deduplication:** `SpellChecker.add_word()` performs case-insensitive deduplication. `prepopulate_from_skills()` uses a lowercase set to prevent duplicates.
 
-### Criterion 7.5 — Corrections change only the flagged span
-**Status: ✅ Pass**
-
-`cv_orchestrator.py:1994–2006` — fixes sorted by offset descending (reverse), applied as slice replacements. Guard at lines 2001–2004 verifies the span still matches `original` before replacing.
-
-### Criterion 7.6 — Custom dictionary seeded from master data
-**Status: ✅ Pass**
-
-`review_routes.py:78–156` — seeds skills, name, title, company names, education institutions/degrees/fields, award titles, certification names/issuers, language names. Called before spell check at `review_routes.py:1731, 1946`.
-
-### Criterion 7.7 — Severity calibration (critical errors first)
-**Status: ⚠️ Partial**
-
-`spell_checker.py:225–243` — suggestions returned in LanguageTool's native offset order, not severity order. No severity-based sorting occurs in `check()` or in the spell-check route.
-
-**Missing:** Spell results not sorted by severity (spelling errors before stylistic grammar suggestions).
-
-### US-R7 Acceptance Criteria Summary
-
-| Criterion | Status |
-|---|---|
-| Custom dictionary words → zero flags | ✅ Pass |
-| Action-verb bullet → zero fragment warnings | ✅ Pass |
-| skill_name context → spelling only | ✅ Pass |
-| Accepted corrections change exactly the flagged span | ✅ Pass |
-| custom_dictionary.json deduplicated on write | ✅ Pass (`add_word()` line 85–86 deduplicates) |
+**Minor gap:** `_prepopulate_spell_dict` does not seed technical terms from publications (author names, journal names). A field-specific term in a publication title not present in the skill list could still trigger a false positive during spell-check of the publications section.
 
 ---
 
-## GAP-225 Specific Verification
+## Generated Materials Evaluation
 
-**Status: ✅ Confirmed Fixed**
+### Publication Ranked Shortlist (US-R2 Acceptance Criterion)
 
-`cv_orchestrator.py:3144–3165` — sort key is `(-score, -date_ordinal)`. Relevance is primary; recency only breaks ties. No reverse-chrono override remains. User-explicit `experience_row_order` (lines 3171–3177) correctly overrides the hybrid sort only when set.
+The acceptance criterion states: "For any role where publications may be relevant, a ranked publication shortlist is presented with per-item relevance scores and rationale; it is never silently omitted or silently included in full."
 
----
+The publications review tab (`tab-publications-review`) exists in the UI. Backend provides user-driven accept/reject via `publication_decisions`. The algorithm in `_select_publications()` does produce a ranked order by score but does not expose individual scores or per-item rationale to the user. This gap means users accept/reject publications without knowing which ones the system judged most relevant or why. This is particularly important for candidates with large publication records.
 
-## Summary by User Story
+### Candidate-to-Confirm Skills in Generated Documents (US-R5)
 
-| Story | Status | Primary Gap |
-|---|---|---|
-| US-R1: Analysis quality | ⚠️ Partial | Domain confidence absent; keyword dedup/frequency relies on LLM |
-| US-R2: Content selection | ⚠️ Partial | No pre-generation page-length warning; no achievement diversity constraint |
-| US-R3: Rewrite quality | ⚠️ Partial | No terminology consistency check; no acronym expansion enforcement; no mid-sentence placement check |
-| US-R4: Summary effectiveness | ⚠️ Partial | Opening-line structure not validated; length target slightly mismatched |
-| US-R5: Skills section | ✅ Pass | All acceptance criteria met |
-| US-R6: Rewrite audit | ✅ Pass | All acceptance criteria met |
-| US-R7: Spell/grammar | ⚠️ Partial | No severity-based sorting of spell results |
+As noted in US-R5, no stripping mechanism for `candidate_to_confirm` skills exists at generation time. The UI badge is correctly review-only; the skill name itself appears clean in output (the badge marker does not appear in documents). Whether unconfirmed skills should be automatically excluded from output (requiring explicit user approval to include them) is an open design question. The current implementation treats `candidate_to_confirm: True` as informational and includes the skill in output unless the user explicitly omits it.
+
+### Summary Hook Structure (US-R4 Criterion 1)
+
+No programmatic enforcement of the opening-line structure (role type + years + differentiator) exists. The word-count range (40–250 words) is verified; line count (4–6 lines) is not. These validations depend entirely on LLM instruction compliance.
 
 ---
 
-## New Gaps Identified
+## Terminology Clarity Assessment
 
-| Gap ID | Severity | Description |
-|---|---|---|
-| GAP-226 | MED | Analysis tab: `ats_keywords` not deduplicated/synonym-grouped before display |
-| GAP-227 | MED | Analysis tab: no `domain_confidence` field; no conditional clarification prompt for ambiguous domain |
-| GAP-228 | MED | Analysis prompt: no explicit keyword-frequency/title-position weighting instruction |
-| GAP-229 | LOW | Rewrite proposals: no post-LLM check that introduced keywords appear mid-sentence |
-| GAP-230 | MED | Rewrite system: no cross-field terminology consistency check after batch generation |
-| GAP-231 | LOW | Rewrite system: no acronym-expansion-on-first-use enforcement |
-| GAP-232 | MED | Professional summary: opening-line not validated post-generation; length mismatch (3–5 sentences vs 4–6 lines criterion) |
-| GAP-233 | MED | Achievement selection: no diversity-across-impact-types constraint (technical/leadership/business) |
-| GAP-234 | LOW | Spell check: results not sorted by severity (spelling before stylistic grammar) |
-| GAP-235 | MED | Page length: no proactive user-visible warning during customisation if estimated CV exceeds 3 pages or is under 1.5 pages |
+- **"ATS"** is used throughout with tooltip on the badge ("Applicant Tracking System match score"). Good.
+- **"Emphasize / Include / De-emphasize / Omit"** — standard professional terms, well-defined in the system prompt. Clear.
+- **"Rewrites"** — appropriate; correctly distinguished from "edits."
+- **"Harvest"** — creative metaphor for promoting improvements to the master CV; not standard industry terminology but adequately explained via tooltip ("save refined bullets, new skills, and summary variants back to your Master CV").
+- **"Candidate to confirm"** — appropriately cautious phrasing for weak-evidence skill additions.
+- **"Master CV"** vs session content distinction — consistently maintained throughout.
+- **Publication handling** — the gap here is that the publications review UI does not communicate relevance scores or rationale, so users cannot make informed decisions about which publications to include.
+
+---
+
+## Summary of Findings
+
+| Story | Status | Key Finding |
+| ----- | ------ | ----------- |
+| US-R1 (Analysis Quality) | PASS with gap | Keyword positional weighting is LLM-implicit; not surfaced to user |
+| US-R2 (Content Selection) | PARTIAL | Publication ranked shortlist with per-item rationale not implemented; page-count gating strong |
+| US-R3 (Rewrite Quality) | PASS | Constraint guard, consistency check, appended-keyword detection all present |
+| US-R4 (Summary) | PARTIAL | Word-count checked (40–250 words); line-count (4–6) not checked; hook structure not validated |
+| US-R5 (Skills) | PASS with open question | Candidate-to-confirm badge in UI correct; whether unconfirmed skills should be excluded from output by default is unresolved |
+| US-R6 (Audit) | PASS | Full rewrite audit trail including rejections and edits; `_verify_rewrite_audit_alignment` in place |
+| US-R7 (Spell Check) | PASS | Fragment suppression, severity sort, deduplication, and master-data seeding all implemented; publication terms not seeded (minor) |
+
+### Priority Gaps
+
+1. **GAP-PUB-RANK**: Publication ranked shortlist with per-item relevance scores and rationale is not shown to the user before accept/reject decisions. Users see the publications list but not why the algorithm ranked them in that order (US-R2 Criterion 4 and acceptance criterion).
+
+2. **GAP-SUM-LINE**: Summary line-count enforcement missing. The system validates word count (40–250) but not the 4–6 line constraint. A dense paragraph block would pass validation (US-R4 Criterion 5).
+
+3. **GAP-SUM-HOOK**: No programmatic check that the opening sentence contains role type + years of experience + differentiator. The "I"-prefix check is the only opening-structure validation (US-R4 Criterion 1).
+
+4. **GAP-PUB-SEED**: Publications author names and journal names not seeded into the custom spell dictionary, risking false positives during spell-check of the publications section (US-R7 minor).

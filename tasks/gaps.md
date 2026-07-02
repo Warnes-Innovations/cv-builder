@@ -1,14 +1,30 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-01 (cycle 27)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-01 (cycle 29)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), 2026-06-29 (cycle 9), 2026-06-30 (cycles 10–11), 2026-06-30 (cycle 12), 2026-06-30 (cycle 13), 2026-06-30 (cycle 14), and 2026-07-01 (cycle 15–16)
-- independent heuristic UX evaluation (all cycles through 2026-07-01 cycle 16)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), 2026-06-29 (cycle 9), 2026-06-30 (cycles 10–11), 2026-06-30 (cycle 12), 2026-06-30 (cycle 13), 2026-06-30 (cycle 14), 2026-07-01 (cycle 15–16), and 2026-07-01 (cycle 29)
+- independent heuristic UX evaluation (all cycles through 2026-07-01 cycle 29)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295.
+
+## 2026-07-01 (Cycle 29) Reconciliation Notes
+
+Full 15-persona + heuristic `/cvUiReview` run (all agents spawned in parallel on commit `5aedf24`).
+
+- **3 gaps confirmed resolved this cycle:**
+  - **GAP-23 RESOLVED** (cycle 27) — intake confirmation card source-verified as fully implemented by applicant persona.
+  - **GAP-132 RESOLVED** (cycle 28) — fallback `_create_fallback_html_file()` now uses Jinja2 template matching primary path, confirmed by resume-expert and graphical-designer.
+  - **GAP-DESIGN-06 RESOLVED** — `cv-style.css` now uses `'Inter'` font and `#2980b9` brand color matching `cv-template.html`, confirmed by graphical-designer.
+- **25 new gaps added (GAP-271 through GAP-295):**
+  - Accessibility / WCAG (GAP-271, GAP-272, GAP-273, GAP-275): focus outline removed; spell-check aria-label; ATS modal focus stack bug; color-only rewrite card state.
+  - UX / workflow (GAP-274, GAP-288, GAP-289, GAP-290, GAP-291): silent back-navigation on completed steps; missing paste-text length hint; no named generation step progress; no skeleton placeholders; unexplained two-button layout proceed.
+  - Feature gaps / bugs (GAP-276, GAP-277, GAP-278, GAP-279, GAP-294, GAP-295): post-archive notes not wired to sessions modal; ATS fail not blocking download; skill_type not harvested; cold-restore silent; re-run keyboard shortcut missing; layout-refine no clarification loop.
+  - Content quality (GAP-281, GAP-282, GAP-283): no narrative-thread counter; publication omission rationale absent; cover letter word count overshoot vs spec.
+  - Minor / polish (GAP-280, GAP-284, GAP-285, GAP-286, GAP-287, GAP-292, GAP-293): duplicate @keyframes; queued status missing; stale "Finalise tab" label; non-confidential badge gap; CV header alignment; name casing not validated; session time absent from finalise.
+- **Most critical remaining open gaps (cycle 29):** GAP-271 (focus outline WCAG violation), GAP-272 (spell-check aria-label), GAP-273 (ATS modal focus stack), GAP-274 (silent back-navigation), GAP-276 (post-archive notes not wired), GAP-277 (ATS fail not blocking download), GAP-252 (intake confirmation UI not connected — verify if GAP-23 fully resolves this), GAP-206 (phase-lock indicator), GAP-201 (clarifying questions all-at-once).
 
 ## 2026-07-01 (Cycle 16) Reconciliation Notes
 
@@ -145,7 +161,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 ## 2026-06-18 (Cycle 2) Reconciliation Notes
 
 - **4 gaps resolved this cycle:** GAP-33 (employment date overlap detection — implemented), GAP-45 (persuasion warning bypass — hard-gated), GAP-36 (first-run blank Master CV — implemented), GAP-144 (harvest pre-selection removed — opt-in only).
-- **3 new gaps added:** GAP-143 (`showConfirmModal` missing focus management), GAP-144 (Harvest pre-selects high/medium confidence items violating opt-in requirement — resolved same cycle), GAP-145 (no session audit log panel in Finalise — already GAP-118, superseded by this entry's clarification).
+- **3 new gaps added:** GAP-143 (`showConfirmModal` missing focus management), GAP-144 (Harvest preselects high/medium confidence items violating opt-in requirement — resolved same cycle), GAP-145 (no session audit log panel in Finalise — already GAP-118, superseded by this entry's clarification).
 - **Confirmed resolved from last cycle:** GAP-103 (ATS advisory checks no longer block downloads), GAP-110 (date overlap detection implemented).
 - **Post-cycle resolutions (same commit):** GAP-124 (`final_generation` labels added), GAP-143 (`showConfirmModal` focus management added), GAP-144 (harvest pre-selection removed).
 - **Most critical open gaps:** GAP-120 (keyboard tabs WCAG Level A), GAP-127 (`candidate_to_confirm` not rendered/excluded), GAP-128 (rejected rewrites not audited), GAP-132 (two divergent CV templates), GAP-34 (`confirmDialog` missing ARIA).
@@ -1356,7 +1372,7 @@ The publication CRUD modal in `web/master-cv.js` loads the `editor` BibTeX field
 **Fix:** `showConfirmModal` now saves `document.activeElement` and moves focus to the OK button on open; `closeConfirmModal` restores focus to the saved element on close. `web/ui-helpers.js`.
 **Source evidence:** `web/ui-helpers.js:41–53`; accessibility-specialist.md 2026-06-18 (cycle 2).
 
-## GAP-144: Harvest Pre-Selects High/Medium Confidence Items by Default (Opt-In Violation)
+## GAP-144: Harvest Preselects High/Medium Confidence Items by Default (Opt-In Violation)
 
 **Priority:** HIGH
 **Status:** RESOLVED 2026-06-18
@@ -2750,3 +2766,228 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 **Status:** RESOLVED — 2026-06-30; added `scripts/setup_fonts.py` (one-time downloader) and `scripts/utils/wp_render.py` (standalone WeasyPrint subprocess). `cv_orchestrator.py:_try_weasyprint()` now calls `wp_render.py` which substitutes the Google Fonts CDN `<link>` with inline `@font-face` CSS using `file://` URIs to local WOFF2 files in `web/fonts/` when that directory exists. Falls back to CDN transparently when fonts are not pre-downloaded.
 **Discovered:** 2026-06-30 (cycle 14) by hiring-manager.
 **Affected stories:** US-M2, US-H1 (generated materials quality and portability)
+
+## GAP-271: Focus Outline Removed on Intake Form Inputs — WCAG 2.1 AA Violation
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by accessibility-specialist, ux-expert.
+**Description:** `styles.css:1651` sets `outline: none` on `.intake-field-row input:focus` with no visual replacement. This removes the keyboard focus indicator for all intake form fields, violating WCAG 2.1 Success Criterion 2.4.7 (Level AA).
+**Affected stories:** US-X3, US-U7
+**Fix:** Replace `outline: none` with a styled focus ring, e.g. `outline: 2px solid var(--cv-accent); outline-offset: 2px`.
+
+## GAP-272: Spell-Check Action Buttons Missing aria-label
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by accessibility-specialist.
+**Description:** The "Apply", "Ignore", and "Add to Dictionary" buttons in the spell-check UI (`spell-check.js:~249–255`) use the `title` attribute only. Screen readers announce `title` inconsistently and it does not satisfy WCAG 4.1.2 (Name, Role, Value). Each button needs an explicit `aria-label`.
+**Affected stories:** US-X3
+**Fix:** Add `aria-label="Apply suggestion"`, `aria-label="Ignore"`, `aria-label="Add to dictionary"` to the respective buttons.
+
+## GAP-273: ATS Modal Focus Stack Bug — restoreFocus Returns to Wrong Element
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by accessibility-specialist.
+**Description:** `openAtsReportModal()` and `openJobAnalysisModal()` in `ats-modals.js` call `trapFocus` without first pushing the currently focused element to `_focusStack`. When the modal closes, `restoreFocus()` pops an unrelated entry and returns focus to the wrong element.
+**Affected stories:** US-X2
+**Fix:** Add `_focusStack.push(document.activeElement)` before each `trapFocus` call in both modal openers, matching the pattern used in `ui-core.js` `confirmDialog`.
+
+## GAP-274: Silent Back-Navigation on Completed Workflow Steps
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by ux-expert, applicant.
+**Description:** Clicking a completed step pill in the workflow nav navigates silently with no destructive-action warning. Only the ↻ re-run button (`confirmReRunPhase()`) shows a confirmation dialog. Direct step-pill click bypasses this gate, potentially causing users to navigate back and lose unsaved downstream state without warning.
+**Affected stories:** US-U1, US-A12
+**Fix:** `handleStepClick()` in `workflow-steps.js` should check if the target step precedes the current phase and, if so, call `confirmDialog` before navigating.
+
+## GAP-275: Color-Only Rewrite Card State — Accepted/Rejected
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by ux-expert, accessibility-specialist.
+**Description:** Accepted and rejected rewrite cards communicate their state via border color and background tint only (`rewrite-review.js`). No persistent text label ("Accepted" / "Rejected") is rendered on the card. Color-blind users cannot reliably distinguish card state.
+**Affected stories:** US-X1, US-U5
+**Fix:** Render a small status badge or text chip ("✓ Accepted" / "✗ Rejected") on each card after the decision is made.
+
+## GAP-276: Post-Archive Notes Not Editable in Sessions Modal
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by recruiter-ops.
+**Description:** The sessions modal inline-edit widget in `session-switcher-ui.js` exposes only a status dropdown for post-archive editing. The backend `PATCH /api/sessions/metadata` endpoint accepts a `notes` field, but no notes input is wired in the frontend sessions modal. Recruiters cannot edit notes after archiving without re-opening the full session.
+**Affected stories:** US-O2
+**Fix:** Add a `<textarea>` (or expandable notes field) to the sessions modal edit row, wired to `PATCH /api/sessions/metadata` with `{ notes: value }`.
+
+## GAP-277: ATS Validation Failure Does Not Block File Download
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by hr-ats.
+**Description:** Story US-H6 requires that any ATS validation check failure blocks the file download. The 17-check validation report is generated and persisted to `metadata.json`, and the ATS Report modal displays results, but the finalise/download path does not enforce a gate. Files are downloadable regardless of validation outcome.
+**Affected stories:** US-H6
+**Fix:** In the download tab / finalise flow, check `ats_validation` from `metadata.json` for any `status: 'fail'` entries and block the download button, showing the specific failing check(s).
+
+## GAP-278: skill_type Classification Not Written Back to Master CV via Harvest
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by hr-ats.
+**Description:** `_classify_skill_type()` computes hard/soft classification at render time from the `skill_type` field or heuristics. If `skill_type` is absent, classification is ephemeral — recomputed each run. The harvest workflow does not write back `skill_type` to `Master_CV_Data.json`, so user-confirmed or heuristic-derived classifications are lost between sessions.
+**Affected stories:** US-H8
+**Fix:** During harvest, include `skill_type` in the diff candidates for any skill whose computed classification differs from the stored value (or whose stored value is missing).
+
+## GAP-279: Cold-Restore of Prior Rewrite Decisions Fires Without User Notification
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by trust-compliance.
+**Description:** When a session is restored, prior accept/reject/edit decisions on rewrite cards are silently reapplied. The user sees pre-decided cards without being told that these decisions were made in a prior session and are being restored. This creates a trust gap — users may not realize they can still change their prior decisions.
+**Affected stories:** US-C2
+**Fix:** Display a brief banner or toast when rewrite decisions are restored from a prior session: "Your previous rewrite decisions have been restored. You can still change them."
+
+## GAP-280: Duplicate @keyframes spin Definitions in styles.css
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by graphical-designer.
+**Description:** `@keyframes spin` is defined twice in `web/styles.css` (lines 930 and 1494). `@keyframes llm-spin` at line 574 is also redundant with `spin`. This is dead CSS that increases file size and maintenance overhead.
+**Affected stories:** US-G3 (CSS maintainability)
+**Fix:** Consolidate to a single `@keyframes spin` definition and replace `llm-spin` references with `spin`.
+
+## GAP-281: No Narrative-Thread Counter in Persuasion Check
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by persuasion-expert.
+**Description:** Story US-P1 requires a warning when the CV presents more than 2 equally-weighted narrative threads (e.g., simultaneous emphasis on management, technical depth, and sales). No such check is implemented in `check_persuasion()` or elsewhere in `cv_orchestrator.py`.
+**Affected stories:** US-P1
+**Fix:** Add a narrative-thread counter to `check_persuasion()`: detect the top N achievement categories by bullet count; if the top 2 categories have similar weights (within 20%) and a 3rd category is also similarly weighted, emit a `narrative_thread` advisory finding.
+
+## GAP-282: Publication Omission Rationale Not Surfaced to User
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by persuasion-expert, resume-expert.
+**Description:** `_select_publications()` ranks publications by relevance and may silently exclude low-ranked entries. Users accept/reject the presented shortlist without seeing per-item relevance scores or the reason why specific publications were excluded from the shortlist.
+**Affected stories:** US-R2, US-P2
+**Fix:** Surface per-item relevance scores and a brief rationale in the Publications review UI (e.g., "Excluded: low relevance to target domain (score: 0.3)").
+
+## GAP-283: Cover Letter Word Count Target Overshoots Story Specification
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by persuasion-expert.
+**Description:** `_cover_letter_word_count_instruction()` returns 300–400 words for standard roles. Story US-P3 specifies ≤300 words. The current implementation produces cover letters 0–33% longer than the story's maximum.
+**Affected stories:** US-P3
+**Fix:** Adjust word count ranges: 250–300w standard, 300–400w executive, 400–500w research, and update the client-side validator to enforce the lower ceiling for standard roles.
+
+## GAP-284: "queued" Application Status Absent from Lifecycle
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by applicant.
+**Description:** The application status lifecycle has six values (draft, ready, sent, interview, rejected, accepted) but omits "queued" — used by applicants who have submitted but are awaiting ATS screening. US-A1 references this status.
+**Affected stories:** US-A1
+**Fix:** Add "queued" between "sent" and "interview" in the status enum definition and the sessions modal status dropdown.
+
+## GAP-285: Stale "Finalise tab" Label in master-cv.js
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by master-cv-curator.
+**Description:** `web/master-cv.js:~285` contains the text "The Harvest feature (Finalise tab)…". The tab is now labeled "Harvest" in the UI. This creates a confusing internal mismatch visible in tooltip or help text.
+**Affected stories:** US-MC3
+**Fix:** Update the string to "The Harvest feature (Harvest tab)…" in `master-cv.js`.
+
+## GAP-286: Non-Confidential Provider Badge Absent for Implicitly Non-Private Providers
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by trust-compliance.
+**Description:** The "Non-confidential" warning badge in the header only fires when a provider has `confidential: false` explicitly set. Providers without this field defined show no badge, leaving their data-handling opaque. Most providers implicitly are non-confidential.
+**Affected stories:** US-C1
+**Fix:** Default to showing the "Non-confidential" badge unless `confidential: true` is explicitly set in the provider definition. This is a fail-safe default.
+
+## GAP-287: CV Header text-align:center Inconsistent with Left-Aligned Body Grid
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by graphical-designer.
+**Description:** `cv-template.html` renders the CV header (`<div class="cv-header">`) with `text-align: center`, while the CV body uses a left-aligned two-column grid. This creates a visual inconsistency in the generated output — centered header above a left-aligned content body.
+**Affected stories:** US-G1, US-M1
+**Fix:** Align the CV header to match the body layout. For two-column designs, left-align the header (or use a flex row for name + contact info side-by-side).
+
+## GAP-288: Paste-Text Input Shows Character Count But No Minimum-Length Hint
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by ux-expert, first-time-user.
+**Description:** The job description paste textarea shows an ARIA-live character count (`job-input.js:119–120`) but gives no minimum-length guidance. Users submitting very short job descriptions receive no warning until the LLM produces a poor analysis.
+**Affected stories:** US-U2, US-F1
+**Fix:** Add a helper text element: "Paste the full job description (minimum ~200 characters for best results)." Show an amber warning if the count drops below 200 before submission.
+
+## GAP-289: No Named Generation Step Progress in LLM Busy Overlay
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by ux-expert.
+**Description:** The `#llm-busy-overlay` shows a spinner, elapsed time, and a slow-mode badge but does not display named steps for long multi-step generation sequences (e.g., "Step 1 of 3: Generating HTML preview…"). Users have no indication of how far along the generation pipeline is.
+**Affected stories:** US-U6, US-F3
+**Fix:** Emit named step events from the generation pipeline and update `#llm-busy-label` with "Generating preview (1 of 3)…" etc.
+
+## GAP-290: No Skeleton Placeholders for Async Content Areas
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by ux-expert.
+**Description:** Content areas for LLM-generated results (analysis results card, rewrite cards, skills table) have no skeleton loaders or dimensioned placeholders. When async content arrives, the layout shifts (Cumulative Layout Shift), causing disorientation.
+**Affected stories:** US-U6, US-U8
+**Fix:** Add `min-height` or skeleton-loader placeholder divs to the main async content containers so the layout is stable before content loads.
+
+## GAP-291: Two-Button Layout Proceed Path Has No Inline Explanation
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by ux-expert, first-time-user.
+**Description:** The layout review stage has two sequential proceed buttons — "Confirm Layout" and "Generate Final Files" — toggled by generation state. New users see whichever is visible with no explanation of why there are two steps or what each one does differently.
+**Affected stories:** US-U9, US-F3
+**Fix:** Add a one-line scope label below the layout instruction textarea that explains the two-step nature: e.g., "1. Confirm your layout is ready → 2. Generate your final files."
+
+## GAP-292: Candidate Name Casing Not Validated in ATS DOCX
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by hr-ats.
+**Description:** The ATS DOCX renders the candidate name directly from `Master_CV_Data.json` without casing validation. Names in all-uppercase or all-lowercase pass through silently; some ATS systems reject or mis-parse non-standard casing.
+**Affected stories:** US-H3
+**Fix:** Add a pre-generation warning in the ATS validation report when the candidate name is all-uppercase or all-lowercase: "Candidate name appears to be in unusual casing — ATS systems may have difficulty parsing it."
+
+## GAP-293: Total Session Processing Time Absent from Finalise Confirmation Summary
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by applicant.
+**Description:** Story US-A9 requires the finalise confirmation summary to include total session processing time. The finalise tab currently shows status, notes, and the submission readiness checklist, but not session duration.
+**Affected stories:** US-A9
+**Fix:** Compute `session_end - session_start` from session metadata and display it in the finalise form as "Session duration: X minutes".
+
+## GAP-294: Keyboard Shortcut for Workflow Re-Run Not Implemented
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by applicant, power-user.
+**Description:** `keyboard-shortcuts.js` implements `Ctrl+Enter` for primary phase-advance action, `A`/`R` for review cards, and `↑`/`↓` for card navigation, but provides no keyboard shortcut for the ↻ re-run action. Re-running a phase requires a mouse click on the step pill re-run button.
+**Affected stories:** US-A12, US-W1
+**Fix:** Add a keyboard shortcut (e.g., `Ctrl+Shift+R`) for triggering `confirmReRunPhase()` on the current phase.
+
+## GAP-295: Layout-Refine Has No Clarification Loop for Ambiguous Instructions
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-01 (cycle 29) by applicant.
+**Description:** When the user submits an ambiguous layout instruction (e.g., "make it look better"), the response flows through the conversation panel as a backend chat reply with no structured clarification prompt or follow-up question. The user must re-read the message and manually rephrase their instruction.
+**Affected stories:** US-A5b, US-U9
+**Fix:** When the layout backend returns a `clarification_needed` signal, render a structured clarification prompt UI (matching the job analysis clarification pattern) instead of a bare chat message.

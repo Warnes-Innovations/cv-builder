@@ -6,11 +6,10 @@ This file is part of CV-Builder.
 For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# First-Time User Review Status
-
-**Last Updated:** 2026-06-30 ET (source-first review)
-
-**Executive Summary:** The onboarding modal (US-F1) is well implemented and covers the three main setup states. Progressive disclosure through the workflow (US-F2) is structurally sound — the tab bar and action buttons reveal in step with backend phase — but the workflow nav exposes all 12 steps simultaneously at all times, which is cognitively overloading for a new user who has not yet analyzed a job. The finalisation / confidence stage (US-F3) has the most significant gaps: the distinction between preview, confirmed layout, and final files is clear to developers reading the code but is not communicated plainly to users, and the post-generation steps (Cover Letter, Screening, Interview Prep, Thank You, Harvest) are presented with no indication of which are optional.
+# UI Review — First-Time User Persona
+**Reviewer:** First-Time User persona
+**Date:** 2026-07-01
+**Source files reviewed:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, web/session-manager.js, web/workflow-steps.js, web/download-tab.js, web/finalise.js, web/harvest.js, scripts/web_app.py, scripts/utils/conversation_manager.py
 
 ---
 
@@ -18,166 +17,150 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 ### US-F1: First-Run Orientation
 
-**Criterion 1 — Entry screen explains first required action clearly.**
-✅ Pass — `session-manager.js:175–200` (`maybeShowWelcomeModal`) fires on every startup and presents a three-state modal: (a) master profile present → green callout "Switch to the Job tab, provide a job description, and click Analyze Job"; (b) empty skeleton → amber callout directing user to Master CV tab; (c) file missing → amber callout with file path and two recovery options. The modal shows immediately before any workflow content loads (`app.js:57`). The "Get Started" CTA (`index.html:390`) switches to the Job tab on dismissal.
+#### Criterion 1 — Entry screen explains the first required action clearly
+**PASS with gap**
 
-**Criterion 2 — Key workflow concepts are understandable without domain-specific prior knowledge.**
-⚠️ Partial — The onboarding modal body (`index.html:329–344`) describes the three phases in plain language (Build profile / Target a job / Harvest improvements). However several terms in the workflow nav (`index.html:118–143`) appear without explanation: "Rewrites", "Spell Check", "Layout Review", "Harvest". "Rewrites" and "Harvest" in particular carry non-obvious meaning in this context. The position-bar area exposes "ATS" as a label (`index.html:88–91`) without defining it — though the tooltip says "ATS match score", "ATS" itself is never explained to first-time users.
+The onboarding modal (`#onboarding-modal-overlay`, `session-manager.js:175`) fires on every startup unless dismissed. It presents a clear 3-step overview ("Build your master profile → Target a specific job → Harvest improvements") with numbered badges and plain-language descriptions. Three conditional sections handle distinct initial states:
 
-**Criterion 3 — First stage makes clear what data is needed and why.**
-✅ Pass — When no job is loaded, `populateJobTab()` (`job-input.js:78`) immediately renders the "Add Job Description" panel with three clearly labelled input methods (Paste Text / From URL / Upload File). A character-count hint and Submit button give clear affordance. The LLM status pill in the header (`index.html:54–61`) warns when no provider is configured.
+- **Missing master CV** (section `welcome-section-missing`): directs user to `Master_CV_Data.json` and offers "Create empty profile" or "Place an existing file." The path to the missing file is shown in a monospace block. This is the correct first-run path.
+- **Empty skeleton** (section `welcome-section-empty`): tells the user to open the Master CV editor before starting a job application.
+- **Profile ready** (section `welcome-section-present`): says "switch to the Job tab, provide a job description, and click Analyse Job."
 
-**Failure mode guard — "Terms appearing without context":**
-⚠️ Partial — "Rewrites", "Layout Review", and "Harvest" appear in the workflow nav as standalone labels from the first page load, before the user has any frame of reference. The onboarding modal does explain "Harvest" in step 3, and "Layout Review" is self-explanatory, but "Rewrites" is not explained anywhere a new user encounters it before reaching that stage.
+Each variant has a clear primary call-to-action button. The modal is reopenable via the **? Help** button in the header at all times.
 
-**Failure mode guard — "Complex screen with no clear primary action":**
-✅ Pass — On first load the tab bar is restricted to the Job tab (`ui-core.js:2008`), and only the "Analyze Job" primary button is visible (`index.html:186`). The onboarding modal further guides the user before this is reached.
+**Gap (minor):** The "Build your master profile" step mentions populating `Master_CV_Data.json` "once" — a new user in the missing-profile path must understand that "Create empty profile" creates exactly that file. The connection between clicking the button and the file being created is not explained in the modal body text. A user who misses the "Create empty profile" button label may not know what the button does.
+
+#### Criterion 2 — Key workflow concepts understandable without domain knowledge
+**PARTIAL**
+
+The onboarding modal avoids most jargon in its main body. However, the persistent workflow nav bar across the top of the page (12 steps: Job Input → Analysis → Customise → Rewrites → Spell Check → Layout Review → File Review → Cover Letter → Screening → Interview Prep → Thank You → Harvest) is fully visible immediately after the modal is dismissed. Several step names are unexplained on first encounter:
+
+- **Rewrites** — no tooltip explains this means "AI-proposed edits to your experience bullet points." The step tooltip reads "Rewrite review," still circular.
+- **Harvest** — hover tooltip says "Harvest improvements — save refined bullets, new skills, and summary variants back to your Master CV for future applications." This is adequate but only visible on hover.
+- **Customise** — tooltip is "Content customisation," which is circular. The concept of selecting which experiences and skills appear is not explained until the user reaches that stage.
+
+The workflow step bar's locked (non-clickable) steps have no tooltip or text explaining they unlock as the user progresses. A new user may think the application is partially broken.
+
+**Failure mode found:** The story warns against "Terms like rewrites, customisations, layout review, or harvest appearing without context." All four terms appear in the nav bar on first load without context.
+
+#### Criterion 3 — First stage makes clear what data is needed and why
+**PASS**
+
+Once inside the app and on the Job tab (the default), the chat input placeholder reads "Type a message (e.g., 'analyse job')" and the primary action button is labeled "🔍 Analyse Job." The modal's "profile ready" section specifies "provide a job description" before clicking Analyse Job.
+
+The `app.js` init also detects when a job description is loaded but not yet analyzed, highlights the Analyse Job button with a blue outline, and appends a system message: "Job description detected — click **Analyse Job** when ready to begin." This contextual nudge is a strong first-run affordance.
 
 ---
 
 ### US-F2: Progressive Disclosure Through the Workflow
 
-**Criterion 1 — UI reveals next decisions in a staged way.**
-⚠️ Partial — The **tab bar** is correctly staged: `updateTabBarForStage(stage)` (`ui-core.js:619–628`) shows only the tabs for the current backend phase. The **action buttons** in the chat panel are individually shown/hidden per phase (all start hidden except "Analyze Job"). However, the **workflow nav** (`index.html:118–143`) shows all 12 steps (Job Input → Analysis → Customise → Rewrites → Spell Check → Layout Review → Download → Cover Letter → Screening → Interview Prep → Thank You → Harvest) simultaneously with no visual suppression of future steps — only `upcoming` CSS styling and click-blocking after the current phase. A first-time user sees twelve steps on page load, which contradicts the goal of staged revelation.
+#### Criterion 1 — UI reveals decisions in a staged way
+**PASS with gap**
 
-**Criterion 2 — Each stage communicates its purpose before demanding action.**
-⚠️ Partial — The chat panel provides conversational context from the LLM before each primary button becomes active, which is effective. However the viewer area's empty-state fallback (`index.html:236–240`) reads "Select a tab to view content / Job description and analysis results will appear here" — this is generic and does not tell a new user what to do or why. At the Analysis stage the tab content renders structured data (role card, sections), which is helpful. At the Customise stage, the Questions tab is labeled "Questions" (`index.html:208`) but its purpose (answering the AI's clarifying questions before recommending customisations) is not communicated visually without reading the conversation.
+The `updateTabBarForStage()` function (`ui-core.js:552`) restricts the visible tab set to only those relevant to the current workflow stage. For example, the "customizations" stage shows Goals, Questions, Experience Bullets, Skills, Achievements, Tagline, Summary, Publications, ATS Score — phase-appropriate.
 
-**Criterion 3 — Transition from one stage to the next feels predictable.**
-✅ Pass — Each stage has exactly one primary action button that advances the workflow, and the button label describes the transition (e.g. "Continue to Spell Check →", "Generate Preview →", "Open Layout Review →", `index.html:189–193`). The workflow nav step highlighting updates automatically via `stateManager.onPhaseChange` → `updateWorkflowStepsClickable` (`ui-core.js:2012–2015`). The screen-reader live region (`index.html:146–147`) announces stage changes accessibly.
+**Gap (notable):** During the Customise stage, 10 tabs are shown simultaneously with no indication of which to visit first, whether all are required, or what distinguishes "Experiences" from "Experience Bullets." The tab names are not self-explanatory to someone without CV-builder domain knowledge.
 
-**Failure mode guard — "Too many tabs, controls, or special cases at once":**
-⚠️ Partial — As noted above, the workflow nav displays all 12 steps at all times. While the tab bar itself is correctly staged, the sticky top-level nav gives the visual impression of a 12-stage pipeline before the user has taken any action. At the Customise stage specifically, the tab bar reveals 10 tabs simultaneously (Goals, Questions, Experiences, Experience Bullets, Skills, Achievements, Tagline, Summary, Publications, ATS Score — `ui-core.js:353`), all of which are immediately visible. A first-time user has no signal about which to look at first or which are optional.
+#### Criterion 2 — Each stage communicates its purpose before demanding action
+**PARTIAL**
 
-**Failure mode guard — "Major stage transitions with insufficient explanation":**
-⚠️ Partial — Transitions driven by the primary action button are predictable. However the transition from Spell Check → Layout Review involves clicking "Generate Preview →" (`index.html:190`) which triggers a background generation process. The LLM busy overlay appears (`index.html:155–164`), which is good. But once generation completes and the user is shown "Open Layout Review →" (`index.html:191`), there is no explanatory text telling a first-time user what layout review means or what decisions they will face there.
+The conversation panel receives system messages at each phase transition that describe what just happened and what comes next. The action button changes label at each stage, e.g. "⚙️ Recommend Customizations" → "✏️ Review Rewrites" → "Continue to Spell Check →". This chain is sequential and clear.
+
+However, tab content in the viewer area often has no introductory text. The `analysis` empty state reads only "No analysis data yet. Submit a job description to begin." The File Review tab description is technical ("this is the completeness check step — ATS validation runs here") and assumes knowledge of ATS validation.
+
+**Failure mode found:** The story warns against "Major stage transitions happening with insufficient explanation." The transition from Spell Check to the three-step layout pipeline (Generate Preview → Open Layout Review → Confirm Layout) uses tooltip-only labeling with step numbers ("Step 1 of 3: Generate an HTML preview to review the layout before final DOCX/PDF files are produced"). The tooltip is informative but only discoverable by hovering — the button label "Generate Preview →" does not convey that this is the first of three required button presses.
+
+#### Criterion 3 — Transition between stages feels predictable
+**PASS with gap**
+
+The sequence of primary action buttons drives the workflow linearly and each reveals only after the previous stage completes. The workflow nav bar marks completed steps green and the active step blue. This is a sound progressive pattern.
+
+**Gap (minor):** There is no visible "step N of 12" indicator in the chat panel. The nav bar is at the top and may be mentally disconnected from the action button currently in view.
 
 ---
 
 ### US-F3: Confidence Before Finalisation
 
-**Criterion 1 — System communicates whether key review steps are complete.**
-⚠️ Partial — The layout freshness chip (`index.html:96`) communicates "Layout current / Layout outdated / Files outdated" states clearly once a preview has been generated. The ATS score badge (`index.html:87–95`) gives an objective measure after analysis. However there is no aggregate checklist or readiness indicator showing which of the review stages (Rewrites, Spell Check, Layout) have been completed and which remain. A first-time user must infer completion from the conversation history or the action button availability.
+#### Criterion 1 — System communicates whether key review steps are complete
+**PASS with gap**
 
-**Criterion 2 — Relationship between generation, layout review, and finalisation is understandable.**
-❌ Fail — The generation pipeline has three distinct stages (preview → confirm layout → final generation) but the labels used in the UI conflate them for a new user:
+The workflow step bar shows green "completed" styling for finished steps. The layout freshness chip ("Layout current" / "Layout outdated" / "Files outdated") in the position bar communicates synchronization state. The File Review tab includes ATS validation with pass/warn/fail icons and blocks download buttons for formats with critical failures — a strong readiness signal.
 
-- "Generate Preview →" (`index.html:190`; spell-btn action) — correct label for what it does
-- "Open Layout Review →" (`index.html:191`) — shown after preview, purpose not explained inline
-- "Confirm Layout" (`index.html:192`) — confirms the layout, which then triggers final generation; a new user does not know that clicking this triggers another generation pass
-- "Continue to File Review →" (`index.html:193`) — appears after final generation; "File Review" is not defined
-- "Package Application Files" (`index.html:194`) — the purpose of this action is opaque; it appears to be a finalisation/archive step but the label does not communicate what happens or whether this is required
+**Gap (minor):** "Archive" is used in the File Review tab description without definition ("you can archive the application"). It is unclear whether archiving is required for the files to be valid or is purely optional bookkeeping.
 
-There is no explanatory tooltip, inline help text, or modal at any of these four transitions to explain what each step does or what the user is committing to.
+#### Criterion 2 — Relationship between generation, layout review, and finalisation is understandable
+**PARTIAL**
 
-**Criterion 3 — Final stage distinguishes clearly between optional versus required actions.**
-⚠️ Partial — The workflow nav shows Download as a separate step from Cover Letter, Screening, Interview Prep, Thank You, and Harvest. However nothing in the UI marks these post-download steps as optional. They all appear as equivalent steps in the linear nav. The onboarding modal mentions "generate a tailored cover letter" in the "Target a job" step description (`index.html:338`), implying it is part of the core flow, but Cover Letter and the remaining steps (Screening, Interview Prep, Thank You, Harvest) are never identified as optional extensions. A first-time user who has downloaded their CV files may not know they can stop at the Download step.
+The three-step sub-pipeline within the generation phase is labeled via tooltips:
+- "Step 1 of 3: Generate an HTML preview..." (tooltip on "Generate Preview →")
+- "Step 2 of 3: Review and adjust layout settings..." (tooltip on "🎨 Open Layout Review →")
+- "Step 3 of 3: Confirm layout and produce final..." (tooltip on "✅ Confirm Layout")
 
-**Failure mode guard — "Mistaking preview generation for final completion":**
-❌ Fail — There is a real risk here. After "Generate Preview →" is clicked, the user arrives at Layout Review with an iframe preview of their CV. The action button becomes "Confirm Layout". There is no inline text at this point saying "This is a draft preview — your final downloadable files are generated after you confirm the layout." The layout freshness chip provides a signal, but only once the user has confirmed and returned to a stale state. On first encounter, the preview looks like a finished document.
+The step numbers are helpful for users who discover the tooltips. However, they are **tooltip-only** and not surfaced as visible body text.
 
-**Failure mode guard — "Optional post-generation actions looking mandatory":**
-⚠️ Partial — The post-layout steps (Cover Letter through Harvest) look mandatory because they are presented in a sequential linear nav without any visual or textual distinction between required and optional. The Harvest step in particular ("🌾 Harvest") is shown with the same visual weight as the Download step.
+The distinction between the "Generated Files" tab and the "File Review" tab is also confusing. Both appear in the download stage but serve different purposes: "Generated Files" gives immediate download access; "File Review" runs ATS validation and is the "completeness check." The tab labels do not communicate this distinction.
+
+#### Criterion 3 — Final stage distinguishes optional from required actions
+**PARTIAL**
+
+After File Review, the workflow continues to optional post-generation steps: Cover Letter, Screening, Interview Prep, Thank You, Harvest. The File Review tab has a "Proceed to Cover Letter →" button, framing the next step as a natural continuation. There is no label marking these steps as optional.
+
+The Harvest step (last in the nav bar) appears in a linear sequence with no visual or textual signal that it is optional rather than required.
+
+The Finalise tab (`finalise.js`) renders an "✅ Finalise Application" heading with the description "Archive this application to your CV history, update the response library, and **optionally** write any improvements back to Master CV Data." This text correctly labels optionality. However, this tab is hidden by default (HTML `style="display:none"`) and is only reached via "📦 Package Application Files" — a button that appears only after final generation. A first-time user who has not reached this tab will not have seen the "optional" framing for the post-generation steps.
+
+---
+
+### Terminology Clarity Evaluation
+
+| Term | Location | Clarity | Notes |
+|------|----------|---------|-------|
+| Rewrites | Nav bar, action button | Poor | No context on first appearance; "Rewrite review" tooltip is circular |
+| Harvest | Nav bar | Acceptable | Hover tooltip explains the concept; but tooltip-only |
+| Customise | Nav bar, action button | Poor | "Content customisation" is circular; concept not explained until the stage is reached |
+| Layout Review | Nav bar, action button | Acceptable | Three-step tooltip chain explains it for users who hover |
+| ATS | Badge, report button, File Review | Acceptable | Expanded as "Applicant Tracking System" in aria-title and button tooltip |
+| Master CV | Modal, header button | Good | Modal explains it as "your complete work history" in plain language |
+| Generated Files vs File Review | Two adjacent tabs | Poor | Both appear to relate to download; distinction not stated in tab labels |
+| Archive | File Review tab description | Poor | Used without definition; unclear whether required or optional |
+| Package Application Files | Action button | Acceptable | Self-descriptive; purpose is clear but audience context is not stated |
 
 ---
 
 ## Generated Materials Evaluation
 
-The user story does not include criteria for evaluating generated CV/cover letter content quality; the story scope is limited to the application UI experience. No generated materials were evaluated in this review.
+This review is scoped to UI/application evaluation only; no live session with generated outputs was available for direct inspection. Based on source code of File Review, Generated Files, and Finalise tabs:
+
+- Download tab presents files in a grid with format labels (DOCX, PDF, HTML) — clear for a professional audience.
+- ATS validation results are shown in a table with pass/warn/fail icons. Some internal check names leak into the UI (e.g., "docx_standard_headings," "html_jsonld_valid_person") — technical for a first-time user.
+- Advisory quality notices (long bullets, sparse experience entries, year-only dates) use plain language with actionable suggestions.
+- The distinction between ATS DOCX (for applicant tracking systems) and Human PDF (for human readers) is reflected in settings labels but is not explained at the download surface itself. A first-time user may not know which format to submit.
 
 ---
 
-## Additional Story Gaps / Proposed Story Items
+## Summary of Gaps Found
 
-**G1 — Workflow nav cognitive load at first load**
-All 12 steps are visible before the user has taken any action. Consider collapsing the post-layout steps behind a disclosure or only revealing the immediately next step. Alternatively, visually group the nav into: "Core workflow" (steps 1–7) and "Optional follow-on" (steps 8–12).
-
-**G2 — Customise stage tab count**
-At the Customise phase, 10 tabs appear simultaneously. A first-time user needs signposting about which tab is the primary action surface and which are supplementary. The Questions tab should be highlighted as the first step, not presented as one of ten equal choices.
-
-**G3 — Inline contextual help at generation transitions**
-The four action buttons in the generation pipeline (Generate Preview / Open Layout Review / Confirm Layout / Continue to File Review / Package Application Files) each represent a distinct commitment, but none carry tooltip or inline explanatory text. A single sentence of inline help at each transition would significantly reduce first-time confusion.
-
-**G4 — Preview vs. final distinction**
-No UI element at the Layout Review stage makes it explicit that the iframe is a draft preview and that clicking "Confirm Layout" triggers final file generation. This is the most likely point for a first-time user to feel uncertain about what they are committing to.
-
-**G5 — Post-download steps optionality**
-The Cover Letter, Screening, Interview Prep, Thank You, and Harvest steps are never labelled as optional. A simple "(optional)" parenthetical in the nav, or a visual grouping separator after Download, would remove ambiguity.
-
-**G6 — "ATS" acronym unexplained**
-"ATS" appears in the position bar badge, ATS Report button, and ATS Score tab without being spelled out or defined anywhere visible in the UI. A tooltip reading "Applicant Tracking System — how well your CV matches the job keywords" on the badge would serve new users without cluttering the interface.
-
-**G7 — "Harvest" terminology**
-"Harvest" is used in the onboarding modal body and the workflow nav but is not a standard job-search term. A subtitle or tooltip such as "Save improvements back to your master profile" would disambiguate without renaming the step.
+| ID | Criterion | Severity | Description |
+|----|-----------|----------|-------------|
+| FTU-1 | US-F1.2 | Moderate | Four workflow terms appear in the nav bar on first load without contextual explanation: "Rewrites," "Customise," "Layout Review," "Harvest." |
+| FTU-2 | US-F1.1 | Minor | Onboarding modal "Create empty profile" button purpose is not explained in body text; relies on button label alone. |
+| FTU-3 | US-F2.1 | Moderate | During the Customise stage, 10 tabs appear with no indication of recommended visit order, whether all are required, or what distinguishes "Experiences" from "Experience Bullets." |
+| FTU-4 | US-F2.2 | Minor | The three-step generation sub-pipeline (Preview → Layout Review → Confirm) is labeled via tooltips only; not visible without hovering. |
+| FTU-5 | US-F3.2 | Moderate | "Generated Files" and "File Review" are two adjacent tabs that both appear to relate to download; the difference is not obvious from tab labels. |
+| FTU-6 | US-F3.3 | Moderate | Post-generation steps (Cover Letter through Harvest) appear as a linear extension of the required workflow with no visual or textual signal that they are optional. |
+| FTU-7 | US-F3.1 | Minor | "Archive" is used in File Review description without definition; unclear whether required or optional. |
+| FTU-8 | US-F2.1 | Minor | Locked workflow steps (pre-analysis) have no tooltip or label explaining they unlock as the user progresses. |
+| FTU-9 | Materials | Minor | ATS DOCX vs Human PDF distinction is not explained at the download surface; first-time users may not know which format to submit to employers. |
 
 ---
 
----
+## Acceptance Criteria Verdict
 
-## Recent Changes Verification
-
-### GAP-247: "? Help" button in header reopens onboarding guide
-
-**Claimed:** A "? Help" button now appears in the header that calls `showWelcomeModal()`, allowing the onboarding guide to be reopened even after dismissal.
-
-✅ **Verified** — `web/index.html:63–66` contains:
-
-```html
-<button id="help-btn" onclick="showWelcomeModal()"
-  class="header-pill-btn"
-  title="Reopen the getting-started guide"
-  aria-label="Help — reopen getting started guide">? Help</button>
-```
-
-The button is positioned after the LLM selector in the header (`index.html:44–70`), making it persistently accessible at all times. `showWelcomeModal()` is defined at `session-manager.js:219–242` — it re-fetches master CV status, shows the appropriate modal section, and opens the focus trap. It ignores the `_WELCOME_DISMISSED_KEY` localStorage flag (unlike `maybeShowWelcomeModal`), so it always opens regardless of prior dismissal. The function is exported at `session-manager.js:968–969` and aliased on `globalThis` via `bundle.js:7504`.
-
-### GAP-251: Brand name consistently "CV Builder"
-
-**Claimed:** Brand name is now consistently "CV Builder" in the h1 header, document.title, and onboarding modal.
-
-✅ **Verified** — Three locations confirmed consistent:
-
-- `web/index.html:13`: `<title>CV Builder — Professional Web UI</title>`
-- `web/index.html:40`: `<h1 style="margin: 0;">CV Builder</h1>`
-- `web/index.html:322`: `<h2 id="onboarding-modal-title">👋 Welcome to CV Builder</h2>`
-
-The onboarding modal body text at `index.html:330` also reads "CV Builder uses AI to create tailored…", maintaining consistent branding throughout.
-
----
-
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py
-
-| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-| ----- | ------- | --------- | ------ | ---------- | ----- |
-| US-F1-C1 (entry screen clarity) | ✅ | | | | |
-| US-F1-C2 (terminology clarity) | | ⚠️ | | | |
-| US-F1-C3 (first stage data needs) | ✅ | | | | |
-| US-F1 failure: complex entry | ✅ | | | | |
-| US-F1 failure: terms without context | | ⚠️ | | | |
-| US-F2-C1 (staged disclosure) | | ⚠️ | | | |
-| US-F2-C2 (stage purpose before action) | | ⚠️ | | | |
-| US-F2-C3 (predictable transitions) | ✅ | | | | |
-| US-F2 failure: too many controls | | ⚠️ | | | |
-| US-F2 failure: insufficient transition explanation | | ⚠️ | | | |
-| US-F3-C1 (review steps complete signal) | | ⚠️ | | | |
-| US-F3-C2 (generation/layout/finalise relationship) | | | ❌ | | |
-| US-F3-C3 (optional vs required final actions) | | ⚠️ | | | |
-| US-F3 failure: preview mistaken for final | | | ❌ | | |
-| US-F3 failure: optional actions look mandatory | | ⚠️ | | | |
-
-Pass: 4 | Partial: 9 | Fail: 2 | Not Implemented: 0 | N/A: 0
-
-### Key evidence references
-
-- Onboarding modal (three-state): `web/index.html:317–399`, `web/session-manager.js:175–262`
-- Workflow nav (all 12 steps always visible): `web/index.html:118–143`
-- Tab bar staged disclosure: `web/ui-core.js:350–363` (STAGE_TABS), `web/ui-core.js:619–628` (updateTabBarForStage)
-- Phase-locked action buttons: `web/index.html:185–195` (7 action buttons, individually shown/hidden)
-- Phase unlock logic: `web/ui-core.js:1894–1989` (updateWorkflowStepsClickable)
-- Generation pipeline action labels: `web/index.html:190–194`
-- Layout freshness chip: `web/index.html:96`, `web/state-manager.js:120–178`
-- Empty state generic text: `web/index.html:236–240`
-- Customise stage tab count (10 tabs): `web/ui-core.js:353`
-- Harvest onboarding description: `web/index.html:341–344`
-- LLM busy overlay during generation: `web/index.html:155–164`
-- Screen-reader live region for stage announcements: `web/index.html:145–147`
+| Criterion | Status |
+|-----------|--------|
+| US-F1: New user can identify first step and expected input without help | **PASS** — Onboarding modal plus "Analyse Job" button make this clear |
+| US-F1: Stage names and action labels understandable in context | **PARTIAL** — Action buttons are clear; nav bar step names are not (FTU-1) |
+| US-F2: Workflow can be followed sequentially without guessing primary surface | **PASS** — Primary action buttons drive linear progress effectively |
+| US-F2: Stage transitions include enough feedback | **PARTIAL** — Chat system messages are good; multi-step generation sub-pipeline relies on tooltips (FTU-4) |
+| US-F3: User can tell when previewing, refining, finalising | **PARTIAL** — Layout freshness chip helps; generated-files vs file-review confusion hurts (FTU-5) |
+| US-F3: Final stage distinguishes archive/finalise from optional follow-on | **PARTIAL** — Finalise tab has the right language but is hidden; post-generation steps lack "optional" labels (FTU-6, FTU-7) |

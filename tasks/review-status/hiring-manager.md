@@ -9,7 +9,7 @@
 # Hiring Manager Persona Review
 
 **Persona:** US-M* — Hiring Manager / Department Head  
-**Cycle:** Source-first review, 2026-06-30  
+**Cycle:** Source-first review, 2026-07-01  
 **Branch:** `feature/multi-user-deployment`
 
 ---
@@ -40,7 +40,7 @@
 
 **AC2.1** Every bullet starts with a strong action verb.
 
-✅ **Pass** — Backend: `cv_orchestrator.py:3963–3981` (`_enhance_achievement_for_ats`) checks the opening word against `_STRONG_VERBS_LOWER` (line 3999) and logs a warning when the check fails. The `check_persuasion` method (lines 4140–4218) flags `weak_verb` and `no_strong_verb` findings. Frontend: `achievements-review.js:524–571` shows inline `⚠ Weak opening verb` badges in the Experience Bullets tab, and `rewrite-review.js:101–116` surfaces persuasion warnings at the Rewrites stage requiring acknowledgment before proceeding.
+✅ **Pass** — Backend: `cv_orchestrator.py:3963–3981` (`_enhance_achievement_for_ats`) checks the opening word against `_STRONG_VERBS_LOWER` (line 3999) and logs a warning when the check fails. The `check_persuasion` method (lines 4140–4218) flags `weak_verb` and `no_strong_verb` findings; commit `ae04e11` (GAP-17) also added repeated opening-verb detection — when the same verb opens ≥3 bullets in one experience entry, subsequent occurrences are flagged as `repeated_verb` with severity `warning`. Frontend: `achievements-review.js:524–571` shows inline `⚠ Weak opening verb` badges in the Experience Bullets tab; `spell-check.js` now shows a pre-generation advisory count of weak-verb bullets before the user proceeds (GAP-09, commit `cb20ed8`); and `rewrite-review.js:101–116` surfaces persuasion warnings at the Rewrites stage requiring acknowledgment before proceeding.
 
 **AC2.2** Each job entry has at least 2 bullets.
 
@@ -60,7 +60,7 @@
 
 **AC2.6** System warns if a bullet lacks an action verb.
 
-✅ **Pass** — Backend `cv_orchestrator.py:4165–4173` generates `no_strong_verb` findings. Frontend `achievements-review.js:542–571` shows inline verb badges in the Experience Bullets editor. `rewrite-review.js:104–116` surfaces backend persuasion warnings at the Rewrites stage with acknowledgment gate.
+✅ **Pass** — Backend `cv_orchestrator.py:4165–4173` generates `no_strong_verb` findings. Backend `ae04e11` (GAP-17) adds `repeated_verb` findings for ≥3 same-verb occurrences per experience. Frontend `achievements-review.js:542–571` shows inline verb badges in the Experience Bullets editor. `spell-check.js` pre-generation modal counts and shows weak-verb bullets (GAP-09). `rewrite-review.js:104–116` surfaces backend persuasion warnings at the Rewrites stage with acknowledgment gate.
 
 ---
 
@@ -72,7 +72,7 @@
 
 **AC3.2** Categories ordered by relevance to the target role.
 
-✅ **Pass** — `cv_orchestrator.py:541–580` (`_sort_categories`) applies variant-specific priority orders (`standard`, `technical`, `academic`) and falls back to remaining categories alphabetically. The user can further specify `skill_category_order` in customizations (line 3469). For standard variant, priority is `['Core Expertise', 'Programming', 'Technical', 'Tools', 'General']`.
+✅ **Pass** — `cv_orchestrator.py:541–580` (`_sort_categories`) applies variant-specific priority orders (`standard`, `technical`, `academic`) and falls back to remaining categories alphabetically. The user can further specify `skill_category_order` in customizations (line 3469). For standard variant, priority is `['Core Expertise', 'Programming', 'Technical', 'Tools', 'General']`. Additionally, commit `4c90a09` (GAP-11) adds role-aware category ordering in the Skills review table: each category is scored by how many of its skills appear in the job's `required_skills` (2 pts) or `nice_to_have_skills` (1 pt), with categories sorted highest-scoring first in the review UI, giving the user an informed view of what to prioritize.
 
 **AC3.3** No duplicate skills (exact match or obvious aliases).
 
@@ -96,7 +96,7 @@
 
 **AC4.3** Total page count is 2–3 for a senior candidate; system warns if output is 1 or >3 pages.
 
-✅ **Pass** — `cv_orchestrator.py:5020–5040` validates page count against configurable `ideal_min` (default 2), `ideal_max` (default 3), and `absolute_max` (default 4). A single page triggers `warn`; above `absolute_max` triggers `fail`. The ATS report surfaces these findings to the user.
+✅ **Pass** — `cv_orchestrator.py:5020–5040` validates page count against configurable `ideal_min` (default 2), `ideal_max` (default 3), and `absolute_max` (default 4). A single page triggers `warn`; above `absolute_max` triggers `fail`. The ATS report surfaces these findings to the user. Commit `cb20ed8` (GAP-05) additionally promotes this from advisory to a hard blocking gate: `_confirmProceedToGenerate()` in `web/spell-check.js` now shows a dedicated confirm dialog when `pageWarning` is set; the user must explicitly acknowledge before generation can proceed.
 
 **AC4.4** Publications included only when flagged as relevant for the role type.
 
@@ -210,7 +210,7 @@
 | US-M3 | Skills section ≤1.5 sidebar columns | 🔲 Not Implemented |
 | US-M4 | page-break-inside: avoid on job entries | ✅ Pass |
 | US-M4 | Sidebar content balanced across pages | ⚠️ Partial |
-| US-M4 | Page count 2–3, warns if 1 or >3 | ✅ Pass |
+| US-M4 | Page count 2–3, hard gate if 1 or >3 (GAP-05 resolved) | ✅ Pass |
 | US-M4 | Publications only when role-relevant | ⚠️ Partial |
 | US-M4 | Publications heading correct (Selected vs full) | ⚠️ Partial |
 | US-M5 | Fonts embedded in PDF | ⚠️ Partial |
