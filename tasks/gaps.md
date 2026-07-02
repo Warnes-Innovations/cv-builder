@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 33)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 34)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,13 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295.
+
+## 2026-07-02 (Cycle 34) Reconciliation Notes
+
+Accessibility fix: 1 gap resolved.
+
+- **GAP-12 RESOLVED** — `candidate_to_confirm` skill evidence text now visible inline (not just as tooltip): added `evidenceNote` `<small style="display:block">` beneath skill name in skills-review table when evidence text is present (`web/skills-review.js`). Added `aria-label` to badge for screen reader access. Keyboard and screen-reader users can now read evidence without hovering.
+- **Test suite:** 1432 passed.
 
 ## 2026-07-02 (Cycle 33) Reconciliation Notes
 
@@ -339,7 +346,7 @@ Full 15-persona + heuristic `/cvUiReview` run (all agents spawned in parallel on
 
 **Severity:** LOW
 **Affected stories:** US-R5, US-A4
-**Status:** PARTIAL - updated 2026-07-01 (cycle 23); `candidateBadge` in `_renderSkillsTable()` (`web/skills-review.js`) now reads `skill.evidence` and shows it in the tooltip: "Weak evidence — [evidence text]" when evidence is present, falling back to "Verify evidence" otherwise. The badge label updates to "Weak evidence" when concrete evidence is available. `candidate_to_confirm` (weak evidence) is already distinct from `isNew` (AI-suggested, not in profile). Remaining: evidence text is only surfaced as a tooltip; inline visible text still needed for keyboard/screen-reader users.
+**Status:** RESOLVED — 2026-07-02 (cycle 34). Added `evidenceNote` as a visible `<small style="display:block">` element beneath the skill name when `_evidenceText` is present (`web/skills-review.js:732`). Also added `aria-label` to `candidateBadge` so the full tooltip text is accessible as the element's accessible name (not just a `title` attribute). Evidence is now visible to all users without hover. Fallback message shown for `candidate_to_confirm` skills without evidence text.
 **Description:** Candidate-to-confirm skills are not invisible anymore, but the current UX does not clearly explain why a given skill is weakly evidenced, what evidence exists, or what risk the user accepts by including it.
 **Recommended resolution:** Show the linked experience evidence directly in the skills review row, distinguish weak-evidence from simple new-skill suggestions, and align the badge language with the backend `candidate_to_confirm` flag.
 

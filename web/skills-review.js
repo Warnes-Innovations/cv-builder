@@ -724,8 +724,13 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
         : '<span title="AI suggested — not yet in CV profile" style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>')
       : '';
     const _evidenceText = isCandidateToConfirm && typeof skill === 'object' ? String(skill.evidence || '').trim() : '';
+    const _evidenceFallback = 'Confirm this skill is genuinely demonstrated in your experience before including it.';
+    const _evidenceTip = _evidenceText ? `Weak evidence — ${_evidenceText}` : `Weak evidence — ${_evidenceFallback}`;
     const candidateBadge = isCandidateToConfirm
-      ? `<span title="${escapeHtml(_evidenceText ? `Weak evidence — ${_evidenceText}` : 'Weak evidence — confirm this skill is genuinely demonstrated in your experience before including it')}" style="margin-left:6px;font-size:10px;color:#9f1239;border:1px solid #9f1239;border-radius:3px;padding:1px 5px;cursor:help;">⚠ ${_evidenceText ? 'Weak evidence' : 'Verify evidence'}</span>`
+      ? `<span title="${escapeHtml(_evidenceTip)}" aria-label="${escapeHtml(_evidenceTip)}" style="margin-left:6px;font-size:10px;color:#9f1239;border:1px solid #9f1239;border-radius:3px;padding:1px 5px;cursor:help;">⚠ ${_evidenceText ? 'Weak evidence' : 'Verify evidence'}</span>`
+      : '';
+    const evidenceNote = isCandidateToConfirm && _evidenceText
+      ? `<small style="display:block;margin-top:3px;font-size:0.78em;color:#9f1239;">${escapeHtml(_evidenceText)}</small>`
       : '';
     const rerunNewBadge = newRecommendedSkills.has(skillName)
       ? '<span class="rw-change-badge rw-change-new" aria-label="New recommendation since previous run">🆕 New</span>'
@@ -780,7 +785,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
 
     tableHTML += `
       <tr data-skill="${skillNameEsc}" style="${rowStyle}">
-        <td><strong>${skillNameEsc}</strong>${skillTypeBadge}${rerunNewBadge}${newBadge}${candidateBadge}</td>
+        <td><strong>${skillNameEsc}</strong>${skillTypeBadge}${rerunNewBadge}${newBadge}${candidateBadge}${evidenceNote}</td>
         <td style="min-width:140px;">
           <input type="text" class="skill-category-input" data-skill="${skillNameEsc}"
             value="${escapeHtml(categoryKey)}"
