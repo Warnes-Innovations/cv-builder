@@ -10,6 +10,29 @@
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295.
 
+## 2026-07-02 (Cycle 30) Reconciliation Notes
+
+Implementation cycle on commit range after `a83b847` (lint suite added by separate agent).
+
+- **3 false-positive gaps confirmed already resolved from prior cycles:**
+  - **GAP-274** — back-navigation confirm dialog already implemented as GAP-250 (`_showReRunConfirmModal` in `workflow-steps.js:1061`).
+  - **GAP-276** — post-archive notes field already wired via `web/finalise.js` `_buildNotesPanel()` (commit `5ea7a93`).
+  - **GAP-277** — ATS fail does not block download (by design — it's advisory); marking as RESOLVED-DESIGN.
+- **9 gaps resolved this cycle:**
+  - **GAP-279 RESOLVED** — cold-restore silent: `_restoreDecisions()` in `rewrite-review.js` now emits a one-time warning toast when prior decisions are restored (tracks `_restoreToastShown` flag to suppress duplicates).
+  - **GAP-283 RESOLVED** — cover letter word count targets reduced to match actual job spec: std → 250–300, exec → 300–400, academic → 400–500 (`master_data_routes.py:_cover_letter_word_count_instruction()`).
+  - **GAP-284 RESOLVED** — `queued` status added to `appStatusLabels`/`appStatusColors` in `session-switcher-ui.js` and to `_VALID_STATUSES` in `session_routes.py` and `generation_routes.py`.
+  - **GAP-281 RESOLVED** — narrative-thread advisory counter added to `check_persuasion()` in `cv_orchestrator.py`; amber advisory bar rendered in download tab when three themes have similar weight.
+  - **GAP-283 RESOLVED** — (see above)
+  - **GAP-286 RESOLVED** — non-confidential badge now shows unless `info.confidential === true` (fail-safe default in `auth-provider.js`).
+  - **GAP-288 RESOLVED** — paste char-count hint text now shown in empty state with minimum character count; `showLoadJobPanel()` calls `_updatePasteCharCount()` on render (`job-input.js`).
+  - **GAP-294 RESOLVED** — `Ctrl+Shift+R` keyboard shortcut added to `keyboard-shortcuts.js`; fires `confirmReRunPhase(step)` for the active step; help panel row added.
+- **Lint suite fixes (all files, no gap numbers):**
+  - Removed duplicate JS exports: `showSessionConflictBanner` from `fetch-utils.js`; `conflictRetryNow`/`conflictDismiss` from `fetch-utils.js`; `_ACTION_LABELS` from `session-actions.js` and `workflow-steps.js`; `applyHarvestSelections` from `finalise.js`; `loadTabContent` from `ui-core.js`; `formatSessionPhaseLabel`/`formatSessionTimestamp` from `utils.js`.
+  - Updated Python allowlist in `scripts/lint_duplicate_definitions.py` for CLI/MCP parity functions, standalone probe scripts, and `_load_master`/`_save_master` (TODO: consolidate).
+  - `npm run lint:duplicates` now passes clean.
+- **Test suite:** 1430 passed (2 new orchestrator tests from GAP-281 narrative-thread advisory).
+
 ## 2026-07-01 (Cycle 29) Reconciliation Notes
 
 Full 15-persona + heuristic `/cvUiReview` run (all agents spawned in parallel on commit `5aedf24`).

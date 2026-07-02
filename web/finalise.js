@@ -522,6 +522,5 @@ export {
   populateFinaliseTab,
   finaliseApplication,
   showHarvestSection,
-  applyHarvestSelections,
   _renderReadinessChecklist,
 };

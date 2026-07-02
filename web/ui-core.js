@@ -1964,7 +1964,7 @@ export {
   confirmDialog, openModal, closeModal, closeAllModals,
   showSessionConflictBanner,
   // Tab & stage management
-  setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage, loadTabContent,
+  setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage,
   // Chat
   toggleChat,
   // Model selector

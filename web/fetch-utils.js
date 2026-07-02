@@ -251,7 +251,6 @@ function setLoading(loading, label) {
 
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
-  showSessionConflictBanner, conflictRetryNow, conflictDismiss,
   handle409Conflict,
   llmFetch, abortCurrentRequest,
   _updateLLMStatusBar,

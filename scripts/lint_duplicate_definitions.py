@@ -48,6 +48,59 @@ ALLOWLIST = {
         "web/ui-core.js",
         "web/session-switcher-ui.js",
     },
+
+    # Python: CLI (scripts/cli.py) and MCP server (scripts/mcp_server.py)
+    # are intentional mirrors of each other — both expose the same workflow
+    # commands through different transport layers. Consolidating them into a
+    # shared module is a future refactor (tracked separately).
+    "python:decisions_submit":        {"scripts/cli.py", "scripts/mcp_server.py"},
+    "python:job_submit_text":         {"scripts/cli.py", "scripts/mcp_server.py"},
+    "python:persuasion_check_submit": {"scripts/cli.py", "scripts/mcp_server.py"},
+    "python:rewrites_approve":        {"scripts/cli.py", "scripts/mcp_server.py"},
+    "python:rewrites_submit":         {"scripts/cli.py", "scripts/mcp_server.py"},
+    "python:session_list":            {"scripts/cli.py", "scripts/mcp_server.py"},
+    "python:session_new":             {"scripts/cli.py", "scripts/mcp_server.py"},
+    "python:session_save":            {"scripts/cli.py", "scripts/mcp_server.py"},
+    "python:session_status":          {"scripts/cli.py", "scripts/mcp_server.py"},
+    "python:spell_check_submit":      {"scripts/cli.py", "scripts/mcp_server.py"},
+
+    # Python: probe/benchmark scripts are independent standalone tools that
+    # happen to define local helpers with common names.  They are never
+    # imported by each other or by the main application.
+    "python:classify_error": {
+        "scripts/anyllm_probe_bare_current_models.py",
+        "scripts/anyllm_probe_current_models.py",
+        "scripts/anyllm_probe_dual_model_styles.py",
+        "scripts/anyllm_probe_openai_family_matrix.py",
+    },
+    "python:_make_orchestrator": {
+        "scripts/benchmark_cv_render.py",
+        "scripts/train_layout_estimator.py",
+    },
+    "python:_read_pdf_page_count": {
+        "scripts/routes/generation_routes.py",
+        "scripts/train_layout_estimator.py",
+    },
+    "python:_resolve_output_dir": {
+        "scripts/copy_cv_assets.py",
+        "scripts/cv-preview.py",
+    },
+    "python:_resolve_source_dir": {
+        "scripts/copy_cv_assets.py",
+        "scripts/cv-preview.py",
+    },
+
+    # Python: _load_master and _save_master exist in both master_data_routes.py
+    # (simpler versions for route-level use) and web_app.py (with validation).
+    # TODO: consolidate to a single shared helper; tracked as a future refactor.
+    "python:_load_master": {
+        "scripts/routes/master_data_routes.py",
+        "scripts/web_app.py",
+    },
+    "python:_save_master": {
+        "scripts/routes/master_data_routes.py",
+        "scripts/web_app.py",
+    },
 }
 
 # Top-level Python names that are *expected* to recur across independent

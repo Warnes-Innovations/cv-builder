@@ -43,6 +43,9 @@ htmlcov/
 /worktrees/
 .claude/worktrees
 
+# Personal Claude Code permission overrides (machine/user-specific)
+.claude/settings.local.json
+
 # Throwaway scripts and scratch files
 /tmp/
 *.bak
