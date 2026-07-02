@@ -1,9 +1,11 @@
 """Master data management, summary, cover letter, and screening routes."""
+import copy
 import logging
 import json
 import re
 import shutil
 import subprocess
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -19,7 +21,10 @@ from utils.bibtex_parser import (
     parse_bibtex_file,
     serialize_publications_to_bibtex,
 )
+from utils.git_helpers import git_commit_error as _git_commit_error, git_push_if_remote as _git_push_if_remote
 from utils.llm_client import LLMError
+from utils.master_data_mutations import _apply_master_data_change
+from utils.master_data_validator import validate_master_data
 
 
 logger = logging.getLogger(__name__)
@@ -472,6 +477,252 @@ def create_blueprint(deps):
         except Exception as e:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update skill"}), 500
+
+    # ------------------------------------------------------------------
+    # AI-driven master-data update (GAP-01): NL instruction / document
+    # ingestion -> proposed diff -> confirm-and-write. See the reviewed
+    # plan for full design rationale (committee-reviewed, 3 rounds, 17
+    # personas): natural-language + document-ingestion updates that always
+    # require explicit per-item confirmation before any write.
+    # ------------------------------------------------------------------
+
+    _PENDING_PROPOSAL_TTL_SECONDS = 3600
+
+    def _mdu_prune_pending(conversation) -> None:
+        """Drop pending proposals older than the TTL. Called at the start of every propose."""
+        pending = conversation.state.get('pending_master_data_proposals')
+        if not isinstance(pending, dict):
+            return
+        now = datetime.now(timezone.utc)
+        stale_ids = []
+        for pid, entry_data in pending.items():
+            created_at = entry_data.get('created_at')
+            try:
+                created = datetime.fromisoformat(created_at) if created_at else None
+            except (TypeError, ValueError):
+                created = None
+            if created is None or (now - created).total_seconds() > _PENDING_PROPOSAL_TTL_SECONDS:
+                stale_ids.append(pid)
+        for pid in stale_ids:
+            pending.pop(pid, None)
+
+    def _mdu_run_propose(entry, source: str, text: str, prior_clarifications):
+        """Shared propose logic for both the nl-update and ingest-document routes."""
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
+        llm = llm_client_ref['value']
+        if llm is None:
+            return jsonify({"ok": False, "error": "No LLM configured"}), 503
+
+        try:
+            master, _ = load_master(str(orchestrator.master_data_path))
+        except Exception:
+            logger.exception("Failed to load master data for propose")
+            return jsonify({"ok": False, "error": "Failed to load master data"}), 500
+
+        try:
+            result = orchestrator.propose_master_data_update(
+                text, master, source=source, prior_clarifications=prior_clarifications,
+            )
+        except Exception:
+            logger.exception("propose_master_data_update failed")
+            return jsonify({"ok": False, "error": "Failed to generate proposal", "changes": []}), 500
+
+        if result.get('error') == 'clarify':
+            return jsonify({
+                "ok": True,
+                "requires_clarification": True,
+                "clarification_question": result.get('clarification_question', ''),
+                "confidence": result.get('confidence'),
+            })
+        if result.get('error'):
+            return jsonify({"ok": False, "error": result['error'], "changes": []}), 200
+
+        changes = result.get('changes') or []
+        _mdu_prune_pending(conversation)
+        pending = conversation.state.setdefault('pending_master_data_proposals', {})
+        proposal_id = f'mdup_{uuid.uuid4().hex[:16]}'
+        pending[proposal_id] = {
+            'source':     source,
+            'changes':    changes,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+        }
+        conversation._save_session()
+        return jsonify({"ok": True, "changes": changes, "proposal_id": proposal_id})
+
+    @bp.post("/api/master-data/nl-update/propose")
+    def master_data_nl_update_propose():
+        """Propose a structured master-data diff from a natural-language instruction."""
+        entry = get_session()
+        validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
+        with entry.lock:
+            body = request.get_json(silent=True) or {}
+            instruction = str(body.get('instruction') or '').strip()
+            if not instruction:
+                return jsonify({"ok": False, "error": "instruction is required"}), 400
+            if len(instruction) > 4000:
+                return jsonify({"ok": False, "error": "instruction is too long (max 4000 characters)"}), 400
+            return _mdu_run_propose(entry, 'nl_instruction', instruction, body.get('prior_clarifications'))
+
+    @bp.post("/api/master-data/ingest-document/propose")
+    def master_data_ingest_document_propose():
+        """Propose a structured master-data diff from bulk document text (old CV / LinkedIn export)."""
+        entry = get_session()
+        validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
+        with entry.lock:
+            body = request.get_json(silent=True) or {}
+            text = str(body.get('text') or '').strip()
+            if not text:
+                return jsonify({"ok": False, "error": "text is required (paste or upload a document first)"}), 400
+            if len(text) > 60000:
+                return jsonify({"ok": False, "error": "document text is too long (max 60,000 characters)"}), 400
+            return _mdu_run_propose(entry, 'document_ingestion', text, body.get('prior_clarifications'))
+
+    @bp.post("/api/master-data/confirm-update")
+    def master_data_confirm_update():
+        """Apply a previously-proposed set of AI-driven master-data changes, write, and git-commit.
+
+        Two-phase staleness handling: if any selected change no longer applies
+        cleanly against the freshly-loaded master data (e.g. its parent_id was
+        removed via a structured editor since the proposal was made), nothing
+        is written this call — the caller must resubmit with a reduced
+        `selected_ids` as an explicit, separate confirmation.
+        """
+        entry = get_session()
+        validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
+        sid = entry.session_id
+        with entry.lock:
+            body = request.get_json(silent=True) or {}
+            proposal_id = str(body.get('proposal_id') or '').strip()
+            selected_ids = body.get('selected_ids') or []
+
+            pending = conversation.state.get('pending_master_data_proposals') or {}
+            proposal = pending.get(proposal_id)
+            if not proposal:
+                return jsonify({"ok": False, "error": "Proposal not found or expired. Please regenerate the proposal."}), 404
+
+            all_changes = {c['id']: c for c in proposal.get('changes', [])}
+            selected = [all_changes[cid] for cid in selected_ids if cid in all_changes]
+            if not selected:
+                return jsonify({'ok': True, 'written_count': 0, 'diff_summary': [], 'commit_hash': None})
+
+            try:
+                master, master_path = load_master(str(orchestrator.master_data_path))
+            except Exception:
+                logger.exception("Failed to load master data for confirm-update")
+                return jsonify({"ok": False, "error": "Failed to load master data"}), 500
+
+            # Re-validate every selected change against the FRESH master data —
+            # it may have drifted since the proposal was generated (a structured
+            # editor could have removed the target entry in another tab).
+            stale_changes: List[Dict[str, Any]] = []
+            applicable_changes: List[Dict[str, Any]] = []
+            for change in selected:
+                trial = copy.deepcopy(master)
+                applied = _apply_master_data_change(trial, change)
+                if not applied:
+                    stale_changes.append({'id': change['id'], 'label': change.get('label', ''), 'reason': 'target no longer exists or is no longer applicable'})
+                    continue
+                schema_result = validate_master_data(trial)
+                if not schema_result.valid:
+                    stale_changes.append({'id': change['id'], 'label': change.get('label', ''), 'reason': 'would break master data validation'})
+                    continue
+                applicable_changes.append(change)
+
+            if stale_changes:
+                return jsonify({
+                    'ok': False,
+                    'stale_changes': stale_changes,
+                    'applicable_changes': [{'id': c['id'], 'label': c.get('label', '')} for c in applicable_changes],
+                })
+
+            proposal_source = proposal.get('source', 'nl_instruction')
+            diff_summary: List[Dict[str, Any]] = []
+            commit_lines: List[str] = []
+            for change in selected:
+                provenance = {
+                    'source':      change.get('source', proposal_source),
+                    'rationale':   change.get('rationale', ''),
+                    'proposal_id': proposal_id,
+                }
+                applied = _apply_master_data_change(master, change, provenance=provenance)
+                diff_summary.append({
+                    'id':      change['id'],
+                    'section': change.get('section'),
+                    'op':      change.get('op'),
+                    'applied': applied,
+                    'label':   change.get('label', ''),
+                })
+                if applied:
+                    commit_lines.append(
+                        f"- {change['id']} [{change.get('section')}/{change.get('op')}] "
+                        f"{change.get('label', '')} — {change.get('rationale', '')}"
+                    )
+
+            try:
+                save_master(master, master_path)
+            except ValueError as e:
+                # _save_master already restored the backup on schema-validation failure.
+                return jsonify({"ok": False, "error": str(e)}), 422
+            except Exception:
+                logger.exception("Failed to save master data during confirm-update")
+                return jsonify({"ok": False, "error": "Failed to save master data"}), 500
+
+            orchestrator.master_data = master
+
+            label = 'natural-language update' if proposal_source == 'nl_instruction' else 'document ingestion'
+            commit_subject = f"chore: Update master CV data via {label} ({datetime.now().strftime('%Y-%m-%d')})"
+            commit_msg = commit_subject + ('\n\n' + '\n'.join(commit_lines) if commit_lines else '')
+
+            commit_hash = None
+            git_error = None
+            push_error = None
+            try:
+                subprocess.run(
+                    ['git', '-C', str(master_path.parent), 'add', master_path.name],
+                    check=True, capture_output=True,
+                )
+                result = subprocess.run(
+                    ['git', '-C', str(master_path.parent), 'commit', '-m', commit_msg],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
+                    commit_hash = m.group(1) if m else None
+                    push_error = _git_push_if_remote(str(master_path.parent))
+                else:
+                    git_error = _git_commit_error(
+                        'Git commit failed. See server logs for details.',
+                        result.stderr.strip() or result.stdout.strip(),
+                    )
+            except Exception as git_exc:
+                logger.warning("Git commit raised unexpectedly: %s", git_exc)
+                git_error = _git_commit_error('Git commit failed. See server logs for details.', str(git_exc))
+
+            pending.pop(proposal_id, None)
+            conversation._save_session()
+
+            written_count = sum(1 for d in diff_summary if d.get('applied'))
+            session_registry.touch(sid)
+            return jsonify({
+                'ok':            True,
+                'written_count': written_count,
+                'diff_summary':  diff_summary,
+                'commit_hash':   commit_hash,
+                'git_error':     git_error,
+                'push_error':    push_error,
+            })
 
     @bp.post("/api/master-data/personal-info")
     def master_data_update_personal_info():

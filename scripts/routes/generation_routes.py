@@ -17,6 +17,7 @@ from flask import Blueprint, current_app, has_app_context, jsonify, request, sen
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
+from utils.git_helpers import git_commit_error as _git_commit_error, git_push_if_remote as _git_push_if_remote
 from utils.layout_digest import (
     TEMPLATE_VERSION as LAYOUT_TEMPLATE_VERSION,
     UPDATE_NOTE as LAYOUT_TEMPLATE_UPDATE_NOTE,
@@ -172,42 +173,6 @@ def _try_patch_metadata(conv: Any, updates: Dict) -> None:
     except Exception:
         if has_app_context():
             current_app.logger.warning('_try_patch_metadata failed silently', exc_info=True)
-
-
-def _git_commit_error(message: str, detail: Optional[str] = None) -> str:
-    if detail:
-        current_app.logger.error('%s %s', message, detail)
-    else:
-        current_app.logger.error(message)
-    return message
-
-
-def _git_push_if_remote(git_dir: str) -> Optional[str]:
-    """Push the current branch if the repo has any configured remotes.
-
-    Returns None on success (or when there is no remote), or an error
-    string if the push fails.  Never raises.
-    """
-    try:
-        remote_check = subprocess.run(
-            ['git', '-C', git_dir, 'remote'],
-            capture_output=True, text=True,
-        )
-        if not remote_check.stdout.strip():
-            return None  # no remotes configured
-
-        push_result = subprocess.run(
-            ['git', '-C', git_dir, 'push'],
-            capture_output=True, text=True,
-        )
-        if push_result.returncode != 0:
-            detail = push_result.stderr.strip() or push_result.stdout.strip()
-            current_app.logger.error('Git push failed. %s', detail)
-            return 'Git push failed. See server logs for details.'
-        return None
-    except Exception as exc:
-        current_app.logger.error('Git push failed. %s', exc)
-        return 'Git push failed. See server logs for details.'
 
 
 def _record_layout_safety_audit(

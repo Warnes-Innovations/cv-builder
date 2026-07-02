@@ -20,9 +20,10 @@ import logging
 import re
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime, date as _date
+from datetime import datetime, timezone, date as _date
 import subprocess
 import weasyprint  # noqa: F401  -- kept for test mock path (patch cv_orchestrator.weasyprint.HTML)
 from collections import Counter, defaultdict
@@ -35,7 +36,12 @@ from .scoring import (
 from .bibtex_parser import parse_bibtex_file, format_publication
 from .config import get_config
 from .llm_client import LLMClient
-from .master_data_validator import validate_master_data_file
+from .master_data_mutations import (
+    ALLOWED_OPS as _MDU_ALLOWED_OPS,
+    ALLOWED_SECTIONS as _MDU_ALLOWED_SECTIONS,
+    _apply_master_data_change as _mdu_apply_change,
+)
+from .master_data_validator import validate_master_data, validate_master_data_file
 from .session_data_view import SessionDataView
 from .prompt_safety import sanitize_instruction_text, scan_text_for_injection
 from .template_renderer import safe_css_size, safe_url
@@ -2974,6 +2980,417 @@ CONSTRAINTS (must follow all):
                     ),
                 }
             return {'proposals': [], 'error': f'Failed to generate content proposals: {e}'}
+
+    _MDU_DEDUP_THRESHOLD = 85
+
+    def _mdu_build_master_index(self, master: Dict[str, Any]) -> str:
+        """Compact, human-readable index of existing master data for prompt context.
+
+        Deliberately not a raw JSON dump of the whole file (which could be
+        large) — this gives the LLM enough to resolve "the project at Acme"
+        against company/title/date text and to judge duplication, at a
+        fraction of the token cost.
+        """
+        lines: List[str] = []
+        experiences = master.get('experience') or master.get('experiences') or []
+        lines.append('EXISTING EXPERIENCE ENTRIES:')
+        for exp in experiences:
+            if not isinstance(exp, dict):
+                continue
+            exp_id = exp.get('id', '')
+            title = exp.get('title', '')
+            company = exp.get('company', '')
+            start = exp.get('start_date', '')
+            end = exp.get('end_date', '') or 'present'
+            lines.append(f'- id={exp_id}: {title} at {company} ({start} - {end})')
+
+        skills = master.get('skills')
+        skill_names: List[str] = []
+        if isinstance(skills, list):
+            for s in skills:
+                skill_names.append(s.get('name', '') if isinstance(s, dict) else str(s))
+        elif isinstance(skills, dict):
+            for cat_val in skills.values():
+                items = cat_val.get('skills', []) if isinstance(cat_val, dict) else (cat_val if isinstance(cat_val, list) else [])
+                for s in items:
+                    skill_names.append(s.get('name', '') if isinstance(s, dict) else str(s))
+        if skill_names:
+            lines.append('EXISTING SKILLS: ' + ', '.join(sorted(set(n for n in skill_names if n))))
+
+        summaries = master.get('professional_summaries')
+        if isinstance(summaries, dict):
+            lines.append('EXISTING SUMMARY VARIANTS: ' + ', '.join(summaries.keys()))
+        elif isinstance(summaries, list) and summaries:
+            lines.append(f'EXISTING SUMMARY VARIANTS: {len(summaries)} unnamed variant(s)')
+
+        return '\n'.join(lines)
+
+    def _mdu_fuzzy_ratio(self, a: str, b: str) -> float:
+        """Similarity ratio 0-100. Uses rapidfuzz if available, else a stdlib fallback."""
+        try:
+            from rapidfuzz import fuzz  # optional accelerator, not a hard dependency
+            return fuzz.token_sort_ratio(a, b)
+        except ImportError:
+            a_tokens = set(re.findall(r'\w+', a.lower()))
+            b_tokens = set(re.findall(r'\w+', b.lower()))
+            if not a_tokens or not b_tokens:
+                return 0.0
+            overlap = len(a_tokens & b_tokens)
+            union = len(a_tokens | b_tokens)
+            return 100.0 * overlap / union if union else 0.0
+
+    def _mdu_identifying_text(self, change: Dict[str, Any]) -> str:
+        """Text used to fuzzy-match a proposed change against other entries."""
+        proposed = change.get('proposed')
+        if isinstance(proposed, dict):
+            if 'text' in proposed:
+                return str(proposed.get('text') or '')
+            if 'name' in proposed:
+                return str(proposed.get('name') or '')
+            if change.get('section') == 'experience':
+                return f"{proposed.get('company', '')} {proposed.get('title', '')} {proposed.get('start_date', '')}"
+            return json.dumps(proposed, sort_keys=True)
+        return str(proposed or '')
+
+    def _mdu_existing_entries_text(self, master: Dict[str, Any], section: str) -> List[Tuple[str, str]]:
+        """Return [(existing_id_or_label, identifying_text), ...] for a section, for dedup matching."""
+        out: List[Tuple[str, str]] = []
+        if section == 'experience':
+            for exp in (master.get('experience') or master.get('experiences') or []):
+                if not isinstance(exp, dict):
+                    continue
+                exp_id = str(exp.get('id', ''))
+                for ach in (exp.get('achievements') or exp.get('bullets') or []):
+                    text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
+                    if text:
+                        out.append((exp_id, text))
+                label = f"{exp.get('company', '')} {exp.get('title', '')} {exp.get('start_date', '')}"
+                out.append((exp_id, label))
+        elif section == 'skills':
+            skills = master.get('skills')
+            items = skills if isinstance(skills, list) else []
+            if isinstance(skills, dict):
+                for cat_val in skills.values():
+                    items = items + (cat_val.get('skills', []) if isinstance(cat_val, dict) else (cat_val if isinstance(cat_val, list) else []))
+            for s in items:
+                name = s.get('name', '') if isinstance(s, dict) else str(s)
+                if name:
+                    out.append((name, name))
+        return out
+
+    def _mdu_dedup_pass(self, master: Dict[str, Any], changes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Two-stage dedup: within this proposal batch, then against existing master data.
+
+        Stage 1 drops later within-batch near-duplicates outright (the LLM
+        proposed the same real-world fact twice in one response — showing the
+        user two rows for it helps no one). Stage 2 flags (does not drop)
+        near-duplicates of existing master-data entries via
+        `possible_duplicate_of`, since a true duplicate-vs-legitimate-update
+        judgment call belongs to the human reviewer.
+        """
+        # Stage 1: within-batch.
+        deduped: List[Dict[str, Any]] = []
+        seen_texts: List[Tuple[str, str]] = []  # (section, text)
+        for change in changes:
+            if change.get('op') != 'add':
+                deduped.append(change)
+                continue
+            section = change.get('section', '')
+            text = self._mdu_identifying_text(change)
+            is_dup = any(
+                s == section and text and self._mdu_fuzzy_ratio(text, t) >= self._MDU_DEDUP_THRESHOLD
+                for s, t in seen_texts
+            )
+            if is_dup:
+                continue  # drop — same fact already in this batch
+            seen_texts.append((section, text))
+            deduped.append(change)
+
+        # Stage 2: against existing master data — flag, don't drop.
+        for change in deduped:
+            if change.get('op') != 'add':
+                continue
+            section = change.get('section', '')
+            text = self._mdu_identifying_text(change)
+            if not text:
+                continue
+            for existing_id, existing_text in self._mdu_existing_entries_text(master, section):
+                if self._mdu_fuzzy_ratio(text, existing_text) >= self._MDU_DEDUP_THRESHOLD:
+                    change['possible_duplicate_of'] = existing_id
+                    break
+
+        return deduped
+
+    def _mdu_persuasion_flags(self, change: Dict[str, Any]) -> List[str]:
+        """Advisory (non-blocking) persuasion-quality flags for a proposed change's text.
+
+        Reuses check_persuasion()'s own detection logic rather than
+        reimplementing verb/quantification/vague-language heuristics.
+        """
+        proposed = change.get('proposed')
+        text = None
+        if change.get('section') == 'experience' and isinstance(proposed, dict):
+            text = proposed.get('text')
+        elif change.get('section') == 'professional_summaries' and isinstance(proposed, str):
+            text = proposed
+        if not text or not str(text).strip():
+            return []
+        try:
+            result = self.check_persuasion([{'id': '_mdu_tmp', 'achievements': [{'text': text}]}])
+        except Exception:
+            return []
+        flags: List[str] = []
+        for finding in (result.get('findings') or []):
+            for issue in (finding.get('issues') or []):
+                suggestion = issue.get('suggestion') or issue.get('type')
+                if suggestion:
+                    flags.append(str(suggestion))
+        return flags
+
+    def propose_master_data_update(
+        self,
+        instruction_or_text: str,
+        master: Dict[str, Any],
+        *,
+        source: str,
+        prior_clarifications: Optional[List[Dict[str, str]]] = None,
+    ) -> Dict[str, Any]:
+        """Propose a structured Master_CV_Data.json diff from an NL instruction or document text.
+
+        Args:
+            instruction_or_text: user's NL instruction (source='nl_instruction'),
+                or extracted document text (source='document_ingestion').
+            master: current in-memory master data dict (for entity-resolution
+                context, existing-id validation, and dedup matching).
+            source: 'nl_instruction' | 'document_ingestion' — selects the
+                prompt variant and default change-count cap.
+            prior_clarifications: prior Q&A pairs from earlier turns of the
+                same clarification exchange, appended to the prompt on
+                resubmission so multi-round clarification is possible.
+
+        Returns:
+            On success: {'changes': [MasterDataChange, ...], 'error': None}.
+            On ambiguity/low-confidence: {'changes': [], 'error': 'clarify',
+                'clarification_question': str, 'confidence': float} — one
+                canonical shape regardless of which condition triggered it
+                (unlike apply_layout_instruction's two inconsistent branches).
+            On unsafe input (fully stripped by sanitization):
+                {'changes': [], 'error': 'unsafe_instruction', 'details': str}.
+            On any other failure: {'changes': [], 'error': str}.
+        """
+        raw_text = str(instruction_or_text or '')
+        sanitized_text, safety_findings = sanitize_instruction_text(raw_text)
+        sanitized_text = re.sub(r'\s+', ' ', sanitized_text).strip(' ,;:-')
+        if not sanitized_text:
+            return {
+                'changes': [],
+                'error': 'unsafe_instruction',
+                'details': (
+                    'The instruction or document text only contained unsafe '
+                    'prompt-like directives after sanitization.'
+                ),
+            }
+
+        master_index = self._mdu_build_master_index(master)
+
+        prior_context = ''
+        if prior_clarifications:
+            qa_lines = [
+                f'- Q: {qa.get("question", "")}\n  A: {qa.get("answer", "")}'
+                for qa in prior_clarifications
+            ]
+            prior_context = '\n\nPRIOR CLARIFICATION EXCHANGE:\n' + '\n'.join(qa_lines)
+
+        if source == 'nl_instruction':
+            max_changes = 5
+            task_description = (
+                'The user gave a plain-English instruction describing a change to make to '
+                'their master CV data. Resolve which existing entry (if any) the instruction '
+                'refers to by matching company/title/date text against the index above — '
+                'never invent or guess an id that is not listed there.'
+            )
+        else:
+            max_changes = 30
+            task_description = (
+                'The text below is extracted from an uploaded document (an old CV or '
+                'LinkedIn export). Extract structured additions to the master data — new '
+                'experience entries, achievements, skills, education, awards, or '
+                'certifications — that are not already present (see the existing-data index '
+                'above). Do not fabricate content not supported by the document text.'
+            )
+
+        prompt = f"""You are a master-CV-data update assistant. Your job is to turn the input below into a structured, reviewable set of proposed changes to a candidate's master CV data — never write directly to the data yourself.
+
+EXISTING MASTER DATA (for entity resolution and duplicate-avoidance):
+{master_index}
+
+{task_description}
+
+INPUT:
+\"\"\"{sanitized_text}\"\"\"
+{prior_context}
+
+YOUR TASK:
+1. If you cannot confidently identify which existing entry this input refers to (e.g. more than one experience could plausibly match, or the input clearly references something not in the existing data with no clear place to add it), do NOT guess — set "requires_clarification": true and ask a specific question in "clarification_question" that names the ambiguous options by company/title. Otherwise set "requires_clarification": false.
+2. If you are unsure for any other reason (vague input, low signal), set "confidence" below 0.7. Otherwise set it to your genuine confidence, up to 1.0.
+3. When proposing new or updated text (achievement bullets, summary text), write it with a strong opening verb and quantify impact where the input actually supports it — do NOT invent numbers, dates, or facts not present in the input.
+4. Propose at most {max_changes} changes.
+
+Return ONLY valid JSON (no markdown, no extra text):
+
+{{
+  "requires_clarification": false,
+  "clarification_question": "",
+  "confidence": 0.95,
+  "changes": [
+    {{
+      "section": "experience",
+      "op": "add",
+      "parent_id": "exp_005",
+      "field": "achievements",
+      "proposed": {{"text": "Delivered a Kubernetes-based deployment pipeline, cutting release time by 40%.", "keywords": ["Kubernetes"]}},
+      "label": "New achievement — Senior Engineer @ Acme (exp_005)",
+      "rationale": "Input described a Kubernetes project at the company matching exp_005."
+    }}
+  ]
+}}
+
+"section" must be one of: personal_info, experience, skills, education, awards, certifications, selected_achievements, professional_summaries.
+"op" must be "add" or "update" — never "delete"; deletions are handled through the existing structured editors, not this path.
+"parent_id" is the existing entry's id when adding a nested item (e.g. an achievement) into it, or updating a field on it; omit/null for a brand-new top-level entry (e.g. an entirely new experience) or for sections without nested ids (skills, education, awards, certifications, selected_achievements, professional_summaries).
+If requires_clarification is true, return an empty "changes" list.
+"""
+
+        response = ''
+        try:
+            response = self.llm.call_llm(
+                prompt=prompt,
+                system_prompt=(
+                    'You propose precise, minimal, well-supported additions to a '
+                    'candidate\'s master CV data record. You never fabricate facts, '
+                    'numbers, or dates not present in the input, and you never guess '
+                    'at an existing entry\'s identity when genuinely ambiguous.'
+                ),
+                temperature=0.2 if source == 'nl_instruction' else 0.25,
+            )
+
+            if not response or not response.strip():
+                return {'changes': [], 'error': 'LLM returned an empty response'}
+
+            try:
+                result = json.loads(response)
+            except json.JSONDecodeError:
+                result = self.llm._parse_json_response(response)
+
+            if not isinstance(result, dict):
+                return {'changes': [], 'error': 'LLM response was not a JSON object'}
+
+            requires_clarification = bool(result.get('requires_clarification', False))
+            confidence = result.get('confidence', 0.7)
+            try:
+                confidence = float(confidence)
+            except (TypeError, ValueError):
+                confidence = 0.7
+
+            if requires_clarification or confidence < 0.7:
+                question = str(result.get('clarification_question') or '').strip()
+                if not question:
+                    question = (
+                        f'Could you clarify: "{sanitized_text[:200]}"? '
+                        'I could not confidently determine what to update.'
+                    )
+                return {
+                    'changes': [],
+                    'error': 'clarify',
+                    'clarification_question': question,
+                    'confidence': confidence,
+                }
+
+            raw_changes = result.get('changes') or []
+            if not isinstance(raw_changes, list):
+                return {'changes': [], 'error': 'LLM response "changes" was not a list'}
+
+            # Layer 1: shape/allow-list validation, plus parent_id existence check
+            # (the concrete anti-hallucination guard for "add it to exp_005" cases).
+            existing_ids = {
+                str(exp.get('id', ''))
+                for exp in (master.get('experience') or master.get('experiences') or [])
+                if isinstance(exp, dict) and exp.get('id')
+            }
+            validated: List[Dict[str, Any]] = []
+            for raw in raw_changes:
+                if not isinstance(raw, dict):
+                    continue
+                section = str(raw.get('section') or '').strip()
+                op = str(raw.get('op') or '').strip()
+                if section not in _MDU_ALLOWED_SECTIONS or op not in _MDU_ALLOWED_OPS:
+                    continue
+                proposed = raw.get('proposed')
+                if proposed is None or proposed == '':
+                    continue
+                identifying = proposed if isinstance(proposed, str) else json.dumps(proposed)
+                if len(identifying) > 2000:
+                    continue  # sanity cap against degenerate LLM output
+                parent_id = raw.get('parent_id') or None
+                if parent_id and str(parent_id) not in existing_ids:
+                    continue  # references an id that doesn't exist — drop, don't guess
+                validated.append({
+                    'id':                  f'mdu_{uuid.uuid4().hex[:12]}',
+                    'section':             section,
+                    'op':                  op,
+                    'parent_id':           str(parent_id) if parent_id else None,
+                    'field':               raw.get('field'),
+                    'original':            raw.get('original'),
+                    'proposed':            proposed,
+                    'label':               str(raw.get('label') or '').strip() or f'{op} {section}',
+                    'rationale':           str(raw.get('rationale') or '').strip(),
+                    'source':              source,
+                })
+
+            # Dedup: within-batch drop, then vs-master-data flag.
+            validated = self._mdu_dedup_pass(master, validated)
+
+            # Persuasion advisory (non-blocking).
+            for change in validated:
+                flags = self._mdu_persuasion_flags(change)
+                if flags:
+                    change['persuasion_flags'] = flags
+
+            # Layer 2: dry-run apply + schema validation. Drop anything that
+            # would not actually apply cleanly, so the user never sees a
+            # proposal that would fail validation later.
+            final_changes: List[Dict[str, Any]] = []
+            for change in validated:
+                trial = copy.deepcopy(master)
+                applied = _mdu_apply_change(trial, change)
+                if not applied:
+                    continue
+                schema_result = validate_master_data(trial)
+                if not schema_result.valid:
+                    continue
+                final_changes.append(change)
+
+            return {'changes': final_changes, 'error': None}
+
+        except (json.JSONDecodeError, ValueError) as e:
+            return {'changes': [], 'error': f'LLM response was not valid JSON: {e}'}
+        except Exception as e:
+            error_type = type(e).__name__.lower()
+            error_text = str(e).lower()
+            if (
+                isinstance(e, TimeoutError)
+                or 'timeout' in error_type
+                or 'time out' in error_text
+                or 'timed out' in error_text
+            ):
+                return {
+                    'changes': [],
+                    'error': (
+                        'Master data update request timed out. Try a more specific '
+                        'instruction, or a shorter document excerpt.'
+                    ),
+                }
+            return {'changes': [], 'error': f'Failed to generate master data update proposal: {e}'}
 
     def analyze_harvest_candidates(
         self,
