@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 41)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 43)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,13 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review.
+
+## 2026-07-02 (Cycle 43) Reconciliation Notes
+
+CSS token layer major expansion (GAP-133 PARTIAL → near-complete PARTIAL).
+
+- **GAP-133 PARTIAL (major advance)** — Added 31 new semantic tokens to `:root` in `web/styles.css`, expanding from 48 to 79 tokens. New token families: gray scale (gray-50,100,200,400), sky blue (sky-100,200,500), emerald/success (emerald-50,100,900 + green-700), amber additions (amber-400,600,900), yellow (yellow-50,100), orange stale/dirty family (orange-50,200,300,500,700,800,900), danger/rose buttons (danger-bg, danger-bg-md, danger-text, danger-border), violet/accent (violet-50,300,500,600). Raw hex in CSS rules reduced from ~89 to 18 (80% reduction in one batch). All remaining 18 literals are single-use contextual values (session-dot greens, spinner colors, indigo q-draft trio, custom teal, violet-800, dark-blue link). Inline styles in index.html (~227) deferred until after GAP-01 worktree lands.
+- **Test suite:** 1432 passed.
 
 ## 2026-07-02 (Cycle 41) Reconciliation Notes
 
