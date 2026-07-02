@@ -83,11 +83,12 @@ function updateAuthBadge(authStatus, provider = null) {
   const activeProvider = provider || window.currentProvider || null;
   const isCopilotOAuth = activeProvider === 'copilot-oauth';
 
-  // Non-confidential badge: show when the active provider has confidential:false.
+  // Non-confidential badge: show unless the provider explicitly marks confidential:true.
+  // Default is non-confidential (fail-safe — most providers retain/review API data).
   const ncBadge = document.getElementById('llm-non-confidential-badge');
   if (ncBadge && activeProvider) {
     const info = getProviderInfo(activeProvider);
-    ncBadge.style.display = (info && info.confidential === false) ? '' : 'none';
+    ncBadge.style.display = (info && info.confidential !== true) ? '' : 'none';
   }
 
   if (activeProvider && !isCopilotOAuth) {

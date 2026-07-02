@@ -22,6 +22,7 @@ let rewriteDecisions = {};
 let _rewritePanelCache = null;
 let persuasionWarningsAcknowledged = false;
 let _warningsByRewriteId = {};  // Map from rewrite id → warning list (Path 1)
+let _restoreToastShown = false;
 
 function syncRewriteGlobals() {
   if (typeof window === 'undefined') {
@@ -53,11 +54,18 @@ let _backendRewriteAudit = [];
 function _restoreDecisions() {
   const key = _decisionsKey();
   if (!key) return;
+  const hadDecisions = Object.keys(rewriteDecisions).length > 0;
   try {
     const saved = JSON.parse(localStorage.getItem(key) || 'null');
     if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
       Object.assign(rewriteDecisions, saved);
       syncRewriteGlobals();
+      if (!hadDecisions && !_restoreToastShown && Object.keys(rewriteDecisions).length > 0) {
+        _restoreToastShown = true;
+        if (typeof showToast === 'function') {
+          showToast('Your previous rewrite decisions have been restored — you can still change them.', 'warning', 6000);
+        }
+      }
       return;
     }
   } catch (_) {}
@@ -76,6 +84,12 @@ function _restoreDecisions() {
     if (Object.keys(rewriteDecisions).length > 0) {
       syncRewriteGlobals();
       _persistDecisions();
+      if (!hadDecisions && !_restoreToastShown) {
+        _restoreToastShown = true;
+        if (typeof showToast === 'function') {
+          showToast('Your previous rewrite decisions have been restored — you can still change them.', 'warning', 6000);
+        }
+      }
     }
   }
 }

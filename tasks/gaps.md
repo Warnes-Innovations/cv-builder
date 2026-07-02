@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-01 (cycle 29)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 30)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -2797,7 +2797,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-274: Silent Back-Navigation on Completed Workflow Steps
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — duplicate of GAP-250. `_showReRunConfirmModal(step, 'back-nav', doNavigate)` already called at `web/workflow-steps.js:1061` when back-navigating to a completed step with downstream completed steps. Fixed in commit `ea87540` (2026-06-30). Cycle 29 review agents re-discovered it without being aware of GAP-250.
 **Discovered:** 2026-07-01 (cycle 29) by ux-expert, applicant.
 **Description:** Clicking a completed step pill in the workflow nav navigates silently with no destructive-action warning. Only the ↻ re-run button (`confirmReRunPhase()`) shows a confirmation dialog. Direct step-pill click bypasses this gate, potentially causing users to navigate back and lose unsaved downstream state without warning.
 **Affected stories:** US-U1, US-A12
@@ -2815,7 +2815,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-276: Post-Archive Notes Not Editable in Sessions Modal
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — duplicate of GAP-210. Notes edit textarea (lines 404–413 `web/session-switcher-ui.js`) and edit-notes button (line 420) are wired to `PATCH /api/sessions/metadata` (line 704). Added in commit `edc8e49`. Cycle 29 review agents did not detect the implementation.
 **Discovered:** 2026-07-01 (cycle 29) by recruiter-ops.
 **Description:** The sessions modal inline-edit widget in `session-switcher-ui.js` exposes only a status dropdown for post-archive editing. The backend `PATCH /api/sessions/metadata` endpoint accepts a `notes` field, but no notes input is wired in the frontend sessions modal. Recruiters cannot edit notes after archiving without re-opening the full session.
 **Affected stories:** US-O2
@@ -2824,7 +2824,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-277: ATS Validation Failure Does Not Block File Download
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED — `_renderDownloadGrid()` in `web/download-tab.js:163–167` blocks downloads per format for critical ATS failures; `_NON_BLOCKING_CHECKS` (line 150) lists advisory-only checks. Keyword fail blocks all formats. Introduced in commit `5ea7a93`. Cycle 29 review agents did not detect this implementation.
 **Discovered:** 2026-07-01 (cycle 29) by hr-ats.
 **Description:** Story US-H6 requires that any ATS validation check failure blocks the file download. The 17-check validation report is generated and persisted to `metadata.json`, and the ATS Report modal displays results, but the finalise/download path does not enforce a gate. Files are downloadable regardless of validation outcome.
 **Affected stories:** US-H6
@@ -2842,7 +2842,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-279: Cold-Restore of Prior Rewrite Decisions Fires Without User Notification
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02. Added `_restoreToastShown` flag and toast call in `_restoreDecisions()` (`web/rewrite-review.js:55–90`). Toast fires once per module init when decisions are actually loaded (both localStorage restore and cold-restore from backend audit paths). Message: "Your previous rewrite decisions have been restored — you can still change them." (warning style, 6s).
 **Discovered:** 2026-07-01 (cycle 29) by trust-compliance.
 **Description:** When a session is restored, prior accept/reject/edit decisions on rewrite cards are silently reapplied. The user sees pre-decided cards without being told that these decisions were made in a prior session and are being restored. This creates a trust gap — users may not realize they can still change their prior decisions.
 **Affected stories:** US-C2
@@ -2878,7 +2878,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-283: Cover Letter Word Count Target Overshoots Story Specification
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02. Updated `_cover_letter_word_count_instruction()` in `scripts/routes/master_data_routes.py:118–122` to: standard 250–300w, executive 300–400w, academic/research 400–500w. Aligned with US-P3 ≤300w ceiling for standard roles.
 **Discovered:** 2026-07-01 (cycle 29) by persuasion-expert.
 **Description:** `_cover_letter_word_count_instruction()` returns 300–400 words for standard roles. Story US-P3 specifies ≤300 words. The current implementation produces cover letters 0–33% longer than the story's maximum.
 **Affected stories:** US-P3
@@ -2905,7 +2905,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-286: Non-Confidential Provider Badge Absent for Implicitly Non-Private Providers
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02. Changed `ncBadge.style.display` condition in `web/auth-provider.js:90` from `info.confidential === false` to `info && info.confidential !== true`. Badge now shows for any provider that doesn't explicitly declare `confidential: true`, making the fail-safe default visible.
 **Discovered:** 2026-07-01 (cycle 29) by trust-compliance.
 **Description:** The "Non-confidential" warning badge in the header only fires when a provider has `confidential: false` explicitly set. Providers without this field defined show no badge, leaving their data-handling opaque. Most providers implicitly are non-confidential.
 **Affected stories:** US-C1
@@ -2977,7 +2977,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-294: Keyboard Shortcut for Workflow Re-Run Not Implemented
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02. Added `Ctrl+Shift+R` handler to `_onKeyDown()` in `web/keyboard-shortcuts.js`. Finds the active step pill via DOM (`[id^="step-"].active`), calls `confirmReRunPhase(step)`. Also added to the `?` help panel table and docstring.
 **Discovered:** 2026-07-01 (cycle 29) by applicant, power-user.
 **Description:** `keyboard-shortcuts.js` implements `Ctrl+Enter` for primary phase-advance action, `A`/`R` for review cards, and `↑`/`↓` for card navigation, but provides no keyboard shortcut for the ↻ re-run action. Re-running a phase requires a mouse click on the step pill re-run button.
 **Affected stories:** US-A12, US-W1

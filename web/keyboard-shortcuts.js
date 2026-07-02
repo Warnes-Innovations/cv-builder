@@ -8,11 +8,12 @@
  * web/keyboard-shortcuts.js — Global keyboard shortcuts for workflow navigation.
  *
  * Shortcuts implemented:
- *   Ctrl+Enter   Trigger the primary action button on the current tab
- *   A            Accept the focused review card (rewrite / spell-check tabs)
- *   R            Reject the focused review card (rewrite / spell-check tabs)
- *   ↑ / ↓        Navigate between review cards on review tabs
- *   ?            Toggle keyboard shortcut help panel
+ *   Ctrl+Enter       Trigger the primary action button on the current tab
+ *   Ctrl+Shift+R     Re-run the current workflow phase (calls confirmReRunPhase)
+ *   A                Accept the focused review card (rewrite / spell-check tabs)
+ *   R                Reject the focused review card (rewrite / spell-check tabs)
+ *   ↑ / ↓            Navigate between review cards on review tabs
+ *   ?                Toggle keyboard shortcut help panel
  */
 
 /** Track which card is keyboard-focused on the current review tab. */
@@ -146,6 +147,7 @@ export function showKeyboardShortcutsPanel() {
       <table style="border-collapse:collapse;width:100%">
         <tbody>
           <tr><td style="padding:4px 12px 4px 0"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Trigger primary action on current step</td></tr>
+          <tr><td style="padding:4px 12px 4px 0"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td><td>Re-run current workflow phase</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Navigate between review cards</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>A</kbd></td><td>Accept focused card (rewrite / spell)</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>R</kbd></td><td>Reject focused card (rewrite / spell)</td></tr>
@@ -187,6 +189,17 @@ function _onKeyDown(e) {
   // send-box is focused, to match the existing Enter behaviour there).
   if (e.ctrlKey && e.key === 'Enter') {
     _triggerPrimaryAction();
+    return;
+  }
+
+  // Ctrl+Shift+R → re-run current phase
+  if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+    const activeEl = document.querySelector('[id^="step-"].active');
+    const step = activeEl ? activeEl.id.replace('step-', '') : null;
+    if (step && typeof confirmReRunPhase === 'function') {
+      e.preventDefault();
+      confirmReRunPhase(step);
+    }
     return;
   }
 
