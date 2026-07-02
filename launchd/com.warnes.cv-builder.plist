@@ -42,8 +42,8 @@
     <integer>10</integer>
 
     <key>StandardOutPath</key>
-    <string>/Users/warnes/CV/cv-builder/logs/launchd-stdout.log</string>
+    <string>/Users/warnes/Library/Logs/cv-builder/launchd-stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/warnes/CV/cv-builder/logs/launchd-stderr.log</string>
+    <string>/Users/warnes/Library/Logs/cv-builder/launchd-stderr.log</string>
 </dict>
 </plist>
