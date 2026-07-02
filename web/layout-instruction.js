@@ -1112,10 +1112,16 @@ async function handleRegeneratePreviewAction() {
 /**
  * Show processing spinner (right-pane indicator for layout-instruction apply).
  */
-function showProcessing(show) {
+function showProcessing(show, label) {
   const indicator = document.getElementById('processing-indicator');
-  if (indicator) {
-    indicator.style.display = show ? 'block' : 'none';
+  if (!indicator) return;
+  indicator.style.display = show ? 'block' : 'none';
+  if (show && label) {
+    const p = indicator.querySelector('p');
+    if (p) p.textContent = label;
+  } else if (!show) {
+    const p = indicator.querySelector('p');
+    if (p) p.textContent = 'Applying instruction...';
   }
 }
 
@@ -1285,7 +1291,7 @@ async function generateFinalOutputs() {
    *   notes: Generates the final human-readable outputs from the confirmed preview and advances the UI into file review/finalise with the new artifact set.
    */
   try {
-    showProcessing(true);
+    showProcessing(true, 'Generating final files…');
 
     const freshness = stateManager.getLayoutFreshness();
     const generationState = stateManager.getGenerationState();

@@ -243,6 +243,13 @@ async function loadTabContent(tab) {
     case 'editor':
       await populateCVEditorTab();
       break;
+    case 'final_generate':
+      if (typeof populateFinalGenerateTab === 'function') {
+        await populateFinalGenerateTab(tabData.cv || {});
+      } else {
+        content.innerHTML = '<div class="empty-state"><div class="icon">📄</div><h3>Generated Files</h3><p>Generate final files to see downloads.</p></div>';
+      }
+      break;
     case 'download':
       if (tabData.cv && Object.keys(tabData.cv).length > 0) {
         await populateDownloadTab(tabData.cv);
