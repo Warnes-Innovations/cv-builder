@@ -92,7 +92,10 @@ def _is_exact_schema_org_context(value: Any) -> bool:
 
 class CVOrchestrator:
     """Orchestrates CV generation with LLM + utilities."""
-    
+
+    _TEMPLATES_DIR: Path = Path(__file__).parent.parent.parent / 'templates'
+    _CV_TEMPLATE_FILE: Path = _TEMPLATES_DIR / 'cv-template.html'
+
     def __init__(
         self,
         master_data_path: str,
@@ -961,8 +964,7 @@ class CVOrchestrator:
             get_config().get('generation.page_margin', '0.5in'),
         )
 
-        template_dir = Path(__file__).parent.parent.parent / 'templates'
-        template_file = template_dir / 'cv-template.html'
+        template_file = self._CV_TEMPLATE_FILE
         if not template_file.exists():
             raise FileNotFoundError(f"HTML template not found: {template_file}")
 
@@ -1098,13 +1100,10 @@ class CVOrchestrator:
         Returns a 2-tuple ``(html_output, pdf_output)``.
         """
         
-        # Get templates directory and template file
-        template_dir = Path(__file__).parent.parent.parent / 'templates'
-        template_file = template_dir / 'cv-template.html'
-        
+        template_file = self._CV_TEMPLATE_FILE
         if not template_file.exists():
             raise FileNotFoundError(f"HTML template not found: {template_file}")
-        
+
         # Render using Jinja2
         from .template_renderer import load_template, render_template
         template = load_template(str(template_file))
@@ -1173,7 +1172,7 @@ class CVOrchestrator:
         else:
             cv_data = {'personal_info': {'name': 'CV Data Error'}, 'professional_summary': 'Data loading failed'}
 
-        template_file = Path(__file__).parent.parent.parent / 'templates' / 'cv-template.html'
+        template_file = self._CV_TEMPLATE_FILE
         html_content = None
         if template_file.exists():
             try:
@@ -1183,7 +1182,7 @@ class CVOrchestrator:
             except Exception as exc:
                 logger.warning("Jinja2 render failed in Quarto fallback (%s); using simple HTML", exc)
 
-        if html_content is None:
+        if not html_content:
             html_content = self._create_fallback_html(cv_data)
 
         html_output.write_text(html_content, encoding='utf-8')
@@ -2356,8 +2355,7 @@ For manual generation:
         )
 
         # Render HTML template (no PDF conversion)
-        template_dir  = Path(__file__).parent.parent.parent / 'templates'
-        template_file = template_dir / 'cv-template.html'
+        template_file = self._CV_TEMPLATE_FILE
         if not template_file.exists():
             raise FileNotFoundError(f"HTML template not found: {template_file}")
 
