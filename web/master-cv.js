@@ -82,6 +82,10 @@ async function populateMasterTab(container = null) {
       label: `${exp.title || 'Role'} @ ${exp.company || 'Company'}`,
     }))
     .filter((x) => x.id);
+  // Full experience objects (including achievements), keyed by id, so
+  // editMasterExperience() can look up nested achievements without
+  // embedding arbitrary achievement text inside an inline onclick attribute.
+  window._masterExperienceFullData = experiences;
   const skills          = fullData.skills || [];
   const education       = fullData.education || [];
   const awards          = fullData.awards || [];
@@ -606,6 +610,16 @@ async function populateMasterTab(container = null) {
               <input type="text" id="exp-tags-input" class="edit-input" style="width:100%;"
                   placeholder="e.g. ml, leadership, python" />
             </div>
+            <div style="grid-column:1/-1;border-top:1px solid var(--cv-border);padding-top:14px;margin-top:4px;">
+              <label style="display:block;font-weight:600;margin-bottom:6px;">Achievements</label>
+              <div id="exp-achievements-editor-list"></div>
+              <div style="display:flex;gap:6px;margin-top:6px;">
+                <input type="text" id="exp-ach-new-input" class="edit-input" style="flex:1;"
+                    placeholder="Add an achievement or bullet…"
+                    onkeydown="if(event.key==='Enter'){event.preventDefault();_addExpAchievement();}" />
+                <button type="button" class="action-btn secondary" onclick="_addExpAchievement()">+ Add</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -644,6 +658,16 @@ async function populateMasterTab(container = null) {
                 placeholder="e.g. exp_123, exp_456" />
             <small style="display:block;margin-top:4px;color:#64748b;">Comma-separated IDs. A skill can be linked to multiple experiences.</small>
             <div id="skill-experience-hints" style="margin-top:6px;font-size:0.8em;color:#94a3b8;"></div>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label for="skill-aliases-input" style="display:block;font-weight:600;margin-bottom:4px;">Aliases (comma-separated, optional)</label>
+            <input type="text" id="skill-aliases-input" class="edit-input" style="width:100%;"
+                placeholder="e.g. JS, ECMAScript" />
+            <small style="display:block;margin-top:4px;color:#64748b;">Alternate names an ATS or reviewer might search for.</small>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label for="skill-years-input" style="display:block;font-weight:600;margin-bottom:4px;">Years of Experience (optional)</label>
+            <input type="number" id="skill-years-input" class="edit-input" style="width:120px;" min="0" step="0.5" />
           </div>
         </div>
         <div class="modal-footer">
@@ -901,14 +925,7 @@ function _renderExperiencesList(experiences) {
     const location = escapeHtml([loc.city, loc.state].filter(Boolean).join(', '));
     const dates   = escapeHtml([exp.start_date, exp.end_date || 'Present'].filter(Boolean).join(' – '));
     const achCount = (exp.achievements || []).length;
-    const expJson = escapeHtml(JSON.stringify({
-      id: exp.id || '', title: exp.title || '', company: exp.company || '',
-      city: loc.city || '', state: loc.state || '',
-      start_date: exp.start_date || '', end_date: exp.end_date || '',
-      employment_type: exp.employment_type || 'full_time',
-      importance: exp.importance || 5,
-      tags: (exp.tags || []).join(', '),
-    }));
+    const expId = escapeHtml(exp.id || '');
     return `
       <tr>
         <td>
@@ -919,7 +936,7 @@ function _renderExperiencesList(experiences) {
         <td style="font-size:0.85em;color:#475569;white-space:nowrap;">${dates}</td>
         <td style="text-align:center;color:#94a3b8;font-size:0.85em;">${achCount}</td>
         <td class="action-btns">
-          <button class="icon-btn" onclick="editMasterExperience(${expJson})"
+          <button class="icon-btn" onclick="editMasterExperience('${expId}')"
               aria-label="Edit experience: ${title}" title="Edit">✏️</button>
           <button class="icon-btn" onclick="deleteMasterExperience('${escapeHtml(exp.id || '')}', '${title}')"
               aria-label="Delete experience: ${title}" title="Delete">🗑️</button>
@@ -1975,17 +1992,93 @@ function showAddExperienceModal() {
   document.getElementById('exp-tags-input').value      = '';
   document.getElementById('master-exp-modal-title').textContent = 'Add Work Experience';
   document.getElementById('master-exp-modal-overlay').style.display = 'flex';
+  _masterExpModalAchievements = [];
+  _renderExpAchievementsEditor();
   _focusedElementBeforeModal = document.activeElement;
   setInitialFocus('master-exp-modal-overlay');
   trapFocus('master-exp-modal-overlay');
 }
 
-function editMasterExperience(exp) {
+// Working copy of the currently-edited experience's achievements while the
+// modal is open (GAP-19 16.11). editMasterExperience() takes an id (not the
+// full object) and looks it up from window._masterExperienceFullData —
+// achievement text can contain quotes/unicode that would be fragile to
+// embed directly inside an inline onclick attribute.
+let _masterExpModalAchievements = [];
+
+function _achievementText(a) {
+  return typeof a === 'string' ? a : (a && a.text) || '';
+}
+
+function _renderExpAchievementsEditor() {
+  const container = document.getElementById('exp-achievements-editor-list');
+  if (!container) return;
+  const lastIdx = _masterExpModalAchievements.length - 1;
+  container.innerHTML = _masterExpModalAchievements.map((ach, idx) => `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+      <input type="text" class="edit-input exp-ach-text-input" data-idx="${idx}" style="flex:1;"
+          value="${escapeHtml(_achievementText(ach))}" aria-label="Achievement ${idx + 1} text" />
+      <button type="button" class="icon-btn" onclick="_moveExpAchievement(${idx}, -1)"
+          aria-label="Move achievement ${idx + 1} up" title="Move up" ${idx === 0 ? 'disabled' : ''}>↑</button>
+      <button type="button" class="icon-btn" onclick="_moveExpAchievement(${idx}, 1)"
+          aria-label="Move achievement ${idx + 1} down" title="Move down" ${idx === lastIdx ? 'disabled' : ''}>↓</button>
+      <button type="button" class="icon-btn" onclick="_deleteExpAchievement(${idx})"
+          aria-label="Delete achievement ${idx + 1}" title="Delete">🗑️</button>
+    </div>`).join('') || '<p style="color:#94a3b8;font-size:0.85em;margin:0 0 6px;">No achievements yet.</p>';
+}
+
+// Read any in-progress edits out of the achievement text inputs before a
+// reorder/delete/save rebuilds the list from _masterExpModalAchievements —
+// otherwise an un-submitted text edit would be silently lost on re-render.
+function _syncExpAchievementsFromInputs() {
+  document.querySelectorAll('.exp-ach-text-input').forEach((input) => {
+    const idx = parseInt(input.dataset.idx, 10);
+    const ach = _masterExpModalAchievements[idx];
+    if (typeof ach === 'string' || ach == null) {
+      _masterExpModalAchievements[idx] = input.value;
+    } else {
+      ach.text = input.value;
+    }
+  });
+}
+
+function _addExpAchievement() {
+  const input = document.getElementById('exp-ach-new-input');
+  const text = (input.value || '').trim();
+  if (!text) return;
+  _syncExpAchievementsFromInputs();
+  _masterExpModalAchievements.push(text);
+  input.value = '';
+  _renderExpAchievementsEditor();
+}
+
+function _moveExpAchievement(idx, delta) {
+  _syncExpAchievementsFromInputs();
+  const target = idx + delta;
+  if (target < 0 || target >= _masterExpModalAchievements.length) return;
+  const [item] = _masterExpModalAchievements.splice(idx, 1);
+  _masterExpModalAchievements.splice(target, 0, item);
+  _renderExpAchievementsEditor();
+}
+
+function _deleteExpAchievement(idx) {
+  _syncExpAchievementsFromInputs();
+  _masterExpModalAchievements.splice(idx, 1);
+  _renderExpAchievementsEditor();
+}
+
+function editMasterExperience(id) {
+  const exp = (window._masterExperienceFullData || []).find((e) => e.id === id);
+  if (!exp) {
+    showAlertModal('❌ Error', 'Could not find that experience entry — try refreshing the tab.');
+    return;
+  }
+  const loc = exp.location || {};
   document.getElementById('exp-modal-id').value         = exp.id || '';
   document.getElementById('exp-title-input').value      = exp.title || '';
   document.getElementById('exp-company-input').value    = exp.company || '';
-  document.getElementById('exp-city-input').value       = exp.city || '';
-  document.getElementById('exp-state-input').value      = exp.state || '';
+  document.getElementById('exp-city-input').value       = loc.city || '';
+  document.getElementById('exp-state-input').value      = loc.state || '';
   document.getElementById('exp-start-input').value      = exp.start_date || '';
   document.getElementById('exp-end-input').value        = exp.end_date || '';
   document.getElementById('exp-type-input').value       = exp.employment_type || 'full_time';
@@ -1994,6 +2087,8 @@ function editMasterExperience(exp) {
                                                          : (exp.tags || []).join(', ');
   document.getElementById('master-exp-modal-title').textContent = 'Edit Work Experience';
   document.getElementById('master-exp-modal-overlay').style.display = 'flex';
+  _masterExpModalAchievements = JSON.parse(JSON.stringify(exp.achievements || []));
+  _renderExpAchievementsEditor();
   _focusedElementBeforeModal = document.activeElement;
   setInitialFocus('master-exp-modal-overlay');
   trapFocus('master-exp-modal-overlay');
@@ -2013,6 +2108,7 @@ async function saveMasterExperience() {
     return;
   }
   const tagsRaw = document.getElementById('exp-tags-input').value;
+  _syncExpAchievementsFromInputs();
   const expData = {
     title, company,
     city:            document.getElementById('exp-city-input').value.trim(),
@@ -2022,6 +2118,7 @@ async function saveMasterExperience() {
     employment_type: document.getElementById('exp-type-input').value,
     importance:      parseInt(document.getElementById('exp-importance-input').value, 10) || 5,
     tags:            tagsRaw.split(',').map(s => s.trim()).filter(Boolean),
+    achievements:    _masterExpModalAchievements,
   };
   const action = id ? 'update' : 'add';
   const body   = action === 'update' ? { action, id, experience: expData } : { action, experience: expData };
@@ -2076,6 +2173,8 @@ function showAddSkillModal(categoryKey, isFlat) {
   document.getElementById('skill-modal-original-name').value = '';
   document.getElementById('skill-name-input').value     = '';
   document.getElementById('skill-experiences-input').value = '';
+  document.getElementById('skill-aliases-input').value  = '';
+  document.getElementById('skill-years-input').value    = '';
   document.getElementById('master-skill-modal-title').textContent = 'Add Skill';
   document.getElementById('master-skill-save-btn').textContent = 'Add Skill';
   const hints = (window._masterExperienceOptions || [])
@@ -2100,12 +2199,16 @@ function showAddSkillModal(categoryKey, isFlat) {
 function editMasterSkill(skillObj, categoryKey, isFlat) {
   const name = typeof skillObj === 'string' ? skillObj : (skillObj?.name || '');
   const experiences = Array.isArray(skillObj?.experiences) ? skillObj.experiences : [];
+  const aliases = Array.isArray(skillObj?.aliases) ? skillObj.aliases : [];
+  const years = (typeof skillObj === 'object' && skillObj?.years != null) ? skillObj.years : '';
 
   document.getElementById('skill-modal-category').value = categoryKey || '';
   document.getElementById('skill-modal-is-flat').value  = isFlat ? '1' : '0';
   document.getElementById('skill-modal-original-name').value = name;
   document.getElementById('skill-name-input').value = name;
   document.getElementById('skill-experiences-input').value = experiences.join(', ');
+  document.getElementById('skill-aliases-input').value = aliases.join(', ');
+  document.getElementById('skill-years-input').value = years;
   document.getElementById('master-skill-modal-title').textContent = 'Edit Skill';
   document.getElementById('master-skill-save-btn').textContent = 'Save Skill';
 
@@ -2144,8 +2247,18 @@ async function saveMasterSkill() {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  const aliases = document.getElementById('skill-aliases-input').value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const yearsRaw = document.getElementById('skill-years-input').value.trim();
+  const years = yearsRaw === '' ? null : parseFloat(yearsRaw);
   if (!skill) {
     showAlertModal('⚠️ Validation', 'Skill name is required.');
+    return;
+  }
+  if (years !== null && !Number.isFinite(years)) {
+    showAlertModal('⚠️ Validation', 'Years of experience must be a finite number.');
     return;
   }
   const isUpdate = Boolean(original);
@@ -2154,6 +2267,8 @@ async function saveMasterSkill() {
     skill: isUpdate ? original : skill,
     ...(isUpdate ? { skill_new: skill } : {}),
     experiences,
+    aliases,
+    years,
   };
   const body = isFlat ? baseBody : { ...baseBody, category };
   try {
@@ -2755,6 +2870,9 @@ export {
   closeExperienceModal,
   saveMasterExperience,
   deleteMasterExperience,
+  _addExpAchievement,
+  _moveExpAchievement,
+  _deleteExpAchievement,
   showAddSkillModal,
   editMasterSkill,
   closeSkillModal,

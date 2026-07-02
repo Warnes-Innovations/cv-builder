@@ -33,8 +33,16 @@ import {
   closeAwardModal,
   saveMasterAchievement,
   deleteMasterExperience,
+  saveMasterExperience,
+  showAddExperienceModal,
+  editMasterExperience,
+  _addExpAchievement,
+  _moveExpAchievement,
+  _deleteExpAchievement,
   saveMasterSkill,
   deleteMasterSkill,
+  showAddSkillModal,
+  editMasterSkill,
   deleteMasterSummary,
   undoMasterDataChange,
   redoMasterDataChange,
@@ -593,6 +601,156 @@ describe('deleteMasterExperience', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Experience achievements editor (GAP-19 16.11): showAddExperienceModal,
+// editMasterExperience, _addExpAchievement, _moveExpAchievement,
+// _deleteExpAchievement, and saveMasterExperience's achievements payload.
+// ---------------------------------------------------------------------------
+
+describe('experience achievements editor', () => {
+  function buildExpModalDom() {
+    document.body.innerHTML = `
+      <div id="document-content"></div>
+      <h2 id="master-exp-modal-title"></h2>
+      <div id="master-exp-modal-overlay" style="display:none;"></div>
+      <input type="hidden" id="exp-modal-id" />
+      <input id="exp-title-input" />
+      <input id="exp-company-input" />
+      <input id="exp-city-input" />
+      <input id="exp-state-input" />
+      <input id="exp-start-input" />
+      <input id="exp-end-input" />
+      <select id="exp-type-input"><option value="full_time">Full-time</option></select>
+      <input id="exp-importance-input" value="5" />
+      <input id="exp-tags-input" />
+      <div id="exp-achievements-editor-list"></div>
+      <input id="exp-ach-new-input" />
+    `
+  }
+
+  function makeExpFetchMock(saveResponse) {
+    return vi.fn().mockImplementation(url => {
+      if (url === '/api/master-data/overview') return Promise.resolve({ json: async () => ({}) })
+      if (url === '/api/master-data/full') return Promise.resolve({
+        json: async () => ({
+          personal_info: {}, experience: [], skills: [],
+          education: [], awards: [], selected_achievements: [],
+          professional_summaries: {},
+        }),
+      })
+      if (url === '/api/master-data/publications') return Promise.resolve({ json: async () => ({ ok: true, publications: [] }) })
+      return Promise.resolve({ json: async () => saveResponse })
+    })
+  }
+
+  beforeEach(() => {
+    buildExpModalDom()
+    window._masterExperienceFullData = []
+  })
+
+  it('showAddExperienceModal resets the achievements editor to empty', () => {
+    showAddExperienceModal()
+    expect(document.getElementById('exp-achievements-editor-list').textContent).toContain('No achievements yet')
+  })
+
+  it('editMasterExperience shows an error and does not open the modal for an unknown id', () => {
+    editMasterExperience('exp-missing')
+    expect(showAlertModalMock).toHaveBeenCalledWith('❌ Error', expect.any(String))
+    expect(document.getElementById('master-exp-modal-overlay').style.display).not.toBe('flex')
+  })
+
+  it('editMasterExperience populates fields and renders existing achievements as editable rows', () => {
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Engineer', company: 'Acme',
+      location: { city: 'Boston', state: 'MA' },
+      achievements: ['First bullet', { text: 'Second bullet', keywords: ['ml'] }],
+    }]
+
+    editMasterExperience('exp_1')
+
+    expect(document.getElementById('exp-title-input').value).toBe('Engineer')
+    expect(document.getElementById('exp-city-input').value).toBe('Boston')
+    const rows = document.querySelectorAll('.exp-ach-text-input')
+    expect(rows.length).toBe(2)
+    expect(rows[0].value).toBe('First bullet')
+    expect(rows[1].value).toBe('Second bullet')
+    // First row's "move up" is disabled, last row's "move down" is disabled.
+    const buttons = document.querySelectorAll('#exp-achievements-editor-list button')
+    expect(buttons[0].disabled).toBe(true)  // row 0 move-up
+    expect(buttons[buttons.length - 2].disabled).toBe(true)  // last row move-down
+  })
+
+  it('_addExpAchievement appends a new row and clears the input', () => {
+    showAddExperienceModal()
+    document.getElementById('exp-ach-new-input').value = 'New bullet'
+
+    _addExpAchievement()
+
+    const rows = document.querySelectorAll('.exp-ach-text-input')
+    expect(rows.length).toBe(1)
+    expect(rows[0].value).toBe('New bullet')
+    expect(document.getElementById('exp-ach-new-input').value).toBe('')
+  })
+
+  it('_addExpAchievement does nothing for blank input', () => {
+    showAddExperienceModal()
+    document.getElementById('exp-ach-new-input').value = '   '
+
+    _addExpAchievement()
+
+    expect(document.querySelectorAll('.exp-ach-text-input').length).toBe(0)
+  })
+
+  it('_moveExpAchievement reorders rows and preserves an unsaved in-progress text edit', () => {
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Engineer', company: 'Acme',
+      achievements: ['First', 'Second'],
+    }]
+    editMasterExperience('exp_1')
+    // Edit the first row's text without triggering any explicit "commit" —
+    // the move must read this live value before reordering, not the stale
+    // original array value.
+    document.querySelectorAll('.exp-ach-text-input')[0].value = 'First (edited)'
+
+    _moveExpAchievement(0, 1)
+
+    const rows = document.querySelectorAll('.exp-ach-text-input')
+    expect(rows[0].value).toBe('Second')
+    expect(rows[1].value).toBe('First (edited)')
+  })
+
+  it('_deleteExpAchievement removes the row', () => {
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Engineer', company: 'Acme',
+      achievements: ['First', 'Second'],
+    }]
+    editMasterExperience('exp_1')
+
+    _deleteExpAchievement(0)
+
+    const rows = document.querySelectorAll('.exp-ach-text-input')
+    expect(rows.length).toBe(1)
+    expect(rows[0].value).toBe('Second')
+  })
+
+  it('saveMasterExperience includes the current achievements editor state, including unsaved edits', async () => {
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Engineer', company: 'Acme',
+      achievements: ['First'],
+    }]
+    editMasterExperience('exp_1')
+    document.querySelectorAll('.exp-ach-text-input')[0].value = 'First (edited)'
+    const mockFetch = makeExpFetchMock({ ok: true, action: 'updated' })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await saveMasterExperience()
+
+    const expCall = mockFetch.mock.calls.find(([url]) => url === '/api/master-data/experience')
+    const body = JSON.parse(expCall[1].body)
+    expect(body.experience.achievements).toEqual(['First (edited)'])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // saveMasterSkill — mock fetch
 // ---------------------------------------------------------------------------
 
@@ -606,6 +764,8 @@ describe('saveMasterSkill', () => {
       <input id="skill-modal-is-flat" value="${isFlat}" />
       <input id="skill-modal-original-name" value="" />
       <input id="skill-experiences-input" value="" />
+      <input id="skill-aliases-input" value="" />
+      <input id="skill-years-input" value="" />
       <div id="master-skill-modal-overlay" style="display:flex;"></div>
     `
   }
@@ -689,6 +849,122 @@ describe('saveMasterSkill', () => {
     const body = JSON.parse(mockFetch.mock.calls[0][1].body)
     expect(body.category).toBe('ml')
     expect(body.skill).toBe('TensorFlow')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Skill aliases/years fields (GAP-19 16.12): showAddSkillModal, editMasterSkill,
+// and saveMasterSkill's aliases/years payload.
+// ---------------------------------------------------------------------------
+
+describe('skill aliases/years fields', () => {
+  function buildFullSkillModalDom() {
+    document.body.innerHTML = `
+      <div id="document-content"></div>
+      <h2 id="master-skill-modal-title"></h2>
+      <button id="master-skill-save-btn"></button>
+      <div id="master-skill-modal-overlay" style="display:none;"></div>
+      <input id="skill-modal-category" />
+      <input id="skill-modal-is-flat" />
+      <input id="skill-modal-original-name" />
+      <input id="skill-name-input" />
+      <input id="skill-experiences-input" />
+      <input id="skill-aliases-input" />
+      <input id="skill-years-input" />
+      <div id="skill-category-row"></div>
+      <span id="skill-category-display"></span>
+      <div id="skill-experience-hints"></div>
+    `
+  }
+
+  function makeSkillFetchMock(skillResponse) {
+    return vi.fn().mockImplementation(url => {
+      if (url === '/api/master-data/overview') return Promise.resolve({ json: async () => ({}) })
+      if (url === '/api/master-data/full') return Promise.resolve({
+        json: async () => ({
+          personal_info: {}, experience: [], skills: [],
+          education: [], awards: [], selected_achievements: [],
+          professional_summaries: {},
+        }),
+      })
+      return Promise.resolve({ json: async () => skillResponse })
+    })
+  }
+
+  beforeEach(() => {
+    buildFullSkillModalDom()
+  })
+
+  it('showAddSkillModal resets aliases and years to empty', () => {
+    document.getElementById('skill-aliases-input').value = 'stale'
+    document.getElementById('skill-years-input').value = '9'
+
+    showAddSkillModal(null, true)
+
+    expect(document.getElementById('skill-aliases-input').value).toBe('')
+    expect(document.getElementById('skill-years-input').value).toBe('')
+  })
+
+  it('editMasterSkill populates aliases and years from the skill object', () => {
+    editMasterSkill({ name: 'JavaScript', aliases: ['JS', 'ECMAScript'], years: 4 }, null, true)
+
+    expect(document.getElementById('skill-aliases-input').value).toBe('JS, ECMAScript')
+    expect(document.getElementById('skill-years-input').value).toBe('4')
+  })
+
+  it('editMasterSkill leaves years blank when not present on the skill object', () => {
+    editMasterSkill({ name: 'Python' }, null, true)
+    expect(document.getElementById('skill-years-input').value).toBe('')
+  })
+
+  it('editMasterSkill handles a plain string skill (no aliases/years)', () => {
+    editMasterSkill('Python', null, true)
+    expect(document.getElementById('skill-aliases-input').value).toBe('')
+    expect(document.getElementById('skill-years-input').value).toBe('')
+  })
+
+  it('saveMasterSkill includes parsed aliases and years in the request body', async () => {
+    document.getElementById('skill-name-input').value = 'Rust'
+    document.getElementById('skill-modal-is-flat').value = '1'
+    document.getElementById('skill-aliases-input').value = 'Rustlang, RS'
+    document.getElementById('skill-years-input').value = '2.5'
+    const mockFetch = makeSkillFetchMock({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await saveMasterSkill()
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(body.aliases).toEqual(['Rustlang', 'RS'])
+    expect(body.years).toBe(2.5)
+  })
+
+  it('saveMasterSkill sends years: null when the years field is left blank', async () => {
+    document.getElementById('skill-name-input').value = 'Go'
+    document.getElementById('skill-modal-is-flat').value = '1'
+    const mockFetch = makeSkillFetchMock({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await saveMasterSkill()
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(body.years).toBeNull()
+    expect(body.aliases).toEqual([])
+  })
+
+  it('saveMasterSkill rejects non-finite years (Infinity) without calling fetch', async () => {
+    document.getElementById('skill-name-input').value = 'Rust'
+    document.getElementById('skill-modal-is-flat').value = '1'
+    document.getElementById('skill-years-input').value = 'Infinity'
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    await saveMasterSkill()
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(showAlertModalMock).toHaveBeenCalledWith(
+      expect.stringContaining('Validation'),
+      expect.stringContaining('finite')
+    )
   })
 })
 

@@ -2,6 +2,7 @@
 import copy
 import logging
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -811,6 +812,13 @@ def create_blueprint(deps):
             if employment_type not in allowed_types:
                 return jsonify({"error": "employment_type is invalid"}), 400
 
+            if 'achievements' in exp_data:
+                achievements_val = exp_data.get('achievements')
+                if not isinstance(achievements_val, list):
+                    return jsonify({"error": "achievements must be a list"}), 400
+                if not all(isinstance(item, (str, dict)) for item in achievements_val):
+                    return jsonify({"error": "each achievement must be a string or object"}), 400
+
             start_year = _extract_year(exp_data.get('start_date'))
             end_year = _extract_year(exp_data.get('end_date'))
             if start_year is not None and end_year is not None and start_year > end_year:
@@ -851,7 +859,7 @@ def create_blueprint(deps):
                     'importance':       int(exp_data.get('importance') or 5),
                     'tags':             exp_data.get('tags') or [],
                     'domain_relevance': exp_data.get('domain_relevance') or [],
-                    'achievements':     [],
+                    'achievements':     exp_data.get('achievements') or [],
                 }
                 experiences.append(new_exp)
                 save_master(master, master_path)
@@ -873,6 +881,8 @@ def create_blueprint(deps):
                     exp_loc['city'] = exp_data['city']
                 if 'state' in exp_data:
                     exp_loc['state'] = exp_data['state']
+            if 'achievements' in exp_data:
+                existing_exp['achievements'] = exp_data['achievements']
             for field in ('tags', 'domain_relevance'):
                 if field in exp_data:
                     existing_exp[field] = exp_data[field]
@@ -948,13 +958,52 @@ def create_blueprint(deps):
                     return g if g else None
                 return None
 
-            def _skill_payload(name: str, experience_ids: List[str], group: Optional[str]) -> Any:
-                if experience_ids or group:
+            def _skill_aliases(item: Any) -> List[str]:
+                if isinstance(item, dict) and isinstance(item.get('aliases'), list):
+                    return [str(a).strip() for a in item['aliases'] if str(a).strip()]
+                return []
+
+            def _skill_years(item: Any) -> Optional[float]:
+                if isinstance(item, dict):
+                    return item.get('years')
+                return None
+
+            def _sanitize_aliases(raw_aliases: Any) -> List[str]:
+                if raw_aliases is None:
+                    return []
+                if isinstance(raw_aliases, str):
+                    raw_aliases = [x.strip() for x in raw_aliases.split(',') if x.strip()]
+                if not isinstance(raw_aliases, list):
+                    return []
+                cleaned: List[str] = []
+                seen = set()
+                for item in raw_aliases:
+                    if not isinstance(item, str):
+                        continue
+                    alias = item.strip()
+                    if not alias or alias.lower() in seen:
+                        continue
+                    cleaned.append(alias)
+                    seen.add(alias.lower())
+                return cleaned
+
+            def _skill_payload(
+                name: str,
+                experience_ids: List[str],
+                group: Optional[str],
+                aliases: Optional[List[str]] = None,
+                years: Optional[float] = None,
+            ) -> Any:
+                if experience_ids or group or aliases or years is not None:
                     d: Dict[str, Any] = {'name': name}
                     if experience_ids:
                         d['experiences'] = experience_ids
                     if group:
                         d['group'] = group
+                    if aliases:
+                        d['aliases'] = aliases
+                    if years is not None:
+                        d['years'] = years
                     return d
                 return name
 
@@ -996,17 +1045,37 @@ def create_blueprint(deps):
             new_skill_name = (req.get('skill_new') or skill_name).strip()
             has_experience_field = 'experiences' in req
             has_group_field = 'group' in req
+            has_aliases_field = 'aliases' in req
+            has_years_field = 'years' in req
             requested_experience_ids = _sanitize_experience_ids(req.get('experiences'))
             requested_group = (req.get('group') or '').strip() if has_group_field else None
             if requested_group == '':
                 requested_group = None
+            requested_aliases = _sanitize_aliases(req.get('aliases')) if has_aliases_field else None
+            requested_years = None
+            if has_years_field and req.get('years') not in (None, ''):
+                try:
+                    requested_years = float(req.get('years'))
+                except (TypeError, ValueError):
+                    return jsonify({"error": "years must be a number"}), 400
+                # float() also accepts "inf"/"nan"-style strings; both would
+                # serialize as bare (invalid) JSON tokens via json.dump and
+                # break every subsequent /api/master-data/full read of the
+                # whole file, not just this one skill.
+                if not math.isfinite(requested_years):
+                    return jsonify({"error": "years must be a finite number"}), 400
+                if requested_years < 0:
+                    return jsonify({"error": "years must not be negative"}), 400
 
             if isinstance(skills, list):
                 existing_lower = {_skill_name(s).strip().lower() for s in skills}
                 if action == 'add':
                     if skill_lower in existing_lower:
                         return jsonify({"ok": False, "error": "Skill already exists"}), 409
-                    skills.append(_skill_payload(skill_name, requested_experience_ids, requested_group))
+                    skills.append(_skill_payload(
+                        skill_name, requested_experience_ids, requested_group,
+                        requested_aliases, requested_years,
+                    ))
                     master['skills'] = skills
                     save_master(master, master_path)
                     return jsonify({"ok": True, "action": "added"})
@@ -1020,7 +1089,12 @@ def create_blueprint(deps):
                         requested_experience_ids if has_experience_field else _skill_experiences(skills[idx])
                     )
                     effective_group = requested_group if has_group_field else _skill_group(skills[idx])
-                    skills[idx] = _skill_payload(new_skill_name, effective_experience_ids, effective_group)
+                    effective_aliases = requested_aliases if has_aliases_field else _skill_aliases(skills[idx])
+                    effective_years = requested_years if has_years_field else _skill_years(skills[idx])
+                    skills[idx] = _skill_payload(
+                        new_skill_name, effective_experience_ids, effective_group,
+                        effective_aliases, effective_years,
+                    )
                     master['skills'] = skills
                     save_master(master, master_path)
                     return jsonify({"ok": True, "action": "updated"})
@@ -1053,7 +1127,10 @@ def create_blueprint(deps):
                 if action == 'add':
                     if skill_lower in cat_existing_lower:
                         return jsonify({"ok": False, "error": "Skill already exists in category"}), 409
-                    cat_list.append(_skill_payload(skill_name, requested_experience_ids, requested_group))
+                    cat_list.append(_skill_payload(
+                        skill_name, requested_experience_ids, requested_group,
+                        requested_aliases, requested_years,
+                    ))
                     save_master(master, master_path)
                     return jsonify({"ok": True, "action": "added"})
                 if action == 'update':
@@ -1066,7 +1143,12 @@ def create_blueprint(deps):
                         requested_experience_ids if has_experience_field else _skill_experiences(cat_list[idx])
                     )
                     effective_group = requested_group if has_group_field else _skill_group(cat_list[idx])
-                    cat_list[idx] = _skill_payload(new_skill_name, effective_experience_ids, effective_group)
+                    effective_aliases = requested_aliases if has_aliases_field else _skill_aliases(cat_list[idx])
+                    effective_years = requested_years if has_years_field else _skill_years(cat_list[idx])
+                    cat_list[idx] = _skill_payload(
+                        new_skill_name, effective_experience_ids, effective_group,
+                        effective_aliases, effective_years,
+                    )
                     save_master(master, master_path)
                     return jsonify({"ok": True, "action": "updated"})
                 idx = next((i for i, s in enumerate(cat_list) if _skill_name(s) == skill_name), -1)
