@@ -2185,6 +2185,10 @@ def create_blueprint(deps):
                 ats_keywords   = job_analysis.get('ats_keywords') or []
                 approved_count = len(conversation.state.get('approved_rewrites') or [])
 
+                session_duration_secs = None
+                if hasattr(entry, 'created') and entry.created:
+                    session_duration_secs = int((datetime.now() - entry.created).total_seconds())
+
                 summary = {
                     'files':          generated.get('files', []),
                     'output_dir':     str(output_dir),
@@ -2192,6 +2196,7 @@ def create_blueprint(deps):
                     'ats_score':      ats_score,
                     'approved_rewrites': approved_count,
                     'application_status': app_status,
+                    'session_duration_secs': session_duration_secs,
                 }
 
                 return jsonify({

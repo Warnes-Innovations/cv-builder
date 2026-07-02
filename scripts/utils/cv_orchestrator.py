@@ -5305,6 +5305,20 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 _chk('docx_heading1_present', 'Heading 1 style present', 'docx', 'warn',
                      'No Heading 1 paragraphs — ATS relies on heading hierarchy')
 
+            # 6b — candidate name casing
+            candidate_name = heading_texts[0].strip() if heading_texts else ''
+            if candidate_name:
+                name_alpha = ''.join(c for c in candidate_name if c.isalpha())
+                if name_alpha and name_alpha.isupper():
+                    _chk('docx_name_casing', 'Candidate name casing', 'docx', 'warn',
+                         f'Name "{candidate_name}" is ALL-CAPS — some ATS systems may mis-parse it')
+                elif name_alpha and name_alpha.islower():
+                    _chk('docx_name_casing', 'Candidate name casing', 'docx', 'warn',
+                         f'Name "{candidate_name}" is all-lowercase — ATS systems expect Title Case')
+                else:
+                    _chk('docx_name_casing', 'Candidate name casing', 'docx', 'pass',
+                         f'Name "{candidate_name}" appears normally cased')
+
             # 7 — consistent dates
             date_pats = [
                 (_re.compile(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\b'),

@@ -10,6 +10,18 @@
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295.
 
+## 2026-07-02 (Cycle 31) Reconciliation Notes
+
+Low-effort batch: 6 gaps resolved (1 false-positive + 5 code fixes).
+
+- **GAP-275 RESOLVED (false positive)** — decision badges already implemented as GAP-230 (`f21a6d0`); cycle 29 agents missed them.
+- **GAP-287 RESOLVED** — CV header left-aligned: changed `text-align: center` → `left` in `templates/cv-style.css:36`.
+- **GAP-290 RESOLVED** — async layout-shift prevented: `min-height: 120px` added to `#rewrite-cards` and `#skills-table-container` in `web/styles.css`.
+- **GAP-291 RESOLVED** — layout two-step hint: `#layout-two-step-hint` `<p>` shown alongside `#confirm-layout-btn` in `web/layout-instruction.js`.
+- **GAP-292 RESOLVED** — ATS DOCX name-casing check: `docx_name_casing` (#6b) added to `validate_ats_report()` in `cv_orchestrator.py`; warns on all-caps or all-lowercase.
+- **GAP-293 RESOLVED** — session duration in finalise: `session_duration_secs` computed from `entry.created` in `finalise_application()` backend; displayed via `_formatDuration()` in `web/finalise.js`.
+- **Test suite:** 1430 passed.
+
 ## 2026-07-02 (Cycle 30) Reconciliation Notes
 
 Implementation cycle on commit range after `a83b847` (lint suite added by separate agent).
@@ -2829,7 +2841,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-275: Color-Only Rewrite Card State — Accepted/Rejected
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED — duplicate of GAP-230. Decision badges ("✓ Accepted", "✗ Rejected", "✓ Accepted (edited)") with green/red backgrounds already rendered at `web/rewrite-review.js:502–508` and `562–568`, in commit `f21a6d0`. Cycle 29 review agents did not detect the existing implementation. Verified 2026-07-02 (cycle 31).
 **Discovered:** 2026-07-01 (cycle 29) by ux-expert, accessibility-specialist.
 **Description:** Accepted and rejected rewrite cards communicate their state via border color and background tint only (`rewrite-review.js`). No persistent text label ("Accepted" / "Rejected") is rendered on the card. Color-blind users cannot reliably distinguish card state.
 **Affected stories:** US-X1, US-U5
@@ -2937,7 +2949,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-287: CV Header text-align:center Inconsistent with Left-Aligned Body Grid
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02 (cycle 31). Changed `.cv-header { text-align: center }` to `text-align: left` in `templates/cv-style.css:36`.
 **Discovered:** 2026-07-01 (cycle 29) by graphical-designer.
 **Description:** `cv-template.html` renders the CV header (`<div class="cv-header">`) with `text-align: center`, while the CV body uses a left-aligned two-column grid. This creates a visual inconsistency in the generated output — centered header above a left-aligned content body.
 **Affected stories:** US-G1, US-M1
@@ -2964,7 +2976,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-290: No Skeleton Placeholders for Async Content Areas
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02 (cycle 31). Added `min-height: 120px` to `#rewrite-cards` and `#skills-table-container` in `web/styles.css` to prevent cumulative layout shift while async content loads.
 **Discovered:** 2026-07-01 (cycle 29) by ux-expert.
 **Description:** Content areas for LLM-generated results (analysis results card, rewrite cards, skills table) have no skeleton loaders or dimensioned placeholders. When async content arrives, the layout shifts (Cumulative Layout Shift), causing disorientation.
 **Affected stories:** US-U6, US-U8
@@ -2973,7 +2985,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-291: Two-Button Layout Proceed Path Has No Inline Explanation
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02 (cycle 31). Added `#layout-two-step-hint` `<p>` element to the layout instruction HTML template in `web/layout-instruction.js:373`; shown/hidden alongside `#confirm-layout-btn` via `refreshLayoutReviewState()`. Text: "Once the preview looks right, confirm the layout — then generate your final submission files."
 **Discovered:** 2026-07-01 (cycle 29) by ux-expert, first-time-user.
 **Description:** The layout review stage has two sequential proceed buttons — "Confirm Layout" and "Generate Final Files" — toggled by generation state. New users see whichever is visible with no explanation of why there are two steps or what each one does differently.
 **Affected stories:** US-U9, US-F3
@@ -2982,7 +2994,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-292: Candidate Name Casing Not Validated in ATS DOCX
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02 (cycle 31). Added `docx_name_casing` check (#6b) in `validate_ats_report()` (`scripts/utils/cv_orchestrator.py`). Reads the first heading paragraph as the candidate name; emits `warn` if all-uppercase or all-lowercase, `pass` otherwise.
 **Discovered:** 2026-07-01 (cycle 29) by hr-ats.
 **Description:** The ATS DOCX renders the candidate name directly from `Master_CV_Data.json` without casing validation. Names in all-uppercase or all-lowercase pass through silently; some ATS systems reject or mis-parse non-standard casing.
 **Affected stories:** US-H3
@@ -2991,7 +3003,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-293: Total Session Processing Time Absent from Finalise Confirmation Summary
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED — 2026-07-02 (cycle 31). Backend `finalise_application()` in `scripts/routes/generation_routes.py` now computes `session_duration_secs` from `entry.created` and adds it to `summary`. Frontend `web/finalise.js` renders "Session duration: Xh Ym" or "Xm Ys" in the archived confirmation list via `_formatDuration()`.
 **Discovered:** 2026-07-01 (cycle 29) by applicant.
 **Description:** Story US-A9 requires the finalise confirmation summary to include total session processing time. The finalise tab currently shows status, notes, and the submission readiness checklist, but not session duration.
 **Affected stories:** US-A9

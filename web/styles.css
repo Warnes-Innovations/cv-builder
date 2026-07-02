@@ -1224,6 +1224,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 }
 .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .icon-btn:focus-visible { outline: 2px solid var(--cv-accent); outline-offset: 2px; }
+
+/* Prevent layout shift while async content loads into these containers */
+#rewrite-cards { min-height: 120px; }
+#skills-table-container { min-height: 120px; }
+
 .icon-btn .icon-glyph {
   width: 18px;
   height: 18px;

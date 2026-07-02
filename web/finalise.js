@@ -17,6 +17,16 @@ import { getLogger } from './logger.js';
 import { formatAtsScoreSummary } from './ats-refinement.js';
 const log = getLogger('finalise');
 
+function _formatDuration(secs) {
+  if (secs == null || secs < 0) return null;
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 function _renderFinaliseAtsItems(score, atsKeywords) {
   if (!score || typeof score.overall !== 'number') {
     return `<li>ATS keywords tracked: ${atsKeywords.length}</li>`;
@@ -305,6 +315,8 @@ async function finaliseApplication() {
     const approvedCount = summary.approved_rewrites ?? 0;
     const atsKeywords   = summary.ats_keywords || [];
     const atsScore      = summary.ats_score || null;
+    const durationSecs  = summary.session_duration_secs;
+    const durationStr   = durationSecs != null ? _formatDuration(durationSecs) : null;
 
     result.style.display = 'block';
     result.innerHTML = `
@@ -314,6 +326,7 @@ async function finaliseApplication() {
           <li>Status: <strong>${escapeHtml(status)}</strong></li>
           <li>Approved rewrites: ${approvedCount}</li>
           ${_renderFinaliseAtsItems(atsScore, atsKeywords)}
+          ${durationStr ? `<li>Session duration: ${escapeHtml(durationStr)}</li>` : ''}
           <li>Git commit: ${hash}</li>
         </ul>
         ${gitWarn}

@@ -261,6 +261,8 @@ function refreshLayoutReviewState() {
     : 'none';
 
   if (confirmBtn)  confirmBtn.style.display  = showConfirm;
+  const hintEl = document.getElementById('layout-two-step-hint');
+  if (hintEl) hintEl.style.display = showConfirm;
 
   if (finalBtn) {
     finalBtn.style.display = generationState.previewAvailable
@@ -370,6 +372,10 @@ async function initiateLayoutInstructions() {
           <button id="confirm-layout-btn" class="continue-btn layout-action-btn" style="display:none;">
             Confirm Layout
           </button>
+
+          <p id="layout-two-step-hint" style="display:none;font-size:0.82em;color:#6b7280;margin:6px 0 2px;">
+            Once the preview looks right, confirm the layout — then generate your final submission files.
+          </p>
 
           <div id="processing-indicator" class="processing-indicator" style="display: none;">
             <div class="spinner"></div>
