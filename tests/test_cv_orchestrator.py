@@ -2232,6 +2232,47 @@ class TestCvBodyPageCap(unittest.TestCase):
                 opening = self.orc._opening_word_for_verb_check(text)
                 self.assertIn(opening.lower(), self.orc._STRONG_VERBS_LOWER)
 
+    def test_repeated_verb_detection_flags_second_plus_occurrences(self):
+        """repeated_verb issue added to 2nd+ occurrences when same verb opens ≥3 bullets."""
+        experiences = [
+            {
+                'id': 'exp1',
+                'achievements': [
+                    {'text': 'Led a team of 10 engineers to deliver a 30% latency reduction.'},
+                    {'text': 'Led migration of legacy monolith to microservices, cutting deploy time by 50%.'},
+                    {'text': 'Led cross-functional initiative that saved $2M annually.'},
+                    {'text': 'Built automated CI/CD pipeline reducing release cycle from 2 weeks to 1 day.'},
+                ],
+            }
+        ]
+        result = self.orc.check_persuasion(experiences)
+        rv_findings = [
+            f for f in result['findings']
+            if any(i['type'] == 'repeated_verb' for i in f['issues'])
+        ]
+        self.assertEqual(len(rv_findings), 2, 'Expected 2nd and 3rd "Led" bullets flagged')
+        flagged_indices = {f['bullet_index'] for f in rv_findings}
+        self.assertIn(1, flagged_indices)
+        self.assertIn(2, flagged_indices)
+
+    def test_repeated_verb_not_triggered_below_threshold(self):
+        """repeated_verb is not raised when the same verb appears only twice."""
+        experiences = [
+            {
+                'id': 'exp2',
+                'achievements': [
+                    {'text': 'Built a scalable data pipeline processing 10M events per day.'},
+                    {'text': 'Built automated testing framework that reduced QA time by 40%.'},
+                ],
+            }
+        ]
+        result = self.orc.check_persuasion(experiences)
+        rv_findings = [
+            f for f in result['findings']
+            if any(i['type'] == 'repeated_verb' for i in f['issues'])
+        ]
+        self.assertEqual(rv_findings, [], 'Should not flag when verb appears only twice')
+
 
 class TestDetectYearOnlyDates(unittest.TestCase):
     """Unit tests for CVOrchestrator._detect_year_only_dates (GAP-88)."""

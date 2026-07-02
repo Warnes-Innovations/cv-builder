@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-01 (cycle 16)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-01 (cycle 27)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -311,9 +311,9 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** MEDIUM
 **Affected stories:** US-P1, US-P2, US-P3, US-P4, US-P5, US-P6
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; persuasion review confirmed several checks exist for weak verbs, passive phrasing, CAR structure, and generic filler, but they are mostly advisory and do not cover narrative-arc, keyword-appendage, cover-letter persuasion, or cross-document register consistency.
+**Status:** PARTIAL - verified 2026-03-19 11:36 ET; updated 2026-07-01 (cycle 27). `check_persuasion()` now has 6 advisory checks per experience: weak opening verb, no strong verb, no quantification, vague language, too short, and **repeated opening verb** (new in cycle 27 — flags 2nd+ occurrences when the same action verb opens ≥3 bullets in a role, issue type `repeated_verb`). Still missing: narrative-arc scoring, positive-sum framing, cover-letter persuasion checks, and cross-document register consistency.
 **Description:** Persuasion logic now exists in enough places that the old "artefacts do not exist anywhere" wording is obsolete. The current gap is that the rules are incomplete and often non-blocking, so the system can still produce rhetorically weak content even after warning about it.
-**Recommended resolution:** Expand persuasion validation to cover narrative arc, positive-sum framing, keyword stuffing, cover-letter openings/closings, and consistency between CV, cover letter, and screening responses.
+**Recommended resolution:** Expand persuasion validation to cover narrative arc, positive-sum framing, cover-letter openings/closings, and consistency between CV, cover letter, and screening responses.
 
 ## GAP-18: Workflow Stage Re-Run Completeness
 
@@ -363,7 +363,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 
 **Severity:** HIGH
 **Affected stories:** US-A1, US-A2, US-U2
-**Status:** OPEN - discovered 2026-03-19 11:36 ET; applicant and UX reviews found no editable confirmation step for extracted company/role/date, no queued post-intake persistence stage, and no prior-session clarification defaults keyed by role type.
+**Status:** RESOLVED 2026-07-01 (cycle 27) — Source-verified: `_showIntakeConfirmCard()` in `web/message-dispatch.js:420` renders an editable confirmation card (Role, Company, Date) populated from `GET /api/intake-metadata`. `_submitIntakeCard()` at line 466 POSTs to `POST /api/confirm-intake`. `_proceedAfterIntake()` at line 491 calls `GET /api/prior-clarifications` and shows `_offerPriorClarifications()` when a matching prior session is found. `analyzeJob()` in `web/job-analysis.js:145–155` always calls `/api/intake-metadata` after analysis and routes through the confirmation card when not yet confirmed, or directly to `_proceedAfterIntake()` when already confirmed.
 **Description:** Job intake still jumps too quickly from acquisition into analysis. The stories require a confirmation moment where extracted metadata can be corrected, and they also require reuse of prior clarification answers when a similar role type has been handled before.
 **Recommended resolution:** Insert an intake-confirmation substep with editable extracted metadata, persist the session immediately after confirmation, and preload clarification defaults from prior matching sessions while keeping them easy to override.
 

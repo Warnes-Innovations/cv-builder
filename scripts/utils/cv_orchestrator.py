@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, date as _date
 import subprocess
 import weasyprint  # noqa: F401  -- kept for test mock path (patch cv_orchestrator.weasyprint.HTML)
-from collections import defaultdict
+from collections import Counter, defaultdict
 from bs4 import BeautifulSoup, Comment
 
 from .scoring import (
@@ -4263,6 +4263,9 @@ Include one entry per candidate. Do not omit any candidate."""
         for exp in experiences:
             exp_id = exp.get('id', '')
             achievements = exp.get('ordered_achievements') or exp.get('achievements') or []
+            exp_first_words: List[Tuple[str, int]] = []   # (first_word_lower, idx)
+            finding_by_bullet: Dict[Tuple[str, int], Dict] = {}  # (exp_id, idx) → finding
+
             for idx, ach in enumerate(achievements):
                 text = (ach.get('text', '') if isinstance(ach, dict) else str(ach)).strip()
                 if not text:
@@ -4270,9 +4273,13 @@ Include one entry per candidate. Do not omit any candidate."""
                 total_bullets += 1
                 issues = []
                 first_word = self._opening_word_for_verb_check(text)
+                first_word_lower = first_word.lower()
+
+                if first_word_lower:
+                    exp_first_words.append((first_word_lower, idx))
 
                 # Weak opening verb — exact first-word match (no prefix collisions)
-                if first_word.lower() in self._WEAK_VERB_FIRST_WORDS_LOWER:
+                if first_word_lower in self._WEAK_VERB_FIRST_WORDS_LOWER:
                     issues.append({
                         'type':       'weak_verb',
                         'severity':   'warning',
@@ -4281,7 +4288,7 @@ Include one entry per candidate. Do not omit any candidate."""
                             '(e.g. Led, Built, Delivered, Reduced, Improved).'
                         ),
                     })
-                elif first_word.lower() not in self._STRONG_VERBS_LOWER:
+                elif first_word_lower not in self._STRONG_VERBS_LOWER:
                     issues.append({
                         'type':       'no_strong_verb',
                         'severity':   'info',
@@ -4329,7 +4336,7 @@ Include one entry per candidate. Do not omit any candidate."""
                 if not issues:
                     strong_count += 1
                 else:
-                    findings.append({
+                    finding = {
                         'exp_id':       exp_id,
                         'bullet_index': idx,
                         'text':         text,
@@ -4338,7 +4345,45 @@ Include one entry per candidate. Do not omit any candidate."""
                             key=lambda s: 0 if s == 'info' else 1,
                         ),
                         'issues': issues,
-                    })
+                    }
+                    findings.append(finding)
+                    finding_by_bullet[(exp_id, idx)] = finding
+
+            # Repeated opening verb detection: flag 2nd+ occurrences when ≥3 bullets share a verb
+            verb_counts = Counter(fw for fw, _ in exp_first_words)
+            seen_verb_occurrences: Dict[str, int] = {}
+            for fw, idx in exp_first_words:
+                total_for_verb = verb_counts[fw]
+                if total_for_verb < 3:
+                    continue
+                occurrence = seen_verb_occurrences.get(fw, 0)
+                seen_verb_occurrences[fw] = occurrence + 1
+                if occurrence == 0:
+                    continue  # First occurrence is fine; only flag repetitions
+                suggestion = (
+                    f'"{fw.capitalize()}" opens {total_for_verb} bullets in this role. '
+                    'Vary your action verbs to show a broader range of contributions.'
+                )
+                rv_issue = {'type': 'repeated_verb', 'severity': 'warning', 'suggestion': suggestion}
+                key = (exp_id, idx)
+                if key in finding_by_bullet:
+                    entry = finding_by_bullet[key]
+                    entry['issues'].append(rv_issue)
+                    if entry['severity'] == 'info':
+                        entry['severity'] = 'warning'
+                else:
+                    ach = achievements[idx]
+                    ach_text = (ach.get('text', '') if isinstance(ach, dict) else str(ach)).strip()
+                    new_finding = {
+                        'exp_id':       exp_id,
+                        'bullet_index': idx,
+                        'text':         ach_text,
+                        'severity':     'warning',
+                        'issues':       [rv_issue],
+                    }
+                    findings.append(new_finding)
+                    finding_by_bullet[key] = new_finding
+                    strong_count -= 1
 
         return {
             'findings': findings,
