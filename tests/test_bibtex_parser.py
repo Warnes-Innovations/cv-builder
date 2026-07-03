@@ -252,6 +252,11 @@ class TestFormatPublication(unittest.TestCase):
         Path(bib_path).unlink(missing_ok=True)
         self.article = self.pubs["warnes2024ml"]
 
+    def test_default_style_returns_string(self):
+        result = format_publication(self.article)
+        self.assertIsInstance(result, str)
+        self.assertTrue(len(result) > 0)
+
     def test_apa_contains_title(self):
         result = format_publication(self.article, style="apa")
         self.assertIn("Machine Learning", result)

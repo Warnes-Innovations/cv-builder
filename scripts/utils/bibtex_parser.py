@@ -305,7 +305,9 @@ def _format_apa(pub: Dict) -> str:
 
     # Authors and year
     if pub["authors"]:
-        parts.append(f"{pub['authors']}.")
+        # rstrip avoids a double period when the name ends in an abbreviated
+        # initial (e.g. "Warnes, Gregory R.").
+        parts.append(f"{pub['authors'].rstrip('.')}.")
 
     if pub["year"]:
         parts.append(f"({pub['year']}).")

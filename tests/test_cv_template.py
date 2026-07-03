@@ -187,57 +187,63 @@ class TestOptionalSidebarFields(unittest.TestCase):
             }
         )
         self.assertNotIn('<div class="sidebar-title">Languages</div>', html)
-    class TestHeaderTagline(unittest.TestCase):
-        """Header subtitle should use applicant tagline, not job title fallback."""
 
-        def test_job_title_subtitle_not_rendered_without_applicant_tagline(self):
-            html = _render(
-                template_metadata={
-                    'job_title': 'Software Engineer',
-                    'company': 'Acme Corp',
-                    'total_publications_count': 0,
-                    'skills_section_title': 'Technical Skills',
-                    'variant': 'standard',
-                    'generated_date': '2026-01-01T00:00:00',
-                    'applicant_tagline': '',
+
+class TestHeaderTagline(unittest.TestCase):
+    """Header subtitle should use applicant tagline, not job title fallback."""
+
+    def test_job_title_subtitle_not_rendered_without_applicant_tagline(self):
+        html = _render(
+            template_metadata={
+                'job_title': 'Software Engineer',
+                'company': 'Acme Corp',
+                'total_publications_count': 0,
+                'skills_section_title': 'Technical Skills',
+                'variant': 'standard',
+                'generated_date': '2026-01-01T00:00:00',
+                'applicant_tagline': '',
+            }
+        )
+        self.assertNotIn('<div class="job-title">Software Engineer</div>', html)
+
+    def test_applicant_tagline_renders_when_present(self):
+        html = _render(
+            template_metadata={
+                'job_title': 'Software Engineer',
+                'company': 'Acme Corp',
+                'total_publications_count': 0,
+                'skills_section_title': 'Technical Skills',
+                'variant': 'standard',
+                'generated_date': '2026-01-01T00:00:00',
+                'applicant_tagline': 'Principal Data Scientist and ML Strategist',
+            }
+        )
+        self.assertIn(
+            '<div class="job-title">Principal Data Scientist and ML Strategist</div>',
+            html,
+        )
+
+
+class TestPublicationCitationFormatting(unittest.TestCase):
+    """Publication citation formatting should render emphasis markup safely."""
+
+    def test_markdown_italics_rendered_as_em_for_publication(self):
+        html = _render(
+            publications=[
+                {
+                    'formatted_citation': (
+                        'Doe, J. (2024). Example paper. *Journal of Tests, 12*, 1-9.'
+                    ),
+                    'publication_url': '',
+                    'is_first_author': False,
                 }
-            )
-            self.assertNotIn('<div class="job-title">Software Engineer</div>', html)
-
-        def test_applicant_tagline_renders_when_present(self):
-            html = _render(
-                template_metadata={
-                    'job_title': 'Software Engineer',
-                    'company': 'Acme Corp',
-                    'total_publications_count': 0,
-                    'skills_section_title': 'Technical Skills',
-                    'variant': 'standard',
-                    'generated_date': '2026-01-01T00:00:00',
-                    'applicant_tagline': 'Principal Data Scientist and ML Strategist',
-                }
-            )
-            self.assertIn(
-                '<div class="job-title">Principal Data Scientist and ML Strategist</div>',
-                html,
-            )
+            ]
+        )
+        self.assertIn('<em>Journal of Tests, 12</em>', html)
 
 
-    class TestPublicationCitationFormatting(unittest.TestCase):
-        """Publication citation formatting should render emphasis markup safely."""
-
-        def test_markdown_italics_rendered_as_em_for_publication(self):
-            html = _render(
-                publications=[
-                    {
-                        'formatted_citation': (
-                            'Doe, J. (2024). Example paper. *Journal of Tests, 12*, 1-9.'
-                        ),
-                        'publication_url': '',
-                        'is_first_author': False,
-                    }
-                ]
-            )
-            self.assertIn('<em>Journal of Tests, 12</em>', html)
+class TestPrintLayout(unittest.TestCase):
+    """Print-mode layout tests for the CV template."""
 
     def test_print_layout_uses_single_cv_body_wrapper(self):
         """Template uses a single #cv-body div for continuous column flow."""
@@ -280,6 +286,7 @@ class TestOptionalSidebarFields(unittest.TestCase):
         html = _render()
         self.assertIn('#cv-body .right-col {', html)
         self.assertIn('#cv-body .left-col {', html)
+
 
 class TestExperiencePageFlow(unittest.TestCase):
     """Experience and skills should render in the unified cv-body div."""

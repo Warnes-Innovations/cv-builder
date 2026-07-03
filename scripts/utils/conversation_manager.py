@@ -634,6 +634,41 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
                 "returning empty dict. Raw text (first 200 chars): %.200s",
                 text,
             )
+        # Bracket-depth fallback (same strategy as _parse_json_response)
+        for start_char, close_char in [('{', '}'), ('[', ']')]:
+            idx = clean.find(start_char)
+            if idx == -1:
+                continue
+            depth = 0
+            in_string = False
+            escape_next = False
+            for j in range(idx, len(clean)):
+                ch = clean[j]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if ch == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if ch == '"':
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if ch == start_char:
+                    depth += 1
+                elif ch == close_char:
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            result = json.loads(clean[idx:j + 1])
+                            if isinstance(result, dict):
+                                return result
+                            if isinstance(result, list):
+                                return {'questions': result}
+                        except json.JSONDecodeError:
+                            pass
+                        break
         return {}
 
     def _execute_action(self, action: Dict) -> Optional[str]:
@@ -1086,7 +1121,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             )
             self._normalize_recommendations(recommendations)
             self.state['customizations'] = recommendations
-        
+
         # Ensure customizations is a dict
         customizations = self.state.get('customizations')
         if isinstance(customizations, str):

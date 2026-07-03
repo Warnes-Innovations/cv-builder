@@ -708,6 +708,9 @@
                             {% if pub.is_first_author %}
                             <span class="pub-first-author" title="First author">★</span>
                             {% endif %}
+                            {% if pub.venue_warning %}
+                            <span class="pub-venue-warn" title="{{ pub.venue_warning }}">⚠</span>
+                            {% endif %}
                         </li>
                         {% endfor %}
                     </ol>

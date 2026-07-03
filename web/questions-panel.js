@@ -16,7 +16,8 @@
  *   - sendAction (session-actions.js)
  *   - escapeHtml (utils.js)
  *   - switchTab (review-table-base.js, Tier 4)
- *   - tabData, postAnalysisQuestions, questionAnswers (window globals)
+ *   - stateManager (state-manager.js — getTabData())
+ *   - postAnalysisQuestions, questionAnswers (window globals)
  */
 
 import { getLogger } from './logger.js';

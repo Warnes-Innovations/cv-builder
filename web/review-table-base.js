@@ -99,6 +99,70 @@ function updateInclusionCounts() {
   } catch (e) { log.warn('Failed to update inclusion counts:', e); }
 }
 
+// ── Generate CV tab ───────────────────────────────────────────────────────
+
+function _populateGenerateTab(cvData, content) {
+  if (!cvData || !cvData.files || !cvData.files.length) {
+    content.innerHTML = '<div class="empty-state"><div class="icon">📄</div><h3>Generated CV</h3><p>Generate CV to see preview</p></div>';
+    return;
+  }
+
+  const meta     = cvData.metadata || {};
+  const role     = meta.role     || meta.position || '';
+  const company  = meta.company  || '';
+  const subtitle = role && company ? `${role} — ${company}` : role || company || 'CV generated';
+
+  const ICONS = { '.pdf': '📄', '.docx': '📝', '.html': '🌐' };
+  const LABELS = {
+    '.pdf':  f => f.includes('ATS') ? 'ATS PDF'  : 'Human PDF',
+    '.docx': f => f.includes('ATS') ? 'ATS DOCX' : f.startsWith('CoverLetter_') ? 'Cover Letter' : 'Human DOCX',
+    '.html': () => 'HTML',
+  };
+
+  const downloadableExts = new Set(['.pdf', '.docx', '.html']);
+  const files = (cvData.files || []).filter(f => {
+    const ext = f.slice(f.lastIndexOf('.')).toLowerCase();
+    return downloadableExts.has(ext) && f !== 'job_description.txt';
+  });
+
+  const sid = typeof getSessionIdFromURL === 'function' ? getSessionIdFromURL() : null;
+  const sessionParam = sid ? `?session_id=${encodeURIComponent(sid)}` : '';
+
+  let fileRows = '';
+  for (const f of files) {
+    const ext   = f.slice(f.lastIndexOf('.')).toLowerCase();
+    const icon  = ICONS[ext]  || '📁';
+    const label = LABELS[ext] ? LABELS[ext](f) : f;
+    fileRows += `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f1f5f9;">
+        <span style="font-size:1.4em;">${icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:0.85em;font-weight:600;color:#374151;">${label}</div>
+          <div style="font-size:0.78em;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(f)}</div>
+        </div>
+        <a href="/api/download/${encodeURIComponent(f)}${sessionParam}" download="${escapeHtml(f)}"
+           class="btn-secondary" style="padding:6px 14px;font-size:0.85em;text-decoration:none;display:inline-block;">Download</a>
+      </div>`;
+  }
+
+  content.innerHTML = `
+    <div style="max-width:640px;margin:0 auto;padding:24px 0;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+        <span style="font-size:2em;">✅</span>
+        <div>
+          <h2 style="margin:0;font-size:1.2em;color:#111827;">CV Generated</h2>
+          <div style="font-size:0.9em;color:#6b7280;">${escapeHtml(subtitle)}</div>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:0 16px;margin-bottom:24px;">
+        ${fileRows}
+      </div>
+      <div class="nav-buttons nav-end">
+        <button class="continue-btn" onclick="switchTab('layout')">Open Layout Review →</button>
+      </div>
+    </div>`;
+}
+
 // ── Tab switching ─────────────────────────────────────────────────────────
 
 // Tracks which customise-stage sub-tabs have been viewed this session (GAP-269).
@@ -243,6 +307,9 @@ async function loadTabContent(tab) {
       break;
     case 'editor':
       await populateCVEditorTab();
+      break;
+    case 'generate':
+      _populateGenerateTab(tabData.cv, content);
       break;
     case 'download':
       if (tabData.cv && Object.keys(tabData.cv).length > 0) {
