@@ -7,8 +7,8 @@ description: Sequentially process a list of findings, tasks, or decisions one it
 
 Adapted from:
 
-- `~/src/vscode-config/skills/one-by-one/SKILL.md`
-- `~/src/vscode-config/prompts/OneByOne.prompt.md`
+- `~/src/agent-config/skills/one-by-one/SKILL.md`
+- `~/src/agent-config/prompts/OneByOne.prompt.md`
 
 ## When to use
 
@@ -20,7 +20,7 @@ Adapted from:
 
 - Session files live in `.github/obo_sessions/`
 - Prefer the helper script if available:
-  `/Users/warnes/src/vscode-config/skills/one-by-one/obo_helper.py`
+  `/Users/warnes/src/agent-config/skills/one-by-one/obo_helper.py`
 - If MCP/session helpers are unavailable, manage the JSON files directly
 
 ## Workflow
@@ -41,5 +41,5 @@ Adapted from:
 
 ## Original references
 
-- `~/src/vscode-config/prompts/OneByOne.prompt.md`
-- `~/src/vscode-config/skills/one-by-one/SKILL.md`
+- `~/src/agent-config/prompts/OneByOne.prompt.md`
+- `~/src/agent-config/skills/one-by-one/SKILL.md`

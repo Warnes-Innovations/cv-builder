@@ -24,7 +24,6 @@ import yaml
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
 from utils.config import get_config
-from utils.conversation_manager import Phase
 from utils.llm_client import PROVIDER_MODELS
 from utils.provider_registry import DISPLAY_FIELDS, PROVIDER_REGISTRY
 from utils.session_data_view import SessionDataView
@@ -466,7 +465,7 @@ def create_blueprint(deps):
 
         try:
             validated_updates = _validate_settings_update(normalized_updates)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.exception("Settings validation failed")
             return jsonify({'ok': False, 'error': 'Settings validation failed'}), 400
 
@@ -664,7 +663,6 @@ def create_blueprint(deps):
         #     - "response:GET /api/status.max_skills"
         #     - "response:GET /api/status.skills_section_title"
         #   notes: "Returns the current generation-settings values in the session status payload."
-        from pathlib import Path
         entry = _get_session(required=False)
         _provider_name = _provider_name_ref['value']
         _current_model = _current_model_ref['value']
@@ -752,6 +750,8 @@ def create_blueprint(deps):
             achievement_decisions=conversation.state.get("achievement_decisions")   or {},
             publication_decisions=conversation.state.get("publication_decisions")   or {},
             summary_focus_override=conversation.state.get("summary_focus_override"),
+            tagline_override=conversation.state.get("tagline_override"),
+            decisions_confirmed=conversation.state.get("decisions_confirmed") or {},
             extra_skills=conversation.state.get("extra_skills")            or [],
             extra_skill_matches=conversation.state.get("extra_skill_matches") or {},
             session_file=str(getattr(conversation, "session_file", "") or ""),
@@ -762,6 +762,9 @@ def create_blueprint(deps):
             stale_steps=list(conversation.state.get("stale_steps") or []),
             job_url=conversation.state.get("job_url"),
             generation_goals=conversation.state.get("generation_goals") or None,
+            skill_qualifier_overrides=conversation.state.get("skill_qualifier_overrides") or {},
+            ai_attribution=bool(conversation.state.get("ai_attribution", False)),
+            highest_phase=conversation.state.get("highest_phase") or None,
         )))
 
     @bp.get("/api/context-stats")
@@ -862,6 +865,9 @@ def create_blueprint(deps):
                     return jsonify({"error": "skills_section_title must not be empty"}), 400
                 conversation.state["skills_section_title"] = raw
                 customizations["skills_section_title"] = raw
+            if "ai_attribution" in data:
+                conversation.state["ai_attribution"] = bool(data["ai_attribution"])
+                customizations["ai_attribution"] = bool(data["ai_attribution"])
             conversation._save_session()
         session_registry.touch(sid)
         cfg_default = get_config().get("generation.max_skills", 20)
@@ -869,6 +875,7 @@ def create_blueprint(deps):
             "ok": True,
             "max_skills": int(conversation.state.get("max_skills") or cfg_default),
             "skills_section_title": conversation.state.get("skills_section_title") or "Skills",
+            "ai_attribution": bool(conversation.state.get("ai_attribution", False)),
         })
 
     @bp.post("/api/post-analysis-responses")
@@ -970,7 +977,6 @@ def create_blueprint(deps):
         try:
             body          = request.get_json(force=True) or {}
             question      = (body.get('question') or '').strip()
-            question_type = (body.get('question_type') or '').strip()
             analysis      = body.get('analysis') or {}
 
             if not question:

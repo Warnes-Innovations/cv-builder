@@ -1,1 +1,0 @@
-/Users/warnes/src/vscode-config/prompts/commitMessage.prompt.md

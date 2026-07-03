@@ -13,7 +13,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CV - {{ personal_info.name }}</title>
     <meta name="author"      content="{{ personal_info.name }}">
-    <meta name="description" content="{{ personal_info.name }} – {{ template_metadata.job_title }}">
+    <meta name="description" content="{{ personal_info.name }} – {{ template_metadata.applicant_tagline }}">
     <!-- Schema.org/Person structured data for ATS parsers -->
     <script type="application/ld+json">
 {{ json_ld_str | json_script }}
@@ -94,7 +94,7 @@
 
         #cv-body .right-col {
             flex: 1;
-            padding: 40px 30px;
+            padding: 0 30px 40px;
             min-width: 0;
         }
 
@@ -212,6 +212,7 @@
             font-size: 2.2rem;
             font-weight: 700;
             color: var(--primary-color);
+            margin-top: 0;
             margin-bottom: 5px;
             line-height: 1.2;
         }
@@ -379,12 +380,33 @@
                no forced page break between content groups. */
             #cv-body {
                 display: block;
+                /* Faux-column technique: paint sidebar bg + border-rule on every
+                   page fragment so the sidebar colour fills full page height even
+                   when sidebar content ends before the right column does.
+                   Use !important to override .page { background: white !important }.
+                   Use literal colours (not var()) for reliable Chromium print rendering.
+                   -webkit-box-decoration-break: clone reproduces the gradient on each page. */
+                background-image: linear-gradient(
+                    to right,
+                    #eef2f5 calc(32% - 1px),
+                    #d1d8dd calc(32% - 1px),
+                    #d1d8dd 32%,
+                    white 32%
+                ) !important;
+                background-color: transparent !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                -webkit-box-decoration-break: clone;
+                box-decoration-break: clone;
             }
 
             #cv-body .left-col {
                 float: left;
                 width: 32%;
-                background-color: var(--sidebar-bg) !important;
+                /* Background comes from parent gradient; transparent here avoids
+                   double-painting and lets the full-height gradient show through. */
+                background-color: transparent !important;
+                border-right: none; /* simulated by parent gradient */
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
                 -webkit-box-decoration-break: clone;
@@ -397,13 +419,19 @@
                 background: white !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
-                padding-top: 40px;
+                padding-top: 0;
             }
 
-            /* Keep each section whole when it crosses a print page boundary */
-            .section {
-                break-inside: avoid;
-                page-break-inside: avoid;
+            /* Right-column sections should flow continuously across pages.
+               Title + first content block keep-together rules above still apply. */
+            #cv-body .right-col .section {
+                break-inside: auto;
+                page-break-inside: auto;
+            }
+
+            #cv-body .right-col .pub-section.pub-start-new-page {
+                break-before: page;
+                page-break-before: always;
             }
 
             /* Hide screen-only page-break markers in print */
@@ -418,6 +446,15 @@
             @page {
                 size: letter;
                 margin: var(--page-margin);
+                @bottom-left {
+                    content: "Generated: {{ template_metadata.generated_date[:10] }}";
+                    font-family: var(--font-body, Arial, sans-serif);
+                    font-size: 7.5pt;
+                    color: #ccc;
+                    padding-left: 2pt;
+                    padding-bottom: 2pt;
+                    font-style: italic;
+                }
                 @bottom-right {
                     content: counter(page) " / " counter(pages);
                     font-family: var(--font-body, Arial, sans-serif);
@@ -430,6 +467,9 @@
                 @top-center { content: none; }
                 @top-right { content: none; }
             }
+
+            /* Hide screen timestamp in print (handled by @page @bottom-left) */
+            .page-timestamp { display: none; }
         }
 
         /* Screen-only page-break guide lines (injected by JS) */
@@ -458,15 +498,25 @@
         .pub-list { list-style: decimal; padding-left: 1.4em; margin: 0; }
         .pub-item { margin-bottom: 0.7em; font-size: 0.88em; line-height: 1.5; break-inside: avoid; page-break-inside: avoid; }
         .pub-citation { color: var(--text-main); }
+        .pub-citation-link { color: var(--text-main); text-decoration: underline; text-decoration-color: var(--accent-color); }
         .pub-section { page-break-inside: auto; break-inside: auto; }
         .pub-count { font-size: 0.75em; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
-        .pub-venue-warn { color: #dc7900; font-size: 0.85em; margin-left: 4px; cursor: help; }
         .pub-first-author { color: #1d4ed8; font-size: 0.8em; margin-left: 4px; cursor: help; }
 
         /* Certifications in sidebar */
         .cert-item { margin-bottom: 0.5em; }
         .cert-name { display: block; font-size: 0.82em; font-weight: 600; color: var(--text-main); }
         .cert-issuer { display: block; font-size: 0.78em; color: var(--text-muted); }
+
+        /* Screen-only generation timestamp (hidden in print; print uses @page @bottom-left) */
+        .page-timestamp {
+            font-size: 0.68rem;
+            color: #ccc;
+            font-style: italic;
+            padding: 6px 16px 10px;
+            text-align: left;
+            background: white;
+        }
     </style>
 </head>
 <body>
@@ -575,9 +625,9 @@
                         <div class="skill-group">
                             <h4>{{ cat.category }}</h4>
                             <ul class="skill-list">
-                                {% for skill in cat.skills %}
-                                <li>{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}{% endif %}{% if not skill.group_display_names and skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}</li>
-                                {% endfor %}
+                                {% for skill in cat.skills %}{% if not skill.candidate_to_confirm %}
+                                <li>{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% if skill.years and template_metadata.skills_show_experience != 'never' and (template_metadata.skills_show_experience == 'always' or skill.show_experience != false) %} ({{ skill.years }} yrs){% endif %}{% endif %}{% if not skill.group_display_names and skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}</li>
+                                {% endif %}{% endfor %}
                             </ul>
                         </div>
                         {% endfor %}
@@ -589,7 +639,9 @@
             <main class="right-col">
                 <header class="header">
                     <h1 class="name">{{ personal_info.name }}</h1>
-                    <div class="job-title">{{ template_metadata.job_title }}</div>
+                    {% if template_metadata.applicant_tagline | default('') | trim %}
+                    <div class="job-title">{{ template_metadata.applicant_tagline }}</div>
+                    {% endif %}
                 </header>
 
                 <section class="section">
@@ -634,7 +686,7 @@
                 {% endif %}
 
                 {% if publications %}
-                <section class="section pub-section">
+                <section class="section pub-section{% if template_metadata.publications_start_new_page %} pub-start-new-page{% endif %}">
                     <h2 class="section-title"><i class="fas fa-file-alt"></i>
                         {% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}
                         Selected Publications
@@ -645,7 +697,14 @@
                     <ol class="pub-list">
                         {% for pub in publications %}
                         <li class="pub-item">
-                            <span class="pub-citation">{{ pub.formatted_citation }}</span>
+                            {% set pub_href = pub.publication_url | default('') | safe_url %}
+                            {% if pub_href and pub.citation_title | default('') | trim %}
+                            <span class="pub-citation">{{ pub.citation_prefix | citation_markdown_to_html }}<a class="pub-citation-link" href="{{ pub_href }}">{{ pub.citation_title | citation_markdown_to_html }}</a>{{ pub.citation_suffix | citation_markdown_to_html }}</span>
+                            {% elif pub_href %}
+                            <a class="pub-citation pub-citation-link" href="{{ pub_href }}">{{ pub.formatted_citation | citation_markdown_to_html }}</a>
+                            {% else %}
+                            <span class="pub-citation">{{ pub.formatted_citation | citation_markdown_to_html }}</span>
+                            {% endif %}
                             {% if pub.is_first_author %}
                             <span class="pub-first-author" title="First author">★</span>
                             {% endif %}
@@ -659,6 +718,7 @@
                 {% endif %}
             </main>
         </div>
+        <div class="page-timestamp">Generated: {{ template_metadata.generated_date[:10] }}</div>
     </div>
 
     <!-- ================================================================
@@ -669,7 +729,8 @@
     <section id="plaintext" style="display:none;visibility:hidden;" aria-hidden="true"><pre>
 ================================================================================
 {{ personal_info.name }}
-{{ template_metadata.job_title }}
+{% if template_metadata.applicant_tagline | default('') | trim %}{{ template_metadata.applicant_tagline }}
+{% endif %}
 ================================================================================
 {% if personal_info.contact.email %}Email: {{ personal_info.contact.email }}
 {% endif %}{% if personal_info.contact.phone %}Phone: {{ personal_info.contact.phone }}
@@ -716,7 +777,7 @@ EDUCATION
     notes: Emits the fixed ATS plain-text skills heading inside the hidden plaintext resume block. #}
 SKILLS
 --------------------------------------------------------------------------------
-{% for cat in skills_by_category %}{{ cat.category }}: {% for skill in cat.skills %}{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+{% for cat in skills_by_category %}{{ cat.category }}: {% set ns = namespace(first=true) %}{% for skill in cat.skills %}{% if not skill.candidate_to_confirm %}{% if not ns.first %}, {% endif %}{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% endif %}{% set ns.first = false %}{% endif %}{% endfor %}
 {% endfor %}{% endif %}
 {% if certifications %}
 --------------------------------------------------------------------------------
@@ -762,6 +823,41 @@ CERTIFICATIONS
     } else {
         run();
     }
+})();
+</script>
+
+<script>
+/* Extend #cv-body to fill the bottom of the last page so the sidebar
+   gradient covers full page height even when content ends mid-page.
+   Runs on load (for Chromium headless --print-to-pdf) and on beforeprint
+   (for interactive browser printing). */
+(function () {
+    var PAGE_IN = 11;     // US Letter height in inches
+    var PX_PER_IN = 96;   // CSS reference pixels per inch
+
+    function fillLastPage() {
+        var el = document.getElementById('cv-body');
+        if (!el) return;
+
+        // Read --page-margin CSS variable (e.g. "0.5in"); default 0.5in
+        var marginStr = getComputedStyle(document.documentElement)
+            .getPropertyValue('--page-margin').trim();
+        var marginIn = parseFloat(marginStr) || 0.5;
+
+        var contentH = Math.round((PAGE_IN - 2 * marginIn) * PX_PER_IN);
+
+        el.style.minHeight = '';           // reset any prior extension
+        var h = el.offsetHeight;
+        var pages = Math.ceil(h / contentH) || 1;
+        el.style.minHeight = (pages * contentH) + 'px';
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', fillLastPage);
+    } else {
+        fillLastPage();
+    }
+    window.addEventListener('beforeprint', fillLastPage);
 })();
 </script>
 </body>

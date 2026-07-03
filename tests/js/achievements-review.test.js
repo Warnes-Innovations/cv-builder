@@ -163,7 +163,7 @@ describe('submitAchievementDecisions', () => {
     await submitAchievementDecisions()
     expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('2 items'))
     expect(globalThis.scheduleAtsRefresh).toHaveBeenCalled()
-    expect(globalThis.switchTab).toHaveBeenCalledWith('summary-review')
+    expect(globalThis.switchTab).toHaveBeenCalledWith('tagline-review')
   })
 
   it('stores decisions in _savedDecisions', async () => {

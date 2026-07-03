@@ -30,11 +30,23 @@ function _findExperienceRecommendationRecord(expId) {
 
 // ── Step-order constants ─────────────────────────────────────────────────────
 
-const _STEP_ORDER = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise'];
+const _STEP_ORDER = [
+  'job', 'analysis', 'customizations', 'rewrite', 'spell', 'layout',
+  'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'harvest',
+];
 const _STEP_DISPLAY = {
-  job: 'Job Input', analysis: 'Job Analysis', customizations: 'Customisations',
-  rewrite: 'Rewrite Review', spell: 'Spell Check', generate: 'Generate CV',
-  layout: 'Layout Review', finalise: 'Finalise',
+  job:            'Job Input',
+  analysis:       'Job Analysis',
+  customizations: 'Customisations',
+  rewrite:        'Rewrite Review',
+  spell:          'Spell Check',
+  layout:         'Layout Review',
+  download:       'File Review',
+  cover_letter:   'Cover Letter',
+  screening:      'Screening',
+  interview_prep: 'Interview Prep',
+  thank_you:      'Thank You',
+  harvest:        'Harvest',
 };
 const _ACTION_LABELS = {
   recommend_customizations: 'Selecting experiences & skills…',
@@ -42,9 +54,7 @@ const _ACTION_LABELS = {
 };
 
 const _NAV_TAB_LABELS = {
-  generate: '📄 Generated CV',
   download: '⬇️ File Review',
-  finalise: '✅ Finalise',
 };
 
 function applyLayoutFreshnessNavigationState() {
@@ -106,10 +116,9 @@ async function backToPhase(step, feedback) {
     const tabMap = {
       job:            null,
       analysis:       'analysis',
-      customizations: 'exp-review',
+      customizations: 'goals',
       rewrite:        'rewrite',
       spell:          'spell',
-      generate:       'generate',
     };
     const resolvedTab = tabMap[step] || tabMap[data.phase] || null;
     if (resolvedTab) switchTab(resolvedTab);
@@ -168,7 +177,7 @@ function _showReRunConfirmModal(step, mode, onConfirm) {
 
   document.body.appendChild(overlay);
   _focusedElementBeforeModal = document.activeElement;
-  trapFocus('rerun-confirm-overlay');
+  if (typeof trapFocus === 'function') trapFocus('rerun-confirm-overlay');
   document.getElementById('rerun-proceed-btn').focus();
 
   const close = () => { overlay.remove(); restoreFocus(); };
@@ -204,15 +213,20 @@ function _getStepTooltip(step, isActive, isViewing, isBrowsingAway, isCompleted,
  */
 function _updateViewingIndicator(tabName) {
   const tabToStep = {
-    'job':        'job',
-    'analysis':   'analysis',
-    'questions':  'analysis',
-    'exp-review': 'customizations',
-    'rewrite':    'rewrite',
-    'spell':      'spell',
-    'generate':   'generate',
-    'layout':     'layout',
-    'finalise':   'finalise',
+    'job':           'job',
+    'analysis':      'analysis',
+    'questions':     'analysis',
+    'exp-review':    'customizations',
+    'rewrite':       'rewrite',
+    'spell':         'spell',
+    'layout':        'layout',
+    'final_generate':'download',
+    'download':      'download',
+    'cover-letter':  'cover_letter',
+    'screening':     'screening',
+    'interview-prep':'interview_prep',
+    'thank-you':     'thank_you',
+    'harvest':       'harvest',
   };
   const viewedStep = tabToStep[tabName] || null;
 
@@ -259,7 +273,125 @@ function _updateViewingIndicator(tabName) {
 
 // ── Re-run phase ──────────────────────────────────────────────────────────────
 
+/**
+ * Show an amend-clarifications modal before re-running the analysis phase.
+ * Calls onProceed() if the user confirms (with or without updating answers).
+ */
+async function _showAnalysisClarificationAmendModal(onProceed) {
+  const questions = window.postAnalysisQuestions || [];
+  const answers   = window.questionAnswers || {};
+
+  // No prior questions — skip the modal and proceed directly.
+  if (!questions.length) { await onProceed(); return; }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'clar-amend-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;overflow-y:auto;';
+
+  const formRows = questions.map((q, i) => {
+    const qtype  = q.type || `clarification_${i + 1}`;
+    const qtext  = escapeHtml(q.question || '');
+    const curAns = escapeHtml(answers[qtype] || '');
+    const choices = Array.isArray(q.choices) ? q.choices : [];
+
+    if (choices.length) {
+      const radios = choices.map(c => `
+        <label style="display:flex;align-items:center;gap:6px;margin-bottom:4px;cursor:pointer;">
+          <input type="radio" name="clar-${escapeHtml(qtype)}" value="${escapeHtml(c)}"
+            ${answers[qtype] === c ? 'checked' : ''} style="flex-shrink:0;">
+          <span style="font-size:0.9em;">${escapeHtml(c)}</span>
+        </label>`).join('');
+      return `
+        <div style="margin-bottom:14px;">
+          <label style="font-weight:600;font-size:0.9em;display:block;margin-bottom:6px;">${qtext}</label>
+          ${radios}
+        </div>`;
+    }
+    return `
+      <div style="margin-bottom:14px;">
+        <label for="clar-ans-${escapeHtml(qtype)}" style="font-weight:600;font-size:0.9em;display:block;margin-bottom:4px;">${qtext}</label>
+        <textarea id="clar-ans-${escapeHtml(qtype)}" name="clar-${escapeHtml(qtype)}" rows="2"
+          style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:0.9em;resize:vertical;"
+        >${curAns}</textarea>
+      </div>`;
+  }).join('');
+
+  overlay.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-labelledby="clar-amend-title"
+         style="background:#fff;border-radius:10px;padding:24px 28px;max-width:500px;width:94%;
+                box-shadow:0 20px 60px rgba(0,0,0,0.3);margin:20px auto;">
+      <h3 id="clar-amend-title" style="margin:0 0 6px;font-size:1.1em;color:#1e293b;">↻ Amend Clarification Answers</h3>
+      <p style="margin:0 0 16px;font-size:0.85em;color:#6b7280;">
+        Update your answers before rerunning analysis, or keep them as-is.
+      </p>
+      <form id="clar-amend-form" onsubmit="return false;">
+        ${formRows}
+      </form>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;">
+        <button id="clar-amend-cancel" class="btn-secondary">Cancel</button>
+        <button id="clar-amend-keep"   class="btn-secondary">Keep Existing Answers</button>
+        <button id="clar-amend-save"   class="btn-primary">Update &amp; Rerun</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  if (typeof _focusedElementBeforeModal !== 'undefined') window._focusedElementBeforeModal = document.activeElement;
+  if (typeof trapFocus === 'function') trapFocus('clar-amend-overlay');
+  overlay.querySelector('#clar-amend-save').focus();
+
+  function closeModal() {
+    overlay.remove();
+    if (typeof restoreFocus === 'function') restoreFocus();
+  }
+
+  overlay.querySelector('#clar-amend-cancel').addEventListener('click', closeModal);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+  overlay.querySelector('#clar-amend-keep').addEventListener('click', () => {
+    closeModal();
+    onProceed();
+  });
+
+  overlay.querySelector('#clar-amend-save').addEventListener('click', async () => {
+    const form    = document.getElementById('clar-amend-form');
+    const updated = {};
+    questions.forEach((q, i) => {
+      const qtype = q.type || `clarification_${i + 1}`;
+      const el    = form.querySelector(`[name="clar-${qtype}"]`);
+      if (!el) return;
+      if (el.type === 'radio') {
+        const checked = form.querySelector(`[name="clar-${qtype}"]:checked`);
+        if (checked) updated[qtype] = checked.value;
+      } else {
+        const val = el.value.trim();
+        if (val) updated[qtype] = val;
+      }
+    });
+
+    closeModal();
+    try {
+      await fetch('/api/post-analysis-responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questions, answers: updated }),
+      });
+      window.questionAnswers = updated;
+    } catch (_e) { /* silent — proceed with whatever the backend already has */ }
+    await onProceed();
+  });
+}
+
 async function reRunPhase(step) {
+  // Intercept analysis reruns to let the user amend prior clarification answers.
+  if (step === 'analysis') {
+    await _showAnalysisClarificationAmendModal(() => _executeReRunPhase('analysis'));
+    return;
+  }
+  await _executeReRunPhase(step);
+}
+
+async function _executeReRunPhase(step) {
   const loadingMsg = appendLoadingMessage(`↻ Re-running ${step}…`);
   setLoading(true, `Re-running ${step}…`);
   try {
@@ -287,10 +419,9 @@ async function reRunPhase(step) {
     // Navigate to the step's viewer tab
     const tabMap = {
       analysis:       'analysis',
-      customizations: 'exp-review',
+      customizations: 'goals',
       rewrite:        'rewrite',
       spell:          'spell',
-      generate:       'generate',
     };
     if (tabMap[step]) switchTab(tabMap[step]);
 
@@ -440,9 +571,17 @@ async function showBulletReorder(expId, expTitle) {
     return;
   }
 
+  // Save focus origin for restoration on close (GAP-176)
+  if (typeof _focusedElementBeforeModal !== 'undefined') {
+    _focusedElementBeforeModal = document.activeElement;
+  }
+
   // Build modal content
   const modal = document.createElement('div');
   modal.id = 'bullet-reorder-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'bullet-reorder-title');
   modal.style.cssText = `
     position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);
     z-index:9999;display:flex;align-items:center;justify-content:center;`;
@@ -464,10 +603,11 @@ async function showBulletReorder(expId, expTitle) {
                 max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
         <div>
-          <h3 style="margin:0;color:#1f2937;">↕ Reorder Bullets</h3>
+          <h3 id="bullet-reorder-title" style="margin:0;color:#1f2937;">↕ Reorder Bullets</h3>
           <div style="color:#6b7280;font-size:0.9em;margin-top:4px;">${expTitle}</div>
         </div>
-        <button onclick="document.getElementById('bullet-reorder-modal').remove()"
+        <button aria-label="Close reorder dialog"
+          onclick="restoreFocus();document.getElementById('bullet-reorder-modal').remove()"
           style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#6b7280;">✕</button>
       </div>
       <div style="font-size:0.85em;color:#6b7280;margin-bottom:12px;">
@@ -480,10 +620,23 @@ async function showBulletReorder(expId, expTitle) {
       <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
         ${suggestedBtn}
         <button class="btn-secondary" onclick="resetBulletOrder('${expId}')">↺ Reset to Auto</button>
-        <button class="btn-primary"   onclick="saveBulletOrder('${expId}')">Save Order</button>
+        <button class="btn-primary"   onclick="saveBulletOrder('${expId}');restoreFocus()">Save Order</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
+  if (typeof trapFocus === 'function') trapFocus('bullet-reorder-modal');
+  if (typeof setInitialFocus === 'function') setInitialFocus('bullet-reorder-modal');
+
+  // Close on Escape
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      restoreFocus();
+      modal.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
 
   // Populate list items
   const list = document.getElementById('bullet-reorder-list');
@@ -495,10 +648,12 @@ async function showBulletReorder(expId, expTitle) {
       background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;`;
     li.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
-        <button title="Move up"   onclick="moveBullet(this,-1)"
+        <button title="Move up" aria-label="Move bullet up"
+          onclick="moveBullet(this,-1)"
           style="background:none;border:1px solid #d1d5db;border-radius:3px;
                  cursor:pointer;padding:1px 5px;line-height:1.2;font-size:0.9em;">↑</button>
-        <button title="Move down" onclick="moveBullet(this,+1)"
+        <button title="Move down" aria-label="Move bullet down"
+          onclick="moveBullet(this,+1)"
           style="background:none;border:1px solid #d1d5db;border-radius:3px;
                  cursor:pointer;padding:1px 5px;line-height:1.2;font-size:0.9em;">↓</button>
       </div>
@@ -588,22 +743,47 @@ async function resetBulletOrder(expId) {
       return;
     }
     appendMessage('assistant', '↺ Bullet order reset. Relevance-based ordering will apply.');
+    restoreFocus();
     document.getElementById('bullet-reorder-modal')?.remove();
   } catch(e) {
     appendRetryMessage('⚠ Network error resetting bullet order: ' + e.message, () => resetBulletOrder(expId));
   }
 }
 
+// ── Forward-skip phase watermark (GAP-101) ────────────────────────────────────
+
+// Backend phase ordering (matches conversation_manager.py _PHASE_ORDER).
+const _PHASE_PROGRESSION = [
+  'init', 'job_analysis', 'customization', 'rewrite_review',
+  'spell_check', 'generation', 'layout_review', 'final_generation', 'refinement',
+];
+
+// Minimum highestPhase index required for each step to be forward-skippable.
+const _STEP_FWD_PHASE_MIN = {
+  analysis:       1,   // job_analysis
+  customizations: 2,   // customization
+  rewrite:        3,   // rewrite_review
+  spell:          4,   // spell_check
+  layout:         5,   // generation
+  download:       7,   // final_generation
+  cover_letter:   7,
+  screening:      7,
+  interview_prep: 7,
+  thank_you:      7,
+  harvest:        7,
+};
+
 // ── Workflow step bar ─────────────────────────────────────────────────────────
 
 function updateWorkflowSteps(status) {
-  // 8-step workflow bar: Job Input → Analysis → Customise → Rewrites →
-  //                      Spell Check → Generate → Layout (upcoming) → Finalise
+  // 12-step workflow bar: Job Input → Analysis → Customise → Rewrites →
+  //   Spell Check → Layout Review → Download → Cover Letter → Screening →
+  //   Interview Prep → Thank You → Harvest
   //
   const UPCOMING = new Set();
 
   // Steps that support LLM re-execution via /api/re-run-phase
-  const RE_RUN_STEPS = new Set(['analysis', 'customizations', 'rewrite', 'spell', 'generate']);
+  const RE_RUN_STEPS = new Set(['analysis', 'customizations', 'rewrite', 'spell', 'layout']);
 
   // Base label for each step (used when injecting ↻ button)
   const STEP_LABELS = {
@@ -612,34 +792,51 @@ function updateWorkflowSteps(status) {
     customizations: '⚙️ Customise',
     rewrite:        '✏️ Rewrites',
     spell:          '🔤 Spell Check',
-    generate:       '📄 Generate',
     layout:         '🎨 Layout Review',
-    finalise:       '✅ Finalise',
+    download:       '⬇️ Download Files',
+    cover_letter:   '📩 Cover Letter',
+    screening:      '📋 Screening',
+    interview_prep: '🎤 Interview Prep',
+    thank_you:      '🙏 Thank You',
+    harvest:        '🌾 Harvest',
   };
 
   // Determine which steps are done based on session state fields.
   const phase = status.phase || '';
+  // All post-layout phases unlock simultaneously once layout is confirmed.
+  const postLayout = phase === PHASES.FINAL_GENERATION || phase === PHASES.REFINEMENT;
   const done = {
     job:            !!status.job_description,
     analysis:       !!status.job_analysis,
     customizations: !!status.customizations,
     rewrite:        phase !== PHASES.REWRITE_REVIEW && (!!status.customizations),
-    spell:          phase === PHASES.GENERATION || phase === PHASES.REFINEMENT,
-    generate:       !!status.generated_files,
-    layout:         phase === PHASES.REFINEMENT && !!status.generated_files,
-    finalise:       phase === PHASES.REFINEMENT && !!status.generated_files,
+    spell:          phase === PHASES.GENERATION || phase === PHASES.LAYOUT_REVIEW ||
+                    phase === PHASES.FINAL_GENERATION || phase === PHASES.REFINEMENT,
+    layout:         postLayout,
+    download:       postLayout,
+    cover_letter:   postLayout,
+    screening:      postLayout,
+    interview_prep: postLayout,
+    thank_you:      postLayout,
+    harvest:        postLayout,
   };
+
+  // Forward-skip watermark (GAP-101): steps previously reached but not currently
+  // "done" according to the current phase are still navigable with a confirmation.
+  const highestPhaseIdx = _PHASE_PROGRESSION.indexOf(status.highest_phase || '');
+  const currentPhaseIdx = _PHASE_PROGRESSION.indexOf(phase);
 
   // Determine the active step from the backend phase string.
   const phaseToStep = {
-    'init':          'job',
-    'job_analysis':  'analysis',
-    'customization': 'customizations',
-    'rewrite_review':'rewrite',
-    'spell_check':   'spell',
-    'generation':    'generate',
-    'layout_review': 'layout',
-    'refinement':    'finalise',
+    'init':             'job',
+    'job_analysis':     'analysis',
+    'customization':    'customizations',
+    'rewrite_review':   'rewrite',
+    'spell_check':      'spell',
+    'generation':       'layout',
+    'layout_review':    'layout',
+    'final_generation': 'download',
+    'refinement':       'download',
   };
   const activeStep = phaseToStep[phase] || 'job';
 
@@ -649,14 +846,17 @@ function updateWorkflowSteps(status) {
     ? (_phaseToStep2[status.reentry_phase] || status.reentry_phase || null)
     : null;
 
-  const stepIds = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'generate', 'layout', 'finalise'];
+  const stepIds = [
+    'job', 'analysis', 'customizations', 'rewrite', 'spell', 'layout',
+    'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'harvest',
+  ];
   const staleSteps = new Set(status.stale_steps || []);
   stepIds.forEach(step => {
     const el = document.getElementById(`step-${step}`);
     if (!el) return;
     // Upcoming steps are fixed — never change their class.
     if (UPCOMING.has(step)) return;
-    el.classList.remove('active', 'completed', 'clickable', 'upcoming', 'stale');
+    el.classList.remove('active', 'completed', 'clickable', 'upcoming', 'stale', 'forward-skip');
 
     let label = STEP_LABELS[step] || step;
 
@@ -670,16 +870,37 @@ function updateWorkflowSteps(status) {
       el.classList.add('completed');
       // Completed steps are clickable for back-navigation.
       el.classList.add('clickable');
-      // Add ↻ re-run icon for steps that support LLM re-execution
+      // Add ↻ re-run button for steps that support LLM re-execution
       if (RE_RUN_STEPS.has(step)) {
-        label += ` <span class="step-rerun" title="Re-run ${step} with updated inputs"
+        const rerunLabel = _STEP_DISPLAY[step] || step;
+        label += ` <button class="step-rerun" aria-label="Re-run ${rerunLabel}"
+          title="Re-run ${step} with updated inputs"
           onclick="event.stopPropagation();confirmReRunPhase('${step}')"
-          style="font-size:0.8em;opacity:0;transition:opacity 0.15s;margin-left:2px;cursor:pointer;">↻</span>`;
+          style="font-size:0.8em;opacity:0.35;transition:opacity 0.15s;margin-left:2px;cursor:pointer;background:none;border:none;padding:0;color:inherit;line-height:1;">↻</button>`;
       }
+    } else if (highestPhaseIdx >= 0 && (_STEP_FWD_PHASE_MIN[step] ?? Infinity) <= highestPhaseIdx
+               && highestPhaseIdx > currentPhaseIdx) {
+      // Forward-skip: step was completed in a prior iteration but is ahead of current phase.
+      el.classList.add('forward-skip', 'clickable');
+      label += ' <span class="step-inline-badge step-fwd-badge" title="Previously completed — click to jump ahead">⏩</span>';
     }
 
     // Apply stale class for steps downstream of a re-run
     if (staleSteps.has(step)) el.classList.add('stale');
+
+    // Append sr-only state description for screen reader users
+    const isStale         = staleSteps.has(step);
+    const isStaleCritical = el.classList.contains('stale-critical');
+    const isActive        = el.classList.contains('active');
+    const isCompleted     = el.classList.contains('completed');
+    const isFwdSkip       = el.classList.contains('forward-skip');
+    const srState = isStaleCritical ? ' (critical — review required)'
+      : isStale     ? ' (stale — results may be outdated)'
+      : isActive    ? ' (current step)'
+      : isCompleted ? ' (completed)'
+      : isFwdSkip   ? ' (previously completed — click to jump ahead)'
+      : '';
+    if (srState) label += `<span class="sr-only">${srState}</span>`;
 
     el.innerHTML = label;
   });
@@ -691,7 +912,7 @@ function updateWorkflowSteps(status) {
   if (!document.getElementById('step-rerun-style')) {
     const s = document.createElement('style');
     s.id = 'step-rerun-style';
-    s.textContent = '.step.completed:hover .step-rerun { opacity: 1 !important; }';
+    s.textContent = '.step.completed:hover .step-rerun, .step.completed:focus-within .step-rerun { opacity: 1 !important; } .step-rerun:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; opacity: 1 !important; }';
     document.head.appendChild(s);
   }
 
@@ -719,7 +940,7 @@ if (typeof window !== 'undefined') {
  */
 function applyDirtyPhaseNavigationState() {
   const dirtyPhases = stateManager.getDirtyPhases();
-  const stepsToClear = ['generate'];    // steps we manage here (not 'layout')
+  const stepsToClear = [];    // steps we manage here (not 'layout')
 
   stepsToClear.forEach(step => {
     const el = document.getElementById(`step-${step}`);
@@ -738,6 +959,28 @@ function applyDirtyPhaseNavigationState() {
   });
 }
 
+// ── Step navigation helper ────────────────────────────────────────────────────
+
+function _doStepNavigate(step) {
+  const stepToTab = {
+    analysis:       'analysis',
+    customizations: 'goals',
+    rewrite:        'rewrite',
+    spell:          'spell',
+    layout:         'layout',
+    download:       'final_generate',
+    cover_letter:   'cover-letter',
+    screening:      'screening',
+    interview_prep: 'interview-prep',
+    thank_you:      'thank-you',
+    harvest:        'harvest',
+  };
+  const tabName = stepToTab[step];
+  if (!tabName) return;
+  if (typeof updateTabBarForStage === 'function') updateTabBarForStage(step);
+  switchTab(tabName);
+}
+
 // ── Step click (back-nav) ─────────────────────────────────────────────────────
 
 // Back-navigation: clicking a completed workflow step navigates to its viewer tab.
@@ -752,6 +995,20 @@ function handleStepClick(step) {
       switchTab('job');
     } else {
       showLoadJobPanel();
+    }
+    return;
+  }
+
+  // Forward-skip: previously reached stage that is ahead of current phase.
+  if (el.classList.contains('forward-skip')) {
+    const label = _STEP_DISPLAY[step] || step;
+    if (typeof confirmDialog === 'function') {
+      confirmDialog(
+        `Jump ahead to ${label}?\n\nIntermediate stages may need re-running if you make changes here.`,
+        { confirmLabel: 'Jump ahead', cancelLabel: 'Stay here' }
+      ).then(confirmed => { if (confirmed) _doStepNavigate(step); });
+    } else {
+      _doStepNavigate(step);
     }
     return;
   }
@@ -773,20 +1030,40 @@ function handleStepClick(step) {
 
   const stepToTab = {
     analysis:       hasUnansweredPostAnalysisQuestions() ? 'questions' : 'analysis',
-    customizations: 'exp-review',
+    customizations: 'goals',
     rewrite:        'rewrite',
     spell:          'spell',
-    generate:       'generate',
     layout:         'layout',
-    finalise:       'finalise',
+    download:       'final_generate',
+    cover_letter:   'cover-letter',
+    screening:      'screening',
+    interview_prep: 'interview-prep',
+    thank_you:      'thank-you',
+    harvest:        'harvest',
   };
   const tabName = stepToTab[step];
-  if (tabName) {
-    if (typeof updateTabBarForStage === 'function') {
-      updateTabBarForStage(step);
-    }
+  if (!tabName) return;
+
+  const doNavigate = () => {
+    if (typeof updateTabBarForStage === 'function') updateTabBarForStage(step);
     switchTab(tabName);
+  };
+
+  // Show a downstream-awareness dialog when back-navigating to a completed step
+  // that has downstream completed steps (not when the step is active).
+  if (el.classList.contains('completed') && !el.classList.contains('active')) {
+    const stepIdx = _STEP_ORDER.indexOf(step);
+    const hasDownstreamCompleted = _STEP_ORDER.slice(stepIdx + 1).some(s => {
+      const downstream = document.getElementById(`step-${s}`);
+      return downstream && downstream.classList.contains('completed');
+    });
+    if (hasDownstreamCompleted) {
+      _showReRunConfirmModal(step, 'back-nav', doNavigate);
+      return;
+    }
   }
+
+  doNavigate();
 }
 
 // ── Exports ───────────────────────────────────────────────────────────────────
@@ -794,11 +1071,12 @@ function handleStepClick(step) {
 export {
   _STEP_ORDER,
   _STEP_DISPLAY,
-  _ACTION_LABELS,
   backToPhase,
   _showReRunConfirmModal,
+  _showAnalysisClarificationAmendModal,
   confirmReRunPhase,
   reRunPhase,
+  _executeReRunPhase,
   _getStepTooltip,
   _updateViewingIndicator,
   _highlightChangedItems,
@@ -813,4 +1091,5 @@ export {
   resetBulletOrder,
   updateWorkflowSteps,
   handleStepClick,
+  _ACTION_LABELS,
 };

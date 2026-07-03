@@ -10,13 +10,35 @@ Session management routes — list, load, save, delete, rename, trash, new/claim
 import json
 import logging
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from flask import Blueprint, jsonify, request
-from werkzeug.utils import safe_join
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Session-listing cache (GAP-53) — avoids rglob on every request
+# ---------------------------------------------------------------------------
+_SESSION_LIST_CACHE: dict[str, tuple[float, Any]] = {}
+_SESSION_LIST_TTL: float = 5.0
+
+
+def _session_list_cache_get(key: str):
+    entry = _SESSION_LIST_CACHE.get(key)
+    if entry and time.monotonic() - entry[0] < _SESSION_LIST_TTL:
+        return entry[1]
+    return None
+
+
+def _session_list_cache_set(key: str, value) -> None:
+    _SESSION_LIST_CACHE[key] = (time.monotonic(), value)
+
+
+def _session_list_cache_invalidate(key: str) -> None:
+    _SESSION_LIST_CACHE.pop(key, None)
 
 
 def _load_json_guarded(path, timeout_sec: float = 0.5):
@@ -110,6 +132,7 @@ def create_blueprint(deps):
         try:
             with entry.lock:
                 conversation._save_session()
+            _session_list_cache_invalidate(str(_output_base()))
             session_file = str(conversation.session_dir / "session.json") if conversation.session_dir else None
             return jsonify({"ok": True, "session_file": session_file})
         except Exception:
@@ -121,6 +144,11 @@ def create_blueprint(deps):
         """List saved sessions, most recent first."""
         try:
             output_base = _output_base()
+            cache_key = str(output_base)
+            cached = _session_list_cache_get(cache_key)
+            if cached is not None:
+                return jsonify(cached)
+
             trash_dir   = output_base / '.trash'
             sessions = []
             if output_base.exists():
@@ -130,6 +158,24 @@ def create_blueprint(deps):
                     try:
                         data = _load_json_guarded(session_file)
                         state = data.get('state', {})
+                        metadata_file = session_file.parent / 'metadata.json'
+                        app_status = ''
+                        app_notes  = ''
+                        ats_score_val = None
+                        if metadata_file.exists():
+                            try:
+                                meta = _load_json_guarded(metadata_file)
+                                app_status = meta.get('application_status', '')
+                                app_notes  = meta.get('notes', '')
+                                raw_score = meta.get('ats_score')
+                                if isinstance(raw_score, dict):
+                                    ats_score_val = raw_score.get('overall')
+                                elif isinstance(raw_score, (int, float)):
+                                    ats_score_val = int(raw_score)
+                            except Exception:
+                                pass
+                        job_analysis = state.get('job_analysis') or {}
+                        company_val  = job_analysis.get('company', '')
                         sessions.append(SessionItem(
                             path=str(session_file),
                             position_name=state.get('position_name') or session_file.parent.name,
@@ -138,10 +184,16 @@ def create_blueprint(deps):
                             has_job=bool(state.get('job_description')),
                             has_analysis=bool(state.get('job_analysis')),
                             has_customizations=bool(state.get('customizations')),
+                            application_status=app_status,
+                            notes=app_notes,
+                            ats_score=ats_score_val,
+                            company=company_val,
                         ))
                     except Exception:
                         logger.debug("Skipping unreadable session file during list: %s", session_file, exc_info=True)
-            return jsonify(SessionListResponse(sessions=sessions[:20]).to_dict())
+            response_dict = SessionListResponse(sessions=sessions[:20]).to_dict()
+            _session_list_cache_set(cache_key, response_dict)
+            return jsonify(response_dict)
         except Exception:
             logger.exception("Failed to list sessions")
             return jsonify({"error": "Failed to list sessions."}), 500
@@ -204,12 +256,12 @@ def create_blueprint(deps):
         path = data.get("path")
         if not path:
             return jsonify({"error": "Missing path"}), 400
-        
+
         output_base = _output_base()
         safe_path = _resolve_session_path(output_base, path)
         if safe_path is None or not safe_path.exists():
             return jsonify({"error": "Session file not found."}), 404
-        
+
         try:
             sid, entry = session_registry.load_from_file(str(safe_path), _app_config)
             conversation = entry.manager
@@ -310,12 +362,12 @@ def create_blueprint(deps):
         try:
             output_base = _output_base()
             trash_dir   = output_base / '.trash'
-            
+
             # Validate path is within trash directory
             safe_path = _resolve_session_path(trash_dir, path_param)
             if safe_path is None or not safe_path.exists() or safe_path.name != 'session.json':
                 return jsonify({"error": "Session file not found in trash."}), 404
-            
+
             job_dir = safe_path.parent
             dest = output_base / job_dir.name
             if dest.exists():
@@ -338,12 +390,12 @@ def create_blueprint(deps):
         try:
             output_base = _output_base()
             trash_dir   = output_base / '.trash'
-            
+
             # Validate path is within trash directory
             safe_path = _resolve_session_path(trash_dir, path_param)
             if safe_path is None or not safe_path.exists() or safe_path.name != 'session.json':
                 return jsonify({"error": "Session file not found in trash."}), 404
-            
+
             job_dir = safe_path.parent
             import shutil as _shutil
             _shutil.rmtree(job_dir)
@@ -395,14 +447,14 @@ def create_blueprint(deps):
             return jsonify({"error": "Missing path"}), 400
         if not new_name:
             return jsonify({"error": "Missing new_name"}), 400
-        
+
         output_base = _output_base()
-        
+
         # Validate path is within output directory
         safe_path = _resolve_session_path(output_base, path)
         if safe_path is None or not safe_path.exists():
             return jsonify({"error": "Session file not found."}), 404
-        
+
         try:
             with open(safe_path, "r", encoding="utf-8") as f:
                 session_data = json.load(f)
@@ -418,6 +470,52 @@ def create_blueprint(deps):
         except Exception:
             logger.exception("Failed to rename session")
             return jsonify({"error": "Failed to rename session."}), 500
+
+    @bp.post("/api/sessions/duplicate")
+    def duplicate_session():
+        """Deep-copy a session directory to a new session ID.
+
+        Body: { "path": "<session.json relative path>" }
+        Returns: { "ok": true, "new_path": "<new session.json path>" }
+        """
+        import shutil as _shutil
+        import uuid as _uuid
+        data       = request.get_json(silent=True) or {}
+        path_param = data.get("path")
+        if not path_param:
+            return jsonify({"error": "Missing path"}), 400
+
+        output_base = _output_base()
+        safe_path   = _resolve_session_path(output_base, path_param)
+        if safe_path is None or not safe_path.exists():
+            return jsonify({"error": "Session file not found."}), 404
+
+        try:
+            src_dir  = safe_path.parent
+            new_id   = _uuid.uuid4().hex[:12]
+            new_name = f"{src_dir.name}_copy_{new_id}"
+            dest_dir = output_base / new_name
+            _shutil.copytree(str(src_dir), str(dest_dir))
+
+            # Update session.json: new session_id + append " (Copy)" to position_name
+            new_session_file = dest_dir / "session.json"
+            if new_session_file.exists():
+                with open(new_session_file, "r", encoding="utf-8") as f:
+                    sdata = json.load(f)
+                sdata["session_id"]    = new_id
+                state = sdata.get("state") or {}
+                orig_name = state.get("position_name") or src_dir.name
+                state["position_name"] = f"{orig_name} (Copy)"
+                sdata["state"]         = state
+                with open(new_session_file, "w", encoding="utf-8") as f:
+                    json.dump(sdata, f, indent=2, default=str)
+
+            new_rel = str(new_session_file.relative_to(output_base))
+            logger.info("Duplicated session %s → %s", src_dir.name, new_name)
+            return jsonify({"ok": True, "new_path": new_rel, "new_name": state.get("position_name", new_name)})
+        except Exception:
+            logger.exception("Failed to duplicate session")
+            return jsonify({"error": "Failed to duplicate session."}), 500
 
     @bp.get("/api/positions")
     def positions():
@@ -497,10 +595,28 @@ def create_blueprint(deps):
     def setup_master_cv_status():
         """Return whether Master_CV_Data.json exists at the configured path.
 
+        Also returns ``is_empty`` — True when the file exists but has no name,
+        no experiences, no skills, and no education (i.e. a blank skeleton).
+
         Session-free endpoint — safe to call before any session is created.
         """
         p = Path(_app_config.master_cv_path).expanduser()
-        return jsonify({"exists": p.exists(), "path": str(p)})
+        exists = p.exists()
+        is_empty = False
+        if exists:
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                name = (data.get("personal_info") or {}).get("name", "").strip()
+                has_content = (
+                    bool(name)
+                    or bool(data.get("experience") or data.get("work_experience"))
+                    or bool(data.get("skills"))
+                    or bool(data.get("education"))
+                )
+                is_empty = not has_content
+            except Exception:
+                is_empty = True
+        return jsonify({"exists": exists, "is_empty": is_empty, "path": str(p)})
 
     @bp.post("/api/setup/create-master-cv")
     def setup_create_master_cv():
@@ -549,6 +665,7 @@ def create_blueprint(deps):
                 "error": "master_cv_missing",
                 "master_cv_path": str(p),
             }), 503
+        _session_list_cache_invalidate(str(_output_base()))
         return jsonify({"ok": True, "session_id": sid, "redirect_url": f"/?session={sid}"})
 
     @bp.post("/api/sessions/claim")
@@ -568,7 +685,7 @@ def create_blueprint(deps):
                 "error": "session_not_found",
                 "message": "Session not found.",
             })
-        except SessionOwnedError as e:
+        except SessionOwnedError:
             logger.exception("Session ownership check failed")
             return jsonify({"error": "session_owned", "message": "Session access denied"}), 409
 
@@ -585,6 +702,46 @@ def create_blueprint(deps):
             return jsonify({"ok": True})
         except SessionNotFoundError:
             return jsonify({"error": "Session not found."}), 404
+
+    @bp.route("/api/sessions/metadata", methods=["PATCH"])
+    def sessions_patch_metadata():
+        """Update application_status and/or notes for an archived session's metadata.json."""
+        data = request.get_json(silent=True) or {}
+        path = data.get("path")
+        if not path:
+            return jsonify({"error": "Missing path"}), 400
+
+        # Optional fields — at least one must be present
+        new_status = data.get("application_status")
+        new_notes  = data.get("notes")
+        if new_status is None and new_notes is None:
+            return jsonify({"error": "Provide at least one of: application_status, notes"}), 400
+
+        _VALID_STATUSES = {"", "draft", "ready", "sent", "queued", "interview", "rejected", "accepted", "parked"}
+        if new_status is not None and new_status not in _VALID_STATUSES:
+            return jsonify({"error": f"Invalid application_status '{new_status}'"}), 400
+
+        output_base = _output_base()
+        safe_path = _resolve_session_path(output_base, path)
+        if safe_path is None or not safe_path.exists():
+            return jsonify({"error": "Session file not found."}), 404
+
+        metadata_file = safe_path.parent / "metadata.json"
+        try:
+            meta = {}
+            if metadata_file.exists():
+                meta = _load_json_guarded(metadata_file) or {}
+            if new_status is not None:
+                meta["application_status"] = new_status
+            if new_notes is not None:
+                meta["notes"] = str(new_notes)[:2000]
+            meta["metadata_updated"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            with open(metadata_file, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            return jsonify({"ok": True, "metadata": meta})
+        except Exception:
+            logger.exception("Failed to update session metadata")
+            return jsonify({"error": "Failed to update session metadata."}), 500
 
     @bp.get("/api/sessions/active")
     def sessions_active():

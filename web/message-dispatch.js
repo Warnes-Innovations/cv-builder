@@ -22,7 +22,8 @@
  *   - handleSkillsResponse (skills-review.js, Tier 5)
  *   - handleQuestionResponse (questions-panel.js)
  *   - extractFirstJsonObject, handleCustomizationResponse (app.js orchestrator)
- *   - isLoading, questionAnswers, pendingRecommendations (window globals)
+ *   - stateManager (state-manager.js — isLoading())
+ *   - questionAnswers, pendingRecommendations (window globals)
  */
 
 import { getLogger } from './logger.js';

@@ -68,6 +68,7 @@ DEFAULT_JOB_ANALYSIS = {
     'nice_to_have': [],
     'domain': 'general',
 }
+COMPREHENSIVE_LIMIT = 10_000
 
 
 class NullLLM:
@@ -113,6 +114,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         '--force',
         action='store_true',
         help='Overwrite existing rendered files in the destination.',
+    )
+    parser.add_argument(
+        '--comprehensive',
+        action='store_true',
+        help=(
+            'Render a full-data recruiter package by disabling default '
+            'skills, achievements, and publications caps for this run only.'
+        ),
+    )
+    parser.add_argument(
+        '--skills-experience',
+        choices=('always', 'never', 'individual'),
+        default='individual',
+        dest='skills_experience',
+        help=(
+            'Control whether experience level (years) is shown next to each '
+            'skill. "always" shows years when available; "never" hides them; '
+            '"individual" (default) respects a per-skill show_experience flag '
+            'and shows years when the flag is not explicitly disabled.'
+        ),
     )
     return parser.parse_args(argv)
 
@@ -410,8 +431,9 @@ def _copy_files_to_destination(
         collisions = []
 
     if collisions:
+        file_list = '\n  - '.join(sorted(collisions))
         raise FileExistsError(
-            'Destination already contains: ' + ', '.join(sorted(collisions))
+            f'Destination already contains:\n  - {file_list}\nUse --force to overwrite.'
         )
 
     copied: list[str] = []
@@ -426,6 +448,8 @@ def render_generated_assets(
     source_path: Path,
     output_dir: Path,
     force: bool = False,
+    comprehensive: bool = False,
+    skills_show_experience: str = 'individual',
 ) -> dict[str, Any]:
     source_path = source_path.expanduser().resolve()
     output_dir = output_dir.expanduser().resolve()
@@ -447,6 +471,16 @@ def render_generated_assets(
                 llm_client=NullLLM(),
             )
             manager.load_session(str(session_file))
+            if comprehensive and orchestrator.publications:
+                manager.state['publication_decisions'] = {
+                    key: True for key in orchestrator.publications
+                }
+            if skills_show_experience != 'individual':
+                session_customizations = manager.state.setdefault('customizations', {})
+                if not isinstance(session_customizations, dict):
+                    session_customizations = {}
+                    manager.state['customizations'] = session_customizations
+                session_customizations['skills_show_experience'] = skills_show_experience
             job_analysis = manager.state.get('job_analysis') or dict(
                 DEFAULT_JOB_ANALYSIS,
             )
@@ -455,13 +489,18 @@ def render_generated_assets(
                 _predict_render_output_names(job_analysis),
             )
             if preflight_collisions and not force:
+                file_list = '\n  - '.join(sorted(preflight_collisions))
                 raise FileExistsError(
-                    'Destination already contains: '
-                    + ', '.join(preflight_collisions)
+                    f'Destination already contains:\n  - {file_list}\nUse --force to overwrite.'
                 )
             render_result = manager.generate_cv_from_session_state(
                 output_dir=temp_output_dir,
                 allow_llm_recommendations=False,
+                max_skills=COMPREHENSIVE_LIMIT if comprehensive else None,
+                max_achievements=COMPREHENSIVE_LIMIT if comprehensive else None,
+                max_publications=(
+                    COMPREHENSIVE_LIMIT if comprehensive else None
+                ),
             )
             cover_letter_text = (
                 manager.state.get('cover_letter_text')
@@ -484,14 +523,25 @@ def render_generated_assets(
                 _predict_render_output_names(job_analysis),
             )
             if preflight_collisions and not force:
+                file_list = '\n  - '.join(sorted(preflight_collisions))
                 raise FileExistsError(
-                    'Destination already contains: '
-                    + ', '.join(preflight_collisions)
+                    f'Destination already contains:\n  - {file_list}\nUse --force to overwrite.'
+                )
+            customizations: dict[str, Any] = {}
+            customizations['skills_show_experience'] = skills_show_experience
+            if comprehensive and orchestrator.publications:
+                customizations['accepted_publications'] = list(
+                    orchestrator.publications,
                 )
             render_result = orchestrator.generate_cv(
                 job_analysis,
-                {},
+                customizations,
                 output_dir=temp_output_dir,
+                max_skills=COMPREHENSIVE_LIMIT if comprehensive else None,
+                max_achievements=COMPREHENSIVE_LIMIT if comprehensive else None,
+                max_publications=(
+                    COMPREHENSIVE_LIMIT if comprehensive else None
+                ),
             )
             cover_letter_text = _build_default_cover_letter(
                 orchestrator.master_data,
@@ -529,6 +579,7 @@ def render_generated_assets(
         'output_dir': str(output_dir),
         'files': copied_files,
         'cover_letter_source': cover_letter_source,
+        'comprehensive': comprehensive,
     }
 
 
@@ -542,6 +593,8 @@ def main(argv: list[str] | None = None) -> int:
             source_path,
             output_dir,
             force=args.force,
+            comprehensive=args.comprehensive,
+            skills_show_experience=args.skills_experience,
         )
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
         print(f'Error: {exc}')
@@ -552,6 +605,14 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f'Source:      {result["source_path"]}')
         print(f'Destination: {result["output_dir"]}')
+        print(
+            'Mode:        '
+            + (
+                'comprehensive (full-data limits disabled)'
+                if result.get('comprehensive')
+                else 'standard'
+            )
+        )
         if result['session_file']:
             print(f'Session:     {result["session_file"]}')
         print(f'Cover letter source: {result["cover_letter_source"]}')

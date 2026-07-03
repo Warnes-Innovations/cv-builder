@@ -14,9 +14,9 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 **Reviewer Persona:** Expert CI/CD Engineer
 
-**Scope:** GitHub Actions CI/CD processes, workflow design, dependency setup, security gates, reporting, branch coverage
+**Scope:** GitHub Actions CI/CD processes, workflow design, dependency setup, security gates, reporting, branch coverage, and (added 2026-07-02, ahead of inviting outside users/contributors) external-contributor and open-source readiness — fork-PR CI safety, contributor-facing failure clarity, and contribution documentation.
 
-**Executive Summary:** The repository has a real CI foundation: CodeQL runs on both PR and mainline workflows, JS tests run in CI, the HTML harness is automated, and the full workflow includes a broader Python suite plus Playwright E2E. The main weakness is coverage topology rather than tooling choice. Pull requests only get a reduced workflow, the broader suite runs only on `main` and nightly/manual triggers, there is no lint/typecheck gate, and the two workflows duplicate large sections of YAML that are likely to drift over time.
+**Executive Summary:** The repository has a real CI foundation: CodeQL runs on both PR and mainline workflows, JS tests run in CI, the HTML harness is automated, and the full workflow includes a broader Python suite plus Playwright E2E. The main weakness is coverage topology rather than tooling choice. Pull requests only get a reduced workflow, the broader suite runs only on `main` and nightly/manual triggers, there is no lint/typecheck gate, and the two workflows duplicate large sections of YAML that are likely to drift over time. On the newly-added external-contributor axis: the PR workflow's fork-safety posture is good (safe `pull_request` trigger, no secrets referenced in any workflow), and the contribution-documentation gap flagged here (F-09/GAP-296 — no `CONTRIBUTING.md`, templates, or `CODE_OF_CONDUCT.md`) was resolved in cycle 37, shortly after this review. Only F-10/GAP-297 (no PR-time failure digest) remains open on this axis, and it's low-severity.
 
 ---
 
@@ -75,7 +75,23 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 ---
 
-## 6. Findings Summary
+## 6. External Contributor / Open Source Readiness
+
+_Added 2026-07-02, ahead of inviting outside users/contributors to the project._
+
+| Area | Status | Evidence | Notes |
+|------|--------|----------|-------|
+| Fork-PR trigger safety | ✅ Pass | `.github/workflows/integration-harness.yml:9-11` | Uses `pull_request` (not `pull_request_target`), the safe default — a fork PR's workflow run gets a read-only `GITHUB_TOKEN` and cannot access repository secrets or push to the base repo, avoiding the classic fork-PR privilege-escalation footgun. |
+| Secrets exposure to fork PRs | ✅ Pass | `.github/workflows/*.yml` (grep for `secrets\.` across all 5 workflow files: zero matches) | No workflow references any `secrets.*` context at all, so there is nothing that could leak to a fork PR's run even if the trigger were less safe than it is. |
+| `CONTRIBUTING.md` | ✅ Pass | `CONTRIBUTING.md` (added, GAP-296 RESOLVED cycle 37) | Covers local setup, test-running, JS build, coding conventions, the data-contract-maintenance rule, commit style, and PR workflow. |
+| Issue / PR templates | ✅ Pass | `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/bug_report.md`, `.github/ISSUE_TEMPLATE/feature_request.md` (added, GAP-296 RESOLVED cycle 37) | New contributors now get structured PR/issue forms instead of GitHub's blank defaults. |
+| `CODE_OF_CONDUCT.md` | ✅ Pass | `CODE_OF_CONDUCT.md` (added, GAP-296 RESOLVED cycle 37, Contributor Covenant v2.1) | Community conduct expectations now stated. |
+| README contributor path | ✅ Pass | `README.md` (brief Contributing section added, GAP-296 RESOLVED cycle 37, pointing to `CONTRIBUTING.md`/`CODE_OF_CONDUCT.md`) | See also `tasks/user-story-marketing.md` US-MK3 for the same gap from a positioning angle — resolved here from the process angle. |
+| PR-time failure clarity for a first-time contributor | ⚠️ Partial | `.github/workflows/integration-harness.yml:1-121` | The PR workflow runs CodeQL, Python tests, JS tests, and the HTML harness with standard GitHub Actions log output — functional but not annotated for a contributor unfamiliar with the codebase (no job summaries, no PR-comment failure digest); acceptable for now but worth revisiting once external PR volume exists. |
+
+---
+
+## 7. Findings Summary
 
 | ID | Severity | Area | Finding | Evidence |
 |----|----------|------|---------|----------|
@@ -87,10 +103,12 @@ For commercial licensing, contact greg@warnes-innovations.com
 | F-06 | MEDIUM | Reporting | The PR workflow does not upload junit/trace-style artifacts for failures | `.github/workflows/integration-harness.yml:1-121` |
 | F-07 | MEDIUM | CI Parity | Python CI installs from pip requirements rather than the repo’s preferred local `cvgen` environment, which increases environment skew risk | `.github/workflows/integration-harness.yml:52-63`; `.github/workflows/full-integration.yml:56-67`; `scripts/requirements.txt:1-37` |
 | F-08 | LOW | Efficiency | No `concurrency` cancellation is configured for superseded runs | `.github/workflows/integration-harness.yml:1-121`; `.github/workflows/full-integration.yml:1-223` |
+| F-09 | HIGH | Contributor Onboarding | RESOLVED (GAP-296, cycle 37) — `CONTRIBUTING.md`, issue/PR templates, and `CODE_OF_CONDUCT.md` added; README now has a contributor-facing section | `CONTRIBUTING.md`; `CODE_OF_CONDUCT.md`; `.github/pull_request_template.md`; `.github/ISSUE_TEMPLATE/` |
+| F-10 | LOW | Contributor Feedback | PR-time CI failures are not annotated/summarized for a contributor unfamiliar with the codebase | `.github/workflows/integration-harness.yml:1-121` |
 
 ---
 
-## 7. Proposed New Story Items / Gaps
+## 8. Proposed New Story Items / Gaps
 
 | GAP ID | Area | Description | Rationale |
 |--------|------|-------------|-----------|
@@ -100,3 +118,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 | GAP-69 | Workflow Maintainability | Refactor shared workflow logic into a reusable workflow or composite action to eliminate YAML duplication | Addresses F-04 |
 | GAP-70 | CI Feedback | Publish coverage/artifacts on PR runs and optionally enforce minimum coverage thresholds | Addresses F-05 and F-06 |
 | GAP-71 | Environment Parity | Reduce CI/local skew by documenting or automating a closer match between pip-only CI and the local `cvgen` environment | Addresses F-07 |
+| GAP-296 | Contributor Onboarding | **RESOLVED cycle 37.** Added `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/*`, and a README contributor section. | Addressed F-09 — was the highest-severity finding for the project's move to accepting outside contributors |
+| GAP-297 | Contributor Feedback | Add PR-time job summaries or a failure-digest comment so a first-time contributor doesn't have to parse raw Actions logs to understand why a check failed | Addresses F-10 |
+
+_Note: gap numbers above (GAP-66–GAP-71) mirror entries already promoted into the canonical tracker `tasks/gaps.md`; GAP-296/GAP-297 were numbered to follow the tracker's current highest entry (GAP-295) to avoid colliding with unrelated existing GAP-72/GAP-73 (workflow step pill keyboard/aria-live gaps, unrelated to this persona's findings)._

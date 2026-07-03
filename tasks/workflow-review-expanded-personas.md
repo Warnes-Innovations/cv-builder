@@ -37,6 +37,9 @@ The expanded workflow-review persona set is:
 12. Master CV curator
 13. Trust and compliance reviewer
 14. Graphical designer
+15. Marketing / branding reviewer
+
+Technical personas (architecture/implementation review, not user-story-based; see `tasks/review-status/README.md`): backend developer, frontend developer, CI/CD engineer.
 
 ## Story Files
 
@@ -59,6 +62,7 @@ New story/spec files:
 - `tasks/user-story-master-cv-curator.md`
 - `tasks/user-story-trust-compliance.md`
 - `tasks/user-story-graphical-designer.md`
+- `tasks/user-story-marketing.md` (added 2026-07-02, ahead of inviting outside users/contributors to the project)
 
 ## Evaluation Model
 

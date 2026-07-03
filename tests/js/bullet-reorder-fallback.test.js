@@ -26,6 +26,8 @@ describe('showBulletReorder fallback behavior', () => {
     globalThis.escapeHtml = (s) => String(s)
     globalThis.appendRetryMessage = vi.fn()
     globalThis.appendMessage = vi.fn()
+    globalThis.trapFocus = vi.fn()
+    globalThis.setInitialFocus = vi.fn()
 
     // app.js references these in many paths; define safe stubs for load-time.
     globalThis.StorageKeys = {

@@ -1085,5 +1085,46 @@ class TestPersuasionChecks(unittest.TestCase):
         self.assertTrue(result['pass'])
 
 
+    # ── Positive Metric Framing Checks ────────────────────────────────────
+
+    def test_positive_framing_clean(self):
+        """Bullet with positive framing passes."""
+        text = 'Improved query throughput by 40%, enabling 3× user scale.'
+        result = LLMClient.check_positive_metric_framing(text)
+        self.assertTrue(result['pass'])
+        self.assertEqual(result['flag_type'], 'negative_metric_framing')
+
+    def test_negative_framing_reduced_percent(self):
+        """'Reduced by 30%' is flagged."""
+        text = 'Reduced infrastructure costs by 30% through rightsizing.'
+        result = LLMClient.check_positive_metric_framing(text)
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['severity'], 'info')
+        self.assertIn('positive-sum', result['details'])
+
+    def test_negative_framing_cut_dollar(self):
+        """'Cut $2M in overhead' is flagged."""
+        text = 'Cut $2M in annual overhead by consolidating vendors.'
+        result = LLMClient.check_positive_metric_framing(text)
+        self.assertFalse(result['pass'])
+
+    def test_negative_framing_eliminated(self):
+        """'Eliminated 50%' is flagged."""
+        text = 'Eliminated 50% of legacy tech debt in two sprints.'
+        result = LLMClient.check_positive_metric_framing(text)
+        self.assertFalse(result['pass'])
+
+    def test_no_metric_negative_verb_passes(self):
+        """Negative verb without a metric does not trigger the check."""
+        text = 'Reduced friction in the onboarding experience for new hires.'
+        result = LLMClient.check_positive_metric_framing(text)
+        self.assertTrue(result['pass'])
+
+    def test_positive_framing_empty_text(self):
+        """Empty text passes."""
+        result = LLMClient.check_positive_metric_framing('')
+        self.assertTrue(result['pass'])
+
+
 if __name__ == '__main__':
     unittest.main()

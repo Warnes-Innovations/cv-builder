@@ -11,10 +11,12 @@ import logging
 import os
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import yaml
-from flask import Blueprint, jsonify, request
+from flask import (
+    Blueprint, g, jsonify, redirect, request, session, url_for,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -301,33 +303,6 @@ def create_blueprint(deps):
     @bp.post("/api/model")
     def set_model():
         """Switch the active model and optionally the provider."""
-        def _format_probe_error(provider_name: str, probe_error: Optional[str]) -> str:
-            _friendly_names: Dict[str, str] = {
-                "github":       "GitHub Models",
-                "openai":       "OpenAI",
-                "anthropic":    "Anthropic",
-                "copilot":      "Copilot",
-                "copilot-oauth":"Copilot",
-                "copilot-sdk":  "Copilot SDK",
-                "gemini":       "Gemini",
-                "groq":         "Groq",
-            }
-            display = _friendly_names.get(provider_name, provider_name)
-            if not probe_error:
-                return f"{display} was unable to complete the model probe."
-
-            friendly = probe_error.strip()
-            if provider_name in {"github", "copilot"}:
-                friendly = friendly.replace("with OpenAI", "with GitHub Models")
-                friendly = friendly.replace("by OpenAI", "by GitHub Models")
-                friendly = friendly.replace("(openai)", "(github)")
-                if "authentication failed" in friendly.lower():
-                    friendly += (
-                        " Use a GitHub Models PAT in GITHUB_MODELS_TOKEN "
-                        "(or GITHUB_TOKEN). Copilot OAuth sign-in is only for the copilot-oauth provider."
-                    )
-            return friendly
-
         def _probe_client(candidate_client):
             try:
                 candidate_client.chat(
@@ -353,7 +328,6 @@ def create_blueprint(deps):
             candidate_client = get_llm_provider(provider=provider, model=model, auth_manager=auth_manager)
             ok, probe_error = _probe_client(candidate_client)
             if not ok:
-                formatted_error = _format_probe_error(provider, probe_error)
                 probe_lower = (probe_error or "").lower()
                 # Map provider to a user-friendly label for error messages
                 _friendly: Dict[str, str] = {
@@ -427,5 +401,60 @@ def create_blueprint(deps):
                 "provider": _provider_name,
                 "model":    _current_model,
             }), 200
+
+    # ── Keycloak OIDC routes (no-ops when auth is disabled) ──────────────────
+
+    import utils.auth as _auth_mod  # noqa: PLC0415
+
+    @bp.get('/login')
+    def login():
+        if not _auth_mod.is_enabled():
+            return redirect('/')
+        cb = url_for('auth.auth_callback', _external=True)
+        return _auth_mod._oauth.keycloak.authorize_redirect(cb)
+
+    @bp.get('/auth/callback')
+    def auth_callback():
+        if not _auth_mod.is_enabled():
+            return redirect('/')
+        token = _auth_mod._oauth.keycloak.authorize_access_token()
+        info = token.get('userinfo') or \
+            _auth_mod._oauth.keycloak.userinfo()
+        session['user_id'] = info['sub']
+        session['user_email'] = info.get('email', '')
+        session['user_name'] = info.get('name', '')
+        session.permanent = True
+        # Bootstrap per-user directories on first login
+        from utils.config import get_config  # noqa: PLC0415
+        paths = _auth_mod.user_data_paths(
+            info['sub'], get_config().data_root
+        )
+        _auth_mod.ensure_user_dirs(paths)
+        next_url = session.pop('next', None) or '/'
+        return redirect(next_url)
+
+    @bp.get('/logout')
+    def logout():
+        kc_url = os.getenv('KEYCLOAK_URL', '').rstrip('/')
+        realm = os.getenv('KEYCLOAK_REALM', '')
+        session.clear()
+        if kc_url and realm:
+            kc_logout = (
+                f'{kc_url}/realms/{realm}'
+                '/protocol/openid-connect/logout'
+                f'?redirect_uri={request.host_url}'
+            )
+            return redirect(kc_logout)
+        return redirect('/')
+
+    @bp.get('/api/auth/me')
+    def auth_me():
+        """Return current user info (or anonymous indicator)."""
+        return jsonify({
+            'authenticated': bool(g.get('user_id')),
+            'user_id': g.get('user_id'),
+            'email': g.get('user_email'),
+            'name': g.get('user_name'),
+        })
 
     return bp

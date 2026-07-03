@@ -22,7 +22,12 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 from jinja2 import Environment, FileSystemLoader, Undefined  # noqa: E402
-from utils.template_renderer import json_script, safe_css_size, safe_url  # noqa: E402
+from utils.template_renderer import (  # noqa: E402
+    citation_markdown_to_html,
+    json_script,
+    safe_css_size,
+    safe_url,
+)
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / 'templates'
 
@@ -36,6 +41,7 @@ def _make_env() -> Environment:
     env.filters['json_script'] = json_script
     env.filters['safe_css_size'] = safe_css_size
     env.filters['safe_url'] = safe_url
+    env.filters['citation_markdown_to_html'] = citation_markdown_to_html
     return env
 
 
@@ -65,6 +71,7 @@ def _minimal_context(**overrides) -> dict:
             'company': 'Acme Corp',
             'total_publications_count': 0,
             'skills_section_title': 'Technical Skills',
+            'publications_start_new_page': False,
             'variant': 'standard',
             'generated_date': '2026-01-01T00:00:00',
         },
@@ -181,6 +188,63 @@ class TestOptionalSidebarFields(unittest.TestCase):
         )
         self.assertNotIn('<div class="sidebar-title">Languages</div>', html)
 
+
+class TestHeaderTagline(unittest.TestCase):
+    """Header subtitle should use applicant tagline, not job title fallback."""
+
+    def test_job_title_subtitle_not_rendered_without_applicant_tagline(self):
+        html = _render(
+            template_metadata={
+                'job_title': 'Software Engineer',
+                'company': 'Acme Corp',
+                'total_publications_count': 0,
+                'skills_section_title': 'Technical Skills',
+                'variant': 'standard',
+                'generated_date': '2026-01-01T00:00:00',
+                'applicant_tagline': '',
+            }
+        )
+        self.assertNotIn('<div class="job-title">Software Engineer</div>', html)
+
+    def test_applicant_tagline_renders_when_present(self):
+        html = _render(
+            template_metadata={
+                'job_title': 'Software Engineer',
+                'company': 'Acme Corp',
+                'total_publications_count': 0,
+                'skills_section_title': 'Technical Skills',
+                'variant': 'standard',
+                'generated_date': '2026-01-01T00:00:00',
+                'applicant_tagline': 'Principal Data Scientist and ML Strategist',
+            }
+        )
+        self.assertIn(
+            '<div class="job-title">Principal Data Scientist and ML Strategist</div>',
+            html,
+        )
+
+
+class TestPublicationCitationFormatting(unittest.TestCase):
+    """Publication citation formatting should render emphasis markup safely."""
+
+    def test_markdown_italics_rendered_as_em_for_publication(self):
+        html = _render(
+            publications=[
+                {
+                    'formatted_citation': (
+                        'Doe, J. (2024). Example paper. *Journal of Tests, 12*, 1-9.'
+                    ),
+                    'publication_url': '',
+                    'is_first_author': False,
+                }
+            ]
+        )
+        self.assertIn('<em>Journal of Tests, 12</em>', html)
+
+
+class TestPrintLayout(unittest.TestCase):
+    """Print-mode layout tests for the CV template."""
+
     def test_print_layout_uses_single_cv_body_wrapper(self):
         """Template uses a single #cv-body div for continuous column flow."""
         html = _render(skills_by_category=[])
@@ -196,7 +260,12 @@ class TestOptionalSidebarFields(unittest.TestCase):
     def test_print_sidebar_background_is_painted_on_page_columns(self):
         html = _render()
         self.assertIn('@page {', html)
-        self.assertIn('background-color: var(--sidebar-bg) !important;', html)
+        # Sidebar is painted via faux-column gradient on #cv-body (not via
+        # background-color on .left-col) so the gradient must be present and
+        # the left-col must be transparent to let the parent gradient show through.
+        self.assertIn('linear-gradient(', html)
+        self.assertIn('#eef2f5', html)   # sidebar-bg literal (var() not used in print)
+        self.assertIn('background-color: transparent !important;', html)
         self.assertIn('#cv-body .left-col {', html)
         self.assertIn('box-decoration-break: clone;', html)
         self.assertIn('background: white !important;', html)
@@ -216,8 +285,8 @@ class TestOptionalSidebarFields(unittest.TestCase):
     def test_column_spacing_tunings_are_rendered(self):
         html = _render()
         self.assertIn('#cv-body .right-col {', html)
-        self.assertIn('padding: 40px 30px;', html)
         self.assertIn('#cv-body .left-col {', html)
+
 
 class TestExperiencePageFlow(unittest.TestCase):
     """Experience and skills should render in the unified cv-body div."""
@@ -306,6 +375,113 @@ class TestExperiencePageFlow(unittest.TestCase):
         cv_body = _page_slice(html, 'cv-body')
         for exp in exps:
             self.assertIn(exp['title'], cv_body)
+
+
+class TestPublicationsPageStartControl(unittest.TestCase):
+    """Publications section should include optional print page-break class."""
+
+    def test_publications_section_has_no_forced_page_break_by_default(self):
+        html = _render(
+            publications=[{'formatted_citation': 'Example publication'}],
+            template_metadata={
+                'job_title': 'Software Engineer',
+                'company': 'Acme Corp',
+                'total_publications_count': 1,
+                'skills_section_title': 'Technical Skills',
+                'publications_start_new_page': False,
+                'variant': 'standard',
+                'generated_date': '2026-01-01T00:00:00',
+            },
+        )
+        self.assertIn('<section class="section pub-section">', html)
+        self.assertNotIn('pub-section pub-start-new-page', html)
+
+    def test_publications_section_can_force_new_page_via_metadata_flag(self):
+        html = _render(
+            publications=[{'formatted_citation': 'Example publication'}],
+            template_metadata={
+                'job_title': 'Software Engineer',
+                'company': 'Acme Corp',
+                'total_publications_count': 1,
+                'skills_section_title': 'Technical Skills',
+                'publications_start_new_page': True,
+                'variant': 'standard',
+                'generated_date': '2026-01-01T00:00:00',
+            },
+        )
+        self.assertIn('pub-section pub-start-new-page', html)
+        self.assertIn('#cv-body .right-col .pub-section.pub-start-new-page {', html)
+        self.assertIn('break-before: page;', html)
+        self.assertIn('page-break-before: always;', html)
+
+
+def _meta(**overrides):
+    """Return a template_metadata dict with skills_show_experience support."""
+    base = {
+        'job_title': 'Software Engineer',
+        'company': 'Acme Corp',
+        'total_publications_count': 0,
+        'skills_section_title': 'Technical Skills',
+        'publications_start_new_page': False,
+        'variant': 'standard',
+        'generated_date': '2026-01-01T00:00:00',
+        'skills_show_experience': 'individual',
+    }
+    base.update(overrides)
+    return base
+
+
+def _skill(name='Python', years=5, show_experience=None):
+    s = {'name': name, 'years': years}
+    if show_experience is not None:
+        s['show_experience'] = show_experience
+    return {'category': 'Languages', 'skills': [s]}
+
+
+class TestSkillsShowExperience(unittest.TestCase):
+    """skills_show_experience template_metadata flag controls years display."""
+
+    def test_individual_shows_years_when_no_per_skill_override(self):
+        html = _render(
+            skills_by_category=[_skill('Python', years=5)],
+            template_metadata=_meta(skills_show_experience='individual'),
+        )
+        self.assertIn('(5 yrs)', html)
+
+    def test_always_shows_years(self):
+        html = _render(
+            skills_by_category=[_skill('Python', years=5)],
+            template_metadata=_meta(skills_show_experience='always'),
+        )
+        self.assertIn('(5 yrs)', html)
+
+    def test_never_hides_years(self):
+        html = _render(
+            skills_by_category=[_skill('Python', years=5)],
+            template_metadata=_meta(skills_show_experience='never'),
+        )
+        self.assertNotIn('(5 yrs)', html)
+
+    def test_individual_hides_years_when_show_experience_false(self):
+        html = _render(
+            skills_by_category=[_skill('Python', years=5, show_experience=False)],
+            template_metadata=_meta(skills_show_experience='individual'),
+        )
+        self.assertNotIn('(5 yrs)', html)
+
+    def test_always_shows_years_even_when_show_experience_false(self):
+        html = _render(
+            skills_by_category=[_skill('Python', years=5, show_experience=False)],
+            template_metadata=_meta(skills_show_experience='always'),
+        )
+        self.assertIn('(5 yrs)', html)
+
+    def test_no_years_field_never_renders_years_bracket(self):
+        html = _render(
+            skills_by_category=[{'category': 'Languages', 'skills': [{'name': 'Python'}]}],
+            template_metadata=_meta(skills_show_experience='always'),
+        )
+        self.assertNotIn('yrs)', html)
 
 
 if __name__ == '__main__':

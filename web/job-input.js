@@ -18,7 +18,8 @@
  *   - analyzeJob (job-analysis.js)
  *   - fetchStatus (api-client.js)
  *   - showAlertModal (ui-helpers.js)
- *   - tabData, currentTab, PHASES (window globals)
+ *   - stateManager (state-manager.js — getCurrentTab()/setTabData())
+ *   - PHASES (window global)
  *
  * GAP-23 intake confirmation:
  *   All job-text submissions (paste, URL, file) route directly to analyzeJob()
@@ -70,7 +71,7 @@ async function populateJobTab() {
       html += '<div style="line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + _renderJobText(jobText) + '</div>';
 
       const analyzeBtn = data.phase === PHASES.INIT
-        ? '<button onclick="analyzeJob()" class="btn-primary" style="margin-right:8px;">🔍 Analyze Job</button>'
+        ? '<button onclick="analyzeJob()" class="btn-primary" style="margin-right:8px;">🔍 Analyse Job</button>'
         : '';
       html += '<div style="margin-top:20px;">' + analyzeBtn + '<button onclick="showLoadJobPanel()" class="btn-secondary">📥 Load Different Job</button></div>';
       content.innerHTML = html;
@@ -181,6 +182,8 @@ async function showLoadJobPanel() {
       </div>
     </div>
   `;
+  // Show minimum-length hint immediately on first render (GAP-288).
+  _updatePasteCharCount();
 }
 
 // ---------------------------------------------------------------------------
@@ -326,7 +329,7 @@ function _updatePasteCharCount() {
   const n = val.length;
   if (n === 0) {
     countEl.style.color = '#94a3b8';
-    countEl.textContent = '';
+    countEl.textContent = `Paste the full job description (minimum ${PASTE_MIN_CHARS} characters for best results)`;
   } else if (n < PASTE_MIN_CHARS) {
     countEl.style.color = '#ef4444';
     countEl.textContent = `${n} / ${PASTE_MIN_CHARS} minimum — Too short, aim for at least ${PASTE_MIN_CHARS} characters`;
@@ -489,7 +492,7 @@ async function fetchJobFromURL() {
     } else {
       stateManager.setTabData('job', data.job_text);
       saveTabData();
-      appendMessage('assistant', `✅ ${data.message}! Fetched ${data.content_length || 'content'} characters. Review the job description below, then click "🔍 Analyze Job" to continue.`);
+      appendMessage('assistant', `✅ ${data.message}! Fetched ${data.content_length || 'content'} characters. Review the job description below, then click "🔍 Analyse Job" to continue.`);
       setLoading(false);
       switchTab('job');
       await populateJobTab();

@@ -263,9 +263,9 @@ class TestPostModelPersistsToConfig(unittest.TestCase):
 
         self.stack = ExitStack()
         self.stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
-        self.stack.enter_context(patch('scripts.web_app.get_cached_pricing', return_value={}))
-        self.stack.enter_context(patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01'))
-        self.stack.enter_context(patch('scripts.web_app.get_pricing_source', return_value='static'))
+        self.stack.enter_context(patch('scripts.routes.auth_routes.get_cached_pricing', return_value={}))
+        self.stack.enter_context(patch('scripts.routes.auth_routes.get_pricing_updated_at', return_value='2024-01-01'))
+        self.stack.enter_context(patch('scripts.routes.auth_routes.get_pricing_source', return_value='static'))
 
         from scripts.web_app import create_app
         app = create_app(args)

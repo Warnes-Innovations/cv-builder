@@ -52,6 +52,7 @@ master_data['achievements'].append(new_achievement)  # Never during job customiz
   - ✅ CORRECT: `conda run -n cvgen python -m pytest tests/`
   - ❌ INCORRECT: `python scripts/web_app.py`  # Uses wrong environment
   - Why: The cvgen environment contains all required dependencies (Flask, WeasyPrint, pytest, etc.) with pinned versions.
+  - **CI vs local parity**: CI uses `scripts/requirements.txt` (pip-only); local uses `scripts/requirements-conda.txt` (pip inside conda). Key differences are intentional — see file headers for details. The two requirement files are kept in sync for shared deps; only the conda-specific compilation targets (spacy, blis, language-tool-python) and deployment-only deps (gunicorn, authlib, psycopg2-binary) are intentionally split.
 - Start web app: `python scripts/web_app.py --llm-provider github`.
 - If `--llm-provider` is omitted, `llm.default_provider` must be configured via env/config.
 - zsh tip: if shell autocorrect changes `github` to `.github`, escape or quote the provider value, e.g. `python scripts/web_app.py --llm-provider \github` (or `--llm-provider 'github'`).
@@ -86,6 +87,7 @@ the tests.
   - **Session-free endpoints** (model/pricing metadata): `/api/model-catalog`, `/api/pricing`, `/api/models`.
   - All other API routes require a valid `session_id`; never bypass `_get_session()` in new routes.
 - **Rewrite audit key**: field is `final_text` in the spec but `final` in code (renamed in commit `576b75f`). Do not revert.
+- **Known shadowing incidents — duplicate helper defined in two files**: this codebase has repeatedly split the *same* helper across two modules during refactors, where the later-loaded copy silently overrides the earlier one at runtime, quietly reverting whatever fix landed in the "losing" copy. Confirmed past cases: `toggleChat` (`web/ui-core.js` vs `web/ui-helpers.js`, GAP-146), `showAlertModal`/`closeAlertModal` (same file pair, GAP-48), and `_save_master` (`scripts/master_data_routes.py` vs `scripts/web_app.py`, GAP-43 — **still open**, needs consolidation). See "When modifying code" below for the required check before adding any new helper/export. Automated checks exist for this — run `npm run lint:duplication` (or the individual `lint:duplicates` [exact-name JS/Python duplicates], `lint:duplicate-functions` [eslint-plugin-sonarjs, near-identical JS function bodies], `lint:duplicate-code` [jscpd, copy-pasted blocks across JS+Python], `lint:duplicate-code:py` [pylint `duplicate-code`/R0801] scripts) before committing changes that add or move helpers.
 
 ## Configuration
 
@@ -143,17 +145,19 @@ logging:
 - Copilot OAuth flow is exposed by `/api/copilot-auth/*` endpoints in `scripts/web_app.py` and uses `utils/copilot_auth.py` token caching.
 - URL ingestion in web flow includes protected-site handling (LinkedIn/Indeed/Glassdoor) with manual-copy fallback in `scripts/web_app.py`.
 - Document generation uses WeasyPrint (primary) and Chrome headless (fallback) for PDF output; do not assume Quarto is installed.
+- **Cached preview gotcha**: `POST /api/cv/generate-final` renders the PDF from the cached `preview_html` produced by the most recent `generate-preview` call. If customizations changed after that call (e.g. `tagline_override`, `selected_summary`, `skills_show_proficiency`), the PDF will be stale. Always call `generate-preview` → `confirm-layout` → `generate-final` in sequence when customizations may have changed. Reset `generation_state.layout_confirmed = false` in the session file to force a fresh preview on next load.
+- **`POST /api/load-session`** requires `{"path": "<path>"}` (not `session_file`). The path is resolved relative to `data.output_dir` from `config.yaml` and must not escape that directory. Returns `session_id` for subsequent `/api/cv/*` calls.
 
 ## Instructions hierarchy and user-level config
 - Respect VS Code **user-level** agent instructions/prompts/skills symlinked into:
   - `~/Library/Application Support/Code/User/`
-  - Managed from `~/src/vscode-config` via `setup-symlinks.sh`.
+  - Managed from `~/src/agent-config` via `setup-symlinks.sh`.
 - Treat this file as project-specific guidance; user-level instructions still apply unless they conflict with explicit repo requirements.
-- Codex bridge: repo-local prompt-to-skill conversions live under `codex-skills/`; install them plus shared `~/src/vscode-config/skills` into `~/.codex/skills` with `bash scripts/install_codex_skills.sh`.
+- Codex bridge: repo-local prompt-to-skill conversions live under `codex-skills/`; install them plus shared `~/src/agent-config/skills` into `~/.codex/skills` with `bash scripts/install_codex_skills.sh`.
 
 ## Available Slash Commands
 
-Slash commands are available from the shared prompt set in `~/src/vscode-config/.github/prompts/` and repo-local prompts in `.github/prompts/`. The most relevant:
+Slash commands are available from the shared prompt set in `~/src/agent-config/.github/prompts/` and repo-local prompts in `.github/prompts/`. The most relevant:
 
 | Command | Purpose |
 |---------|---------|
@@ -179,6 +183,12 @@ Slash commands are available from the shared prompt set in `~/src/vscode-config/
 - **Always run `npm run build` before committing** when `web/src/` files have changed, so `web/bundle.js` is up-to-date and included in the commit.
 - Never add copyright/SPDX headers to generated or vendor artifacts (for example: `web/bundle.js`, `htmlcov/`, `test_output/`, caches). Headers apply to maintained source/docs files only.
 - Validate changes by running targeted tests first (category or file-level), then broader test runs as needed.
+- **Always validate JSON from LLM agents at CLI/MCP boundaries.** All `*_submit` tools, `inject_llm_result`, and any CLI command that accepts LLM-provided JSON must parse and validate compliance before storing, raising a clear `InvalidResultError` / HTTP 400 rather than propagating a confusing downstream failure.
+  - ✅ CORRECT: `result = validate_agent_json(raw, schema=JobAnalysisResponse); session.inject_llm_result(op, result)`
+  - ❌ INCORRECT: `session.state['analysis'] = json.loads(raw)` — bypasses schema check, silently stores malformed data
+- **Before adding a new function, global export, or route handler, grep for an existing definition of the same name first** (`grep -rn "functionName" web/*.js` for frontend, `grep -rn "def _save_master\|def function_name" scripts/` for backend). Load/import order determines which copy wins when two modules both define the same name — the duplicate silently shadows the other at runtime, so tests can pass while the "losing" copy's behavior (and any bugfix in it) is dead code. If a duplicate already exists:
+  - ✅ CORRECT: Fix or extend the single canonical definition; have the other module `import`/reference it rather than redefining it.
+  - ❌ INCORRECT: Add a second same-named function/export in another file "to keep things working" — this is how GAP-146, GAP-48, and GAP-43 (see gotcha above) each happened.
 
 
 - Begin every multi-step or code-change response by stating which copilot-instructions.md sections apply and which Agent Skills apply

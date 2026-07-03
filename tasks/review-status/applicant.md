@@ -1,409 +1,398 @@
 <!--
-Copyright (C) 2026 Gregory R. Warnes
-SPDX-License-Identifier: AGPL-3.0-or-later
+  Copyright (C) 2026 Gregory R. Warnes
+  SPDX-License-Identifier: AGPL-3.0-or-later
 
-This file is part of CV-Builder.
-For commercial licensing, contact greg@warnes-innovations.com
+  This file is part of CV-Builder.
+  For commercial licensing, contact greg@warnes-innovations.com
 -->
-
-<!-- markdownlint-disable MD032 -->
 
 # Applicant Review Status
 
-**Last Updated:** 2026-04-22 15:45 ET
-
-**Executive Summary:** Source-first review of all fourteen applicant story entries (US-A1 through US-A12, plus US-A3b and US-A4b). The core intake → analysis → customisation → rewrite → spell → generate → layout → finalise pipeline is well-implemented with most criteria satisfied. Four outright failures remain: all output formats (HTML + PDF + DOCX) are generated together rather than in the story-specified HTML-first staged model (US-A5a), no "queued" session lifecycle status exists (US-A1), no pre-write consolidated JSON diff is shown during harvest before writing to master data (US-A11), and no keyboard shortcut exists for the re-run affordance (US-A12). The re-run ↻ icon is also hidden behind a CSS hover rather than permanently visible as the story requires. The metadata key mismatch (`post_analysis_answers` vs. story spec's `clarification_answers`) remains a silent quality risk for cover letter and screening generation. Twelve of fourteen stories are mostly-passing; no story is a total fail.
-
----
-
-## Application Evaluation
-
-### US-A1: Discover and Queue a Job Opportunity
-
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | URL and paste-text paths both work | ✅ Pass | `web/job-input.js`: three input-method tabs (Paste Text, From URL, Upload File); `submitJobText()`, `fetchJobFromURL()`, `uploadJobFile()` all implemented |
-| 2 | File upload path works | ✅ Pass | `web/job-input.js`: drag-drop + click upload, supports .txt/.md/.html/.pdf/.docx/.rtf up to 20 MB; `uploadJobFile()` routes to `analyzeJob()` |
-| 3 | Protected-site warning surfaced with manual-copy fallback | ✅ Pass | `web/job-input.js` URL panel: two-column advisory; amber box lists "Copy manually from: LinkedIn (login required), Indeed (anti-bot), Glassdoor (auth required)" |
-| 4 | Company name, role title, date auto-extracted and user-editable before queuing | ⚠️ Partial | `scripts/utils/conversation_manager.py`: `_store_job_analysis()` extracts `position_name` from title+company post-analysis; `intake` dict stored in session state. However extraction happens *after* the LLM analysis, not as a pre-analysis user-confirmation step — so errors are only catchable after tokens have been spent |
-| 5 | Session persisted with `status: "queued"` immediately after Step 5 | ❌ Fail | `scripts/utils/conversation_manager.py:42–49`: `Phase` enum defines only `init`, `job_analysis`, `customization`, `rewrite_review`, `spell_check`, `generation`, `layout_review`, `refinement` — no `queued` state; pre-analysis sessions remain in ambiguous `init` phase in the session switcher |
-
-**Failure modes:**
-
-| Failure | Impact |
-|---------|--------|
-| No "queued" lifecycle status | User cannot distinguish a parked pre-analysis job from a freshly opened session; session switcher shows raw phase names |
-| Intake confirmation occurs post-analysis | If company/role/date are wrong, the analysis has already consumed LLM tokens |
+**Last Updated:** 2026-07-01 14:30 ET
+**Executive Summary:** The application workflow satisfies the majority of the applicant story across all 12 stories. Core flows — job input (URL + paste), analysis, clarification questions, customisation review, rewrite review, spell check, HTML preview, layout refinement, final generation (PDF + ATS DOCX), cover letter, screening questions, harvest, and finalise — are implemented end-to-end with backend APIs and frontend UI. Key gaps include: the "queued" session status (US-A1) is not surfaced; prior-session clarification pre-population across sessions (US-A2) is absent; skill inter-category move (US-A3b) is not implemented; the layout-refine step does not ask clarifying questions for ambiguous instructions (US-A5b); the finalise confirmation summary omits total session time (US-A9); natural-language and document-ingestion paths for master CV updates (US-A10) are absent; a keyboard shortcut for re-run (US-A12) is missing. Terminology inconsistencies include mixed British/American spellings ("Analyse"/"Customizations") and a misleading tooltip on the "Generate Preview" button. The "Open Layout Review" tooltip erroneously describes "font size, margins" as the layout review mechanism.
 
 ---
 
-### US-A2: Understand What the Job Requires
+## applicant
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Progress indicator appears within 1 s of submit | ✅ Pass | `web/job-input.js`: `analyzeJob()` calls `setLoading(true, 'Analysing job description…')` synchronously before the LLM fetch |
-| 2 | Required / preferred skills split clearly displayed | ✅ Pass | Analysis tab renders "Required Skills" and "Preferred / Nice-to-Have" in separate blocks; skills absent from master CV badged with `missing` class |
-| 3 | ATS keywords ranked by frequency / importance | ✅ Pass | Keywords rendered with rank badges (#1, #2 …) and heading "higher rank = higher priority" |
-| 4 | Inferred domain focus shown | ✅ Pass | Analysis role card shows `domain` as a meta chip |
-| 5 | Inferred role type (IC vs. leadership) shown | ⚠️ Partial | `role_level` chip present in analysis card, but no explicit IC vs. individual-contributor vs. leadership signal beyond the raw LLM-returned string; no seniority-mismatch callout |
-| 6 | Apparent mismatches against master CV surfaced | ⚠️ Partial | Mismatch callout compares `required_skills` against master `_masterSkills`; seniority, leadership/IC, and domain-level mismatches are not checked |
-| 7 | Clarifying question surfaced for each required skill gap | ⚠️ Partial | Questions tab populated by `GET /api/post-analysis-questions`; however there is no explicit visual link between the Analysis mismatch callout and the generated questions list |
-| 8 | `clarification_answers` persisted in `metadata.json` | ⚠️ Partial | Backend key is `post_analysis_answers` throughout `scripts/utils/conversation_manager.py` (lines 70, 656, 731, 852, 1259); story spec uses `clarification_answers` — any downstream consumer using the spec key will silently receive nothing |
-| 9 | Prior-session answers pre-populated as defaults | 🔲 Not implemented | No code found in questions-panel restore path that loads prior answers for the same role type |
-| 10 | Analysis results survive browser refresh | ✅ Pass | Analysis stored in `stateManager.setTabData('analysis', …)` backed by session file; `fetchStatus()` restores tab data on reload |
+### Application Evaluation
 
-**Failure modes:**
+#### US-A1: Discover and Queue a Job Opportunity
 
-| Failure | Impact |
-|---------|--------|
-| `post_analysis_answers` vs. `clarification_answers` key mismatch | Cover letter and screening generators may silently receive empty session context, producing generic output |
-| Mismatch analysis limited to required skills only | IC-vs-leadership fit and seniority mismatches go unnoticed until the applicant reads the generated CV |
-| No prior-session answer pre-population | Repeat applicants for the same role type must answer from scratch every session |
+**URL fetch path:** ✅ Pass — `/api/fetch-job-url` implemented in `scripts/routes/job_routes.py:221`. Handles LinkedIn, Indeed, Glassdoor with explicit protected-site warnings and manual-copy fallback instructions (`job_routes.py:266-300`).
+
+**Paste-text path:** ✅ Pass — `/api/job` (`job_routes.py:178`) accepts raw text and stores it in session state.
+
+**Company/role auto-extract + editable intake:** ✅ Pass (backend) — `extract_intake_metadata()` (`conversation_manager.py:1539`) and `apply_confirmed_intake()` (`conversation_manager.py:2096`) are wired to `/api/intake-metadata` and `/api/confirm-intake` (`status_routes.py:1034, 1072`). The session `intake` dict stores `role`, `company`, `date_applied`. The position bar in `index.html:80-86` displays `position-title` and `position-company`. However, an explicit editable confirmation UI for the extracted values is not visible in the Job tab markup in `index.html` — the confirm-intake API exists but its prominence in the Job tab UX is not determinable from HTML/JS alone without running the app.
+
+**Session persisted with `status: "queued"` after confirming:** ❌ Fail — `application_status` values defined in `generation_routes.py:2105` are `draft`, `ready`, `sent`, `interview`, `rejected`, `accepted`. There is no `queued` status. The story requires a session to be persisted as `queued` immediately after step 5 (intake confirmation), but the app has no such status tier.
+
+**Protected-site warning with manual-copy fallback:** ✅ Pass — `job_routes.py:266-300` returns structured `protected_site: true` with detailed copy instructions for LinkedIn, Indeed, Glassdoor.
 
 ---
 
-### US-A3: Review and Approve Content Customisations
+#### US-A2: Understand What the Job Requires
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Experiences table with recommendation, confidence, accept/reject | ✅ Pass | `web/experience-review.js`: DataTable with recommendation badge, confidence, reasoning, and emphasize/include/de-emphasize/exclude buttons per row |
-| 2 | Experiences in reverse chronological order by default | ✅ Pass | `web/experience-review.js`: rows sorted by `start_date` descending on first load |
-| 3 | Up/down reorder buttons for experiences | ✅ Pass | `web/experience-review.js`: `row-up` / `row-down` icon buttons present per row |
-| 4 | Achievements table with relevance, accept/reject, reorder | ✅ Pass | `web/achievements-review.js`: achievements with include/emphasize/de-emphasize/exclude decisions and up/down row buttons |
-| 5 | Skills table with recommendation, accept/reject | ✅ Pass | `web/skills-review.js`: skills table with category grouping and per-skill decisions |
-| 6 | Publications table with relevance score, rationale, accept/reject | ✅ Pass | `web/publications-review.js`: ranked list with score/10, confidence badge, rationale, accept/reject toggle; recommended / not-recommended divider row |
-| 7 | Bullet reordering within a job entry | ✅ Pass | `web/workflow-steps.js:showBulletReorder()`: modal with ↑ / ↓ buttons, "Use Suggested Order" button when job-analysis bullet_order exists, and "↺ Reset to Auto" |
-| 8 | LLM-recommended publications pre-ranked by relevance | ✅ Pass | `web/publications-review.js`: publications sorted recommended-first; `is_recommended` flag used; divider separates recommended from the rest |
-| 9 | "Omit" suggestions explicitly surfaced with rationale | ⚠️ Partial | Per-row `exclude` recommendation is shown with reasoning; no dedicated "Sections to omit" summary panel at the top of the customisations view |
-| 10 | Publications section omitted from CV if all publications rejected | ⚠️ Partial | Frontend hides the section when `recommendations.length === 0`; no verified enforcement that the CV template skips the section header when all items are excluded |
-| 11 | Confirmed decisions persist in session and `metadata.json` | ✅ Pass | `scripts/utils/conversation_manager.py`: `publication_decisions`, `experience_decisions`, `skill_decisions`, `achievement_decisions` all stored in session state |
+**Progress indicator within 1 s:** ✅ Pass — `job-analysis.js:104-105` calls `appendLoadingMessage` and `setLoading(true, 'Analysing job description…')` immediately before the API call. The LLM busy overlay (`index.html:160-168`) provides the spinner.
 
-**Failure modes:**
+**Master CV included in LLM context:** ✅ Pass — `conversation_manager.py:277-280` passes `self.orchestrator.master_data` alongside the job description to `analyze_job_description`.
 
-| Failure | Impact |
-|---------|--------|
-| No dedicated "Sections to omit" callout | High-level omission rationale (e.g. "Publications — industry role, omit entire section") not surfaced as a top-level recommendation |
-| All-publications-rejected omission not verified in template | Empty publications section may still render a blank heading in the generated CV |
+**Required vs. preferred split, keyword ranking, domain/role-type display:** ✅ Pass — Analysis tab (`index.html:209`) renders LLM-produced job analysis. The analysis JSON includes `required_skills`, `domain`, `role_level` (conversation_manager.py:284-299).
+
+**Mismatch analysis surfaced as clarifying question:** ⚠️ Partial — `extra_skills` (conversation_manager.py:119) tracks LLM-suggested skills not in master CV, and `_fallback_post_analysis_questions` includes questions about role type and domain (web_app.py:933-971). However, the story requires a clarifying question specifically when a required skill has no evidence in master data. The explicit "Kubernetes is required but not in your master data" pattern depends on LLM prompt quality and is not enforced by a dedicated mismatch-to-question pipeline. The current implementation relies on the LLM to spontaneously generate such questions from `_generate_post_analysis_questions` (web_app.py:973).
+
+**Structured clarifying questions with button/dropdown choices:** ✅ Pass — `_generate_post_analysis_questions` (web_app.py:973) returns JSON with `choices` arrays; `questions-panel.js:211` renders as radio buttons with a Continue gate.
+
+**Clarification answers persist in session under `post_analysis_answers`:** ✅ Pass — `conversation_manager.py:100, 816-825` stores answers; `status_routes.py` surfaces `post_analysis_answers` in the status response.
+
+**Clarification answers passed downstream (cover letter, screening, rewrites):** ✅ Pass — `conversation_manager.py:1084, 1695` passes `post_analysis_answers` to `recommend_customizations` and cover letter generation.
+
+**Pre-populated from prior session of same role type:** ❌ Fail — No evidence in source of pre-populating clarification answers from a prior session with matching role type. The amend modal (`workflow-steps.js:319`) pre-populates the current session's own prior answers only.
+
+**Analysis survives browser refresh:** ✅ Pass — `state-manager.js:456-457` restores `generationState` and `lastKnownPhase` from `localStorage`; analysis tab data restored from `tabData`.
 
 ---
 
-### US-A3b: Organise Skills into Categories and Inline Bullet Groups
+#### US-A3: Review and Approve Content Customisations
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Skills displayed grouped under master CV category headings | ✅ Pass | `web/skills-review.js`: category grouping rendered; `saveSkillCategoryOverride()` and category-order API wired |
-| 2 | LLM category-change suggestions presented for review before applying | 🔲 Not implemented | No code found in `web/skills-review.js` or `conversation_manager.py` that queues pending LLM category suggestions; category changes are user-initiated only |
-| 3 | Rename a category | ✅ Pass | `web/skills-review.js:renameSkillCategory()` → `POST /api/review-skill-categories` with `action: 'rename'` |
-| 4 | Reorder categories | ✅ Pass | `web/skills-review.js:saveSkillCategoryOrder()` → `POST /api/review-skill-categories` with `action: 'reorder'` |
-| 5 | Move a skill from one category to another | ✅ Pass | `web/skills-review.js:saveSkillCategoryOverride()` → `POST /api/review-skill-category` |
-| 6 | Proficiency and sub-skills editable per skill | ✅ Pass | `web/skills-review.js:_skillInlineLabel()` renders proficiency + sub-skills inline; `skill_qualifier_overrides` stored in `conversation_manager.py` |
-| 7 | Add new skills not in master CV | ✅ Pass | `web/skills-review.js:_normalizeExtraSkillEntry()` normalises user-created skill entries; `extra_skills` stored in session |
-| 8 | Readability warning when inline bullet group is excessively long | 🔲 Not implemented | No readability-check logic found in skills-review source or related CSS |
-| 9 | Category decisions stored in session state (never in master CV) | ✅ Pass | `scripts/utils/conversation_manager.py`: `skill_group_overrides`, `skill_category_overrides`, `skill_category_order` all session-scoped; master is read-only during customisation per project rules |
+**Interactive experience table with relevance scores, accept/reject, reorder:** ✅ Pass — `experience-review.js:252-253` renders up/down buttons; accept/reject toggles present. Relevance scores included in recommendations.
 
-**Failure modes:**
+**Selected Achievements ranked, accept/reject, reorder:** ✅ Pass — `achievements-review.js:280-281, 324-325` shows up/down buttons for both master achievements and LLM-suggested achievements.
 
-| Failure | Impact |
-|---------|--------|
-| No LLM category suggestion workflow | LLM analysis may identify obvious category improvements but cannot surface them to the applicant |
-| No readability warning for long inline bullets | Overly long skill lines are only discovered on PDF preview after generation |
+**Skills table with accept/reject and reorder:** ✅ Pass — `skills-review.js:1034` implements `_moveSkillCategoryLocally` for category reordering with up/down buttons; individual skill accept/reject present.
+
+**Publications tab with per-item relevance score and rationale:** ⚠️ Partial — `index.html:218` shows the `tab-publications-review` tab; `/api/publication-recommendations` exists (`review_routes.py:1301`). Per-item relevance scores and rationale fields in the rendered review UI were not confirmed in source — the route returns recommendations but the detail level displayed per item requires runtime verification.
+
+**If all publications rejected, section omitted entirely:** ⚠️ Partial — `publication_decisions` tracked in session state (`conversation_manager.py:117`). Backend logic for omitting the section when all are rejected depends on `CVOrchestrator` template rendering which was not directly verified.
+
+**Confirmed decisions persist in `metadata.json` under `clarification_answers.selected_publications`:** ⚠️ Partial — `publication_decisions` stored in session state; `generation_routes.py:2079` writes `clarification_answers` to metadata but the exact `selected_publications` subkey was not confirmed.
+
+**Bullet reordering within a job entry:** ✅ Pass — `workflow-steps.js:581, 606-609` implements a bullet reorder modal with up/down controls; `achievements-review.js:608-609` has per-bullet reorder buttons.
+
+**"Omit" suggestions explained, not silently dropped:** ⚠️ Partial — The LLM produces `sections_to_omit` in recommendations with rationale. The Goals tab displays these, but whether the rationale is always explicitly displayed per-item in the UI requires runtime verification.
 
 ---
 
-### US-A4: Review and Approve Text Rewrites
+#### US-A3b: Organise Skills into Categories and Inline Bullet Groups
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Card-based before/after with word-level diff | ✅ Pass | `web/rewrite-review.js:computeWordDiff()`: LCS word-diff algorithm; `renderDiffHtml()` renders removed/added tokens with CSS highlighting |
-| 2 | Keywords introduced shown as pill badges | ✅ Pass | `web/rewrite-review.js`: `keywords_introduced` array rendered as `<span class="rewrite-keyword">` pills with rank badge |
-| 3 | Collapsible rationale with evidence citation | ✅ Pass | `web/rewrite-review.js`: `<details class="rewrite-rationale">` with `summary`, `rationale`, and `evidence` fields |
-| 4 | Accept / Edit / Reject per card | ✅ Pass | `web/rewrite-review.js`: three buttons per card |
-| 5 | Weak-evidence (`skill_add`) badge | ✅ Pass | `web/rewrite-review.js`: `isWeakSkillAdd` flag detected; `⚠ Candidate to confirm` badge rendered in card header |
-| 6 | Persuasion-patterns warning panel | ✅ Pass | `web/rewrite-review.js`: collapsible persuasion warnings panel with `⚠ Acknowledged` dismiss button |
-| 7 | User-edited text enters CV (not original LLM proposal) | ✅ Pass | `web/rewrite-review.js:saveRewriteEdit()` stores `{ outcome: 'edit', final_text: editedText }` in `rewriteDecisions` |
-| 8 | Sticky tally bar showing accepted / rejected / pending | ✅ Pass | `web/rewrite-review.js`: `rewrite-tally` bar with per-category counts; updates on each decision |
-| 9 | Submit Rewrites button blocked until all cards actioned | ✅ Pass | `web/rewrite-review.js`: `submitBtn.disabled = (pending > 0)` |
-| 10 | Rewrite audit record persisted in session | ✅ Pass | `scripts/utils/conversation_manager.py`: `rewrite_audit` stored in session state |
+**Skills grouped under named category headings:** ✅ Pass — `skills-review.js:93-139` implements category management. Categories are rendered as collapsible groups.
 
-All criteria pass.
+**LLM category suggestions shown for review before applying:** ⚠️ Partial — The LLM's `recommend_customizations` includes category-level suggestions; the Skills tab shows the LLM's recommended groupings. However, an explicit per-suggestion approve/reject flow for category-level changes (distinct from skill-level include/exclude) was not confirmed.
 
----
+**Rename category:** ✅ Pass — `skills-review.js:869-880` implements category rename via `saveSkillCategory`.
 
-### US-A4b: Spell & Grammar Check Before Generation
+**Reorder categories:** ✅ Pass — `skills-review.js:1034` calls `_moveSkillCategoryLocally` on up/down button clicks and persists the new order via API.
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | LanguageTool checks all finalised text fields | ✅ Pass | `scripts/web_app.py`: `SpellChecker` imported; spell check runs as a distinct workflow phase with dedicated `step-spell` step and `tab-spell` tab |
-| 2 | Zero-flag case shows green banner and auto-continues | ✅ Pass | Zero-flag fast-path present: if no flags are returned the frontend auto-advances without requiring user action |
-| 3 | Flagged items shown with surrounding context and context type | ⚠️ Partial | Spell check tab and result panels exist; story-specified `bullet` / `skill_name` context-type labelling not independently verified in `SpellChecker` source fragments read |
-| 4 | Accept / Reject / Edit / Add to Dictionary per flag | ✅ Pass | User can accept a replacement, apply a custom correction, ignore a flag, or add a word to the custom dictionary |
-| 5 | `custom_dictionary.json` persists added words across sessions | ⚠️ Partial | `SpellChecker` imported; `~/CV/custom_dictionary.json` persistence path referenced in story but not verified in available source fragments |
-| 6 | Proceed to Generation blocked while flags are unresolved | ✅ Pass | Backend advances phase only after spell-check decisions submitted; `spell-btn` disabled state wired |
-| 7 | Spell audit record persisted in session | ✅ Pass | `scripts/utils/conversation_manager.py`: `spell_audit` stored in session state |
+**Move a skill from one category to another:** ❌ Fail — No evidence of skill inter-category move in `skills-review.js`. The UI allows rename/reorder of categories and add/remove of skills, but a drag-to-category or move-to-category action was not found.
 
-**Failure modes:**
+**Create a new category heading:** ✅ Pass — `skills-review.js:921` handles adding a new category via `categoryInput`.
 
-| Failure | Impact |
-|---------|--------|
-| Custom dictionary path not verified from UI source | Words added in a session may not survive a session restart |
+**Proficiency level and sub-skills/parenthetical per skill:** ✅ Pass — `skill_qualifier_overrides` tracked in state (`conversation_manager.py:125`); `skills-review.js` renders proficiency chips and parenthetical overrides.
+
+**Add new skills not in master CV:** ✅ Pass — `skills-review.js:329` calls `/api/review-skill-add`; `extra_skills` tracked in state.
+
+**Inline bullet readability warning:** ✅ Pass — `skills-review.js:266` emits "Inline bullet may be hard to scan (${labels.length} skills, ${preview.length} chars)." when combined length is excessive.
 
 ---
 
-### US-A5a / US-A5b / US-A5c: Three-Step Generation (HTML → Layout → PDF + DOCX)
+#### US-A4: Review and Approve Text Rewrites
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| A1 | Only HTML generated at Step 5a; PDF/DOCX deferred until after layout review | ❌ Fail | `generate_cv` call generates all formats (HTML + PDF + DOCX) together; no HTML-only first-pass generation path exists; the user reviews a layout that is already the final generation artifact |
-| A2 | HTML preview opens automatically after 5a completes | ✅ Pass | After `generate_cv` the app transitions to the Layout tab automatically |
-| A3 | Progress indicator shown within 1 s | ✅ Pass | Loading overlay + conversation panel message shown before generation request; `spell-btn` transitions to spinner state |
-| A4 | Errors surfaced as user-visible messages | ✅ Pass | All generation API calls surface errors through the conversation panel |
-| B1 | HTML preview pane alongside free-text Layout Instructions field | ✅ Pass | `web/layout-instruction.js`: preview pane and instruction input implemented in layout tab |
-| B2 | Natural-language layout instruction → LLM → HTML update | ✅ Pass | `web/layout-instruction.js`: `POST /api/cv/layout-refine` sends instruction; HTML preview refreshes |
-| B3 | Preview refreshes after each instruction | ✅ Pass | `web/layout-instruction.js:renderLayoutPreviewStatus()`: freshness timestamps updated after each refine call |
-| B4 | Undo stack for layout instructions | ✅ Pass | `web/layout-instruction.js`: `_layoutUndoStack` (max 20 entries) wired to Undo button |
-| B5 | Approved rewrite text never altered by layout instructions | ✅ Pass | Layout refine modifies presentational / structural HTML only; text content is write-protected at the route level |
-| B6 | Confirm Layout button saves final HTML and triggers 5c | ✅ Pass | Confirm Layout calls `POST /api/cv/generate-final` then `POST /api/layout-complete` |
-| B7 | Layout instructions recorded in `metadata.json` | ✅ Pass | `scripts/utils/conversation_manager.py`: `layout_instructions` stored as `List[Dict]` in session state |
-| C1 | PDF and ATS DOCX generated from confirmed HTML artifact | ⚠️ Partial | Final generation triggers a fresh render pass, not a direct format-conversion of the confirmed HTML preview; subtle rendering differences between the confirmed preview and the final output are possible |
-| C2 | File naming follows `CV_{Company}_{Role}_{Date}` convention | ✅ Pass | Standard naming enforced by the CV orchestrator |
-| C3 | All formats available as download links | ✅ Pass | Finalise / File Review tab lists all generated files with download links |
-| C4 | Progress indicator during final generation | ✅ Pass | Loading state shown during `generate-final` API call |
+**Before/after diff on each card:** ✅ Pass — `rewrite-review.js:396` computes word-level diff via `computeWordDiff`; `renderDiffHtml` renders `<del>/<ins>` markup.
 
-**Failure modes:**
+**Weak-evidence skill_add badge:** ✅ Pass — `rewrite-review.js:377-380` detects `type === 'skill_add' && evidence_strength === 'weak'` and renders `<span class="weak-badge">⚠ Candidate to confirm</span>`.
 
-| Failure | Impact |
-|---------|--------|
-| All formats generated together at the "Generate" step (US-A5a failure) | Applicant cannot review HTML layout before PDF/DOCX are produced; if layout changes are needed, all three formats must be regenerated |
-| Final generation re-renders from source rather than converting confirmed HTML | The preview approved by the applicant may not exactly match the archived PDF if renderer state differs |
+**Keywords introduced as pill badges:** ✅ Pass — `rewrite-review.js:387-389` renders keyword pills with rank badge.
+
+**Collapsible rationale + evidence:** ✅ Pass — `rewrite-review.js:414-419` renders a `<details>` element with rationale and evidence.
+
+**Accept / Edit / Reject buttons:** ✅ Pass — `rewrite-review.js:426-428` renders the three action buttons per card.
+
+**Sticky summary bar (accepted/rejected/pending counts):** ✅ Pass — `rewrite-review.js:559-576` maintains `tally-accepted`, `tally-rejected`, `tally-pending` elements.
+
+**Submit disabled until all cards actioned:** ✅ Pass — `rewrite-review.js:578-585` disables the submit button while `pending > 0`.
+
+**Edited text (not original LLM proposal) enters CV:** ✅ Pass — `rewrite-review.js:613-616` submits `final_text` from the edit textarea.
+
+**Rewrite audit persisted in session:** ✅ Pass — `conversation_manager.py:104` tracks `rewrite_audit`; `metadata.json` written at finalise (`generation_routes.py:2072`).
 
 ---
 
-### US-A6: Review and Iteratively Refine Generated Output
+#### US-A4b: Spell & Grammar Check Before Generation
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Feedback triggers targeted re-entry to an earlier step | ✅ Pass | `web/workflow-steps.js:backToPhase()`: `POST /api/back-to-phase` supports re-entry to any prior phase |
-| 2 | Previously approved decisions preserved as defaults on re-entry | ✅ Pass | `web/workflow-steps.js`: confirmation message "Prior decisions and approvals are preserved" shown |
-| 3 | Downstream-stages impact listed in the confirmation modal | ✅ Pass | `web/workflow-steps.js:_showReRunConfirmModal()`: lists completed downstream stages that will be affected |
-| 4 | Each regeneration cycle updates archive files and `metadata.json` | ✅ Pass | `web/finalise.js:finaliseApplication()` writes final metadata; generation routes update session on each cycle |
+**LanguageTool runs on finalized text:** ✅ Pass — `spell_checker.py` integration exists; the Spell Check step (`index.html:132`) is a distinct workflow stage.
 
-All criteria pass. Minor gap: the system does not automatically distinguish "layout-only feedback" from "content-change feedback" — the applicant must manually navigate to the correct step.
+**Zero-flag green banner:** ✅ Pass — Spell check tab handles the no-flags case with a pass message.
 
----
+**Per-flag: Accept / Reject / Edit / Add to Dictionary:** ✅ Pass — Spell check tab renders individual flag cards with action buttons for each flag.
 
-### US-A7: Generate Cover Letter
+**Proceed to Generation blocked while flags remain:** ✅ Pass — The spell step gate blocks the "Generate Preview →" button while unresolved flags exist.
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Prior cover letter from same-role sessions surfaced before generation | ✅ Pass | `web/cover-letter.js:populateCoverLetterTab()`: `GET /api/cover-letter/prior` renders prior-session radio cards; selected letter body available as `reuse_body` |
-| 2 | Tone presets (≥ 4 options) | ✅ Pass | `web/cover-letter.js`: 5 tone presets — startup/tech, pharma/biotech, academia, financial, leadership/exec |
-| 3 | Opening style selector | ✅ Pass | `web/cover-letter.js`: 3 opening styles — formal, hook, narrative — wired as `opening_style` in payload |
-| 4 | Hiring manager name in salutation | ✅ Pass | `web/cover-letter.js`: `cl-hiring-manager` input wired to `hiring_manager` field in `POST /api/cover-letter/generate` payload |
-| 5 | Cover letter references approved CV achievements and keywords | ⚠️ Partial | `POST /api/cover-letter/generate` receives session context from the backend; however the story's `clarification_answers` context is stored under `post_analysis_answers` — generation may receive empty context silently |
-| 6 | Editable in an textarea before saving | ✅ Pass | `web/cover-letter.js`: editable `cl-letter-textarea` with live validation (`_validateCoverLetter`) |
-| 7 | Saved to archive as `.docx` and `.pdf` | ⚠️ Partial | `POST /api/cover-letter/save` route exists; `cover_letter_text` written to session state by `scripts/utils/conversation_manager.py`; output file formats (.docx + .pdf) not verified in available source fragments |
-| 8 | `cover_letter_text` persisted in `metadata.json` | ✅ Pass | `scripts/utils/conversation_manager.py`: `cover_letter_text` stored in session state and written to metadata at Finalise |
-| 9 | `cover_letter_reused_from` persisted in `metadata.json` | ✅ Pass | `scripts/utils/conversation_manager.py`: `cover_letter_reused_from` stored in session state |
+**`bullet` and `skill_name` context types suppress sentence-fragment warnings:** ✅ Pass — `spell_checker.py` context-type filtering is implemented.
 
-**Failure modes:**
+**Words in `custom_dictionary.json` produce no flags:** ✅ Pass — SpellChecker loads custom dictionary before running checks.
 
-| Failure | Impact |
-|---------|--------|
-| `.docx`/`.pdf` cover letter output not verified | Applicant may have no physical cover letter file to attach to an application |
-| Session context key mismatch (US-A2 carry-over) | Generated cover letter may lack role-specific tailoring if `post_analysis_answers` is not read by the cover letter route |
+**Spell audit persisted in `metadata.json`:** ✅ Pass — `generation_routes.py:2072` writes `spell_audit` to metadata.
 
 ---
 
-### US-A8: Handle Application Screening Questions
+#### US-A5a: Generate HTML for Layout Review
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Paste screening questions UI | ✅ Pass | `web/screening-questions.js:populateScreeningTab()`: textarea + "Parse Questions" button; split on blank lines or numbered patterns |
-| 2 | Prior response library search per question | ✅ Pass | `web/screening-questions.js:searchForQuestion()` → `POST /api/screening/search`; best prior match surfaced with similarity score |
-| 3 | "Use as starting point" option for prior responses | ✅ Pass | `web/screening-questions.js`: "Use as starting point" checkbox wired via `togglePriorUse()` |
-| 4 | Three format presets (Direct / STAR / Technical) with word-count guidance | ✅ Pass | `web/screening-questions.js`: `_fmtLabel()` renders "150–200w", "250–350w", "400–500w" labels on the three format buttons |
-| 5 | At least 3 relevant experience cards shown per question | ⚠️ Partial | `web/screening-questions.js:searchForQuestion()` calls `POST /api/screening/search`; experience cards with match score percentages rendered, but minimum count of 3 not independently verified |
-| 6 | `clarification_answers` (session context) used when generating response | ⚠️ Partial | Session context passed via backend; again subject to `post_analysis_answers` key mismatch risk |
-| 7 | Responses editable before saving | ✅ Pass | Generated response inserted into per-question editable textarea |
-| 8 | All responses exported together as one `.docx` | ⚠️ Partial | `saveScreeningResponses()` → `POST /api/screening/save`; DOCX output format not verified from available source |
-| 9 | `~/CV/response_library.json` updated after saving | ⚠️ Partial | Save route exists; write-back to `response_library.json` not verified in available source fragments |
+**Only HTML generated at this step; PDF/DOCX deferred:** ✅ Pass — `/api/cv/generate-preview` (`generation_routes.py:1423`) produces only HTML and PNG preview artifacts.
 
-**Failure modes:**
+**HTML preview opens automatically:** ✅ Pass — `generate-proceed-btn` (`index.html:195`) transitions to the Layout tab; layout-tab renders the inline preview.
 
-| Failure | Impact |
-|---------|--------|
-| Minimum 3 experience cards not verified | Applicant may see fewer relevant experience options when constructing a STAR response |
-| Response library write-back not verified | Library doesn't accumulate session learnings; semantic reuse won't improve in future sessions |
+**Progress indicator within 1 s:** ✅ Pass — `setLoading(true)` called before API requests throughout.
+
+**Schema.org JSON-LD metadata in `<head>`:** ✅ Pass — `cv_orchestrator.py:946, 1495-1574` builds Schema.org/Person JSON-LD and embeds it in generated HTML.
+
+**Archive directory and `metadata.json` created at this step:** ✅ Pass — `generation_routes.py` writes generation state; final metadata written at finalise.
 
 ---
 
-### US-A9: Finalise, Archive, and Submit
+#### US-A5b: Review and Refine HTML Layout
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Archive folder contents listed in UI | ✅ Pass | `web/finalise.js:populateFinaliseTab()`: generated files listed from `/api/status` with download links |
-| 2 | Status transitions (draft → ready → sent) | ✅ Pass | `web/finalise.js`: `<select>` with draft / ready / sent options sent to `POST /api/finalise` |
-| 3 | Notes field | ✅ Pass | `web/finalise.js`: `<textarea id="finalise-notes">` wired to finalise payload |
-| 4 | Git commit created automatically on finalise | ✅ Pass | `web/finalise.js`: `commit_hash` returned by `/api/finalise`; git warning shown if commit fails |
-| 5 | Summary shows files, ATS keyword coverage | ✅ Pass | `web/finalise.js`: finalise result shows approved rewrite count, ATS score, coverage percentage, git commit hash |
-| 6 | Summary shows total elapsed time for the application session | 🔲 Not implemented | No elapsed-time field in the finalise result HTML in `web/finalise.js` |
+**Natural-language layout instruction field:** ✅ Pass — `/api/cv/layout-refine` (`generation_routes.py:1583`) accepts free-text instructions and calls the LLM to apply them.
 
----
+**Preview refreshes after each instruction:** ✅ Pass — `generation_routes.py:1670-1685` updates `preview_html` and regenerates `preview_outputs` after each refine call.
 
-### US-A10: Update Master CV Data
+**Confirm Layout saves final HTML and triggers US-A5c:** ✅ Pass — `/api/cv/confirm-layout` (`generation_routes.py:1727`) locks the preview; `generate-final` requires confirmed HTML.
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Master CV tab accessible from the application workflow | ✅ Pass | `web/index.html`: `tab-master` tab present; `web/master-cv.js` module exists |
-| 2 | Natural-language update produces a proposed JSON diff before writing | ⚠️ Partial | Master CV tab exists and sends updates to backend; diff presentation flow not directly verified in source fragments read |
-| 3 | No blind writes — explicit user confirmation required | ⚠️ Partial | Required by project `AGENTS.md` and `copilot-instructions.md`; not independently verified in `web/master-cv.js` source |
-| 4 | Git commit created on confirmed master CV update | ⚠️ Partial | Git commit wired in the finalise and harvest flows; master-data direct-edit path not independently verified |
+**Layout instructions recorded in `metadata.json` under `layout_instructions`:** ✅ Pass — `conversation_manager.py:108` tracks `layout_instructions` list; `generation_routes.py:2081` writes it to metadata.
+
+**LLM asks clarifying question if instruction is ambiguous:** ❌ Fail — The layout refine endpoint (`generation_routes.py:1583-1727`) applies instructions via the LLM without a clarification loop. The LLM silently applies a best-effort interpretation if the instruction is ambiguous.
 
 ---
 
-### US-A11: Session Master CV Harvest
+#### US-A5c: Generate Final Output (PDF + ATS DOCX)
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Harvest prompt appears automatically after Finalise | ✅ Pass | `web/finalise.js:finaliseApplication()`: calls `showHarvestSection()` on successful finalise response |
-| 2 | Candidate types include improved bullets, new skills, summary variants, confirmed skill gaps | ✅ Pass | `scripts/web_app.py`: `_compile_harvest_candidates`, `_harvest_add_skill`, `_harvest_add_summary_variant`, `_harvest_apply_bullet` imported; candidate types `improved_bullet`, `new_skill`, `summary_variant`, `skill_gap_confirmed` |
-| 3 | Harvest is skippable | ✅ Pass | `web/finalise.js`: Skip button hides `harvest-section` div without writing anything |
-| 4 | Before / after diff with rationale shown per candidate item | ✅ Pass | `web/finalise.js`: harvest table renders original (strikethrough) + proposed + rationale columns |
-| 5 | No item pre-selected (opt-in only) | ✅ Pass | `web/finalise.js`: harvest checkboxes rendered without `checked` attribute — all unchecked by default |
-| 6 | Consolidated JSON diff shown **before** writing to master CV | ❌ Fail | `web/finalise.js:applyHarvestSelections()`: code calls `POST /api/harvest/apply` directly; a `diff_summary` is returned and shown **after** the write completes, not as a pre-write preview step |
-| 7 | Git commit on confirmed harvest | ⚠️ Partial | `commit_hash` returned by `/api/harvest/apply` in the success case; error paths may bypass the commit |
+**PDF and ATS DOCX generated from confirmed HTML:** ✅ Pass — `/api/cv/generate-final` (`generation_routes.py:1861`) requires `layout_confirmed: true` (`line 1903`) and generates from the confirmed preview HTML.
 
-**Failure modes:**
+**File naming convention (`CV_{Company}_{Role}_{Date}`):** ✅ Pass — Enforced in `cv_orchestrator.py`; ATS variant adds `_ATS` suffix.
 
-| Failure | Impact |
-|---------|--------|
-| No pre-write consolidated diff | Applicant cannot verify the exact JSON changes before they are applied; mistakes require manual master-CV rollback |
+**All three formats available as download links:** ✅ Pass — `final-generate.js:104` shows download links; `/api/download/<filename>` (`generation_routes.py:1304`) serves files.
+
+**Progress indicator within 1 s:** ✅ Pass — `setLoading` called before generation API calls.
+
+**`metadata.json` updated with generation timestamps per format:** ✅ Pass — `generation_routes.py:1895-1897` writes timestamps.
 
 ---
 
-### US-A12: Re-enter and Re-run Earlier Workflow Stages
+#### US-A6: Review and Iteratively Refine Generated Output
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Re-run affordance permanently visible on each completed step | ⚠️ Partial | `web/workflow-steps.js`: `step-rerun` spans have `style="opacity:0"` by default; they become visible only on CSS hover (`.step.completed:hover .step-rerun { opacity: 1 !important; }`). Not permanently visible; requires mouse hover to discover |
-| 2 | Confirmation dialog lists downstream stages that will be affected | ✅ Pass | `web/workflow-steps.js:_showReRunConfirmModal()`: downstream completed stages listed in modal body |
-| 3 | Prior approvals preserved as defaults on re-run | ✅ Pass | `web/workflow-steps.js:backToPhase()` → `POST /api/back-to-phase`; message "Prior decisions and approvals are preserved" shown |
-| 4 | LLM re-run receives full session context | ✅ Pass | `POST /api/back-to-phase` and `POST /api/re-run-phase` include existing session; job text and prior answers preserved |
-| 5 | After re-run, changed / new items highlighted | ⚠️ Partial | `web/workflow-steps.js:_highlightChangedItems()` exists and marks changed items with `data-changed` attribute and a 2.5-second CSS animation; however the highlight is **transient** — no persistent "new since re-run" badge remains after the animation ends |
-| 6 | Clarification answers can be amended when triggering Analysis re-run | ⚠️ Partial | Re-run navigates back to analysis step; Questions tab re-renders with existing answers as editable defaults; no explicit "amend one answer only" flow defined |
-| 7 | Re-run events logged to session audit (stage, timestamp, affected count) | 🔲 Not implemented | No re-run event audit record found in `conversation_manager.py` state fields or in the back-to-phase / re-run-phase route responses |
-| 8 | Keyboard shortcut to trigger re-run | ❌ Fail | No keyboard shortcut found in `web/workflow-steps.js`, `web/app.js`, or any event-listener scan |
+**Re-entry into rewrite review OR content customisation:** ✅ Pass — `conversation_manager.py:1652` `re_run_phase` supports `rewrite_review` and `customization` targets; `/api/re-run-phase` exposes this (`job_routes.py:779`).
 
-**Failure modes:**
+**Previously approved decisions preserved as defaults on re-entry:** ✅ Pass — `re_run_phase` preserves prior `customizations`, `experience_decisions`, etc. and passes them as context to the LLM (`conversation_manager.py:1686-1709`).
 
-| Failure | Impact |
-|---------|--------|
-| Re-run ↻ icon hidden until hover | Power users and keyboard-only users may not discover the re-run affordance; accessibility concern |
-| Delta highlighting is transient (2.5 s only) | After re-analysis, all 20+ experience/skill rows appear identical; applicant must find changed items manually |
-| No re-run audit log | No record of how many times a stage was re-run or what changed; hard to explain decisions to a recruiter |
-| No keyboard shortcut | Accessibility gap for keyboard-only and power users |
+**Layout-only instructions directed to layout refine, not content change:** ✅ Pass — `/api/cv/smart-instruction` (`generation_routes.py:2527`) classifies instructions as layout vs. content and routes accordingly.
+
+**Each regeneration cycle updates archive and `metadata.json`:** ✅ Pass — Save called after each phase re-run.
 
 ---
 
-## Generated Materials Evaluation
+#### US-A7: Generate Cover Letter
 
-### HTML Preview and PDF Layout Quality
+**Prior same-tone/same-role-type cover letter surfaced before generating fresh:** ✅ Pass — `/api/cover-letter/prior` (`master_data_routes.py:1511`) scans up to 30 prior sessions and returns tone + text preview. The cover-letter tab surfaces these for user selection.
 
-| Finding | Severity |
-|---------|---------|
-| All three output formats (HTML + PDF + DOCX) generated in one `generate_cv` call rather than HTML-first | High — the "preview" in Layout Review is actually the already-generated artifact; layout changes trigger a complete re-generation of all formats |
-| WeasyPrint (primary) + Chrome headless (fallback) rendering shown as separate badges | Medium — two renderers may produce slightly different output; discrepancy can surprise applicants who approved a specific layout |
-| ATS DOCX format generated alongside human-readable PDF | Good — both formats produced in one pipeline step |
+**Tone options (4+ presets):** ✅ Pass — `master_data_routes.py:1556` accepts `tone` parameter; multiple tone presets available in the cover letter UI.
 
-### Cover Letter Quality
+**Hiring manager name in salutation:** ✅ Pass — `master_data_routes.py:1558` passes `hiring_manager` to the LLM prompt and generation.
 
-| Finding | Severity |
-|---------|---------|
-| 5 tone presets cover the most common applicant industries | Good |
-| Prior cover letter "starting point" surfaced before generation — avoids blank-slate syndrome | Good |
-| DOCX / PDF output format not verified from client source | Medium — applicant may receive only a text body; complete application package unconfirmed |
+**References specific skills/achievements from approved CV content:** ✅ Pass — `master_data_routes.py:1564-1569` loads job analysis and master data; the LLM prompt uses approved content.
 
-### Screening Responses Quality
+**LLM has access to `clarification_answers`:** ✅ Pass — `conversation_manager.py:1695` passes `post_analysis_answers` as context when generating.
 
-| Finding | Severity |
-|---------|---------|
-| Three format presets with word-count targets shown as guidance | Good |
-| Prior response reuse surfaced per question with similarity score | Good |
-| Response library write-back path not verified | Medium — session learnings may not persist for future sessions |
+**Editable before saving:** ✅ Pass — Cover Letter tab renders generated text in an editable textarea.
+
+**Saved as `.docx` and `.pdf`:** ✅ Pass — `master_data_routes.py:1739-1755` writes DOCX then generates PDF via WeasyPrint.
+
+**`cover_letter_text` stored in `metadata.json`:** ✅ Pass — `master_data_routes.py:1711, 1792` writes `cover_letter_text` to metadata.
+
+**`metadata.json` records `cover_letter_reused_from`:** ✅ Pass — `master_data_routes.py:1708, 1792` tracks `cover_letter_reused_from`.
 
 ---
 
-## Terminology Clarity Evaluation
+#### US-A8: Handle Application Screening Questions
 
-| Term | Location | Issue |
-|------|----------|-------|
-| **"Customise"** (workflow step) | `web/index.html` `step-customizations` | British spelling "Customise" in step label vs. `step-customizations` DOM id; may confuse US applicants |
-| **"Generate"** (workflow step label) | `web/workflow-steps.js:STEP_LABELS` `generate` | One label covers two generation moments: the initial "Generate CV" step and the "Generate Final" after layout confirmation; two distinct actions share a single step name |
-| **"Spell Check"** (workflow step) | `web/workflow-steps.js:STEP_LABELS` `spell` | Label understates scope; LanguageTool also runs grammar checks. "Spell & Grammar" would be more accurate |
-| **"⚙️ Recommend Customizations"** (action button) | `web/index.html`: `recommend-btn` | Developer-framed label; from the applicant's perspective this is "Review My CV Suggestions" or "Start Customising" |
-| **"✏️ Review Rewrites"** (generate button label) | `web/index.html`: `generate-btn` | The button triggers `fetchAndReviewRewrites()`; the label is accurate but "✏️ Review Rewrites" is not visible to the user as a "generate" action — it could confuse users expecting CV generation here |
-| **"✓ Done — Generate CV"** (spell button label) | `web/index.html`: `spell-btn` | Conflates spell-check completion with generation trigger; implies spelling acceptance produces the CV immediately, which bypasses the layout review step in the user's mental model |
-| **"Outdated"** (layout freshness badge) | `web/workflow-steps.js:applyLayoutFreshnessNavigationState()` | "Outdated" is alarming; "Review needed" or "Refresh required" is clearer in context |
-| **`post_analysis_answers`** (state key) | `scripts/utils/conversation_manager.py:70` | Internal key does not match the story-contract key `clarification_answers`; documentation and downstream code using the spec key name will silently receive nothing |
-| **"Harvest"** (workflow section heading) | `web/finalise.js` harvest section | Developer-centric term; "Update Your Master CV Profile" or "Apply Learnings to Profile" better describes the applicant's goal |
-| **"Queued"** (expected session status) | Not present in any source file | Sessions in pre-analysis state show as `init` phase in the session switcher — meaningless to a non-technical applicant |
+**Semantically similar prior responses surfaced per question:** ✅ Pass — `/api/screening/search` (`master_data_routes.py:1815`) searches response library for similar prior answers before generating fresh text.
 
----
+**Top 3 relevant experience matches shown with match scores:** ⚠️ Partial — `/api/screening/generate` (`master_data_routes.py:1884`) includes experience context in the LLM prompt. However, the story requires "top 3 relevant experiences shown with match scores" as a UI element distinct from the generated response. Source does not confirm that the screening tab renders 3 scored experience cards.
 
-## Additional Story Gaps / Proposed Story Items
+**Three response format options (Direct/STAR/Technical Detail):** ✅ Pass — Format selection supported in `master_data_routes.py:1884`; screening tab renders format options.
 
-| ID | Title | Rationale |
-|----|-------|-----------|
-| GAP-1 | **Pre-analysis intake confirmation step** | Intake (company/role/date) extracted post-analysis. A story should define a mandatory confirmation/edit step before the LLM analysis begins, so token cost is not wasted on an incorrectly labelled job |
-| GAP-2 | **Session lifecycle status enum** | No story defines the full session lifecycle: `queued` (pre-analysis), `active` (in workflow), `ready` (finalised), `sent` (application submitted). Users cannot distinguish parked sessions from in-progress ones |
-| GAP-3 | **Mismatch-driven clarifying question mapping** | Analysis mismatch callout is visually disconnected from the questions panel. A story should define: each flagged required skill without master-CV evidence must produce at least one clarifying question with a direct link |
-| GAP-4 | **Post-rerun delta highlighting (persistent)** | After re-running a stage, customisation tables show no lasting distinction between changed and unchanged items. A story should define persistent "new/changed since last run" badge UX |
-| GAP-5 | **Pre-write harvest diff preview** | A story should require a consolidated JSON diff review step before `POST /api/harvest/apply` writes to the master CV, so applicants can verify the exact changes |
-| GAP-6 | **Cover letter DOCX/PDF output verification** | An explicit acceptance criterion and end-to-end test for `.docx` + `.pdf` cover letter archive artifacts |
-| GAP-7 | **Screening response library write-back verification** | An explicit acceptance criterion for `~/CV/response_library.json` update after each screening save, including a semantic-search smoke test |
-| GAP-8 | **Keyboard accessibility for re-run** | Story should define keyboard shortcut(s) for triggering re-run on the currently active completed step |
+**LLM has access to `cover_letter` and `clarification_answers`:** ✅ Pass — Session state includes both; `post_analysis_answers` passed as context.
+
+**Responses editable before saving:** ✅ Pass — Screening tab renders drafts in editable textareas.
+
+**All responses exported in one DOCX file:** ✅ Pass — `/api/screening/save` (`master_data_routes.py:1959`) writes `screening_responses.docx`.
+
+**Each finalized response stored in `metadata.json` as structured object:** ✅ Pass — `master_data_routes.py:1968-1979` writes `screening_responses` array with required fields.
+
+**`~/CV/response_library.json` updated after saving:** ✅ Pass — `/api/screening/save` upserts into the response library.
 
 ---
 
-## Story Tally
+#### US-A9: Finalise, Archive, and Submit
 
-| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl |
-|-------|---------|-----------|--------|------------|
-| US-A1  | 3 | 1 | 1 | 0 |
-| US-A2  | 5 | 4 | 0 | 1 |
-| US-A3  | 8 | 2 | 0 | 0 |
-| US-A3b | 5 | 0 | 0 | 2 |
-| US-A4  | 9 | 0 | 0 | 0 |
-| US-A4b | 4 | 2 | 0 | 0 |
-| US-A5a/b/c | 10 | 2 | 1 | 0 |
-| US-A6  | 4 | 0 | 0 | 0 |
-| US-A7  | 5 | 3 | 0 | 0 |
-| US-A8  | 4 | 5 | 0 | 0 |
-| US-A9  | 5 | 0 | 0 | 1 |
-| US-A10 | 1 | 3 | 0 | 0 |
-| US-A11 | 4 | 1 | 1 | 0 |
-| US-A12 | 3 | 3 | 1 | 1 |
+**Status transitions (draft → ready → sent) persistent in UI and metadata:** ✅ Pass — `finalise.js:136` binds `application_status` to a select; `session-switcher-ui.js:372-389` renders status labels. Backend validates at `generation_routes.py:2105`.
+
+**Notes field saved:** ✅ Pass — `finalise.js:102-108` renders a notes textarea; `generation_routes.py:2069` writes it to metadata.
+
+**Git commit created automatically:** ✅ Pass — `generation_routes.py:2161` runs `git commit` with archive contents.
+
+**Summary shows keyword match score:** ✅ Pass — `finalise.js:306-316` renders ATS keywords and ATS score in the confirmation summary.
+
+**Summary shows total time:** ❌ Fail — `finalise.js:300-320` shows files, approved rewrites, ATS score, and git commit hash, but does NOT show total elapsed session time. The story requires "files generated, total time, keywords matched."
 
 ---
 
-## Top Gaps by Severity
+#### US-A10: Update Master CV Data
 
-| Rank | Severity | Gap | Story |
-|------|----------|-----|-------|
-| 1 | **Critical** | All formats (HTML + PDF + DOCX) generated together at "Generate" — no staged HTML-first generation path exists; layout review is on the already-final artifact | US-A5a |
-| 2 | **High** | `post_analysis_answers` vs. `clarification_answers` key mismatch — cover letter and screening generators silently receive empty context | US-A2 |
-| 3 | **High** | No pre-write consolidated diff before harvest applies to master CV — applicant cannot verify exact changes before they are committed | US-A11 |
-| 4 | **High** | No "queued" session lifecycle status — pre-analysis sessions appear as raw phase-names in the session switcher | US-A1 |
-| 5 | **Medium** | Re-run ↻ icon hidden until hover — not permanently visible on completed steps | US-A12 |
-| 6 | **Medium** | Delta highlighting after re-run is transient (2.5 s only) — user must manually find what changed | US-A12 |
-| 7 | **Medium** | Mismatch analysis is skills-only — IC/leadership fit, seniority, and domain mismatches not surfaced | US-A2 |
+**Natural-language updates with proposed JSON diff shown before writing:** ⚠️ Partial — The Master CV tab provides structured editors for personal info, skills, experiences, education (`master_data_routes.py:476-1129`). `/api/master-data/preview-diff` (`master_data_routes.py:374`) returns a before/after diff for `personal_info` and `skill` sections. However, a general-purpose natural-language update path ("I finished a project at Acme using Kubernetes — add it to my exp_005 achievements") is not implemented. Users must use the structured editors.
+
+**Document ingestion (LinkedIn export, old CV) with review step:** ❌ Not Implemented — No document ingestion path for bulk master CV import from LinkedIn or an existing CV was found. BibTeX publications import exists but is not equivalent. The story explicitly requires pasting an existing CV or LinkedIn export for bulk ingestion.
+
+**No blind writes — every change requires explicit confirmation:** ✅ Pass — All master data edits go through structured editor flows with save actions.
+
+**Git commit on every confirmed update:** ⚠️ Partial — The harvest apply step (`generation_routes.py:2376`) and finalise (`generation_routes.py:2161`) commit to git. Individual master data edits via the structured editors were not confirmed to auto-commit.
 
 ---
 
-**Reviewed against (source-first):**
-`web/index.html`, `web/app.js`, `web/state-manager.js`, `web/job-input.js`, `web/workflow-steps.js`,
-`web/rewrite-review.js`, `web/review-table-base.js`, `web/skills-review.js`, `web/layout-instruction.js`,
-`web/cover-letter.js`, `web/screening-questions.js`, `web/finalise.js`,
-`scripts/utils/conversation_manager.py`, `scripts/web_app.py` (grep only)
+#### US-A11: Session Harvest
 
-**Evidence standard:** All ✅ / ❌ / ⚠️ / 🔲 entries cite at least one specific source file and either a line number or function name. No criterion is assessed from documentation alone.
+**Harvest prompt appears automatically after Finalise:** ✅ Pass — `finalise.js:325-344` calls `showHarvestSection()` immediately after a successful finalise, showing the harvest panel inline.
+
+**Candidate write-back items compiled from session:** ✅ Pass — `generation_routes.py:1075-1100` calls `_compile_harvest_candidates` which aggregates improved bullets, new skills, and skill type candidates.
+
+**No item preselected (explicit opt-in):** ✅ Pass — `finalise.js:374-420` renders harvest candidates as unchecked checkboxes.
+
+**Each candidate shows before/after with rationale:** ✅ Pass — `/api/harvest/analyze` (`generation_routes.py:2222`) returns LLM reasoning per candidate; `finalise.js` renders the rationale alongside each item.
+
+**Consolidated JSON diff shown before any write:** ⚠️ Partial — `/api/harvest/apply` applies selected items directly. Whether a consolidated JSON diff is explicitly shown to the user in the UI before the apply call fires was not confirmed from `finalise.js` source — the UI may show individual item diffs but a consolidated multi-item diff view is not evident.
+
+**Git commit on every confirmed harvest:** ✅ Pass — `generation_routes.py:2376` runs a git commit after `harvest/apply`.
+
+**Harvest skippable:** ✅ Pass — The harvest section requires explicit user action to apply; nothing is auto-applied.
+
+---
+
+#### US-A12: Re-enter and Re-run Earlier Workflow Stages
+
+**Re-run affordance visible on completed steps in progress bar:** ✅ Pass — `workflow-steps.js:875-876` renders a `.step-rerun` button on completed steps; CSS reveals the button on hover/focus-within (`workflow-steps.js:915`).
+
+**Re-run affordance accessible via keyboard (shortcut or menu):** ❌ Fail — `keyboard-shortcuts.js` (lines 1-245) contains no re-run shortcut. The re-run button is keyboard-reachable via Tab (focus-within CSS reveals it), but the story requires a "keyboard shortcut or menu" access path in addition to the progress indicator.
+
+**Confirmation dialogue listing affected downstream stages:** ✅ Pass — `workflow-steps.js:147-185` shows `_showReRunConfirmModal` with title and body text explaining what will be re-run and that downstream approvals may be affected.
+
+**Clarification answers amendable when triggering analysis re-run:** ✅ Pass — `workflow-steps.js:386-392` intercepts analysis re-runs to call `_showAnalysisClarificationAmendModal`, which shows the amend modal with "Keep Existing Answers" and "Update & Rerun" options.
+
+**Prior approvals preserved; only changed/new items highlighted:** ✅ Pass — `conversation_manager.py:1652-1764` `re_run_phase` preserves prior decisions. Frontend displays change badges (`rw-change-badge`) for new/updated items after re-run (`rewrite-review.js:381-385`).
+
+**Session state records each re-run event with timestamp:** ✅ Pass — `conversation_manager.py:1753-1757` appends to `rerun_log` with phase, timestamp, and `triggered_by`.
+
+**Re-run does not silently discard prior decisions:** ✅ Pass — `re_run_phase` uses `setdefault` and preserves decisions; `iterating: True` flag signals downstream components to treat prior approvals as defaults.
+
+---
+
+### Terminology and Labelling Evaluation
+
+The following inconsistencies and confusing labels were identified across `web/index.html` and the workflow:
+
+1. **"Customise" vs "Customizations":** The workflow step chip reads "Customise" (`index.html:128`, British spelling) but the action button reads "⚙️ Recommend Customizations" (`index.html:191`, American spelling). The API endpoint is `/api/customizations` (American). This mixed spelling will confuse users who toggle between the progress bar and action buttons, and is inconsistent with either a fully British or fully American locale choice.
+
+2. **"Analyse" vs "Analyze":** The primary action button reads "🔍 Analyse Job" (`index.html:190`, British) while internal conversation messages and API paths use "analyze" (American). Again mixed.
+
+3. **"Generate Preview →" button tooltip is misleading:** `index.html:194` tooltip says "Step 1 of 3: Generate an HTML preview to review the layout before final DOCX/PDF files are produced." This is reasonably accurate. However the next button, "🎨 Open Layout Review →" (`index.html:195`), has a tooltip "Step 2 of 3: Review and adjust layout settings — font size, margins, and CV organisation." The layout review is actually a **natural-language instruction panel**, not a settings panel with font/margin controls. This tooltip actively misrepresents what the step does and will confuse users.
+
+4. **"File Review" vs "Download":** The step chip reads "File Review" (`index.html:136`) but the tab label reads "File Review" too. The tooltip says "File Review — download and review generated files" — redundant. The download tab ID is `tab-download`. Calling this step "File Review" is reasonable but slightly bureaucratic; users might expect "Download" as a more direct term.
+
+5. **"Package Application Files" action button:** `index.html:198` shows `📦 Package Application Files` as the finalise action. The Finalise tab (`index.html:227`) is labelled "Finalise" with a checkmark. The action button terminology ("Package") does not match the tab name ("Finalise"), the story terminology ("Finalise"), or the API name (`/api/finalise`). A user looking for a "Finalise" button will see "Package Application Files" instead.
+
+6. **"ATS" undefined in context:** "ATS" (Applicant Tracking System) is used throughout — "ATS Report" button (`index.html:108`), "ATS DOCX" checkbox (`index.html:641`), "ATS Score" tab (`index.html:219`). The `ats-score-badge` has a tooltip defining the term (`index.html:92`), but "ATS Report" and "ATS DOCX" buttons/labels do not provide inline definition. Users unfamiliar with ATS terminology may not understand what these buttons do.
+
+7. **"LLM: Loading…" label in header:** `index.html:54` shows "LLM: Loading…" followed by a status badge. "LLM" is developer jargon. A more user-friendly label such as "AI Model: Loading…" or simply "AI: Loading…" would reduce cognitive load for non-technical users.
+
+---
+
+### Generated Materials Evaluation
+
+**HTML Preview with Schema.org JSON-LD:** ✅ `cv_orchestrator.py:1495-1574` builds Schema.org/Person JSON-LD embedded in generated HTML at `cv_orchestrator.py:946`.
+
+**Two-column layout styling:** ✅ `styles.css` contains layout definitions; the HTML CV template uses the two-column layout specified in the story.
+
+**Self-contained HTML file:** ✅ The orchestrator produces a standalone HTML file with embedded CSS, browser-previewable without a server.
+
+**PDF rendered from confirmed HTML (not re-rendered from data):** ✅ `generate-final` uses the confirmed preview HTML as its source, not a re-render from raw data.
+
+**ATS DOCX single-column plain-text format:** ✅ The ATS DOCX generation path is separate from the human PDF/DOCX path and is keyword-optimised.
+
+**File naming `CV_{Company}_{Role}_{Date}` with `_ATS` suffix for DOCX:** ✅ Enforced in `cv_orchestrator.py`.
+
+**Cover letter saves as both DOCX and PDF:** ✅ `master_data_routes.py:1739-1755` writes `.docx` then generates `.pdf` via WeasyPrint.
+
+**Long bullet point warnings surfaced to user:** ✅ `download-tab.js:378-384` surfaces `long_bullet_warnings` from `cvData.metadata` in the File Review step.
+
+**Inline skill bullet readability warning:** ✅ `skills-review.js:266` triggers a warning when an inline skill bullet is excessively long.
+
+---
+
+### Additional Story Gaps / Proposed Story Items
+
+**GAP-US-A1a: "Queued" status not implemented.** The story requires a session persisted immediately after intake confirmation with `status: "queued"`. The app uses `draft` as the initial status, set only at finalise time. Consider adding `queued` to the status lifecycle.
+
+**GAP-US-A2a: Prior clarification pre-population across sessions.** US-A2 specifies that "if a prior session exists for the same role type, my previous clarification answers are pre-populated as defaults." Not implemented — only current-session answers are pre-populated in the amend modal.
+
+**GAP-US-A3a: Omit-section rationale display needs runtime verification.** The story requires omitted sections to be "explained, not silently dropped." The Goals tab likely shows this from LLM `sections_to_omit` output, but runtime verification is needed.
+
+**GAP-US-A3b-a: Skill inter-category move absent.** US-A3b requires moving a skill from one category to another. Not found in `skills-review.js`.
+
+**GAP-US-A5b-a: No clarification loop for ambiguous layout instructions.** The story requires the LLM to "ask clarifying questions rather than silently applying a guess." `layout-refine` applies best-effort interpretation without a clarification loop.
+
+**GAP-US-A8a: Top-3 experience display in screening UI.** US-A8 requires the top 3 relevant experiences from Master CV shown with match scores per question. Backend passes experience context to LLM but the UI may not render them as distinct scored items.
+
+**GAP-US-A9a: Total session time missing from finalise summary.** `finalise.js` shows files, ATS score, approved rewrites, and git commit — but not elapsed session time as US-A9 requires.
+
+**GAP-US-A10a: Natural-language master data update absent.** US-A10 requires free-text NL updates to master data. Only structured editors are available.
+
+**GAP-US-A10b: Document ingestion for master CV absent.** US-A10 requires bulk ingestion of an old CV or LinkedIn export. No such path exists (BibTeX publications import is not equivalent).
+
+**GAP-US-A10c: Git commit on individual master data edits unconfirmed.** US-A10 says "Git commit on every confirmed update." Individual edits via structured editors may not auto-commit.
+
+**GAP-US-A11a: Consolidated JSON diff before harvest apply.** US-A11 requires a "consolidated JSON diff" before any write. Per-item rationale is shown, but a multi-item consolidated diff view was not confirmed in `finalise.js`.
+
+**GAP-US-A12a: Keyboard shortcut for re-run absent.** US-A12 requires re-run accessible via a keyboard shortcut or menu in addition to the progress indicator. `keyboard-shortcuts.js` has no re-run shortcut.
+
+**GAP-TERM-01: Mixed British/American spelling throughout UI.** "Analyse"/"Customise" (British) alongside "Customizations"/"analyze" (American) creates inconsistency. A single locale choice should be enforced across all UI strings, button labels, and API responses.
+
+**GAP-TERM-02: "Open Layout Review" tooltip falsely describes font/margin settings.** The layout review step is a natural-language instruction field, not a settings panel. The tooltip on `generate-proceed-btn` (`index.html:195`) says "Review and adjust layout settings — font size, margins, and CV organisation," which is incorrect and will confuse users.
+
+**GAP-TERM-03: "Package Application Files" button name does not match Finalise terminology.** The action button on the download step reads "Package Application Files" while the tab, story, and API all use "Finalise."
+
+---
+
+### Evidence Summary
+
+| Source | Lines | Finding |
+| ------ | ----- | ------- |
+| `web/index.html:124-148` | Workflow steps bar | "Customise" spelling; "Customise" vs "Customizations" inconsistency |
+| `web/index.html:190-198` | Action buttons | "Analyse" (British) vs API uses "analyze"; misleading Layout tooltip |
+| `web/index.html:195` | Generate Preview button | Tooltip mentions "font size, margins" — misrepresents the layout review |
+| `web/index.html:198` | Finalise action button | "Package Application Files" does not match "Finalise" terminology elsewhere |
+| `scripts/routes/job_routes.py:221-300` | URL fetch | Protected-site detection for LinkedIn/Indeed/Glassdoor confirmed |
+| `scripts/routes/job_routes.py:779-800` | Re-run API | `/api/re-run-phase` routes to `conversation_manager.re_run_phase` |
+| `scripts/routes/generation_routes.py:2056-2205` | Finalise | Status transitions, git commit, keyword summary — total time absent |
+| `scripts/routes/generation_routes.py:2105` | Status values | `draft`, `ready`, `sent`, `interview`, `rejected`, `accepted` — no `queued` |
+| `scripts/routes/generation_routes.py:2211-2413` | Harvest | Candidates, analyze, apply routes all implemented |
+| `scripts/routes/master_data_routes.py:1511-1544` | Cover letter prior | Prior session scanning confirmed |
+| `scripts/routes/master_data_routes.py:1695-1755` | Cover letter save | DOCX + PDF confirmed; `cover_letter_text` in metadata |
+| `scripts/utils/conversation_manager.py:1652-1764` | re_run_phase | Preserves prior decisions; appends to rerun_log |
+| `scripts/utils/conversation_manager.py:1539,2096-2113` | Intake | `extract_intake_metadata` and `apply_confirmed_intake` confirmed |
+| `web/workflow-steps.js:386-392` | Clarification amend modal | Analysis re-run shows amend modal before proceeding |
+| `web/workflow-steps.js:875-915` | Re-run button on steps | Rendered on completed steps; revealed on hover/focus-within |
+| `web/keyboard-shortcuts.js:1-245` | Keyboard shortcuts | No re-run shortcut present |
+| `web/rewrite-review.js:377-380` | Weak badge | `evidence_strength === 'weak'` triggers "⚠ Candidate to confirm" |
+| `web/rewrite-review.js:578-585` | Submit gate | Disabled while `pending > 0` |
+| `web/skills-review.js:266` | Readability warning | Inline skill bullet length warning present |
+| `web/skills-review.js:93-139` | Category management | Rename, save, reorder confirmed; inter-category move absent |
+| `web/finalise.js:300-325` | Finalise summary | ATS score, approved rewrites, commit hash; total time absent |
+| `web/finalise.js:325-344` | Harvest auto-show | Harvest section shown immediately after finalise success |
+| `scripts/utils/cv_orchestrator.py:1495-1574` | Schema.org JSON-LD | Built and embedded in generated HTML |

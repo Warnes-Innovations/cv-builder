@@ -34,6 +34,17 @@ export function pxToPt(px) {
   return Math.round(px * 0.75 * 10) / 10;
 }
 
+function coerceBoolean(value, defaultValue = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  }
+  if (value == null) return defaultValue;
+  return Boolean(value);
+}
+
 // Undo stack — each entry is { html, instructions } snapshotted before a
 // layout instruction is applied.  Cap at 20 entries to bound memory.
 const _layoutUndoStack = [];
@@ -193,11 +204,20 @@ function renderLayoutPreviewStatus() {
   }
   const stageLabel = generationState.layoutConfirmed || generationState.phase === 'confirmed'
     ? 'Ready for final files' : 'Ready for layout review';
+  // Page count badge: shown when a page count is available from the preview
+  const pc = generationState.pageCountExact ?? generationState.pageCountEstimate;
+  let pageCountBadge = '';
+  if (pc !== null && pc !== undefined) {
+    const pcLabel  = generationState.pageCountExact !== null ? `${pc} page${pc !== 1 ? 's' : ''}` : `~${pc} page${pc !== 1 ? 's' : ''}`;
+    const pcWarn   = generationState.pageWarning;
+    pageCountBadge = `<span class="layout-page-count-badge${pcWarn ? ' warn' : ''}" title="${pcWarn ? 'Page count outside recommended range' : 'Page count within range'}">${pcWarn ? '⚠ ' : '📄 '}${escapeHtml(pcLabel)}</span>`;
+  }
   container.innerHTML = `
     <div class="layout-preview-status-card ${freshness.tone}">
       <div class="layout-preview-status-header">
         ${buildLayoutFreshnessChipMarkup(freshness)}
         <span class="layout-preview-status-stage">${escapeHtml(stageLabel)}</span>
+        ${pageCountBadge}
       </div>
       <div class="layout-preview-status-details">
         ${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}
@@ -241,6 +261,8 @@ function refreshLayoutReviewState() {
     : 'none';
 
   if (confirmBtn)  confirmBtn.style.display  = showConfirm;
+  const hintEl = document.getElementById('layout-two-step-hint');
+  if (hintEl) hintEl.style.display = showConfirm;
 
   if (finalBtn) {
     finalBtn.style.display = generationState.previewAvailable
@@ -279,7 +301,8 @@ async function initiateLayoutInstructions() {
 
         <div class="layout-input-pane">
           <h3>Layout Review</h3>
-          <p class="layout-scope-label">💡 Describe a layout or text change — the AI will determine the right approach.</p>
+          <p class="layout-scope-label">💡 Describe a layout change (spacing, margins, column widths, section order). Text content is finalised — content edits are not applied here.</p>
+          <div id="layout-page-estimate" style="display:none;margin-bottom:10px;"></div>
 
           <div id="layout-stale-callout" class="layout-stale-callout" style="display:none;">
             <h4>Layout preview is out of date</h4>
@@ -318,6 +341,20 @@ async function initiateLayoutInstructions() {
               style="width:72px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
               title="Controls the print page margins for all PDF pages."
             />
+            <label for="publications-start-new-page-input" style="display:inline-flex; align-items:center; gap:6px; font-size:0.83em; color:#334155; margin-left:8px;">
+              <input id="publications-start-new-page-input" type="checkbox" />
+              Start Publications on new page
+            </label>
+            <label for="skills-show-experience-select" style="font-size:0.85em; font-weight:600; color:#475569; white-space:nowrap; margin-left:8px;">Skill experience level:</label>
+            <select
+              id="skills-show-experience-select"
+              style="padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.9em;"
+              title="Controls whether years of experience are shown next to each skill."
+            >
+              <option value="individual">Individual setting</option>
+              <option value="always">Always</option>
+              <option value="never">Never</option>
+            </select>
             <button id="apply-layout-settings-btn" class="btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
             <span id="layout-settings-status" style="font-size:0.8em; color:#64748b;"></span>
           </div>
@@ -335,6 +372,10 @@ async function initiateLayoutInstructions() {
           <button id="confirm-layout-btn" class="continue-btn layout-action-btn" style="display:none;">
             Confirm Layout
           </button>
+
+          <p id="layout-two-step-hint" style="display:none;font-size:0.82em;color:#6b7280;margin:6px 0 2px;">
+            Once the preview looks right, confirm the layout — then generate your final submission files.
+          </p>
 
           <div id="processing-indicator" class="processing-indicator" style="display: none;">
             <div class="spinner"></div>
@@ -395,6 +436,31 @@ async function initiateLayoutInstructions() {
     const input = document.getElementById('page-margin-input');
     if (input) input.value = parseFloat(savedPageMargin) || 0.5;
   }
+  const publicationsStartInput = document.getElementById('publications-start-new-page-input');
+  if (publicationsStartInput) {
+    const sessionState = stateManager?.getSessionState?.() || {};
+    const customizationState = stateManager?.getTabData?.('customizations') || {};
+    const savedPublicationsStart =
+      sessionState.publications_start_new_page
+      ?? sessionState?.customizations?.publications_start_new_page
+      ?? customizationState.publications_start_new_page
+      ?? customizationState.publications_page_break
+      ?? customizationState.start_publications_on_new_page
+      ?? false;
+    publicationsStartInput.checked = coerceBoolean(savedPublicationsStart, false);
+  }
+  const skillsShowExperienceSelect = document.getElementById('skills-show-experience-select');
+  if (skillsShowExperienceSelect) {
+    const sessionState = stateManager?.getSessionState?.() || {};
+    const customizationState = stateManager?.getTabData?.('customizations') || {};
+    const savedSkillsExp =
+      sessionState.skills_show_experience
+      ?? sessionState?.customizations?.skills_show_experience
+      ?? customizationState.skills_show_experience
+      ?? 'individual';
+    const valid = ['always', 'never', 'individual'];
+    skillsShowExperienceSelect.value = valid.includes(savedSkillsExp) ? savedSkillsExp : 'individual';
+  }
 
   renderPreviewOutputStatus(getPreviewOutputs());
 
@@ -412,6 +478,30 @@ async function initiateLayoutInstructions() {
   // Restore any prior instructions from session
   await restoreInstructionHistory();
   refreshLayoutReviewState();
+
+  // Show a proactive page-length estimate so users can adjust content before generating
+  _fetchPageEstimate();
+}
+
+async function _fetchPageEstimate() {
+  const banner = document.getElementById('layout-page-estimate');
+  if (!banner) return;
+  try {
+    const res = await fetch('/api/estimate-pages');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.ok || !data.estimated_pages) return;
+    const pages = data.estimated_pages;
+    const isOver = pages > 3;
+    const color = isOver ? '#92400e' : '#166534';
+    const bg    = isOver ? '#fef3c7' : '#f0fdf4';
+    const border = isOver ? '#fcd34d' : '#bbf7d0';
+    const msg   = isOver
+      ? `⚠ Estimated ~${pages} pages — senior candidate target is 2–3 pages. Consider reducing selected bullet points before generating.`
+      : `✓ Estimated ~${pages} pages — within the 2–3 page target for senior candidates.`;
+    banner.style.cssText = `display:block;padding:8px 12px;border-radius:6px;border:1px solid ${border};background:${bg};color:${color};font-size:0.87em;`;
+    banner.textContent = msg;
+  } catch (_) { /* silent — non-critical */ }
 }
 
 /**
@@ -428,9 +518,19 @@ function setupLayoutInstructionListeners() {
   const applySettingsBtn  = document.getElementById('apply-layout-settings-btn');
   const fontSizeInput     = document.getElementById('base-font-size-input');
   const pageMarginInput   = document.getElementById('page-margin-input');
+  const publicationsStartInput = document.getElementById('publications-start-new-page-input');
+  const skillsShowExperienceSelect = document.getElementById('skills-show-experience-select');
 
-  if (applySettingsBtn && fontSizeInput && pageMarginInput) {
-    applySettingsBtn.addEventListener('click', () => applyLayoutSettings(fontSizeInput.value, pageMarginInput.value));
+  if (applySettingsBtn && fontSizeInput && pageMarginInput && publicationsStartInput) {
+    applySettingsBtn.addEventListener(
+      'click',
+      () => applyLayoutSettings(
+        fontSizeInput.value,
+        pageMarginInput.value,
+        publicationsStartInput.checked,
+        skillsShowExperienceSelect?.value || 'individual',
+      ),
+    );
     fontSizeInput.addEventListener('input', () => {
       const ptDisplay = document.getElementById('font-size-pt-display');
       if (ptDisplay) {
@@ -439,10 +539,24 @@ function setupLayoutInstructionListeners() {
       }
     });
     fontSizeInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') applyLayoutSettings(fontSizeInput.value, pageMarginInput.value);
+      if (e.key === 'Enter') {
+        applyLayoutSettings(
+          fontSizeInput.value,
+          pageMarginInput.value,
+          publicationsStartInput.checked,
+          skillsShowExperienceSelect?.value || 'individual',
+        );
+      }
     });
     pageMarginInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') applyLayoutSettings(fontSizeInput.value, pageMarginInput.value);
+      if (e.key === 'Enter') {
+        applyLayoutSettings(
+          fontSizeInput.value,
+          pageMarginInput.value,
+          publicationsStartInput.checked,
+          skillsShowExperienceSelect?.value || 'individual',
+        );
+      }
     });
   }
 
@@ -515,7 +629,7 @@ function setupLayoutInstructionListeners() {
 /**
  * Save layout display settings to session state, then re-render the preview.
  */
-async function applyLayoutSettings(fontSizeValue, pageMarginValue) {
+async function applyLayoutSettings(fontSizeValue, pageMarginValue, publicationsStartNewPage = false, skillsShowExperience = 'individual') {
   const statusEl = document.getElementById('layout-settings-status');
   const parsedFontSize = parseFloat(fontSizeValue);
   const parsedPageMargin = parseFloat(pageMarginValue);
@@ -532,11 +646,13 @@ async function applyLayoutSettings(fontSizeValue, pageMarginValue) {
     const saveRes = await apiCall('POST', '/api/layout-settings', {
       base_font_size: `${parsedFontSize}px`,
       page_margin: `${parsedPageMargin}in`,
+      publications_start_new_page: Boolean(publicationsStartNewPage),
+      skills_show_experience: skillsShowExperience,
     });
     if (!saveRes.ok) throw new Error(saveRes.error || 'save failed');
 
     if (statusEl) statusEl.textContent = 'Re-rendering…';
-    const previewRes = await apiCall('POST', '/api/cv/generate-preview', {});
+    const previewRes = await apiCall('POST', '/api/cv/generate-preview', { content_revision: getCurrentContentRevision() });
     if (previewRes.ok && previewRes.html) {
       displayLayoutPreview(previewRes.html);
       setPreviewHtml(previewRes.html);
@@ -554,10 +670,14 @@ async function applyLayoutSettings(fontSizeValue, pageMarginValue) {
       });
       renderPreviewOutputStatus(previewRes.preview_outputs || null);
       refreshLayoutReviewState();
+      (previewRes.content_warnings || []).forEach(w => {
+        if (typeof showToast === 'function') showToast(w.message, 'warning', 8000);
+      });
     }
     if (statusEl) { statusEl.textContent = '✅ Applied'; setTimeout(() => { statusEl.textContent = ''; }, 2000); }
   } catch (err) {
-    if (statusEl) statusEl.textContent = `❌ ${err.message}`;
+    if (statusEl) statusEl.textContent = `❌ Failed to apply — try again or refresh.`;
+    appendMessage('system', `❌ Could not apply the instruction. Try rephrasing it or refresh the page if the problem persists.`);
   }
 }
 
@@ -643,7 +763,7 @@ async function submitSmartInstruction(instructionText) {
     refreshLayoutReviewState();
 
   } catch (error) {
-    appendMessage('system', `❌ Failed to apply instruction: ${error.message}`);
+    appendMessage('system', `❌ Could not apply the instruction. Try rephrasing it, or click "Regenerate Preview" to reset the preview and try again.`);
   } finally {
     showProcessing(false);
   }
@@ -703,6 +823,7 @@ async function submitLayoutInstruction(instructionText) {
     if (useSessionEndpoint) {
       response = await apiCall('POST', '/api/cv/layout-refine', {
         instruction: instructionText,
+        content_revision: getCurrentContentRevision(),
       });
     } else {
       response = await apiCall('POST', '/api/layout-instruction', {
@@ -766,7 +887,7 @@ async function submitLayoutInstruction(instructionText) {
     refreshLayoutReviewState();
 
   } catch (error) {
-    appendMessage('system', `❌ Failed to apply layout instruction: ${error.message}`);
+    appendMessage('system', `❌ Could not apply the layout instruction. Try rephrasing it, or click "Regenerate Preview" to reset and try again.`);
   } finally {
     showProcessing(false);
   }
@@ -827,6 +948,9 @@ async function _fetchAndDisplayLayoutPreview() {
           stateManager?.markPreviewGenerated?.(_buildPreviewPayload(data));
           renderPreviewOutputStatus(data.preview_outputs || null);
           refreshLayoutReviewState();
+          (data.content_warnings || []).forEach(w => {
+            if (typeof showToast === 'function') showToast(w.message, 'warning', 8000);
+          });
           return;
         }
       } catch (_e) {
@@ -926,19 +1050,23 @@ function renderInstructionHistory() {
   const historyList = document.getElementById('instruction-history');
   if (!historyList) return;
 
+  const instructions = window.layoutInstructions || [];
   historyList.innerHTML = '';
-  (window.layoutInstructions || []).forEach((instruction, index) => {
+  const lastIdx = instructions.length - 1;
+  instructions.forEach((instruction, index) => {
     const entry = document.createElement('div');
     entry.className = 'instruction-history-entry';
+    const isLast = index === lastIdx;
+    const undoHtml = isLast
+      ? `<button class="action-btn-sm" onclick="undoInstruction(${index})">↩ Undo</button>`
+      : `<button class="action-btn-sm" disabled title="Undo is sequential — undo the most recent instruction first"
+           style="opacity:0.3;cursor:not-allowed;">↩ Undo</button>`;
     entry.innerHTML = `
       <div class="instruction-time">${instruction.timestamp || ''}</div>
       <div class="instruction-text">${escapeHtml(instruction.instruction_text || '')}</div>
       <div class="instruction-summary"><em>${escapeHtml(instruction.change_summary || '')}</em></div>
-      <button class="action-btn-sm" onclick="undoInstruction(${index})">
-        Undo
-      </button>
+      ${undoHtml}
     `;
-
     historyList.appendChild(entry);
   });
 
@@ -974,7 +1102,7 @@ async function handleRegeneratePreviewAction() {
     await _fetchAndDisplayLayoutPreview();
     showConfirmationMessage('✅ Preview regenerated from the latest content.');
   } catch (error) {
-    appendMessage('system', `❌ Failed to regenerate preview: ${error.message}`);
+    appendMessage('system', `❌ Could not regenerate the preview. Check that your session is active and try again. If the problem persists, reload the page.`);
     showPreviewLoading(false);
   } finally {
     showProcessing(false);
@@ -1021,17 +1149,64 @@ function showConfirmationMessage(message) {
 }
 
 /**
- * Show inline clarification dialog when LLM needs more info.
+ * Show inline clarification panel when LLM needs more info.
+ * Replaces window.prompt() with an accessible inline form.
  */
 function showClarificationDialog(question, originalInstruction) {
-  const response = prompt(
-    `The system needs clarification:\n\n${question}\n\nYour original: "${originalInstruction}"\n\nPlease clarify:`,
-    originalInstruction
-  );
+  const inputEl = document.getElementById('instruction-input');
+  const container = inputEl ? inputEl.closest('div') || inputEl.parentNode : null;
+  if (!container) return;
 
-  if (response && response !== originalInstruction) {
-    submitLayoutInstruction(response);
-  }
+  const existingPanel = document.getElementById('layout-clarification-panel');
+  if (existingPanel) existingPanel.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'layout-clarification-panel';
+  panel.setAttribute('role', 'alert');
+  panel.style.cssText = 'background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:14px;margin-top:10px;';
+  panel.innerHTML = `
+    <p style="margin:0 0 8px;font-size:0.9em;color:#92400e;font-weight:600;">
+      <span aria-hidden="true">❓</span> Clarification needed
+    </p>
+    <p style="margin:0 0 10px;font-size:0.88em;color:#78350f;">${escapeHtml(question)}</p>
+    <label for="layout-clarification-input" style="font-size:0.85em;font-weight:600;color:#374151;display:block;margin-bottom:4px;">
+      Your clarification:
+    </label>
+    <textarea id="layout-clarification-input" rows="2"
+      style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #fde047;border-radius:4px;font-size:0.88em;resize:vertical;"
+      aria-label="Clarification for layout instruction">${escapeHtml(originalInstruction)}</textarea>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button id="layout-clarification-submit"
+        style="background:#d97706;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.85em;cursor:pointer;font-weight:600;">
+        Submit clarification
+      </button>
+      <button id="layout-clarification-cancel"
+        style="background:none;border:1px solid #d97706;color:#92400e;border-radius:4px;padding:6px 14px;font-size:0.85em;cursor:pointer;">
+        Cancel
+      </button>
+    </div>`;
+
+  container.appendChild(panel);
+
+  const clarInput  = panel.querySelector('#layout-clarification-input');
+  const submitBtn  = panel.querySelector('#layout-clarification-submit');
+  const cancelBtn  = panel.querySelector('#layout-clarification-cancel');
+
+  clarInput.focus();
+  clarInput.setSelectionRange(clarInput.value.length, clarInput.value.length);
+
+  submitBtn.addEventListener('click', () => {
+    const clarified = clarInput.value.trim();
+    panel.remove();
+    if (clarified && clarified !== originalInstruction) {
+      submitLayoutInstruction(clarified);
+    }
+  });
+  cancelBtn.addEventListener('click', () => panel.remove());
+  clarInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitBtn.click(); }
+    if (e.key === 'Escape') cancelBtn.click();
+  });
 }
 
 /**
@@ -1070,7 +1245,7 @@ async function confirmLayoutReview() {
       throw new Error('Preview is outdated. Regenerate the preview before confirming layout.');
     }
 
-    const confirmRes = await apiCall('POST', '/api/cv/confirm-layout', {});
+    const confirmRes = await apiCall('POST', '/api/cv/confirm-layout', { content_revision: getCurrentContentRevision() });
     if (!confirmRes?.ok) {
       throw new Error(confirmRes?.error || 'Failed to confirm layout.');
     }
@@ -1082,29 +1257,10 @@ async function confirmLayoutReview() {
     appendMessage('assistant', '✅ Layout confirmed. Review the preview if needed, then generate the final files.');
     refreshLayoutReviewState();
   } catch (error) {
-    appendMessage('system', `❌ Failed to confirm layout: ${error.message}`);
+    appendMessage('system', `❌ Could not confirm the layout. Try clicking Confirm again. If the problem persists, reload the page.`);
   } finally {
     showProcessing(false);
   }
-}
-
-async function advanceLayoutToRefinement() {
-  let layoutInstructions = window.layoutInstructions || [];
-  if (layoutInstructions.length === 0) {
-    layoutInstructions = await loadLayoutInstructionHistory();
-    window.layoutInstructions = layoutInstructions;
-    renderInstructionHistory();
-  }
-
-  const response = await apiCall('POST', '/api/layout-complete', {
-    layout_instructions: layoutInstructions,
-  });
-  if (!response.ok) {
-    throw new Error(response.error || 'Failed to advance to final review.');
-  }
-
-  stateManager.setPhase('refinement');
-  switchTab('download');
 }
 
 async function generateFinalOutputs() {
@@ -1137,7 +1293,16 @@ async function generateFinalOutputs() {
       throw new Error('Preview is outdated. Regenerate the preview before generating final files.');
     }
     if (!generationState.layoutConfirmed && generationState.phase !== 'confirmed') {
-      throw new Error('Confirm layout before generating final files.');
+      const hasInstructions = (window.layoutInstructions || []).length > 0;
+      if (hasInstructions) {
+        throw new Error('Confirm layout before generating final files.');
+      }
+      // No instructions added — auto-confirm so users aren't blocked by a redundant click.
+      const confirmRes = await apiCall('POST', '/api/cv/confirm-layout', { content_revision: getCurrentContentRevision() });
+      if (!confirmRes?.ok) {
+        throw new Error(confirmRes?.error || 'Failed to auto-confirm layout.');
+      }
+      stateManager.markLayoutConfirmed({ confirmedAt: confirmRes.confirmed_at || new Date().toISOString() });
     }
 
     const finalRes = await apiCall('POST', '/api/cv/generate-final', {});
@@ -1153,10 +1318,11 @@ async function generateFinalOutputs() {
 
     scheduleAtsRefresh('post_generation');
 
-    await advanceLayoutToRefinement();
+    stateManager.setPhase('final_generation');
+    switchTab('final_generate');
     appendMessage('assistant', '✅ Final files generated from the confirmed layout.');
   } catch (error) {
-    appendMessage('system', `❌ Failed to generate final files: ${error.message}`);
+    appendMessage('system', `❌ Could not generate final files: ${error.message} Try clicking Generate again. If layout confirmation is needed first, click Confirm Layout, then try again.`);
   } finally {
     showProcessing(false);
   }
@@ -1202,7 +1368,7 @@ async function submitContentProposal() {
   try {
     const res = await apiCall('POST', '/api/cv/propose-content-change', { instruction });
     if (!res?.ok) {
-      appendMessage('system', `❌ Could not generate proposals: ${res?.error || 'Unknown error'}`);
+      appendMessage('system', `❌ Could not generate content proposals. Try rephrasing your instruction or check the session is still active.`);
       return;
     }
     const proposals = res.proposals || [];
@@ -1213,7 +1379,7 @@ async function submitContentProposal() {
     renderContentProposals(proposals);
     if (panel) panel.style.display = 'block';
   } catch (err) {
-    appendMessage('system', `❌ Network error submitting content proposal: ${err.message}`);
+    appendMessage('system', `❌ Could not submit the content proposal. Check your connection and try again.`);
   } finally {
     if (processing) processing.style.display = 'none';
   }
@@ -1296,7 +1462,7 @@ async function applyAcceptedProposals() {
 
     refreshLayoutReviewState();
   } catch (err) {
-    appendMessage('system', `❌ Network error applying content changes: ${err.message}`);
+    appendMessage('system', `❌ Could not apply content changes. Check your connection and try again.`);
   } finally {
     if (applyBtn) applyBtn.disabled = false;
   }

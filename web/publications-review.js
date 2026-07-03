@@ -21,6 +21,8 @@ import { eyeSlashIcon } from './review-icons.js';
 
 // Track publication accept/reject decisions: cite_key → true (accept) | false (reject)
 window.publicationDecisions = {};
+// Ordered list of publication objects; mutated by movePubRow()
+window._publicationsOrdered = [];
 
 // ── Build publications review table ─────────────────────────────────────────
 
@@ -79,14 +81,26 @@ async function buildPublicationsReviewTable() {
   const savedPubDecs = window._savedDecisions?.publication_decisions || {};
   if (Object.keys(savedPubDecs).length > 0) Object.assign(window.publicationDecisions, savedPubDecs);
 
+  // Seed the ordered list for reorder controls
+  window._publicationsOrdered = [...recommendations];
+
   let tableHTML = `
     <p style="color:#6b7280;font-size:0.9em;margin-bottom:12px;">${contextNote}</p>
-    <div style="margin-bottom:10px;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
       <label style="font-size:0.9em;color:#374151;">Filter publications:
         <input type="search" id="pub-filter-input" placeholder="Type to filter…"
           style="margin-left:8px;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:0.9em;"
           oninput="filterPublicationsTable(this.value)">
       </label>
+      <span style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+        <span style="font-size:0.82em;color:#6b7280;">Bulk:</span>
+        <button class="action-btn secondary" style="font-size:0.8em;padding:4px 10px;"
+          onclick="bulkPubAction('recommended')" title="Accept all recommended and reject the rest">Accept Recommended</button>
+        <button class="action-btn secondary" style="font-size:0.8em;padding:4px 10px;"
+          onclick="bulkPubAction('accept-all')" title="Accept all publications">Accept All</button>
+        <button class="action-btn secondary" style="font-size:0.8em;padding:4px 10px;"
+          onclick="bulkPubAction('reject-all')" title="Reject all publications">Reject All</button>
+      </span>
     </div>
     <table id="publications-review-table" class="review-table">
       <thead>
@@ -99,6 +113,7 @@ async function buildPublicationsReviewTable() {
           <th style="width:80px;">Confidence</th>
           <th>Reasoning</th>
           <th style="width:80px;">Include?</th>
+          <th style="width:56px;text-align:center;">Order</th>
         </tr>
       </thead>
       <tbody>
@@ -116,6 +131,7 @@ async function buildPublicationsReviewTable() {
           <td style="${dividerStyle}color:#6b7280;font-size:0.82em;font-style:italic;padding:6px 12px;text-align:center;">
             — Publications below were not recommended for this role (pre-excluded) —
           </td>
+          <td style="${dividerStyle}"></td>
           <td style="${dividerStyle}"></td>
           <td style="${dividerStyle}"></td>
           <td style="${dividerStyle}"></td>
@@ -140,6 +156,8 @@ async function buildPublicationsReviewTable() {
     const isAccepted = window.publicationDecisions[citeKey] !== false;
     const rowStyle   = pub.is_recommended === false ? 'opacity:0.7;' : '';
 
+    const isFirst = idx === 0;
+    const isLast  = idx === recommendations.length - 1;
     tableHTML += `
       <tr data-cite-key="${escapeHtml(citeKey)}" style="${rowStyle}">
         <td style="text-align:center;font-weight:700;">${rank}</td>
@@ -155,6 +173,12 @@ async function buildPublicationsReviewTable() {
             <button class="icon-btn${!isAccepted ? ' active' : ''}" data-action="reject" aria-label="Exclude publication ${escapeHtml(citeKey)}" title="Exclude from CV"
               style="color:#ef4444;" id="pub-reject-${rank}">${eyeSlashIcon()}</button>
         </td>
+        <td style="text-align:center;white-space:nowrap;">
+          <button class="icon-btn" data-action="pub-up" data-cite-key="${escapeHtml(citeKey)}"
+            aria-label="Move publication up" title="Move up" ${isFirst ? 'disabled style="opacity:0.3;"' : ''}>↑</button>
+          <button class="icon-btn" data-action="pub-down" data-cite-key="${escapeHtml(citeKey)}"
+            aria-label="Move publication down" title="Move down" ${isLast ? 'disabled style="opacity:0.3;"' : ''}>↓</button>
+        </td>
       </tr>
     `;
   });
@@ -164,12 +188,14 @@ async function buildPublicationsReviewTable() {
   // Delegated click handler for publication action buttons (data-cite-key on <tr> avoids onclick injection)
   container.querySelector('#publications-review-table tbody')?.addEventListener('click', e => {
     const btn = e.target.closest('.icon-btn');
-    if (!btn) return;
+    if (!btn || btn.disabled) return;
     const tr = btn.closest('tr[data-cite-key]');
     if (!tr) return;
     const action = btn.dataset.action;
-    if      (action === 'accept') handlePubAction(tr.dataset.citeKey, true);
-    else if (action === 'reject') handlePubAction(tr.dataset.citeKey, false);
+    if      (action === 'accept')   handlePubAction(tr.dataset.citeKey, true);
+    else if (action === 'reject')   handlePubAction(tr.dataset.citeKey, false);
+    else if (action === 'pub-up')   movePubRow(btn.dataset.citeKey, -1);
+    else if (action === 'pub-down') movePubRow(btn.dataset.citeKey, +1);
   });
 }
 
@@ -180,6 +206,75 @@ function filterPublicationsTable(query) {
   document.querySelectorAll('#publications-review-table tbody tr:not(.pub-divider-row)').forEach(row => {
     row.style.display = q === '' || row.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
+}
+
+// ── Reorder rows ────────────────────────────────────────────────────────────
+
+function movePubRow(citeKey, direction) {
+  const arr = window._publicationsOrdered;
+  if (!arr || !arr.length) return;
+  const idx = arr.findIndex(p => p.cite_key === citeKey);
+  if (idx < 0) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= arr.length) return;
+  [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+  _rebuildPubTableBody(arr);
+  // Persist order to backend (fire-and-forget)
+  fetch('/api/reorder-rows', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'publication', ordered_ids: arr.map(p => p.cite_key) }),
+  }).catch(() => {});
+}
+
+function _rebuildPubTableBody(recommendations) {
+  const tbody = document.querySelector('#publications-review-table tbody');
+  if (!tbody) return;
+  let html = '';
+  let dividerInserted = false;
+  recommendations.forEach((pub, idx) => {
+    if (!dividerInserted && pub.is_recommended === false) {
+      dividerInserted = true;
+      const ds = 'background:#f3f4f6;border-top:2px solid #d1d5db;padding:0;';
+      html += `<tr class="pub-divider-row"><td style="${ds}"></td><td style="${ds}color:#6b7280;font-size:0.82em;font-style:italic;padding:6px 12px;text-align:center;">— Publications below were not recommended for this role (pre-excluded) —</td><td style="${ds}"></td><td style="${ds}"></td><td style="${ds}"></td><td style="${ds}"></td><td style="${ds}"></td><td style="${ds}"></td><td style="${ds}"></td></tr>`;
+    }
+    const rank       = idx + 1;
+    const citeKey    = pub.cite_key || '';
+    const citation   = pub.formatted_citation || [pub.title, pub.venue, pub.year].filter(Boolean).join('. ');
+    const year       = pub.year || '—';
+    const firstAuth  = pub.is_first_author ? '<span style="color:#10b981;font-weight:700;" title="First author">★</span>' : '<span style="color:#d1d5db;">☆</span>';
+    const score      = pub.relevance_score ? pub.relevance_score : '—';
+    const confidence = pub.confidence || '';
+    const confColor  = confidence === 'High' ? '#10b981' : confidence === 'Low' ? '#ef4444' : '#f59e0b';
+    const confBadge  = confidence ? `<span style="font-size:11px;color:${confColor};font-weight:600;">${escapeHtml(confidence)}</span>` : '';
+    const reasoning  = pub.rationale ? `<small>${escapeHtml(pub.rationale)}</small>` : '';
+    const venueWarn  = pub.venue_warning ? ` <span title="${escapeHtml(pub.venue_warning)}" style="color:#dc7900;cursor:help;">⚠</span>` : '';
+    const isAccepted = window.publicationDecisions[citeKey] !== false;
+    const rowStyle   = pub.is_recommended === false ? 'opacity:0.7;' : '';
+    const isFirst    = idx === 0;
+    const isLast     = idx === recommendations.length - 1;
+    html += `<tr data-cite-key="${escapeHtml(citeKey)}" style="${rowStyle}">
+      <td style="text-align:center;font-weight:700;">${rank}</td>
+      <td style="font-size:0.87em;">${escapeHtml(citation)}${venueWarn}</td>
+      <td style="text-align:center;">${year}</td>
+      <td style="text-align:center;">${firstAuth}</td>
+      <td style="text-align:center;">${score !== '—' ? `<strong>${score}</strong>/10` : '—'}</td>
+      <td style="text-align:center;">${confBadge}</td>
+      <td>${reasoning}</td>
+      <td class="action-btns">
+        <button class="icon-btn${isAccepted ? ' active' : ''}" data-action="accept" aria-label="Include publication ${escapeHtml(citeKey)}" title="Include in CV" style="color:#10b981;" id="pub-accept-${rank}">✓</button>
+        <button class="icon-btn${!isAccepted ? ' active' : ''}" data-action="reject" aria-label="Exclude publication ${escapeHtml(citeKey)}" title="Exclude from CV" style="color:#ef4444;" id="pub-reject-${rank}">${eyeSlashIcon()}</button>
+      </td>
+      <td style="text-align:center;white-space:nowrap;">
+        <button class="icon-btn" data-action="pub-up" data-cite-key="${escapeHtml(citeKey)}" aria-label="Move publication up" title="Move up" ${isFirst ? 'disabled style="opacity:0.3;"' : ''}>↑</button>
+        <button class="icon-btn" data-action="pub-down" data-cite-key="${escapeHtml(citeKey)}" aria-label="Move publication down" title="Move down" ${isLast ? 'disabled style="opacity:0.3;"' : ''}>↓</button>
+      </td>
+    </tr>`;
+  });
+  tbody.innerHTML = html;
+  // Re-apply any active filter
+  const filterVal = document.getElementById('pub-filter-input')?.value || '';
+  if (filterVal) filterPublicationsTable(filterVal);
 }
 
 // ── Toggle accept / reject ───────────────────────────────────────────────────
@@ -193,6 +288,35 @@ function handlePubAction(citeKey, accept) {
   const action = accept ? 'accept' : 'reject';
   const btn = row.querySelector(`[data-action="${action}"]`);
   if (btn) btn.classList.add('active');
+}
+
+// ── Bulk actions ─────────────────────────────────────────────────────────────
+
+function bulkPubAction(mode) {
+  const pubs = window._publicationsOrdered || [];
+  if (!pubs.length) return;
+
+  pubs.forEach(pub => {
+    const citeKey = pub.cite_key;
+    let accept;
+    if (mode === 'recommended') {
+      accept = pub.is_recommended !== false;
+    } else if (mode === 'accept-all') {
+      accept = true;
+    } else {
+      accept = false;
+    }
+    window.publicationDecisions[citeKey] = accept;
+    // Update button states in the DOM
+    const row = document.querySelector(`tr[data-cite-key="${CSS.escape(citeKey)}"]`);
+    if (!row) return;
+    row.querySelectorAll('.icon-btn[data-action="accept"],[data-action="reject"]').forEach(btn => btn.classList.remove('active'));
+    const target = row.querySelector(`[data-action="${accept ? 'accept' : 'reject'}"]`);
+    if (target) target.classList.add('active');
+  });
+
+  const accepted = Object.values(window.publicationDecisions).filter(Boolean).length;
+  showToast(`Bulk action applied: ${accepted} accepted, ${pubs.length - accepted} excluded`);
 }
 
 // ── Submit decisions ─────────────────────────────────────────────────────────
@@ -249,6 +373,7 @@ async function submitPublicationDecisions() {
 
 export {
   buildPublicationsReviewTable,
+  bulkPubAction,
   filterPublicationsTable,
   handlePubAction,
   submitPublicationDecisions,

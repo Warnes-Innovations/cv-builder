@@ -6,13 +6,13 @@
 
 /**
  * tests/js/ui-helpers.test.js
- * Unit tests for web/ui-helpers.js — toast, modals, toggleChat, updateActionButtons.
+ * Unit tests for web/ui-helpers.js — toast, modals, updateActionButtons.
+ * (toggleChat lives in web/ui-core.js — see tests/js/ui-core.test.js.)
  */
 import {
   showToast,
   showAlertModal, closeAlertModal,
   showConfirmModal, closeConfirmModal,
-  toggleChat,
   updateActionButtons,
 } from '../../web/ui-helpers.js'
 import { stateManager } from '../../web/state-manager.js'
@@ -38,13 +38,6 @@ function buildConfirmModal() {
 
 function buildToastContainer() {
   document.body.innerHTML += `<div id="toast-container"></div>`
-}
-
-function buildChatLayout() {
-  document.body.innerHTML += `
-    <div id="chat-area"></div>
-    <div id="viewer-area"></div>
-    <button id="toggle-chat">◀</button>`
 }
 
 function buildActionButtons() {
@@ -109,6 +102,40 @@ describe('closeAlertModal', () => {
   it('calls restoreFocus', () => {
     closeAlertModal()
     expect(globalThis.restoreFocus).toHaveBeenCalled()
+  })
+})
+
+// ── HTML injection regression (GAP-65) ───────────────────────────────────
+
+describe('modal HTML injection regression (GAP-65)', () => {
+  beforeEach(() => { buildAlertModal(); buildConfirmModal(); })
+
+  it('showAlertModal does not inject raw HTML into title', () => {
+    showAlertModal('<img src=x onerror=alert(1)>', 'safe message')
+    const titleEl = document.getElementById('alert-modal-title')
+    expect(titleEl.innerHTML).not.toContain('<img')
+    expect(titleEl.textContent).toContain('<img src=x')
+  })
+
+  it('showAlertModal does not inject raw HTML into message', () => {
+    showAlertModal('Title', '<script>evil()</script>')
+    const msgEl = document.getElementById('alert-modal-message')
+    expect(msgEl.innerHTML).not.toContain('<script>')
+    expect(msgEl.textContent).toContain('<script>evil()</script>')
+  })
+
+  it('showConfirmModal does not inject raw HTML into title', () => {
+    showConfirmModal('<b onclick=evil()>click</b>', 'safe')
+    const titleEl = document.getElementById('confirm-modal-title')
+    expect(titleEl.innerHTML).not.toContain('<b ')
+    expect(titleEl.textContent).toContain('<b onclick=evil()>')
+  })
+
+  it('showConfirmModal does not inject raw HTML into message', () => {
+    showConfirmModal('Title', '<img src=x onerror=xss()>')
+    const msgEl = document.getElementById('confirm-modal-message')
+    expect(msgEl.innerHTML).not.toContain('<img')
+    expect(msgEl.textContent).toContain('<img src=x')
   })
 })
 
@@ -192,33 +219,10 @@ describe('showToast', () => {
   })
 })
 
-// ── toggleChat ────────────────────────────────────────────────────────────
-
-describe('toggleChat', () => {
-  beforeEach(buildChatLayout)
-
-  it('collapses chat area when not collapsed', () => {
-    toggleChat()
-    expect(document.getElementById('chat-area').classList.contains('collapsed')).toBe(true)
-    expect(document.getElementById('viewer-area').classList.contains('expanded')).toBe(true)
-    expect(document.getElementById('toggle-chat').textContent).toBe('▶')
-  })
-
-  it('expands chat area when already collapsed', () => {
-    document.getElementById('chat-area').classList.add('collapsed')
-    document.getElementById('viewer-area').classList.add('expanded')
-    toggleChat()
-    expect(document.getElementById('chat-area').classList.contains('collapsed')).toBe(false)
-    expect(document.getElementById('viewer-area').classList.contains('expanded')).toBe(false)
-    expect(document.getElementById('toggle-chat').textContent).toBe('◀')
-  })
-
-  it('toggles back to original state on double call', () => {
-    toggleChat()
-    toggleChat()
-    expect(document.getElementById('chat-area').classList.contains('collapsed')).toBe(false)
-  })
-})
+// toggleChat lives in web/ui-core.js (consolidated there by GAP-146 — see
+// commit 0b20a7b — since ui-helpers.js's copy was a stale duplicate that
+// silently overwrote the ARIA-aware version on window). Its tests moved to
+// tests/js/ui-core.test.js accordingly.
 
 // ── updateActionButtons ───────────────────────────────────────────────────
 

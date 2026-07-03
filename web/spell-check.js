@@ -145,7 +145,7 @@ function renderSpellCheckZeroState(message, statsLine = '', customDictSize = 0) 
       <h2 style="color:#166534;">${escapeHtml(message)}</h2>
       ${statsParts.join('\n')}
       <p style="color:#6b7280;margin:16px 0 24px;">Continue when you are ready to generate your CV.</p>
-      <button class="submit-btn" onclick="submitEmptySpellCheck()">Done — Generate CV →</button>
+      <button class="submit-btn" onclick="submitEmptySpellCheck()" title="Generate an HTML preview of your CV — you will review the layout before final DOCX/PDF files are produced">Generate Preview →</button>
     </div>
   `;
 }
@@ -206,7 +206,17 @@ function renderSpellSuggestions(flaggedSections, totalSections, stats = {}, cust
     </div>
   `;
 
-  flaggedSections.forEach(({ section, suggestions }) => {
+  const _sugSeverity = (sug) => {
+    const rid = (sug.rule_id || '').toLowerCase();
+    const cat = (sug.category || '').toLowerCase();
+    if (/spell|typo|misspell/.test(rid) || /typo/.test(cat)) return 0;
+    if (/grammar|agreement|verb|tense|article/.test(rid) || /grammar/.test(cat)) return 1;
+    if (/style|redundan|wordy/.test(rid) || /style/.test(cat)) return 2;
+    return 3;
+  };
+
+  flaggedSections.forEach(({ section, suggestions: rawSuggestions }) => {
+    const suggestions = [...rawSuggestions].sort((a, b) => _sugSeverity(a) - _sugSeverity(b));
     html += `<div class="review-section" style="margin-bottom:24px;">
       <h3 style="font-size:1em;font-weight:700;color:#374151;margin-bottom:12px;">${escapeHtml(section.label)}</h3>
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.9em;white-space:pre-wrap;">${escapeHtml(section.text)}</div>
@@ -236,13 +246,13 @@ function renderSpellSuggestions(flaggedSections, totalSections, stats = {}, cust
                   value="${escapeHtml(reps[0] || '')}"
                   style="flex:1;font-size:0.88em;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;"
                   onkeydown="if(event.key==='Enter'){event.preventDefault();applyCustomSpellCorrection('${escapeHtml(section.id)}',${idx});}">
-                <button class="icon-btn" onclick="applyCustomSpellCorrection('${escapeHtml(section.id)}',${idx})" title="Apply custom correction">Apply</button>
+                <button class="icon-btn" onclick="applyCustomSpellCorrection('${escapeHtml(section.id)}',${idx})" title="Apply custom correction" aria-label="Apply custom correction">Apply</button>
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="icon-btn" onclick="dismissSpellSuggestion('${escapeHtml(sugId)}', '${escapeHtml(section.id)}', ${idx}, '${escapeHtml(sug.flagged)}')"
-                    title="Ignore this suggestion">Ignore</button>
+                    title="Ignore this suggestion" aria-label="Ignore this suggestion">Ignore</button>
                 <button class="icon-btn" onclick="addSpellWord('${escapeHtml(sug.flagged)}', '${escapeHtml(sugId)}')"
-                    title="Add to custom dictionary">Add to Dictionary</button>
+                    title="Add to custom dictionary" aria-label="Add to custom dictionary">Add to Dictionary</button>
               </div>
             </div>
           </div>
@@ -268,7 +278,7 @@ function renderSpellSuggestions(flaggedSections, totalSections, stats = {}, cust
 
   html += `
     <div class="nav-buttons" style="margin:24px 0;">
-      <button class="submit-btn" onclick="submitSpellCheckDecisions()">Done — Generate CV →</button>
+      <button class="submit-btn" onclick="submitSpellCheckDecisions()">Generate Preview →</button>
     </div>
   `;
   results.innerHTML = html;
@@ -354,14 +364,55 @@ async function addSpellWord(word, sugId) {
 // ── Pre-generation confirmation ─────────────────────────────────────────────
 
 async function _confirmProceedToGenerate() {
+  // Gate: tagline must be explicitly confirmed before generating
+  const status = await fetchStatus().catch(() => ({}));
+  if (!status?.decisions_confirmed?.tagline) {
+    await showAlertModal(
+      '⚠ Tagline Not Confirmed',
+      'You must confirm your applicant tagline before generating.\n\nGo to the 🏷️ Tagline tab in Customizations to confirm it.'
+    );
+    return false;
+  }
   const atsScore = stateManager.getAtsScore();
   const freshness = stateManager.getLayoutFreshness();
+  const genState = stateManager.getGenerationState();
+  const decisionsConfirmed = status?.decisions_confirmed || {};
   const lines = ['Your CV is ready to generate.'];
   if (atsScore !== null && atsScore !== undefined && typeof atsScore.overall === 'number') {
     lines.push(`Current ATS score: ${Math.round(atsScore.overall)}%`);
   }
+  if (genState.pageWarning) {
+    const pc = genState.pageCountExact ?? genState.pageCountEstimate;
+    const pcLabel = pc !== null ? (genState.pageCountExact !== null ? `${pc}` : `~${pc}`) : null;
+    const okPage = await showConfirmModal(
+      '⚠ Page Count Out of Range',
+      `The CV is estimated at ${pcLabel ? `${pcLabel} page${pc !== 1 ? 's' : ''}` : 'an unusual page count'}, which is outside the recommended range for a senior candidate (2–3 pages).\n\nConsider adjusting your layout instructions before generating.\n\nProceed anyway?`,
+      'Generate Anyway'
+    );
+    if (!okPage) return false;
+  }
   if (freshness.isStale) {
     lines.push(`⚠ ${freshness.ariaLabel}`);
+  }
+  const reviewedSections = ['experiences', 'skills', 'achievements'].filter(k => decisionsConfirmed[k]);
+  if (reviewedSections.length === 0) {
+    lines.push('⚠ No customisation sections reviewed — experience, skill, and achievement selections are all LLM defaults.');
+  }
+  let weakBulletCount = 0, passiveBulletCount = 0;
+  Object.values(window.achievementEdits || {}).forEach(list => {
+    (list || []).forEach(e => {
+      const txt = typeof e === 'string' ? e : ((e && e.text) || '');
+      if (!txt.trim() || (e && e.hidden)) return;
+      const warn = typeof _achVerbWarning === 'function' ? _achVerbWarning(txt) : null;
+      if (warn?.level === 'passive') passiveBulletCount++;
+      else if (warn?.level === 'weak') weakBulletCount++;
+    });
+  });
+  if (weakBulletCount > 0 || passiveBulletCount > 0) {
+    const parts = [];
+    if (passiveBulletCount > 0) parts.push(`${passiveBulletCount} with passive voice`);
+    if (weakBulletCount > 0) parts.push(`${weakBulletCount} with weak opening verb${weakBulletCount !== 1 ? 's' : ''}`);
+    lines.push(`⚠ ${parts.join(', ')} in experience bullets — consider AI rewrites in the Experience Bullets editor.`);
   }
   lines.push('\nProceed?');
   return showConfirmModal('📄 Proceed to Generate?', lines.join('\n'), 'Generate Now');

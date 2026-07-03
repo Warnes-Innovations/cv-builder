@@ -39,6 +39,9 @@ async function populateScreeningTab() {
       <div class="sc-save-bar" id="sc-save-bar" style="display:none;">
         <button class="continue-btn" id="sc-save-btn" onclick="saveScreeningResponses()">💾 Save All Responses</button>
       </div>
+      <div class="nav-buttons nav-end" style="margin-top:24px;">
+        <button class="continue-btn" onclick="handleStepClick('interview_prep')">🎤 Proceed to Interview Prep →</button>
+      </div>
     </div>`;
 
   // Restore the raw input text and wire up save-on-input listener.
