@@ -195,6 +195,33 @@ def _anthropic_messages_payload(
     return system_blocks, payload_messages
 
 
+_POSITION_STYLE_CONTEXT_MSGS: Dict[str, str] = {
+    'academic': (
+        'Academic / Research — no upper page limit; emphasise research impact, '
+        'domain expertise, methodology depth, and scholarly contributions. '
+        'Publications, grants, and teaching credentials are valued differentiators.'
+    ),
+    'government': (
+        'Government / Federal — comprehensive documentation is valued; use precise '
+        'program/agency terminology and quantify impact in mission or compliance terms.'
+    ),
+    'industry': (
+        'Industry / Corporate — target 2–3 pages; prioritise quantified business '
+        'impact, ROI, and concise transferable skills.'
+    ),
+}
+
+
+def _position_style_context(domain: str) -> str:
+    """Return a one-line position-style framing clause for injection into LLM prompts."""
+    try:
+        from utils.config import get_config as _get_config  # noqa: PLC0415
+        style_key, _ = _get_config().get_position_style_for_domain(domain or '')
+    except Exception:
+        style_key = 'industry'
+    return _POSITION_STYLE_CONTEXT_MSGS.get(style_key, _POSITION_STYLE_CONTEXT_MSGS['industry'])
+
+
 class LLMClient(ABC):
     """Abstract base class for LLM clients."""
 
@@ -862,6 +889,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                 "- Reference 1–2 specific, quantified achievements from the experience list\n"
                 "- Close with a forward-looking statement aligned to the target role\n"
                 "- No generic filler (e.g. 'hard-working', 'passionate', 'results-driven')\n\n"
+                f"POSITION STYLE: {_position_style_context(domain)}\n\n"
                 f"CANDIDATE: {candidate_name}\n"
                 f"TARGET JOB: {job_title}"
                 + (f" at {job_company}" if job_company else "")
@@ -1876,9 +1904,13 @@ Return ONLY a JSON array — no prose, no markdown fences.
                 history_section += f"{role}: {content_text}\n\n"
             history_section += "-" * 60 + "\n\n"
 
+        domain = job_analysis.get('domain', '')
+        style_ctx = _position_style_context(domain)
+
         prompt = (
             f"{prefs_section}"
             f"{history_section}"
+            f"POSITION STYLE: {style_ctx}\n\n"
             "Propose targeted text rewrites so the CV uses terminology from the job description.\n\n"
             "CONSTRAINTS — every proposal MUST:\n"
             '1. Preserve all numbers, metrics, and percentages '
