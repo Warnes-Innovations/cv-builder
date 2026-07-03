@@ -1,6 +1,6 @@
 ---
 name: copilot-instructions-bridge
-description: Bridge shared Copilot and Claude project instructions into Codex workflows. Use when a repo relies on .github/copilot-instructions.md, ~/src/vscode-config/copilot-instructions.md, Claude command files, or VS Code prompt conventions and you need Codex to follow them intentionally.
+description: Bridge shared Copilot and Claude project instructions into Codex workflows. Use when a repo relies on .github/copilot-instructions.md, ~/src/agent-config/copilot-instructions.md, Claude command files, or VS Code prompt conventions and you need Codex to follow them intentionally.
 ---
 
 # Copilot Instructions Bridge
@@ -10,7 +10,7 @@ Use this skill when the user wants Codex to honor shared Copilot or Claude guida
 ## Required reads
 
 1. Read repo-local `.github/copilot-instructions.md` if it exists.
-2. Read user-level `~/src/vscode-config/copilot-instructions.md` if it exists.
+2. Read user-level `~/src/agent-config/copilot-instructions.md` if it exists.
 3. If the repo has `.claude/commands/*.md`, treat them as reusable workflow specs, not native Codex commands.
 4. If the repo or user config has `prompts/*.prompt.md`, treat them as prompt templates to convert into Codex behavior or Codex skills.
 
@@ -30,8 +30,8 @@ Use this skill when the user wants Codex to honor shared Copilot or Claude guida
 
 ## Recommended local paths
 
-- Shared skills: `~/src/vscode-config/skills/`
-- Shared prompts: `~/src/vscode-config/prompts/`
+- Shared skills: `~/src/agent-config/skills/`
+- Shared prompts: `~/src/agent-config/prompts/`
 - Project instructions: `.github/copilot-instructions.md`
 - Claude commands: `.claude/commands/`
 

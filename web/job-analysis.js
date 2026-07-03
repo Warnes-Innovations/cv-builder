@@ -10,7 +10,7 @@
  * questions, and transitions the UI to the analysis tab.
  *
  * DEPENDENCIES (all on globalThis at runtime):
- *   - isLoading, tabData (state globals)
+ *   - stateManager (state-manager.js — isLoading()/setTabData())
  *   - llmFetch, setLoading (fetch-utils.js)
  *   - appendLoadingMessage, removeLoadingMessage, appendMessage,
  *     appendRetryMessage, appendFormattedAnalysis (message-queue.js)

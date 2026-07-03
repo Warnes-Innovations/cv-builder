@@ -34,13 +34,14 @@ let _coverLetterPriorSessions = [];
 
 /** Survives tab navigation: form inputs and the generated letter body. */
 let _coverLetterFormState = {
-  tone:          '',
-  openingStyle:  '',
-  hiringManager: '',
+  tone:           '',
+  openingStyle:   '',
+  hiringManager:  '',
   companyAddress: '',
-  highlight:     '',
-  letterText:    '',
-  letterVisible: false,
+  highlight:      '',
+  companyContext: '',
+  letterText:     '',
+  letterVisible:  false,
 };
 
 // ── Populate cover letter tab ─────────────────────────────────────────────────
@@ -125,6 +126,12 @@ async function populateCoverLetterTab() {
         <input type="text" id="cl-highlight" class="edit-input"
             placeholder="e.g. Led the migration to Kubernetes saving 30% infra cost" />
       </div>
+      <div class="cl-form-field" style="margin-top:12px;">
+        <label for="cl-company-context">Company context <span style="color:#94a3b8;font-weight:400;">(optional — paste specific initiatives, products, values, or recent news)</span></label>
+        <textarea id="cl-company-context" class="edit-input" rows="3"
+            style="resize:vertical;"
+            placeholder="e.g. They just launched a new AI platform for healthcare; their CTO wrote about prioritising reliability over speed…"></textarea>
+      </div>
       <div style="margin-top:16px;">
         <button class="action-btn primary" id="cl-generate-btn" onclick="generateCoverLetter()">
           ✨ Generate Cover Letter
@@ -151,6 +158,10 @@ async function populateCoverLetterTab() {
         <div id="cl-checks-container"></div>
       </div>
     </div>
+
+    <div class="nav-buttons nav-end" style="margin-top:24px;">
+      <button class="continue-btn" onclick="handleStepClick('screening')">📋 Proceed to Screening →</button>
+    </div>
   `;
 
   // Restore saved form state and wire up save-on-change listeners.
@@ -165,6 +176,7 @@ function _restoreCoverLetterFormState() {
   const hmEl      = document.getElementById('cl-hiring-manager');
   const addrEl    = document.getElementById('cl-company-address');
   const hlEl      = document.getElementById('cl-highlight');
+  const ctxEl     = document.getElementById('cl-company-context');
   const resultEl  = document.getElementById('cl-result-section');
   const letterEl  = document.getElementById('cl-letter-textarea');
 
@@ -178,6 +190,8 @@ function _restoreCoverLetterFormState() {
     addrEl.value = _coverLetterFormState.companyAddress;
   if (hlEl && _coverLetterFormState.highlight)
     hlEl.value = _coverLetterFormState.highlight;
+  if (ctxEl && _coverLetterFormState.companyContext)
+    ctxEl.value = _coverLetterFormState.companyContext;
 
   if (_coverLetterFormState.letterVisible && _coverLetterFormState.letterText) {
     if (resultEl) resultEl.style.display = 'block';
@@ -193,6 +207,7 @@ function _restoreCoverLetterFormState() {
   if (hmEl)      hmEl.addEventListener('input',      () => { _coverLetterFormState.hiringManager = hmEl.value; });
   if (addrEl)    addrEl.addEventListener('input',    () => { _coverLetterFormState.companyAddress = addrEl.value; });
   if (hlEl)      hlEl.addEventListener('input',      () => { _coverLetterFormState.highlight = hlEl.value; });
+  if (ctxEl)     ctxEl.addEventListener('input',     () => { _coverLetterFormState.companyContext = ctxEl.value; });
 }
 
 // ── Generate cover letter ─────────────────────────────────────────────────────
@@ -228,11 +243,12 @@ async function generateCoverLetter() {
   btn.disabled = true;
   btn.textContent = '⏳ Generating…';
 
-  const tone           = (document.getElementById('cl-tone-select')    || {}).value || 'startup/tech';
-  const opening_style  = (document.getElementById('cl-opening-style')  || {}).value || 'formal';
-  const hiring_manager = (document.getElementById('cl-hiring-manager') || {}).value || '';
-  const company_address = (document.getElementById('cl-company-address') || {}).value || '';
-  const highlight      = (document.getElementById('cl-highlight')       || {}).value || '';
+  const tone            = (document.getElementById('cl-tone-select')      || {}).value || 'startup/tech';
+  const opening_style   = (document.getElementById('cl-opening-style')    || {}).value || 'formal';
+  const hiring_manager  = (document.getElementById('cl-hiring-manager')   || {}).value || '';
+  const company_address = (document.getElementById('cl-company-address')  || {}).value || '';
+  const highlight       = (document.getElementById('cl-highlight')         || {}).value || '';
+  const company_context = (document.getElementById('cl-company-context')  || {}).value || '';
 
   // Check for prior letter selection
   let reuse_body = '';
@@ -246,7 +262,7 @@ async function generateCoverLetter() {
     const res  = await fetch('/api/cover-letter/generate', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ tone, opening_style, hiring_manager, company_address, highlight, reuse_body }),
+      body:    JSON.stringify({ tone, opening_style, hiring_manager, company_address, highlight, company_context, reuse_body }),
     });
     const data = await res.json();
 
@@ -424,6 +440,39 @@ function _renderConsistencyReport(statusData) {
     });
   }
 
+  // \u2500\u2500 5. Cross-document terminology consistency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  const sqTexts = [...document.querySelectorAll('textarea[id^="sc-text-"]')]
+    .map(el => el.value.toLowerCase()).filter(Boolean);
+  const allDocText = [cvText, clText, ...sqTexts];
+
+  const _TERM_PAIRS = [
+    ['machine learning', 'ml'], ['artificial intelligence', 'ai'],
+    ['natural language processing', 'nlp'], ['deep learning', 'dl'],
+    ['large language model', 'llm'], ['user interface', 'ui'],
+    ['user experience', 'ux'], ['application programming interface', 'api'],
+    ['kubernetes', 'k8s'], ['continuous integration', 'ci/cd'],
+  ];
+  const termMismatches = [];
+  for (const [long, short] of _TERM_PAIRS) {
+    const re = new RegExp(`\\b${short.replace('/', '\\/')}\\b`);
+    if (allDocText.some(t => t.includes(long)) && allDocText.some(t => re.test(t))) {
+      termMismatches.push(`\u201c${long}\u201d / \u201c${short.toUpperCase()}\u201d`);
+    }
+  }
+  if (termMismatches.length > 0) {
+    checks.push({
+      status: 'warn',
+      label:  'Terminology consistency',
+      detail: `Mixed forms detected across documents: ${termMismatches.join('; ')}. Standardise to one form per concept.`,
+    });
+  } else if (allDocText.some(t => t.length > 50)) {
+    checks.push({
+      status: 'pass',
+      label:  'Terminology consistency',
+      detail: 'No mixed abbreviation/expansion pairs detected across CV, cover letter, and screening answers.',
+    });
+  }
+
   // ── Render ────────────────────────────────────────────────────────
   const icons = { pass: '\u2705', warn: '\u26a0\ufe0f', fail: '\u274c' };
   const overallFail   = checks.some(c => c.status === 'fail');
@@ -440,7 +489,7 @@ function _renderConsistencyReport(statusData) {
         <span class="cr-badge cr-${overallStatus}">${escapeHtml(overallMsg)}</span>
       </div>
       <p style="color:#6b7280;font-size:0.83em;margin:0 0 12px;">
-        Checks company name, job title, ATS keywords, and date formatting across CV and cover letter.
+        Checks company name, job title, ATS keywords, date formatting, and terminology consistency across CV, cover letter, and screening answers.
       </p>
       <div class="cr-checks">
         ${checks.map(c => `
@@ -466,7 +515,7 @@ function _debouncedValidateCL() {
 
 /**
  * Client-side cover letter quality checks.
- * 4 rules: opening, company name, word count (250-400), call-to-action.
+ * 5 rules: opening, I-first gate, company name, word count (role-differentiated), call-to-action.
  */
 function _validateCoverLetter(text) {
   const panel     = document.getElementById('cl-validation-panel');
@@ -492,6 +541,24 @@ function _validateCoverLetter(text) {
       : 'Personalised opener — good.',
   };
 
+  // ── Rule 1b: Body must not open with "I" ──────────────────────
+  const allLines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const salutationIdx = allLines.findIndex(
+    l => l.toLowerCase() === firstLine.toLowerCase()
+  );
+  const bodyLines = allLines.slice(Math.max(0, salutationIdx + 1));
+  const firstBodyWord = (bodyLines.find(l => l.trim()) || '').split(/\s+/)[0] || '';
+  // Split on non-alpha so "I'm" → token "I", "In" → token "In"
+  const firstBodyToken = firstBodyWord.split(/[^a-zA-Z]/)[0] || '';
+  const bodyStartsWithI = firstBodyToken.toLowerCase() === 'i';
+  const iFirstCheck = {
+    pass: !bodyStartsWithI,
+    label: 'Opening word',
+    detail: bodyStartsWithI
+      ? 'Body opens with "I" — lead with your value, the role, or the company instead.'
+      : 'Body does not open with "I" — good.',
+  };
+
   // ── Rule 2: Company-specific reference ────────────────────────
   const companyName = _getCompanyNameForCL();
   let companyCheck;
@@ -511,36 +578,109 @@ function _validateCoverLetter(text) {
     };
   }
 
-  // ── Rule 3: Word count (250-400) ──────────────────────────────
+  // ── Rule 3: Word count (role-differentiated target) ───────────
+  const _roleAnalysis = window._lastAnalysisData ||
+    (window.pendingRecommendations && window.pendingRecommendations.job_analysis) || {};
+  const _roleLevel  = (_roleAnalysis.role_level || '').toLowerCase();
+  const _roleDomain = (_roleAnalysis.domain || '').toLowerCase();
+  const isExec      = /exec|vp|c-suite|chief|director|president|partner/.test(_roleLevel);
+  const isAcademic  = /academic|research|faculty|professor|postdoc/.test(_roleDomain + ' ' + _roleLevel);
+  const wcTarget    = isAcademic ? { lo: 500, hi: 600, warnLo: 400, warnHi: 650 }
+                    : isExec     ? { lo: 400, hi: 500, warnLo: 300, warnHi: 550 }
+                                 : { lo: 250, hi: 300, warnLo: 200, warnHi: 400 };
+  const wcLabel     = isAcademic ? `${wcTarget.lo}–${wcTarget.hi} (academic/research)`
+                    : isExec     ? `${wcTarget.lo}–${wcTarget.hi} (executive)`
+                                 : `≤${wcTarget.hi} (standard)`;
+
   const words    = text.trim().split(/\s+/).filter(Boolean).length;
-  const wcPct    = Math.min(100, (words / 400) * 100);
-  const wcColour = words < 200 ? '#ef4444' : words <= 250 ? '#f59e0b' : words <= 400 ? '#22c55e' : words <= 450 ? '#f59e0b' : '#ef4444';
-  const wcStatus = words >= 250 && words <= 400 ? 'pass' : words >= 200 && words <= 450 ? 'warn' : 'fail';
+  const wcPct    = Math.min(100, (words / wcTarget.hi) * 100);
+  const wcColour = words < wcTarget.warnLo ? '#ef4444'
+                 : words < wcTarget.lo      ? '#f59e0b'
+                 : words <= wcTarget.hi     ? '#22c55e'
+                 : words <= wcTarget.warnHi ? '#f59e0b'
+                 : '#ef4444';
+  const wcStatus = words >= wcTarget.lo && words <= wcTarget.hi ? 'pass'
+                 : words >= wcTarget.warnLo && words <= wcTarget.warnHi ? 'warn'
+                 : 'fail';
   const wcBar    = `<span class="cl-wc-bar"><span class="cl-wc-fill" style="width:${wcPct}%;background:${wcColour};"></span></span>`;
   const wordCountCheck = {
     [wcStatus]: true,
-    label: 'Word count (250–400)',
-    detail: `${words} words ${wcBar} — ${ words < 250 ? 'too short; aim for at least 250.' : words > 400 ? 'too long; trim to 400 words.' : 'within target range.' }`,
+    label: `Word count (${wcLabel})`,
+    detail: `${words} words ${wcBar} — ${
+      words < wcTarget.lo ? `too short; aim for ${wcTarget.lo}–${wcTarget.hi}.`
+      : words > wcTarget.hi ? `too long; trim to ${wcTarget.hi} words.`
+      : 'within target range.'
+    }`,
   };
 
   // ── Rule 4: Call-to-action closing ────────────────────────────
   const lastPara = text.split(/\n{2,}/).filter(p => p.trim()).slice(-1)[0] || '';
-  const ctaPatterns = [
+  // Assertive CTAs: candidate takes initiative (pass)
+  const assertiveCtaPatterns = [
     /interview/i, /discuss/i, /opportunity to (speak|talk|meet|connect)/i,
-    /hear from you/i, /look forward to/i, /welcome the chance/i,
+    /i will (call|follow.?up|reach out|contact|send)/i,
+    /i (plan|intend) to/i, /welcome the chance/i,
     /available (for|to)/i, /contact me/i,
   ];
-  const hasCta = ctaPatterns.some(re => re.test(lastPara));
+  // Passive CTAs: waiting for a response (fail — story US-P5 requires rejection)
+  const passiveCtaPatterns = [
+    /hear from you/i, /look forward to (your|hearing)/i,
+    /await(ing)? your/i, /hope to (hear|meet)/i,
+  ];
+  const hasAssertiveCta = assertiveCtaPatterns.some(re => re.test(lastPara));
+  const hasPassiveCta   = passiveCtaPatterns.some(re => re.test(lastPara));
   const ctaCheck = {
-    pass: hasCta,
+    pass: hasAssertiveCta,
+    fail: !hasAssertiveCta && hasPassiveCta,
     label: 'Call-to-action closing',
-    detail: hasCta
-      ? 'Closing paragraph contains a call-to-action — good.'
-      : 'No call-to-action found in the closing paragraph — add an interview request or follow-up offer.',
+    detail: hasAssertiveCta
+      ? 'Assertive call-to-action — takes initiative.'
+      : hasPassiveCta
+        ? 'Passive closing rejected — phrases like "I look forward to hearing from you" are too passive. Replace with a direct interview request: "I would welcome the opportunity to interview" or "I will follow up next week."'
+        : 'No call-to-action found — add a direct interview request or proactive follow-up statement.',
+  };
+
+  // ── Rule 5: Named or quantified achievement ───────────────────
+  const achievementPatterns = [
+    /\d+%/,                          // percentages
+    /\$[\d,]+/,                      // dollar amounts
+    /\d+ (times|x|fold|year|month|week|day|team|people|staff|client|customer|project|product|system|award|patent)/i,
+    /reduced|increased|grew|grew|doubled|tripled|saved|generated|delivered|launched|led|built|designed|architected|pioneered|won|awarded|earned|achieved/i,
+  ];
+  const hasAchievement = achievementPatterns.some(re => re.test(text));
+  const achievementCheck = {
+    pass: hasAchievement,
+    warn: !hasAchievement,
+    label: 'Specific achievement',
+    detail: hasAchievement
+      ? 'Contains a quantified or named achievement — good.'
+      : 'No quantified achievement detected — add at least one specific result (e.g., "increased revenue by 30%", "led a team of 8").',
+  };
+
+  // ── Rule 7: Generic filler phrases (GAP-17) ──────────────────
+  const _CL_FILLER = [
+    'i am writing to apply', 'i am excited to apply', 'i am pleased to apply',
+    'please find my', 'attached please find', 'enclosed please find',
+    'this letter is to express', 'i feel i would be a great fit',
+    'i believe i would be a perfect fit', 'i am confident that i',
+    'results-driven', 'detail-oriented', 'seasoned professional',
+    'passionate about', 'dynamic professional', 'highly motivated',
+    'team player', 'self-starter', 'hard working',
+  ];
+  const _textLc    = text.toLowerCase();
+  const foundFill  = _CL_FILLER.filter(p => _textLc.includes(p));
+  const fillerCheck = {
+    pass: foundFill.length === 0,
+    warn: foundFill.length > 0 && foundFill.length <= 2,
+    fail: foundFill.length > 2,
+    label: 'Filler phrases',
+    detail: foundFill.length === 0
+      ? 'No generic filler phrases detected — good.'
+      : `Generic phrase${foundFill.length > 1 ? 's' : ''} detected: ${foundFill.slice(0, 3).map(p => `“${p}”`).join(', ')}${foundFill.length > 3 ? '…' : ''} — replace with specific value claims.`,
   };
 
   // ── Render ─────────────────────────────────────────────────────
-  const checks = [openingCheck, companyCheck, wordCountCheck, ctaCheck];
+  const checks = [openingCheck, iFirstCheck, companyCheck, wordCountCheck, ctaCheck, achievementCheck, fillerCheck];
   container.innerHTML = checks.map(c => {
     const state = c.pass ? 'pass' : c.warn ? 'warn' : 'fail';
     return `<div class="cl-check ${state}">

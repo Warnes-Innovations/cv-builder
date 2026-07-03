@@ -1,248 +1,228 @@
 <!--
-Copyright (C) 2026 Gregory R. Warnes
-SPDX-License-Identifier: AGPL-3.0-or-later
+  Copyright (C) 2026 Gregory R. Warnes
+  SPDX-License-Identifier: AGPL-3.0-or-later
 
-This file is part of CV-Builder.
-For commercial licensing, contact greg@warnes-innovations.com
+  This file is part of CV-Builder.
+  For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-<!-- markdownlint-disable MD032 MD060 -->
+# HR / ATS Persona Review
 
-# HR / ATS Review Status
-
-**Last Updated:** 2026-04-22 16:30 ET
-
-**Executive Summary:** The ATS DOCX generation pipeline is substantially
-implemented: single-column layout, Heading 1 section headings with standard
-labels, normalized phone/contact formatting, hard/soft skill split, and a
-17-check post-generation validation report that gates downloads on failures.
-The keyword match score (compute_ats_score) is real, visible in the position
-bar badge and the ATS Score tab, and persisted to metadata.json. The
-remaining gaps are functional rather than structural: no UI control to
-override hard/soft classification, no write-back of skill_type to master
-data, per-item live score refresh fires only after batch submission, font
-name is not explicitly enforced in the ATS DOCX (relying on python-docx
-defaults), and three validation checks required by the story (PDF font
-embedding, margin clipping, keyword density) are not implemented.
+**Persona:** HR coordinator evaluating both the application workflow and what an ATS sees
+**Review Date:** 2026-07-01
+**Branch:** feature/multi-user-deployment
+**Reviewer:** Automated persona evaluation (source-first)
 
 ---
 
 ## Application Evaluation
 
----
+### US-H1: ATS File Ingestion — PARTIAL PASS
 
-### US-H1: ATS File Ingestion
+The application generates three output formats as specified: `*_ATS.docx`, `*.pdf`, and `*.html`. Generation is confirmed in `_generate_ats_docx`, `_generate_human_pdf`, and `generate_cv` in `cv_orchestrator.py` (lines 2169–2230).
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Single-column layout; zero tables in DOCX | ✅ | `_generate_ats_docx` builds paragraph-only document with no `doc.add_table()` call; validate check #2 confirms at runtime — `scripts/utils/cv_orchestrator.py:2757–2905, 3669–3675` |
-| Zero text boxes / shapes | ✅ | Validate check #3 inspects VML and MC namespaces — `cv_orchestrator.py:3677–3683` |
-| Contact information in document body, not Word header/footer | ✅ | Contact block is a plain `doc.add_paragraph()` after the candidate name paragraph — `cv_orchestrator.py:2771–2801` |
-| All URLs spelled out as plain text (no formatted hyperlinks) | ✅ | LinkedIn appended as bare string via `contact_parts.append(contact['linkedin'])` — `cv_orchestrator.py:2793`; no python-docx hyperlink run created |
-| ATS text 100% selectable | ✅ | Validate check #1 extracts text and fails if `len < 100` — `cv_orchestrator.py:3661–3665` |
-| All fonts Arial / Calibri / Times New Roman at 10–12pt | ⚠️ | `_setup_ats_styles` sets `Pt(12)` for Heading 1 and `Pt(10)` for List Bullet but does **not** set `font.name` — relies on python-docx default template (Calibri). Not explicitly enforced or validated. — `cv_orchestrator.py:2909–2944` |
+#### DOCX path (confirmed)
 
-**Residual gap:** Font family depends on the python-docx default template being Calibri. No validation check enforces font name.
+- `_generate_ats_docx` uses python-docx to build a fully plain-text document with no tables, text boxes, or headers/footers.
+- Contact information is placed in the document body as a paragraph (line 3853–3854), not in a Word header/footer. Pass.
+- `_setup_ats_styles` sets Calibri as the default font for Normal, Heading 1, Heading 2, and List Bullet styles. Pass.
+- No tables are added; no shapes are used. Pass.
 
----
+**Gap (hyperlinks in ATS DOCX):** The `_generate_human_docx` method (line 4617) adds formatted hyperlinks using `_add_hyperlink`. The story requirement is that URLs be spelled out as plain text in the ATS DOCX. The ATS DOCX generator (`_generate_ats_docx`) does NOT use `_add_hyperlink` — the LinkedIn contact is added as a plain text string (line 3851). However, the underlying contact dict may contain a shortened form (e.g., `linkedin.com/in/...`) rather than the full HTTPS URL. There is no explicit plain-text full URL enforcement for LinkedIn in the ATS DOCX. Minor gap.
 
-### US-H2: ATS Section Recognition
+#### HTML path (confirmed)
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Heading 1 Word style for all section headings | ✅ | "Professional Summary" `cv_orchestrator.py:2808`, "Technical Skills" `:2827`, "Core Competencies" `:2831`, "Work Experience" `:2838`, "Education" `:2872` — all use `style='Heading 1'` |
-| Required section labels used verbatim | ✅ | Standard ATS labels used exclusively in `_generate_ats_docx` — `cv_orchestrator.py:2808–2905` |
-| Standard heading validation at runtime | ⚠️ | Validate check #5 uses a `STANDARD` frozenset (`cv_orchestrator.py:3701–3709`) that includes **"career history"** — a label the story explicitly rejects. The validator passes a CV with "Career History" without warning. |
-| No creative section names in ATS DOCX | ⚠️ | Generation uses correct labels, but there is no enforcement that the human PDF and the ATS DOCX differ in heading style. No differential test exists. |
+- `_build_json_ld` (line 1495–1601) produces a Schema.org/Person block embedded in the HTML `<head>` via `json_ld_str`.
+- The template emits a `<script type="application/ld+json">` block; the ATS validation checks confirm this is parsed correctly (lines 5455–5499).
 
-**Residual gap:** STANDARD validation set is too permissive ("career history" passes). Cross-document heading differentiation is untested.
+#### PDF path
+
+PDF is generated via Chrome headless or WeasyPrint from the HTML. US Letter size and font embedding are determined by the renderer, not explicitly configured in code. No programmatic check for US Letter page size or font embedding is performed.
 
 ---
 
-### US-H3: Contact Information Parsing
+### US-H2: ATS Section Recognition — PASS
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Contact block is first content in document body | ✅ | Name paragraph is first, then pipe-separated contact line — `cv_orchestrator.py:2764–2801` |
-| Name, city/state, phone, email on first 1–2 lines | ✅ | `' \| '.join(contact_parts)` — `cv_orchestrator.py:2795–2798` |
-| Phone formatted as `NNN-NNN-NNNN` | ✅ | `_normalize_phone()` strips non-digits and rebuilds `{3}-{3}-{4}` — `cv_orchestrator.py:3125–3137` |
-| LinkedIn URL as plain text | ✅ | `contact.get('linkedin')` appended as bare string — `cv_orchestrator.py:2793` |
-| No full street address (city + state only) | ✅ generation / ⚠️ validation | Generation uses `address.city` / `address.state` only — `cv_orchestrator.py:2779–2788`. Validate check #4 verifies email **presence** but not street address **absence** — `cv_orchestrator.py:3685–3690`. |
+The ATS DOCX uses `Heading 1` Word style for all section headings, confirmed in `_generate_ats_docx`:
 
-**Residual gap:** The ATS validation report does not flag if a full street address is injected via `contact.address_display`.
+- `'Professional Summary'` — Heading 1 (line 3860)
+- `'Technical Skills'` — Heading 1 (line 3879)
+- `'Core Competencies'` — Heading 1 (line 3884)
+- `'Work Experience'` — Heading 1 (line 3889)
+- `'Education'` — Heading 1 (line 3924)
+- `'Certifications'` — Heading 1 (line 4415 via `_add_ats_additional_sections`)
+- `'Awards'` — Heading 1 (line 4434)
+- `'Publications'` / `'Selected Publications'` — validated in `validate_ats_report` (line 5393)
 
----
+All section labels match accepted ATS labels per the story. The validation function `validate_ats_report` verifies that no unexpected headings appear (lines 5241–5263) and that Heading 1 style is present (lines 5265–5271).
 
-### US-H4: Keyword Matching and Scoring
-
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Post-generation keyword check against DOCX text | ✅ | Validate check #8 (`ats_keyword_presence`) — `cv_orchestrator.py:3774–3790` |
-| System reports keyword present / section / match type | ✅ | `compute_ats_score` returns `keyword_status` list with `status`, `matched_in_sections`, `match_type` — `scoring.py:443–519` |
-| Missing keyword warning or fail | ✅ | Validate check #8: warn if ≤ 1/3 missing; fail if > 1/3 missing — `cv_orchestrator.py:3782–3790` |
-| `knowsAbout` in JSON-LD populated | ✅ | Validate check #11 verifies `len(ka) >= 3` — `cv_orchestrator.py:3821–3826`; generation at `cv_orchestrator.py:1244–1249` |
-| Case-insensitive keyword normalization | ✅ | Validate check uses `text_lower` / `kw not in text_lower` — `cv_orchestrator.py:3774` |
-| Hyphen / slash variant normalization | ⚠️ | `scoring.py` uses `synonym_map.json` for canonical matching, but `validate_ats_report` does **not** — plain substring search only — `cv_orchestrator.py:3774–3790` |
-| All required keywords checked | ⚠️ | `validate_ats_report` limits check to first **15** ATS keywords — `cv_orchestrator.py:3774 ([:15])`. Roles with 20+ keywords will have unchecked keywords. |
-
-**Residual gap:** The 15-keyword cap in validate_ats_report can silently pass CVs missing important keywords. synonym_map used by scoring.py is not applied in validate_ats_report.
+**Terminology clarity:** Labels used are standard ATS vocabulary. "Work Experience" (not "Career History"), "Professional Summary" (not "About Me"), "Technical Skills" + "Core Competencies" (not "Toolkit"), "Education" (not "Academic Background"), "Certifications" (not "Credentials"). Pass.
 
 ---
 
-### US-H5: Date and Employment History Parsing
+### US-H3: Contact Information Parsing — PASS with advisory
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Job entry on one line: `Title \| Company \| Location \| Date Range` | ✅ | `entry_line = ' \| '.join(p for p in entry_parts if p)` — `cv_orchestrator.py:2839` |
-| "Present" used for current role | ✅ | `exp.get('end_date', 'Present')` — `cv_orchestrator.py:2835` |
-| Consistent date format validated | ✅ | Validate check #7 detects mixed formats and fails — `cv_orchestrator.py:3740–3762` |
-| Date separator character enforced | ⚠️ | Generation uses ` – ` (U+2013 en-dash). Story calls for em-dash preferred. Neither is validated — `cv_orchestrator.py:3740–3762` |
-| No overlapping date ranges | 🟲 | Not found in `validate_ats_report` or any pre-generation check — `cv_orchestrator.py:3600–4016` |
+The ATS DOCX contact block is built at lines 3836–3853. Key points:
 
-**Residual gap:** Overlapping date ranges are entirely unchecked. Year-only dates pass the consistency check despite failing the month+year accuracy requirement.
+- **City/state only, no street address:** `address_display` is used (city + state), not the full address. Pass.
+- **Phone normalization:** `_normalize_phone` (line 4227–4236) converts phone to `NNN-NNN-NNNN` format (no parentheses). Pass.
+- **Single line, pipe-separated:** `' | '.join(contact_parts)` renders all contact parts on a single line. Pass.
+- **Name placement:** Candidate name is a bold run on its own paragraph before the contact line. Pass.
+- **LinkedIn as plain text:** LinkedIn is appended as a string to `contact_parts` (line 3851), not as a hyperlink. Pass.
+- **Ph.D./credentials in name field:** No special stripping or transformation of name credentials is performed. The name from `Master_CV_Data.json` is used as-is. If the user's name includes "Ph.D.", it will appear in the name field. Per the story, credentials should appear after the name with a comma separator — this is a data-contract concern (user's master data), not enforced programmatically.
 
----
-
-### US-H6: ATS Output Validation Report
-
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Programmatic validation runs after generation | ✅ | `GET /api/ats-validate` calls `validate_ats_report()` — `review_routes.py:2178–2229` |
-| Results displayed with pass/warn/fail per check | ✅ | File Review tab renders a table with icon and detail per check — `download-tab.js:116–145` |
-| Fail blocks download with explanation | ✅ | `blockDocx / blockHtml / blockPdf` flags disable download buttons — `download-tab.js:155–175` |
-| Warn allows download but shows issue | ✅ | Warn rows render warning icon and detail but do not set block flags — `download-tab.js:116–145` |
-| Validation results persisted to `metadata.json` | ✅ | `_try_patch_metadata(conversation, {'validation_results': ...})` — `review_routes.py:2224` |
-| PDF fonts embedded check | 🟲 | Not in `validate_ats_report` — `cv_orchestrator.py:3600–4016` |
-| PDF no clipped content at margins check | 🟲 | Not in `validate_ats_report` — `cv_orchestrator.py:3600–4016` |
-| Keyword density within acceptable range | 🟲 | No density / stuffing check implemented |
-
-**Residual gap:** Three checks from the story checklist are missing. Font embedding and clipping are deferred to human review; keyword stuffing detection is absent.
+**Advisory:** The application does not validate or warn if the candidate name in `Master_CV_Data.json` is entirely in UPPERCASE or lowercase, which some ATS systems have trouble with. No normalization of name casing is applied.
 
 ---
 
-### US-H7: ATS Match Score Visibility
+### US-H4: Keyword Matching and Scoring — PASS
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Overall match score (0–100%) computed and displayed | ✅ | `compute_ats_score` — `scoring.py:515–521`; badge in position bar — `index.html:72–85`; ATS Score tab — `ats-modals.js:306–317` |
-| Score persisted to `metadata.json` | ✅ | `generation_routes.py:1819`: `metadata['ats_score'] = ats_score` |
-| Per-skill states: Matched / Missing / Bonus | ✅ | `keyword_status` list with `status: matched/partial/missing` and `type: hard/soft/bonus` — `scoring.py:443–519`; rendered in ATS Report modal — `ats-modals.js:72–106` |
-| Missing hard requirements highlighted prominently | ✅ | `_renderAtsReport` renders an orange warning box for `missingHard` — `ats-modals.js:253–261` |
-| Hard skills weighted more than soft (2:1 per story) | ⚠️ | Implementation uses **0.7 hard + 0.3 soft** (≈ 2.3:1), not exactly 2:1 — `scoring.py:515` |
-| Score updates after each individual approval/rejection | ⚠️ | `scheduleAtsRefresh()` called after **batch submission** only — `skills-review.js:1077`, `rewrite-review.js:409`. Per-item update not implemented. |
-| "Bonus ★" label matches story definition | ⚠️ | Story: candidate has skill not in JD. Code: ATS keywords not in required/preferred lists — `scoring.py:498–506`. Semantically opposite to story intent. |
+The ATS keyword strategy is implemented at multiple levels:
 
-**Residual gap:** Live per-item score update is not implemented. "Bonus" semantics diverge from story definition. Weighting is slightly off from the stated 2:1.
+- `_optimize_skills_for_ats` (line 4046) reorders skills to maximize keyword match, using synonym expansion via `_expansion_index`. Skills matching `ats_keywords` or `required_skills` are prioritized.
+- `compute_ats_score` in `scoring.py` (line 345–594) provides the live keyword analysis: case-insensitive matching, hyphen/slash variant normalization, synonym expansion via the synonym map.
+- `validate_ats_report` check 8 (lines 5293–5349) performs a two-tier keyword check after generation: required-skill keywords (Tier 1, high-weight) and supplemental ATS keywords (Tier 2), with appropriate pass/warn/fail thresholds.
+- Hyphen/slash variant normalization is implemented: `_kw_in_text` handles `"scikit-learn"` vs `"scikit learn"` equivalences (lines 5303–5318).
+- `knowsAbout` in the HTML JSON-LD is populated with approved skill names (line 1596).
+
+**Gap (keyword stuffing density check):** `validate_ats_report` check 8b (lines 5351–5373) warns when top ATS keywords appear fewer than 2 times. This is advisory. The story's acceptance criterion for keyword density is implemented as a warn-level check, not a hard block. Pass (advisory behavior is appropriate).
 
 ---
 
-### US-H8: Hard / Soft Skill Distinction in ATS Output
+### US-H5: Date and Employment History Parsing — PASS
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| ATS DOCX separates "Technical Skills" from "Core Competencies" | ✅ | `hard_skills` → Heading 1 "Technical Skills"; `soft_skills` → Heading 1 "Core Competencies" — `cv_orchestrator.py:2821–2833` |
-| JSON-LD `knowsAbout` entries include `additionalType: HardSkill / SoftSkill` | ✅ | `'additionalType': 'HardSkill' if ... == 'hard' else 'SoftSkill'` — `cv_orchestrator.py:1248` |
-| LLM classifies every skill as hard or soft | ❌ | `_classify_skill_type` is a **rule-based heuristic** (checks stored `skill_type` field, category names against `_SOFT_SKILL_CATEGORIES`, skill names against `_SOFT_SKILL_NAMES`). No LLM call for classification. — `cv_orchestrator.py:3128–3147` |
-| User can override classification in the UI | ❌ | Skills review table shows **read-only informational badges** sourced from job analysis data. No toggle or input to override. — `skills-review.js:663–670` |
-| Classification (`skill_type`) persisted to `Master_CV_Data.json` | ❌ | `_classify_skill_type` reads `skill.get('skill_type')` but no harvest path writes `skill_type` back. `_harvest_add_skill` does not persist type. — `cv_orchestrator.py:3134, 3478–3515` |
+The ATS DOCX generates date ranges as:
 
-**Residual gap:** Three story acceptance criteria are unmet: LLM-based classification, UI override, and master data persistence. The rule-based implementation is a solid foundation but does not reach the story's full contract.
+```python
+f"{exp.get('start_date', '')} – {exp.get('end_date', 'Present')}"
+```
+
+(line 3899) — using a Unicode en-dash `–` as the separator. The story specifies em-dash preferred. Both forms are ATS-safe.
+
+Job entry format at line 3904: `Title | Company | Location | Date Range` on a single bold line. Pass.
+
+`_detect_date_overlaps` (line 4982) detects overlapping employment date ranges and includes results in `metadata.json`. Pass.
+
+`_detect_year_only_dates` (line 4955) warns when dates lack a month component; `validate_ats_report` check 7b (line 5376–5385) warns on year-only dates in the DOCX. Pass.
+
+"Present" is used for current roles (the `end_date` default is `'Present'` at line 3899). Pass.
+
+**Gap:** The application does not validate or block year-only dates from `Master_CV_Data.json` before generation; it only warns post-generation. Year-only dates pass through uncorrected into the generated DOCX.
+
+---
+
+### US-H6: ATS Output Validation Report — PARTIAL PASS
+
+`validate_ats_report` (line 5133) runs 17 programmatic checks after generation:
+
+**DOCX checks (12):** text selectable, zero tables, zero shapes/text boxes, contact info in body, standard heading text, Heading 1 style present, consistent date formats, ATS keyword presence (two-tier pass/warn/fail), ATS keyword density, year-only dates, publications heading text, ATS-safe fonts only.
+
+**HTML checks (4):** JSON-LD present, JSON-LD is schema.org/Person, `knowsAbout` populated, required fields (name + email) present.
+
+**PDF checks (2):** PDF generated successfully, PDF has selectable text.
+
+Results are persisted to `metadata.json` (lines 2263–2271 in `generate_cv`). Pass.
+
+**H6 gaps vs. story acceptance criteria:**
+
+- **US Letter page size check:** Not implemented. No programmatic check that the PDF is US Letter.
+- **Font embedding check:** Not implemented. pypdf is used only for page count and text extraction, not font embedding verification.
+- **"Any fail blocks download":** The app does not currently block downloads based on ATS validation failures. Validation results are available in metadata but are not enforced as download gates in the UI finalise flow. Gap.
+- **"Any warn allows download but shows specific issue":** Not confirmed in source. The ATS Report modal displays results, but the download path does not reference ATS check pass/warn/fail status. Gap.
+
+---
+
+### US-H7: ATS Match Score Visibility — PASS
+
+The ATS score system is fully implemented:
+
+- **Overall score (0–100%):** `compute_ats_score` returns `overall` (0–100%), `hard_requirement_score`, and `soft_requirement_score`.
+- **Weighted scoring (hard 2x soft):** `overall = round((2 * hard_score + soft_score) / 3, 1)` (scoring.py line 575). Pass.
+- **Live badge, no page reload:** `updateAtsBadge` (ats-refinement.js line 150) updates the header badge. `scheduleAtsRefresh` is called from `skills-review.js`, `summary-review.js`, `experience-review.js`, `rewrite-review.js`, `spell-check.js` etc. — score refreshes as the user approves/rejects items. Pass.
+- **Score persisted to metadata.json:** `_try_patch_metadata(conv, {"ats_score": score})` (generation_routes.py line 1857), and `ats_score_at_generation` is saved in `metadata` (cv_orchestrator.py line 2254). Pass.
+- **Per-skill states:** The ATS Report modal renders Matched (green ✅), Missing (red ❌), Partial (amber ⚠), and Bonus keywords grouped under "★ Bonus Keywords". Pass.
+
+**Minor gap:** The story specifies three per-skill states — Matched ✅, Missing ❌, Bonus ★. The implementation adds Partial ⚠ (good), but bonus keywords that happen to match the candidate's skills show "✅ Matched" rather than a distinct "★" per-row badge. The Bonus grouping is at the table-section level, not per-row. This is a minor display issue.
+
+---
+
+### US-H8: Hard / Soft Skill Distinction in ATS Output — PASS with gap
+
+- **Classification:** `_classify_skill_type` (line 4239–4255) classifies each skill using: (1) explicit `skill_type` field (user-overridable), (2) category-based heuristics, (3) name-based heuristics. Pass.
+- **ATS DOCX separation:** Hard skills → "Technical Skills" (Heading 1); soft skills → "Core Competencies" (Heading 1) (lines 3878–3886). Pass.
+- **HTML JSON-LD `knowsAbout` with `additionalType`:** Each entry carries `"additionalType": "HardSkill"` or `"SoftSkill"` (line 1552). Pass.
+- **User override:** The `skill_type` field in the skill dict takes precedence. Skills review UI allows overrides which propagate to generated documents. Pass.
+- **Missing hard skills more prominent:** Missing hard requirements are shown in a dedicated amber/red callout box in the ATS Report (ats-modals.js line 252–256), separate from other missing keywords. Pass.
+
+**Gap (Master CV write-back):** The story requires hard/soft classification to be persisted in `Master_CV_Data.json`. `_classify_skill_type` computes classification at render time from the `skill_type` field or heuristics. If the user has no `skill_type` field, classification is ephemeral (recomputed each run). The harvest workflow does not appear to write back `skill_type` classifications to `Master_CV_Data.json`. Gap.
 
 ---
 
 ## Generated Materials Evaluation
 
-### ATS DOCX Structure
+### ATS DOCX Format
 
-The generated `*_ATS.docx` is a clean paragraph-based document with:
-- Heading 1 style for all section headings with standard labels
-- Hard/soft skill split into "Technical Skills" / "Core Competencies"
-- One-line job entries: `Title | Company | Location | Date Range`
-- Phone normalized to `NNN-NNN-NNNN`
-- No tables, no text boxes confirmed by validate_ats_report
+- No tables: confirmed (no `doc.add_table()` call in `_generate_ats_docx`).
+- No text boxes: confirmed (no shapes API used).
+- Contact in body, not in Word header/footer: confirmed.
+- Single-column layout: confirmed (python-docx default; no multi-column sections created).
+- ATS-safe fonts (Calibri): confirmed for all paragraph styles via `_setup_ats_styles`.
+- LinkedIn URL as plain text, not hyperlink: confirmed (line 3851).
+- Section headings as Heading 1 style: confirmed.
+- Job entry format `Title | Company | Location | Date Range` on one bold line: confirmed.
+- Date range uses en-dash separator: confirmed.
 
-**Gaps:** Font name is not explicitly set (relies on python-docx default Calibri). Date separator is en-dash, not em-dash. No explicit single-line enforcement for education entries comparable to job entry headers.
+### HTML JSON-LD Structured Data
 
-### HTML JSON-LD
+`_build_json_ld` populates: `name`, `email`, `telephone`, `sameAs` (LinkedIn + website), `alumniOf`, `hasOccupation` (work history as Role entries), `knowsAbout` (skills with `additionalType: HardSkill/SoftSkill`), `award`, `address`, `jobTitle`, `description`.
 
-The `<script type="application/ld+json">` block:
-- Uses `@type: Person` with `https://schema.org` context ✅
-- Populates `knowsAbout` with skills annotated with `additionalType: HardSkill / SoftSkill` ✅
-- Includes `name`, `email`, `telephone`, `hasOccupation`, `alumniOf`, `sameAs` ✅
-- Validation checks #9–12 cover these four HTML criteria in the post-generation report ✅
+`_validate_json_ld` checks required fields and logs warnings. `validate_ats_report` checks 9–12 programmatically verify the JSON-LD block after generation.
 
-**Gap:** Story's "Bonus ★" definition requires `knowsAbout` entries to identify which skills are not in the JD. Current JSON-LD generation does not annotate "bonus" vs "required" skills.
-
-### PDF
-
-Validate checks confirm: PDF page count (warn if outside 2–3 page ideal), US Letter page size (check #14), selectable text (check #15).
-
-**Gaps:** Font embedding and margin/clipping checks are not automated.
+**Minor gap:** `hasOccupation` entries use `'@type': 'Role'` (line 1509), not `'@type': 'Occupation'`. The Schema.org spec supports `Role` as a value for `hasOccupation`, but some ATS structured-data parsers expect an `Occupation` node. This could reduce structured-data match accuracy on modern ATS. Minor gap.
 
 ---
 
-## Terminology and UX Assessment
+## Terminology Clarity Evaluation
 
-| Issue | Current Term | Problem | Suggestion |
-|-------|-------------|---------|-----------|
-| Two "ATS" surfaces with different content | "ATS Report" button (keyword match score) vs "File Review" tab (structural validation) | A user looking for "the ATS report" finds two different things that overlap in purpose | Rename "ATS Report" button to "Keyword Match"; rename "File Review" tab to "Download & ATS Validation" |
-| "Bonus Keywords" vs story's "Bonus ★" definition | `bonus` in `keyword_status` | Code: supplementary JD keywords. Story: candidate skills not in JD. Semantically opposite. | Rename `type: bonus` to `type: supplemental`; add separate `type: candidate_extra` |
-| Hard/Soft badges appear interactive but are read-only | Hard / Soft badge with no affordance | Colored pill implies clickable; clicking does nothing | Add tooltip or implement the toggle |
-| "Compute ATS Score" empty-state button implies score is optional | Button text | User who never visits ATS Score tab never sees the score | Auto-refresh score after skills decisions are submitted |
-| "File Review" tab label does not signal ATS validation | `tab-download` / "⬇️ File Review" | HR persona expects "ATS Validation" or "Download & Validate" | Rename to "⬇️ Download & Validate" |
+| Term                                   | Usage                                                                  | Assessment                               |
+| -------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------- |
+| ATS                                    | Header badge tooltip: "Applicant Tracking System (ATS) match score"    | Clear - acronym spelled out on first use |
+| Hard requirements / Soft requirements  | ATS Report modal (ats-modals.js line 240-241)                          | Clear for HR audience                    |
+| Technical Skills / Core Competencies   | DOCX section headings                                                  | Standard ATS vocabulary - pass           |
+| Work Experience / Professional Summary | DOCX section headings                                                  | Standard ATS vocabulary - pass           |
+| Matched / Missing / Partial / Bonus    | ATS Report keyword table                                               | Clear and intuitive for HR review        |
+| Score thresholds                       | ">=75% Strong match", "50-74% Partial match", "<50% Low match"         | Appropriately calibrated for HR use      |
 
----
-
-## Additional Story Gaps / Proposed Story Items
-
-### GAP-H-A: Font Compliance Validation
-
-`_setup_ats_styles` sets sizes/colors but not `font.name`. A future `docx_font_names` validation check should enumerate all explicit font name runs and warn on non-standard fonts.
-
-### GAP-H-B: Overlapping Employment Date Validation
-
-No check flags overlapping date ranges. Add a pre-generation validation step that computes tenure ranges and warns if any two experiences overlap by more than 30 days.
-
-### GAP-H-C: Year-Only Date Rejection
-
-Date consistency check (validate #7) does not reject year-only dates. Add a pattern check that warns when year-only dates are detected.
-
-### GAP-H-D: Skill Type Override and Master Data Persistence
-
-> **US-H9 (proposed):** As a user, I want to override the hard/soft classification of any skill in the Skills Review step, and have that override persist to my master CV profile, so that future CVs and ATS outputs use the correct classification without re-review.
-
-### GAP-H-E: Synonym / Variant Normalization in Validate Report
-
-`compute_ats_score` uses `synonym_map.json` but `validate_ats_report` does not. A CV that scores well on the ATS Score tab may still show keyword failures in the validation report for synonym variants.
+No non-standard creative section names appear in the ATS DOCX. All terminology is conventional to ATS workflows.
 
 ---
 
-**Reviewed against:** web/index.html, web/app.js, web/ats-modals.js, web/ats-refinement.js, web/skills-review.js, web/download-tab.js, web/rewrite-review.js, scripts/utils/cv_orchestrator.py, scripts/utils/scoring.py, scripts/routes/generation_routes.py, scripts/routes/review_routes.py, scripts/data/synonym_map.json
+## Consolidated Gap Table
 
-| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🟲 Not Impl | — N/A |
-|-------|---------|-----------|--------|------------|-------|
-| US-H1 | 5 | 1 | 0 | 0 | 0 |
-| US-H2 | 2 | 2 | 0 | 0 | 0 |
-| US-H3 | 4 | 1 | 0 | 0 | 0 |
-| US-H4 | 5 | 2 | 0 | 0 | 0 |
-| US-H5 | 3 | 1 | 0 | 1 | 0 |
-| US-H6 | 5 | 0 | 0 | 3 | 0 |
-| US-H7 | 4 | 3 | 0 | 0 | 0 |
-| US-H8 | 2 | 0 | 3 | 0 | 0 |
-
-**Key evidence references:**
-
-- US-H1 font gap: `cv_orchestrator.py:2909–2944` (`_setup_ats_styles`, no `font.name` set)
-- US-H2 permissive STANDARD set: `cv_orchestrator.py:3701–3709` (includes "career history")
-- US-H3 phone normalization: `cv_orchestrator.py:3125–3137`
-- US-H4 15-keyword cap: `cv_orchestrator.py:3774` (`[:15]`)
-- US-H5 overlapping dates: not found in `cv_orchestrator.py:3600–4016`
-- US-H6 17-check validation: `cv_orchestrator.py:3600–4016`
-- US-H7 batch-only refresh: `skills-review.js:1077`, `rewrite-review.js:409`
-- US-H7 70/30 weighting: `scoring.py:515`
-- US-H8 rule-based classifier: `cv_orchestrator.py:3128–3147`
-- US-H8 no UI override: `skills-review.js:663–670` (read-only badge)
-- US-H8 no skill_type write-back: `cv_orchestrator.py:3478–3515` (`_harvest_add_skill`)
-- US-H8 JSON-LD additionalType: `cv_orchestrator.py:1248`
-
-**Evidence standard:** Every conclusion is supported by source citations sufficient for independent verification.
+| Story  | Criterion                                        | Status  | Gap                                                           |
+| ------ | ------------------------------------------------ | ------- | ------------------------------------------------------------- |
+| US-H1  | DOCX: no tables, shapes, headers/footers         | PASS    | -                                                             |
+| US-H1  | DOCX: LinkedIn as plain-text full URL            | PARTIAL | LinkedIn may be shortened; no https:// enforcement            |
+| US-H1  | PDF: US Letter size                              | FAIL    | Not checked programmatically                                  |
+| US-H1  | PDF: Fonts embedded                              | FAIL    | Not checked                                                   |
+| US-H2  | Heading 1 style for all section headings         | PASS    | -                                                             |
+| US-H2  | Standard heading labels only                     | PASS    | -                                                             |
+| US-H3  | Contact block: phone NNN-NNN-NNNN, city/state    | PASS    | -                                                             |
+| US-H3  | Name casing validation                           | FAIL    | No casing check/warning                                       |
+| US-H4  | Keyword presence in ATS DOCX body                | PASS    | -                                                             |
+| US-H4  | `knowsAbout` populated                           | PASS    | -                                                             |
+| US-H4  | Post-generation keyword gap warning              | PASS    | -                                                             |
+| US-H5  | Date format consistent, en-dash separator        | PASS    | -                                                             |
+| US-H5  | Year-only date blocking (pre-generation)         | PARTIAL | Only warns post-generation, not a blocking gate               |
+| US-H6  | 16+ ATS checks run after generation              | PASS    | -                                                             |
+| US-H6  | Results persisted to metadata.json               | PASS    | -                                                             |
+| US-H6  | US Letter + font embedding PDF checks            | FAIL    | Not implemented                                               |
+| US-H6  | Download blocked on fail                         | FAIL    | Not implemented                                               |
+| US-H7  | Live ATS score badge, no page reload             | PASS    | -                                                             |
+| US-H7  | Weighted 2:1 hard/soft                           | PASS    | -                                                             |
+| US-H7  | Score persisted to metadata.json                 | PASS    | -                                                             |
+| US-H7  | Bonus (star) per-row badge                       | PARTIAL | Bonus group labeled star but per-row shows Matched            |
+| US-H8  | DOCX: Technical Skills / Core Competencies split | PASS    | -                                                             |
+| US-H8  | JSON-LD `additionalType: HardSkill/SoftSkill`    | PASS    | -                                                             |
+| US-H8  | Master CV skill_type write-back (harvest)        | FAIL    | Classification not persisted back to Master_CV_Data.json      |
+| All    | `hasOccupation` type as Occupation vs Role       | PARTIAL | Uses Role; Occupation preferred by some ATS parsers           |

@@ -53,6 +53,7 @@ class SessionEntry:
     owner_token: Optional[str]  # tab-local UUID; None = unclaimed
     created: datetime     # set at creation; displayed to user
     last_modified: datetime  # updated on mutations only (NOT on reads)
+    user_id: Optional[str] = None  # Keycloak sub; None in single-user mode
 
 
 # ---------------------------------------------------------------------------
@@ -132,11 +133,19 @@ class SessionRegistry:
         instantiate ConversationManager + CVOrchestrator, registers the
         entry, and returns ``(session_id, entry)``.
         """
-        session_id = uuid.uuid4().hex[:8]
+        session_id = uuid.uuid4().hex
         now = datetime.now()
 
         manager, orchestrator = self._build_objects(config)
         manager.session_id = session_id
+
+        # Tag the session with the authenticated user when available.
+        try:
+            from flask import g as _g  # noqa: PLC0415
+            current_user_id = getattr(_g, 'user_id', None)
+        except RuntimeError:
+            # Outside a Flask request context (e.g. tests, CLI)
+            current_user_id = None
 
         entry = SessionEntry(
             session_id=session_id,
@@ -146,14 +155,18 @@ class SessionRegistry:
             owner_token=None,
             created=now,
             last_modified=now,
+            user_id=current_user_id,
         )
 
         with self._registry_lock:
             self._sessions[session_id] = entry
 
         logger.debug(
-            "Session created: %s (created=%s, factory=%s)",
-            session_id, now.isoformat(), self._build_objects.__name__
+            "Session created: %s (user=%s, created=%s, factory=%s)",
+            session_id,
+            current_user_id or 'anonymous',
+            now.isoformat(),
+            self._build_objects.__name__,
         )
         return session_id, entry
 
@@ -177,11 +190,31 @@ class SessionRegistry:
         Raises
         ------
         SessionNotFoundError
-            If the session is not in the registry.
+            If the session is not in the registry or belongs to a different user.
         """
         entry = self.get(session_id)
         if entry is None:
-            logger.debug("Session lookup failed: %s (not in registry)", session_id)
+            logger.debug(
+                "Session lookup failed: %s (not in registry)", session_id
+            )
+            raise SessionNotFoundError(
+                f"Session not found: {session_id}"
+            )
+        # Enforce user isolation when auth is active.
+        try:
+            from flask import g as _g  # noqa: PLC0415
+            request_user = getattr(_g, 'user_id', None)
+        except RuntimeError:
+            request_user = None
+        if (
+            entry.user_id is not None
+            and request_user is not None
+            and entry.user_id != request_user
+        ):
+            logger.warning(
+                "User %s attempted to access session %s owned by %s",
+                request_user, session_id, entry.user_id,
+            )
             raise SessionNotFoundError(
                 f"Session not found: {session_id}"
             )

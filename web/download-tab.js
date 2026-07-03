@@ -50,7 +50,7 @@ function _collectDownloadableFiles(cvData = {}) {
       icon = '📝';
       if (filename.startsWith('CoverLetter_')) {
         description = 'Cover letter — Word document for the application';
-      } else if (filename.startsWith('Screening_Responses_')) {
+      } else if (filename.startsWith('Screening_')) {
         description = 'Screening question responses — Word document';
       } else {
         description = filename.includes('ATS')
@@ -60,8 +60,11 @@ function _collectDownloadableFiles(cvData = {}) {
       format = 'docx';
     } else if (filename.endsWith('.html')) {
       icon = '🌐';
-      description = 'HTML format with embedded JSON-LD structured data';
-      format = 'html';
+      const isPreview = /preview/i.test(filename);
+      description = isPreview
+        ? 'Layout preview — intermediate working file, not for submission'
+        : 'HTML format with embedded JSON-LD structured data';
+      format = isPreview ? 'preview' : 'html';
     } else if (filename === 'job_description.txt') {
       icon = '📋';
       description = 'Original job description reference';
@@ -141,11 +144,41 @@ function _renderValidationSummary(checks, summary, pageCount, atsError) {
   return html;
 }
 
-function _renderDownloadGrid(files, checks, summary) {
+// Checks that are advisory only — they warn but never block the download button.
+// Only genuinely critical failures (file not found, PDF unreadable, broken output)
+// should prevent a user from downloading.
+const _NON_BLOCKING_CHECKS = new Set([
+  'cv_page_count',               // advisory: page length outside ideal range
+  'pdf_us_letter',               // advisory: page size
+  'docx_zero_shapes',            // advisory: ATS formatting hint
+  'docx_standard_headings',      // advisory: ATS heading text
+  'docx_heading1_present',       // advisory: ATS heading style
+  'docx_date_format_consistent', // advisory: date format consistency
+  'docx_publications_heading',   // advisory: publications heading text
+  'html_jsonld_valid_person',    // advisory: JSON-LD schema type
+  'html_jsonld_knows_about',     // advisory: JSON-LD skills population
+]);
+
+function _renderDownloadGrid(files, checks, summary, generatedAt = null, generationRun = null) {
   const keywordFail = checks.some((check) => check.name === 'ats_keyword_presence' && check.status === 'fail');
-  const blockDocx = keywordFail || checks.some((check) => check.format === 'docx' && check.status === 'fail');
-  const blockHtml = keywordFail || checks.some((check) => check.format === 'html' && check.status === 'fail');
-  const blockPdf = keywordFail || checks.some((check) => check.format === 'pdf' && check.status === 'fail');
+  const isCriticalFail = (check) => check.status === 'fail' && !_NON_BLOCKING_CHECKS.has(check.name);
+  const blockDocx = keywordFail || checks.some((check) => check.format === 'docx' && isCriticalFail(check));
+  const blockHtml = keywordFail || checks.some((check) => check.format === 'html' && isCriticalFail(check));
+  const blockPdf  = keywordFail || checks.some((check) => check.format === 'pdf'  && isCriticalFail(check));
+
+  let generatedLabel = '';
+  if (generatedAt) {
+    try {
+      const d = new Date(generatedAt);
+      const dateStr = d.toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit',
+      });
+      generatedLabel = (generationRun && generationRun > 1)
+        ? `Run #${generationRun} — ${dateStr}`
+        : dateStr;
+    } catch (_) { /* ignore */ }
+  }
 
   let html = '<div class="download-section"><div class="download-grid">';
   if (!files.length) {
@@ -162,15 +195,23 @@ function _renderDownloadGrid(files, checks, summary) {
       ? 'cursor:not-allowed;opacity:0.4;background:#9ca3af;border-color:#9ca3af;'
       : '';
     const blockedMessage = blocked
-      ? '<div style="font-size:0.78em;color:#dc2626;margin-top:4px;">⛔ Blocked — fix ATS failures first</div>'
+      ? '<div style="font-size:0.78em;color:#dc2626;margin-top:4px;">⛔ Blocked — output file could not be generated</div>'
+      : '';
+    const timestampLine = generatedLabel
+      ? `<div style="font-size:0.75em;color:#9ca3af;margin-top:3px;">Generated ${generatedLabel}</div>`
+      : '<div style="font-size:0.75em;color:#c0c4cc;margin-top:3px;">Not yet generated</div>';
+
+    const previewBadge = file.format === 'preview'
+      ? '<span style="display:inline-block;margin-left:6px;font-size:0.75em;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 5px;vertical-align:middle;">Working file — not for submission</span>'
       : '';
 
     html += `
-      <div class="download-item" style="${blocked ? 'opacity:0.75;' : ''}">
+      <div class="download-item" style="${blocked ? 'opacity:0.75;' : ''}${file.format === 'preview' ? 'border-style:dashed;' : ''}">
         <div class="download-icon">${file.icon}</div>
         <div class="download-info">
-          <div class="download-name">${escapeHtml(file.filename)}</div>
+          <div class="download-name">${escapeHtml(file.filename)}${previewBadge}</div>
           <div class="download-description">${escapeHtml(file.description)}</div>
+          ${timestampLine}
           ${blockedMessage}
         </div>
         ${blocked
@@ -268,6 +309,24 @@ async function _fetchPersuasionHtml() {
       html += '<div style="padding:12px 16px;color:#10b981;font-size:0.9em;">All bullets meet persuasiveness criteria.</div>';
     }
 
+    // Narrative-thread advisory (GAP-281)
+    const nta = summary.narrative_thread_advisory;
+    if (nta) {
+      html += `<div style="padding:10px 16px;background:#fef9c3;border-top:1px solid #fde68a;">
+        <span style="font-weight:600;color:#92400e;">🧵 Narrative focus advisory:</span>
+        <span style="font-size:0.9em;color:#78350f;margin-left:6px;">${escapeHtml(nta.detail)}</span>
+      </div>`;
+    }
+
+    // Narrative-arc advisory (GAP-17): recent role should show strongest verbs
+    const naa = summary.narrative_arc_advisory;
+    if (naa) {
+      html += `<div style="padding:10px 16px;background:#fff7ed;border-top:1px solid #fed7aa;">
+        <span style="font-weight:600;color:#9a3412;">📈 Narrative arc advisory:</span>
+        <span style="font-size:0.9em;color:#7c2d12;margin-left:6px;">${escapeHtml(naa.detail)}</span>
+      </div>`;
+    }
+
     html += '</div>';
     return html;
   } catch (error) {
@@ -308,9 +367,90 @@ async function populateDownloadTab(cvData) {
   }
 
   const files = _collectDownloadableFiles(cvData);
-  let html = '<h1>⬇️ Download Generated Files</h1>';
+  let html = '<h1>⬇️ File Review</h1>';
+  html += '<p style="font-size:0.83em;color:#94a3b8;margin-bottom:16px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0;">✅ <em>This is the <strong>completeness check</strong> step — ATS validation runs here and you can archive the application. To download files immediately after generation, use the <strong>Generated Files</strong> tab.</em></p>';
   html += _renderValidationSummary(checks, summary, pageCount, atsError);
-  html += _renderDownloadGrid(files, checks, summary);
+
+  const summaryWarnings = (cvData.metadata?.summary_warnings || []);
+  if (summaryWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Professional Summary quality notices (${summaryWarnings.length}):</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;">
+        ${summaryWarnings.map(w => `<li style="font-size:0.9em;">${escapeHtml(w)}</li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">These are advisory warnings — review the Summary tab if you wish to update the summary before submitting.</p>
+    </div>`;
+  }
+
+  const publicationWarnings = (cvData.metadata?.publication_warnings || []);
+  if (publicationWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Publication venue information incomplete (${publicationWarnings.length}):</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;">
+        ${publicationWarnings.map(w => `<li style="font-size:0.9em;">${escapeHtml(w)}</li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">Add missing journal or conference names to your Master CV before submitting — incomplete venue details weaken credibility.</p>
+    </div>`;
+  }
+
+  const longBulletWarnings = (cvData.metadata?.long_bullet_warnings || []);
+  if (longBulletWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Long bullet points detected (${longBulletWarnings.length}) — may exceed 2 lines:</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;list-style:none;">
+        ${longBulletWarnings.map(w => `<li style="font-size:0.85em;margin-bottom:4px;"><strong>${escapeHtml(w.company)} · ${escapeHtml(w.title)}</strong> (${w.char_count} chars)<br><span style="color:#6b7280;">"${escapeHtml(w.bullet_text)}"</span></li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">Consider shortening these bullets — aim for ≤200 characters each for clean 2-line rendering in the DOCX.</p>
+    </div>`;
+  }
+
+  const sparseExpWarnings = (cvData.metadata?.sparse_experience_warnings || []);
+  if (sparseExpWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Sparse experience entries (${sparseExpWarnings.length}) — fewer than 2 bullets:</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;list-style:none;">
+        ${sparseExpWarnings.map(w => `<li style="font-size:0.85em;margin-bottom:2px;"><strong>${escapeHtml(w.company)} · ${escapeHtml(w.title)}</strong> — ${w.bullet_count === 0 ? 'no bullets selected' : '1 bullet selected'}</li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">Include at least 2 bullets per role to demonstrate impact. Return to the Experience tab to add more.</p>
+    </div>`;
+  }
+
+  const yearOnlyDateWarnings = (cvData.metadata?.year_only_date_warnings || []);
+  if (yearOnlyDateWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Year-only dates detected (${yearOnlyDateWarnings.length}) — month/year format recommended:</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;list-style:none;">
+        ${yearOnlyDateWarnings.map(w => `<li style="font-size:0.85em;margin-bottom:2px;"><strong>${escapeHtml(w.company)} · ${escapeHtml(w.title)}</strong> — ${w.field === 'start_date' ? 'start' : 'end'} date is "${escapeHtml(w.date_value)}"</li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">Year-only dates reduce chronological precision. Update to Month YYYY format (e.g. "Jan 2020") in the Master CV for best ATS compatibility.</p>
+    </div>`;
+  }
+
+  const rewriteAuditMismatches = (cvData.metadata?.rewrite_audit_mismatches || []);
+  if (rewriteAuditMismatches.length) {
+    html += `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Rewrite content mismatch (${rewriteAuditMismatches.length}) — accepted rewrites not found in generated text:</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;list-style:none;">
+        ${rewriteAuditMismatches.map(m => `<li style="font-size:0.85em;margin-bottom:6px;"><strong>${escapeHtml(m.location || m.type)}</strong><br><span style="color:#374151;">Expected: <em>"${escapeHtml((m.expected || '').slice(0, 120))}${(m.expected || '').length > 120 ? '…' : ''}"</em></span><br><span style="color:#9ca3af;">Actual: <em>"${escapeHtml((m.actual || '').slice(0, 120))}${(m.actual || '').length > 120 ? '…' : ''}"</em></span></li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#7f1d1d;">These accepted rewrites may not have been applied. Re-generate the CV or check the rewrite review step.</p>
+    </div>`;
+  }
+
+  const overlapWarnings = (cvData.date_overlap_warnings || []);
+  if (overlapWarnings.length) {
+    html += `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Employment date overlaps detected (${overlapWarnings.length}):</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;">
+        ${overlapWarnings.map(w => `<li><strong>${escapeHtml(w.entry_a)}</strong> overlaps with <strong>${escapeHtml(w.entry_b)}</strong><br><small style="color:#92400e;">${escapeHtml(w.overlap_description)}</small></li>`).join('')}
+      </ul>
+      <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">Review these entries in the Experience tab before submitting your application.</p>
+    </div>`;
+  }
+
+  const generatedAt = cvData.metadata?.generation_date ?? null;
+  const generationRun = cvData.metadata?.generation_run ?? null;
+  html += _renderDownloadGrid(files, checks, summary, generatedAt, generationRun);
 
   if (cvData.output_dir) {
     html += `<div style="margin-top:20px;padding:12px;background:#f1f5f9;border-radius:6px;font-size:14px;color:#64748b;">
@@ -321,7 +461,11 @@ async function populateDownloadTab(cvData) {
   content.innerHTML = `${html}<p style="color:#6b7280;margin-top:16px;font-size:0.9em;">Analysing bullet persuasiveness…</p>`;
   html += await _fetchPersuasionHtml();
   html += _renderRefinementPanel();
-  html += '<div class="nav-buttons nav-end" style="margin-top:16px;"><button class="continue-btn" onclick="switchTab(\'layout\')">Open Layout Review →</button></div>';
+  html += `<div class="nav-buttons nav-end" style="margin-top:16px;">
+    <button class="continue-btn" onclick="handleStepClick('cover_letter')">
+      📩 Proceed to Cover Letter →
+    </button>
+  </div>`;
   content.innerHTML = html;
 }
 

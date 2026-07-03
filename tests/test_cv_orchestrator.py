@@ -246,6 +246,97 @@ class TestFormatPublications(unittest.TestCase):
         result = self.orc._format_publications(pubs)
         self.assertIn("formatted_citation", result[0])
 
+    def test_publication_url_prefers_doi_when_available(self):
+        pubs = [
+            {
+                "formatted": "Doe et al. (2024). Example.",
+                "doi": "10.1000/xyz123",
+                "url": "https://example.com/paper",
+            }
+        ]
+        result = self.orc._format_publications(pubs)
+        self.assertEqual(result[0]["publication_url"], "https://doi.org/10.1000/xyz123")
+
+    def test_publication_url_uses_http_url_when_no_doi(self):
+        pubs = [
+            {
+                "formatted": "Doe et al. (2024). Example.",
+                "url": "https://example.com/paper",
+            }
+        ]
+        result = self.orc._format_publications(pubs)
+        self.assertEqual(result[0]["publication_url"], "https://example.com/paper")
+
+    def test_citation_title_split_fields_populated_for_title_only_linking(self):
+        pubs = [
+            {
+                "formatted": "Doe, J. (2024) Example Study. Journal X.",
+                "title": "Example Study",
+            }
+        ]
+        result = self.orc._format_publications(pubs)
+        self.assertEqual(result[0]["citation_title"], "Example Study")
+        self.assertIn("(2024)", result[0]["citation_prefix"])
+        self.assertIn("Journal X", result[0]["citation_suffix"])
+
+    def test_software_entries_do_not_append_redundant_note_text(self):
+        pubs = [
+            {
+                "formatted": "Warnes, G. (2007). DEDiscover. Open-Source Software Library.",
+                "type": "software",
+                "title": "DEDiscover",
+                "note": "Software tool",
+            },
+            {
+                "formatted": "Warnes, G. (2005). gplots. CRAN R package.",
+                "type": "software",
+                "title": "gplots",
+                "note": "R package version 3.3.0",
+            },
+        ]
+
+        result = self.orc._format_publications(pubs)
+
+        self.assertEqual(
+            result[0]["formatted_citation"],
+            "Warnes, G. (2007). DEDiscover. Open-Source Software Library.",
+        )
+        self.assertEqual(
+            result[1]["formatted_citation"],
+            "Warnes, G. (2005). gplots. CRAN R package.",
+        )
+
+
+class TestPublicationOrdering(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_default_sort_is_recent_first(self):
+        pubs = [
+            {"key": "a", "year": "2019", "title": "A"},
+            {"key": "b", "year": "2024", "title": "B"},
+            {"key": "c", "year": "2021", "title": "C"},
+        ]
+        sorted_pubs = self.orc._sort_selected_publications(pubs, {})
+        self.assertEqual([p["key"] for p in sorted_pubs], ["b", "c", "a"])
+
+    def test_ascending_sort_order_override(self):
+        pubs = [
+            {"key": "a", "year": "2019", "title": "A"},
+            {"key": "b", "year": "2024", "title": "B"},
+            {"key": "c", "year": "2021", "title": "C"},
+        ]
+        sorted_pubs = self.orc._sort_selected_publications(
+            pubs,
+            {"publication_sort_order": "ascending"},
+        )
+        self.assertEqual([p["key"] for p in sorted_pubs], ["a", "c", "b"])
+
 
 # ---------------------------------------------------------------------------
 # apply_accepted_spell_fixes
@@ -403,8 +494,62 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
             self._selected(), self._job()
         )
         meta = result["template_metadata"]
-        for key in ("variant", "generated_date", "job_title", "company", "skills_section_title"):
+        for key in (
+            "variant",
+            "generated_date",
+            "job_title",
+            "company",
+            "skills_section_title",
+            "publications_start_new_page",
+            "skills_show_experience",
+        ):
             self.assertIn(key, meta, f"Missing metadata key: {key}")
+
+    def test_publications_start_new_page_defaults_false(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+        )
+        self.assertFalse(result["template_metadata"]["publications_start_new_page"])
+
+    def test_publications_start_new_page_true_when_customized(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            customizations={"publications_start_new_page": True},
+        )
+        self.assertTrue(result["template_metadata"]["publications_start_new_page"])
+
+    def test_skills_show_experience_defaults_to_individual(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+        )
+        self.assertEqual(result["template_metadata"]["skills_show_experience"], "individual")
+
+    def test_skills_show_experience_always(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            customizations={"skills_show_experience": "always"},
+        )
+        self.assertEqual(result["template_metadata"]["skills_show_experience"], "always")
+
+    def test_skills_show_experience_never(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            customizations={"skills_show_experience": "never"},
+        )
+        self.assertEqual(result["template_metadata"]["skills_show_experience"], "never")
+
+    def test_skills_show_experience_rejects_invalid_value(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+            customizations={"skills_show_experience": "bogus"},
+        )
+        self.assertEqual(result["template_metadata"]["skills_show_experience"], "individual")
 
     def test_template_metadata_skills_section_title_default(self):
         result = self.orc._prepare_cv_data_for_template(
@@ -425,6 +570,35 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
             self._selected(), self._job()
         )
         self.assertEqual(result["template_metadata"]["company"], "Acme Corp")
+
+    def test_applicant_tagline_uses_personal_info_headline(self):
+        sel = self._selected()
+        sel["personal_info"]["headline"] = "Principal Biostatistician and ML Leader"
+        result = self.orc._prepare_cv_data_for_template(sel, self._job())
+        self.assertEqual(
+            result["template_metadata"]["applicant_tagline"],
+            "Principal Biostatistician and ML Leader",
+        )
+
+    def test_applicant_tagline_does_not_fallback_to_job_title(self):
+        result = self.orc._prepare_cv_data_for_template(
+            self._selected(),
+            self._job(),
+        )
+        self.assertEqual(result["template_metadata"]["applicant_tagline"], "")
+
+    def test_applicant_tagline_prefers_customization_override(self):
+        sel = self._selected()
+        sel["personal_info"]["headline"] = "Master CV Headline"
+        result = self.orc._prepare_cv_data_for_template(
+            sel,
+            self._job(),
+            customizations={"tagline_override": "User Confirmed Tagline"},
+        )
+        self.assertEqual(
+            result["template_metadata"]["applicant_tagline"],
+            "User Confirmed Tagline",
+        )
 
     def test_empty_summary_gets_default(self):
         sel = self._selected({"summary": ""})
@@ -829,7 +1003,8 @@ class TestConvertHtmlToPdf(unittest.TestCase):
         html_path.write_text("<html><body>hi</body></html>", encoding="utf-8")
 
         def _fake_run(command, **_kwargs):
-            Path(command[4]).write_bytes(b"%PDF-1.4\n%%EOF\n")
+            # command: [python, wp_render.py, html_file, pdf_output, fonts_dir?]
+            Path(command[3]).write_bytes(b"%PDF-1.4\n%%EOF\n")
             return MagicMock(returncode=0, stderr=b"")
 
         with patch(
@@ -861,8 +1036,13 @@ class TestConvertHtmlToPdf(unittest.TestCase):
                 Path(pdf_target).write_bytes(b"%PDF-1.4\n%%EOF\n")
                 return MagicMock(returncode=0)
 
-            if len(command) >= 5 and command[0] == sys.executable and command[1] == "-c":
-                Path(command[4]).write_bytes(b"%PDF-1.4\n%%EOF\n")
+            # WeasyPrint: [python, wp_render.py, html_file, pdf_output, fonts_dir?]
+            if (
+                len(command) >= 4
+                and command[0] == sys.executable
+                and 'wp_render' in command[1]
+            ):
+                Path(command[3]).write_bytes(b"%PDF-1.4\n%%EOF\n")
                 return MagicMock(returncode=0, stderr=b"")
 
             raise AssertionError(f"Unexpected subprocess command: {command!r}")
@@ -1839,10 +2019,10 @@ class TestCheckPersuasion(unittest.TestCase):
         result = self.orc.check_persuasion([])
 
         self.assertEqual(result["findings"], [])
-        self.assertEqual(
-            result["summary"],
-            {"total_bullets": 0, "flagged": 0, "strong_count": 0},
-        )
+        self.assertEqual(result["summary"]["total_bullets"], 0)
+        self.assertEqual(result["summary"]["flagged"], 0)
+        self.assertEqual(result["summary"]["strong_count"], 0)
+        self.assertIsNone(result["summary"]["narrative_thread_advisory"])
 
     def test_strong_quantified_bullet_counts_as_strong(self):
         experiences = [
@@ -1863,6 +2043,100 @@ class TestCheckPersuasion(unittest.TestCase):
         self.assertEqual(result["summary"]["total_bullets"], 1)
         self.assertEqual(result["summary"]["flagged"], 0)
         self.assertEqual(result["summary"]["strong_count"], 1)
+
+
+class TestCvBodyPageCap(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.orc = _make_orchestrator(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_cap_cv_body_to_pages_reduces_character_estimate(self):
+        summary = " ".join(["summary"] * 220)
+        experiences = [
+            {
+                "id": f"exp_{i}",
+                "title": "Senior Scientist",
+                "company": "Acme",
+                "start_date": "2019",
+                "end_date": "Present",
+                "ordered_achievements": [
+                    {"text": " ".join(["impact"] * 45)} for _ in range(5)
+                ],
+            }
+            for i in range(6)
+        ]
+        achievements = [{"text": " ".join(["achievement"] * 30)} for _ in range(8)]
+        skills = [{"name": f"Skill {i}"} for i in range(30)]
+
+        before = self.orc._estimate_cv_body_chars(summary, experiences, achievements, skills)
+        capped = self.orc._cap_cv_body_to_pages(
+            summary,
+            experiences,
+            achievements,
+            skills,
+            max_pages=2,
+            chars_per_page=800,
+        )
+        after = self.orc._estimate_cv_body_chars(*capped)
+
+        self.assertGreater(before, 1600)
+        self.assertLessEqual(after, before)
+        self.assertLess(after, int(before * 0.6))
+
+    def test_select_content_hybrid_applies_max_cv_pages_cap(self):
+        self.orc.master_data["experience"] = [
+            {
+                "id": f"exp_{i}",
+                "title": "Data Scientist",
+                "company": "Acme",
+                "start_date": "2018",
+                "end_date": "Present",
+                "achievements": [
+                    {"text": " ".join(["pipeline"] * 36)} for _ in range(5)
+                ],
+            }
+            for i in range(8)
+        ]
+        self.orc.master_data["selected_achievements"] = [
+            {"id": f"sa_{i}", "text": " ".join(["impact"] * 30)}
+            for i in range(8)
+        ]
+        self.orc.master_data["skills"] = [
+            {"name": f"Skill {i}", "category": "General"}
+            for i in range(40)
+        ]
+        self.orc.llm.semantic_match.return_value = 0.0
+
+        job = {
+            "ats_keywords": ["pipeline", "modeling", "statistics"],
+            "required_skills": [],
+            "must_have_requirements": [],
+            "nice_to_have_requirements": [],
+            "domain": "",
+        }
+
+        uncapped = self.orc._select_content_hybrid(job, {})
+        capped = self.orc._select_content_hybrid(job, {"max_cv_pages": 1})
+
+        uncapped_chars = self.orc._estimate_cv_body_chars(
+            uncapped["summary"],
+            uncapped["experiences"],
+            uncapped["achievements"],
+            uncapped["skills"],
+        )
+        capped_chars = self.orc._estimate_cv_body_chars(
+            capped["summary"],
+            capped["experiences"],
+            capped["achievements"],
+            capped["skills"],
+        )
+
+        self.assertLess(capped_chars, uncapped_chars)
+        self.assertLessEqual(capped_chars, 2500)
 
     def test_ordered_achievements_take_precedence_and_flag_warning_issues(
         self,
@@ -1923,6 +2197,307 @@ class TestCheckPersuasion(unittest.TestCase):
             [issue["type"] for issue in finding["issues"]],
             ["no_strong_verb", "too_short"],
         )
+
+    def test_descriptor_prefix_is_ignored_for_opening_verb_check(self):
+        experiences = [
+            {
+                "id": "exp-4",
+                "achievements": [
+                    (
+                        "Statistical Genomics: Provided expert consulting "
+                        "that reduced assay rework by 18%."
+                    ),
+                ],
+            }
+        ]
+
+        result = self.orc.check_persuasion(experiences)
+
+        self.assertEqual(result["summary"]["total_bullets"], 1)
+        self.assertEqual(result["summary"]["flagged"], 0)
+        self.assertEqual(result["summary"]["strong_count"], 1)
+        self.assertEqual(result["findings"], [])
+
+    def test_opening_word_helper_strips_short_descriptor_block(self):
+        opening = self.orc._opening_word_for_verb_check(
+            "Broadband Analyzer: Designed and deployed a scalable pipeline.",
+        )
+        self.assertEqual(opening, "Designed")
+
+    def test_expanded_strong_verbs_are_recognized(self):
+        samples = [
+            "Integrated machine learning models into production SaaS platforms.",
+            "Translated customer challenges into actionable requirements.",
+            "Founded and managed a university analytics center.",
+            "Secured more than $10 million in gifts and grants.",
+            "Taught graduate courses in statistical computing.",
+            "Conceived and drove a commercial R initiative.",
+            "Coined the name REvolution Computing.",
+            "Conducted advanced biostatistical research in oncology.",
+            "Demonstrated critical impact by improving release quality.",
+            "Provided expert consulting on experimental design.",
+            "Invented and implemented a predictive maintenance system.",
+        ]
+
+        for text in samples:
+            with self.subTest(text=text):
+                opening = self.orc._opening_word_for_verb_check(text)
+                self.assertIn(opening.lower(), self.orc._STRONG_VERBS_LOWER)
+
+    def test_repeated_verb_detection_flags_second_plus_occurrences(self):
+        """repeated_verb issue added to 2nd+ occurrences when same verb opens ≥3 bullets."""
+        experiences = [
+            {
+                'id': 'exp1',
+                'achievements': [
+                    {'text': 'Led a team of 10 engineers to deliver a 30% latency reduction.'},
+                    {'text': 'Led migration of legacy monolith to microservices, cutting deploy time by 50%.'},
+                    {'text': 'Led cross-functional initiative that saved $2M annually.'},
+                    {'text': 'Built automated CI/CD pipeline reducing release cycle from 2 weeks to 1 day.'},
+                ],
+            }
+        ]
+        result = self.orc.check_persuasion(experiences)
+        rv_findings = [
+            f for f in result['findings']
+            if any(i['type'] == 'repeated_verb' for i in f['issues'])
+        ]
+        self.assertEqual(len(rv_findings), 2, 'Expected 2nd and 3rd "Led" bullets flagged')
+        flagged_indices = {f['bullet_index'] for f in rv_findings}
+        self.assertIn(1, flagged_indices)
+        self.assertIn(2, flagged_indices)
+
+    def test_repeated_verb_not_triggered_below_threshold(self):
+        """repeated_verb is not raised when the same verb appears only twice."""
+        experiences = [
+            {
+                'id': 'exp2',
+                'achievements': [
+                    {'text': 'Built a scalable data pipeline processing 10M events per day.'},
+                    {'text': 'Built automated testing framework that reduced QA time by 40%.'},
+                ],
+            }
+        ]
+        result = self.orc.check_persuasion(experiences)
+        rv_findings = [
+            f for f in result['findings']
+            if any(i['type'] == 'repeated_verb' for i in f['issues'])
+        ]
+        self.assertEqual(rv_findings, [], 'Should not flag when verb appears only twice')
+
+
+class TestDetectYearOnlyDates(unittest.TestCase):
+    """Unit tests for CVOrchestrator._detect_year_only_dates (GAP-88)."""
+
+    def _run(self, experiences):
+        return CVOrchestrator._detect_year_only_dates(experiences)
+
+    def test_empty_list_returns_empty(self):
+        self.assertEqual(self._run([]), [])
+
+    def test_month_year_start_not_flagged(self):
+        exp = [{'company': 'Acme', 'title': 'Dev', 'start_date': 'Jan 2020', 'end_date': '2023'}]
+        result = self._run(exp)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['field'], 'end_date')
+
+    def test_year_only_start_date_flagged(self):
+        exp = [{'company': 'Acme', 'title': 'Dev', 'start_date': '2018', 'end_date': 'Present'}]
+        result = self._run(exp)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['field'], 'start_date')
+        self.assertEqual(result[0]['date_value'], '2018')
+        self.assertEqual(result[0]['company'], 'Acme')
+
+    def test_year_only_both_dates_flagged(self):
+        exp = [{'company': 'Corp', 'title': 'Lead', 'start_date': '2015', 'end_date': '2019'}]
+        result = self._run(exp)
+        self.assertEqual(len(result), 2)
+        fields = {w['field'] for w in result}
+        self.assertEqual(fields, {'start_date', 'end_date'})
+
+    def test_iso_date_not_flagged(self):
+        exp = [{'company': 'X', 'title': 'Y', 'start_date': '2020-01', 'end_date': '2022-06'}]
+        self.assertEqual(self._run(exp), [])
+
+    def test_present_not_flagged(self):
+        exp = [{'company': 'X', 'title': 'Y', 'start_date': '2021', 'end_date': 'Present'}]
+        result = self._run(exp)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['field'], 'start_date')
+
+    def test_missing_dates_not_flagged(self):
+        exp = [{'company': 'X', 'title': 'Y'}]
+        self.assertEqual(self._run(exp), [])
+
+    def test_non_dict_entry_skipped(self):
+        self.assertEqual(self._run(['not a dict']), [])
+
+
+class TestVerifyRewriteAuditAlignment(unittest.TestCase):
+    """Unit tests for CVOrchestrator._verify_rewrite_audit_alignment (GAP-27)."""
+
+    def _run(self, selected_content, rewrite_audit):
+        return CVOrchestrator._verify_rewrite_audit_alignment(selected_content, rewrite_audit)
+
+    def _summary_content(self, text):
+        return {'summary': text, 'experiences': [], 'skills': []}
+
+    def test_empty_audit_returns_empty(self):
+        self.assertEqual(self._run({'summary': 'foo'}, []), [])
+
+    def test_rejected_entry_ignored(self):
+        audit = [{'id': 'r1', 'type': 'summary', 'location': 'summary',
+                  'proposed': 'new text', 'final': None, 'outcome': 'reject'}]
+        self.assertEqual(self._run(self._summary_content('old text'), audit), [])
+
+    def test_accepted_summary_matches(self):
+        audit = [{'id': 'a1', 'type': 'summary', 'location': 'summary',
+                  'proposed': 'polished summary', 'final': None, 'outcome': 'accept'}]
+        result = self._run(self._summary_content('polished summary'), audit)
+        self.assertEqual(result, [])
+
+    def test_accepted_summary_mismatch_detected(self):
+        audit = [{'id': 'a1', 'type': 'summary', 'location': 'summary',
+                  'proposed': 'polished summary', 'final': None, 'outcome': 'accept'}]
+        result = self._run(self._summary_content('different text'), audit)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['id'], 'a1')
+        self.assertEqual(result[0]['expected'], 'polished summary')
+        self.assertEqual(result[0]['actual'], 'different text')
+
+    def test_edited_summary_uses_final(self):
+        audit = [{'id': 'e1', 'type': 'summary', 'location': 'summary',
+                  'proposed': 'original proposed', 'final': 'user edited', 'outcome': 'edit'}]
+        result = self._run(self._summary_content('user edited'), audit)
+        self.assertEqual(result, [])
+
+    def test_bullet_matches(self):
+        content = {
+            'summary': '',
+            'skills': [],
+            'experiences': [
+                {'id': 'exp_001', 'achievements': [{'text': 'Led team of 5'}, {'text': 'Shipped product'}]},
+            ],
+        }
+        audit = [{'id': 'b1', 'type': 'bullet', 'location': 'exp_001.achievements[1]',
+                  'proposed': 'Shipped product', 'final': None, 'outcome': 'accept'}]
+        self.assertEqual(self._run(content, audit), [])
+
+    def test_bullet_mismatch_detected(self):
+        content = {
+            'summary': '',
+            'skills': [],
+            'experiences': [
+                {'id': 'exp_001', 'achievements': [{'text': 'Led team'}]},
+            ],
+        }
+        audit = [{'id': 'b1', 'type': 'bullet', 'location': 'exp_001.achievements[0]',
+                  'proposed': 'Led cross-functional team of 5 engineers', 'final': None, 'outcome': 'accept'}]
+        result = self._run(content, audit)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['expected'], 'Led cross-functional team of 5 engineers')
+
+    def test_whitespace_normalised_no_mismatch(self):
+        audit = [{'id': 'a1', 'type': 'summary', 'location': 'summary',
+                  'proposed': 'polished  summary', 'final': None, 'outcome': 'accept'}]
+        result = self._run(self._summary_content('polished summary'), audit)
+        self.assertEqual(result, [])
+
+    def test_none_audit_returns_empty(self):
+        self.assertEqual(self._run({'summary': 'x'}, None), [])
+
+
+class TestAchievementDiversity(unittest.TestCase):
+    """Unit tests for CVOrchestrator achievement diversity helpers (GAP-243)."""
+
+    def _ach(self, text):
+        return {'text': text, 'id': text[:10]}
+
+    def _scored(self, texts):
+        return [(self._ach(t), float(10 - i)) for i, t in enumerate(texts)]
+
+    def test_classify_financial(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Grew sales revenue by $2M'),
+            'financial'
+        )
+
+    def test_classify_leadership(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Led team of 8 engineers'),
+            'leadership'
+        )
+
+    def test_classify_technical(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Architected microservices platform'),
+            'technical'
+        )
+
+    def test_classify_cost(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Reduced cloud costs by 40%'),
+            'cost'
+        )
+
+    def test_classify_customer(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Improved NPS score by 15 points'),
+            'customer'
+        )
+
+    def test_classify_process_fallback(self):
+        self.assertEqual(
+            CVOrchestrator._classify_achievement_impact('Streamlined onboarding process'),
+            'process'
+        )
+
+    def test_no_cap_when_fewer_than_3_types(self):
+        # Only technical and process — cap not applied
+        texts = [
+            'Built API gateway',
+            'Deployed microservices',
+            'Developed CI pipeline',
+            'Implemented feature flags',
+            'Built monitoring dashboard',
+        ]
+        result = CVOrchestrator._apply_achievement_diversity(self._scored(texts), max_ach=3)
+        self.assertEqual(len(result), 3)
+        # Should just be top-3 in order
+        self.assertEqual(result[0]['text'], texts[0])
+
+    def test_diversity_cap_applied_with_3_types(self):
+        # 4 financial + 2 leadership + 2 technical → cap at 50% = 2 per type for max_ach=4
+        texts = [
+            'Grew revenue by $1M',
+            'Grew revenue by $2M',
+            'Grew revenue by $3M',
+            'Grew revenue by $4M',
+            'Led team of 5',
+            'Led team of 10',
+            'Built system',
+            'Deployed platform',
+        ]
+        result = CVOrchestrator._apply_achievement_diversity(self._scored(texts), max_ach=4)
+        self.assertEqual(len(result), 4)
+        financial = sum(1 for a in result
+                        if CVOrchestrator._classify_achievement_impact(a['text']) == 'financial')
+        self.assertLessEqual(financial, 2)
+
+    def test_max_ach_zero_returns_empty(self):
+        result = CVOrchestrator._apply_achievement_diversity(self._scored(['Built x']), max_ach=0)
+        self.assertEqual(result, [])
+
+    def test_overflow_backfills_remaining_slots(self):
+        # 5 financial, 1 each of 3 other types → after cap, backfill with financial
+        texts = [
+            'Revenue up $1M', 'Revenue up $2M', 'Revenue up $3M',
+            'Revenue up $4M', 'Revenue up $5M',
+            'Led team', 'Built system', 'Improved NPS',
+        ]
+        result = CVOrchestrator._apply_achievement_diversity(self._scored(texts), max_ach=6)
+        self.assertEqual(len(result), 6)
 
 
 if __name__ == "__main__":

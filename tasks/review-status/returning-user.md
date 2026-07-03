@@ -8,9 +8,11 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Returning User Review Status
 
-**Last Updated:** 2026-04-22 16:30 ET
+**Last Updated:** 2026-07-01 (cycle 10 independent re-read)
 
-**Executive Summary:** Session restoration is functionally sound — job context, phase, and decisions are recovered automatically on return. Since the previous review (2026-04-20), one previously-flagged terminology defect has been corrected ("Delete" → "Move to Trash") and Bootstrap tooltips have been added to workflow step pills to partially explain navigation versus re-computation. Four medium-priority gaps remain open: no restored-decisions summary on return, the ↻ re-run icon is keyboard-inaccessible by default, abbreviated phase labels are opaque, and the header rename still uses the browser's native `prompt()`. A new low-severity finding has been added: the "Move to Trash" action in the sessions modal executes without a confirmation dialog.
+**Executive Summary (cycle 10, 2026-07-01):** Independent source-first re-read confirms all cycle-9 findings intact. Seven of nine criteria pass; two remain partial (GAP-R4, GAP-RU-DEC1). One new medium-severity observation added: tab content panels (Rewrites, Spell Check) lack an inline "Outdated" watermark when the parent step is stale after an upstream re-run — only the step pill turns amber. No regressions found against previously resolved gaps. Line-number references updated to match current codebase state.
+
+**Previous summary (cycle 9, 2026-06-30):** Independent source-first read confirms seven of nine evaluated criteria pass cleanly; two remain partial. Both partial items are unchanged from cycle 8: (1) the view-navigation vs. recomputation distinction remains hover/tooltip-only for touch and keyboard users (GAP-R4); and (2) saved decisions in individual review tabs require a tab visit to verify granular state — no per-tab count badge exists on tab labels (GAP-RU-DEC1). All previously resolved gaps (GAP-110, GAP-111, GAP-112, GAP-166, GAP-178, GAP-180, GAP-186, GAP-R2, GAP-R7, GAP-R8, GAP-R9) remain intact in the codebase as confirmed by this read. No regressions found. Line numbers corrected to current session-manager.js positions.
 
 ---
 
@@ -18,186 +20,186 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 ### US-S1: Resume With Context
 
-#### S1.1 — Restored session identifies job/application context clearly
+As a returning user, I want to resume a saved session with immediate context about where I am, so that I can continue work without reconstructing what happened earlier.
 
-✅ **Pass** — On restore, `updatePositionTitle(statusData)` (`web/session-actions.js:106`) derives the job label from `status.position_name`, `status.job_analysis`, or raw `job_description_text` and writes it to `#position-title` (`web/index.html:70`) and `document.title`. The session-switcher button label is set to `{positionName} · {phase}` by `buildSessionSwitcherLabel()` (`web/session-manager.js:70`). The `#header-session-name` sub-header reads "Current session: {label}" (`web/session-switcher-ui.js:126-129`). The conversation history is replayed from `/api/history` (`web/session-manager.js:301-316`), providing narrative context.
+---
 
-#### S1.2 — UI indicates current stage and available next actions
+#### US-S1.1 — Job identity is surfaced on resume — ✅ Pass
 
-✅ **Pass** — `updateWorkflowSteps(status)` (`web/workflow-steps.js:595`) marks the active step with `active` and completed steps with `completed`. `_restoreTabForPhase()` (`web/session-manager.js:210-223`) switches to the correct viewer tab based on the restored phase. `updateActionButtons` is called from `updateWorkflowSteps` to show the right primary action button for the current step.
+On restore, `restoreBackendState()` (`session-manager.js:622`) calls `/api/status` and then `updatePositionTitle(statusData)` (`session-manager.js:704`). The position bar renders the role into `#position-title` (`index.html:80`) and company/date into `#position-company` (`index.html:85`, populated via `session-actions.js:164–171`). The session-switcher header chip is built by `buildSessionSwitcherLabel(status)` (`session-manager.js:71–78`) combining `positionName · phase`, so the returning user sees role name immediately on reload.
 
-#### S1.3 — Previously completed work is visible or discoverable without hunting
+When restoring from a saved file via `loadSessionFile()`, a confirmation message is appended to conversation: `"✅ Session restored: {position_name} ({phase_label})"` (`session-manager.js:832`), where phase labels are sourced from `SESSION_PHASE_LABELS` in `utils.js`.
 
-⚠️ **Partial** — `_hydrateStatusDerivedState()` (`web/session-manager.js:351-395`) rehydrates `window._savedDecisions` with experience, skill, achievement, and publication decisions from `/api/status`. For `rewrite_review` phase, rewrites are pre-fetched and cached in the panel (`web/session-manager.js:646-659`). Tab data for analysis, customizations, and CV is restored from `stateManager.setTabData()` calls in `_hydrateStatusTabState()`. However, **no summary of restored decisions is surfaced in the UI**. A returning user must navigate to each tab (exp-review, skills-review, rewrite, etc.) individually to confirm their prior decisions are intact. There is no "welcome back" screen or restored-decisions overview.
+---
 
-**Failure mode guarded against:** "Generic blank or default view" — mitigated: `ensureSessionContext()` shows the Sessions landing panel only when no `?session=` param is in the URL; otherwise restoration proceeds automatically. "Prior decisions not surfaced clearly" — this failure mode is only partially addressed.
+#### US-S1.2 — Current workflow stage is visible on resume — ✅ Pass
 
-**Acceptance criteria:**
-- "Resumed session communicates stage and context immediately" — ✅ position title + workflow bar + tab switch.
-- "User can tell what is completed vs. what remains" — ⚠️ The workflow bar shows `completed` vs `active` vs unlabelled future steps, but the abbreviated phase labels (`SESSION_PHASE_LABELS_SHORT` e.g. "Custom", "Spell") may not be self-explanatory to occasional users (`web/utils.js:274-285`).
+`_resolveRestoredPhase(statusData)` (`session-manager.js:430–451`) applies two defensive guards before setting phase, then `stateManager.setPhase(restoredPhase)` (`state-manager.js:316–322`) fires all `onPhaseChange` listeners. `updateWorkflowSteps(status)` (`workflow-steps.js:637–774`) sets `active`, `completed`, and `clickable` CSS classes on all 12 step pills with the correct current step highlighted.
+
+`_restoreTabForPhase(sessionPhase)` (`session-manager.js:409–428`) maps each backend phase to the correct viewer tab via `phaseTabMap` and calls `switchTab()`. `updateActionButtons(activeStep)` (`workflow-steps.js:770`) restores the primary action button set. Both in-memory restores and disk-file loads call this path.
+
+---
+
+#### US-S1.3 — Previously completed work remains visible/discoverable — ✅ Pass
+
+**GAP-110 RESOLVED (2026-06-29):** `_appendRestoredDecisionsSummary()` (`session-manager.js:469–488`) is now called from `restoreSession()` when `serverHasData` is true (`session-manager.js:541–542`). It appends a chat system message in the form `"📋 Restored at stage: {phaseLabel} — {expCount} experiences recommended, {skillCount} skills recommended, ATS score N%."` using data already in stateManager from the restore flow — no additional fetch needed.
+
+`_hydrateStatusTabState(statusData)` (`session-manager.js:605–620`) still restores `analysis`, `customizations`, and `cv` tab data. Completed steps receive `class="completed clickable"` (`workflow-steps.js:723–725`), making all prior results reachable via step-click. Conversation history is replayed from `/api/history` (`session-manager.js:504–525`).
+
+Residual minor gap: no per-tab decision count badge (e.g., "4 of 8 accepted" on the Rewrites tab label). Individual tab visits are still required to see decision-level granularity.
 
 ---
 
 ### US-S2: Safe Re-entry and Backtracking
 
-#### S2.1 — Back-navigation behavior is explicit about downstream consequences
+As a returning user, I want to revisit earlier stages without fear of accidental data loss, so that I can revise decisions confidently after time away.
 
-⚠️ **Partial** — Two distinct mechanisms exist:
+---
 
-1. **Step-click (view navigation):** `handleStepClick(step)` (`web/workflow-steps.js:712`) simply calls `switchTab()` without changing backend phase and without showing any warning. This is technically safe (no state change). Bootstrap tooltips via `_getStepTooltip()` and `_updateViewingIndicator()` (`web/workflow-steps.js:195-253`) now show `'Click to view'` (on completed non-active steps) and `'Active step — click to return'` (on browsing-away steps). However, the tooltip is hover-only and provides no persistent on-screen label; keyboard-only and touch users receive no explanation.
-2. **↻ Re-run (LLM recomputation):** `confirmReRunPhase(step)` (`web/workflow-steps.js:182`) calls `_showReRunConfirmModal(step, 'rerun', ...)` which lists downstream stages that have been completed and states "All existing approvals and rewrites are preserved as context." This path is correctly guarded.
+#### US-S2.1 — Back-navigation warns about downstream consequences — ⚠️ Partial
 
-The modal is **not** triggered for step-click back-navigation, only for the ↻ button. The gap is that users clicking a completed step to "go back" receive only a transient hover tooltip, not a persistent explanation that this is view-only.
+Two distinct navigation mechanisms exist:
 
-#### S2.2 — Re-entry into earlier phases preserves prior context where intended
+1. **Step-click (view navigation):** `handleStepClick(step)` (`workflow-steps.js:813–862`) calls `switchTab()` without changing backend phase and without any warning modal. Tooltips via `_getStepTooltip()` (`workflow-steps.js:199–207`) show "Click to view" vs. "Click ↻ to rerun from here", but only on hover — not persistently visible for keyboard or touch users.
 
-✅ **Pass** — `backToPhase()` (`web/workflow-steps.js:88`) appends the message "↻ Navigating back to {step}. Prior decisions and approvals are preserved." The `_showReRunConfirmModal` note says the same ("All existing approvals and rewrites are preserved as context"). Backend `/api/back-to-phase` and `/api/re-run-phase` endpoints implement the preservation guarantee.
+2. **↻ Re-run (LLM recomputation):** `confirmReRunPhase(step)` (`workflow-steps.js:190–192`) calls `_showReRunConfirmModal(step, 'rerun', onConfirm)` (`workflow-steps.js:138–188`), which renders a modal listing all downstream completed stages by name and states "All existing approvals and rewrites are preserved as context." The modal has a focus trap (`trapFocus('rerun-confirm-overlay')`, line 180) and Escape-key close.
 
-#### S2.3 — UI distinguishes between navigating back and rerunning/recomputing
+The confirmation modal fires only for the ↻ recomputation path. Step-click view navigation has no modal (appropriate — no data changes occur), but the distinction between the two remains hover-dependent for non-mouse users.
 
-⚠️ **Partial (improved)** — The ↻ icon is `opacity:0` by default, injected via `style="…opacity:0…"` inline on the element (`web/workflow-steps.js:668`) with the CSS `.step.completed:hover .step-rerun { opacity: 1 !important; }` applied at runtime (`web/workflow-steps.js:687`). Only on hover does ↻ appear. Keyboard-only and touch users cannot discover it. The element carries `title="Re-run ${step} with updated inputs"` (standard HTML title, not a Bootstrap tooltip).
+---
 
-Since the previous review, Bootstrap tooltips via `_getStepTooltip()` + `_updateViewingIndicator()` (`web/workflow-steps.js:195-253`) now show `'Click ↻ to rerun from here'` when the user is *currently viewing* a completed step, and `'Click to view'` on other completed steps. This is an improvement but still hover-dependent.
+#### US-S2.2 — Re-entry into earlier phases preserves prior context — ✅ Pass
 
-**Failure modes:**
-- "Users unintentionally overwriting downstream work" — ✅ mitigated: step-click does not change phase; re-run requires ↻ + confirmation dialog.
-- "Re-run behavior visually indistinguishable from navigation" — ⚠️ partially addressed: Bootstrap tooltip on the step pill now distinguishes 'Click to view' from 'Click ↻ to rerun from here', but this distinction remains hover-only and invisible to keyboard/touch users.
+`backToPhase(step, feedback)` (`workflow-steps.js:98–128`) calls `/api/back-to-phase` and appends to conversation: "↻ Navigating back to {step}. Prior decisions and approvals are preserved." The backend `back_to_phase()` (`conversation_manager.py:1435–1468`) preserves all of: `approved_rewrites`, `experience_decisions`, `skill_decisions`, `customizations`, conversation history, and generated files. It sets `state['iterating'] = True` and `state['stale_steps']` to signal which downstream results may be outdated without destroying them.
 
-**Acceptance criteria:**
-- "Returning users receive sufficient warning before downstream state changes" — ✅ for re-run path.
-- "Distinction between re-entry and recomputation is understandable" — ⚠️ implicit only; requires hover discovery.
+`_build_downstream_context()` (`conversation_manager.py:1392–1433`) builds a structured summary of prior accepted rewrites, experience/skill decisions, and spell-check corrections that is injected into re-run LLM prompts, so re-runs improve on prior work rather than starting blind.
+
+---
+
+#### US-S2.3 — Re-run is visually distinguishable from simple navigation — ⚠️ Partial
+
+Three mechanisms are in place:
+
+1. **Step bar ↻ button:** Completed steps in `RE_RUN_STEPS = {'analysis', 'customizations', 'rewrite', 'spell'}` render a `↻` native `<button>` with `opacity:0.35` at rest (`workflow-steps.js:730–733`, GAP-180 fix applied 2026-06-22). The button becomes fully opaque on CSS `:hover` and `:focus-visible` (`workflow-steps.js:762`). It carries `aria-label="Re-run {stepLabel}"` and, as a `<button>`, is Tab-accessible; keyboard focus brings it to full opacity via `:focus-visible`.
+
+2. **Confirmation dialog titles:** `_showReRunConfirmModal` uses distinct heading text: "↻ Re-run {stepLabel}?" vs. "← Navigate back to {stepLabel}?" (`workflow-steps.js:147–149`).
+
+3. **Iterating badge:** When `status.iterating && reentryStep === activeStep`, the active step pill shows `<span class="step-inline-badge">↻ Refining</span>` (`workflow-steps.js:720–721`), providing a persistent visual indicator after re-entry begins.
+
+Remaining gap: No persistent on-screen text (outside hover tooltip) distinguishes "click to view" from "click ↻ to re-run" for touch and keyboard users before interaction.
 
 ---
 
 ### US-S3: Trustworthy Session Continuity
 
-#### S3.1 — Saved decisions can be re-observed when their stage is revisited
+As a returning user, I want to trust that my accepted rewrites, customisations, and review decisions remain intact, so that I do not need to repeat work after an interruption.
 
-⚠️ **Partial** — State restoration is real: `_hydrateStatusDerivedState()` (session-manager.js:351) reloads all decision maps. For `rewrite_review` phase, the rewrite panel is pre-populated from `/api/rewrites` (session-manager.js:646-659). For customization tabs, `_hydrateStatusTabState()` sets `stateManager.setTabData('customizations', ...)` which is read by review table rendering. However, whether each tab correctly re-renders prior selections (e.g. checked/unchecked states in the experience table) on revisit depends on tab-specific rendering code outside the files reviewed here. The session-manager restore confirms data is present, but legibility within each tab is unverified from this set of source files alone.
+---
 
-#### S3.2 — Generated/previewed outputs remain logically connected to current state
+#### US-S3.1 — Saved decisions can be re-observed when their stage is revisited — ✅ Pass
 
-✅ **Pass** — The layout freshness system is fully implemented. `getLayoutFreshnessFromState()` (`web/state-manager.js:100-144`) computes `isStale` and `isCritical` from `contentRevision` vs. `lastPreviewContentRevision`/`lastFinalContentRevision`. `applyLayoutFreshnessNavigationState()` (`web/workflow-steps.js:50-84`) shows "Outdated" badges on the Layout step and downstream download/finalise tabs. CSS in `web/styles.css:118-119,153-154,487-489` styles the stale/critical states distinctively.
+`_hydrateStatusDerivedState()` (`session-manager.js:559–603`) restores the full decision payload to `window._savedDecisions` (all experience, skill, achievement, publication decisions; `extra_skills`; `summary_focus_override`; achievement edits; intake; post-analysis Q&A). These are applied correctly when revisiting their respective review tabs.
 
-#### S3.3 — Session restoration does not mislead about which version is current
+**GAP-166 — CONFIRMED IMPLEMENTED (same-device page reload):**
 
-✅ **Pass** — `_resolveRestoredPhase()` (`web/session-manager.js:225-249`) has two defensive guards:
-- If `job_analysis` is absent, forces `PHASES.INIT` regardless of stored phase.
-- If phase is `CUSTOMIZATION` or `REWRITE_REVIEW` but customizations are missing (e.g. server restarted mid-workflow), falls back to `PHASES.JOB_ANALYSIS`.
-Restore messages include the session name and phase: "✅ Session restored: {positionName} ({phase})" (`web/session-manager.js:666`).
+- `_persistDecisions()` (`rewrite-review.js:43–47`): writes `rewriteDecisions` to `localStorage` under key `rw_decisions_{sessionId}`. Called at `applyRewriteAction()` and `saveRewriteEdit()`.
+- `_restoreDecisions()` (`rewrite-review.js:52–80`): reads from `localStorage` and merges into `rewriteDecisions` first; if no entry found, falls back to `_backendRewriteAudit` for cold-restore (see GAP-186 below).
+- `_clearPersistedDecisions()` (`rewrite-review.js:82–86`): removes the key from `localStorage`. Called at `submitRewriteDecisions()`.
 
-**Acceptance criteria:**
-- "Previously saved work is recoverable and legible on return" — ⚠️ Recoverable: yes. Legible: depends on per-tab rendering (partially verified).
-- "Current vs. earlier outputs distinguishable when multiple passes occurred" — ✅ stale/critical badge system covers this.
+**GAP-186 — CONFIRMED IMPLEMENTED (2026-06-29, cold-restore):**
+On cold restore (cleared storage, different device, private/incognito window, or >24h elapsed), `_restoreDecisions()` now falls back to `_backendRewriteAudit` (populated at `rewrite-review.js:102` from `/api/rewrites` response) and seeds `rewriteDecisions` from `entry.outcome` and `entry.final` fields (`rewrite-review.js:64–79`). The backend `state['rewrite_audit']` carries the authoritative record of submitted decisions.
+
+**GAP-178 — CONFIRMED IMPLEMENTED:** `aria-pressed` state is set on accept/edit/reject buttons in the rewrite panel at render time (`false`) and updated to `true` on the active button in `applyRewriteAction()` and `saveRewriteEdit()`.
+
+---
+
+#### US-S3.2 — Generated/previewed outputs remain logically connected to current session state — ✅ Pass
+
+`getLayoutFreshnessFromState(generationState)` (`state-manager.js:120–178`) computes `isStale` and `isCritical` by comparing `contentRevision` against `lastPreviewContentRevision` and `lastFinalContentRevision`. It produces human-readable labels: "Layout current" (fresh), "Layout outdated" (amber), "Files outdated" (critical/red).
+
+On resume, `restoreBackendState()` (`session-manager.js:622–730`) fetches `/api/cv/generation-state` and restores all generation state fields including revision counters, timestamps, and phase. The freshness chip (`index.html:100`) reflects the correct state immediately on page reload. `applyLayoutFreshnessNavigationState()` (`workflow-steps.js:60–93`) injects "Outdated" badges onto the Layout Review step pill and the Download tab label when final files are stale and critical.
+
+---
+
+#### US-S3.3 — Session restoration does not mislead about what version is current — ✅ Pass
+
+`_resolveRestoredPhase(statusData)` (`session-manager.js:430–451`) applies two guards: (1) if `!statusData.job_analysis`, forces `PHASES.INIT` regardless of persisted phase; (2) if `phase` is `CUSTOMIZATION` or `REWRITE_REVIEW` but `!statusData.customizations`, falls back to `PHASES.JOB_ANALYSIS`. These prevent the UI from falsely representing that work completed by the backend is still available.
+
+`status.stale_steps` from `back_to_phase()` (`conversation_manager.py:1457`) is rendered as amber `.stale` pills on the step bar (`workflow-steps.js:707, 738`), with screen-reader text "(stale — results may be outdated)" (`workflow-steps.js:745–749`). Conversation history is always restored from the server (`session-manager.js:504–525`), not from localStorage, so the narrative is authoritative.
+
+**GAP-112 — CONFIRMED IMPLEMENTED (2026-06-29):** `SESSION_PHASE_LABELS_SHORT` in `utils.js` now maps: `init` → "Setup", `customization` → "Customising", `rewrite_review` → "Rewrites", `spell_check` → "Spell Check", `refinement` → "Finalise". The previously misleading labels "Custom" and "Done" are removed.
 
 ---
 
 ## Generated Materials Evaluation
 
-The returning user persona does not directly evaluate generated CV files; the relevant questions are whether a returning user can find their previous outputs and whether those outputs are marked as current or outdated. The layout freshness system (US-S3.2 above) addresses this. No additional generated-materials gaps identified that are specific to this persona.
+No generated material artifacts (CV PDFs, DOCX files) are evaluated in this persona review. The persona scope is application session continuity, not output quality. Freshness state of generated files is addressed under US-S3.2.
 
 ---
 
-## Terminology Clarity
+## Cycle 10 New Observation (2026-07-01)
 
-| Term | Location | Assessment |
-|------|----------|------------|
-| "Move to Trash" button in sessions modal | `web/session-switcher-ui.js:85` | ✅ Fixed (updated from "Delete" since prior review) — label now reads "Move to Trash"; `title` attribute also says "Move session to Trash". The reversible soft-delete behavior is now accurately communicated. |
-| "Done" as phase label | `web/utils.js:283` (`SESSION_PHASE_LABELS_SHORT`) | ⚠️ Misleading — `refinement` maps to "Done" in the compact session switcher, but a session in `refinement` phase is actively being refined, not necessarily complete. |
-| "Custom" as phase label | `web/utils.js:277` | ⚠️ Ambiguous abbreviation — "Custom" for `customization` phase is compact but non-obvious to returning users. |
-| "↻" re-run icon | `web/workflow-steps.js:672-676` | ⚠️ Hidden by default — discoverable only via hover; not labelled. |
-| "Takeover" | `web/session-switcher-ui.js:180-183` | ✅ Clear — ownership conflict dialog explains the action. |
-| "Current tab" / "Owned by another tab" / "Unclaimed" | `web/session-manager.js:82-97` | ✅ Clear ownership terminology. |
-| `promptRenameCurrentSession()` uses `prompt()` | `web/session-manager.js:737` | ⚠️ Browser `prompt()` can be silently suppressed by "Prevent this page from creating additional dialogs" — inconsistent with the custom `confirmDialog()` used elsewhere. |
-| "Move to Trash" in sessions modal has no confirmation | `web/session-switcher-ui.js:317-332` | ⚠️ `_deleteSessionFromModal()` calls `fetch('/api/delete-session', …)` directly with no `confirmDialog()`. The action is reversible via Trash, but users receive no in-app confirmation before the session disappears from the list. |
+### GAP-S3-A (MEDIUM) — Tab content panels lack inline "Outdated" watermark when step is stale
+
+When an upstream phase is re-run, the backend sets `stale_steps` which causes the downstream step pill to turn amber (`.stale` class, amber background `#fffbeb`). However, the tab content panels for those stale steps (notably Rewrites and Spell Check) render without any inline notice that their displayed content is from a prior iteration. Once the user clicks the stale step pill and lands on the tab, the data is displayed without a "Outdated — re-run needed" banner or watermark. The workflow step pill's amber colour is visible in the nav bar while viewing the tab, which provides _some_ signal, but there is no in-context callout within the panel itself.
+
+This is distinct from the Layout/Files freshness handling (US-S3.2, PASS) where `applyLayoutFreshnessNavigationState()` injects "Outdated" badges on both the pill and the Layout tab label. That pattern is not replicated for earlier workflow steps.
+
+> Proposed story: "As a returning user who re-ran Analysis, I want the Rewrites tab content to carry an inline banner noting that these rewrites are based on the previous customisation run, so I know to re-run Rewrites before treating them as current."
 
 ---
 
 ## Additional Story Gaps / Proposed Story Items
 
-**GAP-R1 (HIGH) — No restored-decisions summary on return**
-After session restore, there is no human-readable summary of what was recovered (e.g. "4 experiences selected, 12 skills, 7 rewrites approved"). The user must navigate to each tab individually to verify their prior work.
-> Proposed story: "As a returning user, I want a brief summary of my restored session decisions so that I can quickly verify my prior work is intact before continuing."
+### GAP-R4 (MEDIUM) — Step-click vs. ↻ distinction is tooltip-only for touch/keyboard users
 
-**GAP-R2 (RESOLVED ✅) — "Delete" label corrected to "Move to Trash"**
-Previously flagged as HIGH. The button at `web/session-switcher-ui.js:85` was relabelled from "Delete" to "Move to Trash" since the 2026-04-20 review. The `title` attribute also reads "Move session to Trash". The Trash view with Restore and Delete Forever actions provides the full recovery path. No further action needed on this specific gap.
+`handleStepClick()` (`workflow-steps.js:813`) switches view without a modal (correct — no data changes). Tooltips via `_getStepTooltip()` (`workflow-steps.js:199`) distinguish "Click to view" from "Click ↻ to rerun from here", but only on hover. No persistent on-screen text differentiates view navigation from LLM recomputation for touch or keyboard-primary users before interaction.
 
-**GAP-R2b (LOW) — "Move to Trash" executes without confirmation**
-The `_deleteSessionFromModal()` function (`web/session-switcher-ui.js:317`) calls the API directly with no `confirmDialog()`. While the action is reversible (session goes to Trash), a click on the red "Move to Trash" button immediately removes the session from the list with no "Are you sure?" step. Compare: "Delete Forever" (`web/session-switcher-ui.js:454`) and "Empty Trash" (`web/session-switcher-ui.js:471`) both use `confirmDialog()` before proceeding.
-> Proposed fix: Add a `confirmDialog('Move this session to Trash? You can restore it from the Trash view.')` before the API call in `_deleteSessionFromModal()`.
-
-**GAP-R3 (MEDIUM) — ↻ re-run icon is invisible until hover; not keyboard-accessible**
-The ↻ re-run button is `opacity:0` by default and reveals only on hover (`web/workflow-steps.js:686-691`). Keyboard and touch users cannot discover it. Returning users who want to re-run a stage cannot find the action without prior knowledge.
-> Proposed story: "As a returning user, I want re-run actions on completed steps to be persistently visible (or discoverable via keyboard) so that I can re-run a stage without needing to know to hover."
-
-**GAP-R4 (MEDIUM, partially addressed) — Step-click vs. ↻ distinction now conveyed via hover tooltip only**
-`handleStepClick` (`web/workflow-steps.js:712`) switches the view tab without showing any modal or banner. Since the 2026-04-20 review, Bootstrap tooltips via `_getStepTooltip()` / `_updateViewingIndicator()` now show `'Click to view'` and `'Click ↻ to rerun from here'` on completed step pills. This is an improvement, but the tooltip is hover-only — keyboard and touch users still receive no explanation, and there is no persistent on-screen label differentiating the two actions.
-> Remaining gap: "As a returning user who uses a keyboard or touch device, I want the distinction between view-navigation and re-run to be discoverable without hover so that I can find the re-run action without prior knowledge."
-
-**GAP-R5 (MEDIUM) — Abbreviated phase labels may be opaque to returning users**
-`SESSION_PHASE_LABELS_SHORT` (`web/utils.js:274-285`) maps `refinement` → "Done" (misleading if work is ongoing) and `customization` → "Custom" (non-obvious). These labels appear in the session switcher header and the sessions modal.
-> Proposed story: "As a returning user, I want session phase labels in the session switcher to be human-readable so that I can immediately understand where a prior session was left off."
-
-**GAP-R6 (LOW) — No session duplicate/copy action**
-The sessions modal offers Load, Rename, and Move to Trash, but no Duplicate. A returning user who wants to try a different approach cannot easily create a copy of an existing session.
-> Proposed story: "As a returning user, I want to duplicate an existing session so that I can explore an alternative customization without risking my prior decisions."
-
-**GAP-R7 (LOW) — Session rename uses browser `prompt()` rather than in-app modal**
-`promptRenameCurrentSession()` (`web/session-manager.js:735`) uses `window.prompt()` (`web/session-manager.js:737`), which browsers can block. The sessions modal already provides inline rename (`web/session-switcher-ui.js:294-315`), but the header rename button ✏️ (visible next to the position title bar) takes a different (fragile) path.
-> Proposed fix: Replace `promptRenameCurrentSession()` with an in-app modal consistent with `confirmDialog()`.
+> Proposed story: "As a returning user accessing the app on a tablet or by keyboard, I want re-run actions to be permanently discoverable so I can trigger a re-run without first hovering over a step."
 
 ---
 
-**Reviewed against:**
-- `web/index.html`
-- `web/app.js`
-- `web/ui-core.js`
-- `web/state-manager.js`
-- `web/styles.css`
-- `web/session-manager.js`
-- `web/session-switcher-ui.js`
-- `web/session-actions.js`
-- `web/workflow-steps.js`
-- `web/job-input.js`
-- `web/utils.js` (SESSION_PHASE_LABELS, SESSION_PHASE_LABELS_SHORT)
-- `scripts/web_app.py` (endpoint contracts)
-- `scripts/utils/conversation_manager.py` (Phase enum, state keys)
-- `tasks/user-story-returning-user.md`
-- `tasks/current-implemented-workflow.md`
+### GAP-RU-DEC1 (LOW) — No per-tab decision count badges on tab labels
+
+After session restore, the returning user receives a summary message (GAP-110 resolved) with aggregate experience/skill counts. However, within individual review tabs (exp-review, skills-review, rewrite, ach-editor, publications-review), the tab labels carry no count badge (e.g., "7 Accepted" or "3/8") to convey completeness at a glance. The user must open each tab to verify the granular state of prior decisions.
 
 ---
 
-| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-|-------|---------|-----------|--------|------------|-------|
-| US-S1.1 (job context on restore) | ✅ | | | | |
-| US-S1.2 (current stage + next actions) | ✅ | | | | |
-| US-S1.3 (completed work discoverable) | | ⚠️ | | | |
-| US-S2.1 (back-nav explains consequences) | | ⚠️ | | | |
-| US-S2.2 (re-entry preserves prior context) | ✅ | | | | |
-| US-S2.3 (nav vs. recompute distinguishable) | | ⚠️ | | | |
-| US-S3.1 (decisions re-observable) | | ⚠️ | | | |
-| US-S3.2 (outputs connected to state) | ✅ | | | | |
-| US-S3.3 (no misleading restoration) | ✅ | | | | |
+## Previously Resolved Gaps (for continuity reference)
 
-**Tally:** 5 Pass · 4 Partial · 0 Fail · 0 Not Implemented · 0 N/A
+- **GAP-R1 (RESOLVED 2026-06-29, GAP-110)** — `_appendRestoredDecisionsSummary()` (`session-manager.js:469–488`) is called after restore when `serverHasData=true`, appending a chat message with stage label, recommended experience count, recommended skill count, and ATS score.
+- **GAP-R2 (RESOLVED)** — "Delete" button relabelled to "Move to Trash"; full Trash/Restore/Delete-Forever flow implemented.
+- **GAP-R2b (RESOLVED 2026-06-29, GAP-111)** — `_deleteSessionFromModal()` now guards with `confirmDialog()` before calling `/api/delete-session`, matching the pattern used by Delete Forever and Empty Trash.
+- **GAP-R3 (RESOLVED 2026-06-22, GAP-180)** — ↻ re-run button opacity changed from 0 (fully hidden) to 0.35 (visible at rest). Button is a native `<button>` and is Tab-keyboard-reachable; `:focus-visible` CSS brings it to full opacity.
+- **GAP-R5 (RESOLVED 2026-06-29, GAP-112)** — `SESSION_PHASE_LABELS_SHORT` updated: "Custom" → "Customising", "Done" → "Finalise", "Init" → "Setup", "Spell" → "Spell Check". Opaque and misleading labels removed.
+- **GAP-R7 (RESOLVED)** — `promptRenameCurrentSession()` rewrote header rename to inline `<input>` widget with ✓/✕ buttons; `window.prompt()` removed; errors route to `showToast()`.
+- **GAP-R8 (RESOLVED)** — `final_generation` phase added to both `SESSION_PHASE_LABELS` and `SESSION_PHASE_LABELS_SHORT` in `utils.js`.
+- **GAP-R9 (RESOLVED 2026-06-29)** — Multiple `alert()` calls in session-switcher replaced by `confirmDialog()` / `showToast()`.
+- **GAP-166 (RESOLVED for same-device reloads)** — `_persistDecisions()`, `_restoreDecisions()`, and `_clearPersistedDecisions()` are confirmed implemented and correctly wired in `web/rewrite-review.js` (lines 43–86, 102, 208).
+- **GAP-RU-NEW1 / GAP-186 (RESOLVED 2026-06-29)** — Cold-restore rewrite decisions now seed from backend `rewrite_audit` when localStorage has no entry (`rewrite-review.js:64–79`). Cross-device / incognito restore now works.
+- **GAP-178 (RESOLVED 2026-06-22)** — `aria-pressed` state added to accept/edit/reject buttons in rewrite review panel.
 
 ---
+
+**Reviewed against (cycle 10, 2026-07-01):** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-manager.js, web/workflow-steps.js, web/session-switcher-ui.js, web/utils.js
+
+**Reviewed against (cycle 9, 2026-06-30):** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-manager.js, web/workflow-steps.js, web/rewrite-review.js, web/session-actions.js, web/session-switcher-ui.js
+
+| Story   | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
+| ------- | ------- | ---------- | ------- | ----------- | ----- |
+| US-S1   | 3       | 0          | 0       | 0           | 0     |
+| US-S2   | 1       | 2          | 0       | 0           | 0     |
+| US-S3   | 3       | 0          | 0       | 0           | 0     |
+| **Total** | **7** | **2**      | **0**   | **0**       | **0** |
 
 **Key evidence references:**
-- `web/session-manager.js:70` — `buildSessionSwitcherLabel` (context label)
-- `web/session-manager.js:210-223` — `_restoreTabForPhase` (tab switch on restore)
-- `web/session-manager.js:225-249` — `_resolveRestoredPhase` (phase guard)
-- `web/session-manager.js:351-395` — `_hydrateStatusDerivedState` (decision rehydration)
-- `web/session-manager.js:646-659` — rewrite panel pre-population
-- `web/session-manager.js:735,737` — `promptRenameCurrentSession` uses `prompt()`
-- `web/session-switcher-ui.js:85` — "Move to Trash" button label (fixed from prior "Delete")
-- `web/session-switcher-ui.js:317-332` — `_deleteSessionFromModal` (no `confirmDialog` before API call)
-- `web/workflow-steps.js:129` — `_showReRunConfirmModal` (confirmation modal)
-- `web/workflow-steps.js:182` — `confirmReRunPhase` (↻ path)
-- `web/workflow-steps.js:686-691` — ↻ hidden until hover
-- `web/workflow-steps.js:712` — `handleStepClick` (view nav, no modal)
-- `web/utils.js:274-285` — `SESSION_PHASE_LABELS_SHORT` (abbreviated phase labels)
-- `web/state-manager.js:100-144` — `getLayoutFreshnessFromState` (staleness logic)
-- `web/styles.css:118-119,153-154` — stale/critical badge styling
 
-**Evidence standard:** Every conclusion is supported by source file references with line numbers from the files listed above.
+- US-S1.1: job identity on restore — `session-manager.js:704` (updatePositionTitle call), `session-manager.js:71–78` (buildSessionSwitcherLabel), `session-actions.js:132–179`
+- US-S1.2: stage visible on restore — `session-manager.js:409–451` (`_restoreTabForPhase` + `_resolveRestoredPhase`), `workflow-steps.js:637–774`
+- US-S1.3: prior work visible with summary (GAP-110 resolved) — `session-manager.js:469–488` (_appendRestoredDecisionsSummary), `session-manager.js:541–542` (call site)
+- US-S2.1: back-nav warnings (partial) — `workflow-steps.js:138–188` (↻ modal); `workflow-steps.js:813` (step-click, no modal, hover-only distinction)
+- US-S2.2: context preserved on re-entry — `conversation_manager.py:1435–1468`, `workflow-steps.js:98–128`
+- US-S2.3: re-run vs nav distinction (partial) — `workflow-steps.js:147–149` (modal titles); `workflow-steps.js:730–733` (opacity:0.35 at rest); `workflow-steps.js:720–721` (iterating badge)
+- US-S3.1: decisions re-observable (GAP-166 + GAP-186 resolved) — `rewrite-review.js:52–79` (localStorage + cold-restore from `_backendRewriteAudit`)
+- US-S3.2: outputs connected to state — `state-manager.js:120–178`, `workflow-steps.js:60–93`, `session-manager.js:622–730`
+- US-S3.3: restore does not mislead (GAP-112 resolved) — `session-manager.js:430–451`, `workflow-steps.js:707, 738`, `utils.js:SESSION_PHASE_LABELS_SHORT`

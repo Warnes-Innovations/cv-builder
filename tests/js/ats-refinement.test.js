@@ -108,6 +108,8 @@ describe('updateAtsBadge', () => {
       ],
     })
 
+    expect(document.getElementById('ats-score-summary-line').textContent)
+      .toBe('Hard 1/1 • Soft 1/1')
     expect(document.getElementById('ats-score-summary-detail').textContent)
       .toBe('Top sections: skills 80% • experience 55%')
   })

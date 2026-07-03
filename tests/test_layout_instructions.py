@@ -116,10 +116,10 @@ class TestLayoutInstructions(unittest.TestCase):
         result = self.conversation.complete_layout_review(instructions)
 
         # Verify phase advanced
-        self.assertEqual(self.conversation.state['phase'], 'refinement')
+        self.assertEqual(self.conversation.state['phase'], 'final_generation')
         self.assertEqual(self.conversation.state['layout_instructions'], instructions)
         self.assertEqual(result['instructions_applied'], 1)
-        self.assertEqual(result['phase'], 'refinement')
+        self.assertEqual(result['phase'], 'final_generation')
 
     def test_complete_layout_review_empty_instructions(self):
         """Test complete_layout_review with no instructions (zero changes)."""
@@ -128,7 +128,7 @@ class TestLayoutInstructions(unittest.TestCase):
         result = self.conversation.complete_layout_review([])
 
         self.assertEqual(result['instructions_applied'], 0)
-        self.assertEqual(self.conversation.state['phase'], 'refinement')
+        self.assertEqual(self.conversation.state['phase'], 'final_generation')
 
     def test_serialize_html_for_context(self):
         """Test HTML serialization for LLM context."""
@@ -374,8 +374,8 @@ class TestLayoutInstructions(unittest.TestCase):
 
         result = self.conversation.complete_layout_review([])
 
-        self.assertEqual(self.conversation.state['phase'], 'refinement')
-        self.assertEqual(result['phase'], 'refinement')
+        self.assertEqual(self.conversation.state['phase'], 'final_generation')
+        self.assertEqual(result['phase'], 'final_generation')
 
 
 class TestLayoutInstructionIntegration(unittest.TestCase):
@@ -472,7 +472,7 @@ class TestLayoutInstructionIntegration(unittest.TestCase):
         self.conversation.complete_layout_review(instructions)
 
         # Verify final state
-        self.assertEqual(self.conversation.state['phase'], 'refinement')
+        self.assertEqual(self.conversation.state['phase'], 'final_generation')
         self.assertEqual(len(self.conversation.state['layout_instructions']), 1)
 
 

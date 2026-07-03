@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(conda info *)",
+      "Bash(codespell README.md launchd/install-service.sh)",
+      "Bash(npm run build)",
+      "Bash(npm run build:prod)",
+      "Bash(npm run build:watch)",
+      "Bash(npm run build:sourcemap)",
+      "Bash(npm run test:js)",
+      "Bash(npm run test:js:watch)",
+      "Bash(npm run test:js:cover)",
+      "Bash(npm run test:ui)",
+      "Bash(npm run test:integration:headless)",
+      "Bash(npm run lint:duplicates)",
+      "Bash(npm run lint:duplicate-code)",
+      "Bash(npm run lint:duplicate-functions)",
+      "Bash(npm run lint:duplicate-code:py)",
+      "Bash(npm run lint:duplication)"
+    ]
+  }
+}

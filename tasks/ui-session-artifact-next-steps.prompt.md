@@ -93,7 +93,7 @@ Use this prompt as the starting instruction for the next agent:
 >
 > Read and follow:
 > - `.github/copilot-instructions.md`
-> - `~/src/vscode-config/copilot-instructions.md`
+> - `~/src/agent-config/copilot-instructions.md`
 > - relevant skills, especially `copilot-preflight`, `cv-builder-patterns`, `duckflow`, `workflow-orchestration`, `markdown-formatting`, and `code-review`
 >
 > Current completed artifacts:

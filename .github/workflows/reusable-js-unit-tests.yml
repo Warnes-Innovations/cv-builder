@@ -1,0 +1,40 @@
+# Copyright (C) 2026 Gregory R. Warnes
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This file is part of CV-Builder.
+# For commercial licensing, contact greg@warnes-innovations.com
+
+name: 'Reusable: JavaScript Unit Tests'
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  js-tests:
+    name: JavaScript unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run JS unit tests
+        run: npm run test:js

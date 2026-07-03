@@ -87,7 +87,7 @@ describe('updatePositionTitle', () => {
 
   it('falls back to browser title when label is empty', () => {
     updatePositionTitle({})
-    expect(document.title).toBe('CV Generator — Professional Web UI')
+    expect(document.title).toBe('CV Builder — Professional Web UI')
   })
 
   it('shows rename button when a label is set', () => {

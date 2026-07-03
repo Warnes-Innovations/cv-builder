@@ -159,8 +159,10 @@ class TestModelWizard:
         """Clicking the close button hides the wizard overlay."""
         _install_wizard_routes(page)
         _open_wizard(page)
-        page.locator(".modal-close-btn").click()
-        page.locator("#model-modal-overlay").wait_for(state="hidden", timeout=5_000)
+        page.locator("#model-modal-overlay .modal-close-btn").click()
+        page.locator("#model-modal-overlay").wait_for(
+            state="hidden", timeout=5_000
+        )
         assert not page.locator("#model-modal-overlay").is_visible(), \
             "Wizard overlay should be hidden after close"
 

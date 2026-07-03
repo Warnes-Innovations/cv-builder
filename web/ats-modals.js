@@ -18,11 +18,43 @@
 import { refreshAtsScore, updateAtsBadge } from './ats-refinement.js';
 import { stateManager } from './state-manager.js';
 import { escapeHtml } from './utils.js';
+import { trapFocus, restoreFocus, pushFocusStack } from './ui-core.js';
+
+let _atsSynonymMapCache = null;
+
+async function _loadAtsSynonymMap() {
+  if (_atsSynonymMapCache) return _atsSynonymMapCache;
+  try {
+    const sessionId = stateManager?.getSessionId?.();
+    const url = sessionId ? `/api/synonym-map?session_id=${encodeURIComponent(sessionId)}` : '/api/synonym-map';
+    const res = await fetch(url);
+    if (!res.ok) return (_atsSynonymMapCache = {});
+    const raw = await res.json();
+    const aliasToCanon = {};
+    const canonToAliases = {};
+    Object.entries(raw).forEach(([alias, canon]) => {
+      aliasToCanon[alias.toLowerCase()] = canon;
+      const cl = canon.toLowerCase();
+      (canonToAliases[cl] = canonToAliases[cl] || []).push(alias);
+    });
+    _atsSynonymMapCache = { aliasToCanon, canonToAliases };
+  } catch (_) { _atsSynonymMapCache = {}; }
+  return _atsSynonymMapCache;
+}
+
+function _kwSynAnnotation(kw, synMap) {
+  if (!synMap || (!synMap.aliasToCanon && !synMap.canonToAliases)) return '';
+  const kl = (kw || '').toLowerCase();
+  if (synMap.aliasToCanon && synMap.aliasToCanon[kl]) return `= ${synMap.aliasToCanon[kl]}`;
+  const aliases = synMap.canonToAliases && synMap.canonToAliases[kl];
+  if (aliases && aliases.length) return `also: ${aliases.join(', ')}`;
+  return '';
+}
 
 const ATS_GROUPS = [
   ['hard', 'Hard Requirements'],
   ['soft', 'Preferred Skills'],
-  ['bonus', 'Bonus Keywords'],
+  ['bonus', '★ Bonus Keywords'],
 ];
 
 function _keywordStatus(keyword) {
@@ -49,15 +81,15 @@ function _keywordSortValue(keyword) {
 
 function _keywordStatusBadge(keyword) {
   if (_keywordStatus(keyword) === 'missing') {
-    return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:0.8em;font-weight:600;">Missing</span>';
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:0.8em;font-weight:600;">❌ Missing</span>';
   }
   if (_isPartialMatch(keyword)) {
-    return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:0.8em;font-weight:600;">Partial match</span>';
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:0.8em;font-weight:600;">⚠ Partial</span>';
   }
-  return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-size:0.8em;font-weight:600;">Exact match</span>';
+  return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-size:0.8em;font-weight:600;">✅ Matched</span>';
 }
 
-function _renderKeywordGroup(title, keywords) {
+function _renderKeywordGroup(title, keywords, synMap) {
   if (keywords.length === 0) return '';
 
   const exactCount = keywords.filter(_isExactMatch).length;
@@ -83,14 +115,20 @@ function _renderKeywordGroup(title, keywords) {
         </thead>
         <tbody>
           ${sorted.map(keyword => {
+            const kw = keyword.keyword || keyword.term || '';
             const sections = Array.isArray(keyword.matched_in_sections) && keyword.matched_in_sections.length > 0
               ? keyword.matched_in_sections.join(', ')
               : 'Not found';
+            const synAnnot = _kwSynAnnotation(kw, synMap);
+            const synHtml = synAnnot
+              ? `<div style="font-size:0.78em;color:#64748b;margin-top:2px;" title="Synonym grouping">${escapeHtml(synAnnot)}</div>`
+              : '';
             return `
               <tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;">
                 <td style="padding:8px;">
-                  <div style="font-weight:600;color:#1e293b;">${escapeHtml(keyword.keyword || keyword.term || '')}</div>
+                  <div style="font-weight:600;color:#1e293b;">${escapeHtml(kw)}</div>
                   <div style="font-size:0.8em;color:#94a3b8;text-transform:capitalize;">${escapeHtml(_keywordType(keyword))}</div>
+                  ${synHtml}
                 </td>
                 <td style="padding:8px;">${_keywordStatusBadge(keyword)}</td>
                 <td style="padding:8px;color:#475569;">${escapeHtml(sections)}</td>
@@ -109,29 +147,47 @@ function _renderKeywordGroup(title, keywords) {
  * Open the ATS Report modal. Renders the cached ATS score from state, or
  * fetches a fresh score if none is cached.
  */
+function _atsEscapeHandler(e) {
+  if (e.key === 'Escape') closeAtsReportModal();
+}
+
 async function openAtsReportModal() {
-  document.getElementById('ats-report-modal-overlay').style.display = 'flex';
+  pushFocusStack(document.activeElement);
+  const overlay = document.getElementById('ats-report-modal-overlay');
+  overlay.style.display = 'flex';
+  document.addEventListener('keydown', _atsEscapeHandler);
+  // Move focus to the Close button in the modal footer
+  const closeBtn = overlay.querySelector('.modal-footer .action-btn');
+  if (closeBtn) closeBtn.focus();
+  trapFocus('ats-report-modal-overlay');
   const body = document.getElementById('ats-report-modal-body');
 
+  // A cached score renders immediately using whatever synonym map is already
+  // cached (or none) rather than blocking on a network round-trip for it —
+  // the annotations are an enrichment, not required for _renderAtsReport to
+  // work, and a cached-score open should be instant.
   const cached = stateManager?.getAtsScore?.();
   if (cached) {
-    body.innerHTML = _renderAtsReport(cached);
+    body.innerHTML = _renderAtsReport(cached, _atsSynonymMapCache || {});
     return;
   }
 
   body.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:24px;color:#6b7280;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;flex-shrink:0;"></div><span>Fetching ATS score…</span></div>';
   try {
     const sessionId = stateManager?.getSessionId?.();
-    const res = await fetch('/api/cv/ats-score', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, basis: 'review_checkpoint' }),
-    });
+    const [synMap, res] = await Promise.all([
+      _loadAtsSynonymMap(),
+      fetch('/api/cv/ats-score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, basis: 'review_checkpoint' }),
+      }),
+    ]);
     const data = await res.json();
     if (data.ok && data.ats_score) {
       stateManager?.setAtsScore?.(data.ats_score);
       updateAtsBadge(data.ats_score);
-      body.innerHTML = _renderAtsReport(data.ats_score);
+      body.innerHTML = _renderAtsReport(data.ats_score, synMap);
     } else {
       body.innerHTML = `<p style="padding:24px;color:#ef4444;">Could not load ATS report: ${escapeHtml(data.error || 'unknown error')}</p>`;
     }
@@ -142,12 +198,14 @@ async function openAtsReportModal() {
 
 function closeAtsReportModal() {
   document.getElementById('ats-report-modal-overlay').style.display = 'none';
+  document.removeEventListener('keydown', _atsEscapeHandler);
+  restoreFocus();
 }
 
 /**
  * Render an ATS score object into HTML for the modal body.
  */
-function _renderAtsReport(score) {
+function _renderAtsReport(score, synMap) {
   const overall = Math.round(score.overall ?? 0);
   const hard = Math.round(score.hard_requirement_score ?? 0);
   const soft = Math.round(score.soft_requirement_score ?? 0);
@@ -158,7 +216,7 @@ function _renderAtsReport(score) {
   const missingKw = keywords.filter(keyword => _keywordStatus(keyword) === 'missing');
   const missingHard = missingKw.filter(keyword => _keywordType(keyword) === 'hard');
   const keywordGroups = ATS_GROUPS
-    .map(([type, title]) => _renderKeywordGroup(title, keywords.filter(keyword => _keywordType(keyword) === type)))
+    .map(([type, title]) => _renderKeywordGroup(title, keywords.filter(keyword => _keywordType(keyword) === type), synMap))
     .join('');
 
   const sectionScores = score.section_scores || {};
@@ -182,6 +240,11 @@ function _renderAtsReport(score) {
           <div style="font-size:0.9em;color:#475569;">Hard requirements: <strong>${hard}%</strong></div>
           <div style="font-size:0.9em;color:#475569;">Preferred skills: <strong>${soft}%</strong></div>
           <div style="font-size:0.75em;color:#94a3b8;margin-top:2px;">Basis: ${escapeHtml(score.basis || 'review')}</div>
+          <div style="font-size:0.75em;color:#94a3b8;margin-top:4px;" title="Score thresholds">
+            <span aria-hidden="true" style="color:#10b981;">●</span> ≥75% Strong match &nbsp;
+            <span aria-hidden="true" style="color:#f59e0b;">●</span> 50–74% Partial match &nbsp;
+            <span aria-hidden="true" style="color:#ef4444;">●</span> &lt;50% Low match
+          </div>
         </div>
       </div>
       ${keywordGroups}
@@ -206,8 +269,18 @@ function _renderAtsReport(score) {
 /**
  * Open the Job Analysis modal. Reuses tabData.analysis if available.
  */
+function _jobAnalysisEscapeHandler(e) {
+  if (e.key === 'Escape') closeJobAnalysisModal();
+}
+
 function openJobAnalysisModal() {
-  document.getElementById('job-analysis-modal-overlay').style.display = 'flex';
+  pushFocusStack(document.activeElement);
+  const overlay = document.getElementById('job-analysis-modal-overlay');
+  overlay.style.display = 'flex';
+  document.addEventListener('keydown', _jobAnalysisEscapeHandler);
+  const closeBtn = overlay.querySelector('.modal-footer .action-btn');
+  if (closeBtn) closeBtn.focus();
+  trapFocus('job-analysis-modal-overlay');
   const body = document.getElementById('job-analysis-modal-body');
 
   const analysis = stateManager.getTabData('analysis');
@@ -226,6 +299,8 @@ function openJobAnalysisModal() {
 
 function closeJobAnalysisModal() {
   document.getElementById('job-analysis-modal-overlay').style.display = 'none';
+  document.removeEventListener('keydown', _jobAnalysisEscapeHandler);
+  restoreFocus();
 }
 
 /**
@@ -238,9 +313,19 @@ function _renderAnalysisIntoEl(el, result) {
     return;
   }
 
-  const req = result.required_skills || [];
-  const pref = result.preferred_skills || result.nice_to_have || [];
-  const keywords = result.ats_keywords || [];
+  // Deduplicate lists: case-insensitive, keep first occurrence of each normalised form.
+  const _dedup = (arr) => {
+    const seen = new Set();
+    return (arr || []).filter(item => {
+      const key = String(typeof item === 'string' ? item : item.keyword || item.term || '').trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+  const req = _dedup(result.required_skills);
+  const pref = _dedup(result.preferred_skills || result.nice_to_have);
+  const keywords = _dedup(result.ats_keywords);
   const culture = result.culture_indicators || [];
   const mustHave = result.must_have_requirements || [];
   const missing = result.missing_required || [];

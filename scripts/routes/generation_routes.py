@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,7 @@ from flask import Blueprint, current_app, has_app_context, jsonify, request, sen
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
+from utils.git_helpers import git_commit_error as _git_commit_error, git_push_if_remote as _git_push_if_remote
 from utils.layout_digest import (
     TEMPLATE_VERSION as LAYOUT_TEMPLATE_VERSION,
     UPDATE_NOTE as LAYOUT_TEMPLATE_UPDATE_NOTE,
@@ -173,42 +175,6 @@ def _try_patch_metadata(conv: Any, updates: Dict) -> None:
             current_app.logger.warning('_try_patch_metadata failed silently', exc_info=True)
 
 
-def _git_commit_error(message: str, detail: Optional[str] = None) -> str:
-    if detail:
-        current_app.logger.error('%s %s', message, detail)
-    else:
-        current_app.logger.error(message)
-    return message
-
-
-def _git_push_if_remote(git_dir: str) -> Optional[str]:
-    """Push the current branch if the repo has any configured remotes.
-
-    Returns None on success (or when there is no remote), or an error
-    string if the push fails.  Never raises.
-    """
-    try:
-        remote_check = subprocess.run(
-            ['git', '-C', git_dir, 'remote'],
-            capture_output=True, text=True,
-        )
-        if not remote_check.stdout.strip():
-            return None  # no remotes configured
-
-        push_result = subprocess.run(
-            ['git', '-C', git_dir, 'push'],
-            capture_output=True, text=True,
-        )
-        if push_result.returncode != 0:
-            detail = push_result.stderr.strip() or push_result.stdout.strip()
-            current_app.logger.error('Git push failed. %s', detail)
-            return 'Git push failed. See server logs for details.'
-        return None
-    except Exception as exc:
-        current_app.logger.error('Git push failed. %s', exc)
-        return 'Git push failed. See server logs for details.'
-
-
 def _record_layout_safety_audit(
     state: Dict[str, Any],
     payload: Dict[str, Any],
@@ -364,11 +330,26 @@ def _collect_harvest_skill_candidates(conversation) -> List[Dict[str, Any]]:
             existing['label'] = f"New skill — {skill_name}"
             existing['rationale'] = rationale
 
+    extra_skill_matches = state.get('extra_skill_matches') or {}
+    # Build experience-id → title lookup for richer harvest rationale
+    _exp_list  = conversation.orchestrator.master_data.get('experience') or []
+    _exp_title = {str(e.get('id', '')): str(e.get('title', '')) for e in _exp_list if e.get('id')}
+
+    def _skill_evidence_rationale(raw_skill: Any) -> str:
+        sk_name = raw_skill if isinstance(raw_skill, str) else (
+            raw_skill.get('name', '') if isinstance(raw_skill, dict) else ''
+        )
+        exp_ids = extra_skill_matches.get(sk_name) or []
+        if exp_ids:
+            titles = [_exp_title.get(str(eid), eid) for eid in exp_ids[:3]]
+            return f'Skill added during skills review — evidenced in: {", ".join(t for t in titles if t)}.'
+        return 'Skill was added during the skills review step.'
+
     for raw_skill in materialized.get('extra_skills') or []:
-        _add_skill_candidate(raw_skill, 'new_skill', 'Skill was added during the skills review step.')
+        _add_skill_candidate(raw_skill, 'new_skill', _skill_evidence_rationale(raw_skill))
 
     for raw_skill in customizations.get('new_skills_added') or []:
-        _add_skill_candidate(raw_skill, 'new_skill', 'Skill was added during the skills review step.')
+        _add_skill_candidate(raw_skill, 'new_skill', _skill_evidence_rationale(raw_skill))
 
     post_answers = state.get('post_analysis_answers') or {}
     for key, val in post_answers.items():
@@ -440,12 +421,68 @@ def _collect_render_snapshot_inputs(
     if not materialized:
         return None
 
+    content_warnings = []
+    if not summary_view.selected_summary():
+        content_warnings.append({
+            'code': 'generic_summary_fallback',
+            'severity': 'warning',
+            'message': (
+                'No professional summary is set in your master profile or customizations. '
+                'A generic placeholder will appear in the generated CV — '
+                'please add a summary in the Master CV tab before downloading.'
+            ),
+        })
+
+    raw_edits = state.get('achievement_edits') or {}
+    if isinstance(raw_edits, dict):
+        master_experiences = (
+            conversation.orchestrator.master_data.get('experience') or []
+        )
+        for str_idx, items in raw_edits.items():
+            try:
+                exp_idx = int(str_idx)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(items, list):
+                items = [items]
+            visible = [
+                it for it in items
+                if isinstance(it, dict)
+                and not it.get('hidden')
+                and str(it.get('text') or '').strip()
+            ]
+            if len(visible) < 2:
+                exp = (
+                    master_experiences[exp_idx]
+                    if 0 <= exp_idx < len(master_experiences)
+                    else {}
+                )
+                role = str(
+                    exp.get('title')
+                    or exp.get('position')
+                    or f'Position {exp_idx + 1}'
+                )
+                company = str(exp.get('company') or '')
+                label = f'"{role}" at {company}' if company else f'"{role}"'
+                n = len(visible)
+                content_warnings.append({
+                    'code': 'sparse_experience_bullets',
+                    'severity': 'warning',
+                    'message': (
+                        f'Experience {label} has {n} selected '
+                        f'bullet{"" if n == 1 else "s"}. '
+                        'At least 2 impact bullets per role are recommended. '
+                        'Add more in the Ach Editor tab.'
+                    ),
+                })
+
     return {
         'job_analysis': job_analysis,
         'materialized_customizations': materialized,
         'approved_rewrites': state.get('approved_rewrites') or [],
         'spell_audit': _get_spell_audit_from_state(state),
         'max_skills': state.get('max_skills'),
+        'content_warnings': content_warnings,
     }
 
 
@@ -476,6 +513,7 @@ def _persist_render_snapshot(
         use_semantic_match=False,
     )
 
+    content_warnings = snapshot_inputs.get('content_warnings') or []
     signature = _render_snapshot_signature(snapshot_inputs)
     now = datetime.now().isoformat()
     gen = conversation.state.setdefault('generation_state', {})
@@ -487,6 +525,7 @@ def _persist_render_snapshot(
         'render_snapshot_stale': False,
         'render_snapshot_stale_reason': None,
         'render_snapshot_regenerating': False,
+        'render_snapshot_content_warnings': content_warnings,
     })
     conversation._save_session()
 
@@ -495,6 +534,7 @@ def _persist_render_snapshot(
         'signature': signature,
         'generated_at': now,
         'source': source,
+        'content_warnings': content_warnings,
     }
 
 
@@ -529,6 +569,7 @@ def _ensure_render_snapshot(
             'signature': cached_signature,
             'generated_at': gen.get('render_snapshot_generated_at'),
             'source': gen.get('render_snapshot_source') or 'cache',
+            'content_warnings': gen.get('render_snapshot_content_warnings') or snapshot_inputs.get('content_warnings') or [],
             'reused': True,
         }
 
@@ -918,6 +959,84 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
     }
 
 
+def _collect_harvest_skill_type_candidates(conversation) -> List[Dict[str, Any]]:
+    """Return skill_type_update candidates for skills whose hard/soft type was overridden in session.
+
+    Only surfaces a candidate when the session override differs from the value
+    already stored in master data (or when master has no skill_type at all).
+    """
+    state          = conversation.state or {}
+    qualifier_ovrs = state.get('skill_qualifier_overrides') or {}
+    master         = getattr(conversation.orchestrator, 'master_data', None) or {}
+
+    # Build a lookup of master skill name (lower) → skill dict
+    master_skill_lookup: Dict[str, Any] = {}
+    raw_skills = master.get('skills', [])
+    if isinstance(raw_skills, list):
+        for sk in raw_skills:
+            if isinstance(sk, str):
+                master_skill_lookup[sk.lower()] = {}
+            elif isinstance(sk, dict):
+                name = (sk.get('name') or '').strip().lower()
+                if name:
+                    master_skill_lookup[name] = sk
+    elif isinstance(raw_skills, dict):
+        for cat_val in raw_skills.values():
+            for sk in (cat_val if isinstance(cat_val, list) else []):
+                if isinstance(sk, str):
+                    master_skill_lookup[sk.lower()] = {}
+                elif isinstance(sk, dict):
+                    name = (sk.get('name') or '').strip().lower()
+                    if name:
+                        master_skill_lookup[name] = sk
+
+    candidates = []
+    for skill_name, overrides in qualifier_ovrs.items():
+        session_type = overrides.get('skill_type')
+        if session_type not in ('hard', 'soft'):
+            continue
+        master_sk = master_skill_lookup.get(skill_name.lower()) or {}
+        master_type = (master_sk.get('skill_type') or '').lower()
+        if master_type == session_type:
+            continue  # already matches — nothing to persist
+        candidates.append({
+            'id':        f"skill_type_{skill_name.replace(' ', '_')}",
+            'type':      'skill_type_update',
+            'label':     f'Classify "{skill_name}" as {session_type} skill',
+            'original':  master_type or '(unset)',
+            'proposed':  session_type,
+            'skill_name': skill_name,
+            'rationale': (
+                f'You classified "{skill_name}" as a {session_type} skill during this session. '
+                'Persisting this avoids re-classifying on every application.'
+            ),
+        })
+    return candidates
+
+
+def _harvest_update_skill_type(master: Dict, skill_name: str, skill_type: str) -> bool:
+    """Write skill_type to the named skill in master data.  Returns True if changed."""
+    def _try_update_list(skill_list: list) -> bool:
+        for sk in skill_list:
+            if not isinstance(sk, dict):
+                continue
+            if (sk.get('name') or '').strip().lower() == skill_name.lower():
+                if sk.get('skill_type') == skill_type:
+                    return False
+                sk['skill_type'] = skill_type
+                return True
+        return False
+
+    raw = master.get('skills', [])
+    if isinstance(raw, list):
+        return _try_update_list(raw)
+    if isinstance(raw, dict):
+        for cat_val in raw.values():
+            if isinstance(cat_val, list) and _try_update_list(cat_val):
+                return True
+    return False
+
+
 def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
     """Return candidate write-back items for the current session."""
     candidates: List[Dict[str, Any]] = []
@@ -943,6 +1062,7 @@ def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
         })
 
     candidates.extend(_collect_harvest_skill_candidates(conversation))
+    candidates.extend(_collect_harvest_skill_type_candidates(conversation))
 
     summary_rewrite = next(
         (rw for rw in approved_rewrites if rw.get('section') == 'summary'), None
@@ -1098,8 +1218,21 @@ def _harvest_add_skill(master: Dict, skill_name: Any) -> bool:
 
 
 def _harvest_add_summary_variant(master: Dict, new_summary: str) -> bool:
-    """Store ``new_summary`` as a named variant in master data."""
+    """Store ``new_summary`` as a named variant in master data.
+
+    Preserves the existing format: appends to a list if the field is a list;
+    adds a new key to the dict if the field is a dict.  This prevents the
+    format flip (dict→list) that caused GAP-94 rendering failures.
+    """
     variants = master.get('professional_summaries')
+    if isinstance(variants, dict):
+        if new_summary in variants.values():
+            return False
+        next_key = f'variant_{len(variants) + 1}'
+        while next_key in variants:
+            next_key = f'variant_{len(variants) + len(next_key)}'
+        variants[next_key] = new_summary
+        return True
     if isinstance(variants, list):
         if new_summary not in variants:
             variants.append(new_summary)
@@ -1119,13 +1252,13 @@ def create_blueprint(deps):
     save_master = deps.get('save_master')
 
     def _require_harvest_apply_phase(entry):
-        """Allow harvest write-back only from the post-job finalise window."""
+        """Allow harvest write-back only from the Harvest (refinement) step."""
         raw_phase = (entry.manager.state or {}).get('phase')
         current_phase = str(getattr(raw_phase, 'value', raw_phase) or '').strip()
         if current_phase == 'refinement':
             return None
         return jsonify({
-            'error': 'Harvest write-back is only available from the post-job finalise workflow.',
+            'error': 'Harvest write-back is only available from the Harvest step.',
             'phase': current_phase or None,
         }), 409
 
@@ -1246,6 +1379,10 @@ def create_blueprint(deps):
             "render_snapshot_generated_at": gen.get("render_snapshot_generated_at"),
             "render_snapshot_stale":     bool(gen.get("render_snapshot_stale", False)),
             "render_snapshot_regenerating": bool(gen.get("render_snapshot_regenerating", False)),
+            # Optional revision metadata for client-side freshness tracking
+            "content_revision": gen.get("content_revision"),
+            "last_preview_content_revision": gen.get("last_preview_content_revision"),
+            "last_final_content_revision": gen.get("last_final_content_revision"),
         })
 
     @bp.post("/api/cv/generate-preview")
@@ -1331,6 +1468,15 @@ def create_blueprint(deps):
         now     = datetime.now().isoformat()
         prev_id = str(_u.uuid4())
         preview_outputs = _generate_preview_outputs(conv, html_str, prev_id)
+
+        # Optional client-provided revision to help the server track freshness
+        body = request.get_json(silent=True) or {}
+        client_rev = body.get('content_revision')
+        try:
+            client_rev_num = int(client_rev) if client_rev is not None else None
+        except (TypeError, ValueError):
+            client_rev_num = None
+
         gen = conv.state.setdefault("generation_state", {})
         gen.update({
             "phase":                "layout_review",
@@ -1340,6 +1486,8 @@ def create_blueprint(deps):
             "layout_confirmed":     False,
             "preview_output_paths": preview_outputs,
         })
+        if client_rev_num is not None:
+            gen["last_preview_content_revision"] = client_rev_num
         if "layout_instructions" not in gen:
             gen["layout_instructions"] = []
 
@@ -1359,6 +1507,7 @@ def create_blueprint(deps):
             "page_count_source":   gen.get("page_count_source"),
             "page_count_confidence": gen.get("page_count_confidence"),
             "page_length_warning": gen.get("page_length_warning", False),
+            "content_warnings":    gen.get("render_snapshot_content_warnings") or (snapshot.get('content_warnings') if snapshot else []) or [],
         })
 
     @bp.post("/api/cv/layout-estimate")
@@ -1461,7 +1610,7 @@ def create_blueprint(deps):
             response_payload = {
                 "ok":           False,
                 "error":        result["error"],
-                "question":     result.get("question"),
+                "question":     result.get("question") or result.get("clarification_question"),
                 "details":      result.get("details"),
                 "raw_response": result.get("raw_response"),
             }
@@ -1485,6 +1634,14 @@ def create_blueprint(deps):
 
         preview_outputs = _generate_preview_outputs(conv, updated_html, prev_id)
 
+        # Accept optional client-provided revision metadata
+        body = request.get_json(silent=True) or {}
+        client_rev = body.get('content_revision')
+        try:
+            client_rev_num = int(client_rev) if client_rev is not None else None
+        except (TypeError, ValueError):
+            client_rev_num = None
+
         gen = conv.state.setdefault("generation_state", {})
         gen["preview_html"]        = updated_html
         gen["preview_request_id"]  = prev_id
@@ -1492,6 +1649,8 @@ def create_blueprint(deps):
         gen["phase"]               = "layout_review"
         gen["layout_confirmed"]    = False
         gen["preview_output_paths"] = preview_outputs
+        if client_rev_num is not None:
+            gen["last_preview_content_revision"] = client_rev_num
         gen.setdefault("layout_instructions", []).append(instruction_record)
 
         safety = result.get('safety') or {}
@@ -1540,6 +1699,13 @@ def create_blueprint(deps):
             return jsonify({"error": "No preview — call /api/cv/generate-preview first."}), 400
         if gen.get("layout_confirmed"):
             return jsonify({"error": "Layout is already confirmed."}), 400
+        body = request.get_json(silent=True) or {}
+        client_rev = body.get('content_revision')
+        try:
+            client_rev_num = int(client_rev) if client_rev is not None else None
+        except (TypeError, ValueError):
+            client_rev_num = None
+
         now   = datetime.now().isoformat()
         chash = hashlib.sha256(gen["preview_html"].encode()).hexdigest()[:16]
         gen   = conv.state.setdefault("generation_state", {})
@@ -1547,6 +1713,8 @@ def create_blueprint(deps):
             "phase": "confirmed", "layout_confirmed": True,
             "confirmed_at": now, "confirmed_preview_hash": chash,
         })
+        if client_rev_num is not None:
+            gen["last_final_content_revision"] = client_rev_num
         conv._save_session()
         return jsonify({"ok": True, "confirmed": True, "confirmed_at": now, "hash": chash})
 
@@ -1642,7 +1810,10 @@ def create_blueprint(deps):
             #   notes: "Live ATS scoring route materializes the selected summary into generation customizations."
             pass
 
-        score = _compute_ats_score(job_analysis, customizations, basis=basis)
+        score = _compute_ats_score(
+            job_analysis, customizations, basis=basis,
+            synonym_map=getattr(conv.orchestrator, '_expansion_index', None),
+        )
         gen = conv.state.setdefault("generation_state", {})
         gen["ats_score"] = score
         conv._save_session()
@@ -1654,34 +1825,42 @@ def create_blueprint(deps):
 
     @bp.post("/api/cv/generate-final")
     def generate_cv_final():
-        """Regenerate human-readable HTML+PDF from the confirmed preview; mark final_complete."""
+        """Regenerate human-readable HTML+PDF+DOCX from confirmed preview; advance to final_generation."""
         # duckflow:
         #   id: generation_api_final_live
         #   kind: api
-        #   timestamp: "2026-03-27T02:07:47Z"
+        #   timestamp: "2026-05-30T00:00:00Z"
         #   status: live
         #   handles:
         #     - "POST /api/cv/generate-final"
         #   calls:
         #     - "orchestrator:generate_final_from_confirmed_html"
+        #     - "orchestrator:build_render_ready_content"
+        #     - "orchestrator:_generate_ats_docx"
+        #     - "orchestrator:_generate_human_docx"
         #     - "state:generation_state.baseline_layout_digest"
         #   reads:
         #     - "state:generation_state.layout_confirmed"
         #     - "state:generation_state.preview_html"
         #     - "state:generated_files.output_dir"
+        #     - "state:job_analysis"
+        #     - "state:customizations"
         #   writes:
         #     - "state:generation_state.phase"
         #     - "state:generation_state.final_generated_at"
         #     - "state:generation_state.final_output_paths"
         #     - "state:generated_files.final_html"
         #     - "state:generated_files.final_pdf"
+        #     - "state:generated_files.ats_docx"
+        #     - "state:generated_files.human_docx"
         #     - "state:generated_files.files"
+        #     - "state:phase"
         #     - "state:generation_state.baseline_layout_digest"
         #   returns:
         #     - "response:POST /api/cv/generate-final.outputs"
         #     - "response:POST /api/cv/generate-final.generated_at"
         #     - "response:POST /api/cv/generate-final.page_count_exact"
-        #   notes: "Converts the confirmed preview HTML into final human-readable artifacts and updates both generation_state and generated_files with the final output paths."
+        #   notes: "Converts the confirmed preview HTML into final human-readable artifacts (HTML+PDF+ATS DOCX+human DOCX) named CV_{company}_{role}_{date}.*; updates generation_state and generated_files; advances main phase to FINAL_GENERATION."
         entry = get_session()
         conv  = entry.manager
         gen   = conv.state.get("generation_state") or {}
@@ -1697,14 +1876,49 @@ def create_blueprint(deps):
             return jsonify({"error": "No generated files — complete workflow first."}), 404
 
         output_dir = Path(generated["output_dir"])
+
+        # Build a meaningful filename (same convention as _generate_pdf) so
+        # generate-final never creates anonymous CV_final.* artifacts.
+        job_analysis   = conv.state.get('job_analysis') or {}
+        company        = job_analysis.get('company', 'Company').replace(' ', '')
+        role           = job_analysis.get('title', 'Role').replace(' ', '')[:20]
+        _ts            = datetime.now().strftime("%Y-%m-%d")
+        filename_base  = f"CV_{company}_{role}_{_ts}"
+
         try:
             final_paths = conv.orchestrator.generate_final_from_confirmed_html(
                 confirmed_html=confirmed_html,
                 output_dir=output_dir,
-                filename_base="CV_final",
+                filename_base=filename_base,
             )
         except Exception:
             return _internal_server_error('Final generation failed.')
+
+        # Also generate ATS DOCX and human DOCX from session content.
+        from utils.conversation_manager import Phase as _Phase
+        customizations = conv.state.get('customizations') or {}
+        ats_file    = None
+        human_docx  = None
+        try:
+            selected_content = conv.orchestrator.build_render_ready_content(
+                job_analysis,
+                customizations,
+                approved_rewrites=conv.state.get('approved_rewrites') or [],
+                spell_audit=conv.state.get('spell_audit') or [],
+                max_skills=conv.state.get('max_skills'),
+                use_semantic_match=False,  # Skip LLM scoring — content already ranked upstream
+            )
+            selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
+            ats_file = conv.orchestrator._generate_ats_docx(
+                selected_content, job_analysis, output_dir,
+            )
+            human_docx = conv.orchestrator._generate_human_docx(
+                selected_content, job_analysis, output_dir,
+                skills_heading=conv.orchestrator._resolve_human_skills_title(customizations),
+            )
+        except Exception:
+            if has_app_context():
+                current_app.logger.exception('ATS DOCX / human DOCX generation failed in generate_cv_final')
 
         now = datetime.now().isoformat()
         gen = conv.state.setdefault("generation_state", {})
@@ -1723,14 +1937,21 @@ def create_blueprint(deps):
             final_html,
             source='generate_final',
         )
+        files_list = [final_paths["html"], final_paths["pdf"]]
+        if ats_file:
+            files_list.append(str(ats_file))
+        if human_docx:
+            files_list.append(str(human_docx))
         generated.update({
-            "final_html": final_paths["html"],
-            "final_pdf": final_paths["pdf"],
-            "files": [
-                final_paths["html"],
-                final_paths["pdf"],
-            ],
+            "final_html":  final_paths["html"],
+            "final_pdf":   final_paths["pdf"],
+            "ats_docx":    str(ats_file)   if ats_file   else generated.get("ats_docx"),
+            "human_docx":  str(human_docx) if human_docx else generated.get("human_docx"),
+            "files":       files_list,
         })
+
+        # Advance main workflow phase to FINAL_GENERATION (step 8).
+        conv.state['phase'] = _Phase.FINAL_GENERATION
         conv._save_session()
 
         outputs = dict(generated)
@@ -1743,8 +1964,60 @@ def create_blueprint(deps):
         })
 
     # ------------------------------------------------------------------
+    # Final generation complete (FINAL_GENERATION → REFINEMENT)
+    # ------------------------------------------------------------------
+
+    @bp.post("/api/final-generation-complete")
+    def final_generation_complete():
+        """Advance main phase from FINAL_GENERATION to REFINEMENT (finalise step).
+
+        Called from the download tab when the user clicks 'Proceed to Finalise'.
+        """
+        # duckflow:
+        #   id: generation_api_final_generation_complete_live
+        #   kind: api
+        #   timestamp: "2026-05-28T00:00:00Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/final-generation-complete"
+        #   calls:
+        #     - "manager:complete_final_generation"
+        #   writes:
+        #     - "state:phase"
+        #   returns:
+        #     - "response:POST /api/final-generation-complete.phase"
+        #   notes: "Advances main workflow phase from FINAL_GENERATION to REFINEMENT."
+        entry = get_session()
+        conv  = entry.manager
+        result = conv.complete_final_generation()
+        return jsonify({"ok": True, **result})
+
+    # ------------------------------------------------------------------
     # Finalise
     # ------------------------------------------------------------------
+
+    @bp.get("/api/finalise-meta")
+    def finalise_meta():
+        """Return saved application_status and notes from the current session's metadata.json."""
+        entry = get_session()
+        validate_owner(entry)
+        conversation = entry.manager
+        with entry.lock:
+            generated = conversation.state.get('generated_files')
+            if not generated or not generated.get('output_dir'):
+                return jsonify({'application_status': 'ready', 'notes': ''})
+            metadata_path = Path(generated['output_dir']) / 'metadata.json'
+            if not metadata_path.exists():
+                return jsonify({'application_status': 'ready', 'notes': ''})
+            try:
+                with open(metadata_path, encoding='utf-8') as f:
+                    meta = json.load(f)
+                return jsonify({
+                    'application_status': meta.get('application_status', 'ready'),
+                    'notes': meta.get('notes', ''),
+                })
+            except Exception:
+                return jsonify({'application_status': 'ready', 'notes': ''})
 
     @bp.post("/api/finalise")
     def finalise_application():
@@ -1795,8 +2068,8 @@ def create_blueprint(deps):
                 app_status  = body.get('status', 'ready')
                 notes       = body.get('notes', '')
 
-                if app_status not in ('draft', 'ready', 'sent'):
-                    return jsonify({'error': "status must be 'draft', 'ready', or 'sent'"}), 400
+                if app_status not in ('draft', 'ready', 'sent', 'queued', 'interview', 'rejected', 'accepted', 'parked'):
+                    return jsonify({'error': "status must be one of: draft, ready, sent, queued, interview, rejected, accepted, parked"}), 400
 
                 output_dir   = Path(generated['output_dir'])
                 metadata_path = output_dir / 'metadata.json'
@@ -1878,6 +2151,10 @@ def create_blueprint(deps):
                 ats_keywords   = job_analysis.get('ats_keywords') or []
                 approved_count = len(conversation.state.get('approved_rewrites') or [])
 
+                session_duration_secs = None
+                if hasattr(entry, 'created') and entry.created:
+                    session_duration_secs = int((datetime.now() - entry.created).total_seconds())
+
                 summary = {
                     'files':          generated.get('files', []),
                     'output_dir':     str(output_dir),
@@ -1885,6 +2162,7 @@ def create_blueprint(deps):
                     'ats_score':      ats_score,
                     'approved_rewrites': approved_count,
                     'application_status': app_status,
+                    'session_duration_secs': session_duration_secs,
                 }
 
                 return jsonify({
@@ -1911,6 +2189,53 @@ def create_blueprint(deps):
             return jsonify({'ok': True, 'candidates': candidates})
         except Exception:
             return _internal_server_error('Failed to load harvest candidates.')
+
+    @bp.post("/api/harvest/analyze")
+    def harvest_analyze():
+        """LLM evaluation of harvest candidates: recommendation, confidence, reasoning."""
+        # duckflow:
+        #   id: generation_api_harvest_analyze_live
+        #   kind: api
+        #   timestamp: "2026-05-21T00:00:00Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/harvest/analyze"
+        #   reads:
+        #     - "state:harvest_analysis"
+        #     - "state:approved_rewrites"
+        #     - "state:customizations"
+        #     - "state:job_analysis"
+        #   writes:
+        #     - "state:harvest_analysis"
+        #   returns:
+        #     - "response:POST /api/harvest/analyze.analyses"
+        entry = get_session()
+        conversation = entry.manager
+        body = request.get_json(silent=True) or {}
+        force_refresh = bool(body.get('force_refresh'))
+
+        if not force_refresh:
+            cached = conversation.state.get('harvest_analysis')
+            if cached:
+                return jsonify({'ok': True, 'analyses': cached, 'cached': True})
+
+        try:
+            candidates = _compile_harvest_candidates(conversation)
+            if not candidates:
+                return jsonify({'ok': True, 'analyses': [], 'cached': False})
+
+            job_analysis = conversation.state.get('job_analysis') or {}
+            result = conversation.orchestrator.analyze_harvest_candidates(candidates, job_analysis)
+            if result.get('error'):
+                return jsonify({'ok': False, 'error': result['error'], 'analyses': []}), 200
+
+            analyses = result.get('analyses') or []
+            conversation.state['harvest_analysis'] = analyses
+            conversation.save_session()
+
+            return jsonify({'ok': True, 'analyses': analyses, 'cached': False})
+        except Exception:
+            return _internal_server_error('Failed to analyze harvest candidates.')
 
     @bp.post("/api/harvest/apply")
     def harvest_apply():
@@ -1964,6 +2289,18 @@ def create_blueprint(deps):
                             'applied': applied,
                             'label':   cand['label'],
                         })
+                    elif ctype == 'skill_type_update':
+                        applied = _harvest_update_skill_type(
+                            master,
+                            cand['skill_name'],
+                            cand['proposed'],
+                        )
+                        diff_summary.append({
+                            'id':      cand['id'],
+                            'type':    ctype,
+                            'applied': applied,
+                            'label':   cand['label'],
+                        })
                     elif ctype == 'summary_variant':
                         applied = _harvest_add_summary_variant(master, cand['proposed'])
                         diff_summary.append({
@@ -1972,6 +2309,18 @@ def create_blueprint(deps):
                             'applied': applied,
                             'label':   cand['label'],
                         })
+
+                # Write a timestamped backup before modifying master (Phase B safety)
+                backup_path = None
+                try:
+                    backup_dir = master_path.parent / 'backups'
+                    backup_dir.mkdir(exist_ok=True)
+                    backup_ts   = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    backup_path = backup_dir / f"Master_CV_Data_{backup_ts}.json"
+                    shutil.copy2(master_path, backup_path)
+                except Exception as backup_err:
+                    current_app.logger.warning("Harvest backup failed: %s", backup_err)
+                    backup_path = None
 
                 if callable(save_master):
                     save_master(master, master_path)
@@ -2018,12 +2367,13 @@ def create_blueprint(deps):
                 written_count = sum(1 for d in diff_summary if d.get('applied'))
                 session_registry.touch(sid)
                 return jsonify({
-                    'ok':           True,
-                    'written_count': written_count,
-                    'diff_summary': diff_summary,
-                    'commit_hash':  commit_hash,
-                    'git_error':    git_error,
-                    'push_error':   push_error,
+                    'ok':            True,
+                    'written_count':  written_count,
+                    'diff_summary':  diff_summary,
+                    'commit_hash':   commit_hash,
+                    'git_error':     git_error,
+                    'push_error':    push_error,
+                    'backup_path':   str(backup_path) if backup_path else None,
                 })
             except Exception:
                 return _internal_server_error('Failed to apply harvested updates.')
@@ -2071,6 +2421,7 @@ def create_blueprint(deps):
                 approved_rewrites=inputs['approved_rewrites'],
                 spell_audit=inputs['spell_audit'],
                 max_skills=inputs['max_skills'],
+                use_semantic_match=False,
             )
         except Exception as exc:
             current_app.logger.exception("propose-content-change: failed to build content")

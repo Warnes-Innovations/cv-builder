@@ -68,21 +68,21 @@ python /Users/warnes/src/vscode-config/.github/skills/one-by-one/obo_helper.py s
   Use these for /obo sequential-processing sessions.
 - **markitdown**: Convert documents/URLs to Markdown for reading.
 
-# BEGIN managed-by-vscode-config
+# BEGIN managed-by-agent-config
 ## MANDATORY: Read project instructions first
 
 At the start of every task, read `.github/copilot-instructions.md` in full.
 
 ## Available Skills
 
-User-level shared skills live in `/Users/warnes/src/vscode-config/.github/skills/`.
+User-level shared skills live in `/Users/warnes/src/agent-config/.github/skills/`.
 Examples include review workflows such as `duckflow` and Codex bridge skills such as `flush-codex`.
 
 To read a skill: `read_file` on `SKILL.md` inside the relevant directory.
 
 ## Available Slash Command Prompts
 
-Prompt files live in `/Users/warnes/src/vscode-config/prompts/`.
+Prompt files live in `/Users/warnes/src/agent-config/prompts/`.
 Examples include workflow prompts such as `/duckflow` and `/flush`.
 When the user invokes a slash command, read the corresponding `.prompt.md` file.
 
@@ -96,4 +96,4 @@ When the user invokes a slash command, read the corresponding `.prompt.md` file.
   - `create` and `merge` require `--input-file items.json` (items as a JSON array)
   - Example: `oboe-cli --base-dir . --session SESSION.json complete ITEM_ID "resolution text"`
 - **markitdown**: Convert documents/URLs to Markdown for reading.
-# END managed-by-vscode-config
+# END managed-by-agent-config

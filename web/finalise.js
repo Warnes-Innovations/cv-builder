@@ -17,6 +17,16 @@ import { getLogger } from './logger.js';
 import { formatAtsScoreSummary } from './ats-refinement.js';
 const log = getLogger('finalise');
 
+function _formatDuration(secs) {
+  if (secs == null || secs < 0) return null;
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 function _renderFinaliseAtsItems(score, atsKeywords) {
   if (!score || typeof score.overall !== 'number') {
     return `<li>ATS keywords tracked: ${atsKeywords.length}</li>`;
@@ -79,7 +89,9 @@ async function populateFinaliseTab() {
       <p style="margin:8px 0 0;font-size:0.85em;color:#166534;">Output dir: <code>${escapeHtml(generated.output_dir)}</code></p>
     </div>
 
+    <div id="readiness-checklist"></div>
     <div id="consistency-report"></div>
+    <div id="rewrite-audit-log"></div>
 
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:24px;">
       <h3 style="margin:0 0 16px;">📋 Application Status</h3>
@@ -90,15 +102,20 @@ async function populateFinaliseTab() {
           <option value="draft">Draft — not yet sent</option>
           <option value="ready" selected>Ready to send</option>
           <option value="sent">Sent</option>
+          <option value="interview">Interview scheduled</option>
+          <option value="rejected">Rejected</option>
+          <option value="accepted">Accepted</option>
         </select>
       </div>
 
       <div style="margin-bottom:20px;">
         <label style="display:block;font-weight:600;margin-bottom:6px;" for="finalise-notes">Notes</label>
-        <textarea id="finalise-notes" rows="4"
+        <textarea id="finalise-notes" rows="4" maxlength="2000"
+          oninput="document.getElementById('finalise-notes-counter').textContent=this.value.length+' / 2000';document.getElementById('finalise-notes-counter').style.color=this.value.length>1800?'#dc2626':this.value.length>1600?'#d97706':'#6b7280'"
           style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:6px;
                  font-size:0.92em;resize:vertical;box-sizing:border-box;"
           placeholder="Recruiter name, salary info, follow-up date, interview notes…"></textarea>
+        <div id="finalise-notes-counter" aria-live="polite" style="text-align:right;font-size:0.8em;color:#6b7280;margin-top:2px;">0 / 2000</div>
       </div>
 
       <button id="finalise-btn" onclick="finaliseApplication()"
@@ -113,7 +130,131 @@ async function populateFinaliseTab() {
   `;
 
   content.innerHTML = html;
+  _renderReadinessChecklist(files, statusData);
   if (statusData) _renderConsistencyReport(statusData);
+  _renderRewriteAuditLog();
+  _restoreFinaliseMeta();
+}
+
+async function _restoreFinaliseMeta() {
+  try {
+    const res = await fetch('/api/finalise-meta');
+    if (!res.ok) return;
+    const data = await res.json();
+    const statusEl = document.getElementById('finalise-status');
+    const notesEl  = document.getElementById('finalise-notes');
+    if (statusEl && data.application_status) statusEl.value = data.application_status;
+    if (notesEl  && data.notes) {
+      notesEl.value = data.notes;
+      const counter = document.getElementById('finalise-notes-counter');
+      if (counter) {
+        const len = data.notes.length;
+        counter.textContent = `${len} / 2000`;
+        counter.style.color = len > 1800 ? '#dc2626' : len > 1600 ? '#d97706' : '#6b7280';
+      }
+    }
+  } catch (_) {}
+}
+
+// ── Submission readiness checklist ────────────────────────────────────────────
+
+function _renderReadinessChecklist(files, statusData) {
+  const el = document.getElementById('readiness-checklist');
+  if (!el) return;
+
+  const fileSet = new Set((files || []).map(f => (f || '').toLowerCase()));
+  const hasPdf  = [...fileSet].some(f => f.endsWith('.pdf') && !f.includes('coverletter') && !f.includes('cover_letter'));
+  const hasDocx = [...fileSet].some(f => f.endsWith('.docx') && !f.includes('coverletter') && !f.includes('cover_letter') && !f.includes('screening'));
+  const hasHtml = [...fileSet].some(f => f.endsWith('.html'));
+  const hasCl   = [...fileSet].some(f => f.includes('coverletter') || f.includes('cover_letter'));
+  const hasScr  = [...fileSet].some(f => f.includes('screening'));
+
+  const atsChecks  = statusData?.ats_checks || [];
+  const atsFails   = (atsChecks).filter(c => c.status === 'fail' || c.status === 'error').length;
+  const atsScanned = atsChecks.length > 0;
+
+  const layoutFresh = statusData?.layout_freshness !== 'stale';
+
+  const items = [
+    { ok: hasPdf,   label: 'CV PDF generated',        warn: false },
+    { ok: hasDocx,  label: 'CV DOCX generated',       warn: false },
+    { ok: hasHtml,  label: 'CV HTML generated',       warn: false },
+    { ok: hasCl,    label: 'Cover letter generated',  warn: true  },
+    { ok: hasScr,   label: 'Screening Q&A generated', warn: true  },
+    { ok: atsScanned && atsFails === 0, warn: true,
+      label: atsScanned
+        ? (atsFails > 0 ? `ATS validation — ${atsFails} issue${atsFails !== 1 ? 's' : ''} found` : 'ATS validation passed')
+        : 'ATS validation not yet run' },
+    { ok: layoutFresh, warn: true, label: 'Layout is current (not stale)' },
+  ];
+
+  const rows = items.map(({ ok, label, warn }) => {
+    const icon  = ok ? '✅' : (warn ? '⚠' : '❌');
+    const color = ok ? '#065f46' : (warn ? '#92400e' : '#991b1b');
+    const bg    = ok ? '#f0fdf4' : (warn ? '#fffbeb' : '#fef2f2');
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${bg};border-radius:6px;margin-bottom:6px;">
+      <span aria-hidden="true" style="font-size:1.1em;">${icon}</span>
+      <span style="color:${color};font-size:0.92em;">${escapeHtml(label)}</span>
+    </div>`;
+  }).join('');
+
+  const allRequired = hasPdf && hasDocx && hasHtml;
+  const headerColor = allRequired ? '#065f46' : '#92400e';
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin-bottom:24px;">
+      <h3 style="margin:0 0 12px;color:${headerColor};">📋 Submission Readiness</h3>
+      ${rows}
+      <p style="margin:10px 0 0;font-size:0.82em;color:#64748b;">
+        ⚠ items are optional — they warn but do not block archiving.
+        ❌ items must be resolved before submitting.
+      </p>
+    </div>`;
+}
+
+// ── Rewrite audit log ─────────────────────────────────────────────────────────
+
+async function _renderRewriteAuditLog() {
+  const el = document.getElementById('rewrite-audit-log');
+  if (!el) return;
+  try {
+    const res  = await fetch('/api/rewrites');
+    if (!res.ok) return;
+    const data = await res.json();
+    const audit = data.rewrite_audit || [];
+    if (audit.length === 0) return;
+    const rows = audit.map(entry => {
+      const outcome = entry.outcome || entry.decision || '—';
+      const icon = outcome === 'accepted' ? '✅' : outcome === 'edited' ? '✏️' : outcome === 'rejected' ? '❌' : '—';
+      const original  = escapeHtml((entry.original_text || entry.original || '').slice(0, 120));
+      const final     = escapeHtml((entry.final_text || entry.rewritten || entry.suggested || '').slice(0, 120));
+      const field     = escapeHtml(entry.field || entry.type || '—');
+      return `<tr>
+        <td style="padding:6px 8px;font-size:0.8em;color:#6b7280;">${field}</td>
+        <td style="padding:6px 8px;font-size:0.8em;color:#374151;">${original}${original.length === 120 ? '…' : ''}</td>
+        <td style="padding:6px 8px;font-size:0.8em;color:#374151;">${final}${final.length === 120 ? '…' : ''}</td>
+        <td style="padding:6px 8px;font-size:0.8em;text-align:center;">${icon} ${escapeHtml(outcome)}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <details style="margin-bottom:24px;">
+        <summary style="cursor:pointer;font-weight:600;font-size:0.95em;padding:10px 0;color:#374151;user-select:none;">
+          📋 Rewrite audit log (${audit.length} decision${audit.length !== 1 ? 's' : ''})
+        </summary>
+        <div style="overflow-x:auto;margin-top:10px;">
+          <table style="width:100%;border-collapse:collapse;font-size:0.85em;">
+            <thead>
+              <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
+                <th style="padding:8px;text-align:left;color:#374151;font-weight:600;">Field</th>
+                <th style="padding:8px;text-align:left;color:#374151;font-weight:600;">Original</th>
+                <th style="padding:8px;text-align:left;color:#374151;font-weight:600;">Final</th>
+                <th style="padding:8px;text-align:center;color:#374151;font-weight:600;">Outcome</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </details>`;
+  } catch { /* non-fatal */ }
 }
 
 // ── Finalise application ──────────────────────────────────────────────────────
@@ -174,6 +315,8 @@ async function finaliseApplication() {
     const approvedCount = summary.approved_rewrites ?? 0;
     const atsKeywords   = summary.ats_keywords || [];
     const atsScore      = summary.ats_score || null;
+    const durationSecs  = summary.session_duration_secs;
+    const durationStr   = durationSecs != null ? _formatDuration(durationSecs) : null;
 
     result.style.display = 'block';
     result.innerHTML = `
@@ -183,6 +326,7 @@ async function finaliseApplication() {
           <li>Status: <strong>${escapeHtml(status)}</strong></li>
           <li>Approved rewrites: ${approvedCount}</li>
           ${_renderFinaliseAtsItems(atsScore, atsKeywords)}
+          ${durationStr ? `<li>Session duration: ${escapeHtml(durationStr)}</li>` : ''}
           <li>Git commit: ${hash}</li>
         </ul>
         ${gitWarn}
@@ -317,73 +461,13 @@ async function showHarvestSection() {
   }
 }
 
-// ── Apply harvest selections ──────────────────────────────────────────────────
-
-async function applyHarvestSelections() {
-  const checkboxes   = document.querySelectorAll('input[data-harvest-id]:checked');
-  const selectedIds  = Array.from(checkboxes).map(cb => cb.dataset.harvestId);
-  const resultDiv    = document.getElementById('harvest-result');
-  const applyBtn     = document.getElementById('harvest-apply-btn');
-
-  if (selectedIds.length === 0) {
-    resultDiv.innerHTML = `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;
-      padding:10px 16px;color:#92400e;">No items selected. Tick the checkboxes for changes you want to keep.</div>`;
-    return;
-  }
-
-  applyBtn.disabled    = true;
-  applyBtn.textContent = '⏳ Applying…';
-  resultDiv.innerHTML  = '';
-
-  try {
-    const res  = await fetch('/api/harvest/apply', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ selected_ids: selectedIds }),
-    });
-    const data = await res.json();
-
-    if (!res.ok || !data.ok) {
-      resultDiv.innerHTML = `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;
-        padding:12px 16px;color:#991b1b;">
-        ❌ ${escapeHtml(data.error || 'Apply failed')}
-      </div>`;
-      applyBtn.disabled    = false;
-      applyBtn.textContent = '📥 Apply Selected Updates';
-      return;
-    }
-
-    const count    = data.written_count ?? 0;
-    const hash     = data.commit_hash
-      ? `<code style="font-size:0.85em;">${escapeHtml(data.commit_hash)}</code>`
-      : '(no commit)';
-    const gitWarn  = data.git_error
-      ? `<p style="color:#d97706;font-size:0.87em;margin-top:8px;">⚠ Git: ${escapeHtml(data.git_error)}</p>`
-      : '';
-    const diffRows = (data.diff_summary || []).map(d =>
-      `<li>${d.applied ? '✅' : '⚠'} ${escapeHtml(d.label)}${d.applied ? '' : ' (no match found)'}</li>`
-    ).join('');
-
-    resultDiv.innerHTML = `
-      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px 20px;">
-        <strong>✅ ${count} item${count !== 1 ? 's' : ''} written to master CV data.</strong>
-        <ul style="margin:8px 0 0;padding-left:20px;font-size:0.9em;line-height:1.8;">${diffRows}</ul>
-        <p style="margin:8px 0 0;font-size:0.87em;color:#166534;">Git commit: ${hash}</p>
-        ${gitWarn}
-      </div>`;
-
-    applyBtn.disabled    = false;
-    applyBtn.textContent = '✅ Applied';
-    applyBtn.style.background = '#059669';
-  } catch (err) {
-    resultDiv.innerHTML = `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;
-      padding:12px 16px;color:#991b1b;">
-      ❌ Network error: ${escapeHtml(err.message)}
-    </div>`;
-    applyBtn.disabled    = false;
-    applyBtn.textContent = '📥 Apply Selected Updates';
-  }
-}
+// applyHarvestSelections() (bound via the button's onclick above) lives in
+// web/harvest.js, not here — this file used to carry its own divergent
+// duplicate (different confirm/message copy, no confirm-modal step), but
+// since both files render a button with the same onclick and window resolves
+// bare identifiers at click time, harvest.js's version was always the one
+// actually invoked in production regardless; this copy was unreachable dead
+// code. Removed; see web/harvest.js.
 
 // ── Exports ───────────────────────────────────────────────────────────────────
 
@@ -391,5 +475,5 @@ export {
   populateFinaliseTab,
   finaliseApplication,
   showHarvestSection,
-  applyHarvestSelections,
+  _renderReadinessChecklist,
 };

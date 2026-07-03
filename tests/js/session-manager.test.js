@@ -60,9 +60,9 @@ describe('formatSessionPhaseLabel', () => {
 
   it('maps known phases', () => {
     expect(formatSessionPhaseLabel('job_analysis')).toBe('Analysis')
-    expect(formatSessionPhaseLabel('customization')).toBe('Custom')
-    expect(formatSessionPhaseLabel('rewrite_review')).toBe('Rewrite')
-    expect(formatSessionPhaseLabel('refinement')).toBe('Done')
+    expect(formatSessionPhaseLabel('customization')).toBe('Customising')
+    expect(formatSessionPhaseLabel('rewrite_review')).toBe('Rewrites')
+    expect(formatSessionPhaseLabel('refinement')).toBe('Finalise')
   })
 
   it('converts unknown phases by replacing underscores with spaces', () => {
@@ -199,12 +199,12 @@ describe('buildSessionSwitcherLabel', () => {
 
   it('returns "Session · <phase>" when session exists but no position_name', () => {
     vi.stubGlobal('getSessionIdFromURL', vi.fn(() => 'sess-1'))
-    expect(buildSessionSwitcherLabel({ phase: 'init' })).toBe('Session · Init')
+    expect(buildSessionSwitcherLabel({ phase: 'init' })).toBe('Session · Setup')
   })
 
   it('returns "positionName · <phase>" when position_name is set', () => {
     expect(buildSessionSwitcherLabel({ position_name: 'Engineer', phase: 'customization' }))
-      .toBe('Engineer · Custom')
+      .toBe('Engineer · Customising')
   })
 })
 
@@ -219,6 +219,16 @@ describe('getActiveSessionOwnershipMeta', () => {
   it('returns "Current tab" when session is current and owned by requester', () => {
     const meta = getActiveSessionOwnershipMeta(
       { session_id: 'abc', owned_by_requester: true },
+      { currentSessionId: 'abc' }
+    )
+    expect(meta.label).toBe('Current tab')
+    expect(meta.isCurrent).toBe(true)
+    expect(meta.className).toBe('session-status-current')
+  })
+
+  it('returns "Current tab" when session is current but unclaimed', () => {
+    const meta = getActiveSessionOwnershipMeta(
+      { session_id: 'abc', owned_by_requester: false, claimed: false },
       { currentSessionId: 'abc' }
     )
     expect(meta.label).toBe('Current tab')
@@ -504,16 +514,15 @@ describe('saveTabData and restoreTabData', () => {
 
     restoreTabData({ uiPrefsOnly: true })
 
+    // tabData/pendingRecommendations/interactiveState must stay exactly as
+    // seeded by beforeEach — uiPrefsOnly means only _activeReviewPane below
+    // gets restored from the saved (different) values.
     expect(stateManager.getTabData('analysis')).toEqual({ score: 42 })
-    expect(globalThis.tabData).toEqual({
-      analysis: { score: 42 },
-      customizations: null,
-      cv: null,
-    })
+    expect(stateManager.getTabData('cv')).toBeNull()
     expect(globalThis.window.pendingRecommendations).toEqual({
       skills: ['Python'],
     })
-    expect(globalThis.interactiveState).toMatchObject({ expanded: true })
+    expect(stateManager.getInteractiveState()).toMatchObject({ expanded: true })
     expect(globalThis.window._activeReviewPane).toBe('achievements')
   })
 

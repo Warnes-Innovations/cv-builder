@@ -212,16 +212,16 @@ class TestCreateAppBundleIntegration(unittest.TestCase):
             patch('scripts.web_app.get_llm_provider', return_value=mock_llm)
         )
         stack.enter_context(
-            patch('scripts.web_app.get_cached_pricing', return_value={})
+            patch('scripts.routes.auth_routes.get_cached_pricing', return_value={})
         )
         stack.enter_context(
             patch(
-                'scripts.web_app.get_pricing_updated_at',
+                'scripts.routes.auth_routes.get_pricing_updated_at',
                 return_value='2024-01-01',
             )
         )
         stack.enter_context(
-            patch('scripts.web_app.get_pricing_source', return_value='static')
+            patch('scripts.routes.auth_routes.get_pricing_source', return_value='static')
         )
         self.addCleanup(stack.close)
         return stack
@@ -344,6 +344,10 @@ class TestMainStartupBanner(unittest.TestCase):
             port=5050,
             debug=False,
         )
-        banner_text = mock_print.call_args.args[0]
-        self.assertIn('│ bundle   │ rebuilt', banner_text)
-        self.assertIn('│ built at │ 2026-03-23T10:15:00-04:00', banner_text)
+        # Check any print call (not just the last) because _evict_port() may
+        # also call print() when a process is already bound to the port.
+        all_printed = ' '.join(
+            call.args[0] for call in mock_print.call_args_list if call.args
+        )
+        self.assertIn('│ bundle   │ rebuilt', all_printed)
+        self.assertIn('│ built at │ 2026-03-23T10:15:00-04:00', all_printed)

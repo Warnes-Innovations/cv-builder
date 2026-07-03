@@ -165,7 +165,21 @@ function _populateGenerateTab(cvData, content) {
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 
+// Tracks which customise-stage sub-tabs have been viewed this session (GAP-269).
+const _visitedCustomiseTabs = new Set();
+const _CUSTOMISE_TABS = new Set(['goals', 'questions', 'exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'tagline-review', 'summary-review', 'publications-review', 'ats-score']);
+
+function _updateVisitedTabIndicators() {
+  _visitedCustomiseTabs.forEach(name => {
+    const el = document.getElementById(`tab-${name}`);
+    if (el) el.classList.add('tab--visited');
+  });
+}
+
 function switchTab(tab) {
+  // Clear keyboard-focused card state when leaving a review tab
+  if (typeof resetCardFocus === 'function') resetCardFocus();
+
   // Save unsaved user input from the tab we are leaving
   _saveDraftInputsForTab(stateManager.getCurrentTab());
 
@@ -182,17 +196,34 @@ function switchTab(tab) {
     updateWorkflowStepsClickable(stateManager.getPhase());
   }
 
-  // Update active tab and ARIA state
+  // Update active tab, ARIA state, and roving tabindex (WCAG 2.1 tablist pattern)
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.remove('active');
     t.setAttribute('aria-selected', 'false');
+    t.setAttribute('tabindex', '-1');
   });
   const activeTab = document.getElementById(`tab-${tab}`);
   if (activeTab) {
     activeTab.classList.add('active');
     activeTab.setAttribute('aria-selected', 'true');
+    activeTab.setAttribute('tabindex', '0');
+    const tabpanel = document.getElementById('document-content');
+    if (tabpanel) tabpanel.setAttribute('aria-labelledby', `tab-${tab}`);
   }
   stateManager.setCurrentTab(tab);
+
+  // Mark this tab as visited and refresh the visited indicators (GAP-269)
+  if (_CUSTOMISE_TABS.has(tab)) {
+    _visitedCustomiseTabs.add(tab);
+    _updateVisitedTabIndicators();
+  }
+
+  // Announce the tab change to screen readers (GAP-73)
+  const announcer = document.getElementById('workflow-stage-announcer');
+  if (announcer && activeTab) {
+    announcer.textContent = '';
+    setTimeout(() => { announcer.textContent = `Now viewing: ${activeTab.textContent.trim()}`; }, 50);
+  }
 
   // Sync view-cursor ring to the newly visible tab
   if (typeof _updateViewingIndicator === 'function') _updateViewingIndicator(tab);
@@ -209,6 +240,7 @@ async function loadTabContent(tab) {
   const content = document.getElementById('document-content');
   const tabData = ensureTabDataState();
 
+  try {
   switch (tab) {
     case 'job':
       await populateJobTab();
@@ -240,6 +272,9 @@ async function loadTabContent(tab) {
       break;
     case 'achievements-review':
       await populateReviewTab('achievements');
+      break;
+    case 'tagline-review':
+      await populateTaglineReviewTab();
       break;
     case 'summary-review':
       await populateReviewTab('summary');
@@ -292,6 +327,15 @@ async function loadTabContent(tab) {
     case 'finalise':
       await populateFinaliseTab();
       break;
+    case 'harvest':
+      if (typeof populateHarvestTab === 'function') await populateHarvestTab();
+      break;
+    case 'interview-prep':
+      if (typeof populateInterviewPrepTab === 'function') await populateInterviewPrepTab();
+      break;
+    case 'thank-you':
+      if (typeof populateThankYouTab === 'function') await populateThankYouTab();
+      break;
     case 'master':
       await populateMasterTab();
       break;
@@ -301,6 +345,16 @@ async function loadTabContent(tab) {
     case 'screening':
       await populateScreeningTab();
       break;
+  }
+  } catch (error) {
+    log.error(`Error loading tab ${tab}:`, error);
+    // textContent, not innerHTML — a thrown error message must never be
+    // interpreted as HTML (e.g. an error string containing a stray <img>).
+    const errorMessage = document.createElement('p');
+    errorMessage.style.cssText = 'padding: 20px; color: #c41e3a;';
+    errorMessage.textContent = `Error loading content: ${error.message}`;
+    content.appendChild(errorMessage);
+    return;
   }
 
   // Restore unsaved user input for the newly loaded tab
@@ -321,7 +375,40 @@ async function showTableBasedReview() {
 
 // ── Analysis tab ──────────────────────────────────────────────────────────
 
-function populateAnalysisTab(result) {
+// Cached synonym map: alias (lower) → canonical, and canonical (lower) → [aliases]
+let _synonymMapCache = null;
+async function _loadSynonymMap() {
+  if (_synonymMapCache) return _synonymMapCache;
+  try {
+    const sessionId = stateManager.getSessionId && stateManager.getSessionId();
+    const url = sessionId ? `/api/synonym-map?session_id=${encodeURIComponent(sessionId)}` : '/api/synonym-map';
+    const res  = await fetch(url);
+    if (!res.ok) return (_synonymMapCache = {});
+    const raw  = await res.json();
+    const aliasToCanon = {};
+    const canonToAliases = {};
+    Object.entries(raw).forEach(([alias, canon]) => {
+      aliasToCanon[alias.toLowerCase()] = canon;
+      const cl = canon.toLowerCase();
+      (canonToAliases[cl] = canonToAliases[cl] || []).push(alias);
+    });
+    _synonymMapCache = { aliasToCanon, canonToAliases };
+  } catch (_) { _synonymMapCache = {}; }
+  return _synonymMapCache;
+}
+
+function _kwSynonymAnnotation(kw, synMap) {
+  if (!synMap || (!synMap.aliasToCanon && !synMap.canonToAliases)) return '';
+  const kl = kw.toLowerCase();
+  // Is kw an alias? Show canonical form.
+  if (synMap.aliasToCanon[kl]) return ` = ${synMap.aliasToCanon[kl]}`;
+  // Is kw a canonical form? Show aliases.
+  const aliases = synMap.canonToAliases && synMap.canonToAliases[kl];
+  if (aliases && aliases.length) return ` (${aliases.join(', ')})`;
+  return '';
+}
+
+async function populateAnalysisTab(result) {
   const content = document.getElementById('document-content');
   try {
     // result may already be a parsed object (e.g. coming from stateManager) or a
@@ -345,7 +432,17 @@ function populateAnalysisTab(result) {
     html += `<h1>${data.title || 'Role'}</h1>`;
     if (data.company) html += `<p class="company">🏢 ${data.company}</p>`;
     html += '<div class="meta">';
-    if (data.domain)     html += `<span class="meta-chip">🔬 ${data.domain}</span>`;
+    if (data.domain) {
+      const conf = data.domain_confidence;
+      let confLabel = '';
+      let confTitle = '';
+      if (typeof conf === 'number') {
+        if (conf >= 0.8) { confLabel = ''; confTitle = `Domain confidence: High (${Math.round(conf * 100)}%)`; }
+        else if (conf >= 0.6) { confLabel = ' ⚠'; confTitle = `Domain confidence: Medium (${Math.round(conf * 100)}%) — verify this is correct`; }
+        else { confLabel = ' ⚠'; confTitle = `Domain confidence: Low (${Math.round(conf * 100)}%) — the JD spans multiple domains; consider overriding`; }
+      }
+      html += `<span class="meta-chip" title="${escapeHtml(confTitle || 'Inferred technical domain')}">🔬 ${escapeHtml(data.domain)}${confLabel}</span>`;
+    }
     if (data.role_level) html += `<span class="meta-chip">📊 ${data.role_level}</span>`;
     if (data.suggested_summary) html += `<span class="meta-chip">💬 ${data.suggested_summary}</span>`;
     html += '</div></div>';
@@ -385,12 +482,16 @@ function populateAnalysisTab(result) {
       html += '</ul></div>';
     }
 
-    // ── Section 4: ATS Keywords with rank badges ──────────────────────────
+    // ── Section 4: ATS Keywords with rank badges and synonym annotations ──
     const atsKws = Array.isArray(data.ats_keywords) ? data.ats_keywords : [];
     if (atsKws.length > 0) {
+      const synMap = await _loadSynonymMap();
       html += '<div class="analysis-section"><h2>🔑 ATS Keywords <small style="font-weight:400;color:#64748b;font-size:12px;">(higher rank = higher priority)</small></h2><div class="kw-badges">';
       atsKws.forEach((kw, idx) => {
-        html += `<span class="kw-badge"><span class="kw-rank">#${idx + 1}</span>${kw}</span>`;
+        const annotation = _kwSynonymAnnotation(kw, synMap);
+        const titleAttr  = annotation ? ` title="Synonym: ${escapeHtml(kw + annotation)}"` : '';
+        const annotHtml  = annotation ? `<span style="font-size:10px;color:#64748b;margin-left:3px;">${escapeHtml(annotation)}</span>` : '';
+        html += `<span class="kw-badge"${titleAttr}><span class="kw-rank">#${idx + 1}</span>${escapeHtml(kw)}${annotHtml}</span>`;
       });
       html += '</div></div>';
     }
@@ -541,26 +642,6 @@ async function populateReviewTab(pane) {
       <span id="pe-label">Estimated length: calculating…</span>
       <div class="pe-bar"><div class="pe-fill" id="pe-fill" style="width:0%;background:#86efac;"></div></div>
     </div>
-    <details id="generation-settings-panel" style="margin:0 0 16px;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;background:#f8fafc;">
-      <summary style="cursor:pointer;font-weight:600;color:#374151;user-select:none;">⚙️ Generation Settings</summary>
-      <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
-        <label for="max-skills-input" style="font-size:0.9em;color:#4b5563;white-space:nowrap;">Max skills in CV:</label>
-        <input type="range" id="max-skills-input" min="1" max="60" step="1" value="20" style="flex:1;accent-color:#3b82f6;">
-        <span id="max-skills-value" style="font-weight:600;color:#1e293b;min-width:2em;text-align:right;">20</span>
-        <span style="font-size:0.85em;color:#9ca3af;">(default: 20)</span>
-      </div>
-      <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <label for="skills-title-select" style="font-size:0.9em;color:#4b5563;white-space:nowrap;">Skills section title:</label>
-        <select id="skills-title-select" style="font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;">
-          <option value="Skills">Skills</option>
-          <option value="Technical Skills">Technical Skills</option>
-          <option value="Key Skills">Key Skills</option>
-          <option value="Core Skills">Core Skills</option>
-          <option value="__custom__">Custom…</option>
-        </select>
-        <input type="text" id="skills-title-custom" placeholder="Enter custom title" style="display:none;font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;min-width:160px;">
-      </div>
-    </details>
   ` : (cfg.title ? `<h2 style="margin:0 0 12px;">${cfg.title}</h2>` : '');
 
   const navBack = {
@@ -571,7 +652,7 @@ async function populateReviewTab(pane) {
   const navContinue = {
     experiences:  `<button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Experience Bullets →</button>`,
     skills:       `<button class="continue-btn" onclick="submitSkillDecisions()">Continue to Achievements →</button>`,
-    achievements: `<button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Summary →</button>`,
+    achievements: `<button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Tagline →</button>`,
     publications: `<button class="continue-btn" onclick="submitPublicationDecisions()">Continue to Rewrite →</button>`,
   };
   const navHtml = pane === 'summary' ? '' : `
@@ -586,33 +667,6 @@ async function populateReviewTab(pane) {
     <div id="${cfg.container}"></div>
     ${navHtml}
   `;
-
-  // Sync slider and skills title for experiences tab
-  if (pane === 'experiences') {
-    (async () => {
-      const status = await fetchStatus();
-      const currentMax = status.max_skills || 20;
-      const slider = document.getElementById('max-skills-input');
-      const label = document.getElementById('max-skills-value');
-      if (slider) {
-        slider.value = currentMax;
-        if (label) label.textContent = currentMax;
-        slider.addEventListener('input', () => {
-          if (label) label.textContent = slider.value;
-        });
-        slider.addEventListener('change', async () => {
-          const v = parseInt(slider.value, 10);
-          if (label) label.textContent = v;
-          try {
-            await apiCall('POST', '/api/generation-settings', { max_skills: v });
-          } catch (e) {
-            log.warn('Failed to save max_skills setting:', e);
-          }
-        });
-      }
-      _syncSkillsTitleControls(status.skills_section_title || 'Skills');
-    })();
-  }
 
   window._activeReviewPane = pane;
   switch (pane) {
@@ -785,17 +839,25 @@ function handleActionClick(itemId, action, type) {
     : document.querySelector(`tr[data-skill="${itemId}"]`);
 
   const buttons = row.querySelectorAll('.icon-btn');
-  buttons.forEach(btn => btn.classList.remove('active'));
+  buttons.forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', 'false');
+  });
 
   // Add active class to clicked button
   const clickedBtn = row.querySelector(`[data-action="${action}"]`);
   clickedBtn.classList.add('active');
+  if (clickedBtn.hasAttribute('aria-pressed')) clickedBtn.setAttribute('aria-pressed', 'true');
 
-  // Store selection
+  // Store selection and record explicit review
   if (type === 'experience') {
     userSelections.experiences[itemId] = action;
+    window._explicitlyReviewed = window._explicitlyReviewed || { experiences: new Set(), skills: new Set() };
+    window._explicitlyReviewed.experiences.add(itemId);
   } else {
     userSelections.skills[itemId] = action;
+    window._explicitlyReviewed = window._explicitlyReviewed || { experiences: new Set(), skills: new Set() };
+    window._explicitlyReviewed.skills.add(itemId);
   }
   _updatePageEstimate();
 }
@@ -829,9 +891,15 @@ function bulkAction(action, type) {
     }
 
     // Update button states
-    row.querySelectorAll('.icon-btn').forEach(btn => btn.classList.remove('active'));
+    row.querySelectorAll('.icon-btn').forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', 'false');
+    });
     const target = row.querySelector(`[data-action="${resolvedAction}"]`);
-    if (target) target.classList.add('active');
+    if (target) {
+      target.classList.add('active');
+      if (target.hasAttribute('aria-pressed')) target.setAttribute('aria-pressed', 'true');
+    }
 
     // Store selection
     if (type === 'experience') {
@@ -859,6 +927,20 @@ function _resolvedSkillAction(skillName, data) {
   return 'exclude';
 }
 
+// ── Tagline review tab ────────────────────────────────────────────────────
+
+async function populateTaglineReviewTab() {
+  const content = document.getElementById('document-content');
+  if (!content) return;
+  content.innerHTML = `
+    <h2 style="margin:0 0 16px;">🏷️ Applicant Tagline</h2>
+    <div id="tagline-review-container"></div>
+  `;
+  if (typeof buildTaglineReviewSection === 'function') {
+    await buildTaglineReviewSection();
+  }
+}
+
 // ── Exports ───────────────────────────────────────────────────────────────
 
 export {
@@ -870,6 +952,7 @@ export {
   handleCustomizationResponse,
   showTableBasedReview,
   populateReviewTab,
+  populateTaglineReviewTab,
   switchReviewSubtab,
   _loadReviewPane,
   _updatePageEstimate,

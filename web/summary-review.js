@@ -69,7 +69,7 @@ async function buildSummaryFocusSection() {
     ${reorderingHTML}
     <div id="ai-summary-panel" style="border:1px solid #d1fae5;border-radius:8px;padding:16px;margin-bottom:20px;background:#f0fdf4;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <strong style="color:#065f46;">AI-Generated Summary</strong>
+        <strong style="color:#065f46;">🤖 AI-Proposed Summary</strong>
         <span id="ai-summary-status" style="font-size:0.8em;color:#6b7280;">Generating…</span>
       </div>
       <div id="ai-summary-loading" style="font-size:0.9em;color:#9ca3af;min-height:40px;"><em>Generating a tailored summary for this application…</em></div>
@@ -102,7 +102,7 @@ async function buildSummaryFocusSection() {
       </details>
     </div>
     <div class="nav-buttons" style="margin-top:16px;">
-      <button class="back-btn" onclick="switchTab('achievements-review')">← Back to Achievements</button>
+      <button class="back-btn" onclick="switchTab('tagline-review')">← Back to Tagline</button>
       <button class="continue-btn" onclick="submitSummaryFocusDecision()">Continue to Publications →</button>
     </div>`;
 
@@ -139,7 +139,7 @@ function _renderStoredSummaryRadios(professionalSummaries) {
       <label style="display:block;border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-bottom:8px;cursor:pointer;${checked ? 'border-color:#10b981;background:#f0fdf4;' : ''}">
         <input type="radio" name="summary_key" value="${escapeHtml(key)}" ${checked}
           onchange="selectSummaryKey('${escapeHtml(key)}')" style="margin-right:8px;">
-        <strong>${escapeHtml(label)}</strong>
+        <strong>${escapeHtml(label)}</strong> <span style="font-size:0.75em;padding:1px 6px;border-radius:999px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:600;">📄 From your Master CV</span>
         <p style="margin:6px 0 0;font-size:0.85em;color:#6b7280;">${escapeHtml(preview)}${preview.length === 200 ? '…' : ''}</p>
       </label>`;
   }).join('');
@@ -158,6 +158,59 @@ function _showAISummary(text, statusLabel) {
   if (loadingEl) loadingEl.style.display = 'none';
   if (statusEl)  statusEl.textContent = statusLabel || '';
   window._aiGeneratedSummary = text;
+  _updateSummarySpecificityBadge(text);
+}
+
+// ── Summary specificity validator ─────────────────────────────────────────────
+
+function _checkSummarySpecificity(text) {
+  if (!text || !text.trim()) return [];
+  const warnings = [];
+  // Check 1: quantified claim (number, percentage, or year range)
+  const hasQuantified = /\b\d[\d,]*\s*(%|percent|yrs?|years?|months?|x\b|\+|k\b|m\b|\.\d)/i.test(text) ||
+                        /\b\d+\+\s*(years?|yrs?|months?)/i.test(text);
+  if (!hasQuantified) {
+    warnings.push('No quantified claim detected (e.g. "5+ years", "30% reduction", "$2M"). Adding a number strengthens credibility.');
+  }
+  // Check 2: target role keyword present
+  const analysis = window._lastAnalysisData ||
+    (window.pendingRecommendations && window.pendingRecommendations.job_analysis) || {};
+  const roleTitle = (analysis.title || analysis.job_title || '').toLowerCase().trim();
+  if (roleTitle && roleTitle.length > 3) {
+    const roleParts = roleTitle.split(/[\s/,]+/).filter(w => w.length > 3);
+    const inText = roleParts.some(part => text.toLowerCase().includes(part));
+    if (!inText) {
+      warnings.push(`Target role ("${escapeHtml(roleTitle)}") not mentioned — consider echoing the role or a synonym.`);
+    }
+  }
+  // Check 3: fallback generic placeholder
+  const genericPhrases = ['experienced professional', 'track record of success', 'seeking a challenging'];
+  for (const phrase of genericPhrases) {
+    if (text.toLowerCase().includes(phrase)) {
+      warnings.push(`Generic placeholder phrase detected ("${phrase}") — replace with specific achievements.`);
+    }
+  }
+  return warnings;
+}
+
+function _updateSummarySpecificityBadge(text) {
+  let badge = document.getElementById('summary-specificity-badge');
+  if (!badge) {
+    const textEl = document.getElementById('ai-summary-text');
+    if (!textEl || !textEl.parentNode) return;
+    badge = document.createElement('div');
+    badge.id = 'summary-specificity-badge';
+    badge.style.cssText = 'margin-top:6px;font-size:0.82em;';
+    textEl.parentNode.insertBefore(badge, textEl.nextSibling);
+  }
+  const warnings = _checkSummarySpecificity(text);
+  if (warnings.length === 0) {
+    badge.innerHTML = '<span style="color:#10b981;">✓ Summary has specific, quantified content.</span>';
+  } else {
+    badge.innerHTML = warnings.map(w =>
+      `<div style="color:#b45309;margin-top:2px;">⚠ ${w}</div>`
+    ).join('');
+  }
 }
 
 // ── Call generate-summary API ────────────────────────────────────────────────
@@ -271,6 +324,7 @@ function onSummaryTextChange() {
   const textEl = document.getElementById('ai-summary-text');
   if (!textEl) return;
   window._aiGeneratedSummary = textEl.value;
+  _updateSummarySpecificityBadge(textEl.value);
   clearTimeout(_summaryPersistTimer);
   _summaryPersistTimer = setTimeout(() => {
     saveSummaryFocusToBackend('ai_generated', textEl.value.trim());
@@ -318,5 +372,7 @@ export {
   onSummaryTextChange,
   selectSummaryKey,
   saveSummaryFocusToBackend,
+  _checkSummarySpecificity,
+  _updateSummarySpecificityBadge,
   submitSummaryFocusDecision,
 };

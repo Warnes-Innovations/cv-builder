@@ -316,7 +316,7 @@ class TestScreeningSave(unittest.TestCase):
             self.assertTrue(data['ok'])
             self.assertEqual(data['count'], 2)
 
-            docx_files = list(out_dir.glob('Screening_Responses_*.docx'))
+            docx_files = list(out_dir.glob('Screening_*.docx'))
             self.assertEqual(len(docx_files), 1)
 
             meta = json.loads((out_dir / 'metadata.json').read_text())

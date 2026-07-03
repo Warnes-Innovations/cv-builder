@@ -8,7 +8,7 @@ name: Full Integration Suite
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/multi-user-deployment]
   schedule:
     # Nightly at 02:00 UTC
     - cron: '0 2 * * *'
@@ -21,29 +21,11 @@ permissions:
 
 jobs:
   codeql:
-    name: CodeQL security scan (${{ matrix.language }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [python, javascript-typescript]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-          config-file: ./.github/codeql/codeql-config.yml
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-
-      - name: Analyze
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: /language:${{ matrix.language }}
+    uses: ./.github/workflows/reusable-codeql.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
 
   python-tests:
     name: Python unit tests
@@ -67,62 +49,15 @@ jobs:
         run: python -m pytest -q tests/unit
 
   js-tests:
-    name: JavaScript unit tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Run JS unit tests
-        run: npm run test:js
+    uses: ./.github/workflows/reusable-js-unit-tests.yml
+    permissions:
+      contents: read
 
   integration-harness:
-    name: Run HTML integration harness
-    runs-on: ubuntu-latest
     needs: [python-tests, js-tests]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
-      - name: Run integration HTML harness
-        env:
-          CI: true
-        run: npm run test:integration:headless
+    uses: ./.github/workflows/reusable-html-harness.yml
+    permissions:
+      contents: read
 
   python-full:
     name: Python full test suite

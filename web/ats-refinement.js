@@ -99,7 +99,7 @@ function _buildSummaryDetail(score, keywords) {
     return `Missing hard: ${preview}${suffix}`;
   }
 
-  const exact = keywords.filter(keyword => keyword.match_type === 'exact').length;
+  const exact = keywords.filter(keyword => keyword.match_type === 'exact' || keyword.match_type === 'synonym').length;
   const partial = keywords.filter(keyword => keyword.match_type === 'partial').length;
   const topSections = Object.entries(score.section_scores || {})
     .filter(([, value]) => typeof value === 'number' && value > 0)

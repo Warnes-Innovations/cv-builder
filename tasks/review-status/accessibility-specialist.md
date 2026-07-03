@@ -1,16 +1,16 @@
 <!--
-  Copyright (C) 2026 Gregory R. Warnes
-  SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) 2026 Gregory R. Warnes
+SPDX-License-Identifier: AGPL-3.0-or-later
 
-  This file is part of CV-Builder.
-  For commercial licensing, contact greg@warnes-innovations.com
+This file is part of CV-Builder.
+For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# Accessibility Specialist Review Status
-
-**Last Updated:** 2026-04-22 10:00 ET
-
-**Executive Summary:** The modal and dialog layer is well-structured with focus management, ARIA roles, and Escape-key handling, but the workflow step bar and second-level tab bar are built from non-interactive `<div>` elements with no `tabindex`, making the primary navigation unreachable by keyboard. Several compounding gaps — a labelless message input, an ARIA-free confirm dialog, and missing programmatic state announcements on workflow steps — place US-X1 at a critical fail level.
+# Accessibility Specialist Evaluation
+**Persona:** Accessibility Specialist
+**Date:** 2026-07-01
+**Branch:** feature/multi-user-deployment
+**Source files reviewed:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py
 
 ---
 
@@ -18,217 +18,168 @@
 
 ### US-X1: Workflow Navigation Accessibility
 
-#### Criterion 1 — Workflow-step elements reachable and operable by keyboard
+#### Summary
+The workflow nav bar and the tab bar have been substantially hardened for keyboard and screen-reader access. Several gaps remain.
 
-❌ **Fail** — `web/index.html:105–119`
+#### Criterion 1 — Keyboard reachability of workflow step elements
+**PASS with minor gap.**
 
-All 8 workflow step pills are `<div>` elements with `onclick` handlers and no `tabindex` attribute.
-
-```html
-<div class="step clickable" id="step-job" onclick="handleStepClick('job')">📥 Job Input</div>
-<div class="step" id="step-analysis" onclick="handleStepClick('analysis')">🔍 Analysis</div>
-<!-- × 8 steps -->
-```
-
-`updateWorkflowSteps()` (`web/workflow-steps.js:660–668`) adds class `clickable` to completed steps but never sets `tabindex="0"` or `role="button"`. The ↻ re-run spans injected into completed steps (`workflow-steps.js:673`) are also plain `<span>` elements with `onclick` only — no `tabindex`, no `role="button"`.
-
-**Impact:** Keyboard-only users cannot reach or activate any workflow step pill or re-run button.
+- The `job` step is given `role="button"` and `tabindex="0"` in static HTML (`index.html` line 124). The other 11 steps start without those attributes and are deliberately inert until `updateWorkflowStepsClickable()` is called.
+- `ui-core.js:1865–1878` contains `_makeStepClickable()`, which adds `role="button"`, `tabindex="0"`, and a keydown listener for Enter/Space before attaching `handleStepClick`. Steps removed from the interaction path are correctly reverted by `_makeStepInert()`.
+- **Gap (minor):** The static HTML markup shows steps 2–12 without `role` or `tabindex`. Until `fetchStatus()` completes and `updateWorkflowStepsClickable` fires, those steps are unreachable by keyboard. This window is short in practice but is technically a transient failure.
 
 #### Criterion 2 — Stage tabs expose correct tab semantics, selected state, and panel association
+**PASS.**
 
-⚠️ **Partial** — `web/index.html:176–196`
-
-The tab container has `role="tablist"` and `aria-label="Application workflow tabs"`. Every tab `<div>` carries `role="tab"`, `aria-selected`, and `aria-controls="document-content"`. `aria-selected` is toggled correctly in `switchTab()` (`web/review-table-base.js:80–87`).
-
-However, the tab `<div>` elements carry no `tabindex` attribute, making them non-focusable. The arrow-key handler in `ui-core.js:490–504` calls `nextTab.focus()` but a `<div>` without `tabindex` cannot receive programmatic focus — arrow-key navigation silently fails. The `aria-controls` value is `"document-content"` for all tabs (not unique panel IDs), which is a technical workaround rather than the recommended per-tab panel pattern.
-
-**What passes:** ARIA roles, `aria-selected` toggling, and `aria-controls` linkage are present.
-**What fails:** Tabs are not keyboard-operable (missing `tabindex="0"`); arrow-key focus calls do not work.
+- The tab bar container carries `role="tablist"` and `aria-label="Application workflow tabs"` (`index.html` line 207).
+- Each tab `div` has `role="tab"`, `aria-selected` (true/false), `tabindex` (0/-1), and `aria-controls="document-content"` (lines 208–233).
+- `switchTab()` in `review-table-base.js:135–148` updates `aria-selected` and `tabindex` on all tabs using the roving tabindex pattern and updates `aria-labelledby` on the single `role="tabpanel"` element.
+- Keyboard navigation (ArrowLeft, ArrowRight, Home, End, Enter, Space) is wired in `ui-core.js:461–486` following the WCAG 2.1 tablist pattern.
+- **Limitation:** All tabs share a single tabpanel (`document-content`), so `aria-controls` from every tab points to the same element. This is structurally valid for a single-panel rotor, but assistive technologies may not infer the one-to-one logical mapping as clearly as separate panel elements would.
 
 #### Criterion 3 — Active and completed states conveyed beyond colour alone
+**PASS.**
 
-⚠️ **Partial** — `web/styles.css:147–157`
+- `workflow-steps.js:891–903` injects a hidden `<span class="sr-only">` suffix describing each step's state: "(current step)", "(completed)", "(stale — results may be outdated)", "(critical — review required)", or "(previously completed — click to jump ahead)".
+- `styles.css:37–48` defines a correct `.sr-only` rule (1 px collapsed box, `clip`, `overflow:hidden`, `white-space:nowrap`).
+- `.tab.active` adds a 3 px blue underline border and a color shift; `.tab--visited` adds a small green dot. Neither relies solely on colour — active tabs also gain `aria-selected="true"`.
 
-Step states are differentiated by background and text colour (upcoming: gray, active: blue, completed: green, stale: amber). The `.viewing` class adds a visible blue box-shadow ring, providing a non-colour indicator of current view position. The `.browsing-away` class adds a pulsing amber ring. These provide some non-colour signal.
+#### Criterion 4 — Changes in active stage or tab announced programmatically
+**PASS.**
 
-However, no `aria-current`, `aria-label`, or additional screen-reader text distinguishes active from completed from upcoming for screen reader users. The pill text label is identical regardless of state (`📥 Job Input` stays `📥 Job Input`). A screen reader user receives no programmatic signal of workflow position.
+- `index.html:149–151` inserts a hidden `aria-live="polite"` `aria-atomic="true"` region (`#workflow-stage-announcer`).
+- `review-table-base.js:157–162` clears the region and writes "Now viewing: [tab label]" after a 50 ms timeout on every `switchTab()` call.
 
-#### Criterion 4 — Changes in active stage announced
-
-❌ **Fail** — `web/index.html:100–121`
-
-The `.workflow` div has no `aria-live` attribute. `updateWorkflowSteps()` mutates step classes and innerHTML but nothing announces advancement to assistive technology. (The `#document-content` panel does have `aria-live="polite"` so tab content changes are announced, but that is a separate region.)
+#### Failure Modes Check
+- Clickable elements not keyboard reachable: **mitigated** (transient gap during startup as noted).
+- Tabs styled visually but missing `role`/selection state: **not present**.
+- Status indicated only by colour: **not present** — `.sr-only` text supplements colour classes.
 
 ---
 
 ### US-X2: Modal and Dialog Accessibility
 
+#### Summary
+The application has a centralized focus management system that covers most modals well. Coverage is consistent but one path is missing focus-stack save.
+
 #### Criterion 1 — Opening a modal moves focus into it
+**PASS.**
 
-⚠️ **Partial** — `web/ui-core.js:239–245`, `1458–1460`; `web/session-switcher-ui.js:199–213`
-
-`openSettingsModal()` (`ui-core.js:243–245`) and `openModelModal()` (`ui-core.js:1458–1460`) both call `setInitialFocus(modalId)` and save `_focusedElementBeforeModal`. `openSessionsModal()` (`session-switcher-ui.js:199–213`) saves focus and calls `trapFocus()` but **omits** `setInitialFocus()` — focus is captured but not moved into the modal. The `confirmDialog()` helper (`ui-core.js:364`) never captures or redirects focus at all.
+- `ui-core.js:284–297` — `setInitialFocus()` targets a `[data-focus-target="true"]` element, falls back to the first text input, then the first button, and applies focus with a 50 ms delay.
+- All major modal open functions call this: `openSettingsModal` (ui-core.js:254), `openModelModal` (ui-core.js:1454), `openSessionsModal` (session-switcher-ui.js:537), `openMasterCvModal` (master-cv.js:2618), `openAtsReportModal` (ats-modals.js:163), `openJobAnalysisModal` (ats-modals.js:285), `showWelcomeModal` (session-manager.js:205).
+- The `confirmDialog()` function (ui-core.js:371–442) focuses the OK button immediately on opening and traps focus between OK and Cancel.
 
 #### Criterion 2 — Focus is trapped inside the modal while open
+**PASS.**
 
-✅ **Pass** — `web/ui-core.js:294–330`
-
-`trapFocus(modalId)` installs a keydown listener that cycles Tab/Shift+Tab within the focusable elements of the modal and is cleaned up on close. The `_showReRunConfirmModal` helper in `workflow-steps.js:171` also calls `trapFocus`.
-
-⚠️ **Gap:** The `confirmDialog()` function (`ui-core.js:355–405`) creates a dynamic overlay div but never calls `trapFocus()`. Tab can escape to the page behind.
+- `trapFocus()` (ui-core.js:304–335) uses a keydown listener that wraps Tab/Shift+Tab between the first and last focusable elements within the modal container.
+- A `_focusTrapStack` array allows nested traps, so opening a sub-modal while another is open does not leave the outer trap orphaned.
+- The `confirmDialog()` function has its own in-place focus trap that also handles Escape.
 
 #### Criterion 3 — Closing a modal restores focus to the triggering control
+**PASS (with one inconsistency).**
 
-✅ **Pass** — `web/ui-core.js:336–344`
+- `restoreFocus()` (ui-core.js:340–346) pops `_focusStack` and calls `.focus()` on the stored element; it also removes the corresponding trap listener from `_focusTrapStack`.
+- This is called in all close paths checked: `closeSettingsModal`, `closeSessionsModal`, `closeMasterCvModal`, `closeAtsReportModal`, `closeJobAnalysisModal`, `closeModal()` (generic), `closeAllModals()`.
+- **Gap:** `openAtsReportModal` (ats-modals.js:155–197) and `openJobAnalysisModal` (ats-modals.js:278–304) call `trapFocus` but do **not** push to `_focusStack` before calling it. `restoreFocus()` on close pops whatever the previous stack entry was, which may return focus to the wrong element if these modals are opened first.
 
-`restoreFocus()` is called by all major close paths: `closeSettingsModal`, `closeModelModal`, `closeSessionsModal`, `closeModal`, `_showReRunConfirmModal` close handler.
+#### Criterion 4 — Dialog title and purpose programmatically exposed
+**PASS.**
 
-⚠️ **Gap:** `confirmDialog()` does not call `restoreFocus()` on dismiss. Focus position is lost.
+- All `role="dialog"` elements in the HTML carry `aria-modal="true"` and `aria-labelledby` pointing to an `h2` inside the dialog.
+- Alert and confirm modals additionally carry `aria-describedby` linking to the message paragraph (`index.html` lines 291–318).
+- The dynamically created `confirmDialog` box (ui-core.js:383–388) sets `role="dialog"`, `aria-modal="true"`, and `aria-labelledby="confirm-dialog-msg"`.
 
-#### Criterion 4 — Dialog title and purpose exposed programmatically
-
-✅ **Pass** (static modals) / ❌ **Fail** (`confirmDialog`)
-
-All static modals carry `role="dialog"`, `aria-modal="true"`, and `aria-labelledby`:
-- Sessions: `aria-labelledby="sessions-modal-title"` (`index.html:217`)
-- Alert: `aria-labelledby="alert-modal-title"`, `aria-describedby="alert-modal-message"` (line 242)
-- Ownership conflict: `aria-labelledby="ownership-conflict-title"` (line 256)
-- LLM wizard: `aria-labelledby="model-modal-title"` (line 273)
-- Settings: `aria-labelledby="settings-modal-title"` (line 433)
-- Re-run confirm: `role="dialog"`, `aria-modal="true"`, `aria-labelledby="rerun-confirm-title"` (`workflow-steps.js:155`)
-
-`confirmDialog()` (`ui-core.js:355`) creates a plain div with no `role`, `aria-modal`, or `aria-labelledby`. Its text content is not associated as a dialog description.
-
-**Additional gap — session conflict banner** (`index.html:96`): rendered as a plain `<div>`, no `role="alert"` or `aria-live="assertive"`. Screen readers will not announce the conflict warning when it appears.
-
-**Additional gap — modal close `×` buttons**: multiple `&times;` buttons (sessions, settings, ATS report, job analysis) use only `title="Close"` without `aria-label`. `title` exposure as accessible name is inconsistent across assistive technologies.
+#### Failure Modes Check
+- Focus remaining behind open modal: **not present** for primary modals.
+- Escape or close leaving focus lost: **not present** — `restoreFocus()` is called.
+- Multiple dialogs lacking accessible labels: **not present** — all inspected dialogs have labeled headings.
 
 ---
 
 ### US-X3: Forms, Errors, and Review Controls
 
+#### Summary
+Form validation and review controls are generally well-labelled. Icon-only buttons consistently carry `aria-label` in review panels. Validation errors are exposed through live regions in the job input area. Spell-check action buttons and some settings form inputs have coverage gaps.
+
 #### Criterion 1 — Inputs with validation errors expose errors via accessible associations
+**PASS (job input); PARTIAL elsewhere.**
 
-⚠️ **Partial** — `web/styles.css:1336–1345`
-
-CSS defines visual feedback for `input[aria-invalid="true"]` (red border + box-shadow on focus). The `.sr-only` utility class is defined (`styles.css:24`) and used for screen-reader-only text (e.g., `review-table-base.js:262` — missing-skill sr-only span). `#toast-container` carries `aria-live="polite"` and `aria-atomic="true"` (`index.html:238`).
-
-However, there is no evidence in the JavaScript source that `aria-invalid="true"` is ever dynamically set on input elements. The CSS rule is inert without programmatic attribute assignment.
+- `job-input.js:116–135` uses `aria-describedby` on the paste textarea and the URL input, pointing to error `<span>` elements that carry `aria-live="polite"`. `aria-invalid="true"` is set programmatically when validation fires (job-input.js:556/566).
+- CSS `input[aria-invalid="true"]:focus` (styles.css:1591–1595) provides a red focus ring, reinforcing the state visually.
+- **Gap:** The settings modal inputs, the clarification modal inputs, and the master-CV editor form inputs do not appear to use `aria-describedby` or `aria-invalid`. Validation in those forms relies on in-place error text rather than programmatic association.
 
 #### Criterion 2 — Icon-only controls have descriptive labels
+**PASS (review tables and master CV); PARTIAL (spell check).**
 
-⚠️ **Partial**
-
-- `#layout-freshness-chip` (`index.html:87`): `aria-label=""` — empty at initialization. Set dynamically, but starts as a button with no accessible name.
-- ↻ re-run `<span>` buttons (`workflow-steps.js:673`): `title` only, no `role="button"`, no `tabindex`. Not keyboard accessible at all.
-- Wizard close button (`modal-close-btn`): `title="Close"` only, no `aria-label`.
-- `#model-auth-key-toggle`: `aria-label="Show or hide API key"` ✅ — correctly labeled.
-- Tab scroll buttons: `aria-label="Scroll tabs left/right"` ✅.
-- ATS score badge: `aria-label="ATS match score"` ✅.
+- Achievements review (achievements-review.js:275–282): icon buttons carry compound `aria-label` including item name, e.g. `"Emphasize [title]"`, `"Move [title] earlier"`.
+- Skills review (skills-review.js:849–854): same pattern with `aria-pressed` toggling state.
+- Publications review (publications-review.js:171–173, 265–266): `aria-label` includes cite key.
+- Master CV edit/delete buttons (master-cv.js:891–894): `aria-label="Edit experience: [title]"` / `"Delete experience: [title]"`.
+- **Gap (spell check):** Spell-check action buttons in spell-check.js:249–255 ("Apply", "Ignore", "Add to Dictionary") use only `title` attributes. Title attributes are not reliably announced by all screen readers. These need `aria-label` matching the button text or action.
 
 #### Criterion 3 — Inline edit/review actions have clear focus targets and visible focus states
+**PASS.**
 
-⚠️ **Partial** — `web/styles.css:427–428`, `474–486`, `435–439`
+- `styles.css:1227` — `.icon-btn:focus-visible { outline: 2px solid var(--cv-accent); outline-offset: 2px; }`.
+- `.action-btn:focus-visible`, `.rw-btn:focus-visible`, `.tab:focus-visible`, `.step:focus-visible`, `.sm-btn:focus-visible` — all carry the same 2 px blue focus ring (styles.css lines 610, 1300, 657, 158, 312).
+- The `prefers-contrast: more` media query (styles.css:1681–1688) increases borders to 2 px solid black for interactive elements.
+- `prefers-reduced-motion: reduce` (styles.css:1670–1679) suppresses animations throughout.
+- Rewrite review cards gain a `.kb-focused` class with an additional 4 px shadow ring when keyboard-navigated (styles.css:1272).
 
-Positive: `.action-btn` is a `<button>` element; Bootstrap 5 supplies a `box-shadow` focus ring for native buttons via its own CSS. `.message-input:focus` has a box-shadow replacement for the outline.
+#### Criterion 4 — Error and status messages exposed in a way assistive tech can detect
+**PASS.**
 
-Gaps:
-- `.message-input` has `outline: none` as a **base** style (`styles.css:427`), not just on focus. If box-shadow is clipped by an ancestor with `overflow: hidden`, no focus indicator remains.
-- `.tab` and `.step` elements have no `:focus` or `:focus-visible` CSS rule at all (`styles.css:474–486`, `147–157`). Because these are `<div>` elements without `tabindex`, they cannot currently receive focus — but adding `tabindex` later without also adding focus styles would leave keyboard users without a visible indicator.
-- `.action-btn` has no explicit `:focus-visible` rule in `styles.css:435–439` — it relies entirely on the Bootstrap `button:focus-visible` rule.
+- Toast container (`#toast-container`): `aria-live="polite"` and `aria-atomic="true"` (`index.html` line 288).
+- Session-conflict banner (`#session-conflict-banner`): `role="alert"` (`index.html` line 115).
+- LLM busy label: `aria-live="polite"` and `role="status"` (`index.html` line 163).
+- Onboarding modal status paragraph: `aria-live="polite"` (`index.html` line 386).
+- Settings modal status: `aria-live="polite"` in `settings-status-msg` (`index.html` line 589).
+- Model wizard progress bar: `role="status"` and `aria-live="polite"` (`index.html` line 436).
 
-#### Criterion 4 — Error and status messages accessible to assistive tech
+#### Failure Modes Check
+- Validation errors shown only visually: **partially present** — job input is correct; other form areas lack `aria-describedby` wiring.
+- Reorder or close buttons without labels: **not present** for review tables; **present** for spell-check action buttons (`title` only).
+- Focus outline removed without accessible replacement: **not present** — `:focus-visible` outlines are present throughout.
 
-✅ **Pass** (live regions in place) — `web/index.html:200, 238, 283`
+---
 
-- `#document-content` (`role="tabpanel"`, `aria-live="polite"`) announces main panel content changes.
-- `#toast-container` (`aria-live="polite"`, `aria-atomic="true"`) announces toast notifications.
-- LLM wizard progress has `role="status"` and `aria-live="polite"`.
+### Terminology Clarity Assessment
 
-❌ **Gap** — `#session-conflict-banner` (`index.html:96`): no `role="alert"` or `aria-live`. This warning appears during active 409 conflicts and is critical user feedback that will be missed by screen reader users.
+| Term | Clarity | Notes |
+|------|---------|-------|
+| ATS | Good | Expanded inline in `title` and `aria-label` at point of use; onboarding modal explains it |
+| Harvest | Good | Tooltip on workflow step explains the metaphor in plain English |
+| LLM | Poor | Used in header buttons and wizard title without expansion; non-expert users may not know the abbreviation |
+| Spell Check step CTA | Confusing | Step is named "Spell Check" but the primary action button reads "Generate Preview" — the tooltip explains this but the label alone is misleading |
+| Compact toggle (rewrite) | Acceptable | Label "Compact" is brief; a `title` tooltip supplements it; acceptable for this context |
+| Customise | Clear | Plain English; no issue |
 
 ---
 
 ## Generated Materials Evaluation
 
-No user stories cover the accessibility or readability of the generated CV artifacts (HTML/PDF output). The source includes no accessibility metadata enforcement in generated HTML: there is no `<html lang>` attribute explicitly managed in templates, no heading-hierarchy enforcement in generation code, no alt text on any potential images, and no color-contrast guarantees for generated output. The `.sr-only` class exists in `styles.css` but applies to the web UI only, not generated CV HTML.
+Generated DOCX/PDF rendering is handled by backend Python scripts not included in the required source set. The following observations are inferred from the UI pipeline and available settings.
 
-**This entire evaluation area is outside the current story set.** See proposed story items below.
+### Structure and Reading Order
+- The application generates ATS DOCX (machine-readable), Human DOCX, and Human PDF formats (settings modal). There is no evidence of tagged PDF/UA export, which is expected for a resume tool; PDF/UA is rarely required for job-application documents.
+- Section ordering is user-controlled through Skills, Achievements, and Experience review panels. The generated document's reading order reflects intentional user decisions made during the review workflow.
 
----
+### Content Readability
+- Review panels for Summary, Tagline, and Experience Bullets give users full edit control before generation. AI rewrites are offered but not forced, preserving the user's own voice and terminology.
+- The weak-bullet advisory badge system (`.weak-badge`, styles.css:1277) and AI rewrite offers encourage plain-language, action-verb-led bullet points, which improves readability for both human readers and any AT parsing plain-text extracted from the documents.
 
-## Additional Story Gaps / Proposed Story Items
-
-### US-X4 (proposed): Keyboard Access to Workflow Step Bar
-
-**Evidence:** `web/index.html:105–119` — 8 `<div>` step pills, no `tabindex`. `web/workflow-steps.js:673` — re-run spans, no `role` or `tabindex`.
-
-**Proposed acceptance criteria:**
-- All active and completed step pills are keyboard reachable via Tab or arrow keys.
-- Enter/Space activate the same action as a click.
-- Re-run (↻) buttons within completed steps are separately keyboard-focusable and labeled.
-- Step state (active, completed, upcoming, stale) is exposed to screen readers via `aria-current` or `aria-label`.
-
-### US-X5 (proposed): Generated CV Output Accessibility
-
-**Evidence:** No story or code currently targets generated HTML/PDF accessibility.
-
-**Proposed acceptance criteria:**
-- Generated HTML files include `<html lang="en">` and a logical heading hierarchy (h1 → h2 → h3).
-- Body text color contrast meets WCAG AA (4.5:1 minimum).
-- Skills section uses a semantic list element.
-- Generated tables (if any) include `<th scope="...">`.
-
-### US-X6 (proposed): Dynamic `aria-invalid` and Inline Error Feedback
-
-**Evidence:** `web/styles.css:1336–1345` — CSS rule for `aria-invalid="true"` exists but is never set in JavaScript.
-
-**Proposed acceptance criteria:**
-- Required inputs receive `aria-invalid="true"` on failed submission.
-- An `aria-describedby` error message element is displayed and associated when a field is invalid.
-- The error state is announced via the associated field, not only through visual styling.
+### Terminology Clarity in Generated Materials
+- The frontend pipeline does not directly expose system prompts or LLM instructions, so the quality of generated CV language cannot be evaluated from source alone. A live session output review would be needed to assess generated-text readability.
 
 ---
 
-**Reviewed against:**
-- `web/index.html` (full file, 600 lines)
-- `web/app.js` (full file, 136 lines)
-- `web/ui-core.js` (lines 1–750, 1473–1520 — focus management, modal open/close, tab event listeners)
-- `web/styles.css` (all accessibility-relevant rules: lines 24–31, 147–160, 427–439, 474–486, 1223, 1336–1352)
-- `web/workflow-steps.js` (lines 1–300, 590–720 — step update, re-run spans, confirm modal)
-- `web/review-table-base.js` (lines 1–400 — tab switching, ARIA state, inclusion counts)
-- `web/session-switcher-ui.js` (lines 1–400 — modal focus management)
-- `web/fetch-utils.js` (lines 1–200 — conflict banner)
-- `tasks/user-story-accessibility-specialist.md`
-- `tasks/current-implemented-workflow.md`
+## Prioritized Gaps
 
-| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-|-------|---------|-----------|--------|------------|-------|
-| US-X1 Workflow Navigation | 0 | 2 (crit 2, 3) | 2 (crit 1, 4) | 0 | 0 |
-| US-X2 Modal & Dialog | 2 (crit 2, 3 — main modals) | 2 (crit 1 sessions modal; crit 4 gaps) | 1 (confirmDialog) | 0 | 0 |
-| US-X3 Forms, Errors, Review | 1 (crit 4 — live regions) | 3 (crit 1, 2, 3) | 0 | 0 | 0 |
-| US-X4 (proposed) | — | — | — | 🔲 | — |
-| US-X5 (proposed) | — | — | — | 🔲 | — |
-| US-X6 (proposed) | — | — | — | 🔲 | — |
-
-**Key evidence references:**
-
-| Finding | File:Line |
-|---------|-----------|
-| Workflow step `<div>` pills — no `tabindex` | `web/index.html:105–119` |
-| Re-run `<span>` — no `role`, no `tabindex` | `web/workflow-steps.js:673` |
-| `updateWorkflowSteps` — never sets `tabindex` | `web/workflow-steps.js:660–668` |
-| Tab `<div>` — no `tabindex`, arrow-key focus silently fails | `web/index.html:177–196`, `web/ui-core.js:490–504` |
-| Focus management infra (positive) | `web/ui-core.js:29–345` |
-| `confirmDialog` — missing ARIA, no `trapFocus`, no `restoreFocus` | `web/ui-core.js:355–405` |
-| All static modals — correct `role`, `aria-modal`, `aria-labelledby` | `web/index.html:217, 242, 256, 273, 433` |
-| Empty `aria-label` on freshness chip | `web/index.html:87` |
-| Session conflict banner — no `role="alert"`, no `aria-live` | `web/index.html:96` |
-| `message-input` — no `<label>`, no `aria-label`, placeholder only | `web/index.html:149` |
-| `outline: none` base style on `.message-input` | `web/styles.css:427` |
-| `aria-invalid` CSS defined but never set programmatically | `web/styles.css:1336–1345` |
-| `.sr-only` defined and used correctly | `web/styles.css:24–31`, `web/review-table-base.js:262` |
-| Toast + panel live regions (positive) | `web/index.html:200, 238` |
-
-**Evidence standard:** Every conclusion is supported by direct source inspection with file and line references.
-
+| # | Severity | Location | Description |
+|---|----------|----------|-------------|
+| 1 | MEDIUM | spell-check.js:249–255 | Spell-check action buttons ("Apply", "Ignore", "Add to Dictionary") use `title` only; add `aria-label` matching each action |
+| 2 | MEDIUM | ats-modals.js:155–197, 278–304 | `openAtsReportModal` and `openJobAnalysisModal` call `trapFocus` without first pushing to `_focusStack`; add `_focusStack.push(document.activeElement)` in each opener |
+| 3 | LOW | Settings modal, master-CV editor forms | Form inputs lack `aria-describedby` linking to error message spans and `aria-invalid` toggling; add these to meet WCAG 1.3.1 / 4.1.3 |
+| 4 | LOW | Header model-selector button, LLM wizard title | "LLM" acronym not expanded; add `title="AI Language Model"` or spell out in visible text (WCAG 3.1.4) |
+| 5 | INFO | index.html steps 2–12 | Steps start with no `role`/`tabindex` until `fetchStatus` completes; adding `tabindex="-1"` in static HTML would clarify inertness and remove the transient unreachable state |

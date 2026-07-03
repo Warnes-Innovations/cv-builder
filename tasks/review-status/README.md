@@ -41,12 +41,13 @@ The files in this directory are the working review-status outputs for the person
 - [master-cv-curator.md](./master-cv-curator.md): Master CV curator review snapshot
 - [trust-compliance.md](./trust-compliance.md): Trust and compliance review snapshot
 - [graphical-designer.md](./graphical-designer.md): Graphical designer review snapshot
+- [marketing.md](./marketing.md): Marketing / branding review snapshot
 
 ## Update Rules
 
 - Refresh the persona-specific file instead of editing the matching story file.
 - Preserve the story specifications in `tasks/user-story-*.md` as the source of truth for requirements.
 - Keep review evidence and summary content scoped to the relevant persona file so parallel subagents do not collide.
-- For expert personas, organize findings into `Application Evaluation` and `Generated Materials Evaluation`, and add `Additional Story Gaps / Proposed Story Items` when needed.
-- For technical personas, scope the review to architecture, implementation quality, security, performance, CI/CD, and test coverage rather than persona-story acceptance criteria.
+- For expert personas, organize findings into `Application Evaluation` and `Generated Materials Evaluation` (the `marketing` persona uses `Application Evaluation` and `External Collateral Evaluation` instead, per its two-part scope in `tasks/user-story-marketing.md`), and add `Additional Story Gaps / Proposed Story Items` when needed.
+- For technical personas, scope the review to architecture, implementation quality, security, performance, CI/CD, and test coverage rather than persona-story acceptance criteria. `ci-cd-engineer`'s scope additionally includes external-contributor/open-source readiness (fork-PR CI safety, contributor-facing failure clarity, CONTRIBUTING documentation) now that the project accepts outside contributors.
 - Include evidence sufficient to verify each conclusion, citing repository-relative source paths with line numbers, the relevant story criteria, and any other repository references needed to support the finding.

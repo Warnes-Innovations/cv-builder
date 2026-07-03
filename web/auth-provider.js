@@ -12,7 +12,10 @@
  *   - confirmDialog from ui-core.js (on globalThis)
  *   - setInitialFocus, trapFocus, restoreFocus from ui-core.js (on globalThis)
  *   - updateAuthBadge (self-reference; exported to globalThis)
+ *   - getProviderInfo from provider-info.js (imported directly)
  */
+
+import { getProviderInfo } from './provider-info.js';
 
 let _authPollTimer = null;
 
@@ -79,6 +82,14 @@ function updateAuthBadge(authStatus, provider = null) {
 
   const activeProvider = provider || window.currentProvider || null;
   const isCopilotOAuth = activeProvider === 'copilot-oauth';
+
+  // Non-confidential badge: show unless the provider explicitly marks confidential:true.
+  // Default is non-confidential (fail-safe — most providers retain/review API data).
+  const ncBadge = document.getElementById('llm-non-confidential-badge');
+  if (ncBadge && activeProvider) {
+    const info = getProviderInfo(activeProvider);
+    ncBadge.style.display = (info && info.confidential !== true) ? '' : 'none';
+  }
 
   if (activeProvider && !isCopilotOAuth) {
     applyState('configured', `${formatProviderLabel(activeProvider)} configured`, '◔');

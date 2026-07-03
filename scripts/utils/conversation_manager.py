@@ -18,10 +18,9 @@ import uuid
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
-import readline  # Enable line editing and history for input()
+from typing import Any, ClassVar, Dict, List, Optional
 
-from .llm_client import LLMClient, LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
+from .llm_client import LLMClient, LLMError, LLMContextLengthError
 from .cv_orchestrator import CVOrchestrator
 from .config import get_config
 from .layout_digest import (
@@ -38,19 +37,50 @@ logger = logging.getLogger(__name__)
 # SOURCE OF TRUTH for workflow phase names.
 # The JS mirror is PHASES in web/state-manager.js — update both files together.
 class Phase(str, Enum):
-    INIT          = 'init'
-    JOB_ANALYSIS  = 'job_analysis'
-    CUSTOMIZATION = 'customization'
-    REWRITE_REVIEW = 'rewrite_review'
-    SPELL_CHECK   = 'spell_check'
-    GENERATION    = 'generation'
-    LAYOUT_REVIEW = 'layout_review'
-    REFINEMENT    = 'refinement'
+    INIT             = 'init'
+    JOB_ANALYSIS     = 'job_analysis'
+    CUSTOMIZATION    = 'customization'
+    REWRITE_REVIEW   = 'rewrite_review'
+    SPELL_CHECK      = 'spell_check'
+    GENERATION       = 'generation'
+    LAYOUT_REVIEW    = 'layout_review'
+    FINAL_GENERATION = 'final_generation'
+    REFINEMENT       = 'refinement'
+
+
+class SessionQuitException(Exception):
+    """Raised by the CLI input loop when the user types QUIT and confirms.
+
+    Callers in a CLI context should catch this and call ``sys.exit(0)``.
+    Callers in a server context should treat it as a benign user-abort.
+    """
 
 
 class ConversationManager:
     """Manages conversational flow for CV generation."""
-    
+
+    # Expected forward-flow transitions.  navigate_to_phase() and re_run_phase()
+    # intentionally bypass this table (they use direct dict assignment).
+    _ALLOWED_TRANSITIONS: ClassVar[Dict] = {
+        None:                   {Phase.JOB_ANALYSIS, Phase.LAYOUT_REVIEW},  # from any phase
+        Phase.INIT:             {Phase.JOB_ANALYSIS},
+        Phase.JOB_ANALYSIS:     {Phase.JOB_ANALYSIS, Phase.CUSTOMIZATION},
+        Phase.CUSTOMIZATION:    {Phase.REWRITE_REVIEW, Phase.SPELL_CHECK},
+        Phase.REWRITE_REVIEW:   {Phase.SPELL_CHECK},
+        Phase.SPELL_CHECK:      {Phase.GENERATION},
+        Phase.GENERATION:       {Phase.LAYOUT_REVIEW},
+        Phase.LAYOUT_REVIEW:    {Phase.FINAL_GENERATION},
+        Phase.FINAL_GENERATION: {Phase.REFINEMENT},
+        Phase.REFINEMENT:       set(),
+    }
+
+    # Ordered phases for forward-skip watermark tracking (GAP-101).
+    _PHASE_ORDER: ClassVar[list] = [
+        Phase.INIT, Phase.JOB_ANALYSIS, Phase.CUSTOMIZATION, Phase.REWRITE_REVIEW,
+        Phase.SPELL_CHECK, Phase.GENERATION, Phase.LAYOUT_REVIEW,
+        Phase.FINAL_GENERATION, Phase.REFINEMENT,
+    ]
+
     def __init__(
         self,
         orchestrator: CVOrchestrator,
@@ -60,7 +90,7 @@ class ConversationManager:
         self.orchestrator = orchestrator
         self.llm = llm_client
         self.config = config or get_config()
-        self.conversation_history: List[Dict[str, str]] = []
+        self._conversation_history: List[Dict[str, str]] = []
         self.state = {
             'phase':              Phase.INIT,
             'position_name':      None,
@@ -101,7 +131,91 @@ class ConversationManager:
         self.session_id: Optional[str] = None
         # Readline history file
         self.history_file: Path = Path(self.config.get('session.history_file', 'files/.input_history'))
-    
+
+    # ------------------------------------------------------------------
+    # History access
+    # ------------------------------------------------------------------
+
+    @property
+    def conversation_history(self) -> List[Dict[str, str]]:
+        """Return a read-only copy of the conversation turn list.
+
+        Use :meth:`add_to_history` to append validated entries.
+        """
+        return list(self._conversation_history)
+
+    def add_to_history(self, role: str, content: str) -> None:
+        """Append a validated turn to the conversation history.
+
+        Parameters
+        ----------
+        role :
+            Must be ``"user"``, ``"assistant"``, or ``"system"``.
+        content :
+            The message text.
+
+        Raises
+        ------
+        ValueError
+            If *role* is not one of the accepted values.
+        """
+        _valid_roles = {"user", "assistant", "system"}
+        if role not in _valid_roles:
+            raise ValueError(
+                f"Invalid conversation role {role!r}; must be one of {_valid_roles}."
+            )
+        self._conversation_history.append({"role": role, "content": content})
+
+    def _set_phase(self, new_phase: Phase) -> None:
+        """Advance the workflow phase with transition validation.
+
+        Logs a ``WARNING`` if the transition from the current phase to
+        *new_phase* is not in :attr:`_ALLOWED_TRANSITIONS`.  Does **not**
+        raise — callers that intentionally bypass forward-flow ordering
+        (e.g. :meth:`navigate_to_phase`, :meth:`re_run_phase`) should use
+        ``self.state['phase'] = …`` directly.
+        """
+        current = self.state.get('phase')
+        universal = self._ALLOWED_TRANSITIONS.get(None, set())
+        specific  = self._ALLOWED_TRANSITIONS.get(current, set())
+        allowed   = universal | specific
+        if new_phase not in allowed:
+            logger.warning(
+                "Unexpected phase transition %s → %s; allowed: %s",
+                current,
+                new_phase,
+                {p.value for p in allowed} if allowed else "(none)",
+            )
+        self.state['phase'] = new_phase
+        # Track the highest phase ever reached so the UI can offer forward-skip
+        # navigation back to previously completed stages (GAP-101).
+        try:
+            new_idx = self._PHASE_ORDER.index(new_phase)
+            cur_highest = self.state.get('highest_phase', '')
+            try:
+                cur_idx = self._PHASE_ORDER.index(Phase(cur_highest))
+            except (ValueError, KeyError):
+                cur_idx = -1
+            if new_idx > cur_idx:
+                self.state['highest_phase'] = new_phase.value
+        except ValueError:
+            pass
+
+    def _is_input_terminator(self, upper: str) -> bool:
+        """Return True if *upper* is a recognised multi-line input terminator."""
+        return upper in ('DONE', 'END')
+
+    def _handle_quit_confirmation(self) -> None:
+        """Prompt the user to confirm QUIT; save session and raise if confirmed."""
+        confirm = input("\n⚠ Confirm exit? (yes/no): ")
+        if confirm.lower() in ('yes', 'y'):
+            self._save_session()
+            self._save_readline_history()
+            print("\n✓ Session saved. Goodbye!")
+            raise SessionQuitException
+        else:
+            print("\n✓ Exit cancelled. Continue entering text.")
+
     def _get_multiline_input(self) -> str:
         """Get multi-line input with terminators (DONE/END) and QUIT.
 
@@ -112,54 +226,49 @@ class ConversationManager:
             "(Enter multiple lines. Type 'DONE' or 'END' on a line by itself; "
             "type 'QUIT' to exit)"
         )
-        
+
         lines = []
-        
+
         while True:
             try:
                 line = input()
-                
-                # Check for terminator keywords
+
                 upper = line.strip().upper()
-                if upper in ['DONE', 'END']:
+                if self._is_input_terminator(upper):
                     break
                 elif upper == 'QUIT':
-                    confirm = input("\n⚠ Confirm exit? (yes/no): ")
-                    if confirm.lower() in ['yes', 'y']:
-                        self._save_session()
-                        self._save_readline_history()
-                        print("\n✓ Session saved. Goodbye!")
-                        raise SystemExit(0)
-                    else:
-                        print("\n✓ Exit cancelled. Continue entering text.")
-                        continue
+                    self._handle_quit_confirmation()
                 else:
                     lines.append(line)
-                    
+
             except EOFError:
                 # Ctrl+D pressed
                 break
-        
+
         return '\n'.join(lines).strip()
-    
+
     def start_interactive(self):
         """Start interactive conversation loop."""
         self._print_welcome()
         # Ensure a position is selected or created
         self._ensure_position_selected()
         self._setup_readline()
-        
+
         while True:
             try:
                 # Check if we're expecting multi-line input (e.g., job description)
                 if self.state['phase'] == Phase.INIT and not self.state['job_description']:
                     print("\nPlease provide the job description:")
-                    job_text = self._get_multiline_input()
+                    try:
+                        job_text = self._get_multiline_input()
+                    except SessionQuitException:
+                        import sys
+                        sys.exit(0)
                     if not job_text:
                         continue
                     # Store job description in state and history
                     self.add_job_description(job_text)
-                    self.conversation_history.append({
+                    self._conversation_history.append({
                         'role': 'user',
                         'content': job_text
                     })
@@ -170,14 +279,14 @@ class ConversationManager:
                         self.orchestrator.master_data
                     )
                     self._store_job_analysis(analysis)
-                    self.state['phase'] = Phase.JOB_ANALYSIS
+                    self._set_phase(Phase.JOB_ANALYSIS)
                     print(f"✓ Job analysis complete:\n{json.dumps(analysis, indent=2)}")
                     # Prompt assistant to ask clarifying questions with specific context
                     contextual_prompt = f"""I've analyzed the job description. Here are the key findings:
 
 JOB ANALYSIS:
 - Title: {analysis.get('title', 'Not specified')}
-- Company: {analysis.get('company', 'Not specified')}  
+- Company: {analysis.get('company', 'Not specified')}
 - Domain: {analysis.get('domain', 'Not specified')}
 - Role Level: {analysis.get('role_level', 'Not specified')}
 - Required Skills: {', '.join(analysis.get('required_skills', []))}
@@ -196,10 +305,10 @@ Ask questions that are specific to this job posting, not generic career question
                     continue
                 else:
                     user_input = input("\n> ").strip()
-                
+
                 if not user_input:
                     continue
-                
+
                 # Handle commands
                 if user_input == 'QUIT':
                     confirm = input("\n⚠ Confirm exit? (yes/no): ")
@@ -225,26 +334,26 @@ Ask questions that are specific to this job posting, not generic career question
                 elif user_input.lower() == 'reset':
                     self._reset_conversation()
                     continue
-                
+
                 # Process with LLM
                 response = self._process_message(user_input)
                 print(f"\n{response}")
-                
+
             except KeyboardInterrupt:
                 print("\n\nUse 'quit' to exit safely.")
             except Exception as e:
                 print(f"\n❌ Error: {e}")
                 import traceback
                 traceback.print_exc()
-    
+
     def _process_message(self, user_input: str) -> str:
         """Process user message through LLM with context."""
         # Add user message to history
-        self.conversation_history.append({
+        self._conversation_history.append({
             'role': 'user',
             'content': user_input
         })
-        
+
         # Build context-aware system message
         system_msg = self._build_system_prompt()
 
@@ -252,8 +361,8 @@ Ask questions that are specific to this job posting, not generic career question
         # since the current system prompt already carries the full CV + job analysis.
         messages = [
             {'role': 'system', 'content': system_msg}
-        ] + self._strip_context_from_history(self.conversation_history)
-        
+        ] + self._strip_context_from_history(self._conversation_history)
+
         # Get LLM response; retry with a recent-only history window if the full
         # history causes a context-length error (e.g. 413 on GitHub gpt-4o).
         try:
@@ -261,18 +370,18 @@ Ask questions that are specific to this job posting, not generic career question
         except LLMContextLengthError:
             # Drop all but the 8 most-recent history messages and try again.
             trimmed = self._strip_context_from_history(
-                self.conversation_history[-8:]
+                self._conversation_history[-8:]
             )
             response = self.llm.chat(
                 [messages[0]] + trimmed, temperature=0.7
             )
-        
+
         # Add to history
-        self.conversation_history.append({
+        self._conversation_history.append({
             'role': 'assistant',
             'content': response
         })
-        
+
         # Check if LLM is requesting action
         action = self._parse_action_from_response(response)
         if action:
@@ -288,9 +397,9 @@ Ask questions that are specific to this job posting, not generic career question
                 else:
                     text = str(action_result)
                     entry = {'role': 'system', 'content': f"Action completed: {text}"}
-                self.conversation_history.append(entry)
+                self._conversation_history.append(entry)
                 response += f"\n\n{text}"
-        
+
         # Auto-save after each message exchange
         self._save_session()
 
@@ -329,7 +438,7 @@ Every experience and skill recommendation MUST include ALL THREE components belo
    - Include: Standard treatment, include normally (RELEVANT to job)
    - De-emphasize: Brief mention only (SOMEWHAT relevant to job)
    - Omit: Exclude from CV entirely (NOT relevant to job)
-   
+
    THIS IS ABOUT HOW RELEVANT THE EXPERIENCE IS TO THE JOB, NOT CONFIDENCE.
 
 2. CONFIDENCE LEVEL (5-point scale - based on EVIDENCE STRENGTH):
@@ -338,12 +447,12 @@ Every experience and skill recommendation MUST include ALL THREE components belo
    - Medium: Moderate evidence FOR, some evidence against OR limited evidence either way
    - Low: Weak evidence FOR, significant evidence against OR very limited evidence
    - Very Low: Minimal evidence FOR, strong evidence against OR almost no relevant evidence
-   
+
    THIS IS ABOUT HOW CERTAIN YOU ARE ABOUT YOUR RECOMMENDATION, NOT RELEVANCE.
    The confidence level reflects the RATIO of supporting evidence to contradicting evidence.
    More supporting evidence + less contradicting evidence = Higher confidence.
    Less supporting evidence + more contradicting evidence = Lower confidence.
-   
+
    IMPORTANT: These are INDEPENDENT:
    - You can have "Emphasize" with "Medium" confidence (very relevant but limited info)
    - You can have "De-emphasize" with "Very High" confidence (clearly not relevant)
@@ -356,26 +465,26 @@ Every experience and skill recommendation MUST include ALL THREE components belo
    - Evidence FOR the recommendation (matching skills, relevant domain, level alignment)
    - Evidence AGAINST the recommendation (mismatches, irrelevant aspects, concerns)
    - Why the confidence level is appropriate given the evidence balance
-   
-   Be specific and concrete. Cite actual requirements from the job description and 
+
+   Be specific and concrete. Cite actual requirements from the job description and
    actual details from the candidate's experience.
 
 MANDATORY FORMAT - All recommendations must follow this structure:
 "[Experience/Skill Name]"
 - Recommendation: [Emphasize/Include/De-emphasize/Omit]
 - Confidence: [Very High/High/Medium/Low/Very Low]
-- Reasoning: [Detailed explanation with specific evidence from both the job requirements 
+- Reasoning: [Detailed explanation with specific evidence from both the job requirements
   and candidate's background, explaining both supporting and contradicting factors]
 
 Example:
 "Senior Data Scientist at Pfizer (2018-2022)"
 - Recommendation: Emphasize
 - Confidence: Very High
-- Reasoning: Direct match for 4 of 5 key requirements: ML model development in healthcare, 
-  team leadership, regulatory environment experience, and Python/R expertise. Pfizer 
-  Achievement Award demonstrates exceptional impact. Led 8-person team developing predictive 
-  models for clinical trials - exactly matches job's "lead ML initiatives in life sciences" 
-  requirement. No contradicting evidence. Very high confidence due to multiple strong matches 
+- Reasoning: Direct match for 4 of 5 key requirements: ML model development in healthcare,
+  team leadership, regulatory environment experience, and Python/R expertise. Pfizer
+  Achievement Award demonstrates exceptional impact. Led 8-person team developing predictive
+  models for clinical trials - exactly matches job's "lead ML initiatives in life sciences"
+  requirement. No contradicting evidence. Very high confidence due to multiple strong matches
   with zero misalignments.
 
 You can request actions by including JSON in your response:
@@ -385,30 +494,30 @@ You can request actions by including JSON in your response:
 
 Current conversation phase: {current_phase}
 """
-        
+
         # Add candidate background information
         if self.orchestrator and self.orchestrator.master_data:
             master_data = self.orchestrator.master_data
-            
+
             # Provide complete CV data to LLM
             candidate_info = f"""\n\nComplete Candidate CV Data:
 {json.dumps(master_data, indent=2)}
 """
-            
+
             # Add publications from BibTeX file
             if self.orchestrator.publications:
                 pub_count = len(self.orchestrator.publications)
                 pub_summary = []
                 for key, pub in list(self.orchestrator.publications.items())[:10]:  # Show first 10 as examples
                     pub_summary.append(f"  - {pub.get('title', 'No title')} ({pub.get('year', 'N/A')})")
-                
+
                 candidate_info += f"""\n\nPublications ({pub_count} total):
 {chr(10).join(pub_summary)}
 {"... and more" if pub_count > 10 else ""}
 
 Complete publications data available in orchestrator.publications.
 """
-            
+
             candidate_info += """
 You have complete access to the candidate's CV data including:
 - Personal information and contact details
@@ -422,7 +531,7 @@ Do NOT ask the candidate for basic information that's already in this data. Focu
 IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Only reference specific details in natural language when relevant to your response.
 """
             base_prompt += candidate_info
-        
+
         # Add phase-specific context
         if self.state['phase'] == Phase.JOB_ANALYSIS and self.state['job_analysis']:
             base_prompt += f"\n\nJob Analysis Complete:\n{json.dumps(self.state['job_analysis'], indent=2)}"
@@ -445,24 +554,47 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
 
         goals = self.state.get('generation_goals')
         if goals:
-            base_prompt += "\n\nGeneration Goals (user-specified length constraints):\n"
-            if goals.get('max_pdf_pages'):
-                base_prompt += f"- Maximum PDF length: {goals['max_pdf_pages']} page(s)\n"
-            if goals.get('max_ats_pages'):
-                base_prompt += f"- Maximum ATS plain-text length: {goals['max_ats_pages']} page(s)\n"
-            if goals.get('max_ats_chars'):
-                base_prompt += (
+            goal_lines: list[str] = []
+
+            # PDF page length
+            if goals.get('pdf_pages_enabled', True):
+                mode = goals.get('max_pdf_pages_mode', 'combined')
+                if mode == 'split':
+                    resume_pages = goals.get('max_pdf_resume_pages')
+                    cv_pages     = goals.get('max_pdf_cv_pages')
+                    if resume_pages:
+                        goal_lines.append(f"- Maximum PDF resume-portion length: {resume_pages} page(s)")
+                    if cv_pages:
+                        goal_lines.append(f"- Maximum PDF CV/publications portion length: {cv_pages} page(s)")
+                else:
+                    combined = goals.get('max_pdf_pages')
+                    if combined:
+                        goal_lines.append(
+                            f"- Maximum PDF length: {combined} page(s) (including publications/citations)"
+                        )
+
+            # ATS page length
+            if goals.get('ats_pages_enabled', True) and goals.get('max_ats_pages'):
+                goal_lines.append(f"- Maximum ATS plain-text length: {goals['max_ats_pages']} page(s)")
+
+            # ATS character count (optional, disabled by default)
+            if goals.get('ats_chars_enabled', False) and goals.get('max_ats_chars'):
+                goal_lines.append(
                     f"- Maximum ATS character count (including spaces): "
-                    f"{goals['max_ats_chars']:,} characters\n"
+                    f"{goals['max_ats_chars']:,} characters"
                 )
-            base_prompt += (
-                "When selecting and editing content, respect these constraints. "
-                "Prefer concise, high-impact language. Omit or condense low-relevance "
-                "material to stay within the specified limits."
-            )
+
+            if goal_lines:
+                base_prompt += "\n\nGeneration Goals (user-specified length constraints):\n"
+                base_prompt += "\n".join(goal_lines) + "\n"
+                base_prompt += (
+                    "When selecting and editing content, respect these constraints. "
+                    "Prefer concise, high-impact language. Omit or condense low-relevance "
+                    "material to stay within the specified limits."
+                )
 
         return base_prompt
-    
+
     def _parse_action_from_response(self, response: str) -> Optional[Dict]:
         """Extract action request from LLM response."""
         start = response.find('{"action":')
@@ -497,7 +629,11 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
             if isinstance(result, list):
                 return {'questions': result}
         except json.JSONDecodeError:
-            pass
+            logger.warning(
+                "_parse_json_questions_response: agent returned malformed JSON; "
+                "returning empty dict. Raw text (first 200 chars): %.200s",
+                text,
+            )
         # Bracket-depth fallback (same strategy as _parse_json_response)
         for start_char, close_char in [('{', '}'), ('[', ']')]:
             idx = clean.find(start_char)
@@ -536,32 +672,40 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
         return {}
 
     def _execute_action(self, action: Dict) -> Optional[str]:
-        """Execute requested action."""
-        action_type = action.get('action')
-        
-        if action_type == 'analyze_job':
-            job_text = action.get('job_text') or self.state.get('job_description')
-            if not job_text:
-                return "\u274c No job description provided"
-            
-            print("\n🔄 Analyzing job description...")
-            analysis = self.llm.analyze_job_description(
-                job_text,
-                self.orchestrator.master_data
-            )
-            self._store_job_analysis(analysis)
-            self.state['phase'] = Phase.JOB_ANALYSIS
-            self.state['post_analysis_questions'] = []
-            self.state['post_analysis_answers'] = {}
+        """Dispatch to per-action handler method."""
+        _handlers = {
+            'analyze_job':              self._handle_analyze_job,
+            'recommend_customizations': self._handle_recommend_customizations,
+            'submit_rewrites':          self._handle_submit_rewrites,
+            'generate_cv':              self._handle_generate_cv,
+        }
+        handler = _handlers.get(action.get('action'))
+        return handler(action) if handler is not None else None
 
-            # Rename the session directory now that company / role are known
-            self._rename_session_dir(
-                analysis.get('company', ''),
-                analysis.get('title', '')
-            )
+    def _handle_analyze_job(self, action: Dict) -> Optional[str]:
+        """Handle the analyze_job action."""
+        job_text = action.get('job_text') or self.state.get('job_description')
+        if not job_text:
+            return "\u274c No job description provided"
 
-            # After analysis, generate structured clarifying questions via JSON prompt.
-            contextual_prompt = f"""You are helping tailor a CV to a specific job posting.
+        print("\n🔄 Analyzing job description...")
+        analysis = self.llm.analyze_job_description(
+            job_text,
+            self.orchestrator.master_data
+        )
+        self._store_job_analysis(analysis)
+        self._set_phase(Phase.JOB_ANALYSIS)
+        self.state['post_analysis_questions'] = []
+        self.state['post_analysis_answers'] = {}
+
+        # Rename the session directory now that company / role are known
+        self._rename_session_dir(
+            analysis.get('company', ''),
+            analysis.get('title', '')
+        )
+
+        # After analysis, generate structured clarifying questions via JSON prompt.
+        contextual_prompt = f"""You are helping tailor a CV to a specific job posting.
 
 Job analysis summary:
 - Title: {analysis.get('title', 'Not specified')}
@@ -586,312 +730,536 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
   ]
 }}"""
 
-            # Get structured questions from LLM
-            try:
-                system_msg = self._build_system_prompt()
-                messages = (
-                    [{'role': 'system', 'content': 'You generate targeted CV-optimisation questions and respond with strict JSON only.'}]
-                    + self._strip_context_from_history(self.conversation_history)
-                    + [{'role': 'user', 'content': contextual_prompt}]
-                )
-                raw_response = self.llm.chat(messages, temperature=0.4, json_mode=True)
+        # Get structured questions from LLM
+        try:
+            messages = (
+                [{'role': 'system', 'content': 'You generate targeted CV-optimisation questions and respond with strict JSON only.'}]
+                + self._strip_context_from_history(self._conversation_history)
+                + [{'role': 'user', 'content': contextual_prompt}]
+            )
+            raw_response = self.llm.chat(messages, temperature=0.4, json_mode=True)
 
-                # Parse JSON response
-                parsed = self._parse_json_questions_response(raw_response)
-                intro = parsed.get('intro', '✓ Job analysis complete.')
-                structured_questions = parsed.get('questions', [])
+            # Parse JSON response
+            parsed = self._parse_json_questions_response(raw_response)
+            intro = parsed.get('intro', '✓ Job analysis complete.')
+            structured_questions = parsed.get('questions', [])
 
-                # Validate and clean questions
-                cleaned_questions = []
-                for idx, q in enumerate(structured_questions[:4]):
-                    if not isinstance(q, dict):
-                        continue
-                    question_text = str(q.get('question', '')).strip()
-                    if not question_text:
-                        continue
-                    qtype = str(q.get('type', f'clarification_{idx + 1}')).strip().lower().replace(' ', '_')
-                    choices = q.get('choices')
-                    if not isinstance(choices, list):
-                        choices = []
-                    choices = [str(c).strip() for c in choices if str(c).strip()][:4]
-                    cleaned_questions.append({
-                        'type': qtype[:40] or f'clarification_{idx + 1}',
-                        'question': question_text[:220],
-                        'choices': choices,
-                    })
-
-                if cleaned_questions:
-                    self.state['post_analysis_questions'] = cleaned_questions
-
-                # Build a human-readable chat message so history is useful on restore.
-                chat_lines = [intro, '']
-                for i, q in enumerate(cleaned_questions, 1):
-                    chat_lines.append(f"{i}. {q['question']}")
-                    if q.get('choices'):
-                        chat_lines.append('   Options: ' + ' / '.join(q['choices']))
-                chat_text = '\n'.join(chat_lines)
-
-                self.conversation_history.append({
-                    'role': 'assistant',
-                    'content': chat_text,
+            # Validate and clean questions
+            cleaned_questions = []
+            for idx, q in enumerate(structured_questions[:4]):
+                if not isinstance(q, dict):
+                    continue
+                question_text = str(q.get('question', '')).strip()
+                if not question_text:
+                    continue
+                qtype = str(q.get('type', f'clarification_{idx + 1}')).strip().lower().replace(' ', '_')
+                choices = q.get('choices')
+                if not isinstance(choices, list):
+                    choices = []
+                choices = [str(c).strip() for c in choices if str(c).strip()][:4]
+                cleaned_questions.append({
+                    'type': qtype[:40] or f'clarification_{idx + 1}',
+                    'question': question_text[:220],
+                    'choices': choices,
                 })
 
-                return {
-                    'text': chat_text,
-                    'context_data': {
-                        'job_analysis': analysis,
-                        'post_analysis_questions': cleaned_questions,
-                    },
+            # Prepend a domain-clarification question when the LLM signals low
+            # confidence in the inferred domain (US-R1.3).
+            domain_confidence = analysis.get('domain_confidence')
+            inferred_domain   = analysis.get('domain', '').strip()
+            if (isinstance(domain_confidence, (int, float))
+                    and domain_confidence < 0.7
+                    and inferred_domain):
+                domain_q = {
+                    'type': 'domain_clarification',
+                    'question': (
+                        f"The job domain was inferred as \"{inferred_domain}\", but the posting "
+                        "spans multiple areas. Which domain best describes your target positioning?"
+                    )[:220],
+                    'choices': [inferred_domain, 'Other / Multiple domains'],
                 }
-            except LLMError as e:
-                print(f"LLM error generating contextual questions: {e}")
-                return {
-                    'text': f'✓ Job analysis complete. (Note: {e})',
-                    'context_data': {'job_analysis': analysis},
+                cleaned_questions = [domain_q] + cleaned_questions
+
+            # Add a publications-gate question (GAP-203) when:
+            #   • the user has publications in their master CV, and
+            #   • the domain suggests an industry (non-research) role.
+            # This avoids silently including publications for roles where they
+            # are a negative signal (e.g. engineering, product, operations).
+            has_publications = bool(getattr(self.orchestrator, 'publications', None))
+            inferred_domain_lower = inferred_domain.lower()
+            _RESEARCH_TERMS = (
+                'research', 'academic', 'science', 'scientist', 'statistics',
+                'biostat', 'genomic', 'clinical', 'epidemiol', 'faculty',
+                'bioinformat', 'computational biology', 'drug discovery',
+            )
+            domain_is_research = any(t in inferred_domain_lower for t in _RESEARCH_TERMS)
+            if has_publications and not domain_is_research and inferred_domain:
+                pub_q = {
+                    'type': 'include_publications',
+                    'question': (
+                        f"Publications are in your CV profile, but this looks like an industry "
+                        f"{inferred_domain} role. Include your publications section?"
+                    )[:220],
+                    'choices': ['Yes — include publications', 'No — omit for this application'],
                 }
-            except Exception as e:
-                print(f"Error generating contextual questions: {e}")
-                return {
-                    'text': '✓ Job analysis complete.',
-                    'context_data': {'job_analysis': analysis},
-                }
-        
-        elif action_type == 'recommend_customizations':
-            if not self.state['job_analysis']:
+                cleaned_questions.append(pub_q)
+
+            if cleaned_questions:
+                self.state['post_analysis_questions'] = cleaned_questions
+
+            # Build a human-readable chat message so history is useful on restore.
+            chat_lines = [intro, '']
+            for i, q in enumerate(cleaned_questions, 1):
+                chat_lines.append(f"{i}. {q['question']}")
+                if q.get('choices'):
+                    chat_lines.append('   Options: ' + ' / '.join(q['choices']))
+            chat_text = '\n'.join(chat_lines)
+
+            self._conversation_history.append({
+                'role': 'assistant',
+                'content': chat_text,
+            })
+
+            return {
+                'text': chat_text,
+                'context_data': {
+                    'job_analysis': analysis,
+                    'post_analysis_questions': cleaned_questions,
+                },
+            }
+        except LLMError as e:
+            print(f"LLM error generating contextual questions: {e}")
+            return {
+                'text': f'✓ Job analysis complete. (Note: {e})',
+                'context_data': {'job_analysis': analysis},
+            }
+        except Exception as e:
+            print(f"Error generating contextual questions: {e}")
+            return {
+                'text': '✓ Job analysis complete.',
+                'context_data': {'job_analysis': analysis},
+            }
+
+    def _handle_recommend_customizations(self, action: Dict) -> Optional[str]:
+        """Handle the recommend_customizations action."""
+        if not self.state['job_analysis']:
+            return "❌ Please analyze job description first"
+
+        print("\n🔄 Generating customization recommendations...")
+        action_preferences = action.get('user_preferences', {}) or {}
+        state_preferences  = self.state.get('post_analysis_answers', {}) or {}
+
+        user_preferences = {}
+        if isinstance(state_preferences, dict):
+            user_preferences.update(state_preferences)
+        if isinstance(action_preferences, dict):
+            user_preferences.update(action_preferences)
+
+        if user_preferences:
+            self.state['post_analysis_answers'] = user_preferences
+
+        # Extract page budget from existing customizations so the LLM can
+        # calibrate how much content to recommend.  These values survive
+        # the customizations replacement that happens after the LLM call.
+        _prior_customizations = self.state.get('customizations') or {}
+        page_budget = {
+            k: _prior_customizations[k]
+            for k in ('max_cv_pages', 'max_publication_pages')
+            if _prior_customizations.get(k) is not None
+        } or None
+
+        recommendations = self.llm.recommend_customizations(
+            self.state['job_analysis'],
+            self.orchestrator.master_data,
+            user_preferences=user_preferences,
+            conversation_history=self.conversation_history,
+            page_budget=page_budget,
+        )
+
+        # Page-count iteration: re-call the LLM if the estimated page count is
+        # too high (>25% over budget) or too low (<75% of budget with content
+        # still available), so the final recommendations fit the page target.
+        if page_budget and page_budget.get('max_cv_pages'):
+            max_cv   = page_budget['max_cv_pages']
+            estimated = self._estimate_cv_body_pages(
+                recommendations, self.orchestrator.master_data
+            )
+            retry_prefs = dict(user_preferences or {})
+            if estimated > max_cv * 1.25:
+                print(
+                    f"  ⚠ Estimated CV body {estimated:.1f} pages > {max_cv} page budget "
+                    "— refining recommendations..."
+                )
+                retry_prefs['page_count_feedback'] = (
+                    f"Your previous recommendations would fill approximately {estimated:.1f} pages "
+                    f"of CV body content (target ≤ {max_cv} pages).  "
+                    "Please change some Include → De-emphasize or Emphasize → Include "
+                    "to bring the total within budget.  Prioritise the highest-relevance items."
+                )
+                recommendations = self.llm.recommend_customizations(
+                    self.state['job_analysis'],
+                    self.orchestrator.master_data,
+                    user_preferences=retry_prefs,
+                    conversation_history=self.conversation_history,
+                    page_budget=page_budget,
+                )
+            elif (estimated < max_cv * 0.75
+                  and not self._all_available_cv_content_included(
+                      recommendations, self.orchestrator.master_data)):
+                print(
+                    f"  ℹ Estimated CV body {estimated:.1f} pages < {max_cv} page budget "
+                    "— requesting more content..."
+                )
+                retry_prefs['page_count_feedback'] = (
+                    f"Your previous recommendations would fill approximately {estimated:.1f} pages "
+                    f"of CV body content (target ≤ {max_cv} pages).  "
+                    "Please include additional relevant content to better fill the available space."
+                )
+                recommendations = self.llm.recommend_customizations(
+                    self.state['job_analysis'],
+                    self.orchestrator.master_data,
+                    user_preferences=retry_prefs,
+                    conversation_history=self.conversation_history,
+                    page_budget=page_budget,
+                )
+
+        self._normalize_recommendations(recommendations)
+        self.state['customizations'] = recommendations
+
+        # Derive skill category order from job-analysis relevance (GAP-86)
+        if 'skill_category_order' not in recommendations or not recommendations['skill_category_order']:
+            ranked = self._rank_skill_categories_by_relevance(
+                recommendations,
+                self.orchestrator.master_data,
+                self.state.get('job_analysis') or {},
+            )
+            if ranked:
+                recommendations['skill_category_order'] = ranked
+                self.state['skill_category_order'] = ranked
+
+        # Restore page budget into the new customizations dict — the LLM
+        # output does not include user-set page constraints.
+        if page_budget:
+            self.state['customizations'].update(page_budget)
+
+        self._set_phase(Phase.CUSTOMIZATION)
+
+        return {
+            'text': f"✓ Customization recommendations generated ({len(recommendations.get('recommended_experiences', []))} experiences, {len(recommendations.get('recommended_skills', []))} skills).",
+            'context_data': {'customizations': recommendations},
+        }
+
+    @staticmethod
+    def _rank_skill_categories_by_relevance(
+        recommendations: Dict,
+        master_data: Dict,
+        job_analysis: Dict,
+    ) -> list:
+        """Return skill categories sorted by relevance to the target role.
+
+        Score = number of recommended skills in each category whose name
+        overlaps with ATS keywords from the job analysis.  Categories with
+        at least one recommended skill appear first (in score order), then
+        remaining categories in their original master-data order.
+        """
+        ats_kws = {kw.lower() for kw in (job_analysis.get('ats_keywords') or [])}
+        recommended_names = {
+            s.lower() if isinstance(s, str) else str(s.get('name', '')).lower()
+            for s in (recommendations.get('recommended_skills') or [])
+        }
+
+        # Build category → score mapping from master data
+        category_scores: dict = {}
+        category_seen_order: list = []
+        master_skills = master_data.get('skills') or []
+        if isinstance(master_skills, dict):
+            master_skills = list(master_skills.values())
+        for skill in master_skills:
+            if not isinstance(skill, dict):
+                continue
+            cat = (skill.get('category') or 'General').strip()
+            if cat not in category_scores:
+                category_scores[cat] = 0
+                category_seen_order.append(cat)
+            name_lower = str(skill.get('name', '')).lower()
+            if name_lower in recommended_names:
+                # +2 if also an ATS keyword, +1 if only recommended
+                if any(name_lower in kw or kw in name_lower for kw in ats_kws):
+                    category_scores[cat] += 2
+                else:
+                    category_scores[cat] += 1
+
+        if not category_scores:
+            return []
+        return sorted(category_seen_order, key=lambda c: -category_scores.get(c, 0))
+
+    @staticmethod
+    def _estimate_cv_body_pages(
+        recommendations: Dict,
+        master_data: Dict,
+        chars_per_page: int = 2500,
+    ) -> float:
+        """Rough page-count estimate for CV body content (excludes publications).
+
+        Uses character-length proxies calibrated to letter paper at 0.5" margins
+        and 13 pt font.  Conservative — better to over-count and prompt trimming.
+        """
+        # Fixed overhead: header, contact block, section labels, summary
+        total = 1000
+
+        exp_recs = {
+            r['id']: r.get('recommendation', 'Include')
+            for r in recommendations.get('experience_recommendations', [])
+        }
+        for exp in master_data.get('experience', []):
+            rec = exp_recs.get(exp.get('id', ''), 'Include')
+            if rec == 'Omit':
+                continue
+            bullets   = exp.get('achievements') or []
+            n_bullets = min(len(bullets), 3 if rec == 'De-emphasize' else 5)
+            total += 150 + n_bullets * 160  # experience header + bullets
+
+        ach_recs = {
+            r['id']: r.get('recommendation', 'Include')
+            for r in recommendations.get('achievement_recommendations', [])
+        }
+        n_included_achs = sum(
+            1 for a in master_data.get('selected_achievements', [])
+            if ach_recs.get(a.get('id', ''), 'Include') in ('Include', 'Emphasize')
+        )
+        total += n_included_achs * 200
+
+        return round(total / chars_per_page, 1)
+
+    def _all_available_cv_content_included(
+        self,
+        recommendations: Dict,
+        master_data: Dict,
+    ) -> bool:
+        """Return True if recommendations already cover all available experience and skill content."""
+        rec_exp_ids = set(recommendations.get('recommended_experiences', []))
+        all_exp_ids = {
+            str(e.get('id', ''))
+            for e in master_data.get('experience', [])
+            if e.get('id')
+        }
+        if all_exp_ids - rec_exp_ids:
+            return False
+        rec_skills = {
+            (s.lower() if isinstance(s, str) else str(s.get('name', '')).lower())
+            for s in recommendations.get('recommended_skills', [])
+        }
+        all_skills = {
+            (s.lower() if isinstance(s, str) else str(s.get('name', '')).lower())
+            for s in master_data.get('skills', [])
+        }
+        return not bool(all_skills - rec_skills)
+
+    def _handle_submit_rewrites(self, action: Dict) -> Optional[str]:
+        """Handle the submit_rewrites action."""
+        decisions = action.get('decisions', [])
+        summary   = self.submit_rewrite_decisions(decisions)
+        return (
+            f"✓ Rewrite decisions recorded: "
+            f"{summary['approved_count']} approved, "
+            f"{summary['rejected_count']} rejected."
+        )
+
+    def _handle_generate_cv(self, action: Dict) -> Optional[str]:
+        """Handle the generate_cv action."""
+        # Check if we have customizations OR user decisions from table review
+        has_customizations = bool(self.state.get('customizations'))
+        has_decisions = bool(self.state.get('experience_decisions') or self.state.get('skill_decisions') or self.state.get('achievement_decisions'))
+
+        if not has_customizations and not has_decisions:
+            return "❌ Please generate customizations first (click 'Recommend Customizations')"
+
+        # Ensure job_analysis and customizations are dicts, not strings
+        job_analysis = self.state.get('job_analysis')
+        if isinstance(job_analysis, str):
+            try:
+                job_analysis = json.loads(job_analysis)
+                self.state['job_analysis'] = job_analysis
+            except json.JSONDecodeError:
+                return "❌ Error: job_analysis is corrupted. Please re-analyze the job."
+
+        # Normalize decision payloads (may be persisted as JSON strings)
+        exp_decisions = self.state.get('experience_decisions', {})
+        skill_decisions = self.state.get('skill_decisions', {})
+
+        if isinstance(exp_decisions, str):
+            try:
+                exp_decisions = json.loads(exp_decisions)
+                self.state['experience_decisions'] = exp_decisions
+            except json.JSONDecodeError:
+                exp_decisions = {}
+
+        if isinstance(skill_decisions, str):
+            try:
+                skill_decisions = json.loads(skill_decisions)
+                self.state['skill_decisions'] = skill_decisions
+            except json.JSONDecodeError:
+                skill_decisions = {}
+
+        if not isinstance(exp_decisions, dict):
+            exp_decisions = {}
+        if not isinstance(skill_decisions, dict):
+            skill_decisions = {}
+
+        # If we have decisions but no customizations, generate a baseline first
+        if has_decisions and not has_customizations:
+            print("\n🔄 Applying user decisions to generate customizations...")
+            if not job_analysis:
                 return "❌ Please analyze job description first"
-            
-            print("\n🔄 Generating customization recommendations...")
-            action_preferences = action.get('user_preferences', {}) or {}
-            state_preferences = self.state.get('post_analysis_answers', {}) or {}
-
-            user_preferences = {}
-            if isinstance(state_preferences, dict):
-                user_preferences.update(state_preferences)
-            if isinstance(action_preferences, dict):
-                user_preferences.update(action_preferences)
-
-            if user_preferences:
-                self.state['post_analysis_answers'] = user_preferences
 
             recommendations = self.llm.recommend_customizations(
-                self.state['job_analysis'],
+                job_analysis,
                 self.orchestrator.master_data,
-                user_preferences=user_preferences,
+                user_preferences=self.state.get('post_analysis_answers') or {},
                 conversation_history=self.conversation_history
             )
             self._normalize_recommendations(recommendations)
             self.state['customizations'] = recommendations
-            self.state['phase'] = Phase.CUSTOMIZATION
-            
-            return {
-                'text': f"✓ Customization recommendations generated ({len(recommendations.get('recommended_experiences', []))} experiences, {len(recommendations.get('recommended_skills', []))} skills).",
-                'context_data': {'customizations': recommendations},
-            }
-        
-        elif action_type == 'submit_rewrites':
-            decisions = action.get('decisions', [])
-            summary   = self.submit_rewrite_decisions(decisions)
-            return (
-                f"✓ Rewrite decisions recorded: "
-                f"{summary['approved_count']} approved, "
-                f"{summary['rejected_count']} rejected."
-            )
 
-        elif action_type == 'generate_cv':
-            # Check if we have customizations OR user decisions from table review
-            has_customizations = bool(self.state.get('customizations'))
-            has_decisions = bool(self.state.get('experience_decisions') or self.state.get('skill_decisions') or self.state.get('achievement_decisions'))
-            
-            if not has_customizations and not has_decisions:
-                return "❌ Please generate customizations first (click 'Recommend Customizations')"
-            
-            # Ensure job_analysis and customizations are dicts, not strings
-            job_analysis = self.state.get('job_analysis')
-            if isinstance(job_analysis, str):
-                try:
-                    job_analysis = json.loads(job_analysis)
-                    self.state['job_analysis'] = job_analysis
-                except json.JSONDecodeError:
-                    return "❌ Error: job_analysis is corrupted. Please re-analyze the job."
-
-            # Normalize decision payloads (may be persisted as JSON strings)
-            exp_decisions = self.state.get('experience_decisions', {})
-            skill_decisions = self.state.get('skill_decisions', {})
-
-            if isinstance(exp_decisions, str):
-                try:
-                    exp_decisions = json.loads(exp_decisions)
-                    self.state['experience_decisions'] = exp_decisions
-                except json.JSONDecodeError:
-                    exp_decisions = {}
-
-            if isinstance(skill_decisions, str):
-                try:
-                    skill_decisions = json.loads(skill_decisions)
-                    self.state['skill_decisions'] = skill_decisions
-                except json.JSONDecodeError:
-                    skill_decisions = {}
-
-            if not isinstance(exp_decisions, dict):
-                exp_decisions = {}
-            if not isinstance(skill_decisions, dict):
-                skill_decisions = {}
-            
-            # If we have decisions but no customizations, generate a baseline first
-            if has_decisions and not has_customizations:
-                print("\n🔄 Applying user decisions to generate customizations...")
-                if not job_analysis:
-                    return "❌ Please analyze job description first"
-
-                recommendations = self.llm.recommend_customizations(
-                    job_analysis,
-                    self.orchestrator.master_data,
-                    user_preferences=self.state.get('post_analysis_answers') or {},
-                    conversation_history=self.conversation_history
-                )
-                self._normalize_recommendations(recommendations)
-                self.state['customizations'] = recommendations
-            
-            # Ensure customizations is a dict
-            customizations = self.state.get('customizations')
-            if isinstance(customizations, str):
-                try:
-                    customizations = json.loads(customizations)
-                    self.state['customizations'] = customizations
-                except json.JSONDecodeError:
-                    return "❌ Error: customizations data is corrupted. Please re-generate customizations."
-
-            if customizations is None:
-                return "❌ Please generate customizations first"
-
-            # Always apply collected review decisions before final generation
-            if has_decisions:
-                if exp_decisions:
-                    emphasized   = [k for k, v in exp_decisions.items() if v == 'emphasize']
-                    included     = [k for k, v in exp_decisions.items() if v == 'include']
-                    deemphasized = [k for k, v in exp_decisions.items() if v == 'de-emphasize']
-                    omitted      = [k for k, v in exp_decisions.items() if v in ('omit', 'exclude')]
-                    customizations['recommended_experiences'] = emphasized + included + deemphasized
-                    # Explicitly omitted IDs — only these are excluded from the output
-                    customizations['omitted_experiences'] = omitted
-
-                if skill_decisions:
-                    emphasized   = [k for k, v in skill_decisions.items() if v == 'emphasize']
-                    included     = [k for k, v in skill_decisions.items() if v == 'include']
-                    deemphasized = [k for k, v in skill_decisions.items() if v == 'de-emphasize']
-                    omitted      = [k for k, v in skill_decisions.items() if v in ('omit', 'exclude')]
-                    customizations['recommended_skills'] = emphasized + included + deemphasized
-                    customizations['omitted_skills'] = omitted
-
-                # Achievement decisions
-                ach_decisions = self.state.get('achievement_decisions', {})
-                if isinstance(ach_decisions, str):
-                    try:
-                        ach_decisions = json.loads(ach_decisions)
-                    except Exception:
-                        ach_decisions = {}
-                if ach_decisions:
-                    included_achs = [k for k, v in ach_decisions.items() if v in ('include', 'emphasize', 'de-emphasize')]
-                    omitted_achs  = [k for k, v in ach_decisions.items() if v in ('omit', 'exclude')]
-                    customizations['recommended_achievements'] = included_achs
-                    customizations['omitted_achievements'] = omitted_achs
-
-                # Extra achievements (LLM-suggested achievements that user approved)
-                extra_achievements = self.state.get('accepted_suggested_achievements', [])
-                if extra_achievements:
-                    customizations['extra_achievements'] = extra_achievements
-
-                # Extra skills (LLM-suggested skills not in master CV that user approved)
-                extra_skills = self.state.get('extra_skills', [])
-                if extra_skills:
-                    customizations['extra_skills'] = extra_skills
-
-                # Base font size for CV template (set via Layout panel)
-                base_font_size = self.state.get('base_font_size')
-                if base_font_size:
-                    customizations['base_font_size'] = base_font_size
-
-                # Skills section title (set via Generation Settings panel)
-                # duckflow:
-                #   id: generation_settings_skills_title_handoff
-                #   kind: state
-                #   timestamp: "2026-03-27T01:23:28Z"
-                #   status: live
-                #   reads:
-                #     - "state:skills_section_title"
-                #   writes:
-                #     - "customizations:skills_section_title"
-                #   notes: "Copies the generation settings skills section title from session state into generation customizations."
-                skills_section_title = self.state.get('skills_section_title')
-                if skills_section_title:
-                    customizations['skills_section_title'] = skills_section_title
-
-                # Summary focus override (user-selected summary key)
-                summary_override = self.state.get('summary_focus_override')
-                if summary_override:
-                    customizations['summary_focus'] = summary_override
-
-                page_margin = self.state.get('page_margin')
-                if page_margin:
-                    customizations['page_margin'] = page_margin
-
-                self.state['customizations'] = customizations
-
-            # Inject LLM-generated session summaries so the orchestrator can resolve them
-            session_summaries = self.state.get('session_summaries') or {}
-            if session_summaries:
-                customizations['session_summaries'] = session_summaries
-
-            # Inject user-defined bullet ordering (Phase 9) into customizations
-            achievement_orders = self.state.get('achievement_orders', {})
-            if achievement_orders:
-                customizations['achievement_orders'] = achievement_orders
-
-            # Inject user-defined experience and skill row ordering (Phase 6)
-            experience_row_order = self.state.get('experience_row_order', [])
-            if experience_row_order:
-                customizations['experience_row_order'] = experience_row_order
-            skill_row_order = self.state.get('skill_row_order', [])
-            if skill_row_order:
-                customizations['skill_row_order'] = skill_row_order
-
-            # Apply publication accept/reject decisions.
-            # Primary source: publication_decisions dict stored via POST /api/decide
-            # (cite_key → True/False). Falls back to legacy post_analysis_answers strings.
-            pub_decisions: dict = self.state.get('publication_decisions') or {}
-            if pub_decisions:
-                customizations['accepted_publications'] = [
-                    k for k, v in pub_decisions.items() if v not in (False, 'reject', 0)
-                ]
-                customizations['rejected_publications'] = [
-                    k for k, v in pub_decisions.items() if v in (False, 'reject', 0)
-                ]
-            # Legacy path: post_analysis_answers overrides the dict if both are present
-            post_answers = self.state.get('post_analysis_answers') or {}
-            accepted_str = post_answers.get('publication_accepted', '')
-            rejected_str = post_answers.get('publication_rejected', '')
-            if accepted_str or rejected_str:
-                customizations['accepted_publications'] = [
-                    k.strip() for k in accepted_str.split(',') if k.strip()
-                ]
-                customizations['rejected_publications'] = [
-                    k.strip() for k in rejected_str.split(',') if k.strip()
-                ]
-
-            print("\n🔄 Generating CV files...")
+        # Ensure customizations is a dict
+        customizations = self.state.get('customizations')
+        if isinstance(customizations, str):
             try:
-                result = self.generate_cv_from_session_state(
-                    output_dir=self.session_dir,
-                    allow_llm_recommendations=True,
-                )
-            except ValueError as exc:
-                return f"❌ {exc}"
+                customizations = json.loads(customizations)
+                self.state['customizations'] = customizations
+            except json.JSONDecodeError:
+                return "❌ Error: customizations data is corrupted. Please re-generate customizations."
 
-            files_list = "\n".join(f"  - {f}" for f in result['files'])
-            return f"✓ CV generated successfully!\n\nOutput directory: {result['output_dir']}\n\nFiles created:\n{files_list}"
-        
-        return None
-    
+        if customizations is None:
+            return "❌ Please generate customizations first"
+
+        # Always apply collected review decisions before final generation
+        if has_decisions:
+            if exp_decisions:
+                emphasized   = [k for k, v in exp_decisions.items() if v == 'emphasize']
+                included     = [k for k, v in exp_decisions.items() if v == 'include']
+                deemphasized = [k for k, v in exp_decisions.items() if v == 'de-emphasize']
+                omitted      = [k for k, v in exp_decisions.items() if v in ('omit', 'exclude')]
+                customizations['recommended_experiences'] = emphasized + included + deemphasized
+                # Explicitly omitted IDs — only these are excluded from the output
+                customizations['omitted_experiences'] = omitted
+
+            if skill_decisions:
+                emphasized   = [k for k, v in skill_decisions.items() if v == 'emphasize']
+                included     = [k for k, v in skill_decisions.items() if v == 'include']
+                deemphasized = [k for k, v in skill_decisions.items() if v == 'de-emphasize']
+                omitted      = [k for k, v in skill_decisions.items() if v in ('omit', 'exclude')]
+                customizations['recommended_skills'] = emphasized + included + deemphasized
+                customizations['omitted_skills'] = omitted
+
+            # Achievement decisions
+            ach_decisions = self.state.get('achievement_decisions', {})
+            if isinstance(ach_decisions, str):
+                try:
+                    ach_decisions = json.loads(ach_decisions)
+                except Exception:
+                    ach_decisions = {}
+            if ach_decisions:
+                included_achs = [k for k, v in ach_decisions.items() if v in ('include', 'emphasize', 'de-emphasize')]
+                omitted_achs  = [k for k, v in ach_decisions.items() if v in ('omit', 'exclude')]
+                customizations['recommended_achievements'] = included_achs
+                customizations['omitted_achievements'] = omitted_achs
+
+            # Extra achievements (LLM-suggested achievements that user approved)
+            extra_achievements = self.state.get('accepted_suggested_achievements', [])
+            if extra_achievements:
+                customizations['extra_achievements'] = extra_achievements
+
+            # Extra skills (LLM-suggested skills not in master CV that user approved)
+            extra_skills = self.state.get('extra_skills', [])
+            if extra_skills:
+                customizations['extra_skills'] = extra_skills
+
+            # Base font size for CV template (set via Layout panel)
+            base_font_size = self.state.get('base_font_size')
+            if base_font_size:
+                customizations['base_font_size'] = base_font_size
+
+            # Skills section title (set via Generation Settings panel)
+            # duckflow:
+            #   id: generation_settings_skills_title_handoff
+            #   kind: state
+            #   timestamp: "2026-03-27T01:23:28Z"
+            #   status: live
+            #   reads:
+            #     - "state:skills_section_title"
+            #   writes:
+            #     - "customizations:skills_section_title"
+            #   notes: "Copies the generation settings skills section title from session state into generation customizations."
+            skills_section_title = self.state.get('skills_section_title')
+            if skills_section_title:
+                customizations['skills_section_title'] = skills_section_title
+
+            # Summary focus override (user-selected summary key)
+            summary_override = self.state.get('summary_focus_override')
+            if summary_override:
+                customizations['summary_focus'] = summary_override
+
+            page_margin = self.state.get('page_margin')
+            if page_margin:
+                customizations['page_margin'] = page_margin
+
+            self.state['customizations'] = customizations
+
+        # Inject LLM-generated session summaries so the orchestrator can resolve them
+        session_summaries = self.state.get('session_summaries') or {}
+        if session_summaries:
+            customizations['session_summaries'] = session_summaries
+
+        # Inject user-defined bullet ordering (Phase 9) into customizations
+        achievement_orders = self.state.get('achievement_orders', {})
+        if achievement_orders:
+            customizations['achievement_orders'] = achievement_orders
+
+        # Inject user-defined experience and skill row ordering (Phase 6)
+        experience_row_order = self.state.get('experience_row_order', [])
+        if experience_row_order:
+            customizations['experience_row_order'] = experience_row_order
+        skill_row_order = self.state.get('skill_row_order', [])
+        if skill_row_order:
+            customizations['skill_row_order'] = skill_row_order
+
+        # Apply publication accept/reject decisions.
+        # Primary source: publication_decisions dict stored via POST /api/decide
+        # (cite_key → True/False). Falls back to legacy post_analysis_answers strings.
+        pub_decisions: dict = self.state.get('publication_decisions') or {}
+        if pub_decisions:
+            customizations['accepted_publications'] = [
+                k for k, v in pub_decisions.items() if v not in (False, 'reject', 0)
+            ]
+            customizations['rejected_publications'] = [
+                k for k, v in pub_decisions.items() if v in (False, 'reject', 0)
+            ]
+        # Legacy path: post_analysis_answers overrides the dict if both are present
+        post_answers = self.state.get('post_analysis_answers') or {}
+        accepted_str = post_answers.get('publication_accepted', '')
+        rejected_str = post_answers.get('publication_rejected', '')
+        if accepted_str or rejected_str:
+            customizations['accepted_publications'] = [
+                k.strip() for k in accepted_str.split(',') if k.strip()
+            ]
+            customizations['rejected_publications'] = [
+                k.strip() for k in rejected_str.split(',') if k.strip()
+            ]
+
+        print("\n🔄 Generating CV preview (HTML only)...")
+        try:
+            result = self.generate_cv_from_session_state(
+                output_dir=self.session_dir,
+                allow_llm_recommendations=True,
+                html_preview_only=True,
+            )
+        except ValueError as exc:
+            return f"❌ {exc}"
+
+        files_list = "\n".join(f"  - {f}" for f in result['files'])
+        return f"✓ CV generated successfully!\n\nOutput directory: {result['output_dir']}\n\nFiles created:\n{files_list}"
+
     def submit_rewrite_decisions(self, decisions: List[Dict]) -> Dict:
         """Process user decisions on pending rewrite proposals.
 
@@ -936,14 +1304,14 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
 
         self.state['approved_rewrites'] = approved
         self.state['rewrite_audit']     = audit
-        self.state['phase']             = Phase.SPELL_CHECK
+        self._set_phase(Phase.SPELL_CHECK)
         self._save_session()
 
         n_rejected = sum(1 for d in decisions if d.get('outcome') == 'reject')
         return {
             'approved_count': len(approved),
             'rejected_count': n_rejected,
-            'phase':          'spell_check',
+            'phase':          Phase.SPELL_CHECK,
         }
 
     def complete_spell_check(self, spell_audit: list) -> Dict:
@@ -964,7 +1332,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             if entry.get('outcome') == 'pending':
                 entry['outcome'] = 'ignore'
         self.state['spell_audit'] = spell_audit
-        self.state['phase']       = Phase.GENERATION
+        self._set_phase(Phase.GENERATION)
         self._save_session()
         flag_count      = len(spell_audit)
         accepted_count  = sum(1 for a in spell_audit if a.get('outcome') == 'accept')
@@ -973,27 +1341,44 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             'flag_count':     flag_count,
             'accepted_count': accepted_count,
             'ignored_count':  ignored_count,
-            'phase':          'generation',
+            'phase':          Phase.GENERATION,
         }
 
     def complete_layout_review(self, layout_instructions: list) -> Dict:
-        """Record layout instruction outcomes and advance phase to *refinement* (finalise).
+        """Record layout instruction outcomes and advance phase to *final_generation*.
+
+        The user has reviewed the layout preview and clicked "Generate Final Files".
+        Phase advances to FINAL_GENERATION (step 8) rather than directly to REFINEMENT,
+        so the download tab can show the generate-final action before finalise.
 
         Args:
             layout_instructions: List of instruction entries. Each entry should have keys:
                 ``timestamp, instruction_text, change_summary, confirmation``.
 
         Returns:
-            ``{"instructions_applied": int, "phase": "refinement"}``
+            ``{"instructions_applied": int, "phase": "final_generation"}``
         """
         self.state['layout_instructions'] = layout_instructions or []
-        self.state['phase'] = Phase.REFINEMENT
+        self._set_phase(Phase.FINAL_GENERATION)
         self._save_session()
         instructions_applied = len(layout_instructions or [])
         return {
             'instructions_applied': instructions_applied,
-            'phase': 'refinement',
+            'phase': Phase.FINAL_GENERATION,
         }
+
+    def complete_final_generation(self) -> Dict:
+        """Advance phase from *final_generation* to *refinement* (finalise).
+
+        Called after the user has reviewed the generated files on the download tab
+        and clicked "Proceed to Finalise".
+
+        Returns:
+            ``{"phase": "refinement"}``
+        """
+        self._set_phase(Phase.REFINEMENT)
+        self._save_session()
+        return {'phase': Phase.REFINEMENT}
 
     def run_persuasion_checks(
         self,
@@ -1084,6 +1469,18 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 car_result = LLMClient.check_car_structure(proposed)
                 checks_to_run.append(car_result)
 
+            # Keyword appending (experience bullets — requires ATS keywords)
+            if 'exp' in location.lower():
+                ats_keywords = job_analysis.get('ats_keywords', []) if job_analysis else []
+                if ats_keywords:
+                    kw_append_result = LLMClient.check_keyword_appended(proposed, original, ats_keywords)
+                    checks_to_run.append(kw_append_result)
+
+            # Positive-sum metric framing (experience bullets with quantified results)
+            if 'exp' in location.lower() or 'bullet' in rewrite_type.lower():
+                framing_result = LLMClient.check_positive_metric_framing(proposed)
+                checks_to_run.append(framing_result)
+
             # Generic phrases (summary only)
             if location == 'summary' or rewrite_type == 'summary':
                 generic_result = LLMClient.check_summary_generic_phrases(proposed)
@@ -1102,6 +1499,61 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                         'proposed':  proposed,
                         'details':   check_result.get('details', ''),
                     })
+
+        # ── Batch terminology consistency check (GAP-233) ─────────────────────
+        # Detect common tech/domain abbreviation variants used inconsistently
+        # across the full set of proposed rewrites.
+        _VARIANT_GROUPS: List[tuple] = [
+            ('ml', 'machine learning'),
+            ('ai', 'artificial intelligence'),
+            ('nlp', 'natural language processing'),
+            ('dl', 'deep learning'),
+            ('llm', 'large language model'),
+            ('ui', 'user interface'),
+            ('ux', 'user experience'),
+            ('api', 'application programming interface'),
+            ('db', 'database'),
+            ('k8s', 'kubernetes'),
+            ('aws', 'amazon web services'),
+            ('gcp', 'google cloud platform'),
+            ('ci/cd', 'continuous integration'),
+            ('oop', 'object-oriented programming'),
+        ]
+
+        all_proposed = [
+            (r.get('id', ''), r.get('location', ''), r.get('proposed', ''))
+            for r in rewrites
+        ]
+
+        for short_form, long_form in _VARIANT_GROUPS:
+            short_pattern = re.compile(
+                r'\b' + re.escape(short_form) + r'\b', re.IGNORECASE
+            )
+            long_pattern = re.compile(
+                r'\b' + re.escape(long_form) + r'\b', re.IGNORECASE
+            )
+            short_ids = [
+                (rid, loc) for rid, loc, text in all_proposed
+                if short_pattern.search(text)
+            ]
+            long_ids = [
+                (rid, loc) for rid, loc, text in all_proposed
+                if long_pattern.search(text)
+            ]
+            if short_ids and long_ids:
+                warnings_list.append({
+                    'id':        'batch_consistency',
+                    'location':  'batch',
+                    'flag_type': 'terminology_inconsistency',
+                    'severity':  'info',
+                    'original':  '',
+                    'proposed':  '',
+                    'details': (
+                        f'Inconsistent terminology: "{short_form.upper()}" used in '
+                        f'{len(short_ids)} bullet(s), "{long_form}" in {len(long_ids)} — '
+                        f'consider standardising to one form throughout.'
+                    ),
+                })
 
         return warnings_list
 
@@ -1331,6 +1783,12 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         else:
             return {'ok': False, 'error': f'Re-run not supported for phase: {resolved!r}'}
 
+        from datetime import datetime, timezone
+        self.state.setdefault('rerun_log', []).append({
+            'phase': str(resolved),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'triggered_by': 'user',
+        })
         self._save_session()
         return {
             'ok':           True,
@@ -1343,8 +1801,8 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
     def add_job_description(self, job_text: str):
         """Add job description to state."""
         self.state['job_description'] = job_text
-        self.state['phase'] = Phase.JOB_ANALYSIS
-    
+        self._set_phase(Phase.JOB_ANALYSIS)
+
     def _print_welcome(self):
         """Print welcome message."""
         print("\n" + "="*70)
@@ -1362,7 +1820,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         print("  • 'QUIT' - Save and exit (with confirmation)")
         print("  • 'quit' - Save and exit")
         print("\n" + "-"*70)
-        
+
         # Check if job description already loaded
         if self.state.get('job_description'):
             print("\n✓ Job description loaded. I'm ready to analyze it.")
@@ -1370,7 +1828,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         else:
             print("\nTo get started, please paste the job description,")
             print("or tell me about the position you're targeting.")
-    
+
     def _print_help(self):
         """Print help message."""
         print("\n" + "="*70)
@@ -1388,7 +1846,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         print("  4. Generate CV files")
         print("  5. Review and refine")
         print("\n" + "-"*70)
-    
+
     def _normalize_recommendations(self, recommendations: Dict) -> Dict:
         """If ``summary_focus`` is a full-text paragraph rather than a lookup
         key, save it as ``'ai_recommended'`` in ``session_summaries`` and
@@ -1414,17 +1872,17 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         print(f"Job analysis: {'✓ Complete' if self.state['job_analysis'] else '✗ Pending'}")
         print(f"Customizations: {'✓ Ready' if self.state['customizations'] else '✗ Pending'}")
         print(f"Generated files: {'✓ Created' if self.state['generated_files'] else '✗ Not generated'}")
-        
+
         if self.state['generated_files']:
             print(f"\nOutput directory: {self.state['generated_files']['output_dir']}")
-        
+
         print("\n" + "-"*70)
-    
+
     def _reset_conversation(self):
         """Reset conversation state."""
         confirm = input("\n⚠ This will clear all progress. Continue? (yes/no): ")
         if confirm.lower() in ['yes', 'y']:
-            self.conversation_history = []
+            self._conversation_history = []
             self.state = {
                 'phase':              Phase.INIT,
                 'position_name':      None,
@@ -1627,9 +2085,9 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 print(f"Creating session directory: {self.session_dir}")
                 logger.debug("_save_session: creating new session_dir=%s", self.session_dir)
                 self.session_dir.mkdir(parents=True, exist_ok=True)
-            
+
             if self.session_id is None:
-                self.session_id = uuid.uuid4().hex[:8]
+                self.session_id = uuid.uuid4().hex
 
             session_data = {
                 'session_id': self.session_id,
@@ -1637,11 +2095,11 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 'state': self.state,
                 'conversation_history': self.conversation_history
             }
-            
+
             session_file = self.session_dir / "session.json"
             with open(session_file, 'w', encoding='utf-8') as f:
                 json.dump(session_data, f, indent=2)
-            
+
             print(f"✓ Session saved to: {session_file}")
         except Exception as e:
             import traceback
@@ -1656,14 +2114,14 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         self.state['job_analysis'] = analysis
         title   = (analysis.get('title')   or '').strip()
         company = (analysis.get('company') or '').strip()
-        
+
         if title and company:
             self.state['position_name'] = f"{title} at {company}"
         elif title:
             self.state['position_name'] = title
         elif company:
             self.state['position_name'] = company
-        
+
         logger.debug(
             "_store_job_analysis: position_name=%s (title=%s, company=%s)",
             self.state.get('position_name', '<none>'), title or '<none>', company or '<none>'
@@ -1851,31 +2309,41 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             return False
 
     def _setup_readline(self):
-        """Configure readline and load input history."""
+        """Configure readline and load input history (CLI only)."""
         try:
-            # Ensure parent exists
+            import readline  # noqa: PLC0415
             self.history_file.parent.mkdir(parents=True, exist_ok=True)
-            # Load history if available
             if self.history_file.exists():
                 readline.read_history_file(str(self.history_file))
             readline.set_history_length(1000)
         except Exception:
-            # Silently ignore if readline is unavailable or fails
             pass
 
     def _save_readline_history(self):
-        """Persist readline input history to file."""
+        """Persist readline input history to file (CLI only)."""
         try:
+            import readline  # noqa: PLC0415
             readline.write_history_file(str(self.history_file))
         except Exception:
             pass
-    
+
     def load_session(self, session_file: str):
         """Load previous session."""
         with open(session_file, 'r', encoding='utf-8') as f:
             session_data = json.load(f)
 
         self.state = session_data['state']
+
+        # Validate phase value against known Phase enum values
+        raw_phase = self.state.get("phase")
+        if raw_phase is not None:
+            valid_phases = {p.value for p in Phase}
+            if raw_phase not in valid_phases:
+                raise ValueError(
+                    f"load_session: invalid phase {raw_phase!r} in session file "
+                    f"{session_file!r}. Valid phases: {sorted(valid_phases)}"
+                )
+
         if 'post_analysis_questions' not in self.state:
             self.state['post_analysis_questions'] = []
         if 'post_analysis_answers' not in self.state:
@@ -1896,7 +2364,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             self.state['generation_state'] = {}
         if 'intake' not in self.state:
             self.state['intake'] = {}
-        self.conversation_history = session_data['conversation_history']
+        self._conversation_history = session_data['conversation_history']
         self.session_dir = Path(session_file).parent
 
         # Load session_id; generate and save back if absent (backward compat)
@@ -1904,7 +2372,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             self.session_id = session_data['session_id']
             logger.debug("load_session: loaded session_id=%s from file", self.session_id)
         else:
-            self.session_id = uuid.uuid4().hex[:8]
+            self.session_id = uuid.uuid4().hex
             logger.debug(
                 "load_session: generated new session_id=%s (backward compat)",
                 self.session_id
@@ -1915,6 +2383,10 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         self,
         output_dir: Optional[Path] = None,
         allow_llm_recommendations: bool = True,
+        html_preview_only: bool = False,
+        max_skills: Optional[int] = None,
+        max_achievements: Optional[int] = None,
+        max_publications: Optional[int] = None,
     ) -> Dict:
         """Generate CV artifacts from the currently loaded session state.
 
@@ -1922,6 +2394,15 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         action flow. It reuses recorded job analysis, customizations, and review
         decisions, optionally refusing to call the LLM when a session is missing
         stored customizations.
+
+        Args:
+            output_dir: Directory to write CV files into (default: session_dir).
+            allow_llm_recommendations: When True, call LLM to generate
+                customizations if session has decisions but no customizations.
+            html_preview_only: When True, generate only the preview HTML file
+                (no PDF, no ATS DOCX, no human DOCX).  Used by the Alt-A
+                workflow step 6 (Preview).  Final format generation happens
+                at step 8 via POST /api/cv/generate-final.
         """
         has_customizations = bool(self.state.get('customizations'))
         has_decisions = bool(
@@ -2122,25 +2603,43 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 key.strip() for key in rejected_str.split(',') if key.strip()
             ]
 
-        result = self.orchestrator.generate_cv(
-            job_analysis,
-            customizations,
-            output_dir=output_dir or self.session_dir,
-            approved_rewrites=self.state.get('approved_rewrites') or [],
-            rewrite_audit=self.state.get('rewrite_audit') or [],
-            spell_audit=self.state.get('spell_audit') or [],
-            max_skills=self.state.get('max_skills'),
-        )
+        tagline_override = str(self.state.get('tagline_override') or '').strip()
+        if tagline_override:
+            customizations['tagline_override'] = tagline_override
+
+        if html_preview_only:
+            result = self.orchestrator.generate_preview_html_only(
+                job_analysis,
+                customizations,
+                output_dir=output_dir or self.session_dir,
+                approved_rewrites=self.state.get('approved_rewrites') or [],
+                spell_audit=self.state.get('spell_audit') or [],
+                max_skills=max_skills if max_skills is not None else self.state.get('max_skills'),
+                max_achievements=max_achievements,
+                max_publications=max_publications,
+            )
+        else:
+            result = self.orchestrator.generate_cv(
+                job_analysis,
+                customizations,
+                output_dir=output_dir or self.session_dir,
+                approved_rewrites=self.state.get('approved_rewrites') or [],
+                rewrite_audit=self.state.get('rewrite_audit') or [],
+                spell_audit=self.state.get('spell_audit') or [],
+                max_skills=max_skills if max_skills is not None else self.state.get('max_skills'),
+                max_achievements=max_achievements,
+                max_publications=max_publications,
+            )
         self.state['generated_files'] = result
         self.state['generation_progress'] = result.get('generation_progress', [])
-        self.state['phase'] = Phase.LAYOUT_REVIEW
+        self._set_phase(Phase.LAYOUT_REVIEW)
         return result
-    
+
     def run_automated(self) -> Dict:
         """Run automated generation (non-interactive)."""
         if not self.state.get('job_description'):
             raise ValueError("Job description required for automated mode")
-        
+
         # Analyze job
         print("Analyzing job description...")
         analysis = self.llm.analyze_job_description(
@@ -2149,7 +2648,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         )
         self._store_job_analysis(analysis)
         print("✓ Job analysis complete")
-        
+
         # Get recommendations
         print("Getting LLM recommendations...")
         recommendations = self.llm.recommend_customizations(

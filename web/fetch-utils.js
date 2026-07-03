@@ -34,19 +34,27 @@ function _shouldHandleBusyConflict(args) {
   }
 }
 
-// Global fetch interceptor — shows amber banner on 409 Conflict; auto-retries after countdown.
-(function () {
-  const _origFetch = window.fetch;
-  window.fetch = async function (...args) {
-    const resp = await _origFetch.apply(this, args);
-    if (resp.status === 409 && _shouldHandleBusyConflict(args)) {
-      showSessionConflictBanner();
-      const shouldRetry = await new Promise(resolve => _conflictRetryQueue.push(resolve));
-      if (shouldRetry) return _origFetch.apply(this, args);
-    }
-    return resp;
-  };
-}());
+/**
+ * Handle a 409 Conflict response: show the amber banner and await user choice.
+ * Returns a Promise<boolean> — true means "retry", false means "dismiss".
+ * Called from api-client.js inside sessionAwareFetch so the full fetch pipeline
+ * is owned by a single module-level window.fetch assignment there.
+ *
+ * @param {string|Request} input - The request URL/object (used for path filtering).
+ * @param {object} init - The fetch init options.
+ * @param {Response} [response] - The 409 response (used to check conflict_type).
+ */
+async function handle409Conflict(input, init, response) {
+  if (!_shouldHandleBusyConflict([input, init])) return false;
+  if (response) {
+    try {
+      const body = await response.clone().json();
+      if (body && body.conflict_type && body.conflict_type !== 'session_ownership') return false;
+    } catch (_) { /* non-JSON body — proceed to banner */ }
+  }
+  showSessionConflictBanner();
+  return new Promise(resolve => _conflictRetryQueue.push(resolve));
+}
 
 function showSessionConflictBanner() {
   const banner      = document.getElementById('session-conflict-banner');
@@ -194,8 +202,6 @@ async function _refreshContextStats() {
 function setLoading(loading, label) {
   if (typeof stateManager !== 'undefined' && stateManager?.setLoading) {
     stateManager.setLoading(loading);
-  } else {
-    globalThis.isLoading = loading;
   }
 
   if (loading) {
@@ -245,6 +251,7 @@ function setLoading(loading, label) {
 
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
+  handle409Conflict,
   showSessionConflictBanner, conflictRetryNow, conflictDismiss,
   llmFetch, abortCurrentRequest,
   _updateLLMStatusBar,

@@ -21,6 +21,8 @@ import { stateManager } from './state-manager.js';
 let rewriteDecisions = {};
 let _rewritePanelCache = null;
 let persuasionWarningsAcknowledged = false;
+let _warningsByRewriteId = {};  // Map from rewrite id → warning list (Path 1)
+let _restoreToastShown = false;
 
 function syncRewriteGlobals() {
   if (typeof window === 'undefined') {
@@ -28,6 +30,105 @@ function syncRewriteGlobals() {
   }
   window.rewriteDecisions = rewriteDecisions;
   window._rewritePanelCache = _rewritePanelCache;
+  window.acceptAllRewrites = acceptAllRewrites;
+  window.rejectAllRewrites = rejectAllRewrites;
+  window.toggleRewriteCompactMode = toggleRewriteCompactMode;
+}
+
+function _decisionsKey() {
+  try {
+    const sid = new URLSearchParams(window.location.search).get('session');
+    return sid ? `rw_decisions_${sid}` : null;
+  } catch (_) { return null; }
+}
+
+function _persistDecisions() {
+  const key = _decisionsKey();
+  if (!key) return;
+  try { localStorage.setItem(key, JSON.stringify(rewriteDecisions)); } catch (_) {}
+}
+
+// Fallback audit from the last /api/rewrites response — used for cold-restore (GAP-186).
+let _backendRewriteAudit = [];
+
+function _restoreDecisions() {
+  const key = _decisionsKey();
+  if (!key) return;
+  const hadDecisions = Object.keys(rewriteDecisions).length > 0;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+      Object.assign(rewriteDecisions, saved);
+      syncRewriteGlobals();
+      if (!hadDecisions && !_restoreToastShown && Object.keys(rewriteDecisions).length > 0) {
+        _restoreToastShown = true;
+        if (typeof showToast === 'function') {
+          showToast('Your previous rewrite decisions have been restored — you can still change them.', 'warning', 6000);
+        }
+      }
+      return;
+    }
+  } catch (_) {}
+
+  // Cold-restore fallback: seed decisions from backend rewrite_audit when
+  // localStorage has nothing (different device, incognito, cleared storage).
+  if (_backendRewriteAudit.length > 0) {
+    for (const entry of _backendRewriteAudit) {
+      const id = entry.id;
+      if (!id || !entry.outcome) continue;
+      rewriteDecisions[id] = {
+        outcome: entry.outcome,
+        final_text: entry.outcome === 'edit' ? (entry.final ?? null) : null,
+      };
+    }
+    if (Object.keys(rewriteDecisions).length > 0) {
+      syncRewriteGlobals();
+      _persistDecisions();
+      if (!hadDecisions && !_restoreToastShown) {
+        _restoreToastShown = true;
+        if (typeof showToast === 'function') {
+          showToast('Your previous rewrite decisions have been restored — you can still change them.', 'warning', 6000);
+        }
+      }
+    }
+  }
+}
+
+function _clearPersistedDecisions() {
+  const key = _decisionsKey();
+  if (!key) return;
+  try { localStorage.removeItem(key); } catch (_) {}
+}
+
+// ── Rewrite snapshot (changed-item highlighting) ────────────────────────────
+function _snapshotKey() {
+  try {
+    const sid = new URLSearchParams(window.location.search).get('session');
+    return sid ? `rw_snapshot_${sid}` : null;
+  } catch (_) { return null; }
+}
+
+function _saveRewriteSnapshot(rewrites) {
+  const key = _snapshotKey();
+  if (!key) return;
+  const map = {};
+  for (const r of rewrites) {
+    const cardId = String(r.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+    map[cardId] = r.proposed || '';
+  }
+  try { localStorage.setItem(key, JSON.stringify(map)); } catch (_) {}
+}
+
+function _getRewriteSnapshot() {
+  const key = _snapshotKey();
+  if (!key) return null;
+  try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; }
+}
+
+function _clearRewriteSnapshot() {
+  const key = _snapshotKey();
+  if (!key) return;
+  try { localStorage.removeItem(key); } catch (_) {}
 }
 
 async function fetchAndReviewRewrites() {
@@ -44,6 +145,7 @@ async function fetchAndReviewRewrites() {
     }
     const rewrites = data.rewrites || [];
     const warnings = data.persuasion_warnings || [];  // Phase 10
+    _backendRewriteAudit = data.rewrite_audit || [];
 
     // Show persuasion warnings first (Phase 10)
     persuasionWarningsAcknowledged = warnings.length === 0;  // Mark acknowledged if no warnings
@@ -59,9 +161,9 @@ async function fetchAndReviewRewrites() {
     switchTab('rewrite');
     const n = rewrites.length;
     if (n === 0) {
-      appendMessage('assistant', '✏️ No rewrite suggestions were needed. The **Rewrites** tab is still available so you can confirm and continue to **Spell Check** when ready.');
+      appendMessage('assistant', '✏️ No rewrite suggestions were needed — your selected content already uses the job\'s terminology well. The **Rewrites** tab is still available so you can confirm and continue to **Spell Check** when ready.');
     } else {
-      appendMessage('assistant', `✏️ I found **${n}** text improvement${n > 1 ? 's' : ''} to review. Look over each suggestion in the **Rewrites** tab, then accept, edit, or reject each one before continuing to spell check.`);
+      appendMessage('assistant', `✏️ You've confirmed your experience, skill, and achievement selections. Here are the AI's **${n}** text improvement suggestion${n > 1 ? 's' : ''} for the included bullets — each one introduces job-relevant keywords while preserving your facts. Review each suggestion in the **Rewrites** tab, then accept, edit, or reject before continuing to spell check.`);
     }
   } catch (err) {
     removeLoadingMessage(loadingMsg);
@@ -70,8 +172,53 @@ async function fetchAndReviewRewrites() {
   }
 }
 
+function _renderRewriteAuditLog() {
+  if (!_backendRewriteAudit || _backendRewriteAudit.length === 0) return '';
+
+  const OUTCOME_ICON = { accept: '✅', reject: '❌', edit: '✏️' };
+  const OUTCOME_LABEL = { accept: 'Accepted', reject: 'Rejected', edit: 'Edited' };
+
+  const rows = _backendRewriteAudit.map(entry => {
+    const icon  = OUTCOME_ICON[entry.outcome] || '❓';
+    const label = OUTCOME_LABEL[entry.outcome] || entry.outcome;
+    const loc   = escapeHtml(entry.location || entry.field || '');
+    const orig  = escapeHtml(entry.original || '');
+    const prop  = escapeHtml(entry.proposed || '');
+    const fin   = entry.outcome === 'edit' && entry.final
+      ? `<div style="margin-top:4px;color:#1d4ed8;font-size:0.85em;">Final: ${escapeHtml(entry.final)}</div>`
+      : '';
+    return `
+      <div style="border-bottom:1px solid #e2e8f0;padding:8px 0;font-size:0.88em;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span title="${label}">${icon}</span>
+          <strong style="color:#374151;">${label}</strong>
+          ${loc ? `<span style="color:#9ca3af;font-size:0.85em;">— ${loc}</span>` : ''}
+        </div>
+        <div style="color:#6b7280;text-decoration:line-through;font-size:0.85em;">${orig}</div>
+        <div style="color:#374151;font-size:0.85em;">${prop}</div>
+        ${fin}
+      </div>`;
+  }).join('');
+
+  return `
+    <details style="margin-top:24px;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;">
+      <summary style="cursor:pointer;font-weight:600;color:#374151;list-style:none;display:flex;align-items:center;gap:8px;">
+        <span>📋</span>
+        <span>Rewrite Audit Log (${_backendRewriteAudit.length} decision${_backendRewriteAudit.length === 1 ? '' : 's'})</span>
+        <span style="margin-left:auto;color:#9ca3af;font-size:0.85em;">▼ show</span>
+      </summary>
+      <div style="margin-top:12px;">${rows}</div>
+    </details>`;
+}
+
 function renderRewritePanel(rewrites, warnings = []) {
   _rewritePanelCache = { rewrites, warnings };
+  // Build per-card warning index for Path 1 badges
+  _warningsByRewriteId = {};
+  for (const w of warnings) {
+    if (!_warningsByRewriteId[w.id]) _warningsByRewriteId[w.id] = [];
+    _warningsByRewriteId[w.id].push(w);
+  }
   syncRewriteGlobals();
   const content = document.getElementById('document-content');
   const hasRewrites = rewrites.length > 0;
@@ -110,6 +257,22 @@ function renderRewritePanel(rewrites, warnings = []) {
     `;
   }
 
+  // Compute per-card change status relative to previous render's snapshot.
+  const prevSnapshot = _getRewriteSnapshot();
+  const changeStatusMap = {};
+  if (prevSnapshot) {
+    for (const r of rewrites) {
+      const cardId = String(r.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+      if (!(cardId in prevSnapshot)) {
+        changeStatusMap[cardId] = 'new';
+      } else if (prevSnapshot[cardId] !== (r.proposed || '')) {
+        changeStatusMap[cardId] = 'updated';
+      }
+    }
+  }
+  // Save current rewrites as snapshot for next render comparison.
+  _saveRewriteSnapshot(rewrites);
+
   content.innerHTML = warningsHtml + `
     <div id="rewrite-panel">
       <h1>✏️ Review Text Improvements</h1>
@@ -122,12 +285,18 @@ function renderRewritePanel(rewrites, warnings = []) {
         <span class="tally-accepted">✓ Accepted: <strong id="tally-accepted">0</strong></span>
         <span class="tally-rejected">✗ Rejected: <strong id="tally-rejected">0</strong></span>
         <span class="tally-pending">⏳ Pending: <strong id="tally-pending">${rewrites.length}</strong></span>
+        <button class="rw-bulk-btn" onclick="acceptAllRewrites()" title="Accept all pending suggestions">✓ Accept All</button>
+        <button class="rw-bulk-btn rw-bulk-reject" onclick="rejectAllRewrites()" title="Reject all pending suggestions">✗ Reject All</button>
+        <button class="rw-compact-toggle" id="rw-compact-btn" onclick="toggleRewriteCompactMode()" title="Switch to compact single-line view for rapid review">⊞ Compact</button>
         <button class="submit-rewrites-btn" id="submit-rewrites-btn" disabled
                 onclick="submitRewriteDecisions()">Submit All Decisions</button>
       </div>
       <div id="rewrite-cards">
         ${hasRewrites
-    ? rewrites.map(r => renderRewriteCard(r)).join('')
+    ? rewrites.map(r => {
+        const cardId = String(r.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+        return renderRewriteCard(r, _warningsByRewriteId[r.id] || [], changeStatusMap[cardId] || null);
+      }).join('')
     : `
           <div class="empty-state" style="margin-top:24px;">
             <div class="icon">✏️</div>
@@ -138,8 +307,11 @@ function renderRewritePanel(rewrites, warnings = []) {
         `}
       </div>
     </div>
+    ${_renderRewriteAuditLog()}
   `;
 
+  // Restore decisions persisted from a previous page load (GAP-166).
+  _restoreDecisions();
   // Re-apply any decisions made before the last tab navigation.
   if (Object.keys(rewriteDecisions).length > 0) {
     for (const [id, dec] of Object.entries(rewriteDecisions)) {
@@ -215,11 +387,16 @@ function renderDiffHtml(tokens) {
   }).join('');
 }
 
-function renderRewriteCard(r) {
+function renderRewriteCard(r, cardWarnings = [], changeStatus = null) {
   const isWeakSkillAdd = r.type === 'skill_add' && r.evidence_strength === 'weak';
   const weakBadge     = isWeakSkillAdd
     ? `<span class="weak-badge">⚠ Candidate to confirm</span>`
     : '';
+  const changeBadge   = changeStatus === 'new'
+    ? `<span class="rw-change-badge rw-change-new" aria-label="New suggestion not in previous run">🆕 New</span>`
+    : changeStatus === 'updated'
+      ? `<span class="rw-change-badge rw-change-updated" aria-label="Suggestion changed since previous run">↻ Updated</span>`
+      : '';
   // Keyword pills with position-based rank badge (#1, #2, …)
   const keywordPills  = (r.keywords_introduced || [])
     .map((k, idx) => `<span class="rewrite-keyword"><span class="kw-rank">#${idx + 1}</span>${escapeHtml(k)}</span>`)
@@ -238,7 +415,8 @@ function renderRewriteCard(r) {
       <div class="rewrite-card-header">
         <span class="rewrite-card-type">${escapeHtml(typeLabel)}</span>
         <span class="rewrite-card-title">${escapeHtml(r.location || r.id)}</span>
-        ${weakBadge}
+        ${weakBadge}${changeBadge}
+        <span id="rw-decision-badge-${cardId}" aria-live="polite" style="display:none;font-size:0.78em;font-weight:600;padding:1px 7px;border-radius:9px;margin-left:auto;"></span>
       </div>
       <div class="rewrite-card-body">
         <div class="rewrite-inline-diff" id="rw-diff-${cardId}"
@@ -253,10 +431,15 @@ function renderRewriteCard(r) {
           <p style="margin:6px 0 0;">${escapeHtml(r.rationale)}</p>
           ${r.evidence ? `<p style="color:#9ca3af;font-size:0.85em;margin:4px 0 0;">${escapeHtml(r.evidence)}</p>` : ''}
         </details>` : ''}
+        ${cardWarnings.length > 0 ? `
+        <div class="rewrite-persuasion-badges">
+          ${cardWarnings.map(w => `<span class="persuasion-badge persuasion-badge--${w.severity}" title="${escapeHtml(w.details)}">⚠ ${escapeHtml(w.flag_type.replace(/_/g, ' '))}</span>`).join('')}
+        </div>` : ''}
         <div class="rewrite-actions">
-          <button class="rw-btn accept" id="rw-accept-${cardId}" onclick="applyRewriteAction('${cardId}', 'accept')">✓ Accept</button>
-          <button class="rw-btn edit"   id="rw-edit-${cardId}"   onclick="applyRewriteAction('${cardId}', 'edit')">✎ Edit</button>
-          <button class="rw-btn reject" id="rw-reject-${cardId}" onclick="applyRewriteAction('${cardId}', 'reject')">✗ Reject</button>
+          <a class="rw-back-link" href="#" onclick="event.preventDefault(); switchTab('customizations')" title="Go back to Customise to reconsider whether to include this content">↩ Reconsider inclusion</a>
+          <button class="rw-btn accept" id="rw-accept-${cardId}" aria-pressed="false" onclick="applyRewriteAction('${cardId}', 'accept')">✓ Accept</button>
+          <button class="rw-btn edit"   id="rw-edit-${cardId}"   aria-pressed="false" onclick="applyRewriteAction('${cardId}', 'edit')">✎ Edit</button>
+          <button class="rw-btn reject" id="rw-reject-${cardId}" aria-pressed="false" onclick="applyRewriteAction('${cardId}', 'reject')">✗ Reject</button>
         </div>
       </div>
     </div>`;
@@ -271,22 +454,33 @@ function applyRewriteAction(id, outcome) {
   // Clear any previous outcome styling
   card.classList.remove('accepted', 'rejected');
   ['accept', 'edit', 'reject'].forEach(a => {
-    document.getElementById(`rw-${a}-${id}`)?.classList.remove('active');
+    const btn = document.getElementById(`rw-${a}-${id}`);
+    btn?.classList.remove('active');
+    if (btn) btn.setAttribute('aria-pressed', 'false');
   });
+  const _decisionBadge = document.getElementById(`rw-decision-badge-${id}`);
+  if (_decisionBadge) _decisionBadge.style.display = 'none';
 
   if (outcome === 'edit') {
-    // Hide the inline diff; show the editable textarea in its place.
+    // Keep the inline diff visible as a reference; show the editable textarea below it.
     const currentText = afterEl.querySelector(`#rw-after-text-${id}`)?.textContent
                      ?? rewriteDecisions[id]?.final_text
                      ?? '';
-    if (diffEl) diffEl.style.display = 'none';
+    if (diffEl) {
+      diffEl.style.display = '';
+      diffEl.style.opacity = '0.55';
+      diffEl.style.borderLeft = '3px solid #93c5fd';
+    }
     afterEl.style.display = 'block';
     afterEl.innerHTML = `
+      <div style="font-size:0.78em;color:#6b7280;margin-bottom:4px;">✎ Your edit (AI suggestion shown above for reference):</div>
       <textarea id="rw-textarea-${id}">${escapeHtml(currentText)}</textarea>
       <button class="rw-save-edit-btn" style="margin-top:6px"
               onclick="saveRewriteEdit('${id}')">Save</button>
     `;
-    document.getElementById(`rw-edit-${id}`)?.classList.add('active');
+    const editBtn = document.getElementById(`rw-edit-${id}`);
+    editBtn?.classList.add('active');
+    if (editBtn) editBtn.setAttribute('aria-pressed', 'true');
     // Decision is recorded only when the user clicks Save
   } else {
     // Restore the after-text span if we previously entered edit mode
@@ -295,15 +489,40 @@ function applyRewriteAction(id, outcome) {
       const txt = textarea.value;
       afterEl.innerHTML = `<span id="rw-after-text-${id}">${escapeHtml(txt)}</span>`;
     }
-    // Re-show the inline diff panel; hide the edit area.
-    if (diffEl) diffEl.style.display = '';
+    // Re-show the inline diff panel at full opacity; hide the edit area.
+    if (diffEl) { diffEl.style.display = ''; diffEl.style.opacity = ''; diffEl.style.borderLeft = ''; }
     afterEl.style.display = 'none';
 
     rewriteDecisions[id] = { outcome, final_text: null };
+    _persistDecisions();
     card.classList.add(outcome === 'accept' ? 'accepted' : 'rejected');
-    document.getElementById(`rw-${outcome}-${id}`)?.classList.add('active');
+    const activeBtn = document.getElementById(`rw-${outcome}-${id}`);
+    activeBtn?.classList.add('active');
+    if (activeBtn) activeBtn.setAttribute('aria-pressed', 'true');
+    const decBadge = document.getElementById(`rw-decision-badge-${id}`);
+    if (decBadge) {
+      decBadge.textContent = outcome === 'accept' ? '✓ Accepted' : '✗ Rejected';
+      decBadge.style.display = '';
+      decBadge.style.background = outcome === 'accept' ? '#bbf7d0' : '#fecaca';
+      decBadge.style.color      = outcome === 'accept' ? '#065f46' : '#991b1b';
+    }
     syncRewriteGlobals();
     updateRewriteTally();
+    _scrollToNextPendingRewrite(id);
+  }
+}
+
+function _scrollToNextPendingRewrite(afterId) {
+  const allCards = document.querySelectorAll('[id^="rw-card-"]');
+  let found = false;
+  for (const card of allCards) {
+    const id = card.id.replace('rw-card-', '');
+    if (id === afterId) { found = true; continue; }
+    if (!found) continue;
+    if (!rewriteDecisions[id]) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
   }
 }
 
@@ -319,18 +538,34 @@ function saveRewriteEdit(id) {
   afterEl.innerHTML = `<span id="rw-after-text-${id}">${escapeHtml(editedText)}</span>`;
   afterEl.style.display = 'none';
 
-  // Regenerate the inline diff against the original text and re-show it.
+  // Regenerate the inline diff against the original text and re-show it (full opacity).
   if (diffEl) {
     const original = diffEl.dataset.original || '';
     diffEl.innerHTML = renderDiffHtml(computeWordDiff(original, editedText));
     diffEl.style.display = '';
+    diffEl.style.opacity = '';
+    diffEl.style.borderLeft = '';
   }
 
   rewriteDecisions[id] = { outcome: 'edit', final_text: editedText };
+  _persistDecisions();
   card.classList.remove('rejected');
   card.classList.add('accepted');
-  ['accept', 'reject'].forEach(a => document.getElementById(`rw-${a}-${id}`)?.classList.remove('active'));
-  document.getElementById(`rw-edit-${id}`)?.classList.add('active');
+  ['accept', 'reject'].forEach(a => {
+    const btn = document.getElementById(`rw-${a}-${id}`);
+    btn?.classList.remove('active');
+    if (btn) btn.setAttribute('aria-pressed', 'false');
+  });
+  const saveEditBtn = document.getElementById(`rw-edit-${id}`);
+  saveEditBtn?.classList.add('active');
+  if (saveEditBtn) saveEditBtn.setAttribute('aria-pressed', 'true');
+  const editDecBadge = document.getElementById(`rw-decision-badge-${id}`);
+  if (editDecBadge) {
+    editDecBadge.textContent = '✓ Accepted (edited)';
+    editDecBadge.style.display = '';
+    editDecBadge.style.background = '#bbf7d0';
+    editDecBadge.style.color      = '#065f46';
+  }
   syncRewriteGlobals();
   updateRewriteTally();
 }
@@ -355,7 +590,13 @@ function updateRewriteTally() {
   if (pendingEl) pendingEl.textContent  = pending;
 
   const submitBtn = document.getElementById('submit-rewrites-btn');
-  if (submitBtn) submitBtn.disabled = (pending > 0);
+  if (submitBtn) {
+    const needsAck = !persuasionWarningsAcknowledged;
+    submitBtn.disabled = (pending > 0) || needsAck;
+    submitBtn.title = needsAck
+      ? 'Acknowledge the persuasion warnings above before submitting'
+      : '';
+  }
 }
 
 async function submitRewriteDecisions() {
@@ -409,6 +650,8 @@ async function submitRewriteDecisions() {
     const accepted = data.approved_count || 0;
     const rejected = data.rejected_count || 0;
     stateManager.markContentChanged();
+    _clearPersistedDecisions();
+    _clearRewriteSnapshot();
     appendMessage('assistant', `✅ Rewrite decisions recorded: ${accepted} accepted, ${rejected} rejected. Starting spell check…`);
     scheduleAtsRefresh('review_checkpoint');
     switchTab('spell');
@@ -422,6 +665,37 @@ async function submitRewriteDecisions() {
 // ── Exports ──────────────────────────────────────────────────────────────────
 function setPersuasionWarningsAcknowledged(value) {
   persuasionWarningsAcknowledged = value;
+}
+
+/** Bulk-accept all pending rewrite cards. */
+function acceptAllRewrites() {
+  document.querySelectorAll('.rewrite-card').forEach(card => {
+    const id = card.id.replace('rw-card-', '');
+    if (!rewriteDecisions[id]) applyRewriteAction(id, 'accept');
+  });
+  updateRewriteTally();
+}
+
+/** Bulk-reject all pending rewrite cards. */
+function rejectAllRewrites() {
+  document.querySelectorAll('.rewrite-card').forEach(card => {
+    const id = card.id.replace('rw-card-', '');
+    if (!rewriteDecisions[id]) applyRewriteAction(id, 'reject');
+  });
+  updateRewriteTally();
+}
+
+/** Toggle compact (single-line) card display for rapid review. */
+function toggleRewriteCompactMode() {
+  const cards = document.getElementById('rewrite-cards');
+  const btn   = document.getElementById('rw-compact-btn');
+  if (!cards) return;
+  const isCompact = cards.classList.toggle('compact-mode');
+  if (btn) {
+    btn.classList.toggle('active', isCompact);
+    btn.textContent = isCompact ? '⊟ Full View' : '⊞ Compact';
+    btn.title = isCompact ? 'Switch to full card view' : 'Switch to compact single-line view for rapid review';
+  }
 }
 
 export {
@@ -438,6 +712,9 @@ export {
   saveRewriteEdit,
   updateRewriteTally,
   submitRewriteDecisions,
+  acceptAllRewrites,
+  rejectAllRewrites,
+  toggleRewriteCompactMode,
 };
 
 syncRewriteGlobals();

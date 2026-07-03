@@ -152,7 +152,7 @@ class TestCreateSession(unittest.TestCase):
         sid, entry = reg.create(config=MagicMock())
 
         self.assertIsNotNone(sid)
-        self.assertEqual(len(sid), 8)
+        self.assertEqual(len(sid), 32)
         self.assertIsInstance(entry, SessionEntry)
         self.assertEqual(entry.session_id, sid)
         self.assertIsNone(entry.owner_token)
@@ -414,7 +414,7 @@ class TestLoadFromFile(unittest.TestCase):
 
             # Must have generated a session_id
             self.assertIsNotNone(mgr.session_id)
-            self.assertEqual(len(mgr.session_id), 8)
+            self.assertEqual(len(mgr.session_id), 32)
 
             # Must have written it back to disk
             with open(path, "r", encoding="utf-8") as f:
@@ -544,7 +544,7 @@ class TestSessionIdPersistence(unittest.TestCase):
             mgr._save_session()
 
             self.assertIsNotNone(mgr.session_id)
-            self.assertEqual(len(mgr.session_id), 8)
+            self.assertEqual(len(mgr.session_id), 32)
 
 
 # ---------------------------------------------------------------------------

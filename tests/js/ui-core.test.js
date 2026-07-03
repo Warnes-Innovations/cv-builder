@@ -19,7 +19,7 @@ vi.mock('../../web/api-client.js', () => ({
   updateSettings: vi.fn(),
 }))
 
-import { apiCall, fetchSettings, updateSettings } from '../../web/api-client.js'
+import { apiCall, fetchSettings, updateSettings, fetchStatus } from '../../web/api-client.js'
 
 let mod
 
@@ -46,6 +46,12 @@ beforeEach(async () => {
   apiCall.mockReset()
   fetchSettings.mockReset()
   updateSettings.mockReset()
+  fetchStatus.mockReset()
+  // reloadSettingsModal() does fetchStatus().catch(...) unconditionally —
+  // an unmocked vi.fn() returns undefined, and undefined.catch() throws
+  // before _renderSettingsToForm ever runs. Default to an empty status so
+  // individual tests only need to override this when they care about it.
+  fetchStatus.mockResolvedValue({})
   await loadModule()
 })
 
@@ -68,24 +74,44 @@ describe('setupEventListeners', () => {
   })
 })
 
-describe('loadTabContent', () => {
-  it('renders thrown error text without interpreting it as HTML', async () => {
-    document.body.innerHTML = '<div id="document-content"></div>'
-    vi.stubGlobal(
-      'populateJobTab',
-      vi.fn(async () => {
-        throw new Error('<img src=x onerror=alert(1)>')
-      }),
-    )
+describe('toggleChat', () => {
+  it('collapses the chat area and updates aria attributes when not collapsed', () => {
+    buildFixture()
 
-    await mod.loadTabContent('job')
+    mod.toggleChat()
 
-    const content = document.getElementById('document-content')
-    expect(content.innerHTML).not.toContain('<img src=x onerror=alert(1)>')
-    expect(content.textContent).toContain('Error loading content: <img src=x onerror=alert(1)>')
-    expect(content.querySelector('img')).toBeNull()
+    const chatArea = document.getElementById('chat-area')
+    const viewerArea = document.getElementById('viewer-area')
+    const toggleBtn = document.getElementById('toggle-chat')
+    expect(chatArea.classList.contains('collapsed')).toBe(true)
+    expect(viewerArea.style.flex).toBe('1 1 100%')
+    expect(toggleBtn.getAttribute('aria-expanded')).toBe('false')
+    expect(toggleBtn.getAttribute('aria-label')).toBe('Expand chat panel')
+  })
+
+  it('expands the chat area again on a second call', () => {
+    buildFixture()
+
+    mod.toggleChat()
+    mod.toggleChat()
+
+    const chatArea = document.getElementById('chat-area')
+    const viewerArea = document.getElementById('viewer-area')
+    const toggleBtn = document.getElementById('toggle-chat')
+    expect(chatArea.classList.contains('collapsed')).toBe(false)
+    expect(viewerArea.style.flex).toBe('0 1 60%')
+    expect(toggleBtn.getAttribute('aria-expanded')).toBe('true')
+    expect(toggleBtn.getAttribute('aria-label')).toBe('Collapse chat panel')
+  })
+
+  it('does nothing if .interaction-area is absent from the DOM', () => {
+    document.body.innerHTML = ''
+    expect(() => mod.toggleChat()).not.toThrow()
   })
 })
+
+// loadTabContent lives in web/review-table-base.js — see tests/js/review-table-base.test.js
+// (ui-core.js's copy was dead/superseded; see its header comment.)
 
 describe('openModelModal', () => {
   function buildModelFixture() {

@@ -204,10 +204,7 @@ def create_blueprint(deps):
         with entry.lock:
             conversation.add_job_description(job_text)
             conversation.state["position_name"] = _infer_position_name(job_text)
-            conversation.conversation_history.append({
-                "role": "user",
-                "content": job_text,
-            })
+            conversation.add_to_history("user", job_text)
         session_registry.touch(sid)
         safety_alert = scan_for_safety_alert(job_text)
         if safety_alert:
@@ -463,10 +460,10 @@ def create_blueprint(deps):
                     job_text, page_title=page_title
                 )
                 conversation.state["job_url"] = url
-                conversation.conversation_history.append({
-                    "role": "user",
-                    "content": f"[Job description fetched from {domain}]\n\n{job_text}",
-                })
+                conversation.add_to_history(
+                    "user",
+                    f"[Job description fetched from {domain}]\n\n{job_text}",
+                )
             session_registry.touch(sid)
             logger.info("Fetched %d chars from %s", len(job_text), domain)
 
@@ -641,10 +638,10 @@ def create_blueprint(deps):
             with entry.lock:
                 conversation.add_job_description(job_text)
                 conversation.state["position_name"] = _infer_position_name(job_text)
-                conversation.conversation_history.append({
-                    "role": "user",
-                    "content": f"[Job description loaded from {filename}]\n\n{job_text}",
-                })
+                conversation.add_to_history(
+                    "user",
+                    f"[Job description loaded from {filename}]\n\n{job_text}",
+                )
             session_registry.touch(sid)
 
             safety_alert = scan_for_safety_alert(job_text)
@@ -769,10 +766,10 @@ def create_blueprint(deps):
                 result = conversation.back_to_phase(target)
                 feedback = (data.get("feedback") or "").strip()
                 if feedback:
-                    conversation.conversation_history.append({
-                        "role": "user",
-                        "content": f"[Refinement feedback for {target}]: {feedback}",
-                    })
+                    conversation.add_to_history(
+                        "user",
+                        f"[Refinement feedback for {target}]: {feedback}",
+                    )
             session_registry.touch(sid)
             return jsonify(result)
         except Exception:

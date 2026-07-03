@@ -33,6 +33,7 @@ import * as LayoutInstruction from '../layout-instruction.js';
 import * as Validators            from '../validators.js';
 import * as RecommendationHelpers from '../recommendation-helpers.js';
 import * as UiHelpers             from '../ui-helpers.js';
+import * as ProposalReview        from '../proposal-review.js';
 
 // ── Tier 1 ────────────────────────────────────────────────────────────────────
 import * as FetchUtils   from '../fetch-utils.js';
@@ -61,6 +62,7 @@ import * as ReviewTableBase from '../review-table-base.js';
 import * as ExperienceReview   from '../experience-review.js';
 import * as SkillsReview       from '../skills-review.js';
 import * as AchievementsReview from '../achievements-review.js';
+import * as TaglineReview      from '../tagline-review.js';
 import * as SummaryReview      from '../summary-review.js';
 import * as PublicationsReview from '../publications-review.js';
 
@@ -68,14 +70,23 @@ import * as PublicationsReview from '../publications-review.js';
 import * as RewriteReview      from '../rewrite-review.js';
 import * as SpellCheck         from '../spell-check.js';
 import * as DownloadTab        from '../download-tab.js';
+import * as FinalGenerate      from '../final-generate.js';
 import * as WorkflowSteps      from '../workflow-steps.js';
+import * as MasterDataAiUpdate from '../master-data-ai-update.js';
 import * as MasterCv           from '../master-cv.js';
 import * as CoverLetter        from '../cover-letter.js';
 import * as ScreeningQuestions from '../screening-questions.js';
 import * as Finalise           from '../finalise.js';
+import * as InterviewPrep      from '../interview-prep.js';
+import * as ThankYou           from '../thank-you.js';
+import * as Harvest            from '../harvest.js';
 
 // ── Tier 7 ────────────────────────────────────────────────────────────────────
-import * as SessionSwitcherUi from '../session-switcher-ui.js';
+import * as SessionSwitcherUi  from '../session-switcher-ui.js';
+import * as KeyboardShortcuts  from '../keyboard-shortcuts.js';
+
+// ── App orchestrator (folded into bundle — GAP-64) ────────────────────────────
+import * as App from '../app.js';
 
 // ── Assign all exports to globalThis ─────────────────────────────────────────
 // Phase 2 modules first; phase 3 domain modules follow so fully-featured
@@ -83,14 +94,17 @@ import * as SessionSwitcherUi from '../session-switcher-ui.js';
 // in session-switcher-ui overrides the simple stub in ui-core).
 Object.assign(globalThis,
   Logger, Utils, ApiClient, State, ProviderInfo, UiCore, LayoutInstruction,
-  Validators, RecommendationHelpers, UiHelpers,
+  Validators, RecommendationHelpers, UiHelpers, ProposalReview,
   FetchUtils, MessageQueue, LlmLog,
   AuthProvider, AtsRefinement, AtsModals, SessionActions, JobAnalysis,
   Goals,
   SessionManager, JobInput, MessageDispatch, QuestionsPanel,
   ReviewTableBase,
-  ExperienceReview, SkillsReview, AchievementsReview, SummaryReview, PublicationsReview, ReviewIcons,
-  RewriteReview, SpellCheck, DownloadTab, WorkflowSteps, MasterCv,
-  CoverLetter, ScreeningQuestions, Finalise,
-  SessionSwitcherUi,
+  ExperienceReview, SkillsReview, AchievementsReview, TaglineReview, SummaryReview, PublicationsReview, ReviewIcons,
+  RewriteReview, SpellCheck, DownloadTab, FinalGenerate, WorkflowSteps, MasterDataAiUpdate, MasterCv,
+  CoverLetter, ScreeningQuestions, Finalise, InterviewPrep, ThankYou, Harvest,
+  SessionSwitcherUi, KeyboardShortcuts,
+  App,
 );
+
+document.addEventListener('DOMContentLoaded', App.init);

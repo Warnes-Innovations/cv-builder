@@ -8,9 +8,11 @@
 
 # Graphical Designer Review Status
 
-**Last Updated:** 2026-04-22 10:00 ET
+**Last Updated:** 2026-07-01
+**Reviewed by:** Source-verified review cycle (Graphical Designer persona, US-G*)
+**Sources read:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, templates/cv-style.css, templates/cv-template.html
 
-**Executive Summary:** The application's visual system is functionally coherent — a consistent Tailwind-inspired blue/grey palette, well-structured workflow navigation, and a clean two-panel layout deliver a usable and professional experience. The generated CV template (`cv-template.html`) is the genuine design highlight: a sophisticated two-column layout with a professional Inter/Merriweather font pairing, user-adjustable base typography via rem, and careful print/page-break controls. Primary design debt is in the app layer: no CSS design-token system (all hex values hardcoded), system-emoji navigation icons that render inconsistently across OS/browser, multiple inline-style overrides in `index.html` that bypass the CSS class system, Bootstrap-vs-custom button mixing on the Layout tab, and no user control over CV template font family or colour theme.
+**Executive Summary:** The application delivers a coherent, professionally-styled visual system for its primary workflow stages. Typography is well-differentiated, a consistent Slate-based color palette runs throughout, and the semantic status language (green/amber/red) is applied consistently across all surfaces. Since the previous cycle, GAP-133 has been partially addressed: a `:root {}` design-token block was added at `styles.css:18–27` with eight CSS custom properties, and several high-use selectors now consume them. However, a large portion of the color palette remains as hardcoded hex literals outside the token system, so GAP-133 is PARTIAL rather than resolved. The cv-style.css fallback template has been updated to use Inter font and `#2980b9` brand blue, which aligns it with cv-template.html — a meaningful improvement to output-material consistency. The remaining structural weaknesses are: (1) pervasive inline-style drift in modals and JS-rendered HTML that bypasses the CSS design system; (2) an emoji-dominant icon language jarring in a professional-facing product (Font Awesome is loaded but used only in one place); (3) no print styles in the main `styles.css` app shell; (4) the two-panel main layout has no responsive breakpoint; and (5) duplicate `@keyframes spin` definitions indicating CSS accumulation without housekeeping.
 
 ---
 
@@ -18,152 +20,244 @@
 
 ### US-G1: Visual Hierarchy and Readability
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| 1. Headings, body text, helper text, and controls are visually distinct | ✅ | `styles.css` defines a full type scale: `h1` 28px/700, `h2` 20px/600, `h3` 16px/600, body `#1e293b`, helper `#64748b`. `.document-content h1/h2/h3` establishes clear heading cascade. |
-| 2. Primary actions are consistently prominent | ✅ | `.action-btn.primary { background: #3b82f6; color: #fff; }` (`styles.css`). All stage-gating CTAs in `app.js:105–126` use `action-btn primary`. Blue is reserved for primary actions, green for confirmations/success states. |
-| 3. Dense review surfaces remain readable rather than visually flat | ✅ | Review tables use alternating `nth-child(even)` rows, `.rewrite-card` uses card-border + `background:#f8fafc` with accepted/rejected color states (`styles.css`). Analysis role card uses a gradient. |
-| 4. Color and theme choices support usability and visual attractiveness | ✅ | Semantic palette: primary `#3b82f6`, success `#10b981`, warning `#f59e0b`, error `#ef4444`, neutral slate `#f8fafc→#1e293b`. Applied consistently across confidence badges, ATS states, freshness chips, and status cards. |
+**US-G1.1 — Headings, body text, helper text, and controls are visually distinct**
+✅ Pass
 
-**Acceptance criteria met:** ✅ Primary actions are immediately identifiable; review surfaces maintain readable structure.
+The CSS defines a clear four-level heading scale within the document viewer: `h1` at 28px/700 weight (`styles.css:708`), `h2` at 20px/600 (`styles.css:709`), `h3` at 16px/600 (`styles.css:710`), and body `li`/`p` at 14–15px/1.6 line-height (`styles.css:711–713`). Helper and meta text is consistently rendered using `var(--cv-text-secondary)` (#64748b Slate-500) across multiple selectors. Form labels use 0.85–0.88em weight-600. The conversation panel separates roles via distinct background colors: user messages in `var(--cv-accent)` blue with white text, assistant messages in white with `var(--cv-border)` border, and system messages in `var(--cv-bg-subtle)` italic grey (`styles.css:402–404`). The conversation panel header "Conversation" h2 at 18px/600 is distinct from the document viewer.
+
+**US-G1.2 — Primary actions are consistently prominent**
+⚠️ Partial
+
+The `.action-btn.primary` class is correctly blue (`var(--cv-accent)`) with white text (`styles.css:605`). The chat-area workflow buttons all use `class="action-btn primary"` consistently (`index.html:190–199`). However, the three position-bar action buttons (Master CV, ATS Report, Job Analysis) use full inline style blocks (`background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;color:#475569;font-size:0.8em;padding:2px 7px;line-height:1.6`) rather than a shared CSS class (`index.html:104–111`). These are visually secondary (correct) but styling is governed by inline markup instead of the class system. Additionally, within modals the Sessions footer "New Session" button applies inline `style="background:#10b981;color:#fff;border-color:#10b981"` on top of `class="action-btn"` (`index.html:264`) instead of using a modifier class, further diluting the primary action signal.
+
+**US-G1.3 — Dense review surfaces remain readable**
+✅ Pass
+
+The rewrite-review panel uses a well-designed card system (`styles.css:1269–1330`): `rewrite-card` with 1px `var(--cv-border)` border, 10px radius, and color-coded state variants (`accepted` → `#f0fdf4` green-tint, `rejected` → `#fef2f2` red-tint at 0.7 opacity). The inline diff rendering uses `del.diff-removed` in `#dc2626` / `#fee2e2` and `ins.diff-added` in `#166534` / `#dcfce7` (`styles.css:1283–1284`). The sticky tally bar prevents losing context on long lists. The experience/skill review tables use `review-table` with alternating row stripes and 8px 12px cell padding. The analysis page uses the `analysis-section` card pattern (white, 1px border, 16–20px padding) with grouped headings. These surfaces maintain readability at density.
+
+**US-G1.4 — Color and theme choices support usability and attractiveness**
+⚠️ Partial
+
+The palette is professional: `var(--cv-text-primary)` (#1e293b Slate-800) for headers, `var(--cv-accent)` (#3b82f6 Blue-500) for interactive elements, semantic greens/ambers/reds for state. The ATS badge uses threshold-triggered color (`score-high` → `#16a34a`, `score-medium` → `#d97706`, `score-low` → `#dc2626`), which is well-executed.
+
+The newly added `:root {}` block at `styles.css:18–27` introduces eight CSS custom properties:
+
+- `--cv-border`, `--cv-accent`, `--cv-bg-light`, `--cv-text-secondary`, `--cv-text-primary`, `--cv-bg-subtle`, `--cv-text-muted`, `--cv-accent-hover`
+
+These tokens are actively consumed in many of the most-frequently-used selectors — borders, backgrounds, text colors on headings, modal elements, tabs, review cards, and action buttons. This is a real improvement over the previous state of zero tokens. However, a large number of color literals remain hardcoded in selectors not yet migrated: confidence badges, loading overlays, the LLM busy card, master-profile card gradient, cover-letter textarea, and all JS-generated HTML (download-tab.js, layout-instruction.js). The `@keyframes spin` duplicate remains (lines 930–933 and 1494) and `@keyframes llm-spin` (line 574) is still separate and functionally identical.
+
+The overall aesthetic remains Tailwind/Slate — functional and clean but not aspirational. The color family reads as a developer-grade admin panel rather than a designed career product.
 
 ---
 
 ### US-G2: Cross-Stage Visual Consistency
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| 1. Repeated control types share consistent styling | ⚠️ | Most of the app uses `.action-btn`, `.action-btn.primary`, `.btn-primary`, `.btn-secondary` (custom classes). The Layout tab (`layout-instruction.js:258–295`) uses Bootstrap 5 classes: `btn btn-warning`, `btn btn-secondary`, `btn btn-primary`, `btn btn-success`. Bootstrap and custom heights differ (~2–4px). |
-| 2. Status surfaces use a coherent visual language across stages | ✅ | Freshness chip `.layout-freshness-chip.fresh/stale/critical`, `.ats-score-badge.score-high/medium/low`, `.step.active/completed/stale/stale-critical` — all use the same green/amber/red semantic tones from `styles.css`. |
-| 3. Tabs, workflow bar, cards, and modals feel part of the same design system | ✅ | Workflow step pills, second-level tab bar, and modal header/body/footer all share the same `#e2e8f0` border, `#f8fafc` surface, and `#1e293b` text system. `styles.css` documents Bootstrap `.modal` override. |
-| 4. Familiar, standard interaction patterns unless there is a clear reason to diverge | ⚠️ | The fixed 40/60 chat-left/viewer-right split means complex review canvases are constrained to ~60% of viewport. On a 1366px laptop the viewer gets ~820px — adequate but tight for side-by-side comparisons. This is a deliberate architectural choice. |
+**US-G2.1 — Repeated control types share consistent styling**
+⚠️ Partial
 
-**Acceptance criteria met:** ⚠️ Mostly coherent visual language; Bootstrap/custom button mixing on the Layout tab creates minor but noticeable size inconsistency.
+The shared `.action-btn` / `.action-btn.primary` / `.action-btn.secondary` system (`styles.css:603–610`) covers most modal footers and the chat-area actions consistently. The `.header-pill-btn` pattern is uniform across all five header buttons (`index.html:45–70`, `styles.css:78–80`). The `icon-btn` 32×32 icon button for rewrite actions is consistent.
+
+However, there are six distinct close-button styling patterns across modals:
+
+- `class="modal-close-btn"` (correct, used in Master CV modal and LLM Wizard: `index.html:279, 427`)
+- Raw `style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;"` (used in Sessions, Settings, ATS Report, Job Analysis modals: `index.html:257, 586, 703, 719`)
+
+This means four of six close buttons are un-classed. This was identified in the previous cycle and remains unresolved.
+
+**US-G2.2 — Status surfaces use a coherent visual language**
+✅ Pass
+
+The amber/green/red semantic is applied consistently across all status surfaces:
+
+- Workflow steps: `.step.completed` → `#dcfce7` green, `.step.active` → `#dbeafe` blue, `.step.stale` → `#fffbeb` amber, `.step.stale-critical` → `#fef2f2` red (`styles.css:165–171`)
+- Layout freshness chip: `.fresh` → `#ecfdf5` / `#86efac`, `.stale` → `#fffbeb` / `#fcd34d`, `.critical` → `#fef2f2` / `#fca5a5` (`styles.css:133–135`)
+- ATS score badge: same green/amber/red thresholds (`styles.css:116–118`)
+- Toast notifications: `toast-success` → `#10b981`, `toast-error` → `#ef4444`, `toast-warning` → `#f59e0b` (`styles.css:1258–1260`)
+- Confidence badges (rewrite cards): `confidence-high` → `#dcfce7`, `confidence-medium` → `#fef3c7`, `confidence-low` → `#fee2e2` (`styles.css:731–757`)
+
+The semantic assignment is consistent and learnable across all stages.
+
+**US-G2.3 — Tabs, workflow bar, cards, and modals feel part of the same design system**
+⚠️ Partial
+
+Tabs, workflow steps, and modals now share `var(--cv-border)` and `var(--cv-bg-light)` / white background through the token system. The tab indicator pattern (3px bottom border in `var(--cv-accent)` on active, `styles.css:658`) matches the review-subtab pattern (`styles.css:698`). The modal base class provides 12px border-radius and white background (`styles.css:971`).
+
+However, modals still mix two pattern families — some use the class system cleanly while others apply heavy inline size overrides (Sessions, Master CV, LLM Wizard, Settings modals at `index.html:254, 276, 423, 583`). The absence of named modal-size variants (`.modal--wide`, `.modal--narrow`) forces per-instance inline overrides. This was identified in the previous cycle and remains unresolved.
+
+**US-G2.4 — Familiar, standard interaction patterns**
+✅ Pass
+
+Tab navigation follows the standard tablist pattern with `role="tab"`, `aria-selected`, and keyboard navigation. Modal open/close follows the standard overlay pattern with focus trap and focus restoration. Escape-key dismiss is wired on overlay elements. The rewrite card Accept/Reject/Edit button trio follows a clear green/red/blue convention. The LLM Configuration Wizard uses a 4-step progress bar with connector lines that is visually clear (`styles.css:981–1062`). The reduced-motion media query at `styles.css:1670–1678` and the high-contrast media query at `styles.css:1681–1688` accommodate accessibility needs.
 
 ---
 
 ### US-G3: Preview and Output Presentation Quality
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| 1. The layout-preview area frames content clearly | ✅ | `.layout-instruction-panel { display:flex; gap:20px; height:calc(100vh - 240px); }` (`styles.css:1202`). Preview pane is flex-1 with `min-width:0`; iframe fills it fully. Status card overlays freshness state above the iframe without covering content. |
-| 2. Supporting controls do not visually compete with the preview | ⚠️ | The 320px control pane (`styles.css:1207`) is well-subordinate to the preview. However, the layout settings row is built with inline styles (`layout-instruction.js:271`: `style="display:flex; align-items:center; gap:10px; margin-bottom:14px; …"`) rather than a named CSS class, making it invisible to the design system and hard to theme consistently. |
-| 3. Final file-review surfaces present outputs and actions cleanly | ✅ | `download-tab.js:_renderDownloadGrid` renders a vertical `.download-grid` with icon, description, and clearly labeled download/blocked states. ATS validation is shown in a `<details open>` table. Finalise tab uses card groupings with clear section headers. |
-| 4. Generated materials reinforce a credible professional brand without decorative excess | ✅ | Default viewer shell: `max-width:8.5in; min-height:11in; padding:0.5in; box-shadow:0 4px 6px` (`styles.css`). The page-like frame appropriately signals a professional document context. File labeling distinguishes human-readable vs. ATS-optimised clearly in `download-tab.js:36–54`. |
+**US-G3.1 — Layout-preview area frames content clearly**
+✅ Pass
 
-**Acceptance criteria met:** ⚠️ Largely polished; layout settings row inline styles are the only surface-level inconsistency.
+The `layout-instruction-panel` uses a two-pane flex layout: `layout-preview-pane` (flex: 1 1 auto) and `layout-input-pane` (fixed 320px sidebar, `styles.css:1424–1433`). The `preview-iframe-container` has `border: 1px solid var(--cv-border)`, `border-radius: 8px`, `background: var(--cv-bg-light)`, and `overflow: auto` (`styles.css:1427`). The panel height is `calc(100vh - 240px)` with `min-height: 500px`. At 1100px and below, the layout stacks to vertical with `min-height: 60vh` for the preview pane (`styles.css:1515–1521`).
+
+**US-G3.2 — Supporting controls do not visually compete with the preview**
+⚠️ Partial
+
+At full width (>1100px), the 320px sidebar is compact. However, the layout-settings controls are entirely inline-styled and dense. After the stack-to-column breakpoint fires at ≤1100px, the combined sidebar content creates a long scroll that can push the preview iframe off-screen. The freshness-status card uses class-governed styling (`styles.css:1479–1482`) which is consistent, but settings-row controls use inline styles in JS.
+
+**US-G3.3 — Final file-review surfaces present outputs and actions cleanly**
+✅ Pass (with caveat)
+
+The download section uses `.download-item` cards: flex layout with 20px padding, download-icon at 24px, `.download-name` in 600 weight, `.download-description` in `var(--cv-text-secondary)` at 14px, and a `.btn-download` green button (`styles.css:1332–1342`). The caveat remains: the download tab's dynamic HTML content uses inline styles in JS rather than the CSS class system.
+
+**US-G3.4 — Generated materials reinforce a credible professional brand**
+⚠️ Partial — IMPROVED since previous cycle
+
+Verified against `templates/cv-style.css` and `templates/cv-template.html`.
+
+What has improved:
+
+- `cv-style.css` (the Quarto/fallback template) now uses `font-family: 'Inter', Arial, sans-serif` at line 18, upgrading from the previous Windows-default `"Segoe UI"` stack. This gives the fallback template a designed, intentional font presence.
+- `cv-style.css` uses `#2980b9` for brand-blue throughout (header border, h1 name, section heading colors, skill bullets, award accents). This matches the `--accent-color: #2980b9` token in `cv-template.html:27`.
+- `cv-template.html` already loads Inter via Google Fonts (`cv-template.html:22`) and defines a `:root {}` token block with `--accent-color: #2980b9` (`cv-template.html:24–34`). The two templates now share the same brand color and typeface family.
+- Print optimization in `cv-style.css` includes proper `page-break-inside: avoid` on items and `page-break-after: avoid` on headings (`cv-style.css:226–237`).
+
+What remains weak:
+
+- The cv-style.css header is `text-align: center` (`cv-style.css:36`) while the body uses a left-biased two-column grid (`grid-template-columns: 2.8fr 1.2fr`, `cv-style.css:67`). This center/left compositional inconsistency persists (previously logged as GAP-DESIGN-07).
+- `cv-style.css` uses `color: #2c3e50` for body text and `#2980b9` for accent, while `cv-template.html` uses `--primary-color: #2c3e50` and `--accent-color: #2980b9`. The values are harmonized but cv-style.css still uses hardcoded literals rather than consuming the cv-template token names. This is acceptable (they are separate rendering paths) but worth noting.
+- `#2c5aa0` appears nowhere — the previous cycle's comment about `#2c5aa0` being monotonous was based on an earlier version. The current `#2980b9` is a clean single-hue professional accent, still monotonous in application but less anaemic.
+- There is still no single-column layout option for academic/text-heavy CVs.
+- The cover letter textarea in the UI uses `'Georgia', 'Times New Roman', serif` (`styles.css:1567`), which is appropriate for formal correspondence — this differentiation is correct and intentional.
 
 ---
 
-## Generated Materials Evaluation
+## Terminology Clarity Assessment
 
-**Download file labeling** (`download-tab.js:36–54`):
-- "Human-readable PDF — for human reviewers and printing" ✅ Clear
-- "ATS-optimised PDF — machine-readable for automated screening" ✅ Clear
-- "Human-readable Word document — editable format" ✅ Clear
-- "ATS-optimised Word document — keyword-optimised for job applications" ✅ Clear
+The application's terminology was evaluated for clarity and industry alignment:
 
-**Preview fidelity** (`layout-instruction.js:246`): CV is rendered in a sandboxed iframe (`sandbox="allow-same-origin"`) preserving document styling while preventing script injection. Chrome and WeasyPrint render in parallel and are linked directly from the Preview PDFs card. Both renderer labels and their ready/failed states are clearly distinguished.
+- **"Harvest"** — the final workflow step is labeled "Harvest" (with a 🌾 icon) across the workflow bar, tab bar, and conversation. This metaphor is creative but may be opaque to first-time users who do not read the onboarding modal. The onboarding modal does define it ("save refined bullets, new skills, and summary variants back to your Master CV"), so informed users will understand it. It is not a standard resume-tooling term.
+- **"ATS"** — used throughout (ATS Score tab, ATS Report button, ATS badge). "Applicant Tracking System" is a well-known industry term in job-seeking contexts; usage here is appropriate and consistently titled.
+- **"Rewrites"** — the step and tab labeled "Rewrites" is clear. The action button says "✏️ Review Rewrites," which accurately describes the activity.
+- **"Layout Review"** — used for the iframe preview step. This is precise and unambiguous.
+- **"File Review"** — the download step is labeled "File Review" in the workflow bar and tab. This is slightly passive compared to "Download Files" but accurately describes the step's content (review before downloading).
+- **"Screening"** — the Screening tab for screening-question responses is clear in the context of job applications.
+- **"Master CV"** — consistently used across the tab, modal title, header button, and onboarding modal. The term is industry-standard for a comprehensive source document.
+- **"Goals"** — a tab in the viewer area. This is brief but contextually understood as customization goals for the application.
+- **"Interview Prep"** and **"Thank You"** — self-explanatory workflow steps at the end of the pipeline.
 
-**Typography of generated materials**: The print CSS path targets `page-margin` (configurable 0.5–1.5 in) and `base-font-size` (6–16 px root). Control ranges are appropriate for print output. Font family used in generated output is not exposed or labeled in the UI.
+Overall terminology clarity is adequate to good. "Harvest" is the one term that could confuse first-time users without onboarding context. The onboarding modal's step 3 definition provides mitigation.
 
 ---
 
-## Story Tally
+## GAP-133 Assessment: CSS Design Token Adequacy
+
+The `:root {}` block at `styles.css:18–27` introduces eight tokens:
+
+| Token | Value | Role |
+| --- | --- | --- |
+| `--cv-border` | `#e2e8f0` | slate-200 — borders, dividers |
+| `--cv-accent` | `#3b82f6` | blue-500 — interactive, links, focus |
+| `--cv-bg-light` | `#f8fafc` | slate-50 — page/panel backgrounds |
+| `--cv-text-secondary` | `#64748b` | slate-500 — secondary labels, meta text |
+| `--cv-text-primary` | `#1e293b` | slate-800 — headings, primary body text |
+| `--cv-bg-subtle` | `#f1f5f9` | slate-100 — subtle section backgrounds |
+| `--cv-text-muted` | `#475569` | slate-600 — muted/placeholder text |
+| `--cv-accent-hover` | `#1d4ed8` | blue-700 — accent hover/active states |
+
+These tokens are well-chosen — they cover the highest-frequency colors across the codebase. Active consumption is visible in heading selectors, modal headers, tab active states, action buttons, and many form-field focus outlines.
+
+**Assessment: PARTIAL — not a full resolution of GAP-133.**
+
+Remaining hardcoded color literals include (non-exhaustive): `#10b981` (green, used in submit buttons and download buttons, not tokenized as `--cv-success`), `#ef4444` / `#dc2626` (red danger, not tokenized as `--cv-danger`), confidence badge colors, and all colors within JS-generated HTML (download-tab.js, layout-instruction.js, ui-core.js `_setConnectionMessage`). A full GAP-133 resolution would require tokens for at least: `--cv-success`, `--cv-success-bg`, `--cv-danger`, `--cv-danger-bg`, `--cv-warning`, `--cv-warning-bg`.
+
+---
+
+## Additional Design Gaps (Updated)
+
+**GAP-DESIGN-01: Icon language is emoji-dominant; Font Awesome is underused**
+STATUS: OPEN — unchanged
+Font Awesome 6 Free is loaded (`index.html:23`) but the only FA usage observed is in session table action buttons. The workflow bar, tab bar, header buttons, and file-review cards all use Unicode emoji. Emoji render at inconsistent sizes, misalign vertically, and carry different visual weight across platforms.
+
+**GAP-DESIGN-02: Inline style proliferation in modals and JS templates will drift**
+STATUS: OPEN — unchanged
+Four of six close buttons use raw inline styles instead of `.modal-close-btn`. No named modal-size modifier classes exist. The download tab generates entirely inline-styled HTML. The layout-instruction sidebar mixes named classes with inline control styles.
+
+**GAP-DESIGN-03: CSS design tokens — partial resolution only**
+STATUS: PARTIAL — 8 tokens added (GAP-133); full token coverage outstanding
+The eight new tokens cover the highest-frequency palette entries. Status/semantic colors (`--cv-success`, `--cv-danger`, `--cv-warning`) and their background variants are still hardcoded literals. JS-generated HTML cannot consume CSS tokens without architectural changes, so that vector of drift remains unaddressed.
+
+**GAP-DESIGN-04: Duplicate `@keyframes spin` definitions**
+STATUS: OPEN — unchanged
+`@keyframes spin` is defined at `styles.css:930–933` and again at `styles.css:1494`. A third variant `@keyframes llm-spin` exists at `styles.css:574`. Consolidate to a single `@keyframes spin` definition and remove the `llm-spin` alias.
+
+**GAP-DESIGN-05: Main two-panel layout has no responsive breakpoint**
+STATUS: OPEN — unchanged
+`.main-container` is `display: flex` with `.interaction-area` at 40% and `.viewer-area` at 60% (`styles.css:346–388`). There is no `@media` rule that collapses these panels at narrow viewports. At widths below ~900px the 40% chat panel becomes too narrow for usable input.
+
+**GAP-DESIGN-06: Generated CV font choice — RESOLVED for fallback template**
+STATUS: RESOLVED for cv-style.css (Inter now used); UNCHANGED for cv-template.html (already used Inter)
+The `cv-style.css` fallback template now uses `'Inter', Arial, sans-serif` at line 18. The `cv-template.html` primary template already used Inter. Both output paths now use the same intentional typeface.
+
+**GAP-DESIGN-07: CV header center-alignment vs. body left-alignment**
+STATUS: OPEN — unchanged
+`.cv-header` in `cv-style.css` remains `text-align: center` (`cv-style.css:36`) while the body uses a left-aligned two-column grid. The compositional inconsistency persists.
+
+---
+
+## Scorecard
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-|-------|---------|-----------|--------|------------|-------|
-| US-G1: Visual Hierarchy and Readability | 4 | 0 | 0 | 0 | 0 |
-| US-G2: Cross-Stage Visual Consistency | 2 | 2 | 0 | 0 | 0 |
-| US-G3: Preview and Output Presentation Quality | 3 | 1 | 0 | 0 | 0 |
-| **Totals** | **9** | **3** | **0** | **0** | **0** |
+| ----- | ------- | ---------- | ------ | ----------- | ----- |
+| US-G1.1 Typography distinctiveness | ✅ | | | | |
+| US-G1.2 Primary action prominence | | ⚠️ | | | |
+| US-G1.3 Dense review readability | ✅ | | | | |
+| US-G1.4 Color/theme attractiveness | | ⚠️ | | | |
+| US-G2.1 Control styling consistency | | ⚠️ | | | |
+| US-G2.2 Status surface coherence | ✅ | | | | |
+| US-G2.3 System-level cohesion | | ⚠️ | | | |
+| US-G2.4 Standard interaction patterns | ✅ | | | | |
+| US-G3.1 Layout preview framing | ✅ | | | | |
+| US-G3.2 Controls vs. preview competition | | ⚠️ | | | |
+| US-G3.3 File-review surface quality | ✅ | | | | |
+| US-G3.4 Generated materials credibility | | ⚠️ | | | |
+
+**Summary counts:** 6 Pass / 6 Partial / 0 Fail / 0 Not Implemented / 0 N/A
+
+Score unchanged from previous cycle. The Inter font update in cv-style.css (GAP-DESIGN-06) improves generated-material credibility but the partial-token state of GAP-133 and the persistent inline-style drift keep US-G1.4 and US-G3.4 at Partial.
 
 ---
 
-## Top 5 Gaps (by Severity)
+## Evidence References
 
-### Gap 1 — Layout control labeling not designer-accessible (MEDIUM)
-
-**Evidence:** `layout-instruction.js:273–278`
-```html
-<label>Base font size (px):</label>
-<input min="6" max="16" step="0.5" value="13"
-  title="Controls the root font size for the CV. All rem-based sizes scale with this value." />
-```
-A non-developer who sets this to 13 cannot tell whether the output will look like 10pt or 12pt body text, because the CSS root-font-size-to-rem relationship is opaque. The tooltip is accurate but requires CSS literacy. The unit label "px" is a CSS unit, not a print unit — designers think in pt.
-
----
-
-### Gap 2 — Button class system mixing on Layout tab (MEDIUM)
-
-**Evidence:** `layout-instruction.js:258, 289, 292, 308, 315, 322` use `btn btn-warning`, `btn btn-secondary`, `btn btn-primary`, `btn btn-success` (Bootstrap 5). All other tabs use `action-btn`, `action-btn primary`, `btn-primary`, `btn-secondary` (custom `styles.css` classes).
-
-Bootstrap 5's `.btn` has `padding:.375rem .75rem` (≈6×12px) vs. `.action-btn` with `padding:10px 16px` (10×16px). Buttons inside the layout pane are visibly smaller than action buttons in the chat panel.
-
----
-
-### Gap 3 — Layout settings row uses inline styles (LOW)
-
-**Evidence:** `layout-instruction.js:271`:
-```js
-style="display:flex; align-items:center; gap:10px; margin-bottom:14px; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;"
-```
-This row cannot be themed from `styles.css` and will not respond to future design-system updates. Should be extracted to a named CSS class (e.g., `.layout-settings-row`).
-
----
-
-### Gap 4 — Instruction textarea placeholder reads as developer copy (LOW)
-
-**Evidence:** `layout-instruction.js:294–298`
-```
-placeholder="e.g., Move Publications section after Skills&#10;or: Make the Summary section smaller&#10;or: Keep the Genentech entry on one page"
-```
-The `or:` prefix is a code-documentation convention, not natural user guidance language. The examples are technically accurate but feel like developer-written documentation rather than in-product guidance.
-
----
-
-### Gap 5 — "Confirm Layout" button duplicated with no visual disambiguation (LOW)
-
-**Evidence:** `layout-instruction.js:307–310 and 320–323`
-Two identical `<button>Confirm Layout</button>` elements appear — one above and one below the instruction history, both sharing the same green `btn btn-success` style. First-time users may be confused about whether both must be clicked. There is no visual hint (e.g., secondary label, anchor icon) that the second is a scroll-convenience duplicate.
-
----
-
-## Additional Story Gaps / Proposed Story Items
-
-**Proposed US-G4:**
-> As a graphical designer, I want layout controls to display values in designer-familiar units (pt for font size, in for margins) and show a live equivalence note (e.g., "≈ 10pt body text") so I can make informed typographic decisions without CSS knowledge.
-
-**Proposed US-G5:**
-> As a graphical designer, I want the layout instruction textarea to show user-friendly placeholder examples that demonstrate natural language input so that users understand the kind of language the system accepts.
-
-**Proposed US-G6:**
-> As a graphical designer, I want all buttons across every workflow stage to use the same visual system (same height, weight, border-radius, and color semantics) so that the application feels unified rather than assembled from multiple design systems.
-
----
-
-## Evidence Base
-
-**Files reviewed:**
-- `web/index.html` (lines 1–300)
-- `web/app.js` (full)
-- `web/ui-core.js` (lines 1–300)
-- `web/state-manager.js` (lines 1–300)
-- `web/styles.css` (full — reviewed in sections)
-- `web/layout-instruction.js` (full)
-- `web/finalise.js` (full)
-- `web/download-tab.js` (full)
-- `web/ats-modals.js` (lines 1–200)
-- `tasks/user-story-graphical-designer.md`
-- `tasks/current-implemented-workflow.md`
-
-**Key evidence references:**
-- `styles.css:18–19` — body font and background base
-- `styles.css:~109–136` — `.action-btn` / `.action-btn.primary` system
-- `styles.css:1202–1263` — layout panel two-column layout and responsive breakpoints
-- `layout-instruction.js:241–330` — full layout panel HTML with inline styles and Bootstrap classes
-- `layout-instruction.js:271–295` — layout settings row (inline styles, Bootstrap buttons)
-- `download-tab.js:36–54` — file description labeling
-- `app.js:105–126` — stage action buttons using `.action-btn.primary`
-
-**Evidence standard:** Every conclusion is supported by file:line source evidence. No assumptions made about runtime behavior from untested code paths.
+| Finding | File | Line(s) |
+| ------- | ---- | ------- |
+| CSS design token block (:root) | `web/styles.css` | 18–27 |
+| Typography scale (h1/h2/h3/body) | `web/styles.css` | 708–713 |
+| `.action-btn` / `.action-btn.primary` / `.action-btn.secondary` | `web/styles.css` | 603–610 |
+| Position-bar inline-style buttons | `web/index.html` | 104–111 |
+| Sessions modal "New Session" inline style | `web/index.html` | 264 |
+| Status color semantic system | `web/styles.css` | 116–118, 133–135, 165–171, 731–757, 1258–1260 |
+| Modal base class | `web/styles.css` | 971–975 |
+| Sessions modal inline size overrides | `web/index.html` | 254–268 |
+| Master CV modal position override | `web/index.html` | 276 |
+| Close button inconsistency (4 un-classed) | `web/index.html` | 257, 279, 427, 586, 703, 719 |
+| Modal close-btn class definition | `web/styles.css` | 976 |
+| Layout preview two-pane flex | `web/styles.css` | 1424–1433 |
+| Layout preview responsive breakpoint | `web/styles.css` | 1515–1521 |
+| Duplicate @keyframes spin | `web/styles.css` | 930–933, 1494 |
+| @keyframes llm-spin | `web/styles.css` | 574 |
+| Two-panel main layout (no responsive breakpoint) | `web/styles.css` | 346–388 |
+| cv-style.css Inter font (updated) | `templates/cv-style.css` | 18 |
+| cv-style.css brand blue (#2980b9) | `templates/cv-style.css` | 33–44 |
+| cv-template.html Inter font load | `templates/cv-template.html` | 22 |
+| cv-template.html :root token block | `templates/cv-template.html` | 24–34 |
+| CV header center alignment | `templates/cv-style.css` | 36 |
+| CV two-column grid | `templates/cv-style.css` | 67 |
+| CV print optimization | `templates/cv-style.css` | 206–224 |
+| CV page-break rules | `templates/cv-style.css` | 226–237 |
+| Cover letter serif font (correct differentiation) | `web/styles.css` | 1567 |
+| LLM Wizard progress bar | `web/styles.css` | 981–1062 |
+| Emoji in workflow nav | `web/index.html` | 124–147 |
+| Font Awesome loaded (underused) | `web/index.html` | 23 |
+| Focus trap implementation | `web/ui-core.js` | ~294–347 |
+| Reduced-motion media query | `web/styles.css` | 1670–1678 |
+| High-contrast media query | `web/styles.css` | 1681–1688 |

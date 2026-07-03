@@ -120,9 +120,9 @@ def _make_app_and_client(tmp_dir: Path):
 
     stack = ExitStack()
     stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
-    stack.enter_context(patch('scripts.web_app.get_cached_pricing', return_value={}))
-    stack.enter_context(patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01'))
-    stack.enter_context(patch('scripts.web_app.get_pricing_source', return_value='static'))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_cached_pricing', return_value={}))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_pricing_updated_at', return_value='2024-01-01'))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_pricing_source', return_value='static'))
 
     app = create_app(args)
     app.config['TESTING'] = True
@@ -157,10 +157,11 @@ class TestStatusAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_status_returns_json(self):
-        """GET /api/status returns valid JSON."""
+        """GET /api/status returns JSON with a phase field."""
         response = self.client.get('/api/status', query_string={'session_id': self.session_id})
         data = response.get_json()
         self.assertIsNotNone(data)
+        self.assertIn('phase', data)
 
     def test_status_includes_required_fields(self):
         """Status response includes phase and LLM provider."""
@@ -199,13 +200,14 @@ class TestMasterDataAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_master_data_overview_returns_structure(self):
-        """Master data overview includes counts and personal info."""
+        """Master data overview succeeds and includes counts and personal info."""
         response = self.client.get(
             '/api/master-data/overview',
             query_string={'session_id': self.session_id},
         )
         data = response.get_json()
         self.assertIn('ok', data)
+        self.assertTrue(data['ok'])
         self.assertIn('name', data)
         self.assertIn('email', data)
         self.assertIn('experience_count', data)
@@ -524,9 +526,9 @@ class TestStartupModelNormalization(unittest.TestCase):
         mock_llm.model = 'gpt-4o'
 
         with patch('scripts.web_app.get_llm_provider', return_value=mock_llm) as provider_mock, \
-             patch('scripts.web_app.get_cached_pricing', return_value={}), \
-             patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01'), \
-             patch('scripts.web_app.get_pricing_source', return_value='static'):
+             patch('scripts.routes.auth_routes.get_cached_pricing', return_value={}), \
+             patch('scripts.routes.auth_routes.get_pricing_updated_at', return_value='2024-01-01'), \
+             patch('scripts.routes.auth_routes.get_pricing_source', return_value='static'):
             create_app(args)
 
         first_call = provider_mock.call_args_list[0]
@@ -571,13 +573,13 @@ class TestStartupSessionRedirect(unittest.TestCase):
             patch('scripts.web_app.get_llm_provider', return_value=mock_llm)
         )
         self._stack.enter_context(
-            patch('scripts.web_app.get_cached_pricing', return_value={})
+            patch('scripts.routes.auth_routes.get_cached_pricing', return_value={})
         )
         self._stack.enter_context(
-            patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01')
+            patch('scripts.routes.auth_routes.get_pricing_updated_at', return_value='2024-01-01')
         )
         self._stack.enter_context(
-            patch('scripts.web_app.get_pricing_source', return_value='static')
+            patch('scripts.routes.auth_routes.get_pricing_source', return_value='static')
         )
 
         self.app = create_app(args)
