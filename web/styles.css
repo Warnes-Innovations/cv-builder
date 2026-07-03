@@ -189,6 +189,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
   .position-actions-divider { display: none; }
   .ats-score-header { align-items: flex-start; }
   .ats-score-summary { align-items: flex-start; }
+  .ats-score-summary-detail { max-width: 100%; text-align: left; }
 }
 .step.clickable { cursor: pointer; }
 .step.clickable:hover { filter: brightness(0.93); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }

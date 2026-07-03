@@ -1917,7 +1917,8 @@ def create_blueprint(deps):
                 skills_heading=conv.orchestrator._resolve_human_skills_title(customizations),
             )
         except Exception:
-            logger.exception('ATS DOCX / human DOCX generation failed in generate_cv_final')
+            if has_app_context():
+                current_app.logger.exception('ATS DOCX / human DOCX generation failed in generate_cv_final')
 
         now = datetime.now().isoformat()
         gen = conv.state.setdefault("generation_state", {})
@@ -2328,6 +2329,7 @@ def create_blueprint(deps):
                         json.dump(master, f, indent=2)
 
                 conversation.orchestrator.master_data = master
+
                 job_analysis = conversation.state.get('job_analysis') or {}
                 company  = (job_analysis.get('company') or 'Unknown').replace(' ', '_')
                 role     = (job_analysis.get('title') or 'Role').replace(' ', '_')

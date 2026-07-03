@@ -189,7 +189,6 @@ describe('stateManager tab state', () => {
     const saved = JSON.parse(localStorage.getItem(StorageKeys.TAB_DATA))
     expect(saved.tabData.analysis).toEqual({ result: 'ok' })
   })
-
 })
 
 // ── loading state ─────────────────────────────────────────────────────────────

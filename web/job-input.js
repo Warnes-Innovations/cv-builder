@@ -18,7 +18,8 @@
  *   - analyzeJob (job-analysis.js)
  *   - fetchStatus (api-client.js)
  *   - showAlertModal (ui-helpers.js)
- *   - tabData, currentTab, PHASES (window globals)
+ *   - stateManager (state-manager.js — getCurrentTab()/setTabData())
+ *   - PHASES (window global)
  *
  * GAP-23 intake confirmation:
  *   All job-text submissions (paste, URL, file) route directly to analyzeJob()

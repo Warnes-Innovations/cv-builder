@@ -22,7 +22,8 @@
  *   - updateActionButtons (ui-helpers.js)
  *   - updatePositionTitle (session-actions.js)
  *   - escapeHtml, SESSION_PHASE_LABELS_SHORT (utils.js)
- *   - sessionId, tabData, isReconnecting, lastKnownPhase, interactiveState,
+ *   - stateManager (state-manager.js — getAllTabData()/getCurrentTab()/setTabData()/setCurrentTab())
+ *   - sessionId, isReconnecting, lastKnownPhase, interactiveState,
  *     rewriteDecisions, PHASES (window globals)
  */
 

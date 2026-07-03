@@ -2342,7 +2342,7 @@ def create_blueprint(deps):
             estimated_pages = round(total_chars / int(chars_per_page), 1)
             return jsonify({'ok': True, 'estimated_pages': estimated_pages, 'chars': total_chars})
         except Exception:
-            logger.exception('estimate_pages failed')
+            current_app.logger.exception('estimate_pages failed')
             return jsonify({'ok': False, 'error': 'Estimate failed'}), 500
 
     # ── ATS validation + persuasion ──────────────────────────────────────────

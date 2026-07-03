@@ -3650,6 +3650,29 @@ Include one entry per candidate. Do not omit any candidate."""
         )
         selected_experiences = [exp for exp, _ in scored_experiences]
 
+        # Sort experiences in reverse chronological order by end date.
+        # "Current", "Present", "", or None are treated as today (sorts first).
+        _today = _date.today()
+
+        def _parse_end_date(exp: Dict) -> _date:
+            raw = str(exp.get('end_date') or exp.get('end') or '').strip()
+            if not raw or raw.lower() in ('current', 'present', 'now', 'ongoing'):
+                return _today
+            for fmt in ('%Y-%m-%d', '%B %Y', '%b %Y', '%Y'):
+                try:
+                    return datetime.strptime(raw, fmt).date()
+                except ValueError:
+                    pass
+            # Partial match — try extracting a 4-digit year
+            m = re.search(r'\b(\d{4})\b', raw)
+            if m:
+                return _date(int(m.group(1)), 12, 31)
+            return _date.min
+
+        # Only apply default chronological sort when the user hasn't manually reordered.
+        # The user-override block below will replace this ordering if present.
+        selected_experiences = sorted(selected_experiences, key=_parse_end_date, reverse=True)
+
         # Override: if the user has explicitly reordered experience rows via the UI,
         # apply their ordering stored in customizations['experience_row_order']
         # as a list of experience IDs in the desired display order.
@@ -3725,6 +3748,22 @@ Include one entry per candidate. Do not omit any candidate."""
         selected_achievements = self._apply_achievement_diversity(
             scored_achievements, max_ach
         )
+
+        # Prepend extra_achievements: LLM-suggested achievements not in master CV that the user approved
+        extra_achievements = customizations.get('extra_achievements', [])
+        if extra_achievements:
+            existing_ach_texts = {(a.get('text', '') if isinstance(a, dict) else str(a)).lower()
+                                  for a in selected_achievements}
+            prepend_achs = []
+            for ach in extra_achievements:
+                if isinstance(ach, dict):
+                    text = ach.get('description') or ach.get('title', '')
+                else:
+                    text = str(ach)
+                if text and text.lower() not in existing_ach_texts:
+                    prepend_achs.append({'text': text, 'id': f'suggested_{len(prepend_achs)}'})
+                    existing_ach_texts.add(text.lower())
+            selected_achievements = (prepend_achs + selected_achievements)[:max_ach]
 
         # Prepend extra_achievements: LLM-suggested achievements not in master CV that the user approved
         extra_achievements = customizations.get('extra_achievements', [])
@@ -4399,7 +4438,7 @@ Include one entry per candidate. Do not omit any candidate."""
         logger.info("Generated ATS DOCX: %s (ATS Score: %d/100)", filename, ats_score)
 
         return filepath, ats_score
-    
+
     def _setup_ats_styles(self, doc):
         """Set up ATS-optimized document styles."""
         from docx.shared import Pt, RGBColor
@@ -5773,8 +5812,8 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 'experience', 'education', 'skills', 'summary', 'publications',
                 'certifications', 'achievements', 'awards', 'objective',
                 'work experience', 'professional experience', 'technical skills',
-                'professional summary', 'contact',
-                'portfolio', 'languages', 'volunteering', 'projects',
+                'professional summary', 'selected publications', 'contact',
+                'portfolio', 'languages', 'volunteering', 'projects', 'career history',
                 'core competencies',
             })
             heading_paras = [p for p in paragraphs if p.style.name.startswith('Heading')]
