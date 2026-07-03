@@ -34,7 +34,7 @@ if not (has_github or has_openai or has_anthropic):
     sys.exit(0)
 
 # Import our LLM client
-from utils.llm_client import GitHubModelsClient, OpenAIClient, AnthropicClient
+from utils.llm_client import GitHubModelsClient, AnthropicClient
 
 # Test GitHub Models if available
 if has_github:

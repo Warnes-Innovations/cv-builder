@@ -20,6 +20,19 @@ from pathlib import Path
 from typing import Any, Optional
 
 
+class MasterDataSaveError(ValueError):
+    """Raised when post-write schema validation fails; carries structured errors.
+
+    Deliberately does not rely on the exception's string representation reaching
+    an HTTP response (CodeQL: information exposure through an exception) — callers
+    should read `.errors` directly instead of stringifying the exception.
+    """
+
+    def __init__(self, errors: list[str]):
+        self.errors = list(errors)
+        super().__init__("Master data failed schema validation after write; backup restored.")
+
+
 @dataclass
 class ValidationResult:
     """Container for validation outcomes."""

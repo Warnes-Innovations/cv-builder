@@ -26,7 +26,7 @@ from utils.backup_helpers import prune_backups as _prune_backups
 from utils.git_helpers import git_commit_error as _git_commit_error, git_push_if_remote as _git_push_if_remote
 from utils.llm_client import LLMError
 from utils.master_data_mutations import _apply_master_data_change
-from utils.master_data_validator import validate_master_data
+from utils.master_data_validator import MasterDataSaveError, validate_master_data
 
 
 logger = logging.getLogger(__name__)
@@ -61,10 +61,7 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
     if not result.valid:
         if backup_path.exists():
             shutil.copy2(backup_path, master_path)
-        raise ValueError(
-            f"Master data failed schema validation after write; backup restored. "
-            f"Errors: {'; '.join(result.errors)}"
-        )
+        raise MasterDataSaveError(result.errors)
 
     # Prune only after a successful write+validation, so a pruning bug can
     # never run concurrently with the rollback path above that depends on
@@ -240,7 +237,7 @@ def create_blueprint(deps):
                 "professional_summaries":  data.get('professional_summaries', {}),
                 "experiences":             data.get('experience', []),
             })
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to load data for finalise endpoint")
             return jsonify({
                 "ok": False,
@@ -332,7 +329,7 @@ def create_blueprint(deps):
                 action = 'added'
             save_master(master, master_path)
             return jsonify({"ok": True, "action": action, "id": ach_id})
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to update achievement")
             return jsonify({"ok": False, "error": "Failed to update achievement"}), 500
 
@@ -371,7 +368,7 @@ def create_blueprint(deps):
             master['professional_summaries'] = summaries
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "added" if is_new else "updated", "key": key})
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to update summary")
             return jsonify({"ok": False, "error": "Failed to update summary"}), 500
 
@@ -393,7 +390,7 @@ def create_blueprint(deps):
                 "selected_achievements":  master.get('selected_achievements', []),
                 "professional_summaries": master.get('professional_summaries', {}),
             })
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update achievement"}), 500
 
@@ -516,7 +513,7 @@ def create_blueprint(deps):
                         changes.append({'field': f'skills.{cat_key}', 'old': skill_name, 'new': None})
 
             return jsonify({'ok': True, 'section': section, 'changed': bool(changes), 'changes': changes})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update skill"}), 500
 
@@ -714,9 +711,13 @@ def create_blueprint(deps):
 
             try:
                 save_master(master, master_path)
-            except ValueError as e:
+            except MasterDataSaveError as e:
                 # _save_master already restored the backup on schema-validation failure.
-                return jsonify({"ok": False, "error": str(e)}), 422
+                return jsonify({
+                    "ok": False,
+                    "error": "Master data failed schema validation after write; backup restored.",
+                    "validation_errors": e.errors,
+                }), 422
             except Exception:
                 logger.exception("Failed to save master data during confirm-update")
                 return jsonify({"ok": False, "error": "Failed to save master data"}), 500
@@ -834,9 +835,13 @@ def create_blueprint(deps):
             master_path = Path(orchestrator.master_data_path)
             try:
                 save_master(new_data, master_path)
-            except ValueError as e:
+            except MasterDataSaveError as e:
                 # save_master already restored the backup on schema-validation failure.
-                return jsonify({"ok": False, "error": str(e)}), 422
+                return jsonify({
+                    "ok": False,
+                    "error": "Master data failed schema validation after write; backup restored.",
+                    "validation_errors": e.errors,
+                }), 422
             except Exception:
                 logger.exception("Failed to save master data during import-confirm")
                 return jsonify({"ok": False, "error": "Failed to save master data"}), 500
@@ -915,7 +920,7 @@ def create_blueprint(deps):
                     address['state'] = req['state']
             save_master(master, master_path)
             return jsonify({"ok": True})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Operation failed"}), 500
 
@@ -1029,7 +1034,7 @@ def create_blueprint(deps):
                     existing_exp[field] = exp_data[field]
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "updated", "id": exp_id})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update experience"}), 500
 
@@ -1300,7 +1305,7 @@ def create_blueprint(deps):
                 return jsonify({"ok": True, "action": "deleted"})
 
             return jsonify({"ok": False, "error": "Unexpected skills format"}), 400
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update skill"}), 500
 
@@ -1379,7 +1384,7 @@ def create_blueprint(deps):
             education[idx].update(edu_data)
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "updated", "idx": idx})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update education"}), 500
 
@@ -1440,7 +1445,7 @@ def create_blueprint(deps):
             awards[idx].update(award_data)
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "updated", "idx": idx})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update award"}), 500
 
@@ -1687,7 +1692,7 @@ def create_blueprint(deps):
 
             return jsonify({"ok": True, "summary": summary})
 
-        except Exception as exc:
+        except Exception:
             import traceback
             traceback.print_exc()
             logger.exception("Operation failed")
@@ -1744,7 +1749,7 @@ def create_blueprint(deps):
 
         try:
             parsed = bibtex_text_to_publications(content)
-        except Exception as e:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.warning("BibTeX parse error in publications replace", exc_info=True)
             return jsonify({"ok": False, "error": "BibTeX parse error in uploaded content."}), 400
 
@@ -1763,7 +1768,7 @@ def create_blueprint(deps):
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
                 backup_path = backup_dir / f"{bib_path.stem}.{ts}{bib_path.suffix}"
                 shutil.copy2(bib_path, backup_path)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to backup publications")
             return jsonify({"ok": False, "error": "Failed to backup publications"}), 500
 
@@ -1771,7 +1776,7 @@ def create_blueprint(deps):
             bib_path.write_text(content, encoding="utf-8")
             orchestrator.publications = parsed
             return jsonify({"ok": True, "count": len(parsed)})
-        except Exception as e:
+        except Exception:
             if backup_path and backup_path.exists():
                 try:
                     shutil.copy2(backup_path, bib_path)
@@ -1793,7 +1798,7 @@ def create_blueprint(deps):
 
         try:
             parsed = bibtex_text_to_publications(bibtex_text)
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to parse BibTeX text"}), 400
 
@@ -1867,7 +1872,7 @@ def create_blueprint(deps):
                 str(orchestrator.publications_path)
             )
             return jsonify({"ok": True, "action": action, "key": key})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update publication"}), 500
 
@@ -1889,7 +1894,7 @@ def create_blueprint(deps):
 
         try:
             imported = bibtex_text_to_publications(bibtex_text)
-        except Exception as e:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.warning("BibTeX parse error in publications import", exc_info=True)
             return jsonify({"ok": False, "error": "BibTeX parse error in submitted content."}), 400
 
@@ -1946,7 +1951,7 @@ def create_blueprint(deps):
             orchestrator.publications = parse_bibtex_file(
                 str(orchestrator.publications_path)
             )
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update publication"}), 500
 
@@ -1980,10 +1985,10 @@ def create_blueprint(deps):
 
         try:
             bibtex = orchestrator.llm.convert_text_to_bibtex(text)
-        except LLMError as e:
+        except LLMError:
             logger.exception("LLM error during BibTeX conversion")
             return jsonify({"ok": False, "error": "Failed to convert text to BibTeX"}), 500
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to load master data"}), 500
 
@@ -2024,7 +2029,7 @@ def create_blueprint(deps):
                     except Exception:
                         pass
             return jsonify({'ok': True, 'sessions': results})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({'ok': False, 'error': 'Failed to search cover letters'}), 500
 
@@ -2162,7 +2167,7 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                     ],
                     temperature=0.7,
                 )
-            except Exception as e:
+            except Exception:
                 logger.exception("Cover letter LLM request failed")
                 return jsonify({'ok': False, 'error': 'LLM request failed — check provider settings or try again.'}), 500
 
@@ -2246,7 +2251,8 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                     '@page{margin:2.5cm;}</style></head>'
                     f'<body>{html_paragraphs}</body></html>'
                 )
-                import tempfile, os as _os
+                import tempfile
+                import os as _os
                 with tempfile.NamedTemporaryFile(
                     mode='w', suffix='.html', delete=False, encoding='utf-8'
                 ) as tmp_html:
@@ -2289,7 +2295,7 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                         files_list.append(pdf_filename)
                 session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename, 'pdf_filename': pdf_filename})
-            except Exception as e:
+            except Exception:
                 logger.exception("Operation failed")
                 return jsonify({'ok': False, 'error': "Operation failed"}), 500
 
@@ -2362,7 +2368,7 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                     for x in scored_exps
                 ],
             })
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({'ok': False, 'error': 'Failed to search screening library'}), 500
 
@@ -2432,12 +2438,12 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                     ],
                     temperature=0.7,
                 )
-            except Exception as e:
+            except Exception:
                 logger.exception("Screening LLM request failed")
                 return jsonify({'ok': False, 'error': 'LLM request failed — check provider settings or try again.'}), 500
 
             return jsonify({'ok': True, 'text': response_text.strip()})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({'ok': False, 'error': 'Failed to generate screening response'}), 500
 
@@ -2542,7 +2548,7 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                         files_list.append(filename)
                 session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename, 'count': len(responses_in)})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({'ok': False, 'error': "Failed with screening"}), 500
 

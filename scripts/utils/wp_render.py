@@ -70,7 +70,7 @@ def render(html_file: str, pdf_output: str, fonts_dir: str | None = None) -> Non
 if __name__ == '__main__':
     if len(sys.argv) < 3:
         print(
-            f'Usage: python -m scripts.utils.wp_render <html> <pdf> [fonts_dir]',
+            'Usage: python -m scripts.utils.wp_render <html> <pdf> [fonts_dir]',
             file=sys.stderr,
         )
         sys.exit(1)

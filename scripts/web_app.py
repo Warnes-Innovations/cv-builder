@@ -21,7 +21,6 @@ Then open http://localhost:5001
 """
 
 import argparse
-import copy
 import dataclasses
 import json
 import logging
@@ -32,8 +31,7 @@ import subprocess
 import sys
 import threading
 import time
-import traceback
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -43,13 +41,10 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 from flask import (
-    Flask, g, jsonify, redirect, request,
-    send_file, send_from_directory, session, url_for,
+    Flask, g, redirect, request,
+    session,
 )
-import requests
-from urllib.parse import urlparse
 import re
-from bs4 import BeautifulSoup
 
 # Load environment variables from .env file
 env_path = Path(__file__).parent.parent / '.env'
@@ -59,27 +54,18 @@ if env_path.exists():
 # Ensure scripts are importable
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils.config import get_config, validate_config, ConfigurationError, setup_logging
-from utils.llm_client import get_llm_provider, PROVIDER_MODELS, PROVIDER_BILLING, MODEL_INFO
+from utils.config import get_config, validate_config, setup_logging
+from utils.llm_client import get_llm_provider, PROVIDER_MODELS
 from utils.cv_orchestrator import CVOrchestrator, validate_ats_report
 from utils.conversation_manager import ConversationManager, Phase
-from utils.llm_client import LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
 from utils.copilot_auth import CopilotAuthManager
 from utils.pricing_cache import (
-    get_cached_pricing, get_pricing_updated_at, get_pricing_source,
-    refresh_pricing_cache, maybe_refresh_in_background, lookup_runtime_pricing_bulk, STATIC_PRICING,
+    maybe_refresh_in_background,
 )
-from utils.spell_checker import SpellChecker
-from utils.master_data_validator import validate_master_data_file
+from utils.master_data_validator import MasterDataSaveError, validate_master_data_file
 from utils.backup_helpers import prune_backups as _prune_backups
-from utils.bibtex_parser import (
-    parse_bibtex_file,
-    format_publication,
-    serialize_publications_to_bibtex,
-    bibtex_text_to_publications,
-)
 from utils.session_registry import (
-    SessionRegistry, SessionNotFoundError, SessionOwnedError
+    SessionRegistry, SessionNotFoundError
 )
 # ---------------------------------------------------------------------------
 # API response DTOs — typed dataclasses for the most critical endpoints.
@@ -488,7 +474,7 @@ def _catalog_discover_provider_models(provider: str) -> Optional[List[str]]:
 
 _dynamic_model_cache: Dict[str, List[str]] = {}
 _dynamic_model_cache_lock = threading.Lock()
- 
+
 
 def _get_available_models(provider: str, current_model: Optional[str] = None) -> List[str]:
     """Return the best-available model list for a provider.
@@ -733,13 +719,13 @@ def create_app(args) -> Flask:
         sid = request.args.get('session_id')
         if not sid and request.is_json:
             sid = (request.get_json(silent=True) or {}).get('session_id')
-        
+
         source = "query" if request.args.get('session_id') else ("json_body" if sid else "none")
         logger.debug(
             "_get_session: session_id=%s (source=%s, method=%s, path=%s)",
             sid or "<missing>", source, request.method, request.path
         )
-        
+
         if not sid:
             if required:
                 _abort(400, description='session_id is required')
@@ -838,7 +824,7 @@ def create_app(args) -> Flask:
             stripped = line.lstrip('#').strip().lower()
             return line.lstrip('#') != line and stripped in _GENERIC_LABELS
         content_lines = [
-            l for l in lines if not _is_nav_noise(l) and not _is_section_header(l)
+            line for line in lines if not _is_nav_noise(line) and not _is_section_header(line)
         ]
         if not content_lines:
             content_lines = lines
@@ -1187,7 +1173,7 @@ def _extract_year(value: Any) -> Optional[int]:
 def _validate_master_for_persistence(master: Dict[str, Any]) -> None:
     """Validate top-level master CV structure before writing to disk."""
     if not isinstance(master, dict):
-        raise ValueError("master data must be a JSON object")
+        raise MasterDataSaveError(["master data must be a JSON object"])
 
     errors: List[str] = []
 
@@ -1205,7 +1191,7 @@ def _validate_master_for_persistence(master: Dict[str, Any]) -> None:
         errors.append("professional_summaries must be an object or list")
 
     if errors:
-        raise ValueError("Invalid master data: " + "; ".join(errors))
+        raise MasterDataSaveError(errors)
 
 
 def _save_master(master: Dict[str, Any], master_path: Path) -> None:
@@ -1230,8 +1216,7 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
     if not validation.valid:
         if backup_path is not None and backup_path.exists():
             shutil.copy2(backup_path, master_path)
-        msg = "; ".join(validation.errors) or "master data validation failed"
-        raise ValueError(f"Master data validation failed after write: {msg}")
+        raise MasterDataSaveError(validation.errors or ["master data validation failed"])
 
     # Prune only after a successful write+validation, so a pruning bug can
     # never run concurrently with the rollback path above that depends on
@@ -1251,15 +1236,15 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
 
 def parse_args():
     config = get_config()
-    
+
     parser = argparse.ArgumentParser(description="Minimal Web UI for CV Generator")
     parser.add_argument("--job-file", help="Path to job description text file")
     parser.add_argument("--master-data", default=config.master_cv_path,
-                       help=f"Path to Master_CV_Data.json")
+                       help="Path to Master_CV_Data.json")
     parser.add_argument("--publications", default=config.publications_path,
-                       help=f"Path to publications.bib")
+                       help="Path to publications.bib")
     parser.add_argument("--output-dir", default=config.output_dir,
-                       help=f"Output directory")
+                       help="Output directory")
     parser.add_argument("--llm-provider", choices=["copilot-oauth", "copilot", "github", "openai", "anthropic", "gemini", "groq", "local", "copilot-sdk", "stub"],
                        default=config.llm_provider,
                        help=f"LLM provider (default: {config.llm_provider})")
@@ -1273,7 +1258,7 @@ def parse_args():
 def main():
     args = parse_args()
     config = get_config()
-    
+
     # Set up logging before anything else
     setup_logging(config)
 

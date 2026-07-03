@@ -18,9 +18,9 @@ import uuid
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import ClassVar, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
-from .llm_client import LLMClient, LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
+from .llm_client import LLMClient, LLMError, LLMContextLengthError
 from .cv_orchestrator import CVOrchestrator
 from .config import get_config
 from .layout_digest import (
@@ -58,7 +58,7 @@ class SessionQuitException(Exception):
 
 class ConversationManager:
     """Manages conversational flow for CV generation."""
-    
+
     # Expected forward-flow transitions.  navigate_to_phase() and re_run_phase()
     # intentionally bypass this table (they use direct dict assignment).
     _ALLOWED_TRANSITIONS: ClassVar[Dict] = {
@@ -246,14 +246,14 @@ class ConversationManager:
                 break
 
         return '\n'.join(lines).strip()
-    
+
     def start_interactive(self):
         """Start interactive conversation loop."""
         self._print_welcome()
         # Ensure a position is selected or created
         self._ensure_position_selected()
         self._setup_readline()
-        
+
         while True:
             try:
                 # Check if we're expecting multi-line input (e.g., job description)
@@ -286,7 +286,7 @@ class ConversationManager:
 
 JOB ANALYSIS:
 - Title: {analysis.get('title', 'Not specified')}
-- Company: {analysis.get('company', 'Not specified')}  
+- Company: {analysis.get('company', 'Not specified')}
 - Domain: {analysis.get('domain', 'Not specified')}
 - Role Level: {analysis.get('role_level', 'Not specified')}
 - Required Skills: {', '.join(analysis.get('required_skills', []))}
@@ -305,10 +305,10 @@ Ask questions that are specific to this job posting, not generic career question
                     continue
                 else:
                     user_input = input("\n> ").strip()
-                
+
                 if not user_input:
                     continue
-                
+
                 # Handle commands
                 if user_input == 'QUIT':
                     confirm = input("\n⚠ Confirm exit? (yes/no): ")
@@ -334,18 +334,18 @@ Ask questions that are specific to this job posting, not generic career question
                 elif user_input.lower() == 'reset':
                     self._reset_conversation()
                     continue
-                
+
                 # Process with LLM
                 response = self._process_message(user_input)
                 print(f"\n{response}")
-                
+
             except KeyboardInterrupt:
                 print("\n\nUse 'quit' to exit safely.")
             except Exception as e:
                 print(f"\n❌ Error: {e}")
                 import traceback
                 traceback.print_exc()
-    
+
     def _process_message(self, user_input: str) -> str:
         """Process user message through LLM with context."""
         # Add user message to history
@@ -353,7 +353,7 @@ Ask questions that are specific to this job posting, not generic career question
             'role': 'user',
             'content': user_input
         })
-        
+
         # Build context-aware system message
         system_msg = self._build_system_prompt()
 
@@ -362,7 +362,7 @@ Ask questions that are specific to this job posting, not generic career question
         messages = [
             {'role': 'system', 'content': system_msg}
         ] + self._strip_context_from_history(self._conversation_history)
-        
+
         # Get LLM response; retry with a recent-only history window if the full
         # history causes a context-length error (e.g. 413 on GitHub gpt-4o).
         try:
@@ -375,13 +375,13 @@ Ask questions that are specific to this job posting, not generic career question
             response = self.llm.chat(
                 [messages[0]] + trimmed, temperature=0.7
             )
-        
+
         # Add to history
         self._conversation_history.append({
             'role': 'assistant',
             'content': response
         })
-        
+
         # Check if LLM is requesting action
         action = self._parse_action_from_response(response)
         if action:
@@ -399,7 +399,7 @@ Ask questions that are specific to this job posting, not generic career question
                     entry = {'role': 'system', 'content': f"Action completed: {text}"}
                 self._conversation_history.append(entry)
                 response += f"\n\n{text}"
-        
+
         # Auto-save after each message exchange
         self._save_session()
 
@@ -438,7 +438,7 @@ Every experience and skill recommendation MUST include ALL THREE components belo
    - Include: Standard treatment, include normally (RELEVANT to job)
    - De-emphasize: Brief mention only (SOMEWHAT relevant to job)
    - Omit: Exclude from CV entirely (NOT relevant to job)
-   
+
    THIS IS ABOUT HOW RELEVANT THE EXPERIENCE IS TO THE JOB, NOT CONFIDENCE.
 
 2. CONFIDENCE LEVEL (5-point scale - based on EVIDENCE STRENGTH):
@@ -447,12 +447,12 @@ Every experience and skill recommendation MUST include ALL THREE components belo
    - Medium: Moderate evidence FOR, some evidence against OR limited evidence either way
    - Low: Weak evidence FOR, significant evidence against OR very limited evidence
    - Very Low: Minimal evidence FOR, strong evidence against OR almost no relevant evidence
-   
+
    THIS IS ABOUT HOW CERTAIN YOU ARE ABOUT YOUR RECOMMENDATION, NOT RELEVANCE.
    The confidence level reflects the RATIO of supporting evidence to contradicting evidence.
    More supporting evidence + less contradicting evidence = Higher confidence.
    Less supporting evidence + more contradicting evidence = Lower confidence.
-   
+
    IMPORTANT: These are INDEPENDENT:
    - You can have "Emphasize" with "Medium" confidence (very relevant but limited info)
    - You can have "De-emphasize" with "Very High" confidence (clearly not relevant)
@@ -465,26 +465,26 @@ Every experience and skill recommendation MUST include ALL THREE components belo
    - Evidence FOR the recommendation (matching skills, relevant domain, level alignment)
    - Evidence AGAINST the recommendation (mismatches, irrelevant aspects, concerns)
    - Why the confidence level is appropriate given the evidence balance
-   
-   Be specific and concrete. Cite actual requirements from the job description and 
+
+   Be specific and concrete. Cite actual requirements from the job description and
    actual details from the candidate's experience.
 
 MANDATORY FORMAT - All recommendations must follow this structure:
 "[Experience/Skill Name]"
 - Recommendation: [Emphasize/Include/De-emphasize/Omit]
 - Confidence: [Very High/High/Medium/Low/Very Low]
-- Reasoning: [Detailed explanation with specific evidence from both the job requirements 
+- Reasoning: [Detailed explanation with specific evidence from both the job requirements
   and candidate's background, explaining both supporting and contradicting factors]
 
 Example:
 "Senior Data Scientist at Pfizer (2018-2022)"
 - Recommendation: Emphasize
 - Confidence: Very High
-- Reasoning: Direct match for 4 of 5 key requirements: ML model development in healthcare, 
-  team leadership, regulatory environment experience, and Python/R expertise. Pfizer 
-  Achievement Award demonstrates exceptional impact. Led 8-person team developing predictive 
-  models for clinical trials - exactly matches job's "lead ML initiatives in life sciences" 
-  requirement. No contradicting evidence. Very high confidence due to multiple strong matches 
+- Reasoning: Direct match for 4 of 5 key requirements: ML model development in healthcare,
+  team leadership, regulatory environment experience, and Python/R expertise. Pfizer
+  Achievement Award demonstrates exceptional impact. Led 8-person team developing predictive
+  models for clinical trials - exactly matches job's "lead ML initiatives in life sciences"
+  requirement. No contradicting evidence. Very high confidence due to multiple strong matches
   with zero misalignments.
 
 You can request actions by including JSON in your response:
@@ -494,30 +494,30 @@ You can request actions by including JSON in your response:
 
 Current conversation phase: {current_phase}
 """
-        
+
         # Add candidate background information
         if self.orchestrator and self.orchestrator.master_data:
             master_data = self.orchestrator.master_data
-            
+
             # Provide complete CV data to LLM
             candidate_info = f"""\n\nComplete Candidate CV Data:
 {json.dumps(master_data, indent=2)}
 """
-            
+
             # Add publications from BibTeX file
             if self.orchestrator.publications:
                 pub_count = len(self.orchestrator.publications)
                 pub_summary = []
                 for key, pub in list(self.orchestrator.publications.items())[:10]:  # Show first 10 as examples
                     pub_summary.append(f"  - {pub.get('title', 'No title')} ({pub.get('year', 'N/A')})")
-                
+
                 candidate_info += f"""\n\nPublications ({pub_count} total):
 {chr(10).join(pub_summary)}
 {"... and more" if pub_count > 10 else ""}
 
 Complete publications data available in orchestrator.publications.
 """
-            
+
             candidate_info += """
 You have complete access to the candidate's CV data including:
 - Personal information and contact details
@@ -531,7 +531,7 @@ Do NOT ask the candidate for basic information that's already in this data. Focu
 IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Only reference specific details in natural language when relevant to your response.
 """
             base_prompt += candidate_info
-        
+
         # Add phase-specific context
         if self.state['phase'] == Phase.JOB_ANALYSIS and self.state['job_analysis']:
             base_prompt += f"\n\nJob Analysis Complete:\n{json.dumps(self.state['job_analysis'], indent=2)}"
@@ -594,7 +594,7 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
                 )
 
         return base_prompt
-    
+
     def _parse_action_from_response(self, response: str) -> Optional[Dict]:
         """Extract action request from LLM response."""
         start = response.find('{"action":')
@@ -732,7 +732,6 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
 
         # Get structured questions from LLM
         try:
-            system_msg = self._build_system_prompt()
             messages = (
                 [{'role': 'system', 'content': 'You generate targeted CV-optimisation questions and respond with strict JSON only.'}]
                 + self._strip_context_from_history(self._conversation_history)
@@ -1106,7 +1105,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             exp_decisions = {}
         if not isinstance(skill_decisions, dict):
             skill_decisions = {}
-        
+
         # If we have decisions but no customizations, generate a baseline first
         if has_decisions and not has_customizations:
             print("\n🔄 Applying user decisions to generate customizations...")
@@ -1803,7 +1802,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         """Add job description to state."""
         self.state['job_description'] = job_text
         self._set_phase(Phase.JOB_ANALYSIS)
-    
+
     def _print_welcome(self):
         """Print welcome message."""
         print("\n" + "="*70)
@@ -1821,7 +1820,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         print("  • 'QUIT' - Save and exit (with confirmation)")
         print("  • 'quit' - Save and exit")
         print("\n" + "-"*70)
-        
+
         # Check if job description already loaded
         if self.state.get('job_description'):
             print("\n✓ Job description loaded. I'm ready to analyze it.")
@@ -1829,7 +1828,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         else:
             print("\nTo get started, please paste the job description,")
             print("or tell me about the position you're targeting.")
-    
+
     def _print_help(self):
         """Print help message."""
         print("\n" + "="*70)
@@ -1847,7 +1846,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         print("  4. Generate CV files")
         print("  5. Review and refine")
         print("\n" + "-"*70)
-    
+
     def _normalize_recommendations(self, recommendations: Dict) -> Dict:
         """If ``summary_focus`` is a full-text paragraph rather than a lookup
         key, save it as ``'ai_recommended'`` in ``session_summaries`` and
@@ -1873,12 +1872,12 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         print(f"Job analysis: {'✓ Complete' if self.state['job_analysis'] else '✗ Pending'}")
         print(f"Customizations: {'✓ Ready' if self.state['customizations'] else '✗ Pending'}")
         print(f"Generated files: {'✓ Created' if self.state['generated_files'] else '✗ Not generated'}")
-        
+
         if self.state['generated_files']:
             print(f"\nOutput directory: {self.state['generated_files']['output_dir']}")
-        
+
         print("\n" + "-"*70)
-    
+
     def _reset_conversation(self):
         """Reset conversation state."""
         confirm = input("\n⚠ This will clear all progress. Continue? (yes/no): ")
@@ -2086,7 +2085,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 print(f"Creating session directory: {self.session_dir}")
                 logger.debug("_save_session: creating new session_dir=%s", self.session_dir)
                 self.session_dir.mkdir(parents=True, exist_ok=True)
-            
+
             if self.session_id is None:
                 self.session_id = uuid.uuid4().hex
 
@@ -2096,11 +2095,11 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 'state': self.state,
                 'conversation_history': self.conversation_history
             }
-            
+
             session_file = self.session_dir / "session.json"
             with open(session_file, 'w', encoding='utf-8') as f:
                 json.dump(session_data, f, indent=2)
-            
+
             print(f"✓ Session saved to: {session_file}")
         except Exception as e:
             import traceback
@@ -2115,14 +2114,14 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         self.state['job_analysis'] = analysis
         title   = (analysis.get('title')   or '').strip()
         company = (analysis.get('company') or '').strip()
-        
+
         if title and company:
             self.state['position_name'] = f"{title} at {company}"
         elif title:
             self.state['position_name'] = title
         elif company:
             self.state['position_name'] = company
-        
+
         logger.debug(
             "_store_job_analysis: position_name=%s (title=%s, company=%s)",
             self.state.get('position_name', '<none>'), title or '<none>', company or '<none>'
@@ -2327,7 +2326,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             readline.write_history_file(str(self.history_file))
         except Exception:
             pass
-    
+
     def load_session(self, session_file: str):
         """Load previous session."""
         with open(session_file, 'r', encoding='utf-8') as f:
@@ -2635,12 +2634,12 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         self.state['generation_progress'] = result.get('generation_progress', [])
         self._set_phase(Phase.LAYOUT_REVIEW)
         return result
-    
+
     def run_automated(self) -> Dict:
         """Run automated generation (non-interactive)."""
         if not self.state.get('job_description'):
             raise ValueError("Job description required for automated mode")
-        
+
         # Analyze job
         print("Analyzing job description...")
         analysis = self.llm.analyze_job_description(
@@ -2649,7 +2648,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         )
         self._store_job_analysis(analysis)
         print("✓ Job analysis complete")
-        
+
         # Get recommendations
         print("Getting LLM recommendations...")
         recommendations = self.llm.recommend_customizations(

@@ -16,22 +16,20 @@ Usage:
 import argparse
 import json
 from pathlib import Path
-from typing import Dict, List, Set, Tuple, Any
+from typing import Dict, List
 import sys
 
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.config import get_config
-from utils.bibtex_parser import parse_bibtex_file, format_publication, filter_publications
+from utils.bibtex_parser import parse_bibtex_file, format_publication
 from utils.master_data_validator import validate_master_data_file
 from utils.scoring import (
-    calculate_relevance_score,
     rank_content,
     select_best_summary,
     calculate_skill_score
 )
-from utils.template_renderer import create_cv_context
 from parse_job_description import parse_job_description
 
 
@@ -55,28 +53,28 @@ def select_content(
 ) -> Dict:
     """
     Select and rank CV content based on job requirements.
-    
+
     Args:
         master_data: Full Master_CV_Data.json
         job_data: Parsed job description
         max_skills: Maximum skills to include
         max_achievements: Maximum achievements to include
         max_publications: Maximum publications to include
-        
+
     Returns:
         Dictionary with selected content
     """
     job_keywords = set(job_data.get('keywords', []))
     job_requirements = job_data.get('requirements', [])
     domain = job_data.get('domain', '')
-    
-    print(f"Job Analysis:")
+
+    print("Job Analysis:")
     print(f"  Keywords: {len(job_keywords)} found")
     print(f"  Requirements: {len(job_requirements)} found")
     print(f"  Domain: {domain}")
     print(f"  Experience: {job_data.get('experience_years', 0)} years")
     print()
-    
+
     # Select professional summary
     summaries = master_data.get('professional_summaries', [])
     selected_summary = select_best_summary(
@@ -85,7 +83,7 @@ def select_content(
         job_data.get('title', '')
     )
     print(f"Selected summary: {selected_summary.get('audience', ['general'])[0] if selected_summary else 'default'}")
-    
+
     # Rank and select experiences
     experiences = master_data.get('experience', [])
     ranked_experiences = rank_content(
@@ -94,11 +92,11 @@ def select_content(
         job_requirements,
         domain,
     )
-    
+
     selected_experiences = []
     for exp, score in ranked_experiences:
         print(f"  Experience: {exp.get('title', '')} at {exp.get('company', '')} - Score: {score:.1f}")
-        
+
         # Filter achievements within experience
         achievements = exp.get('achievements', [])
         if achievements and isinstance(achievements[0], dict):
@@ -115,26 +113,26 @@ def select_content(
             selected_experiences.append(exp_copy)
         else:
             selected_experiences.append(exp)
-    
+
     print()
-    
+
     # Rank and select skills
     skills = master_data.get('skills', [])
     required_skills = job_data.get('required_skills', []) + job_data.get('preferred_skills', [])
-    
+
     scored_skills = []
     for skill in skills:
         score = calculate_skill_score(skill, job_keywords, required_skills)
         scored_skills.append((skill, score))
-    
+
     scored_skills.sort(key=lambda x: x[1], reverse=True)
     selected_skills = [skill for skill, score in scored_skills[:max_skills]]
-    
+
     print(f"Selected {len(selected_skills)} skills:")
     for skill, score in scored_skills[:10]:
         print(f"  {skill.get('name', '')} - Score: {score:.1f}")
     print()
-    
+
     # Select achievements
     achievements = master_data.get('selected_achievements', [])
     ranked_achievements = rank_content(
@@ -145,10 +143,10 @@ def select_content(
         top_n=max_achievements
     )
     selected_achievements = [ach for ach, score in ranked_achievements]
-    
+
     print(f"Selected {len(selected_achievements)} key achievements")
     print()
-    
+
     return {
         'summary': selected_summary,
         'experiences': selected_experiences,
@@ -166,28 +164,28 @@ def select_publications(
 ) -> List[Dict]:
     """
     Select most relevant publications for the job.
-    
+
     Args:
         publications_file: Path to publications.bib
         job_data: Parsed job description
         max_count: Maximum publications to include
-        
+
     Returns:
         List of formatted publication strings
     """
     if not Path(publications_file).exists():
         print(f"Warning: Publications file not found: {publications_file}")
         return []
-    
+
     publications = parse_bibtex_file(publications_file)
     domain = job_data.get('domain', '')
     keywords = set(job_data.get('keywords', []))
-    
+
     # Score publications by relevance
     scored_pubs = []
     for key, pub in publications.items():
         score = 0.0
-        
+
         # Recent publications get higher scores
         try:
             year = int(pub['year'])
@@ -201,7 +199,7 @@ def select_publications(
                 score += 5
         except (ValueError, KeyError):
             pass
-        
+
         # Journal articles score higher than software
         if pub['type'] == 'article':
             score += 25
@@ -209,13 +207,13 @@ def select_publications(
             score += 20
         elif pub['type'] == 'misc':
             score += 10
-        
+
         # Check for keyword matches in title
         title_lower = pub['title'].lower()
         title_keywords = set(title_lower.split())
         matches = keywords.intersection(title_keywords)
         score += len(matches) * 5
-        
+
         # Domain-specific boosts
         if domain == 'bioinformatics':
             if any(term in title_lower for term in ['genom', 'gene', 'bioinformatics', 'dna', 'rna']):
@@ -226,12 +224,12 @@ def select_publications(
         elif domain == 'software_engineering':
             if pub['type'] == 'misc' and 'package' in pub.get('note', '').lower():
                 score += 15
-        
+
         scored_pubs.append((pub, score))
-    
+
     # Sort and select top publications
     scored_pubs.sort(key=lambda x: x[1], reverse=True)
-    
+
     selected = []
     for pub, score in scored_pubs[:max_count]:
         formatted = format_publication(pub, style='brief')
@@ -241,12 +239,12 @@ def select_publications(
             'type': pub['type'],
             'score': score
         })
-    
+
     print(f"Selected {len(selected)} publications:")
     for pub in selected[:5]:
         print(f"  {pub['formatted'][:80]}... - Score: {pub['score']:.1f}")
     print()
-    
+
     return selected
 
 
@@ -258,25 +256,25 @@ def generate_cv_data(
 ) -> Dict:
     """
     Generate CV data structure ready for formatting.
-    
+
     Args:
         master_data_file: Path to Master_CV_Data.json
         publications_file: Path to publications.bib
         job_data: Parsed job description
         output_dir: Output directory for generated files
-        
+
     Returns:
         Complete CV data structure
     """
     # Load master data
     master_data = load_master_data(master_data_file)
-    
+
     # Select content
     selected = select_content(master_data, job_data)
-    
+
     # Select publications
     publications = select_publications(publications_file, job_data)
-    
+
     # Create full CV context
     cv_data = {
         'personal_info': master_data.get('personal_info', {}),
@@ -293,24 +291,24 @@ def generate_cv_data(
         'publications': publications,
         'awards': selected['awards'],
     }
-    
+
     # Save CV data
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     cv_data_file = output_path / 'cv_data.json'
     with open(cv_data_file, 'w', encoding='utf-8') as f:
         json.dump(cv_data, f, indent=2)
-    
+
     print(f"CV data saved to: {cv_data_file}")
-    
+
     return cv_data
 
 
 def main():
     """Command-line interface."""
     config = get_config()
-    
+
     parser = argparse.ArgumentParser(
         description='Generate customized CV from master data based on job description.'
     )
@@ -356,20 +354,20 @@ def main():
         default=10,
         help='Maximum publications (default: 10)'
     )
-    
+
     args = parser.parse_args()
-    
+
     # Resolve config values
     master_data = args.master_data or config.master_cv_path
     publications = args.publications or config.publications_path
     output_dir = args.output or config.output_dir
-    
+
     # Get job data
     if args.job_file:
         # Parse raw job description
         job_text = Path(args.job_file).read_text(encoding='utf-8')
         job_data = parse_job_description(job_text)
-        
+
         # Save parsed job data
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -385,27 +383,27 @@ def main():
         print("Error: Provide either job_description JSON or --job-file")
         parser.print_help()
         return 1
-    
+
     # Generate CV
     print(f"Generating CV for: {job_data.get('title', 'Unknown Position')}")
     if job_data.get('company'):
         print(f"Company: {job_data['company']}")
     print()
-    
-    cv_data = generate_cv_data(
+
+    generate_cv_data(
         master_data,
         publications,
         job_data,
         output_dir
     )
-    
+
     print("\n✓ CV generation complete!")
     print(f"  Output directory: {output_dir}")
-    print(f"  Next steps:")
-    print(f"    1. Review cv_data.json")
+    print("  Next steps:")
+    print("    1. Review cv_data.json")
     print(f"    2. Generate DOCX: python generate_docx.py {output_dir}/cv_data.json")
     print(f"    3. Generate PDF: python generate_pdf.py {output_dir}/cv_data.json")
-    
+
     return 0
 
 
