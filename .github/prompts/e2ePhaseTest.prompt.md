@@ -1,7 +1,7 @@
 ---
 name: e2ePhaseTest
 description: Re-test one or more cv-builder UI phases after a targeted code change. Faster than the full e2e suite.
-argument-hint: Phase number (0-10), name (e.g. "rewrite"), or range (e.g. "3-5"). Omit to be prompted.
+argument-hint: Phase number (0-27), persona pass (P1-P5), name (e.g. "rewrite"), or range (e.g. "3-5"). Omit to be prompted.
 ---
 
 # CV-Builder Phase Re-Test
@@ -12,27 +12,49 @@ For a full regression run, use the `cv-e2e-tester` agent instead.
 
 ## Phase Reference
 
-| # | Name                   | Key user story |
-|---|------------------------|----------------|
-| 0 | App load               | —              |
-| 1 | Job input              | US-A1          |
-| 2 | Analysis display       | US-A2          |
-| 3 | Clarifying questions   | US-A2          |
-| 4 | Customization review   | US-A3          |
-| 5 | Rewrite review         | US-R3          |
-| 6 | Spell check            | US-A4b         |
-| 7 | CV generation          | US-A5          |
-| 8 | ATS validation report  | US-H6          |
-| 9 | Session persistence    | US-A6          |
-| 10 | Error handling        | US-U8          |
+| # | Name                            | Key user story |
+|---|---------------------------------|----------------|
+| 0 | App load                        | —              |
+| 1 | Job input                       | US-A1          |
+| 2 | Job analysis display            | US-A2          |
+| 3 | Generation goals                | —              |
+| 4 | Clarifying questions            | US-A2          |
+| 5 | Experience review               | US-A3          |
+| 6 | Experience bullets              | —              |
+| 7 | Skills review                   | US-A3          |
+| 8 | Achievements review             | US-A3          |
+| 9 | Tagline review                  | —              |
+| 10 | Summary review                 | —              |
+| 11 | Publications review            | —              |
+| 12 | ATS score                      | —              |
+| 13 | Rewrite review                 | US-R3          |
+| 14 | Spell check                    | US-A4b         |
+| 15 | Layout review                  | —              |
+| 16 | CV generation / generated files | US-A5         |
+| 17 | ATS validation report detail   | US-H6          |
+| 18 | File review                    | —              |
+| 19 | Finalise                       | —              |
+| 20 | Master CV                      | —              |
+| 21 | Cover letter                   | —              |
+| 22 | Screening questions            | —              |
+| 23 | Interview prep                 | —              |
+| 24 | Thank you                      | —              |
+| 25 | Harvest                        | —              |
+| 26 | Session persistence            | US-A6          |
+| 27 | Error handling                 | US-U8          |
+| P1 | First-time user persona        | US-F*          |
+| P2 | Returning user persona         | US-S*          |
+| P3 | Accessibility specialist       | US-X*          |
+| P4 | Power user                     | US-W*          |
+| P5 | HR/ATS reviewer                | US-H*          |
 
 ## Instructions
 
 1. Identify the target phase(s) from the argument provided after `/e2ePhaseTest`.
-   - Accept a single number (`5`), a phase name (`rewrite`), or a range (`3-5`).
+   - Accept a single number (`13`), persona pass (`P3`), phase name (`rewrite`), or a range (`3-5`).
    - If no argument was given, ask the user which phase(s) to test before proceeding.
 2. Check the prerequisite workflow state: some phases require prior phases to have completed
-   (e.g., Phase 5 requires the session to be past the analysis step). Note any prerequisites
+   (e.g., Phase 13 requires the session to be past the analysis and review steps). Note any prerequisites
    and confirm with the user that the app is in the right state, or navigate there using the browser.
 3. Call `read_file` on `.claude/commands/e2e-browser-test.md` and read the relevant phase
    section(s) before executing anything. Do not rely on memorised phase steps — use the live file.
@@ -52,9 +74,9 @@ The following VS Code browser tools must be active before invoking `/e2ePhaseTes
 
 ## Server assumption
 
-Assume the server is running at `http://127.0.0.1:5000`.
+Assume the server is running at `http://127.0.0.1:5001` (port from `config.yaml` `web.port`).
 If the page is not reachable, stop immediately and report:
-> Server not responding. Start with: `conda activate cvgen && python scripts/web_app.py --llm-provider github`
+> Server not responding. Start with: `python scripts/web_app.py --llm-provider github`
 
 Do not attempt to start the server yourself.
 
