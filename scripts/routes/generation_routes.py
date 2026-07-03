@@ -828,28 +828,30 @@ def _compute_exact_page_count(conversation, preview_html: str) -> Dict[str, Any]
         }
 
 
-_RESEARCH_DOMAIN_TERMS = (
-    'research', 'academic', 'science', 'scientist', 'statistics',
-    'biostat', 'genomic', 'clinical', 'epidemiol', 'faculty',
-    'bioinformat', 'computational biology', 'drug discovery',
-)
+def _page_style_for_domain(domain: str) -> tuple:
+    """Return (style_key, style_dict) for the given job-analysis domain string."""
+    from scripts.utils.config import get_config
+    return get_config().get_position_style_for_domain(domain)
 
 
 def _page_warning(page_count: Optional[float], domain: str = '') -> bool:
-    """Return True when the page count is outside the recommended range.
+    """Return True when the page count is outside the position-style target range.
 
-    Industry/corporate roles: warn below 2 or above 3 pages.
-    Research/academic domains have no upper-page-limit — comprehensive CVs
-    are expected; only warn when the CV is implausibly short (< 2 pages).
+    Thresholds are driven by the matching position_style preset in config.yaml
+    (see Config.get_position_style_for_domain).  Academic/research roles have no
+    upper limit; industry defaults to 2–3 pages.
     """
     if page_count is None:
         return False
     pages = float(page_count)
-    domain_lower = (domain or '').lower()
-    is_research = any(t in domain_lower for t in _RESEARCH_DOMAIN_TERMS)
-    if is_research:
-        return pages < 2.0
-    return pages < 2.0 or pages > 3.0
+    _key, style = _page_style_for_domain(domain)
+    warn_below = style.get('page_warn_below', 2.0)
+    warn_above = style.get('page_warn_above', 3.0)
+    if pages < warn_below:
+        return True
+    if warn_above is not None and pages > warn_above:
+        return True
+    return False
 
 
 def _persist_layout_baseline(
@@ -862,6 +864,7 @@ def _persist_layout_baseline(
     exact = _compute_exact_page_count(conversation, preview_html)
     page_count = exact.get('page_count')
     _domain = ((conversation.state.get('job_analysis') or {}).get('domain', ''))
+    _style_key, _style = _page_style_for_domain(_domain)
 
     gen = conversation.state.setdefault('generation_state', {})
     gen.update({
@@ -877,6 +880,7 @@ def _persist_layout_baseline(
         'page_count_source': 'exact' if page_count is not None else 'unknown',
         'page_count_needs_exact_recheck': False,
         'page_length_warning': _page_warning(page_count, _domain),
+        'position_style': _style_key,
         'page_count_renderer': exact.get('renderer'),
         'page_count_renderer_detail': exact.get('renderer_detail', ''),
     })
@@ -984,6 +988,7 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
         page_count_value = round(float(estimate['estimated_pages']), 1)
 
     _domain = ((conversation.state.get('job_analysis') or {}).get('domain', ''))
+    _style_key, _style = _page_style_for_domain(_domain)
     gen.update({
         'layout_template_version': LAYOUT_TEMPLATE_VERSION,
         'layout_template_update_note': LAYOUT_TEMPLATE_UPDATE_NOTE,
@@ -993,6 +998,7 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
         'page_count_source': page_count_source,
         'page_count_needs_exact_recheck': estimate['needs_exact_recheck'],
         'page_length_warning': _page_warning(page_count_value, _domain),
+        'position_style': _style_key,
         'page_count_renderer': exact_renderer,
         'page_count_renderer_detail': exact_renderer_detail,
     })
@@ -1006,6 +1012,7 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
         'page_count_source': page_count_source,
         'page_count_needs_exact_recheck': estimate['needs_exact_recheck'],
         'page_length_warning': _page_warning(page_count_value, _domain),
+        'position_style': _style_key,
         'baseline_exact_page_count': baseline_exact_page_count,
         'layout_template_version': LAYOUT_TEMPLATE_VERSION,
         'layout_template_update_note': LAYOUT_TEMPLATE_UPDATE_NOTE,
@@ -1420,6 +1427,7 @@ def create_blueprint(deps):
                 False,
             ),
             "page_length_warning":       gen.get("page_length_warning", False),
+            "position_style":            gen.get("position_style", "industry"),
             "layout_instructions_count": len(gen.get("layout_instructions", [])),
             "ats_score":                 gen.get("ats_score"),
             "final_generated_at":        gen.get("final_generated_at"),
@@ -1562,6 +1570,7 @@ def create_blueprint(deps):
             "page_count_source":   gen.get("page_count_source"),
             "page_count_confidence": gen.get("page_count_confidence"),
             "page_length_warning": gen.get("page_length_warning", False),
+            "position_style":      gen.get("position_style", "industry"),
             "content_warnings":    gen.get("render_snapshot_content_warnings") or (snapshot.get('content_warnings') if snapshot else []) or [],
         })
 
@@ -1739,6 +1748,7 @@ def create_blueprint(deps):
             "page_count_source":   gen.get("page_count_source"),
             "page_count_confidence": gen.get("page_count_confidence"),
             "page_length_warning": gen.get("page_length_warning", False),
+            "position_style":      gen.get("position_style", "industry"),
         }
         if safety_alert:
             response_payload["safety_alert"] = safety_alert

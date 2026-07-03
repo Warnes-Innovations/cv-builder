@@ -2341,12 +2341,14 @@ def create_blueprint(deps):
             )
             estimated_pages = round(total_chars / int(chars_per_page), 1)
             domain = job_analysis.get('domain', '')
-            from scripts.routes.generation_routes import _page_warning
+            from scripts.routes.generation_routes import _page_warning, _page_style_for_domain
+            style_key, _style = _page_style_for_domain(domain)
             return jsonify({
                 'ok': True,
                 'estimated_pages': estimated_pages,
                 'chars': total_chars,
                 'domain': domain,
+                'position_style': style_key,
                 'page_length_warning': _page_warning(estimated_pages, domain),
             })
         except Exception:

@@ -493,21 +493,28 @@ async function _fetchPageEstimate() {
     if (!data.ok || !data.estimated_pages) return;
     const pages = data.estimated_pages;
     const isWarn = data.page_length_warning ?? (pages > 3);
-    const isResearch = !!(data.domain || '').match(/research|academic|science|scientist|statistic|biostat|genomic|clinical|epidemiol|faculty|bioinformat/i);
-    const color = isWarn ? '#92400e' : '#166534';
-    const bg    = isWarn ? '#fef3c7' : '#f0fdf4';
-    const border = isWarn ? '#fcd34d' : '#bbf7d0';
+    const style  = data.position_style || 'industry';
+    const noUpperLimit = style === 'academic' || style === 'government';
+    const warnColor  = 'var(--cv-warn-text)';
+    const warnBg     = 'var(--cv-warn-bg-md)';
+    const warnBorder = 'var(--cv-warn-border)';
+    const okColor    = 'var(--cv-success-text)';
+    const okBg       = 'var(--cv-success-bg)';
+    const okBorder   = 'var(--cv-success-bg-lt)';
     let msg;
     if (isWarn) {
       msg = pages < 2
         ? `⚠ Estimated ~${pages} pages — CV appears very short. Consider adding more content.`
         : `⚠ Estimated ~${pages} pages — industry target is 2–3 pages. Consider reducing selected bullet points before generating.`;
     } else {
-      msg = isResearch
+      msg = noUpperLimit
         ? `✓ Estimated ~${pages} pages — academic/research CVs have no upper page limit.`
         : `✓ Estimated ~${pages} pages — within the 2–3 page target.`;
     }
-    banner.style.cssText = `display:block;padding:8px 12px;border-radius:6px;border:1px solid ${border};background:${bg};color:${color};font-size:0.87em;`;
+    const c = isWarn ? warnColor : okColor;
+    const bg = isWarn ? warnBg : okBg;
+    const border = isWarn ? warnBorder : okBorder;
+    banner.style.cssText = `display:block;padding:8px 12px;border-radius:6px;border:1px solid ${border};background:${bg};color:${c};font-size:0.87em;`;
     banner.textContent = msg;
   } catch (_) { /* silent — non-critical */ }
 }

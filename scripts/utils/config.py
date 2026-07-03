@@ -18,10 +18,45 @@ import logging
 import os
 import yaml
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+
+# Default position-style presets (issue #126).
+# Override or extend via position_styles: in config.yaml.
+_DEFAULT_POSITION_STYLES: Dict[str, Any] = {
+    'industry': {
+        'label': 'Industry / Corporate',
+        'page_warn_below': 2.0,
+        'page_warn_above': 3.0,
+        'include_publications': False,
+        'include_teaching': False,
+        'domain_terms': [],
+    },
+    'academic': {
+        'label': 'Academic / Research',
+        'page_warn_below': 2.0,
+        'page_warn_above': None,  # no upper limit
+        'include_publications': True,
+        'include_teaching': True,
+        'domain_terms': [
+            'research', 'academic', 'science', 'scientist', 'statistics',
+            'biostat', 'genomic', 'clinical', 'epidemiol', 'faculty',
+            'bioinformat', 'computational biology', 'drug discovery',
+        ],
+    },
+    'government': {
+        'label': 'Government / Federal',
+        'page_warn_below': 2.0,
+        'page_warn_above': None,
+        'include_publications': False,
+        'include_teaching': False,
+        'domain_terms': [
+            'federal', 'government', 'agency', 'defense', 'military', 'public service',
+        ],
+    },
+}
 
 
 class Config:
@@ -267,7 +302,40 @@ class Config:
             'human_pdf': True,
             'human_docx': True
         })
-    
+
+    # Position style presets (issue #126)
+    @property
+    def position_styles(self) -> Dict[str, Any]:
+        """Position-style preset dict, merging config.yaml overrides with defaults."""
+        cfg_styles = self.get('position_styles') or {}
+        if not cfg_styles:
+            return _DEFAULT_POSITION_STYLES
+        merged = dict(_DEFAULT_POSITION_STYLES)
+        for key, overrides in cfg_styles.items():
+            if key in merged:
+                merged[key] = {**merged[key], **overrides}
+            else:
+                merged[key] = overrides
+        return merged
+
+    def get_position_style_for_domain(self, domain: str) -> Tuple[str, Dict[str, Any]]:
+        """Return (style_key, style_dict) for the best-matching position style.
+
+        Iterates non-default presets first and returns the first whose
+        domain_terms list contains any substring of *domain*.  Falls back
+        to 'industry' when nothing matches.
+        """
+        domain_lower = (domain or '').lower()
+        styles = self.position_styles
+        for key, style in styles.items():
+            if key == 'industry':
+                continue
+            terms = style.get('domain_terms') or []
+            if domain_lower and any(t in domain_lower for t in terms):
+                return key, style
+        industry = styles.get('industry', _DEFAULT_POSITION_STYLES['industry'])
+        return 'industry', industry
+
     # Session settings
     @property
     def session_auto_save(self) -> bool:

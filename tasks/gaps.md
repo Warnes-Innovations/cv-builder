@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 43)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 44)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -8,7 +8,14 @@
 - independent heuristic UX evaluation (all cycles through 2026-07-01 cycle 29)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+
+## 2026-07-02 (Cycle 44) Reconciliation Notes
+
+Position style preset system (issue #126 partial increment).
+
+- **Issue #126 PARTIAL ADVANCE** — Added config-driven position-style preset system. `Config.get_position_style_for_domain(domain)` in `scripts/utils/config.py` matches the job-analysis domain string against `position_styles.*.domain_terms` presets (industry/academic/government) and returns the appropriate `(style_key, style_dict)`. `_page_warning()` in `generation_routes.py` replaced hardcoded `_RESEARCH_DOMAIN_TERMS` tuple with the new config-driven method. `position_style` key now returned from `/api/estimate-pages`, `/api/cv/layout-estimate`, and `/api/cv/preview` endpoints. `_fetchPageEstimate()` in `layout-instruction.js` uses `data.position_style` instead of regex on `data.domain`. `config.yaml.example` now documents all three presets (industry/academic/government) with their configurable fields. Remaining issue #126 scope: per-session style override UI in the settings bar, style-aware LLM prompt context, master CV per-section include flags.
+- **Test suite:** 1432 passed.
 
 ## 2026-07-02 (Cycle 43) Reconciliation Notes
 
@@ -3135,3 +3142,27 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 **Description:** The PR workflow (`.github/workflows/integration-harness.yml`) runs CodeQL, Python tests, JS tests, and the HTML integration harness, surfacing failures only as raw GitHub Actions log output. A contributor unfamiliar with the codebase has no job-summary or PR-comment digest pointing at what actually failed and why, unlike the richer artifact/coverage reporting already tracked for the full workflow under GAP-70.
 **Affected stories:** Technical review follow-up (ci-cd-engineer)
 **Fix:** Add a PR-time job summary (`$GITHUB_STEP_SUMMARY`) or failure-digest PR comment summarizing which check failed and pointing at the relevant log section, once external PR volume makes this worth the maintenance cost.
+
+---
+
+## Testing-Doc Follow-Ups (GAP-298–GAP-299)
+
+*Added 2026-07-02 by Claude Code, discovered while reviewing and expanding `.claude/commands/e2e-browser-test.md` (commit `136a046`) from a stale 11-phase test into a 33-phase test with live-interaction persona passes. Both are cross-file consequences of that renumbering, deliberately left unfixed at the time since they require editing files outside that change's scope.*
+
+## GAP-298: e2ePhaseTest.md Stale Against e2e-browser-test.md's New Phase Numbering
+
+**Priority:** LOW
+**Status:** OPEN — 2026-07-02.
+**Discovered:** 2026-07-02 by Claude Code, during code-review of the e2e-browser-test.md expansion.
+**Description:** `.claude/commands/e2ePhaseTest.md` hardcodes its own "Phase Reference" table (0-10, e.g. "5 = Rewrite review", "7 = CV generation") and a "Server assumption" section stating `http://127.0.0.1:5000`. `e2e-browser-test.md` was expanded to 28 phases (0-27, tab-bar order) plus persona passes P1-P5, and its port references were corrected to `127.0.0.1:5001` (matching `config.yaml`'s `web.port`). `e2ePhaseTest.md` was not updated to match either change: its phase table no longer corresponds to the phases described in `e2e-browser-test.md` (e.g. its "Phase 5" is now `e2e-browser-test.md`'s Phase 13, not Phase 5), and its assumed port is wrong.
+**Affected stories:** Internal tooling consistency (no end-user-facing story; affects whoever invokes `/e2ePhaseTest <N>` expecting it to match the full test's numbering).
+**Fix:** Update `e2ePhaseTest.md`'s Phase Reference table to match `e2e-browser-test.md`'s current 0-27 + P1-P5 phases, and correct its Server assumption to port 5001 (or better, have it read the port from `config.yaml` at invocation time instead of hardcoding either file).
+
+## GAP-299: codex-skills Mirror of e2e-browser-test Is Increasingly Stale
+
+**Priority:** LOW
+**Status:** OPEN — 2026-07-02.
+**Discovered:** 2026-07-02 by Claude Code, during the e2e-browser-test.md expansion (flagged but not addressed, per user confirmation to defer).
+**Description:** `codex-skills/cv-e2e-browser-test/` mirrors `.claude/commands/e2e-browser-test.md` for the Codex agent tool, with its own header noting "Adapted from `.claude/commands/e2e-browser-test.md`." It still reflects the old 11-phase version (App load through Error handling, no Goals/Tagline/Summary/Publications/ATS Score/Layout Review/Master CV/Cover Letter/Screening/Interview Prep/Thank You/Harvest, and no Part 2 persona passes) and was not updated alongside the Claude version's expansion to 33 phases.
+**Affected stories:** Internal tooling consistency (affects whoever runs the Codex-agent variant of this test expecting parity with the Claude Code version).
+**Fix:** Either regenerate `codex-skills/cv-e2e-browser-test/` from the current `e2e-browser-test.md` content, or replace it with a thinner pointer/adapter that reads the Claude version directly instead of maintaining a parallel copy (removing the drift risk structurally rather than re-syncing it manually each time).

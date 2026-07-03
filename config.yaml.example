@@ -66,6 +66,54 @@ generation:
     human_docx: true
   skills_section_title: Skills
 
+# ── Position target styles (issue #126) ──────────────────────────────────────
+# Presets that drive page-length targets and section defaults.
+# The 'domain_terms' list is matched against the LLM-inferred job-analysis domain.
+# 'industry' is the fallback when nothing matches; override individual fields only.
+# Omit this section entirely to use built-in defaults.
+position_styles:
+  industry:
+    label: "Industry / Corporate"
+    page_warn_below: 2.0
+    page_warn_above: 3.0
+    include_publications: false
+    include_teaching: false
+
+  academic:
+    label: "Academic / Research"
+    page_warn_below: 2.0
+    page_warn_above: null     # no upper-page-count warning for academic CVs
+    include_publications: true
+    include_teaching: true
+    domain_terms:
+      - research
+      - academic
+      - science
+      - scientist
+      - statistics
+      - biostat
+      - genomic
+      - clinical
+      - epidemiol
+      - faculty
+      - bioinformat
+      - computational biology
+      - drug discovery
+
+  government:
+    label: "Government / Federal"
+    page_warn_below: 2.0
+    page_warn_above: null     # federal resumes often run 4–6 pages
+    include_publications: false
+    include_teaching: false
+    domain_terms:
+      - federal
+      - government
+      - agency
+      - defense
+      - military
+      - public service
+
 # ── Session persistence ───────────────────────────────────────────────────────
 session:
   auto_save:    true
