@@ -483,6 +483,12 @@ async function initiateLayoutInstructions() {
   _fetchPageEstimate();
 }
 
+const _POSITION_STYLE_LABELS = {
+  industry:   '🏢 Industry CV',
+  academic:   '🎓 Academic CV',
+  government: '🏛️ Government CV',
+};
+
 async function _fetchPageEstimate() {
   const banner = document.getElementById('layout-page-estimate');
   if (!banner) return;
@@ -493,14 +499,9 @@ async function _fetchPageEstimate() {
     if (!data.ok || !data.estimated_pages) return;
     const pages = data.estimated_pages;
     const isWarn = data.page_length_warning ?? (pages > 3);
-    const style  = data.position_style || 'industry';
-    const noUpperLimit = style === 'academic' || style === 'government';
-    const warnColor  = 'var(--cv-warn-text)';
-    const warnBg     = 'var(--cv-warn-bg-md)';
-    const warnBorder = 'var(--cv-warn-border)';
-    const okColor    = 'var(--cv-success-text)';
-    const okBg       = 'var(--cv-success-bg)';
-    const okBorder   = 'var(--cv-success-bg-lt)';
+    const styleKey = _POSITION_STYLE_LABELS[data.position_style] ? data.position_style : 'industry';
+    const noUpperLimit = styleKey === 'academic' || styleKey === 'government';
+    const styleLabel = _POSITION_STYLE_LABELS[styleKey];
     let msg;
     if (isWarn) {
       msg = pages < 2
@@ -508,14 +509,16 @@ async function _fetchPageEstimate() {
         : `⚠ Estimated ~${pages} pages — industry target is 2–3 pages. Consider reducing selected bullet points before generating.`;
     } else {
       msg = noUpperLimit
-        ? `✓ Estimated ~${pages} pages — academic/research CVs have no upper page limit.`
+        ? `✓ Estimated ~${pages} pages — ${styleLabel}s have no upper page limit.`
         : `✓ Estimated ~${pages} pages — within the 2–3 page target.`;
     }
-    const c = isWarn ? warnColor : okColor;
-    const bg = isWarn ? warnBg : okBg;
-    const border = isWarn ? warnBorder : okBorder;
-    banner.style.cssText = `display:block;padding:8px 12px;border-radius:6px;border:1px solid ${border};background:${bg};color:${c};font-size:0.87em;`;
-    banner.textContent = msg;
+    banner.style.display = 'block';
+    banner.innerHTML =
+      `<div class="position-style-row">` +
+        `<span class="position-style-badge position-style-badge--${styleKey}">${styleLabel}</span>` +
+        `<span class="position-style-source">detected from job description</span>` +
+      `</div>` +
+      `<div class="page-estimate-msg ${isWarn ? 'warn' : 'ok'}">${msg}</div>`;
   } catch (_) { /* silent — non-critical */ }
 }
 
