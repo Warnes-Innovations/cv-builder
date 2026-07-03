@@ -24,7 +24,6 @@ import yaml
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
 from utils.config import get_config
-from utils.conversation_manager import Phase
 from utils.llm_client import PROVIDER_MODELS
 from utils.provider_registry import DISPLAY_FIELDS, PROVIDER_REGISTRY
 from utils.session_data_view import SessionDataView
@@ -466,7 +465,7 @@ def create_blueprint(deps):
 
         try:
             validated_updates = _validate_settings_update(normalized_updates)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.exception("Settings validation failed")
             return jsonify({'ok': False, 'error': 'Settings validation failed'}), 400
 
@@ -664,7 +663,6 @@ def create_blueprint(deps):
         #     - "response:GET /api/status.max_skills"
         #     - "response:GET /api/status.skills_section_title"
         #   notes: "Returns the current generation-settings values in the session status payload."
-        from pathlib import Path
         entry = _get_session(required=False)
         _provider_name = _provider_name_ref['value']
         _current_model = _current_model_ref['value']
@@ -979,7 +977,6 @@ def create_blueprint(deps):
         try:
             body          = request.get_json(force=True) or {}
             question      = (body.get('question') or '').strip()
-            question_type = (body.get('question_type') or '').strip()
             analysis      = body.get('analysis') or {}
 
             if not question:

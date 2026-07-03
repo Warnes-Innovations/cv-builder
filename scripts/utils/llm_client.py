@@ -272,7 +272,7 @@ class LLMClient(ABC):
                          request; others rely on the prompt wording alone.
         """
         pass
-    
+
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
         """Analyze job description using the LLM.
 
@@ -1160,7 +1160,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                     'pass': False,
                     'flag_type': 'passive_voice',
                     'severity': 'warn',
-                    'details': f"Detected passive voice or hedging language. Rewrite in active voice focusing on what YOU did."
+                    'details': "Detected passive voice or hedging language. Rewrite in active voice focusing on what YOU did."
                 }
 
         return {'pass': True, 'flag_type': 'passive_voice', 'severity': 'info', 'details': ''}
@@ -1230,7 +1230,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             'pass': False,
             'flag_type': 'has_result',
             'severity': 'info',
-            'details': f"No quantified result or outcome detected. Add metrics or impact (e.g., 'improved by 40%', 'enabled 3M users')."
+            'details': "No quantified result or outcome detected. Add metrics or impact (e.g., 'improved by 40%', 'enabled 3M users')."
         }
 
     @staticmethod
@@ -1271,7 +1271,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                     'pass': False,
                     'flag_type': 'hedging',
                     'severity': 'warn',
-                    'details': f"Detected hedging language. Replace with assertive framing: 'Led', 'Drove', 'Delivered' instead of 'helped', 'contributed', 'worked on'."
+                    'details': "Detected hedging language. Replace with assertive framing: 'Led', 'Drove', 'Delivered' instead of 'helped', 'contributed', 'worked on'."
                 }
 
         return {'pass': True, 'flag_type': 'hedging', 'severity': 'info', 'details': ''}
@@ -1292,7 +1292,6 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                 'details': message or empty string.
             }
         """
-        import re
         if not text or not text.strip():
             return {'pass': True, 'flag_type': 'institution_placement', 'severity': 'info', 'details': ''}
 
@@ -1961,17 +1960,17 @@ Return ONLY a JSON array — no prose, no markdown fences.
 
 class OpenAIClient(LLMClient):
     """OpenAI GPT client."""
-    
+
     def __init__(self, model: str = "gpt-4", api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        
+
         if not self.api_key:
             raise ValueError(
                 "OpenAI API key not found. Set OPENAI_API_KEY environment variable "
                 "or pass api_key parameter."
             )
-        
+
         try:
             from openai import OpenAI
             self.client = OpenAI(api_key=self.api_key)
@@ -1979,7 +1978,7 @@ class OpenAIClient(LLMClient):
             raise ImportError(
                 "OpenAI package not installed. Run: pip install openai"
             )
-    
+
     def chat(
         self,
         messages: List[Dict[str, str]],
@@ -2006,7 +2005,7 @@ class OpenAIClient(LLMClient):
             return response.choices[0].message.content
         except Exception as exc:
             raise _classify_llm_error(exc, provider='OpenAI') from exc
-    
+
     def semantic_match(
         self,
         content: str,
@@ -2019,24 +2018,24 @@ class OpenAIClient(LLMClient):
                 model="text-embedding-3-small",
                 input=content
             ).data[0].embedding
-            
+
             req_text = " ".join(requirements)
             req_embedding = self.client.embeddings.create(
                 model="text-embedding-3-small",
                 input=req_text
             ).data[0].embedding
-            
+
             # Cosine similarity
             import numpy as np
             similarity = np.dot(content_embedding, req_embedding) / (
                 np.linalg.norm(content_embedding) * np.linalg.norm(req_embedding)
             )
-            
+
             return float(similarity)
         except Exception:
             # Fallback to simple keyword matching
             return self._fallback_match(content, requirements)
-    
+
     def _fallback_match(self, content: str, requirements: List[str]) -> float:
         """Simple keyword matching fallback."""
         content_lower = content.lower()
@@ -2050,16 +2049,16 @@ class OpenAIClient(LLMClient):
 
 class AnthropicClient(LLMClient):
     """Anthropic Claude client."""
-    
+
     def __init__(self, model: str = "claude-3-opus-20240229", api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        
+
         if not self.api_key:
             raise ValueError(
                 "Anthropic API key not found. Set ANTHROPIC_API_KEY environment variable."
             )
-        
+
         try:
             from anthropic import Anthropic
             self.client = Anthropic(api_key=self.api_key)
@@ -2067,7 +2066,7 @@ class AnthropicClient(LLMClient):
             raise ImportError(
                 "Anthropic package not installed. Run: pip install anthropic"
             )
-    
+
     def chat(
         self,
         messages: List[Dict[str, str]],
@@ -2097,7 +2096,7 @@ class AnthropicClient(LLMClient):
             return response.content[0].text
         except Exception as exc:
             raise _classify_llm_error(exc, provider='Anthropic') from exc
-    
+
     def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via Anthropic Claude. Delegates to shared implementation."""
         return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
@@ -2105,16 +2104,16 @@ class AnthropicClient(LLMClient):
 
 class GeminiClient(LLMClient):
     """Google Gemini client."""
-    
+
     def __init__(self, model: str = "gemini-1.5-pro", api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        
+
         if not self.api_key:
             raise ValueError(
                 "Gemini API key not found. Set GEMINI_API_KEY or GOOGLE_API_KEY environment variable."
             )
-        
+
         try:
             from any_llm import completion as anyllm_completion
             self._anyllm_completion = anyllm_completion
@@ -2122,7 +2121,7 @@ class GeminiClient(LLMClient):
             raise ImportError(
                 "any-llm package not installed. Run: pip install any-llm-sdk[gemini]"
             )
-    
+
     def chat(
         self,
         messages: List[Dict[str, str]],
@@ -2214,7 +2213,7 @@ class GeminiClient(LLMClient):
             text_parts = [part.get("text", "") for part in content if isinstance(part, dict)]
             return "".join(text_parts).strip()
         return str(content)
-    
+
     def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via Gemini. Delegates to shared implementation."""
         return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
@@ -2314,7 +2313,7 @@ class CopilotSdkClient(LLMClient):
 
 class LocalLLMClient(LLMClient):
     """Local LLM using transformers."""
-    
+
     def __init__(self, model: str = "mistralai/Mistral-7B-Instruct-v0.2"):
         self.model_name = model
         # Lazy-loaded on first chat() call so the server can start without a
@@ -2340,7 +2339,7 @@ class LocalLLMClient(LLMClient):
             raise ImportError(
                 "Transformers not installed. Run: pip install transformers torch"
             )
-    
+
     def chat(
         self,
         messages: List[Dict[str, str]],
@@ -2377,7 +2376,7 @@ class LocalLLMClient(LLMClient):
             return response
         except Exception as exc:
             raise _classify_llm_error(exc, provider='Local') from exc
-    
+
     def _format_messages(self, messages: List[Dict[str, str]]) -> str:
         """Format messages for instruction model."""
         formatted = []
@@ -2392,24 +2391,24 @@ class LocalLLMClient(LLMClient):
                 formatted.append(f"Assistant: {content}")
         formatted.append("Assistant: ")
         return "\n\n".join(formatted)
-    
+
     def semantic_match(self, content: str, requirements: List[str]) -> float:
         """Semantic matching using local embeddings."""
         # Use sentence-transformers for embeddings
         try:
             from sentence_transformers import SentenceTransformer, util
-            
+
             if not hasattr(self, 'embed_model'):
                 self.embed_model = SentenceTransformer('all-MiniLM-L6-v2')
-            
+
             content_emb = self.embed_model.encode(content, convert_to_tensor=True)
             req_emb = self.embed_model.encode(" ".join(requirements), convert_to_tensor=True)
-            
+
             similarity = util.cos_sim(content_emb, req_emb)
             return float(similarity[0][0])
         except ImportError:
             return self._fallback_match(content, requirements)
-    
+
     def _fallback_match(self, content: str, requirements: List[str]) -> float:
         """Simple keyword matching fallback."""
         content_lower = content.lower()
@@ -2423,17 +2422,17 @@ class LocalLLMClient(LLMClient):
 
 class GroqClient(OpenAIClient):
     """Groq client - uses OpenAI-compatible API for fast inference."""
-    
+
     def __init__(self, model: str = "llama-3.3-70b-versatile", api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
-        
+
         if not self.api_key:
             raise ValueError(
                 "Groq API key not found. Set GROQ_API_KEY environment variable or "
                 "pass api_key parameter. Get a free key from: https://console.groq.com/"
             )
-        
+
         try:
             from openai import OpenAI
             # Use Groq's API endpoint (OpenAI-compatible)
@@ -2471,13 +2470,13 @@ class GitHubModelsClient(OpenAIClient):
         resolved_model = self.MODEL_ALIASES.get(model, model)
         self.model = _normalize_github_model_id(resolved_model)
         self.api_key = api_key or os.getenv("GITHUB_MODELS_TOKEN")
-        
+
         if not self.api_key:
             raise ValueError(
                 "GitHub Models token not found. Set GITHUB_MODELS_TOKEN environment variable or "
                 "pass api_key parameter. Get a token from: https://github.com/settings/tokens"
             )
-        
+
         try:
             from openai import OpenAI
             # Use GitHub's API endpoint

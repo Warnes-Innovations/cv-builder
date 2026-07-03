@@ -120,9 +120,9 @@ def _make_app_and_client(tmp_dir: Path):
 
     stack = ExitStack()
     stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
-    stack.enter_context(patch('scripts.web_app.get_cached_pricing', return_value={}))
-    stack.enter_context(patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01'))
-    stack.enter_context(patch('scripts.web_app.get_pricing_source', return_value='static'))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_cached_pricing', return_value={}))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_pricing_updated_at', return_value='2024-01-01'))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_pricing_source', return_value='static'))
 
     app = create_app(args)
     app.config['TESTING'] = True
@@ -526,9 +526,9 @@ class TestStartupModelNormalization(unittest.TestCase):
         mock_llm.model = 'gpt-4o'
 
         with patch('scripts.web_app.get_llm_provider', return_value=mock_llm) as provider_mock, \
-             patch('scripts.web_app.get_cached_pricing', return_value={}), \
-             patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01'), \
-             patch('scripts.web_app.get_pricing_source', return_value='static'):
+             patch('scripts.routes.auth_routes.get_cached_pricing', return_value={}), \
+             patch('scripts.routes.auth_routes.get_pricing_updated_at', return_value='2024-01-01'), \
+             patch('scripts.routes.auth_routes.get_pricing_source', return_value='static'):
             create_app(args)
 
         first_call = provider_mock.call_args_list[0]
@@ -573,13 +573,13 @@ class TestStartupSessionRedirect(unittest.TestCase):
             patch('scripts.web_app.get_llm_provider', return_value=mock_llm)
         )
         self._stack.enter_context(
-            patch('scripts.web_app.get_cached_pricing', return_value={})
+            patch('scripts.routes.auth_routes.get_cached_pricing', return_value={})
         )
         self._stack.enter_context(
-            patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01')
+            patch('scripts.routes.auth_routes.get_pricing_updated_at', return_value='2024-01-01')
         )
         self._stack.enter_context(
-            patch('scripts.web_app.get_pricing_source', return_value='static')
+            patch('scripts.routes.auth_routes.get_pricing_source', return_value='static')
         )
 
         self.app = create_app(args)

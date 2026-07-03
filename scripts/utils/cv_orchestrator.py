@@ -23,7 +23,8 @@ import time
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime, timezone, date as _date
+from datetime import datetime, date as _date
+from urllib.parse import urlparse
 import subprocess
 import weasyprint  # noqa: F401  -- kept for test mock path (patch cv_orchestrator.weasyprint.HTML)
 from collections import Counter, defaultdict
@@ -113,7 +114,7 @@ class CVOrchestrator:
         self.publications_path = Path(publications_path).expanduser()
         self.output_dir = Path(output_dir).expanduser()
         self.llm = llm_client
-        
+
         # Load master data
         self.master_data = self._load_master_data()
 
@@ -131,7 +132,7 @@ class CVOrchestrator:
                 continue
             self._expansion_index[alias.lower()] = canonical
             self._expansion_index[canonical.lower()] = canonical
-    
+
     def _load_master_data(self) -> Dict:
         """Load Master_CV_Data.json."""
         if not self.master_data_path.exists():
@@ -144,7 +145,7 @@ class CVOrchestrator:
         if not validation.valid:
             msg = "; ".join(validation.errors) or "master data validation failed"
             raise ValueError(f"Master data validation failed before load: {msg}")
-        
+
         with open(self.master_data_path, 'r', encoding='utf-8') as f:
             return json.load(f)
 
@@ -191,7 +192,7 @@ class CVOrchestrator:
             contact['address_display'] = address_display
         contact['linkedin_href'] = safe_url(contact.get('linkedin', ''))
         contact['website_href'] = safe_url(contact.get('website', ''))
-        
+
         # Ensure languages key exists (template expects it)
         if 'languages' not in personal_info:
             personal_info['languages'] = []
@@ -204,7 +205,7 @@ class CVOrchestrator:
         professional_summary = selected_content.get('summary', '')
         if not professional_summary.strip():
             professional_summary = f"Experienced professional applying for {job_analysis.get('title', 'position')}"
-        
+
         # Format skills by category
         _show_proficiency = True
         if isinstance(customizations, dict):
@@ -219,7 +220,7 @@ class CVOrchestrator:
             selected_content.get('skill_category_order', []),
             show_proficiency=_show_proficiency,
         )
-        
+
         # Format publications
         publications = self._format_publications(selected_content.get('publications', []))
 
@@ -269,7 +270,7 @@ class CVOrchestrator:
             personal_info=personal_info,
             job_analysis=job_analysis,
         )
-        
+
         # Add template metadata
         # duckflow:
         #   id: cv_render.scripts_utils_cv_orchestrator.L224
@@ -291,7 +292,7 @@ class CVOrchestrator:
             'skills_show_experience': skills_show_experience,
         }
         human_skills_title = self._resolve_human_skills_title(customizations)
-        
+
         cv_data = {
             'personal_info': personal_info,
             'professional_summary': professional_summary,
@@ -792,19 +793,24 @@ class CVOrchestrator:
                 formatted_text = str(pub.get('formatted') or '').strip()
                 title_text = str(pub.get('title') or '').strip()
 
+                # Free-text fields only — the URL is checked separately via hostname
+                # comparison, not substring matching, since it may be attacker-controlled.
                 combined_text = ' '.join(
                     [
                         note_text,
-                        url_text,
                         formatted_text,
                         title_text,
                     ]
                 ).lower()
+                try:
+                    url_host = (urlparse(url_text).hostname or '').lower()
+                except ValueError:
+                    url_host = ''
                 is_r_package = (
                     'r package' in combined_text
-                    or 'cran.r-project.org' in combined_text
                     or ' bioconductor' in combined_text
-                    or 'bioconductor.org' in combined_text
+                    or url_host == 'cran.r-project.org' or url_host.endswith('.cran.r-project.org')
+                    or url_host == 'bioconductor.org' or url_host.endswith('.bioconductor.org')
                 )
 
                 entry_type = str(pub.get('type') or fields.get('ENTRYTYPE') or '').lower()
@@ -839,11 +845,11 @@ class CVOrchestrator:
                 )
                 venue_text = str(venue_text).strip()
                 if not venue_text and is_r_package:
-                    venue_text = (
-                        'Bioconductor R package'
-                        if 'bioconductor' in combined_text
-                        else 'CRAN R package'
+                    is_bioconductor = (
+                        'bioconductor' in combined_text
+                        or url_host == 'bioconductor.org' or url_host.endswith('.bioconductor.org')
                     )
+                    venue_text = 'Bioconductor R package' if is_bioconductor else 'CRAN R package'
 
                 publication_url = ''
                 doi_value = str(pub.get('doi') or fields.get('doi') or '').strip()
@@ -855,9 +861,12 @@ class CVOrchestrator:
                 if not publication_url:
                     raw_url = str(pub.get('url') or fields.get('url') or '').strip()
                     if raw_url and not re.match(r'^[a-z][a-z0-9+.-]*://', raw_url, flags=re.I):
-                        if raw_url.lower().startswith('doi.org/'):
-                            raw_url = f'https://{raw_url}'
-                        elif raw_url.startswith('www.'):
+                        # Scheme-less URL (e.g. "doi.org/10.1234/x" or "www.example.org/x") —
+                        # parse as a network-path reference to get the real hostname rather
+                        # than substring-matching the raw string.
+                        candidate_host = (urlparse(f'//{raw_url}').hostname or '').lower()
+                        is_doi_host = candidate_host == 'doi.org' or candidate_host.endswith('.doi.org')
+                        if is_doi_host or raw_url.startswith('www.'):
                             raw_url = f'https://{raw_url}'
                     publication_url = safe_url(raw_url)
 
@@ -906,7 +915,7 @@ class CVOrchestrator:
 
                 formatted_pubs.append(entry)
         return formatted_pubs
-    
+
     def render_html_preview(
         self,
         job_analysis: Dict,
@@ -1105,7 +1114,7 @@ class CVOrchestrator:
 
         Returns a 2-tuple ``(html_output, pdf_output)``.
         """
-        
+
         template_file = self._CV_TEMPLATE_FILE
         if not template_file.exists():
             raise FileNotFoundError(f"HTML template not found: {template_file}")
@@ -1130,11 +1139,11 @@ class CVOrchestrator:
         self._convert_html_to_pdf(html_output, pdf_output)
 
         return html_output, pdf_output
-    
+
     def _render_with_quarto_engine(self, template_file: Path, work_dir: Path) -> Path:
-        """Render template using Quarto engine."""         
+        """Render template using Quarto engine."""
         html_output = work_dir / f"{template_file.stem}.html"
-        
+
         try:
             # Render to HTML
             render_cmd = [
@@ -1142,26 +1151,26 @@ class CVOrchestrator:
                 '--to', 'html',
                 '--output', str(html_output)
             ]
-            
+
             subprocess.run(
-                render_cmd, 
-                capture_output=True, 
-                text=True, 
-                check=True, 
+                render_cmd,
+                capture_output=True,
+                text=True,
+                check=True,
                 cwd=work_dir,
                 timeout=60
             )
-            
+
             if not html_output.exists():
                 raise FileNotFoundError(f"Quarto render succeeded but HTML output not found: {html_output}")
-            
+
             logger.info("Quarto render successful: %s", html_output.name)
             return html_output
-            
+
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
             logger.warning("Quarto render failed: %s", e)
             return self._create_fallback_html_file(work_dir, template_file.stem)
-    
+
     def _create_fallback_html_file(self, work_dir: Path, base_name: str) -> Path:
         """Create fallback HTML file when Quarto is unavailable.
 
@@ -1199,7 +1208,7 @@ class CVOrchestrator:
         """Create basic HTML if Quarto is not available."""
         personal_info = cv_data['personal_info']
         contact = personal_info.get('contact', {})
-        
+
         html_parts = [
             '<!DOCTYPE html>',
             '<html><head>',
@@ -1218,14 +1227,14 @@ class CVOrchestrator:
             '<div class="cv-left-column">',
             '<h2>Professional Experience</h2>'
         ]
-        
+
         # Add experiences
         for exp in cv_data['experiences']:
             location = exp.get('location', {})
             location_str = location.get('city', '')
             if location.get('state'):
                 location_str += f", {location['state']}"
-                
+
             html_parts.extend([
                 '<div class="experience-item">',
                 f'<h3>{exp.get("company", "")} | {exp.get("title", "")}</h3>',
@@ -1233,13 +1242,13 @@ class CVOrchestrator:
                 f'{location_str} | {exp.get("start_date", "")} - {exp.get("end_date", "")}',
                 '</div>'
             ])
-            
+
             if exp.get('achievements'):
                 for achievement in exp['achievements']:
                     html_parts.append(f'<p>• {achievement.get("text", "")}</p>')
-            
+
             html_parts.append('</div>')
-        
+
         # Add education
         html_parts.append('<h2>Education</h2>')
         for edu in cv_data['education']:
@@ -1251,13 +1260,13 @@ class CVOrchestrator:
                 f'<p><strong>{edu.get("institution", "")}</strong> | {location_str} | {edu.get("end_year", "")}</p>',
                 '</div>'
             ])
-        
+
         html_parts.extend([
             '</div>',  # cv-left-column
             '<div class="cv-right-column">',
             '<h2>Core Skills</h2>'
         ])
-        
+
         # Add skills
         for category_data in cv_data['skills_by_category']:
             html_parts.extend([
@@ -1268,16 +1277,16 @@ class CVOrchestrator:
                 years_text = f" ({skill['years']} years)" if skill.get('years') else ""
                 html_parts.append(f'<p>• {skill["name"]}{years_text}</p>')
             html_parts.append('</div>')
-            
+
         html_parts.extend([
             '</div>',  # cv-right-column
             '</div>',  # cv-body
             '</div>',  # cv-container
             '</body></html>'
         ])
-        
+
         return '\n'.join(html_parts)
-    
+
     def _convert_html_to_pdf(
         self,
         html_file: Path,
@@ -1469,7 +1478,7 @@ The HTML file contains your formatted CV ready for conversion.
                 template_variant, pdf_path.stat().st_size if pdf_path.exists() else 0
             )
             return html_path, pdf_path
-            
+
         except Exception as e:
             logger.warning("PDF generation failed: %s", e)
             # Create enhanced fallback with diagnostic info
@@ -2100,7 +2109,7 @@ For manual generation:
             company, role, max_skills,
             len(approved_rewrites or []), len(spell_audit or [])
         )
-        
+
         selected_content = self.build_render_ready_content(
             job_analysis,
             customizations,
@@ -2281,13 +2290,13 @@ For manual generation:
         with open(metadata_file, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2)
         files_created.append('metadata.json')
-        
+
         # Save job description
         if job_analysis.get('original_text'):
             job_desc_file = job_output_dir / 'job_description.txt'
             job_desc_file.write_text(job_analysis['original_text'], encoding='utf-8')
             files_created.append('job_description.txt')
-        
+
         return {
             'output_dir': str(job_output_dir),
             'files': files_created,
@@ -4158,7 +4167,7 @@ Include one entry per candidate. Do not omit any candidate."""
                 out_summary = summary_text[:max_summary_len].rstrip() + '...'
 
         return out_summary, out_experiences, out_achievements, out_skills
-    
+
     @staticmethod
     def _cap_publications_to_pages(
         pubs: List[Dict],
@@ -4276,7 +4285,7 @@ Include one entry per candidate. Do not omit any candidate."""
             })
 
         return selected
-    
+
     def _generate_ats_docx(
         self,
         content: Dict,
@@ -4290,16 +4299,16 @@ Include one entry per candidate. Do not omit any candidate."""
         from docx import Document
         from docx.shared import Pt
         from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-        
+
         doc = Document()
-        
+
         # Set up ATS-optimized styles
         self._setup_ats_styles(doc)
-        
+
         # Header with contact information (ATS-friendly format)
         personal = content['personal_info']
         name = personal.get('name', '')
-        
+
 # Candidate name — large bold run (not a Heading style so it does not
         # compete with section Heading 1 paragraphs in the ATS heading hierarchy).
         name_para = doc.add_paragraph()
@@ -4333,14 +4342,14 @@ Include one entry per candidate. Do not omit any candidate."""
         doc.add_paragraph()
 
         # Professional Summary — ATS standard label, Heading 1 style.
-        summary_heading = doc.add_paragraph('Professional Summary', style='Heading 1')
-        
+        doc.add_paragraph('Professional Summary', style='Heading 1')
+
         summary_text = content.get('summary', '')
         # Enhance summary with job-specific keywords
         enhanced_summary = self._enhance_summary_for_ats(summary_text, job_analysis)
         doc.add_paragraph(enhanced_summary)
         doc.add_paragraph()
-        
+
         # Skills — split hard/soft into "Technical Skills" and "Core Competencies".
         # _optimize_skills_for_ats returns names in priority order; type inferred
         # per skill via _classify_skill_type.
@@ -4363,7 +4372,7 @@ Include one entry per candidate. Do not omit any candidate."""
 
         # Work Experience — ATS standard label, Heading 1 style.
         doc.add_paragraph('Work Experience', style='Heading 1')
-        
+
         for exp in content['experiences']:
             # One-line job entry: Title | Company | Location | Date Range (US-H5).
             loc_parts = []
@@ -4383,7 +4392,7 @@ Include one entry per candidate. Do not omit any candidate."""
             entry_run  = entry_para.add_run(entry_line)
             entry_run.bold      = True
             entry_run.font.size = Pt(11)
-            
+
             # Achievements - Bullet points with quantified results
             if exp.get('achievements'):
                 for achievement in exp['achievements']:
@@ -4392,38 +4401,38 @@ Include one entry per candidate. Do not omit any candidate."""
                     enhanced_achievement = self._enhance_achievement_for_ats(achievement_text, job_analysis)
                     achievement_para = doc.add_paragraph(enhanced_achievement, style='List Bullet')
                     achievement_para.paragraph_format.left_indent = Pt(18)
-            
+
             doc.add_paragraph()  # Spacing between positions
-        
+
         # Education — ATS standard label, Heading 1 style.
         if content.get('education'):
             doc.add_paragraph('Education', style='Heading 1')
-            
+
             for edu in content['education']:
                 degree = edu.get('degree', '')
                 field = edu.get('field', '')
                 institution = edu.get('institution', '')
                 year = edu.get('end_year', '')
-                
+
                 degree_line = f"{degree} {field}".strip()
                 institution_line = f"{institution}"
                 if year:
                     institution_line += f" | {year}"
-                
+
                 degree_para = doc.add_paragraph()
                 degree_para.add_run(degree_line).bold = True
                 doc.add_paragraph(institution_line)
-            
+
             doc.add_paragraph()
-        
+
         # Additional Sections (if present)
         self._add_ats_additional_sections(doc, content, job_analysis)
-        
+
         # Save with ATS-optimized filename
         company = job_analysis.get('company', 'Company').replace(' ', '').replace('/', '-')[:15]
         role = job_analysis.get('title', 'Role').replace(' ', '').replace('/', '-')[:20]
         timestamp = datetime.now().strftime("%Y-%m-%d")
-        
+
         filename = f"CV_{company}_{role}_{timestamp}_ATS.docx"
         filepath = output_dir / filename
 
@@ -4442,7 +4451,7 @@ Include one entry per candidate. Do not omit any candidate."""
     def _setup_ats_styles(self, doc):
         """Set up ATS-optimized document styles."""
         from docx.shared import Pt, RGBColor
-        
+
         # Create custom styles that are ATS-friendly
         styles = doc.styles
 
@@ -4482,7 +4491,7 @@ Include one entry per candidate. Do not omit any candidate."""
             list_bullet.font.size = Pt(10)
         except KeyError:
             pass
-    
+
     def _enhance_summary_for_ats(self, summary: str, job_analysis: Dict) -> str:
         """Return the professional summary unchanged.
 
@@ -4518,7 +4527,7 @@ Include one entry per candidate. Do not omit any candidate."""
             )
 
         return summary
-    
+
     def _optimize_skills_for_ats(self, skills: List[Dict], job_analysis: Dict) -> List[str]:
         """Return a score-ordered, deduplicated subset of skill names.
 
@@ -4567,7 +4576,7 @@ Include one entry per candidate. Do not omit any candidate."""
 
         # Return optimized skill names (top 15 for ATS readability)
         return [skill[0] for skill in skill_scores[:15]]
-    
+
     def _enhance_achievement_for_ats(self, achievement: str, job_analysis: Dict) -> str:
         """Return the achievement text unchanged.
 
@@ -4987,26 +4996,26 @@ Include one entry per candidate. Do not omit any candidate."""
 
     def _add_ats_additional_sections(self, doc, content: Dict, job_analysis: Dict):
         """Add additional sections that improve ATS scoring."""
-        
+
         # Certifications (if present) — Heading 1, title-case ATS label.
         if content.get('certifications'):
             doc.add_paragraph('Certifications', style='Heading 1')
-            
+
             for cert in content['certifications']:
                 cert_name = cert.get('name', '')
                 cert_issuer = cert.get('issuer', '')
                 cert_year = cert.get('year', '')
-                
+
                 cert_line = cert_name
                 if cert_issuer:
                     cert_line += f" | {cert_issuer}"
                 if cert_year:
                     cert_line += f" ({cert_year})"
-                
+
                 doc.add_paragraph(cert_line)
-            
+
             doc.add_paragraph()
-        
+
         # Awards (if present and relevant) — Heading 1, title-case ATS label.
         if content.get('awards'):
             doc.add_paragraph('Awards', style='Heading 1')
@@ -5043,12 +5052,12 @@ Include one entry per candidate. Do not omit any candidate."""
                 if citation:
                     doc.add_paragraph(citation)
             doc.add_paragraph()
-    
+
     def _validate_ats_compatibility(self, content: Dict, job_analysis: Dict) -> int:
         """Validate CV for ATS compatibility and return score out of 100."""
         score = 0
         max_score = 100
-        
+
         # Check 1: Contact Information (20 points)
         contact = content.get('personal_info', {}).get('contact', {})
         if contact.get('email'):
@@ -5057,29 +5066,29 @@ Include one entry per candidate. Do not omit any candidate."""
             score += 6
         if contact.get('address') or contact.get('address_display'):
             score += 6
-        
+
         # Check 2: Professional Summary (15 points)
         summary = content.get('summary', '')
         if len(summary) > 50:
             score += 10
         if len(summary) > 100:
             score += 5
-        
+
         # Check 3: Skills Match (25 points)
         skills_list = [skill.get('name', '').lower() for skill in content.get('skills', [])]
         required_skills = [skill.lower() for skill in job_analysis.get('required_skills', [])]
         ats_keywords = [kw.lower() for kw in job_analysis.get('ats_keywords', [])]
-        
+
         # Required skills coverage
         matched_required = sum(1 for skill in required_skills if skill in skills_list)
         if required_skills:
             score += int((matched_required / len(required_skills)) * 15)
-        
-        # ATS keywords coverage  
+
+        # ATS keywords coverage
         matched_keywords = sum(1 for kw in ats_keywords[:10] if kw in ' '.join(skills_list))
         if ats_keywords:
             score += int((matched_keywords / min(len(ats_keywords), 10)) * 10)
-        
+
         # Check 4: Experience Section (25 points)
         experiences = content.get('experiences', [])
         if experiences:
@@ -5090,24 +5099,24 @@ Include one entry per candidate. Do not omit any candidate."""
                 score += 10
             elif total_achievements >= 4:
                 score += 5
-            
+
             # Check for recent experience
-            if any('2023' in exp.get('end_date', '') or '2024' in exp.get('end_date', '') 
+            if any('2023' in exp.get('end_date', '') or '2024' in exp.get('end_date', '')
                   or exp.get('end_date') == 'Present' for exp in experiences):
                 score += 5
-        
+
         # Check 5: Education (10 points)
         if content.get('education'):
             score += 10
-        
+
         # Check 6: Additional Sections (5 points)
         if content.get('certifications'):
             score += 3
         if content.get('awards'):
             score += 2
-        
+
         return min(score, max_score)
-    
+
     def _generate_human_docx(
         self,
         content: Dict,

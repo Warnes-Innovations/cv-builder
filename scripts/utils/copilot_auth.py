@@ -24,11 +24,12 @@ VS Code extension and documented in multiple open-source Copilot clients.
 """
 
 import json
+import logging
 import time
-import os
 from pathlib import Path
-from typing import Optional
 import requests
+
+logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 

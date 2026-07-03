@@ -1453,7 +1453,6 @@ def create_blueprint(deps):
                         job_analysis,
                         max_count=None,
                     )
-                    score_map = {p['key']: p for p in all_scored}
                     not_recommended = []
                     for scored_pub in all_scored:
                         key = scored_pub['key']
