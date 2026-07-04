@@ -650,6 +650,9 @@ async function submitRewriteDecisions() {
 
     const accepted = data.approved_count || 0;
     const rejected = data.rejected_count || 0;
+    if (Array.isArray(data.rewrite_audit) && data.rewrite_audit.length > 0) {
+      _backendRewriteAudit = data.rewrite_audit;
+    }
     stateManager.markContentChanged();
     _clearPersistedDecisions();
     _clearRewriteSnapshot();

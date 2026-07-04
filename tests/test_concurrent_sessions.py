@@ -1389,12 +1389,11 @@ def test_rewrite_approval_route_updates_phase_and_enforces_ownership(
         )
         assert success.status_code == 200
         payload = success.get_json()
-        assert payload == {
-            "ok": True,
-            "approved_count": 2,
-            "rejected_count": 1,
-            "phase": "spell_check",
-        }
+        assert payload["ok"] is True
+        assert payload["approved_count"] == 2
+        assert payload["rejected_count"] == 1
+        assert payload["phase"] == "spell_check"
+        assert "rewrite_audit" in payload
 
         manager = _manager_for_session(tracker, session_id)
         assert manager.rewrite_decisions == decisions

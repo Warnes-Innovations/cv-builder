@@ -1291,6 +1291,7 @@ def create_blueprint(deps):
                 "approved_count": summary['approved_count'],
                 "rejected_count": summary['rejected_count'],
                 "phase":          summary['phase'],
+                "rewrite_audit":  conversation.state.get('rewrite_audit') or [],
             })
 
         except Exception:
