@@ -180,9 +180,12 @@ function renderQuestionsPanel() {
     ? `Group ${_currentGroup + 1} of ${numGroups}`
     : `${total} question${total > 1 ? 's' : ''}`;
 
+  const groupNavHtml = numGroups > 1 ? renderQGroupNav(numGroups, qs, existingAnswers) : '';
+
   let panelHtml = `<div class="questions-panel" id="questions-panel">
     <h2>💬 A few quick questions</h2>
-    <p class="q-progress" id="q-progress">${groupLabel} — answer each to continue.</p>`;
+    <p class="q-progress" id="q-progress">${groupLabel} — answer each to continue.</p>
+    ${groupNavHtml}`;
 
   groupQs.forEach((q, localIdx) => {
     const idx = groupStart + localIdx;
@@ -230,8 +233,44 @@ function renderQuestionsPanel() {
   updateQProgress();
 }
 
-function advanceQGroup() {
-  // Flush current group's textarea values into window.questionAnswers before advancing.
+// Group-navigation strip (GAP-16 Part D): lets the user jump back to an
+// earlier group to review/edit it without losing forward progress. These
+// are plain buttons, not an ARIA tablist — no arrow-key roving is implemented,
+// so a tab/tablist role would set a false expectation for screen readers.
+function _isGroupFullyAnswered(groupIdx, qs, existingAnswers) {
+  const groupStart = groupIdx * GROUP_SIZE;
+  const groupEnd    = Math.min(groupStart + GROUP_SIZE, qs.length);
+  for (let idx = groupStart; idx < groupEnd; idx++) {
+    const q = qs[idx];
+    if (!q) continue;
+    if (!(existingAnswers[q.type] || '').toString().trim()) return false;
+  }
+  return true;
+}
+
+function renderQGroupNav(numGroups, qs, existingAnswers) {
+  const dots = [];
+  for (let i = 0; i < numGroups; i++) {
+    const isActive = i === _currentGroup;
+    const isDone   = !isActive && _isGroupFullyAnswered(i, qs, existingAnswers);
+    const cls = ['q-group-dot'];
+    if (isActive) cls.push('active');
+    if (isDone) cls.push('done');
+    const stateLabel = isActive ? 'current' : isDone ? 'completed' : 'not yet answered';
+    const ariaLabel = `Review answers for Group ${i + 1}, ${stateLabel} — no resubmission`;
+    dots.push(
+      `<button type="button" class="${cls.join(' ')}" data-group="${i}"` +
+      `${isActive ? ' aria-current="step"' : ''} aria-label="${escapeHtml(ariaLabel)}"` +
+      ` onclick="jumpToQGroup(${i})">${isDone ? '✓' : i + 1}</button>`
+    );
+  }
+  return `<div class="q-group-nav" aria-label="Question groups">${dots.join('')}</div>`;
+}
+
+// Flush the current group's textarea values into window.questionAnswers.
+// Shared by advanceQGroup() (forward progression) and jumpToQGroup()
+// (backward navigation) so both persist in-progress edits the same way.
+function _flushCurrentGroupAnswers() {
   const qs = window.postAnalysisQuestions || [];
   const groupStart = _currentGroup * GROUP_SIZE;
   const groupEnd   = Math.min(groupStart + GROUP_SIZE, qs.length);
@@ -243,8 +282,23 @@ function advanceQGroup() {
       window.questionAnswers[q.type] = ta.value.trim();
     }
   }
+}
+
+function advanceQGroup() {
+  _flushCurrentGroupAnswers();
   persistPostAnalysisState();
   _currentGroup++;
+  renderQuestionsPanel();
+}
+
+// Jump back (or forward) to a specific group without requiring the current
+// group to be complete. Flushes in-progress answers first so nothing typed
+// so far is lost, but — unlike advanceQGroup() — does not gate on completeness
+// and does not resubmit anything.
+function jumpToQGroup(targetGroup) {
+  _flushCurrentGroupAnswers();
+  persistPostAnalysisState();
+  _currentGroup = targetGroup;
   renderQuestionsPanel();
 }
 
@@ -482,4 +536,6 @@ export {
   showNextQuestion,
   handleQuestionResponse,
   finishPostAnalysisQuestions,
+  advanceQGroup,
+  jumpToQGroup,
 };

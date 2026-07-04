@@ -544,6 +544,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .questions-panel { background: var(--cv-white); border: 1px solid var(--cv-border); border-radius: 10px; padding: 20px; margin-top: 20px; }
 .questions-panel h2 { margin: 0 0 4px; font-size: 16px; font-weight: 700; color: var(--cv-text-primary); }
 .questions-panel .q-progress { font-size: 13px; color: var(--cv-text-secondary); margin-bottom: 16px; }
+.q-group-nav { display: flex; gap: 6px; margin: -8px 0 16px; }
+.q-group-dot {
+  width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--cv-border);
+  background: var(--cv-white); color: var(--cv-text-secondary); font-size: 11px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.q-group-dot:hover { border-color: var(--cv-accent); }
+.q-group-dot:focus-visible { outline: 2px solid var(--cv-accent); outline-offset: 2px; }
+.q-group-dot.active { background: var(--cv-accent); border-color: var(--cv-accent); color: var(--cv-white); }
+.q-group-dot.done { background: var(--cv-success-bg); border-color: var(--cv-success-border); color: var(--cv-success-text); border-style: dashed; }
 .question-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--cv-bg-subtle); }
 .question-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
 .question-item.answered { background: #f8fffe; border-left: 3px solid var(--cv-success); padding-left: 12px; border-radius: 4px; }
