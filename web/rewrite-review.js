@@ -33,6 +33,11 @@ function syncRewriteGlobals() {
   window.acceptAllRewrites = acceptAllRewrites;
   window.rejectAllRewrites = rejectAllRewrites;
   window.toggleRewriteCompactMode = toggleRewriteCompactMode;
+  window.setBackendRewriteAudit = setBackendRewriteAudit;
+}
+
+function setBackendRewriteAudit(audit) {
+  _backendRewriteAudit = Array.isArray(audit) ? audit : [];
 }
 
 function _decisionsKey() {

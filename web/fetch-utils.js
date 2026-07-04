@@ -127,7 +127,10 @@ function _updateLLMOverlay(loading, label) {
   if (loading) {
     overlay.classList.add('visible');
     overlay.classList.remove('slow');
-    if (labelEl) labelEl.textContent = label || 'Reasoning…';
+    if (labelEl) {
+      if (!labelEl.getAttribute('aria-live')) labelEl.setAttribute('aria-live', 'polite');
+      labelEl.textContent = label || 'Reasoning…';
+    }
     if (elapsed)  elapsed.textContent = '0:00';
 
     _llmStartTime = Date.now();

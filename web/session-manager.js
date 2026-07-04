@@ -829,6 +829,10 @@ async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
           const rd = parseRewritesResponse(await rr.json());
           const rewrites = rd.rewrites || [];
           const warnings = rd.persuasion_warnings || [];
+          // Seed cold-restore fallback before renderRewritePanel calls _restoreDecisions()
+          if (typeof window.setBackendRewriteAudit === 'function') {
+            window.setBackendRewriteAudit(rd.rewrite_audit || []);
+          }
           rewriteDecisions = {};
           renderRewritePanel(rewrites, warnings);
         }
