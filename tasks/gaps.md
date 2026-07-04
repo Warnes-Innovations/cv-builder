@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 57)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 58)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -10,12 +10,19 @@
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
 
+## 2026-07-04 (Cycle 58) Reconciliation Notes
+
+Cleanup: removed dead `_auth_poll` variable from `create_app()`.
+
+- **`scripts/web_app.py`** — Removed `_auth_poll: dict = {...}` at the former line 626 inside `create_app()`. The variable was defined but never referenced anywhere in the file. The live auth-poll state lives inside the blueprint closure in `scripts/routes/auth_routes.py`. Addresses backend-developer review finding (dead `_auth_poll` variable).
+- **Test suite:** 1435 passed ✅.
+
 ## 2026-07-04 (Cycle 57) Reconciliation Notes
 
 Application status: `queued` and `parked` options added to finalise UI.
 
 - **`web/finalise.js`** — Added `queued` ("Queued — will apply soon") as the new default selected option in the finalise status select, ahead of `draft`/`ready`. Also added `parked` ("Parked — on hold") as a selectable status. The backend already validated these values at `/api/finalise`; the frontend select was the only missing surface. Session-switcher badge labels and colors for `queued`/`parked` already existed in `session-switcher-ui.js`. Addresses applicant US-A4 gap ("session persisted with status: queued after intake confirmation").
-- **Test suite:** pending.
+- **Test suite:** 1435 passed ✅ (commit c38ee0b).
 
 ## 2026-07-04 (Cycle 56) Reconciliation Notes
 

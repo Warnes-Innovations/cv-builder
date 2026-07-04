@@ -623,7 +623,6 @@ def create_app(args) -> Flask:
 
     # Copilot OAuth auth manager (shared across all requests)
     auth_manager = CopilotAuthManager()
-    _auth_poll: dict = {"polling": False, "error": None, "device_code": None, "interval": 5}
 
     # ── Provider / model state ───────────────────────────────────────────────
     _provider_name: str = args.llm_provider
