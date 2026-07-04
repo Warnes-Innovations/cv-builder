@@ -15,7 +15,7 @@ This document tracks the gaps that still remain after reconciling the refreshed 
 Trust/transparency: rationale fallback for rewrite cards.
 
 - **`web/rewrite-review.js`** — Rationale section now always rendered in rewrite cards. Previously the `<details class="rewrite-rationale">` block was entirely omitted when `r.rationale` was falsy, so some cards silently had no rationale section while others did. Now the block always appears; when `r.rationale` is absent a muted italic "No rationale recorded for this rewrite." message is shown instead. Also replaced the remaining raw `#9ca3af` hex literal in the evidence paragraph with `var(--cv-text-muted)`. Addresses trust-compliance finding from cycle 53 review.
-- **Test suite:** pending.
+- **Test suite:** 1435 passed ✅ (commit d38004f).
 
 ## 2026-07-04 (Cycle 52) Reconciliation Notes
 
