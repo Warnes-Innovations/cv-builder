@@ -876,7 +876,7 @@ function updateWorkflowSteps(status) {
         label += ` <button class="step-rerun" aria-label="Re-run ${rerunLabel}"
           title="Re-run ${step} with updated inputs"
           onclick="event.stopPropagation();confirmReRunPhase('${step}')"
-          style="font-size:0.8em;opacity:0.35;transition:opacity 0.15s;margin-left:2px;cursor:pointer;background:none;border:none;padding:0;color:inherit;line-height:1;">↻</button>`;
+          style="font-size:0.8em;opacity:0.55;transition:opacity 0.15s;margin-left:2px;cursor:pointer;background:none;border:none;padding:0;color:inherit;line-height:1;">↻</button>`;
       }
     } else if (highestPhaseIdx >= 0 && (_STEP_FWD_PHASE_MIN[step] ?? Infinity) <= highestPhaseIdx
                && highestPhaseIdx > currentPhaseIdx) {

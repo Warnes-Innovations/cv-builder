@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 50)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 51)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,17 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+
+## 2026-07-04 (Cycle 51) Reconciliation Notes
+
+Responsive and discoverability polish (GAP-16 PARTIAL ADVANCE).
+
+- **GAP-16 PARTIAL ADVANCE** — Three CSS/JS improvements:
+  - `.table-container` now has `overflow-x: auto` (`web/styles.css`) — review tables (experiences, skills, achievements) can now scroll horizontally on narrow viewports instead of clipping.
+  - `.step` now has `flex-shrink: 0` (`web/styles.css`) — step pills maintain their natural width when the workflow bar scrolls, preventing pill compression at ≤1280px.
+  - ↻ re-run button `opacity` raised from 0.35 to 0.55 at rest (`web/workflow-steps.js`) — button is more discoverable without hover; still fully opaque on hover/focus-visible.
+- **GAP-298, GAP-299 status fields corrected** — Status fields in the gap entries were left as OPEN despite being resolved in cycle 48; updated to RESOLVED with correct cycle note.
+- **Test suite:** pending.
 
 ## 2026-07-04 (Cycle 50) Reconciliation Notes
 
@@ -3207,7 +3218,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-298: e2ePhaseTest.md Stale Against e2e-browser-test.md's New Phase Numbering
 
 **Priority:** LOW
-**Status:** OPEN — 2026-07-02.
+**Status:** RESOLVED — 2026-07-02 (cycle 48). Updated `.github/prompts/e2ePhaseTest.prompt.md` (symlinked as `.claude/commands/e2ePhaseTest.md`): expanded Phase Reference table from 11 rows to 33 rows (phases 0-27 + P1-P5); corrected port 5000 → 5001; updated argument-hint; fixed example prerequisite in instructions.
 **Discovered:** 2026-07-02 by Claude Code, during code-review of the e2e-browser-test.md expansion.
 **Description:** `.claude/commands/e2ePhaseTest.md` hardcodes its own "Phase Reference" table (0-10, e.g. "5 = Rewrite review", "7 = CV generation") and a "Server assumption" section stating `http://127.0.0.1:5000`. `e2e-browser-test.md` was expanded to 28 phases (0-27, tab-bar order) plus persona passes P1-P5, and its port references were corrected to `127.0.0.1:5001` (matching `config.yaml`'s `web.port`). `e2ePhaseTest.md` was not updated to match either change: its phase table no longer corresponds to the phases described in `e2e-browser-test.md` (e.g. its "Phase 5" is now `e2e-browser-test.md`'s Phase 13, not Phase 5), and its assumed port is wrong.
 **Affected stories:** Internal tooling consistency (no end-user-facing story; affects whoever invokes `/e2ePhaseTest <N>` expecting it to match the full test's numbering).
@@ -3216,7 +3227,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-299: codex-skills Mirror of e2e-browser-test Is Increasingly Stale
 
 **Priority:** LOW
-**Status:** OPEN — 2026-07-02.
+**Status:** RESOLVED — 2026-07-02 (cycle 48). Replaced stale 11-phase hardcoded list in `codex-skills/cv-e2e-browser-test/SKILL.md` with a pointer approach: always reads `.claude/commands/e2e-browser-test.md` before executing. Eliminates future drift structurally. Port corrected to 5001.
 **Discovered:** 2026-07-02 by Claude Code, during the e2e-browser-test.md expansion (flagged but not addressed, per user confirmation to defer).
 **Description:** `codex-skills/cv-e2e-browser-test/` mirrors `.claude/commands/e2e-browser-test.md` for the Codex agent tool, with its own header noting "Adapted from `.claude/commands/e2e-browser-test.md`." It still reflects the old 11-phase version (App load through Error handling, no Goals/Tagline/Summary/Publications/ATS Score/Layout Review/Master CV/Cover Letter/Screening/Interview Prep/Thank You/Harvest, and no Part 2 persona passes) and was not updated alongside the Claude version's expansion to 33 phases.
 **Affected stories:** Internal tooling consistency (affects whoever runs the Codex-agent variant of this test expecting parity with the Claude Code version).

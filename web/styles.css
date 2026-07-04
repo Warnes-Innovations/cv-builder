@@ -255,7 +255,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 /* ===== WORKFLOW STEPS ===== */
 .workflow { background: var(--cv-white); border-bottom: 1px solid var(--cv-border); padding: 20px 24px; }
 .workflow-steps { display: flex; align-items: center; justify-content: center; gap: 32px; overflow-x: auto; }
-.step { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-radius: 20px; background: var(--cv-bg-subtle); color: var(--cv-text-secondary); }
+.step { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-radius: 20px; background: var(--cv-bg-subtle); color: var(--cv-text-secondary); flex-shrink: 0; }
 .step.active { background: var(--cv-info-bg-md); color: var(--cv-accent-hover); cursor: pointer; }
 .step.active:hover { filter: brightness(0.93); }
 .step.completed { background: var(--cv-success-bg-md); color: var(--cv-success-text); cursor: pointer; }
@@ -1272,7 +1272,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 /* ===== REVIEW TABLES ===== */
 .review-section { padding: 12px; background: var(--cv-white); }
 .review-section h2 { font-size: 24px; font-weight: 700; margin-bottom: 16px; color: var(--cv-text-primary); }
-.table-container { margin-bottom: 24px; }
+.table-container { margin-bottom: 24px; overflow-x: auto; }
 .table-container h3 { font-size: 18px; font-weight: 600; margin-bottom: 12px; color: var(--cv-slate-700); }
 .review-table { width: 100%; font-size: 14px; border-collapse: collapse; }
 .review-table th { background: var(--cv-bg-light) !important; font-weight: 600; color: var(--cv-text-muted); text-align: left; padding: 8px 12px; }
