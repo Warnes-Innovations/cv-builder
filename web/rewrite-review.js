@@ -425,12 +425,13 @@ function renderRewriteCard(r, cardWarnings = [], changeStatus = null) {
           <span id="rw-after-text-${cardId}">${escapeHtml(r.proposed || '')}</span>
         </div>
         ${keywordPills ? `<div class="rewrite-keywords">${keywordPills}</div>` : ''}
-        ${r.rationale ? `
         <details class="rewrite-rationale">
           <summary>Rationale &amp; Evidence</summary>
-          <p style="margin:6px 0 0;">${escapeHtml(r.rationale)}</p>
-          ${r.evidence ? `<p style="color:#9ca3af;font-size:0.85em;margin:4px 0 0;">${escapeHtml(r.evidence)}</p>` : ''}
-        </details>` : ''}
+          ${r.rationale
+            ? `<p style="margin:6px 0 0;">${escapeHtml(r.rationale)}</p>
+          ${r.evidence ? `<p style="color:var(--cv-text-muted);font-size:0.85em;margin:4px 0 0;">${escapeHtml(r.evidence)}</p>` : ''}`
+            : `<p style="margin:6px 0 0;color:var(--cv-text-muted);font-style:italic;">No rationale recorded for this rewrite.</p>`}
+        </details>
         ${cardWarnings.length > 0 ? `
         <div class="rewrite-persuasion-badges">
           ${cardWarnings.map(w => `<span class="persuasion-badge persuasion-badge--${w.severity}" title="${escapeHtml(w.details)}">⚠ ${escapeHtml(w.flag_type.replace(/_/g, ' '))}</span>`).join('')}
