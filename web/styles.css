@@ -1554,6 +1554,13 @@ details.rewrite-rationale summary { cursor: pointer; color: var(--cv-gray-700); 
 .position-style-badge--academic { background: var(--cv-violet-50); color: var(--cv-violet-600); border-color: var(--cv-violet-300); }
 .position-style-badge--government { background: var(--cv-sky-100); color: var(--cv-sky-500); border-color: var(--cv-sky-200); }
 .position-style-source { font-size: 0.78em; color: var(--cv-text-secondary); font-style: italic; }
+.position-style-change-btn { background: none; border: none; cursor: pointer; font-size: 0.78em; color: var(--cv-info); padding: 0 4px; opacity: 0.75; }
+.position-style-change-btn:hover { opacity: 1; text-decoration: underline; }
+.position-style-picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.position-style-option { background: var(--cv-card-bg); border: 1px solid var(--cv-border); border-radius: 20px; padding: 3px 12px; font-size: 0.8em; cursor: pointer; color: var(--cv-text-primary); }
+.position-style-option:hover { border-color: var(--cv-info); color: var(--cv-info); }
+.position-style-option.active { background: var(--cv-info-bg); border-color: var(--cv-info); color: var(--cv-info); font-weight: 600; }
+.position-style-option--clear { color: var(--cv-text-secondary); font-style: italic; }
 .page-estimate-msg { padding: 8px 12px; border-radius: 6px; font-size: 0.87em; border: 1px solid transparent; }
 .page-estimate-msg.warn { background: var(--cv-warn-bg-md); color: var(--cv-warn-text); border-color: var(--cv-warn-border); }
 .page-estimate-msg.ok { background: var(--cv-success-bg); color: var(--cv-success-text); border-color: var(--cv-success-bg-lt); }

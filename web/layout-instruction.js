@@ -500,6 +500,7 @@ async function _fetchPageEstimate() {
     const pages = data.estimated_pages;
     const isWarn = data.page_length_warning ?? (pages > 3);
     const styleKey = _POSITION_STYLE_LABELS[data.position_style] ? data.position_style : 'industry';
+    const isOverride = !!data.position_style_is_override;
     const noUpperLimit = styleKey === 'academic' || styleKey === 'government';
     const styleLabel = _POSITION_STYLE_LABELS[styleKey];
     let msg;
@@ -512,13 +513,40 @@ async function _fetchPageEstimate() {
         ? `✓ Estimated ~${pages} pages — ${styleLabel}s have no upper page limit.`
         : `✓ Estimated ~${pages} pages — within the 2–3 page target.`;
     }
+    const sourceLabel = isOverride ? 'set manually' : 'detected from job description';
     banner.style.display = 'block';
     banner.innerHTML =
       `<div class="position-style-row">` +
         `<span class="position-style-badge position-style-badge--${styleKey}">${styleLabel}</span>` +
-        `<span class="position-style-source">detected from job description</span>` +
+        `<span class="position-style-source">${sourceLabel}</span>` +
+        `<button class="position-style-change-btn" type="button" aria-label="Change position style">✏ Change</button>` +
+      `</div>` +
+      `<div class="position-style-picker" style="display:none">` +
+        Object.entries(_POSITION_STYLE_LABELS).map(([k, v]) =>
+          `<button class="position-style-option${k === styleKey ? ' active' : ''}" data-style="${k}" type="button">${v}</button>`
+        ).join('') +
+        `<button class="position-style-option position-style-option--clear" data-style="" type="button">↩ Auto-detect</button>` +
       `</div>` +
       `<div class="page-estimate-msg ${isWarn ? 'warn' : 'ok'}">${msg}</div>`;
+
+    const changeBtn = banner.querySelector('.position-style-change-btn');
+    const picker    = banner.querySelector('.position-style-picker');
+    changeBtn.addEventListener('click', () => {
+      picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
+    });
+    picker.querySelectorAll('.position-style-option').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const chosen = btn.dataset.style;
+        try {
+          await fetch('/api/session/position-style', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ style: chosen }),
+          });
+        } catch (_) { /* non-critical */ }
+        await _fetchPageEstimate();
+      });
+    });
   } catch (_) { /* silent — non-critical */ }
 }
 

@@ -828,23 +828,31 @@ def _compute_exact_page_count(conversation, preview_html: str) -> Dict[str, Any]
         }
 
 
-def _page_style_for_domain(domain: str) -> tuple:
-    """Return (style_key, style_dict) for the given job-analysis domain string."""
+def _page_style_for_domain(domain: str, override: str = None) -> tuple:
+    """Return (style_key, style_dict) for the given job-analysis domain string.
+
+    If *override* is a recognised style key (e.g. from a per-session user choice),
+    it takes precedence over domain-matching.
+    """
     from scripts.utils.config import get_config
-    return get_config().get_position_style_for_domain(domain)
+    cfg = get_config()
+    if override and override in cfg.position_styles:
+        return override, cfg.position_styles[override]
+    return cfg.get_position_style_for_domain(domain)
 
 
-def _page_warning(page_count: Optional[float], domain: str = '') -> bool:
+def _page_warning(page_count: Optional[float], domain: str = '', override: str = None) -> bool:
     """Return True when the page count is outside the position-style target range.
 
     Thresholds are driven by the matching position_style preset in config.yaml
     (see Config.get_position_style_for_domain).  Academic/research roles have no
-    upper limit; industry defaults to 2–3 pages.
+    upper limit; industry defaults to 2–3 pages.  Pass *override* to force a
+    specific style instead of inferring from the domain.
     """
     if page_count is None:
         return False
     pages = float(page_count)
-    _key, style = _page_style_for_domain(domain)
+    _key, style = _page_style_for_domain(domain, override)
     warn_below = style.get('page_warn_below', 2.0)
     warn_above = style.get('page_warn_above', 3.0)
     if pages < warn_below:
@@ -864,7 +872,8 @@ def _persist_layout_baseline(
     exact = _compute_exact_page_count(conversation, preview_html)
     page_count = exact.get('page_count')
     _domain = ((conversation.state.get('job_analysis') or {}).get('domain', ''))
-    _style_key, _style = _page_style_for_domain(_domain)
+    _override = conversation.state.get('position_style_override')
+    _style_key, _style = _page_style_for_domain(_domain, _override)
 
     gen = conversation.state.setdefault('generation_state', {})
     gen.update({
@@ -879,7 +888,7 @@ def _persist_layout_baseline(
         'page_count_confidence': 1.0 if page_count is not None else None,
         'page_count_source': 'exact' if page_count is not None else 'unknown',
         'page_count_needs_exact_recheck': False,
-        'page_length_warning': _page_warning(page_count, _domain),
+        'page_length_warning': _page_warning(page_count, _domain, _override),
         'position_style': _style_key,
         'page_count_renderer': exact.get('renderer'),
         'page_count_renderer_detail': exact.get('renderer_detail', ''),
@@ -988,7 +997,8 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
         page_count_value = round(float(estimate['estimated_pages']), 1)
 
     _domain = ((conversation.state.get('job_analysis') or {}).get('domain', ''))
-    _style_key, _style = _page_style_for_domain(_domain)
+    _override = conversation.state.get('position_style_override')
+    _style_key, _style = _page_style_for_domain(_domain, _override)
     gen.update({
         'layout_template_version': LAYOUT_TEMPLATE_VERSION,
         'layout_template_update_note': LAYOUT_TEMPLATE_UPDATE_NOTE,
@@ -997,7 +1007,7 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
         'page_count_confidence': estimate['confidence'],
         'page_count_source': page_count_source,
         'page_count_needs_exact_recheck': estimate['needs_exact_recheck'],
-        'page_length_warning': _page_warning(page_count_value, _domain),
+        'page_length_warning': _page_warning(page_count_value, _domain, _override),
         'position_style': _style_key,
         'page_count_renderer': exact_renderer,
         'page_count_renderer_detail': exact_renderer_detail,
@@ -1011,8 +1021,9 @@ def _apply_layout_estimate(conversation, body: Dict[str, Any]) -> Dict[str, Any]
         'page_count_confidence': estimate['confidence'],
         'page_count_source': page_count_source,
         'page_count_needs_exact_recheck': estimate['needs_exact_recheck'],
-        'page_length_warning': _page_warning(page_count_value, _domain),
+        'page_length_warning': _page_warning(page_count_value, _domain, _override),
         'position_style': _style_key,
+        'position_style_is_override': bool(_override),
         'baseline_exact_page_count': baseline_exact_page_count,
         'layout_template_version': LAYOUT_TEMPLATE_VERSION,
         'layout_template_update_note': LAYOUT_TEMPLATE_UPDATE_NOTE,

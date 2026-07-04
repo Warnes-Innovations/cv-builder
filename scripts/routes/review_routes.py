@@ -2320,6 +2320,27 @@ def create_blueprint(deps):
         except Exception:
             return _internal_server_error('Failed to update layout settings.')
 
+    # ── Per-session position style override ─────────────────────────────────
+
+    @bp.post("/api/session/position-style")
+    def set_position_style():
+        """Set or clear a per-session position style override (industry/academic/government)."""
+        entry = _get_session()
+        conversation = entry.manager
+        body = request.get_json(silent=True) or {}
+        style = (body.get('style') or '').strip()
+        from scripts.utils.config import get_config
+        cfg = get_config()
+        if not style:
+            conversation.state.pop('position_style_override', None)
+            conversation._save_session()
+            return jsonify({'ok': True, 'position_style': None, 'cleared': True})
+        if style not in cfg.position_styles:
+            return jsonify({'ok': False, 'error': f"Unknown style: {style!r}"}), 400
+        conversation.state['position_style_override'] = style
+        conversation._save_session()
+        return jsonify({'ok': True, 'position_style': style})
+
     # ── Page-count estimation ────────────────────────────────────────────────
 
     @bp.get("/api/estimate-pages")
@@ -2341,15 +2362,17 @@ def create_blueprint(deps):
             )
             estimated_pages = round(total_chars / int(chars_per_page), 1)
             domain = job_analysis.get('domain', '')
+            override = conversation.state.get('position_style_override')
             from scripts.routes.generation_routes import _page_warning, _page_style_for_domain
-            style_key, _style = _page_style_for_domain(domain)
+            style_key, _style = _page_style_for_domain(domain, override)
             return jsonify({
                 'ok': True,
                 'estimated_pages': estimated_pages,
                 'chars': total_chars,
                 'domain': domain,
                 'position_style': style_key,
-                'page_length_warning': _page_warning(estimated_pages, domain),
+                'position_style_is_override': bool(override),
+                'page_length_warning': _page_warning(estimated_pages, domain, override),
             })
         except Exception:
             logger.exception('estimate_pages failed')
