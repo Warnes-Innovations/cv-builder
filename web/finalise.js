@@ -99,12 +99,14 @@ async function populateFinaliseTab() {
       <div style="margin-bottom:16px;">
         <label style="display:block;font-weight:600;margin-bottom:6px;" for="finalise-status">Status</label>
         <select id="finalise-status" style="width:220px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.95em;">
+          <option value="queued" selected>Queued — will apply soon</option>
           <option value="draft">Draft — not yet sent</option>
-          <option value="ready" selected>Ready to send</option>
+          <option value="ready">Ready to send</option>
           <option value="sent">Sent</option>
           <option value="interview">Interview scheduled</option>
           <option value="rejected">Rejected</option>
           <option value="accepted">Accepted</option>
+          <option value="parked">Parked — on hold</option>
         </select>
       </div>
 
