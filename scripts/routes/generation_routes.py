@@ -1396,11 +1396,25 @@ def create_blueprint(deps):
 
     @bp.get("/api/cv/preview-output/<renderer>")
     def download_preview_output(renderer):
-        """Open a renderer-specific preview PDF from the current staged preview."""
+        """Open a renderer-specific preview PDF (or HTML) from the current staged preview."""
         entry = get_session()
         generation_state = entry.manager.state.get('generation_state') or {}
         preview_outputs = generation_state.get('preview_output_paths') or {}
         renderer_key = str(renderer).strip().lower()
+
+        # HTML fallback: serve the source HTML file directly.
+        if renderer_key == 'html':
+            html_path_str = preview_outputs.get('html') or ''
+            html_path = Path(html_path_str)
+            if not html_path.is_file():
+                return jsonify({'error': 'No HTML preview is available.'}), 404
+            return send_file(
+                str(html_path),
+                mimetype='text/html',
+                as_attachment=False,
+                download_name=html_path.name,
+            )
+
         pdf_record = (preview_outputs.get('pdfs') or {}).get(renderer_key) or {}
 
         if not pdf_record.get('ok'):

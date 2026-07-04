@@ -104,6 +104,9 @@ function renderPreviewOutputStatus(previewOutputs = null) {
     const badgeMarkup = ok
       ? `<a class="preview-output-badge preview-output-badge-link is-ready" href="${getPreviewOutputUrl(rendererKey)}" target="_blank" rel="noopener">${rendererLabel} Ready</a>`
       : `<span class="preview-output-badge is-failed">${rendererLabel} Failed</span>`;
+    const htmlFallback = ok ? '' : `<div style="margin-top:6px;font-size:0.82em;color:#6b7280;">
+      <a href="${getPreviewOutputUrl('html')}" target="_blank" rel="noopener" style="color:var(--cv-accent);">View HTML preview</a> — open the HTML source in your browser as a fallback.
+    </div>`;
 
     return `
       <div class="preview-output-row ${ok ? 'is-ready' : 'is-failed'}">
@@ -112,6 +115,7 @@ function renderPreviewOutputStatus(previewOutputs = null) {
             ${badgeMarkup}
           </div>
           <div class="preview-output-detail">${escapeHtml(detail)}</div>
+          ${htmlFallback}
         </div>
       </div>
     `;
