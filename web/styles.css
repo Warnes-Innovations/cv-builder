@@ -57,12 +57,16 @@
   --cv-info-text:              #0369a1;   /* sky-700    — info text / link */
   --cv-info-light:             #93c5fd;   /* blue-300   — light info border/accent */
   --cv-sky-bg:                 #f0f9ff;   /* sky-50     — sky background */
+  --cv-sky-900:                #0c4a6e;   /* sky-900    — deep sky heading text */
   --cv-error-bg-lt:            #fee2e2;   /* red-100    — light error background */
   --cv-error-text:             #991b1b;   /* red-800    — error text */
   --cv-error-light:            #ef4444;   /* red-400    — light error accent */
   --cv-error-strong:           #b91c1c;   /* red-700    — critical/stale error text */
   --cv-success-deep:           #14532d;   /* green-900  — success text on dark bg */
   --cv-slate-950:              #0f172a;   /* slate-950  — near-black / dark shell bg */
+  --cv-log-bg:                 #020617;   /* slate-1000 — terminal/log panel background */
+  --cv-teal-700:               #0f766e;   /* teal-700   — teal focus ring */
+  --cv-hc-link:                #00008b;   /* darkblue   — high-contrast link colour */
   --cv-black:                  #000;   /* black — deep overlay / shadow */
   /* Gray scale */
   --cv-gray-50:                #f9fafb;   /* gray-50    — input/textarea background, table stripe */
@@ -103,6 +107,7 @@
   --cv-violet-300:             #c4b5fd;   /* violet-300 — unavailable / soft accent */
   --cv-violet-500:             #8b5cf6;   /* violet-500 — recommended border */
   --cv-violet-600:             #7c3aed;   /* violet-600 — recommended text / accent */
+  --cv-violet-800:             #5b21b6;   /* violet-800 — prior-clarifications role label */
   /* Indigo family — q-draft hover, interactive badges, progress bar */
   --cv-indigo-100:             #e0e7ff;   /* indigo-100 — hover/active input background */
   --cv-indigo-200:             #c7d2fe;   /* indigo-200 — hover border */
@@ -554,7 +559,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .llm-log-text {
   white-space: pre-wrap;
   word-break: break-word;
-  background: #020617;
+  background: var(--cv-log-bg);
   color: var(--cv-text-secondary);
   padding: 8px 10px;
   border-radius: 4px;
@@ -570,7 +575,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 
 /* ===== ANALYSIS FORMATTING ===== */
 .job-analysis { background: var(--cv-sky-bg); border-left: 4px solid var(--cv-sky-500); padding: 16px; margin: 8px 0; border-radius: 8px; }
-.job-analysis h3 { margin: 0 0 12px; color: #0c4a6e; font-size: 16px; }
+.job-analysis h3 { margin: 0 0 12px; color: var(--cv-sky-900); font-size: 16px; }
 .job-analysis h4 { margin: 16px 0 8px; color: var(--cv-info-text); font-size: 14px; }
 .job-analysis ul { margin: 8px 0; padding-left: 20px; }
 .job-analysis li { margin: 4px 0; color: var(--cv-text-primary); }
@@ -1544,7 +1549,7 @@ details.rewrite-rationale summary { cursor: pointer; color: var(--cv-gray-700); 
 .preview-output-badge.is-failed { background: var(--cv-error-bg); color: var(--cv-error-strong); }
 .preview-output-badge-link { text-decoration: none; }
 .preview-output-badge-link:hover { background: var(--cv-success-bg-md); color: var(--cv-success-deep); }
-.preview-output-badge-link:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
+.preview-output-badge-link:focus-visible { outline: 2px solid var(--cv-teal-700); outline-offset: 2px; }
 .preview-output-empty { font-size: 12px; color: var(--cv-text-secondary); line-height: 1.5; }
 .layout-scope-label { font-size: 12px; color: var(--cv-text-secondary); background: var(--cv-sky-bg); border: 1px solid var(--cv-sky-200); border-radius: 6px; padding: 6px 10px; margin: 0; }
 /* Position style indicator — page estimate area */
@@ -1780,7 +1785,7 @@ textarea[aria-invalid="true"]:focus {
   flex-wrap: wrap;
 }
 .prior-clarifications-banner .pcb-text { flex: 1; color: var(--cv-gray-700); }
-.prior-clarifications-banner .pcb-role { font-weight: 600; color: #5b21b6; }
+.prior-clarifications-banner .pcb-role { font-weight: 600; color: var(--cv-violet-800); }
 
 /* ── Reduced-motion accommodation (WCAG 2.3.3, GAP-199) ─────────────────── */
 @media (prefers-reduced-motion: reduce) {
@@ -1797,7 +1802,7 @@ textarea[aria-invalid="true"]:focus {
   body { color: var(--cv-black); background: var(--cv-white); }
   .tab, .action-btn, .step, .icon-btn, .rw-btn, .sm-btn, .btn-download { border: 2px solid var(--cv-black) !important; }
   .tab.active, .step.active { outline: 3px solid var(--cv-black); outline-offset: 2px; }
-  a { color: #00008b; text-decoration: underline; }
+  a { color: var(--cv-hc-link); text-decoration: underline; }
   input, textarea, select { border: 2px solid var(--cv-black) !important; }
   .confidence-badge { border: 1px solid var(--cv-black) !important; }
 }
