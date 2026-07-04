@@ -4378,13 +4378,23 @@ Include one entry per candidate. Do not omit any candidate."""
                     })
 
                 # Too short
-                if len(text.split()) < 8:
+                _word_count = len(text.split())
+                if _word_count < 8:
                     issues.append({
                         'type':       'too_short',
                         'severity':   'info',
                         'suggestion': (
                             'Expand this bullet to include context, action, and result '
                             '(aim for 15–25 words).'
+                        ),
+                    })
+                elif _word_count > 35:
+                    issues.append({
+                        'type':       'too_long',
+                        'severity':   'info',
+                        'suggestion': (
+                            f'This bullet is {_word_count} words and may wrap to 2+ lines on the page. '
+                            'Trim to ≤35 words for a clean single-line entry.'
                         ),
                     })
 
