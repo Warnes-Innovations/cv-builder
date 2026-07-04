@@ -21,6 +21,7 @@ import {
   loadStateFromLocalStorage,
   stateManager,
 } from './state-manager.js';
+import { _STEP_DISPLAY } from './workflow-steps.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Accessibility: Focus Management for Modals
@@ -562,6 +563,16 @@ function updateTabBarForStage(stage) {
   const tabBar = document.getElementById('tab-bar');
   if (tabBar) tabBar.scrollLeft = 0;
   updateTabScrollButtons();
+
+  // GAP-16 (Part A): surface which workflow step's sub-tabs are currently
+  // shown. Visible-only label — no aria-live here; switchTab() in
+  // review-table-base.js is the sole live-speech source for this event, to
+  // avoid a double-announce from two independent live regions.
+  const labelEl = document.getElementById('tab-stage-label');
+  if (labelEl) {
+    const stepLabel = _STEP_DISPLAY[stage] || stage;
+    labelEl.textContent = stepLabel ? `Now viewing: ${stepLabel}` : '';
+  }
 }
 
 // loadTabContent() lives in web/review-table-base.js, which owns the
