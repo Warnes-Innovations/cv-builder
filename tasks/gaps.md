@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 54)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 55)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,14 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+
+## 2026-07-04 (Cycle 55) Reconciliation Notes
+
+Persuasion: sparse-experience advisory for roles with fewer than 2 bullets.
+
+- **`scripts/utils/cv_orchestrator.py`** — Added `sparse_experience_advisories` list to the `check_persuasion()` return summary. After the per-experience bullet loop, any role with exactly 1 non-empty bullet emits a `sparse_experience` info-level advisory with the role label and a prompt to add bullets. Addresses hiring-manager US-M2 finding (no minimum-bullet-count enforcement, GAP-NEW-HM-01).
+- **`web/download-tab.js`** — Download tab persuasion panel now renders each `sparse_experience_advisories` entry as a light-blue advisory box ("⚠ Thin role: …") after the narrative-arc advisory.
+- **Test suite:** pending.
 
 ## 2026-07-04 (Cycle 54) Reconciliation Notes
 

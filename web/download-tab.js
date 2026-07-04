@@ -327,6 +327,15 @@ async function _fetchPersuasionHtml() {
       </div>`;
     }
 
+    // Sparse-experience advisory: roles with fewer than 2 bullets
+    const sparseAdvisories = summary.sparse_experience_advisories || [];
+    for (const sa of sparseAdvisories) {
+      html += `<div style="padding:10px 16px;background:#f0f9ff;border-top:1px solid #bae6fd;">
+        <span style="font-weight:600;color:#075985;">⚠ Thin role:</span>
+        <span style="font-size:0.9em;color:#0c4a6e;margin-left:6px;">${escapeHtml(sa.detail)}</span>
+      </div>`;
+    }
+
     html += '</div>';
     return html;
   } catch (error) {

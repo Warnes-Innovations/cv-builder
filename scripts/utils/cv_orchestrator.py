@@ -4313,6 +4313,7 @@ Include one entry per candidate. Do not omit any candidate."""
         findings = []
         total_bullets = 0
         strong_count  = 0
+        sparse_experience_advisories: List[Dict] = []
 
         for exp in experiences:
             exp_id = exp.get('id', '')
@@ -4451,6 +4452,26 @@ Include one entry per candidate. Do not omit any candidate."""
                     finding_by_bullet[key] = new_finding
                     strong_count -= 1
 
+            # Sparse-experience advisory: flag entries with fewer than 2 bullets.
+            bullet_count = sum(
+                1 for ach in achievements
+                if (ach.get('text', '') if isinstance(ach, dict) else str(ach)).strip()
+            )
+            if bullet_count == 1:
+                role = exp.get('title') or exp.get('position') or 'this role'
+                org  = exp.get('organization') or exp.get('company') or ''
+                label = f'"{role}" at {org}' if org else f'"{role}"'
+                sparse_experience_advisories.append({
+                    'type':     'sparse_experience',
+                    'severity': 'info',
+                    'exp_id':   exp_id,
+                    'detail': (
+                        f'{label} has only 1 bullet. '
+                        'Hiring managers expect at least 2 bullets per role to demonstrate '
+                        'scope and impact.'
+                    ),
+                })
+
         # Narrative-thread advisory (GAP-281): warn when ≥3 themes are equally weighted.
         # Count bullets that mention each `relevant_for` tag. If the top 3 tags
         # all fall within 20% of the leading tag's count AND total tagged bullets ≥ 10,
@@ -4533,11 +4554,12 @@ Include one entry per candidate. Do not omit any candidate."""
         return {
             'findings': findings,
             'summary':  {
-                'total_bullets':             total_bullets,
-                'flagged':                   len(findings),
-                'strong_count':              strong_count,
-                'narrative_thread_advisory': narrative_thread_advisory,
-                'narrative_arc_advisory':    narrative_arc_advisory,
+                'total_bullets':                total_bullets,
+                'flagged':                      len(findings),
+                'strong_count':                 strong_count,
+                'narrative_thread_advisory':    narrative_thread_advisory,
+                'narrative_arc_advisory':       narrative_arc_advisory,
+                'sparse_experience_advisories': sparse_experience_advisories,
             },
         }
 
