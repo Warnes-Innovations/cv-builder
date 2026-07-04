@@ -220,6 +220,10 @@ let generationState = createDefaultGenerationState();
 // Null until first score is fetched.
 let atsScore = null;
 
+// Stale steps: steps downstream of the last re-run, awaiting re-execution.
+// Populated from /api/status response; cleared when steps are re-run.
+let staleSteps = new Set();
+
 // Export state getters/setters
 const stateManager = {
   // Tab state
@@ -281,6 +285,11 @@ const stateManager = {
   getAtsScore: () => atsScore,
   setAtsScore: (score) => { atsScore = score; saveStateToLocalStorage(); },
   clearAtsScore: () => { atsScore = null; saveStateToLocalStorage(); },
+
+  // Stale workflow steps — steps downstream of the last re-run
+  setStaleSteps: (steps) => { staleSteps = new Set(steps || []); },
+  getStaleSteps: () => new Set(staleSteps),
+  isStepStale: (step) => staleSteps.has(step),
 
   // Staged generation state (GAP-20)
   getGenerationState: () => generationState,

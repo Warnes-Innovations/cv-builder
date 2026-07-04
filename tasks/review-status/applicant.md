@@ -8,8 +8,8 @@
 
 # Applicant Review Status
 
-**Last Updated:** 2026-07-01 14:30 ET
-**Executive Summary:** The application workflow satisfies the majority of the applicant story across all 12 stories. Core flows — job input (URL + paste), analysis, clarification questions, customisation review, rewrite review, spell check, HTML preview, layout refinement, final generation (PDF + ATS DOCX), cover letter, screening questions, harvest, and finalise — are implemented end-to-end with backend APIs and frontend UI. Key gaps include: the "queued" session status (US-A1) is not surfaced; prior-session clarification pre-population across sessions (US-A2) is absent; skill inter-category move (US-A3b) is not implemented; the layout-refine step does not ask clarifying questions for ambiguous instructions (US-A5b); the finalise confirmation summary omits total session time (US-A9); natural-language and document-ingestion paths for master CV updates (US-A10) are absent; a keyboard shortcut for re-run (US-A12) is missing. Terminology inconsistencies include mixed British/American spellings ("Analyse"/"Customizations") and a misleading tooltip on the "Generate Preview" button. The "Open Layout Review" tooltip erroneously describes "font size, margins" as the layout review mechanism.
+**Last Updated:** 2026-07-04 (cycle 61 source re-check)
+**Executive Summary:** The application workflow satisfies the majority of the applicant story across all 12 stories. Core flows — job input (URL + paste), analysis, clarification questions, customisation review, rewrite review, spell check, HTML preview, layout refinement, final generation (PDF + ATS DOCX), cover letter, screening questions, harvest, and finalise — are implemented end-to-end with backend APIs and frontend UI. Key gaps: prior-session clarification pre-population across sessions (US-A2) is absent; the layout-refine step does not ask clarifying questions for ambiguous instructions (US-A5b); natural-language and document-ingestion paths for master CV updates (US-A10) are absent. Previously-flagged gaps now resolved: `queued` status implemented in `generation_routes.py:2169` and `finalise.js:102` (Cycle 57); session duration in finalise summary implemented in `finalise.js:320-331` (also Cycle 57); Ctrl+Shift+R re-run shortcut implemented in `keyboard-shortcuts.js:196`. Skill inter-category move is available via the per-skill category text input (`skills-review.js:77`). Terminology inconsistencies remain: mixed British/American spellings ("Analyse"/"Customizations") and a misleading tooltip on the "Generate Preview" button.
 
 ---
 
@@ -25,7 +25,7 @@
 
 **Company/role auto-extract + editable intake:** ✅ Pass (backend) — `extract_intake_metadata()` (`conversation_manager.py:1539`) and `apply_confirmed_intake()` (`conversation_manager.py:2096`) are wired to `/api/intake-metadata` and `/api/confirm-intake` (`status_routes.py:1034, 1072`). The session `intake` dict stores `role`, `company`, `date_applied`. The position bar in `index.html:80-86` displays `position-title` and `position-company`. However, an explicit editable confirmation UI for the extracted values is not visible in the Job tab markup in `index.html` — the confirm-intake API exists but its prominence in the Job tab UX is not determinable from HTML/JS alone without running the app.
 
-**Session persisted with `status: "queued"` after confirming:** ❌ Fail — `application_status` values defined in `generation_routes.py:2105` are `draft`, `ready`, `sent`, `interview`, `rejected`, `accepted`. There is no `queued` status. The story requires a session to be persisted as `queued` immediately after step 5 (intake confirmation), but the app has no such status tier.
+**Session persisted with `status: "queued"` after confirming:** ✅ Pass — `queued` is a valid `application_status` value in `generation_routes.py:2169` and is the default-selected option in `finalise.js:102` (`<option value="queued" selected>`). The status is written to `metadata.json` at finalise time via `generation_routes.py:2181`.
 
 **Protected-site warning with manual-copy fallback:** ✅ Pass — `job_routes.py:266-300` returns structured `protected_site: true` with detailed copy instructions for LinkedIn, Indeed, Glassdoor.
 
@@ -241,7 +241,7 @@
 
 **Summary shows keyword match score:** ✅ Pass — `finalise.js:306-316` renders ATS keywords and ATS score in the confirmation summary.
 
-**Summary shows total time:** ❌ Fail — `finalise.js:300-320` shows files, approved rewrites, ATS score, and git commit hash, but does NOT show total elapsed session time. The story requires "files generated, total time, keywords matched."
+**Summary shows total time:** ✅ Pass — `finalise.js:320-321` reads `summary.session_duration_secs` and line 331 renders `<li>Session duration: ${durationStr}</li>` when the value is present. The backend computes `session_duration_secs` at `generation_routes.py:2253-2254` using `entry.created`.
 
 ---
 
@@ -279,7 +279,7 @@
 
 **Re-run affordance visible on completed steps in progress bar:** ✅ Pass — `workflow-steps.js:875-876` renders a `.step-rerun` button on completed steps; CSS reveals the button on hover/focus-within (`workflow-steps.js:915`).
 
-**Re-run affordance accessible via keyboard (shortcut or menu):** ❌ Fail — `keyboard-shortcuts.js` (lines 1-245) contains no re-run shortcut. The re-run button is keyboard-reachable via Tab (focus-within CSS reveals it), but the story requires a "keyboard shortcut or menu" access path in addition to the progress indicator.
+**Re-run affordance accessible via keyboard (shortcut or menu):** ✅ Pass — `keyboard-shortcuts.js:196` handles `e.ctrlKey && e.shiftKey && e.key === 'R'` and calls `confirmReRunPhase`. The shortcut is listed in the help panel at line 150: "Ctrl+Shift+R — Re-run current workflow phase".
 
 **Confirmation dialogue listing affected downstream stages:** ✅ Pass — `workflow-steps.js:147-185` shows `_showReRunConfirmModal` with title and body text explaining what will be re-run and that downstream approvals may be affected.
 
@@ -337,19 +337,13 @@ The following inconsistencies and confusing labels were identified across `web/i
 
 ### Additional Story Gaps / Proposed Story Items
 
-**GAP-US-A1a: "Queued" status not implemented.** The story requires a session persisted immediately after intake confirmation with `status: "queued"`. The app uses `draft` as the initial status, set only at finalise time. Consider adding `queued` to the status lifecycle.
-
 **GAP-US-A2a: Prior clarification pre-population across sessions.** US-A2 specifies that "if a prior session exists for the same role type, my previous clarification answers are pre-populated as defaults." Not implemented — only current-session answers are pre-populated in the amend modal.
 
 **GAP-US-A3a: Omit-section rationale display needs runtime verification.** The story requires omitted sections to be "explained, not silently dropped." The Goals tab likely shows this from LLM `sections_to_omit` output, but runtime verification is needed.
 
-**GAP-US-A3b-a: Skill inter-category move absent.** US-A3b requires moving a skill from one category to another. Not found in `skills-review.js`.
-
 **GAP-US-A5b-a: No clarification loop for ambiguous layout instructions.** The story requires the LLM to "ask clarifying questions rather than silently applying a guess." `layout-refine` applies best-effort interpretation without a clarification loop.
 
 **GAP-US-A8a: Top-3 experience display in screening UI.** US-A8 requires the top 3 relevant experiences from Master CV shown with match scores per question. Backend passes experience context to LLM but the UI may not render them as distinct scored items.
-
-**GAP-US-A9a: Total session time missing from finalise summary.** `finalise.js` shows files, ATS score, approved rewrites, and git commit — but not elapsed session time as US-A9 requires.
 
 **GAP-US-A10a: Natural-language master data update absent.** US-A10 requires free-text NL updates to master data. Only structured editors are available.
 
@@ -358,8 +352,6 @@ The following inconsistencies and confusing labels were identified across `web/i
 **GAP-US-A10c: Git commit on individual master data edits unconfirmed.** US-A10 says "Git commit on every confirmed update." Individual edits via structured editors may not auto-commit.
 
 **GAP-US-A11a: Consolidated JSON diff before harvest apply.** US-A11 requires a "consolidated JSON diff" before any write. Per-item rationale is shown, but a multi-item consolidated diff view was not confirmed in `finalise.js`.
-
-**GAP-US-A12a: Keyboard shortcut for re-run absent.** US-A12 requires re-run accessible via a keyboard shortcut or menu in addition to the progress indicator. `keyboard-shortcuts.js` has no re-run shortcut.
 
 **GAP-TERM-01: Mixed British/American spelling throughout UI.** "Analyse"/"Customise" (British) alongside "Customizations"/"analyze" (American) creates inconsistency. A single locale choice should be enforced across all UI strings, button labels, and API responses.
 
@@ -379,8 +371,8 @@ The following inconsistencies and confusing labels were identified across `web/i
 | `web/index.html:198` | Finalise action button | "Package Application Files" does not match "Finalise" terminology elsewhere |
 | `scripts/routes/job_routes.py:221-300` | URL fetch | Protected-site detection for LinkedIn/Indeed/Glassdoor confirmed |
 | `scripts/routes/job_routes.py:779-800` | Re-run API | `/api/re-run-phase` routes to `conversation_manager.re_run_phase` |
-| `scripts/routes/generation_routes.py:2056-2205` | Finalise | Status transitions, git commit, keyword summary — total time absent |
-| `scripts/routes/generation_routes.py:2105` | Status values | `draft`, `ready`, `sent`, `interview`, `rejected`, `accepted` — no `queued` |
+| `scripts/routes/generation_routes.py:2056-2205` | Finalise | Status transitions, git commit, keyword summary + session duration (line 2253) |
+| `scripts/routes/generation_routes.py:2169` | Status values | `draft`, `ready`, `sent`, `queued`, `interview`, `rejected`, `accepted`, `parked` |
 | `scripts/routes/generation_routes.py:2211-2413` | Harvest | Candidates, analyze, apply routes all implemented |
 | `scripts/routes/master_data_routes.py:1511-1544` | Cover letter prior | Prior session scanning confirmed |
 | `scripts/routes/master_data_routes.py:1695-1755` | Cover letter save | DOCX + PDF confirmed; `cover_letter_text` in metadata |
@@ -388,11 +380,11 @@ The following inconsistencies and confusing labels were identified across `web/i
 | `scripts/utils/conversation_manager.py:1539,2096-2113` | Intake | `extract_intake_metadata` and `apply_confirmed_intake` confirmed |
 | `web/workflow-steps.js:386-392` | Clarification amend modal | Analysis re-run shows amend modal before proceeding |
 | `web/workflow-steps.js:875-915` | Re-run button on steps | Rendered on completed steps; revealed on hover/focus-within |
-| `web/keyboard-shortcuts.js:1-245` | Keyboard shortcuts | No re-run shortcut present |
+| `web/keyboard-shortcuts.js:196` | Keyboard shortcuts | Ctrl+Shift+R re-run shortcut implemented |
 | `web/rewrite-review.js:377-380` | Weak badge | `evidence_strength === 'weak'` triggers "⚠ Candidate to confirm" |
 | `web/rewrite-review.js:578-585` | Submit gate | Disabled while `pending > 0` |
 | `web/skills-review.js:266` | Readability warning | Inline skill bullet length warning present |
 | `web/skills-review.js:93-139` | Category management | Rename, save, reorder confirmed; inter-category move absent |
-| `web/finalise.js:300-325` | Finalise summary | ATS score, approved rewrites, commit hash; total time absent |
+| `web/finalise.js:300-335` | Finalise summary | ATS score, approved rewrites, commit hash, session duration (line 331) |
 | `web/finalise.js:325-344` | Harvest auto-show | Harvest section shown immediately after finalise success |
 | `scripts/utils/cv_orchestrator.py:1495-1574` | Schema.org JSON-LD | Built and embedded in generated HTML |

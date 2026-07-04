@@ -172,6 +172,49 @@ function switchTab(tab) {
   loadTabContent(tab);
 }
 
+// Maps each tab to the workflow step whose staleness it inherits.
+const _STALE_TAB_STEP = {
+  analysis:             'analysis',
+  'exp-review':         'customizations',
+  'ach-editor':         'customizations',
+  'skills-review':      'customizations',
+  'achievements-review':'customizations',
+  'tagline-review':     'customizations',
+  'summary-review':     'customizations',
+  'publications-review':'customizations',
+  'ats-score':          'customizations',
+  rewrite:              'rewrite',
+  spell:                'spell',
+};
+
+const _STEP_DISPLAY_LABEL = {
+  analysis:       'Job Analysis',
+  customizations: 'Customisations',
+  rewrite:        'Rewrite Review',
+  spell:          'Spell Check',
+};
+
+function _injectStaleBanner(contentEl, step) {
+  if (!stateManager.isStepStale(step)) return;
+  if (contentEl.querySelector('.stale-content-banner')) return; // already present
+  const label = _STEP_DISPLAY_LABEL[step] || step;
+  const banner = document.createElement('div');
+  banner.className = 'stale-content-banner';
+  banner.setAttribute('role', 'status');
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = '⚠ These results may be outdated — an earlier step was re-run.';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'stale-rerun-link';
+  btn.textContent = `↻ Re-run ${label}`;
+  btn.addEventListener('click', () => {
+    if (typeof confirmReRunPhase === 'function') confirmReRunPhase(step);
+  });
+  banner.appendChild(msgSpan);
+  banner.appendChild(btn);
+  contentEl.insertBefore(banner, contentEl.firstChild);
+}
+
 async function loadTabContent(tab) {
   const content = document.getElementById('document-content');
   const tabData = ensureTabDataState();
@@ -285,6 +328,10 @@ async function loadTabContent(tab) {
       await populateScreeningTab();
       break;
   }
+
+  // Inject stale-content banner when this tab's step has been superseded
+  const _staleStep = _STALE_TAB_STEP[tab];
+  if (_staleStep) _injectStaleBanner(content, _staleStep);
 
   // Restore unsaved user input for the newly loaded tab
   _restoreDraftInputsForTab(tab);

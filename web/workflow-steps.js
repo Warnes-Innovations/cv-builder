@@ -851,6 +851,7 @@ function updateWorkflowSteps(status) {
     'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'harvest',
   ];
   const staleSteps = new Set(status.stale_steps || []);
+  stateManager.setStaleSteps(staleSteps);
   stepIds.forEach(step => {
     const el = document.getElementById(`step-${step}`);
     if (!el) return;
