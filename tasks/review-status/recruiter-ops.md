@@ -8,8 +8,8 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # UI Review: Recruiter / Application Operations Perspective
 
-**Review cycle:** Cycle 25
-**Date:** 2026-07-01
+**Review cycle:** Cycle 25 / status corrections cycle 65
+**Date:** 2026-07-04
 
 **Source files read:**
 
@@ -59,8 +59,11 @@ current" signals with appropriate tones. However:
 - The per-file timestamp is guarded by optional chaining (`cvData.metadata?.generation_date`).
   No contract guarantees this field is populated, so the timestamp can be silently absent.
 - Two tabs coexist under the `download` workflow stage in `STAGE_TABS` (`ui-core.js`
-  line 357): `final_generate` ("Generated Files") and `download` ("File Review"). A user who
-  visits only one may not know the other exists; no cross-reference prose links them.
+  line 357): `final_generate` ("Generated Files") and `download` ("File Review"). Cross-reference
+  prose IS present on both sides: `final-generate.js:136` shows "The **File Review** sub-tab in
+  Finalise runs ATS checks, confirms the package is complete, and lets you archive the application."
+  and `download-tab.js:380` shows "To download files immediately after generation, use the
+  **Generated Files** tab." — stale finding.
 
 #### EC 3: Finalise/archive actions are clearly separated from earlier preview steps
 
@@ -129,16 +132,9 @@ from `metadata.json`. `_restoreFinaliseMeta()` (`finalise.js` lines 129–147) i
 the end of `populateFinaliseTab` and pre-populates both `#finalise-status` and
 `#finalise-notes`. The character counter is also restored (`finalise.js` lines 139–143).
 
-Remaining open gap: Notes are not editable post-archive from the sessions modal. The
-sessions modal inline-edit widget exposes a status dropdown per session row but does not
-expose a notes field. The existing `PATCH /api/sessions/metadata` endpoint accepts `notes`
-(`session_routes.py` line 719) but the frontend does not surface it. After archival, notes
-can only be changed by re-opening the session and revisiting the Finalise tab.
+Notes are editable post-archive from the sessions modal. `session-switcher-ui.js:402–420` renders a sticky-note edit button per session row that toggles an inline `<textarea id="sm-notes-ta-${idx}">` with Save and Cancel buttons. `startSessionNotesEdit()`, `submitSessionNotesEdit()`, and `cancelSessionNotesEdit()` at lines 681–714 implement the full edit flow. `submitSessionNotesEdit()` PATCHes to the backend's `PATCH /api/sessions/metadata` endpoint and updates the preview div on success. The previously-reported gap (notes only editable by reopening the session's Finalise tab) is resolved — this is a stale finding.
 
-**Acceptance criteria verdict:** PARTIALLY MET. Status tracking is well-implemented
-end-to-end. Notes capture at finalise time works correctly with character limit enforcement
-(GAP-236) and restore-on-reopen (GAP-235). The remaining gap is the absence of a
-post-archive notes edit path in the sessions modal.
+**Acceptance criteria verdict:** MET. Status tracking, notes capture with character limit (GAP-236), restore-on-reopen (GAP-235), and post-archive notes edit from the sessions modal are all implemented.
 
 ---
 
@@ -180,14 +176,9 @@ suffix. However:
   submission". However, this badge is only shown when `isPreview` is true, and preview
   HTML files may appear alongside final delivery files in the same File Review grid without
   a strong visual separator.
-- The "Generated Files" tab (`tab-final_generate`) and the "File Review" tab (`tab-download`)
-  both appear under the `download` STAGE_TABS entry (`ui-core.js` line 356). Neither tab
-  contains prose explaining its relationship to the other or which is the authoritative
-  delivery checkpoint.
+- Both tabs now carry mutual cross-reference prose (see US-O1 EC2 note above) — stale finding.
 
-**Acceptance criteria verdict:** PARTIALLY MET. File naming is job-relevant and the
-`_preview` label in download-tab.js correctly flags intermediate files. The main open gap
-is the dual-tab arrangement in the Download stage, which lacks disambiguation prose.
+**Acceptance criteria verdict:** MET. File naming is job-relevant, `_preview` label flags intermediate files, and both tabs carry mutual disambiguation prose.
 
 ---
 

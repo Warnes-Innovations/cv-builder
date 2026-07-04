@@ -8,7 +8,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Accessibility Specialist Evaluation
 **Persona:** Accessibility Specialist
-**Date:** 2026-07-01
+**Date:** 2026-07-04 (status corrections cycle 65)
 **Branch:** feature/multi-user-deployment
 **Source files reviewed:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py
 
@@ -77,11 +77,11 @@ The application has a centralized focus management system that covers most modal
 - The `confirmDialog()` function has its own in-place focus trap that also handles Escape.
 
 #### Criterion 3 — Closing a modal restores focus to the triggering control
-**PASS (with one inconsistency).**
+**PASS.**
 
 - `restoreFocus()` (ui-core.js:340–346) pops `_focusStack` and calls `.focus()` on the stored element; it also removes the corresponding trap listener from `_focusTrapStack`.
 - This is called in all close paths checked: `closeSettingsModal`, `closeSessionsModal`, `closeMasterCvModal`, `closeAtsReportModal`, `closeJobAnalysisModal`, `closeModal()` (generic), `closeAllModals()`.
-- **Gap:** `openAtsReportModal` (ats-modals.js:155–197) and `openJobAnalysisModal` (ats-modals.js:278–304) call `trapFocus` but do **not** push to `_focusStack` before calling it. `restoreFocus()` on close pops whatever the previous stack entry was, which may return focus to the wrong element if these modals are opened first.
+- Both `openAtsReportModal` (ats-modals.js:158) and `openJobAnalysisModal` (ats-modals.js:275) call `pushFocusStack(document.activeElement)` before calling `trapFocus` — the previously-reported missing push is a stale finding; both modals correctly save and restore focus.
 
 #### Criterion 4 — Dialog title and purpose programmatically exposed
 **PASS.**
@@ -116,7 +116,7 @@ Form validation and review controls are generally well-labelled. Icon-only butto
 - Skills review (skills-review.js:849–854): same pattern with `aria-pressed` toggling state.
 - Publications review (publications-review.js:171–173, 265–266): `aria-label` includes cite key.
 - Master CV edit/delete buttons (master-cv.js:891–894): `aria-label="Edit experience: [title]"` / `"Delete experience: [title]"`.
-- **Gap (spell check):** Spell-check action buttons in spell-check.js:249–255 ("Apply", "Ignore", "Add to Dictionary") use only `title` attributes. Title attributes are not reliably announced by all screen readers. These need `aria-label` matching the button text or action.
+- Spell-check action buttons at `spell-check.js:249–255` ("Apply", "Ignore", "Add to Dictionary") already carry both `title` and `aria-label` attributes (`aria-label="Apply custom correction"`, `aria-label="Ignore this suggestion"`, `aria-label="Add to custom dictionary"`) — stale finding; these buttons are correctly labelled.
 
 #### Criterion 3 — Inline edit/review actions have clear focus targets and visible focus states
 **PASS.**
@@ -139,7 +139,7 @@ Form validation and review controls are generally well-labelled. Icon-only butto
 
 #### Failure Modes Check
 - Validation errors shown only visually: **partially present** — job input is correct; other form areas lack `aria-describedby` wiring.
-- Reorder or close buttons without labels: **not present** for review tables; **present** for spell-check action buttons (`title` only).
+- Reorder or close buttons without labels: **not present** — review tables and spell-check action buttons all carry `aria-label`.
 - Focus outline removed without accessible replacement: **not present** — `:focus-visible` outlines are present throughout.
 
 ---

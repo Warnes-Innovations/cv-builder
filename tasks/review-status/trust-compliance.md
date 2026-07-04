@@ -76,7 +76,7 @@ Experience review and skill review tabs also surface confidence badges and reaso
 
 ✅ Pass (rewrite stage, fresh session) — All rewrite cards start with no decision set; `rewriteDecisions` is reset to `{}` when the panel renders (`rewrite-review.js:144–145`). The submit button is disabled until every card has a decision.
 
-⚠️ Partial (cold-restore path) — `_restoreDecisions()` at `rewrite-review.js:53–81` re-seeds decisions from `rewrite_audit` on cold restore. If a prior session already completed the rewrite stage, revisiting the rewrite tab will pre-populate decisions from the audit without user notification. Prior decisions auto-apply without a clear disclosure that previously recorded choices are being restored.
+✅ Pass (cold-restore path) — `_restoreDecisions()` at `rewrite-review.js:59–99` shows a toast notification "Your previous rewrite decisions have been restored — you can still change them." (6000 ms, warning style) via `showToast()` on both the localStorage restore path (line 70–72) and the `_backendRewriteAudit` cold-restore fallback path (line 93–95). The `_restoreToastShown` guard prevents duplicate toasts. Previously-reported "no notification" finding is stale.
 
 **Acceptance criteria assessment:**
 
@@ -163,7 +163,7 @@ The application uses clear and consistent terminology throughout the trust-relev
 | US-C1 Criterion 3: No blur between proposed and approved | ✅ | | | |
 | US-C2 Criterion 1: Review stages block progression | ✅ rewrite + layout + spell + harvest | ⚠️ customization defaults silently accepted | | |
 | US-C2 Criterion 2: Accept/reject/edit distinguishable | ✅ | | | |
-| US-C2 Criterion 3: No silent auto-accept | ✅ fresh render | ⚠️ cold-restore silently reapplies | | |
+| US-C2 Criterion 3: No silent auto-accept | ✅ fresh render; ✅ cold-restore toast (cycle 65) | | | |
 | US-C3 Criterion 1: Diff view available | ✅ rewrite diff + layout-freshness chip | | | |
 | US-C3 Criterion 2: Rationale exposed | | ⚠️ conditional on orchestrator; no cross-stage linkage | | |
 | US-C3 Criterion 3: Finalisation traceable | ✅ audit log on Download tab (cycle 64) | ⚠️ session decisions not yet summarised in harvest tab | | |

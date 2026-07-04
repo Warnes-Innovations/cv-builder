@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 64)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 65)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,21 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+
+## 2026-07-04 (Cycle 65) Reconciliation Notes
+
+Review status corrections: stale findings corrected in recruiter-ops, accessibility-specialist, and trust-compliance.
+
+- **`tasks/review-status/recruiter-ops.md`** — Three stale findings corrected:
+  - US-O2 EC3d "notes not editable post-archive" → STALE: `session-switcher-ui.js:402–420, 681–714` fully implements inline notes editing in the sessions modal with Save/Cancel/PATCH flow.
+  - US-O1 EC2 "no cross-reference prose between tabs" → STALE: `final-generate.js:136` references File Review and `download-tab.js:380` references Generated Files tab.
+  - US-O3 EC3 "dual-tab ambiguity" → STALE: same cross-reference prose as above resolves the disambiguation concern.
+- **`tasks/review-status/accessibility-specialist.md`** — Two stale findings corrected:
+  - Criterion 3 US-X2 "ATS modals missing focus-stack push" → STALE: both `openAtsReportModal` (line 158) and `openJobAnalysisModal` (line 275) call `pushFocusStack(document.activeElement)`.
+  - Criterion 2 US-X3 "spell-check buttons have title only, no aria-label" → STALE: `spell-check.js:249–255` already has `aria-label` on all three action buttons.
+- **`tasks/review-status/trust-compliance.md`** — One stale finding corrected:
+  - US-C2 Criterion 3 "cold-restore silently reapplies decisions" → STALE: `_restoreDecisions()` shows a `showToast()` notification on both the localStorage restore path and the cold-restore fallback path (`rewrite-review.js:68–73, 92–97`). `_restoreToastShown` prevents duplicate toasts. ⚠️ → ✅.
+- **Test suite:** No code changes — documentation corrections only. Prior test suite (1435 passed) remains valid.
 
 ## 2026-07-04 (Cycle 64) Reconciliation Notes
 
