@@ -724,6 +724,7 @@ export {
   acceptAllRewrites,
   rejectAllRewrites,
   toggleRewriteCompactMode,
+  _renderRewriteAuditLog,
 };
 
 syncRewriteGlobals();

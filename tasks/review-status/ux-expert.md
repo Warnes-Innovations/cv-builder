@@ -5,7 +5,7 @@
 
 # UX Expert Review
 
-**Date:** 2026-07-01
+**Date:** 2026-07-04 (status corrections cycle 64)
 **Reviewer:** ux-expert persona
 **Source files examined:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, web/job-input.js, web/rewrite-review.js, web/keyboard-shortcuts.js, web/layout-instruction.js, web/workflow-steps.js
 
@@ -49,7 +49,7 @@
 ⚠️ Partial — After URL fetch or paste, job text is stored and displayed with a "Load Different Job" option (job-input.js:75). Extracted fields (company name, role title) are editable via the Intake confirmation step, but this path is not immediately surfaced inline after text submission — a separate re-analysis step would be needed to correct an extracted field. No immediate inline-editable field set for company/role on the confirmation step was found in job-input.js.
 
 **Criterion 5 — Character-count guidance**
-⚠️ Partial — `job-input.js:119–120` renders `#paste-char-count` with `aria-live="polite"`, and `_updatePasteCharCount()` is wired to `oninput`. The count shows characters typed but no minimum threshold guidance (e.g. "Minimum 500 characters required"). The count exists and is ARIA-live, but the minimum-length hint is absent.
+✅ Pass — `job-input.js:322` defines `PASTE_MIN_CHARS = 200`. `_updatePasteCharCount()` at lines 331–337 renders "minimum 200 characters" hint while below threshold and "✓" when met. `job-input.js:344–345` additionally shows a field error when submitting short text. Minimum-length guidance is present and ARIA-live.
 
 ---
 
@@ -65,7 +65,7 @@
 ✅ Pass — `.mismatch-callout` (`styles.css:502`) uses amber/warning styling (`#fffbeb`, amber border-left) and appears within the analysis section structure. `.skill-badge.missing` (`styles.css:495`) uses red background for missing skills.
 
 **Criterion 4 — Clarifying question flow**
-⚠️ Partial — The Questions tab presents post-analysis questions. CSS at `styles.css:505–530` shows well-structured question cards with chip answer buttons (`.q-chip`). However, from the source code, all questions are rendered simultaneously in one questions panel rather than one group of ≤3 at a time per the story's acceptance criteria. The `q-progress` element shows a progress label but all questions render at once.
+✅ Pass — `questions-panel.js:326` defines `GROUP_SIZE = 3`. `renderQuestionsPanel()` paginates questions into groups of 3, advancing to the next group after all chips in a group are answered. The `q-progress` element shows "Group N of M" progress. Questions are presented in batches, not all at once.
 
 **Criterion 5 — Analysis duration feedback**
 ✅ Pass — The LLM busy overlay (`#llm-busy-overlay`, `#llm-busy-label`, `#llm-busy-elapsed`) shows a labelled spinner with elapsed time counter and a "Taking longer than usual" badge for slow calls (index.html:160–167). The label is `aria-live="polite"` with `role="status"`.
@@ -125,7 +125,7 @@
 ✅ Pass — `download-tab.js` renders a grid of files including PDF, DOCX (ATS and human), HTML preview, and cover letter files. Multiple download options are surfaced.
 
 **Criterion 4 — Error recovery**
-⚠️ Partial — `layout-instruction.js:103–106` renders renderer failure as a badge with error detail. However, no explicit "Download HTML instead" fallback button is surfaced alongside a PDF failure — the HTML is available as a separate file in the download grid but the error message does not actively direct users to it.
+✅ Pass — `layout-instruction.js` (cycle 59) now adds a "View HTML preview" link below the renderer failure error detail, opening `/api/cv/preview-output/html` in a new tab. The HTML fallback is surfaced inline alongside the PDF failure.
 
 **Criterion 5 — Output filename**
 ✅ Pass — `cv_orchestrator.py:1452` constructs `filename_base = f"CV_{company}_{role}_{timestamp}"` and lines 3951/4556 produce `CV_{company}_{role}_{timestamp}_ATS.docx` and `CV_{company}_{role}_{timestamp}.docx`. The naming convention matches the acceptance criteria.
@@ -141,7 +141,7 @@
 ✅ Pass — `ui-core.js:249–346` implements `_focusStack`, `setInitialFocus()`, `trapFocus()`, and `restoreFocus()` for modal focus management. `confirmDialog()` (`ui-core.js:371–443`) also implements its own focus trap with Escape key support and focus restoration.
 
 **Criterion 2 — Focus visibility**
-⚠️ Partial — `:focus-visible` selectors throughout `styles.css` (lines 158, 277, 312, 525, 610, 657, 1227, 1300, 1360, 1449) apply `outline: 2px solid var(--cv-accent)`. However, `styles.css:1651` has `.intake-field-row input:focus { outline: none; }` with no styled replacement — a WCAG 2.1 AA violation.
+✅ Pass — `:focus-visible` selectors throughout `styles.css` apply `outline: 2px solid var(--cv-accent)`. `.intake-field-row input:focus` at `styles.css:1791–1796` sets `border-color: var(--cv-accent); outline: 2px solid var(--cv-accent); outline-offset: 2px; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);` — the `outline: none` without replacement cited in the earlier review has been corrected; the current code provides a proper WCAG-compliant focus indicator.
 
 **Criterion 3 — Table keyboard navigation**
 ✅ Pass — Tab ARIA pattern (`ui-core.js:461–487`) implements ArrowLeft/ArrowRight/Home/End for tab navigation. `keyboard-shortcuts.js:84–124` provides Up/Down arrow for review card navigation. Enter/Space activate focused tabs and buttons.
@@ -150,7 +150,7 @@
 ✅ Pass — Icon-only buttons have `aria-label` attributes throughout (index.html:66, 82, 100, 118, 157, 206, 235). Workflow steps have `aria-current="step"` set on the active step (`ui-core.js:1922–1924`). A `#workflow-stage-announcer` aria-live region exists (index.html:150–151). Modals have `role="dialog"`, `aria-modal="true"`, and `aria-labelledby`.
 
 **Criterion 5 — Colour-independence**
-⚠️ Partial — Rewrite card state is communicated by border colour and card class (`.rewrite-card.accepted` / `.rewrite-card.rejected`) but no persistent per-card text label ("Accepted"/"Rejected") is visible at a glance. ATS score uses colour-coded `.score-high/medium/low` on the value number with no accompanying icon.
+✅ Pass — `rewrite-review.js:424` renders `#rw-decision-badge-${cardId}` (initially hidden). `applyRewriteAction()` at line 508–512 shows a persistent "✓ Accepted" or "✗ Rejected" text badge with background colour on the card after each decision — state is communicated by both text and colour. ATS score uses colour-coded badges; the text label ("High"/"Medium"/"Low") also communicates the score level independent of colour.
 
 **Criterion 6 — Error messages**
 ✅ Pass — Field validation errors use `aria-describedby` (`job-input.js:116`) and `.field-error` elements with `aria-live="polite"` (`styles.css:1364–1366`). The settings status message uses `aria-live="polite"` (index.html:589).
@@ -228,23 +228,23 @@ When a user returns to a persisted session, the header shows the job title but n
 **GAP-UX-02: Back-navigation on completed steps lacks destructive-action warning**
 Clicking a completed step in the workflow nav does not confirm before navigating back. Only the ↻ re-run icon triggers a confirmation. A user clicking "Customise" from "Spell Check" should receive a confirmation if navigating back would invalidate downstream work (US-U1 Criterion 3).
 
-**GAP-UX-03: Paste text minimum-length hint absent**
-The paste character count shows total characters but does not display a minimum threshold or progress towards the minimum required for analysis. A hint such as "(minimum ~200 characters for reliable analysis)" is missing (US-U2 Criterion 5).
+**GAP-UX-03: Paste text minimum-length hint** ~~absent~~ **— RESOLVED (stale)**
+`job-input.js:322–345` implements `PASTE_MIN_CHARS = 200` with inline guidance in `_updatePasteCharCount()`. Minimum-length hint is present and live (US-U2 Criterion 5 ✅).
 
-**GAP-UX-04: Questions presented all at once, not grouped**
-Post-analysis clarifying questions render as a single scrolling list, not as groups of ≤3 per the acceptance criterion (US-U3 Criterion 4). This may overwhelm users with many questions.
+**GAP-UX-04: Questions presented all at once** **— RESOLVED (stale)**
+`questions-panel.js:326` sets `GROUP_SIZE = 3` and pages questions in groups. US-U3 Criterion 4 ✅.
 
 **GAP-UX-05: Relevance/confidence scores lack explicit scale labels**
 Review tables show High/Medium/Low confidence badges but no explicit legend (e.g. "High = >80%", "Low = <40%") or numeric equivalents. Users must infer the scale (US-U4 Criterion 6).
 
-**GAP-UX-06: No generation step-by-step labelled progress**
-The LLM busy overlay shows elapsed time but not a named step sequence (HTML render → PDF conversion → Done). Failure messages also lack a "Download HTML instead" shortcut alongside the error (US-U6 Criteria 1, 4).
+**GAP-UX-06: HTML fallback alongside error** **— RESOLVED (stale, cycle 59)**
+`layout-instruction.js` adds "View HTML preview" link beside PDF failure. Remaining gap: no named step-sequence progress (HTML render → PDF → Done) — still open (US-U6 Criterion 1 ⚠️).
 
-**GAP-UX-07: Colour-only rewrite card state**
-Accepted/rejected rewrite cards communicate state via border colour and background tint but no persistent per-card text label ("Accepted" / "Rejected"). Users with colour vision deficiencies rely solely on the card class, not a text indicator (US-U7 Criterion 5).
+**GAP-UX-07: Colour-only rewrite card state** **— RESOLVED (stale)**
+`rewrite-review.js:508–512` shows persistent "✓ Accepted" / "✗ Rejected" text badge. US-U7 Criterion 5 ✅.
 
-**GAP-UX-08: intake-field-row focus outline removal**
-`styles.css:1651` removes `outline` on `.intake-field-row input:focus` with no styled replacement. This is a WCAG 2.1 Level AA violation for focus visibility (US-U7 Criterion 2).
+**GAP-UX-08: intake-field-row focus outline** **— RESOLVED (stale)**
+`styles.css:1791–1796` applies `outline: 2px solid var(--cv-accent); outline-offset: 2px` on `.intake-field-row input:focus`. WCAG 2.1 AA compliant. US-U7 Criterion 2 ✅.
 
 **GAP-UX-09: Workflow nav horizontal scroll at narrow widths**
 The 12-step workflow bar overflows horizontally without collapsing. At 1280×800, the workflow may require horizontal scrolling — particularly problematic with long step labels and emoji decorators (US-U8 Criterion 1).
@@ -262,11 +262,11 @@ Content areas show no skeleton placeholders before LLM response arrives, causing
 | Story | Result | Key Evidence |
 | ------- | -------- | -------------- |
 | US-U1 Workflow orientation | ✅ / ⚠️ | index.html:122–148; workflow-steps.js:778+; styles.css:165–173; gap: no session age on restore, back-nav warning absent |
-| US-U2 Job input UX | ✅ / ⚠️ | job-input.js:107–183; protected-site guidance present; char count present but no min-length hint |
-| US-U3 Analysis readability | ✅ / ⚠️ | styles.css:484–503; kw-badge rank numbers present; questions presented all-at-once |
+| US-U2 Job input UX | ✅ | job-input.js:107–183; protected-site guidance present; min-length hint present (PASTE_MIN_CHARS=200) |
+| US-U3 Analysis readability | ✅ | styles.css:484–503; kw-badge rank numbers present; questions paged by GROUP_SIZE=3 |
 | US-U4 Review table interaction | ✅ / ⚠️ | styles.css:1199–1226; rewrite-review.js:274–275 (bulk); relevance badges lack numeric scale |
 | US-U5 Rewrite review | ✅ Pass | rewrite-review.js:370–371 (diff); keyboard-shortcuts.js (A/R/Up/Down); rationale via `<details>` |
-| US-U6 Generation feedback | ⚠️ Partial | No step-labelled progress; CV filenames pass; no "Download HTML" fallback alongside error |
-| US-U7 Accessibility | ✅ / ⚠️ | Focus trap in ui-core.js:249–346; ARIA labels throughout; intake outline:none at styles.css:1651 fails |
+| US-U6 Generation feedback | ✅ / ⚠️ | CV filenames pass; HTML fallback alongside error fixed (cycle 59); no named step-sequence progress still open |
+| US-U7 Accessibility | ✅ | Focus trap in ui-core.js:249–346; ARIA labels throughout; intake focus outline corrected at styles.css:1791 |
 | US-U9 Layout review UX | ✅ / ⚠️ | Scope label present; undo stack implemented; two-button proceed path lacks new-user explanation |
 | US-U8 Responsive/performance | ⚠️ Partial | 12-step nav overflows at narrow widths; no skeleton placeholders; CDN blocking not assessed |

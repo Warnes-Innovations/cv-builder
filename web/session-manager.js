@@ -821,20 +821,28 @@ async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
       } catch (_) { /* non-fatal */ }
     }
 
-    // For rewrite_review phase, pre-populate the rewrite panel cache
-    if (sessionPhase === PHASES.REWRITE_REVIEW) {
+    // For rewrite_review phase, pre-populate the rewrite panel cache.
+    // For any later phase, seed _backendRewriteAudit so the Download tab audit log works.
+    const rewritePhasesIncludingLater = [
+      PHASES.REWRITE_REVIEW, PHASES.SPELL_CHECK, PHASES.GENERATION,
+      PHASES.LAYOUT_REVIEW, PHASES.FINAL_GENERATION, PHASES.REFINEMENT,
+    ];
+    if (rewritePhasesIncludingLater.includes(sessionPhase)) {
       try {
         const rr = await fetch('/api/rewrites');
         if (rr.ok) {
           const rd = parseRewritesResponse(await rr.json());
-          const rewrites = rd.rewrites || [];
-          const warnings = rd.persuasion_warnings || [];
-          // Seed cold-restore fallback before renderRewritePanel calls _restoreDecisions()
+          // Seed cold-restore fallback so _renderRewriteAuditLog() has data
+          // whether the user is on the Rewrites tab or the Download tab.
           if (typeof window.setBackendRewriteAudit === 'function') {
             window.setBackendRewriteAudit(rd.rewrite_audit || []);
           }
-          rewriteDecisions = {};
-          renderRewritePanel(rewrites, warnings);
+          if (sessionPhase === PHASES.REWRITE_REVIEW) {
+            const rewrites = rd.rewrites || [];
+            const warnings = rd.persuasion_warnings || [];
+            rewriteDecisions = {};
+            renderRewritePanel(rewrites, warnings);
+          }
         }
       } catch (_) { /* non-fatal */ }
     }

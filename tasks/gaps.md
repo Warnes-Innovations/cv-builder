@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 63)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 64)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,22 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+
+## 2026-07-04 (Cycle 64) Reconciliation Notes
+
+Trust/compliance: rewrite audit log accessible from File Review tab; stale ux-expert findings corrected.
+
+- **`web/rewrite-review.js`** — Exported `_renderRewriteAuditLog` from the module exports so it can be imported by other tabs.
+- **`web/download-tab.js`** — `populateDownloadTab()` now imports and calls `_renderRewriteAuditLog()` after the persuasion panel. The rewrite audit log (collapsible "Rewrite Audit Log (N decisions)" section) is now visible on the File Review tab even after the user advances past the Rewrites stage. Addresses trust-compliance US-C3 ❌ Fail finding (post-stage audit log inaccessible).
+- **`web/session-manager.js`** — Cold-restore now seeds `_backendRewriteAudit` via `window.setBackendRewriteAudit` for all phases from `REWRITE_REVIEW` onward (not only the exact `REWRITE_REVIEW` phase). Previously, sessions restored directly to `SPELL_CHECK`, `LAYOUT_REVIEW`, `FINAL_GENERATION`, or `REFINEMENT` had an empty `_backendRewriteAudit`, so the audit log on the File Review tab would show nothing on cold restore of a saved post-rewrite session.
+- **`tasks/review-status/trust-compliance.md`** — US-C3 Criterion 3 corrected: ❌ → ✅. Updated executive summary, evidence table row.
+- **`tasks/review-status/ux-expert.md`** — Five stale ⚠️/❌ findings corrected:
+  - GAP-UX-03 (paste min-length hint) — STALE: `job-input.js:322` has `PASTE_MIN_CHARS=200` with inline guidance → US-U2 Criterion 5 ✅
+  - GAP-UX-04 (questions all-at-once) — STALE: `questions-panel.js:326` has `GROUP_SIZE=3` with pagination → US-U3 Criterion 4 ✅
+  - GAP-UX-06 (no HTML fallback alongside error) — STALE (cycle 59 fix): inline "View HTML preview" link added → US-U6 Criterion 4 ✅
+  - GAP-UX-07 (colour-only rewrite card state) — STALE: `rewrite-review.js:508–512` shows "✓ Accepted"/"✗ Rejected" text badge → US-U7 Criterion 5 ✅
+  - GAP-UX-08 (`outline: none` without replacement) — STALE: `styles.css:1791–1796` has proper outline → US-U7 Criterion 2 ✅
+- **Test suite:** 1435 passed ✅.
 
 ## 2026-07-04 (Cycle 63) Reconciliation Notes
 
