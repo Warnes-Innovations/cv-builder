@@ -37,7 +37,7 @@ const _STEP_ORDER = [
 const _STEP_DISPLAY = {
   job:            'Job Input',
   analysis:       'Job Analysis',
-  customizations: 'Customisations',
+  customizations: 'Customise',
   rewrite:        'Rewrite Review',
   spell:          'Spell Check',
   layout:         'Layout Review',
