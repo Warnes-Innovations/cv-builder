@@ -86,6 +86,9 @@ function _keywordStatusBadge(keyword) {
   if (_isPartialMatch(keyword)) {
     return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:0.8em;font-weight:600;">⚠ Partial</span>';
   }
+  if (_keywordType(keyword) === 'bonus') {
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fef9c3;color:#854d0e;font-size:0.8em;font-weight:600;">★ Bonus match</span>';
+  }
   return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-size:0.8em;font-weight:600;">✅ Matched</span>';
 }
 
