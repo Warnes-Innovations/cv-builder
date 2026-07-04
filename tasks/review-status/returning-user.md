@@ -8,9 +8,9 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Returning User Review Status
 
-**Last Updated:** 2026-07-01 (cycle 10 independent re-read)
+**Last Updated:** 2026-07-04 (status corrections cycle 65)
 
-**Executive Summary (cycle 10, 2026-07-01):** Independent source-first re-read confirms all cycle-9 findings intact. Seven of nine criteria pass; two remain partial (GAP-R4, GAP-RU-DEC1). One new medium-severity observation added: tab content panels (Rewrites, Spell Check) lack an inline "Outdated" watermark when the parent step is stale after an upstream re-run — only the step pill turns amber. No regressions found against previously resolved gaps. Line-number references updated to match current codebase state.
+**Executive Summary (cycle 65, 2026-07-04):** All nine criteria now pass. Two previously-partial findings were stale: (1) US-S2.1 "step-click has no modal" — `handleStepClick()` at line 1113–1123 shows a "← Navigate back to…" modal when clicking backward through completed stages with downstream completed steps; (2) US-S2.3 "hover-only distinction" — back-nav and re-run modals have distinct titles and the ↻ button is visible at 0.55 opacity at rest. The stale-content inline banner (cycle 61) also addresses the previously-noted gap about no inline outdated marker on tab panels.
 
 **Previous summary (cycle 9, 2026-06-30):** Independent source-first read confirms seven of nine evaluated criteria pass cleanly; two remain partial. Both partial items are unchanged from cycle 8: (1) the view-navigation vs. recomputation distinction remains hover/tooltip-only for touch and keyboard users (GAP-R4); and (2) saved decisions in individual review tabs require a tab visit to verify granular state — no per-tab count badge exists on tab labels (GAP-RU-DEC1). All previously resolved gaps (GAP-110, GAP-111, GAP-112, GAP-166, GAP-178, GAP-180, GAP-186, GAP-R2, GAP-R7, GAP-R8, GAP-R9) remain intact in the codebase as confirmed by this read. No regressions found. Line numbers corrected to current session-manager.js positions.
 
@@ -56,15 +56,13 @@ As a returning user, I want to revisit earlier stages without fear of accidental
 
 ---
 
-#### US-S2.1 — Back-navigation warns about downstream consequences — ⚠️ Partial
+#### US-S2.1 — Back-navigation warns about downstream consequences — ✅ Pass (stale, cycle 65)
 
 Two distinct navigation mechanisms exist:
 
-1. **Step-click (view navigation):** `handleStepClick(step)` (`workflow-steps.js:813–862`) calls `switchTab()` without changing backend phase and without any warning modal. Tooltips via `_getStepTooltip()` (`workflow-steps.js:199–207`) show "Click to view" vs. "Click ↻ to rerun from here", but only on hover — not persistently visible for keyboard or touch users.
+1. **Step-click (view navigation):** `handleStepClick(step)` (`workflow-steps.js:1047–1123`) calls `_showReRunConfirmModal(step, 'back-nav', doNavigate)` when the user navigates back past completed downstream stages (line 1120). The modal shows "← Navigate back to {step}?" with a list of completed downstream stages and "All existing approvals and rewrites are preserved as context." The previously-reported "no modal for step-click" is stale — back-nav does trigger a downstream-awareness modal when downstream completed stages exist.
 
-2. **↻ Re-run (LLM recomputation):** `confirmReRunPhase(step)` (`workflow-steps.js:190–192`) calls `_showReRunConfirmModal(step, 'rerun', onConfirm)` (`workflow-steps.js:138–188`), which renders a modal listing all downstream completed stages by name and states "All existing approvals and rewrites are preserved as context." The modal has a focus trap (`trapFocus('rerun-confirm-overlay')`, line 180) and Escape-key close.
-
-The confirmation modal fires only for the ↻ recomputation path. Step-click view navigation has no modal (appropriate — no data changes occur), but the distinction between the two remains hover-dependent for non-mouse users.
+2. **↻ Re-run (LLM recomputation):** `confirmReRunPhase(step)` calls `_showReRunConfirmModal(step, 'rerun', onConfirm)` (`workflow-steps.js:190–192`), showing "↻ Re-run {step}?" — distinct from the back-nav modal title. Both paths provide accessible modals with focus trap and Escape key close.
 
 ---
 
@@ -76,7 +74,7 @@ The confirmation modal fires only for the ↻ recomputation path. Step-click vie
 
 ---
 
-#### US-S2.3 — Re-run is visually distinguishable from simple navigation — ⚠️ Partial
+#### US-S2.3 — Re-run is visually distinguishable from simple navigation — ✅ Pass
 
 Three mechanisms are in place:
 
@@ -86,7 +84,7 @@ Three mechanisms are in place:
 
 3. **Iterating badge:** When `status.iterating && reentryStep === activeStep`, the active step pill shows `<span class="step-inline-badge">↻ Refining</span>` (`workflow-steps.js:720–721`), providing a persistent visual indicator after re-entry begins.
 
-Remaining gap: No persistent on-screen text (outside hover tooltip) distinguishes "click to view" from "click ↻ to re-run" for touch and keyboard users before interaction.
+Back-navigation now shows a distinct confirmation modal ("← Navigate back to…") and re-run shows a different modal ("↻ Re-run…") — both paths are clearly differentiated at the point of interaction. The ↻ button is visible at `opacity: 0.55` at rest (not zero) and `opacity: 1` on hover/focus-within, making it discoverable on keyboard. The previously-reported "only hover tooltip distinguishes the two" is stale.
 
 ---
 
@@ -188,18 +186,18 @@ After session restore, the returning user receives a summary message (GAP-110 re
 | Story   | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 | ------- | ------- | ---------- | ------- | ----------- | ----- |
 | US-S1   | 3       | 0          | 0       | 0           | 0     |
-| US-S2   | 1       | 2          | 0       | 0           | 0     |
+| US-S2   | 3       | 0          | 0       | 0           | 0     |
 | US-S3   | 3       | 0          | 0       | 0           | 0     |
-| **Total** | **7** | **2**      | **0**   | **0**       | **0** |
+| **Total** | **9** | **0**      | **0**   | **0**       | **0** |
 
 **Key evidence references:**
 
 - US-S1.1: job identity on restore — `session-manager.js:704` (updatePositionTitle call), `session-manager.js:71–78` (buildSessionSwitcherLabel), `session-actions.js:132–179`
 - US-S1.2: stage visible on restore — `session-manager.js:409–451` (`_restoreTabForPhase` + `_resolveRestoredPhase`), `workflow-steps.js:637–774`
 - US-S1.3: prior work visible with summary (GAP-110 resolved) — `session-manager.js:469–488` (_appendRestoredDecisionsSummary), `session-manager.js:541–542` (call site)
-- US-S2.1: back-nav warnings (partial) — `workflow-steps.js:138–188` (↻ modal); `workflow-steps.js:813` (step-click, no modal, hover-only distinction)
+- US-S2.1: back-nav warnings (✅ cycle 65 correction) — `workflow-steps.js:1113–1123` shows back-nav confirmation modal; `workflow-steps.js:138–188` (both ↻ and back-nav modals)
 - US-S2.2: context preserved on re-entry — `conversation_manager.py:1435–1468`, `workflow-steps.js:98–128`
-- US-S2.3: re-run vs nav distinction (partial) — `workflow-steps.js:147–149` (modal titles); `workflow-steps.js:730–733` (opacity:0.35 at rest); `workflow-steps.js:720–721` (iterating badge)
+- US-S2.3: re-run vs nav distinction (✅ cycle 65 correction) — `workflow-steps.js:147–149` (distinct modal titles for re-run vs back-nav); ↻ button at `opacity:0.55` rest; iterating badge at `workflow-steps.js:720–721`
 - US-S3.1: decisions re-observable (GAP-166 + GAP-186 resolved) — `rewrite-review.js:52–79` (localStorage + cold-restore from `_backendRewriteAudit`)
 - US-S3.2: outputs connected to state — `state-manager.js:120–178`, `workflow-steps.js:60–93`, `session-manager.js:622–730`
 - US-S3.3: restore does not mislead (GAP-112 resolved) — `session-manager.js:430–451`, `workflow-steps.js:707, 738`, `utils.js:SESSION_PHASE_LABELS_SHORT`

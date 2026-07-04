@@ -23,6 +23,10 @@ Review status corrections: stale findings corrected in recruiter-ops, accessibil
   - Criterion 2 US-X3 "spell-check buttons have title only, no aria-label" → STALE: `spell-check.js:249–255` already has `aria-label` on all three action buttons.
 - **`tasks/review-status/trust-compliance.md`** — One stale finding corrected:
   - US-C2 Criterion 3 "cold-restore silently reapplies decisions" → STALE: `_restoreDecisions()` shows a `showToast()` notification on both the localStorage restore path and the cold-restore fallback path (`rewrite-review.js:68–73, 92–97`). `_restoreToastShown` prevents duplicate toasts. ⚠️ → ✅.
+- **`tasks/review-status/hr-ats.md`** — Bonus keyword per-row badge finding corrected: `_keywordStatusBadge()` at `ats-modals.js:89–91` already shows "★ Bonus match" badge for matched bonus keywords (cycle 60 fix). Stale ⚠️ → ✅.
+- **`tasks/review-status/returning-user.md`** — Two stale partial findings corrected:
+  - US-S2.1 "step-click back-nav has no modal" → STALE: `handleStepClick()` at `workflow-steps.js:1113–1123` shows "← Navigate back to…" confirmation modal when downstream completed stages exist.
+  - US-S2.3 "hover-only distinction" → STALE: distinct modal titles ("↻ Re-run" vs "← Navigate back to") plus ↻ button at `opacity:0.55` rest provide persistent and keyboard-accessible differentiation. Score: 7/9 → 9/9 all pass.
 - **Test suite:** No code changes — documentation corrections only. Prior test suite (1435 passed) remains valid.
 
 ## 2026-07-04 (Cycle 64) Reconciliation Notes

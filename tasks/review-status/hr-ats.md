@@ -9,7 +9,7 @@
 # HR / ATS Persona Review
 
 **Persona:** HR coordinator evaluating both the application workflow and what an ATS sees
-**Review Date:** 2026-07-01
+**Review Date:** 2026-07-04 (status corrections cycle 65)
 **Branch:** feature/multi-user-deployment
 **Reviewer:** Automated persona evaluation (source-first)
 
@@ -142,7 +142,7 @@ The ATS score system is fully implemented:
 - **Score persisted to metadata.json:** `_try_patch_metadata(conv, {"ats_score": score})` (generation_routes.py line 1857), and `ats_score_at_generation` is saved in `metadata` (cv_orchestrator.py line 2254). Pass.
 - **Per-skill states:** The ATS Report modal renders Matched (green ✅), Missing (red ❌), Partial (amber ⚠), and Bonus keywords grouped under "★ Bonus Keywords". Pass.
 
-**Minor gap:** The story specifies three per-skill states — Matched ✅, Missing ❌, Bonus ★. The implementation adds Partial ⚠ (good), but bonus keywords that happen to match the candidate's skills show "✅ Matched" rather than a distinct "★" per-row badge. The Bonus grouping is at the table-section level, not per-row. This is a minor display issue.
+**Resolved (stale, cycle 60):** `_keywordStatusBadge()` in `ats-modals.js:89–91` now shows a `★ Bonus match` badge (amber/gold: `#fef9c3`/`#854d0e`) for matched bonus keywords rather than the generic `✅ Matched` green badge. Per-row ★ badge is present; the previously-reported "table-section level only" gap is resolved.
 
 ---
 
