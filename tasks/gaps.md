@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 49)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 50)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,19 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+
+## 2026-07-04 (Cycle 50) Reconciliation Notes
+
+Position-style include_publications default wired into generation pipeline (issue #126 PARTIAL ADVANCE).
+
+- **Issue #126 PARTIAL ADVANCE** — Wired `include_publications` from active position style as default publication behavior when no explicit user selection exists:
+  - `_select_content_hybrid` in `cv_orchestrator.py` now checks the active style (resolved from `position_style_override` in customizations, falling back to domain-matching) before auto-selecting publications. If `include_publications=False` (industry, government) and `accepted_pubs is None` (no explicit user decision), publications are suppressed by default. Academic style (`include_publications=True`) auto-selects as before.
+  - `_collect_render_snapshot_inputs` in `generation_routes.py` injects `position_style_override` from session state into materialized customizations so the orchestrator receives it.
+  - `compute_cv_ats_score` route similarly injects the override into customizations before calling the orchestrator.
+  - Explicit `accepted_publications` lists (even empty) always take precedence over the style default, preserving existing user-driven behavior.
+  - 3 new unit tests added to `tests/unit/test_session_overrides.py`: industry suppresses by default, academic includes by default, explicit list overrides style default.
+- **Remaining issue #126 scope**: per-section include flags in Master CV tab UI (depends on GAP-01/GAP-19 landing).
+- **Test suite:** pending.
 
 ## 2026-07-02 (Cycle 49) Reconciliation Notes
 
@@ -2426,7 +2439,6 @@ The Layout Review iframe (`<iframe id="layout-preview">`) likely lacks a `title`
 ---
 
 ## GAP-223: Cover Letter Word Count Threshold Mismatch — Frontend 400 vs Backend 300
-
 
 **Priority:** MED
 **Status:** RESOLVED — 2026-06-30. Changed standard-role `wcTarget` in `_validateCoverLetter()` (`web/cover-letter.js`) from `{ lo:300, hi:400, warnLo:250, warnHi:450 }` to `{ lo:250, hi:300, warnLo:200, warnHi:400 }`. Green zone now ≤300w, amber 300–400w, fail >400w, matching US-P5 ≤300-word target. Label updated to "≤300 (standard)".

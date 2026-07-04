@@ -456,6 +456,12 @@ def _collect_render_snapshot_inputs(
     if not materialized:
         return None
 
+    # Inject session-level position style override so the orchestrator can
+    # apply style-driven defaults (e.g. include_publications=False for industry).
+    ps_override = state.get('position_style_override')
+    if ps_override:
+        materialized = dict(materialized, position_style_override=ps_override)
+
     content_warnings = []
     if not summary_view.selected_summary():
         content_warnings.append({
@@ -1808,6 +1814,9 @@ def create_blueprint(deps):
                 conv.state.get("customizations"),
             ).materialize_generation_customizations()
         )
+        ps_override = conv.state.get('position_style_override')
+        if ps_override:
+            customizations['position_style_override'] = ps_override
         body  = request.get_json(silent=True) or {}
         basis = body.get("basis", "review_checkpoint")
 

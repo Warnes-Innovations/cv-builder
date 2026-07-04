@@ -3487,6 +3487,18 @@ Include one entry per candidate. Do not omit any candidate."""
         accepted_pubs = customizations.get('accepted_publications')  # list of cite_keys or None
         rejected_pubs = set(customizations.get('rejected_publications') or [])
 
+        # Position-style default: if the active style excludes publications and the
+        # user has not explicitly accepted any, suppress all publications by default.
+        # An explicit accepted_publications list (even empty) overrides this default.
+        if accepted_pubs is None:
+            _ps_override = customizations.get('position_style_override')
+            _ps_domain = (job_analysis.get('domain') or '') if job_analysis else ''
+            _ps_key, _ps_dict = cfg.get_position_style_for_domain(_ps_domain) \
+                if not _ps_override or _ps_override not in cfg.position_styles \
+                else (_ps_override, cfg.position_styles[_ps_override])
+            if not _ps_dict.get('include_publications', True):
+                accepted_pubs = []  # style default — suppress; user can override via pub review tab
+
         # When a page-based publication cap is active, bypass the count limit —
         # _cap_publications_to_pages() (called below) handles trimming instead.
         _pub_page_cap_active = (
