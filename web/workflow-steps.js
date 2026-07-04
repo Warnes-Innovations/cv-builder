@@ -409,7 +409,13 @@ async function _executeReRunPhase(step) {
       return;
     }
 
-    appendMessage('assistant', `✅ ${step} re-run complete. Review the updated results — changed items are highlighted.`);
+    const changeInfo = (data.prior_output && data.new_output)
+      ? _countChangedItems(step, data.prior_output, data.new_output)
+      : null;
+    const changedSuffix = changeInfo
+      ? ` (${changeInfo.changed} of ${changeInfo.total} items changed)`
+      : '';
+    appendMessage('assistant', `✅ ${step} re-run complete. Review the updated results — changed items are highlighted${changedSuffix}.`);
     await fetchStatus();
 
     // Clear per-phase caches so back-navigation fetches fresh results
@@ -425,7 +431,7 @@ async function _executeReRunPhase(step) {
     };
     if (tabMap[step]) switchTab(tabMap[step]);
 
-    // Compute changed-item IDs from prior vs new output and highlight them.
+    // Mark changed DOM elements after the tab has rendered.
     if (data.prior_output && data.new_output) {
       setTimeout(() => _highlightChangedItems(step, data.prior_output, data.new_output), 300);
     }
@@ -438,6 +444,58 @@ async function _executeReRunPhase(step) {
 }
 
 // ── Highlight changed items ───────────────────────────────────────────────────
+
+/**
+ * Count how many items changed between prior and new re-run outputs without
+ * touching the DOM — used to include a count in the assistant message before
+ * the 300ms-deferred DOM highlight pass runs.
+ * Returns {changed, total} or null when the step has no per-entity comparison.
+ */
+function _countChangedItems(step, priorOutput, newOutput) {
+  if (!priorOutput || !newOutput) return null;
+
+  if (step === 'rewrite') {
+    const priorIds = new Set((priorOutput.pending_rewrites || []).map(r => String(r.id)));
+    const newItems = newOutput.pending_rewrites || [];
+    const changed = newItems.filter(item => {
+      const id = String(item.id || '');
+      const prior = (priorOutput.pending_rewrites || []).find(r => String(r.id) === id);
+      return !priorIds.has(id) || (prior && prior.proposed !== item.proposed);
+    }).length;
+    return { changed, total: newItems.length };
+  }
+
+  if (step === 'customizations') {
+    const priorExpIds = new Set(
+      (priorOutput.customizations?.experience_recommendations || []).map(r => String(r.id))
+    );
+    const newExpRecs = newOutput.customizations?.experience_recommendations || [];
+    const changedExp = newExpRecs.filter(rec => {
+      const id = String(rec.id || '');
+      const prior = (priorOutput.customizations?.experience_recommendations || [])
+        .find(r => String(r.id) === id);
+      return !priorExpIds.has(id) || (prior && prior.recommendation !== rec.recommendation);
+    }).length;
+
+    const priorSkills = new Set(
+      (priorOutput.customizations?.skill_recommendations || []).map(r => (r.skill || '').toLowerCase())
+    );
+    const newSkillRecs = newOutput.customizations?.skill_recommendations || [];
+    const changedSkills = newSkillRecs.filter(rec => {
+      const name = (rec.skill || '').toLowerCase();
+      const prior = (priorOutput.customizations?.skill_recommendations || [])
+        .find(r => (r.skill || '').toLowerCase() === name);
+      return !priorSkills.has(name) || (prior && prior.recommendation !== rec.recommendation);
+    }).length;
+
+    return {
+      changed: changedExp + changedSkills,
+      total:   newExpRecs.length + newSkillRecs.length,
+    };
+  }
+
+  return null;
+}
 
 /**
  * Compare prior and new re-run outputs; mark DOM elements for changed entities.

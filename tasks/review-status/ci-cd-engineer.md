@@ -10,13 +10,13 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # CI/CD Engineer Review Status
 
-**Last Updated:** 2026-04-20
+**Last Updated:** 2026-07-04 (status corrections cycle 63)
 
 **Reviewer Persona:** Expert CI/CD Engineer
 
 **Scope:** GitHub Actions CI/CD processes, workflow design, dependency setup, security gates, reporting, branch coverage, and (added 2026-07-02, ahead of inviting outside users/contributors) external-contributor and open-source readiness — fork-PR CI safety, contributor-facing failure clarity, and contribution documentation.
 
-**Executive Summary:** The repository has a real CI foundation: CodeQL runs on both PR and mainline workflows, JS tests run in CI, the HTML harness is automated, and the full workflow includes a broader Python suite plus Playwright E2E. The main weakness is coverage topology rather than tooling choice. Pull requests only get a reduced workflow, the broader suite runs only on `main` and nightly/manual triggers, there is no lint/typecheck gate, and the two workflows duplicate large sections of YAML that are likely to drift over time. On the newly-added external-contributor axis: the PR workflow's fork-safety posture is good (safe `pull_request` trigger, no secrets referenced in any workflow), and the contribution-documentation gap flagged here (F-09/GAP-296 — no `CONTRIBUTING.md`, templates, or `CODE_OF_CONDUCT.md`) was resolved in cycle 37, shortly after this review. Only F-10/GAP-297 (no PR-time failure digest) remains open on this axis, and it's low-severity.
+**Executive Summary (cycle 63 corrections):** Significant CI improvements since the 2026-04-20 review have resolved most HIGH findings. The PR workflow (`integration-harness.yml`) now runs the full Python test suite, a `lint` job with ruff + bundle verification, artifact upload, and a `pr-summary` job that posts failure comments. CodeQL, JS tests, and the HTML harness have been extracted into reusable workflows, substantially reducing YAML duplication. The full workflow now runs on `feature/multi-user-deployment` in addition to `main`. Concurrency cancel groups were added in cycle 63. Two remaining genuine gaps: coverage publishing (F-05, no coverage threshold enforcement in CI) and some residual Python setup duplication between the two workflows.
 
 ---
 
@@ -24,10 +24,10 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 | Area | Status | Evidence | Notes |
 |------|--------|----------|-------|
-| Separate PR and full workflows | ⚠️ Partial | `.github/workflows/integration-harness.yml:1-121`; `.github/workflows/full-integration.yml:1-223` | There is a clear fast-path vs. full-path split, but the split is wide enough that important regressions can miss PR-time detection. |
-| Mainline automation | ✅ Pass | `.github/workflows/full-integration.yml:10-15` | `push` to `main`, nightly schedule, and manual dispatch are all covered. |
-| PR automation | ✅ Pass | `.github/workflows/integration-harness.yml:10-11` | PRs get CodeQL, Python tests, JS tests, and the HTML integration harness. |
-| Branch coverage strategy | ❌ Fail | `.github/workflows/full-integration.yml:10-11` | The full workflow only runs on `main` pushes, not on `devel` or PRs, so normal development work is gated by a narrower suite. |
+| Separate PR and full workflows | ✅ Pass | `.github/workflows/integration-harness.yml`; `.github/workflows/full-integration.yml` | PR workflow runs full Python suite, lint, JS tests, HTML harness. Full workflow adds Playwright E2E and `python-full` with server stub. |
+| Mainline automation | ✅ Pass | `.github/workflows/full-integration.yml:10-15` | `push` to `main` and `feature/multi-user-deployment`, nightly schedule, and manual dispatch are all covered. |
+| PR automation | ✅ Pass | `.github/workflows/integration-harness.yml` | PRs now get CodeQL, full Python suite (`tests/ --ignore=tests/ui`), JS tests, ruff lint, bundle build verification, HTML harness, and a failure-digest PR comment. |
+| Branch coverage strategy | ✅ Pass | `.github/workflows/full-integration.yml:11` | Full workflow now triggers on `feature/multi-user-deployment` in addition to `main`. Was ❌ Fail in initial review. |
 
 ---
 
@@ -48,9 +48,9 @@ For commercial licensing, contact greg@warnes-innovations.com
 |------|--------|----------|-------|
 | JS unit coverage in CI | ✅ Pass | `.github/workflows/integration-harness.yml:72-90`; `.github/workflows/full-integration.yml:76-94` | `npm run test:js` runs in both workflows. |
 | HTML harness in CI | ✅ Pass | `.github/workflows/integration-harness.yml:99-121`; `.github/workflows/full-integration.yml:103-125` | The browser-facing integration harness is automated. |
-| Broader Python regression suite | ⚠️ Partial | `.github/workflows/full-integration.yml:129-185` | A larger non-UI suite exists, but it only runs in the full workflow on `main`/nightly/manual. |
-| Playwright E2E | ⚠️ Partial | `.github/workflows/full-integration.yml:187-223`; `tests/ui/conftest.py:54-165` | Playwright E2E exists and the test fixture can self-start the Flask app, but this path is not exercised on PRs. |
-| PR-time regression confidence | ❌ Fail | `.github/workflows/integration-harness.yml:52-63` | The PR workflow runs `tests/unit` plus a short allowlist, not the broader `tests/ --ignore=tests/ui` suite used later in the full workflow. |
+| Broader Python regression suite | ✅ Pass | `.github/workflows/integration-harness.yml` (python-tests job) | PR workflow now runs `python -m pytest tests/ --ignore=tests/ui` — the full non-UI suite. Was ⚠️ Partial. |
+| Playwright E2E | ⚠️ Partial | `.github/workflows/full-integration.yml` (playwright-e2e job) | Playwright E2E runs in the full workflow on push/nightly. Not exercised on PRs (by design — requires running server). |
+| PR-time regression confidence | ✅ Pass | `.github/workflows/integration-harness.yml` (python-tests job) | PR workflow runs the full `tests/ --ignore=tests/ui` suite with junit artifact upload. Was ❌ Fail. |
 
 ---
 
@@ -59,7 +59,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 | Area | Status | Evidence | Notes |
 |------|--------|----------|-------|
 | CodeQL coverage | ✅ Pass | `.github/workflows/integration-harness.yml:19-42`; `.github/workflows/full-integration.yml:23-46`; `.github/codeql/codeql-config.yml:1-8` | Security scanning is integrated in both workflows with a repo-specific CodeQL config. |
-| Lint/typecheck gates | ❌ Fail | `.github/workflows/integration-harness.yml:1-121`; `.github/workflows/full-integration.yml:1-223` | Neither workflow runs `ruff`, `mypy`, or a frontend lint/build-verification step. |
+| Lint/typecheck gates | ✅ Pass | `.github/workflows/integration-harness.yml` (lint job) | PR workflow `lint` job runs `ruff check scripts/` and `npm run build` (bundle verification). Was ❌ Fail. |
 | Coverage reporting | ⚠️ Partial | `package.json:11-13`; `.github/workflows/integration-harness.yml:1-121`; `.github/workflows/full-integration.yml:1-223` | Coverage tooling exists locally (`test:js:cover`), but CI does not publish coverage or enforce thresholds. |
 
 ---
@@ -69,9 +69,9 @@ For commercial licensing, contact greg@warnes-innovations.com
 | Area | Status | Evidence | Notes |
 |------|--------|----------|-------|
 | Artifact upload in full workflow | ✅ Pass | `.github/workflows/full-integration.yml:176-185,219-223` | The full workflow uploads Python and Playwright artifacts. |
-| Artifact upload in PR workflow | ⚠️ Partial | `.github/workflows/integration-harness.yml:1-121` | The PR workflow uploads nothing, which makes failure triage slower. |
-| Workflow deduplication | ❌ Fail | `.github/workflows/integration-harness.yml:19-121`; `.github/workflows/full-integration.yml:23-125` | CodeQL, Python setup, JS setup, npm cache, and harness steps are duplicated across both files rather than shared via reusable workflow/composite action. |
-| Concurrency control | ⚠️ Partial | `.github/workflows/integration-harness.yml:1-121`; `.github/workflows/full-integration.yml:1-223` | No `concurrency` group is defined, so superseded pushes/PR updates do not automatically cancel older runs. |
+| Artifact upload in PR workflow | ✅ Pass | `.github/workflows/integration-harness.yml` (python-tests job) | PR workflow uploads Python test results artifact. Was ⚠️ Partial. |
+| Workflow deduplication | ⚠️ Partial | `.github/workflows/reusable-codeql.yml`, `reusable-js-unit-tests.yml`, `reusable-html-harness.yml` | CodeQL, JS tests, and HTML harness extracted to reusable workflows — significant improvement. Residual duplication: Python setup steps still repeated across both files. Was ❌ Fail. |
+| Concurrency control | ✅ Pass | `.github/workflows/integration-harness.yml:13-15`; `.github/workflows/full-integration.yml:18-20` | Concurrency `cancel-in-progress` added to both workflows in cycle 63. Was ⚠️ Partial. |
 
 ---
 
@@ -87,7 +87,7 @@ _Added 2026-07-02, ahead of inviting outside users/contributors to the project._
 | Issue / PR templates | ✅ Pass | `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/bug_report.md`, `.github/ISSUE_TEMPLATE/feature_request.md` (added, GAP-296 RESOLVED cycle 37) | New contributors now get structured PR/issue forms instead of GitHub's blank defaults. |
 | `CODE_OF_CONDUCT.md` | ✅ Pass | `CODE_OF_CONDUCT.md` (added, GAP-296 RESOLVED cycle 37, Contributor Covenant v2.1) | Community conduct expectations now stated. |
 | README contributor path | ✅ Pass | `README.md` (brief Contributing section added, GAP-296 RESOLVED cycle 37, pointing to `CONTRIBUTING.md`/`CODE_OF_CONDUCT.md`) | See also `tasks/user-story-marketing.md` US-MK3 for the same gap from a positioning angle — resolved here from the process angle. |
-| PR-time failure clarity for a first-time contributor | ⚠️ Partial | `.github/workflows/integration-harness.yml:1-121` | The PR workflow runs CodeQL, Python tests, JS tests, and the HTML harness with standard GitHub Actions log output — functional but not annotated for a contributor unfamiliar with the codebase (no job summaries, no PR-comment failure digest); acceptable for now but worth revisiting once external PR volume exists. |
+| PR-time failure clarity for a first-time contributor | ✅ Pass | `.github/workflows/integration-harness.yml` (pr-summary job) | `pr-summary` job (GAP-297, cycle 39) writes a pass/fail table to `$GITHUB_STEP_SUMMARY` and posts a PR comment listing failed jobs with Action log links when any check fails. Was ⚠️ Partial. |
 
 ---
 
@@ -95,16 +95,16 @@ _Added 2026-07-02, ahead of inviting outside users/contributors to the project._
 
 | ID | Severity | Area | Finding | Evidence |
 |----|----------|------|---------|----------|
-| F-01 | HIGH | Pipeline Coverage | Full regression coverage does not run on PRs; PRs get only the reduced harness workflow | `.github/workflows/integration-harness.yml:10-121`; `.github/workflows/full-integration.yml:129-223` |
-| F-02 | HIGH | Branch Strategy | The full workflow triggers only on pushes to `main`, so `devel` work is not protected by the broadest suite | `.github/workflows/full-integration.yml:10-15` |
-| F-03 | HIGH | Quality Gates | No lint or typecheck job runs in GitHub Actions | `.github/workflows/integration-harness.yml:1-121`; `.github/workflows/full-integration.yml:1-223` |
-| F-04 | MEDIUM | Maintainability | Large parts of the PR and full workflows are duplicated, increasing drift risk | `.github/workflows/integration-harness.yml:19-121`; `.github/workflows/full-integration.yml:23-125` |
-| F-05 | MEDIUM | Feedback Quality | CI does not publish coverage results or enforce coverage thresholds even though local coverage scripts exist | `package.json:11-13`; `.github/workflows/integration-harness.yml:1-121`; `.github/workflows/full-integration.yml:1-223` |
-| F-06 | MEDIUM | Reporting | The PR workflow does not upload junit/trace-style artifacts for failures | `.github/workflows/integration-harness.yml:1-121` |
-| F-07 | MEDIUM | CI Parity | Python CI installs from pip requirements rather than the repo’s preferred local `cvgen` environment, which increases environment skew risk | `.github/workflows/integration-harness.yml:52-63`; `.github/workflows/full-integration.yml:56-67`; `scripts/requirements.txt:1-37` |
-| F-08 | LOW | Efficiency | No `concurrency` cancellation is configured for superseded runs | `.github/workflows/integration-harness.yml:1-121`; `.github/workflows/full-integration.yml:1-223` |
-| F-09 | HIGH | Contributor Onboarding | RESOLVED (GAP-296, cycle 37) — `CONTRIBUTING.md`, issue/PR templates, and `CODE_OF_CONDUCT.md` added; README now has a contributor-facing section | `CONTRIBUTING.md`; `CODE_OF_CONDUCT.md`; `.github/pull_request_template.md`; `.github/ISSUE_TEMPLATE/` |
-| F-10 | LOW | Contributor Feedback | PR-time CI failures are not annotated/summarized for a contributor unfamiliar with the codebase | `.github/workflows/integration-harness.yml:1-121` |
+| F-01 | HIGH | Pipeline Coverage | RESOLVED — PR workflow now runs full Python suite (`tests/ --ignore=tests/ui`) + lint + artifact upload. | resolved cycle 39+ |
+| F-02 | HIGH | Branch Strategy | RESOLVED — full workflow now triggers on `feature/multi-user-deployment` in addition to `main`. | resolved cycle 39+ |
+| F-03 | HIGH | Quality Gates | RESOLVED — `lint` job in PR workflow runs `ruff check scripts/` + `npm run build` (bundle verification). | resolved cycle 39+ |
+| F-04 | MEDIUM | Maintainability | PARTIAL — CodeQL, JS tests, HTML harness extracted to reusable workflows; residual Python setup duplication remains. | `.github/workflows/reusable-*.yml` |
+| F-05 | MEDIUM | Feedback Quality | OPEN — CI does not publish coverage results or enforce coverage thresholds. | `package.json:11-13` |
+| F-06 | MEDIUM | Reporting | RESOLVED — PR workflow uploads Python test results artifact (python-pr-results). | resolved cycle 39+ |
+| F-07 | MEDIUM | CI Parity | DEFERRED — pip-only CI install is intentional (Docker deployment uses pip-only). Local conda/cvgen skew documented in `CONTRIBUTING.md`. | by design |
+| F-08 | LOW | Efficiency | RESOLVED — `concurrency: cancel-in-progress` added to both workflows in cycle 63. | resolved cycle 63 |
+| F-09 | HIGH | Contributor Onboarding | RESOLVED (GAP-296, cycle 37) — `CONTRIBUTING.md`, issue/PR templates, and `CODE_OF_CONDUCT.md` added; README now has a contributor-facing section. | `CONTRIBUTING.md`; `.github/` |
+| F-10 | LOW | Contributor Feedback | RESOLVED (GAP-297, cycle 39) — `pr-summary` job writes pass/fail table to step summary and posts failure comment on PR. | resolved cycle 39 |
 
 ---
 

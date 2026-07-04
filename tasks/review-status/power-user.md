@@ -64,7 +64,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 | --- | --------- | ------ | -------- |
 | W3.1 | Re-run affordances are discoverable for supported stages | ✅ Pass | The ↻ re-run button is injected into every completed step pill that supports LLM re-execution (analysis, customizations, rewrite, spell — `RE_RUN_STEPS` in `workflow-steps.js`). At rest the button renders at low opacity; it rises to full opacity on `:hover` and `:focus-within` and has `aria-label="Re-run …"`. A downstream-aware confirmation modal (`_showReRunConfirmModal()`, `workflow-steps.js:138–188`) lists completed stages that remain intact and notes "All existing approvals and rewrites are preserved as context." For analysis re-runs, the clarification-amend modal (`_showAnalysisClarificationAmendModal()`, `workflow-steps.js:277–380`) lets the user update or keep prior clarification answers before proceeding. Layout staleness is communicated via the "Layout outdated" / "Files outdated" chip in the position bar (`state-manager.js:145–175`). |
 | W3.2 | Re-entry into earlier stages preserves useful downstream context | ✅ Pass | `_build_downstream_context()` in `conversation_manager.py` collects approved rewrites, experience/skill decisions, and accepted spell fixes and injects them into the re-run LLM prompt. `backToPhase()` at `workflow-steps.js:98` calls `/api/back-to-phase` and logs "Prior decisions and approvals are preserved." `reRunPhase()` clears per-phase caches (`_spellCheckCache`, `_rewritePanelCache`) so the UI fetches fresh results while backend context is carried forward. Downstream steps gain `.stale` class without erasing prior content. |
-| W3.3 | The app minimises redundant work during iteration | ⚠️ Partial | `_highlightChangedItems()` (`workflow-steps.js:450–498`) marks changed rewrite cards and experience/skill rows after a re-run. Per-item "New" rerun-change badges appear in the skills and experience review tables (`skills-review.js:572`, `730`; `experience-review.js:155`, `232`) via localStorage snapshot comparison. These make locally-changed items visible. However, the assistant message after re-run (`workflow-steps.js:412`) reads "changed items are highlighted" with no count of how many changed versus total. No "show only changed" filter exists. The changed-item set is computed but never quantified for the user. |
+| W3.3 | The app minimises redundant work during iteration | ⚠️ Partial | `_countChangedItems()` + `_highlightChangedItems()` (`workflow-steps.js`) mark changed items and now quantify them in the assistant message (e.g. "changed items are highlighted (3 of 12 items changed)" — cycle 63). No "show only changed" filter exists. The changed count is surfaced as a summary but per-item filter remains absent. |
 
 **Failure modes guard-against check:**
 
@@ -126,6 +126,7 @@ Layout instructions have an undo stack (`layout-instruction.js`), but experience
 ### Gap A (CLOSED) — Keyboard shortcut for primary workflow action buttons
 
 `keyboard-shortcuts.js` (committed in the current branch) implements:
+
 - `Ctrl+Enter` → `_triggerPrimaryAction()` — clicks the primary action button for the current tab
 - `A` / `R` → accept / reject the focused review card (Rewrites and Spell Check tabs)
 - `↑` / `↓` → navigate between review cards

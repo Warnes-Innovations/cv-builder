@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 62)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 63)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,19 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+
+## 2026-07-04 (Cycle 63) Reconciliation Notes
+
+Power-user iteration UX, CI concurrency, stale review status corrections.
+
+- **`web/workflow-steps.js`** — Added `_countChangedItems(step, priorOutput, newOutput)` helper that computes changed-item counts from the raw response data (no DOM access). The re-run completion message at `reRunPhase()` now reads e.g. "changed items are highlighted (3 of 12 items changed)" instead of the plain "changed items are highlighted." Addresses power-user W3.3 finding (changed-item set computed but never quantified in message).
+- **`.github/workflows/integration-harness.yml`** — Added `concurrency: cancel-in-progress: true` group. Superseded PR pushes now cancel in-flight runs automatically.
+- **`.github/workflows/full-integration.yml`** — Added `concurrency: cancel-in-progress: true` group. Addresses ci-cd-engineer F-08 finding (⚠️ Partial → ✅ Pass).
+- **`tasks/review-status/ci-cd-engineer.md`** — Status corrections: F-01 through F-03 (pipeline coverage, branch strategy, lint gates) corrected from ❌/⚠️ to ✅ — all resolved in prior cycles via PR workflow expansion, `feature/multi-user-deployment` branch trigger, ruff+build lint job. F-06 (artifact upload), F-09 (contributor onboarding), F-10 (PR failure digest) updated to ✅. F-08 updated to ✅ (cycle 63 concurrency groups).
+- **`tasks/review-status/backend-developer.md`** — Status corrections: duplicate `_text_similarity` finding (❌ → ✅, removed from `web_app.py` before this cycle), dead `_auth_poll` variable (❌ → ✅, removed in cycle 58).
+- **`tasks/review-status/graphical-designer.md`** — GAP-133 assessment updated: 95 CSS tokens now present, zero raw hex in rules. Duplicate `@keyframes spin` note corrected (only one `@keyframes spin` at line 1051; the reported duplicate is gone).
+- **`tasks/review-status/power-user.md`** — W3.3 criterion updated to reflect changed-item count now included in re-run message.
+- **Test suite:** 1435 passed ✅.
 
 ## 2026-07-04 (Cycle 62) Reconciliation Notes
 

@@ -12,7 +12,7 @@
 **Reviewed by:** Source-verified review cycle (Graphical Designer persona, US-G*)
 **Sources read:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, templates/cv-style.css, templates/cv-template.html
 
-**Executive Summary:** The application delivers a coherent, professionally-styled visual system for its primary workflow stages. Typography is well-differentiated, a consistent Slate-based color palette runs throughout, and the semantic status language (green/amber/red) is applied consistently across all surfaces. Since the previous cycle, GAP-133 has been partially addressed: a `:root {}` design-token block was added at `styles.css:18–27` with eight CSS custom properties, and several high-use selectors now consume them. However, a large portion of the color palette remains as hardcoded hex literals outside the token system, so GAP-133 is PARTIAL rather than resolved. The cv-style.css fallback template has been updated to use Inter font and `#2980b9` brand blue, which aligns it with cv-template.html — a meaningful improvement to output-material consistency. The remaining structural weaknesses are: (1) pervasive inline-style drift in modals and JS-rendered HTML that bypasses the CSS design system; (2) an emoji-dominant icon language jarring in a professional-facing product (Font Awesome is loaded but used only in one place); (3) no print styles in the main `styles.css` app shell; (4) the two-panel main layout has no responsive breakpoint; and (5) duplicate `@keyframes spin` definitions indicating CSS accumulation without housekeeping.
+**Executive Summary (updated 2026-07-04):** The application delivers a coherent, professionally-styled visual system for its primary workflow stages. Typography is well-differentiated, a consistent Slate-based color palette runs throughout, and the semantic status language (green/amber/red) is applied consistently across all surfaces. The `styles.css` token layer reached 95 CSS custom properties in cycle 52 with zero raw hex literals remaining in CSS rules — the GAP-133 styles.css portion is fully resolved. The cv-style.css fallback template uses Inter font and `#2980b9` brand blue, aligned with cv-template.html. The duplicate `@keyframes spin` noted in the original review has been resolved (only one `@keyframes spin` at `styles.css:1051`). Remaining structural weaknesses: (1) pervasive inline-style drift in `index.html` modals and JS-rendered HTML (deferred pending GAP-01); (2) emoji-dominant icon language (Font Awesome is loaded but used only in one place); (3) no print styles in the main app shell; (4) the two-panel layout has no responsive breakpoint for the main shell.
 
 ---
 
@@ -150,24 +150,13 @@ Overall terminology clarity is adequate to good. "Harvest" is the one term that 
 
 ## GAP-133 Assessment: CSS Design Token Adequacy
 
-The `:root {}` block at `styles.css:18–27` introduces eight tokens:
+**Updated 2026-07-04 (cycle 52/63):** The `styles.css` token layer is now **complete**. The `:root {}` block has grown from the original 8 tokens to **95 CSS custom properties** covering the full semantic palette: error/warn/info/success state families, gray and slate scales, amber/orange/sky/emerald/violet families, high-contrast variants, CSS log background, stale/dirty badge families, spinner, and session-dot colors. All previously hardcoded hex literals in CSS rules have been replaced with `var()` references — **zero raw hex literals remain in `styles.css` rules** as of cycle 52.
 
-| Token | Value | Role |
-| --- | --- | --- |
-| `--cv-border` | `#e2e8f0` | slate-200 — borders, dividers |
-| `--cv-accent` | `#3b82f6` | blue-500 — interactive, links, focus |
-| `--cv-bg-light` | `#f8fafc` | slate-50 — page/panel backgrounds |
-| `--cv-text-secondary` | `#64748b` | slate-500 — secondary labels, meta text |
-| `--cv-text-primary` | `#1e293b` | slate-800 — headings, primary body text |
-| `--cv-bg-subtle` | `#f1f5f9` | slate-100 — subtle section backgrounds |
-| `--cv-text-muted` | `#475569` | slate-600 — muted/placeholder text |
-| `--cv-accent-hover` | `#1d4ed8` | blue-700 — accent hover/active states |
+**Assessment: PARTIAL (styles.css complete; inline styles in index.html deferred).**
 
-These tokens are well-chosen — they cover the highest-frequency colors across the codebase. Active consumption is visible in heading selectors, modal headers, tab active states, action buttons, and many form-field focus outlines.
+The `styles.css` portion of GAP-133 is fully resolved. Approximately 227 `style=""` inline attributes in `web/index.html` remain as the only incomplete portion. These require per-element class extraction but are deferred to avoid merge conflicts with the active GAP-01 worktree. Once GAP-01 lands, the inline-style sweep can proceed.
 
-**Assessment: PARTIAL — not a full resolution of GAP-133.**
-
-Remaining hardcoded color literals include (non-exhaustive): `#10b981` (green, used in submit buttons and download buttons, not tokenized as `--cv-success`), `#ef4444` / `#dc2626` (red danger, not tokenized as `--cv-danger`), confidence badge colors, and all colors within JS-generated HTML (download-tab.js, layout-instruction.js, ui-core.js `_setConnectionMessage`). A full GAP-133 resolution would require tokens for at least: `--cv-success`, `--cv-success-bg`, `--cv-danger`, `--cv-danger-bg`, `--cv-warning`, `--cv-warning-bg`.
+Previously identified tokens now present: `--cv-success`, `--cv-success-bg`, `--cv-danger`, `--cv-danger-bg`, `--cv-warn-bg`, `--cv-warn-text`, all confidence badge colors, and all previously hardcoded literals (confirmed 2026-07-04).
 
 ---
 

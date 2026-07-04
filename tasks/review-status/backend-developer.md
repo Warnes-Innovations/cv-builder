@@ -10,7 +10,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Backend Developer Review Status
 
-**Last Updated:** 2026-04-20
+**Last Updated:** 2026-04-20 (status corrections 2026-07-04 cycle 63)
 
 **Reviewer Persona:** Expert Back-End Developer
 
@@ -64,8 +64,8 @@ For commercial licensing, contact greg@warnes-innovations.com
 | `duckflow` annotations | ✅ Pass | `cv_orchestrator.py:224`, `web_app.py:132`, `job_routes.py:submit_job` | Annotations are adjacent to code; timestamps present |
 | Mutable default argument | ✅ Pass | No `def f(x=[])` patterns found | |
 | `safe_url` in template rendering | ✅ Pass | `cv_orchestrator.py:170–175` | LinkedIn and website URLs pass through `safe_url` before template injection |
-| Duplicate `_text_similarity` | ❌ Fail | `web_app.py:528–545`; `master_data_routes.py:89–104` | Same function body in two modules — a maintenance hazard; should be extracted to `scripts/utils/text_utils.py` |
-| Dead `_auth_poll` variable | ❌ Fail | `web_app.py:614` | `_auth_poll` dict created in `create_app` body but never used — the live dict is inside the blueprint closure |
+| Duplicate `_text_similarity` | ✅ Pass | `master_data_routes.py:126` (canonical); absent from `web_app.py` | Duplicate removed from `web_app.py`. Canonical definition remains in `master_data_routes.py`. Was ❌ Fail. |
+| Dead `_auth_poll` variable | ✅ Pass | `web_app.py` — `_auth_poll` absent | Dead variable removed in cycle 58. Was ❌ Fail. |
 | Exception swallowing in `_save_master` backup | ⚠️ Partial | `master_data_routes.py:48–55` | `subprocess.run` git-add is `check=False` — failure is silent; a failed git-add leaves master changes untracked without warning |
 
 ---
@@ -119,7 +119,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 | `static_routes` path traversal | 🔲 Not implemented | `scripts/routes/static_routes.py` | No test that verifies `/<path:filename>` rejects `../../` traversal attempts |
 | `_save_master` git-add failure path | 🔲 Not implemented | `master_data_routes.py:52` | No test that verifies behavior when `git add` subprocess fails |
 | CLI code in `ConversationManager` | 🔲 Not implemented | `conversation_manager.py:165–225` | `start_interactive`, `_get_multiline_input`, `_print_welcome` are untested (no CLI unit tests found) |
-| `auth_routes` dead `_auth_poll` | 🔲 Not implemented | `web_app.py:614` | No test that would surface the orphaned variable |
+| `auth_routes` dead `_auth_poll` | ✅ Pass | `web_app.py` — `_auth_poll` absent | Dead variable removed in cycle 58; no test needed (variable no longer exists). Was 🔲. |
 | Unit test directory | ⚠️ Partial | `tests/unit/` | Contains only `test_session_overrides.py`, `test_session_precedence.py` — unit coverage isolated from Flask app is thin; most unit tests are mixed with integration-style tests at the top level |
 
 ---
