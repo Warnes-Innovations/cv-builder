@@ -431,6 +431,11 @@ async function _executeReRunPhase(step) {
     };
     if (tabMap[step]) switchTab(tabMap[step]);
 
+    // Clear previous run change markers and reset any active filter before re-marking.
+    document.querySelectorAll('.rw-new-item').forEach(el => el.classList.remove('rw-new-item'));
+    document.getElementById('rw-changed-filter-btn')?.remove();
+    document.getElementById('rewrite-cards')?.classList.remove('filter-changed-only');
+
     // Mark changed DOM elements after the tab has rendered.
     if (data.prior_output && data.new_output) {
       setTimeout(() => _highlightChangedItems(step, data.prior_output, data.new_output), 300);
@@ -519,6 +524,14 @@ function _highlightChangedItems(step, priorOutput, newOutput) {
       const changed   = isNew || (priorItem && priorItem.proposed !== item.proposed);
       if (changed) _markChanged(el);
     }
+    // Offer a filter toggle when some (but not all) cards changed.
+    setTimeout(() => {
+      const allCards     = document.querySelectorAll('#rewrite-cards .rewrite-card');
+      const changedCards = document.querySelectorAll('#rewrite-cards .rw-new-item');
+      if (changedCards.length > 0 && changedCards.length < allCards.length) {
+        _injectRewriteFilterToggle(changedCards.length);
+      }
+    }, 0);
     return;
   }
 
@@ -556,11 +569,32 @@ function _highlightChangedItems(step, priorOutput, newOutput) {
   }
 }
 
-/** Apply data-changed attribute and trigger highlight animation on an element. */
+/** Apply data-changed attribute and a persistent rw-new-item class for the show-changed filter. */
 function _markChanged(el) {
   el.setAttribute('data-changed', 'true');
-  // Remove the attribute after the animation completes so it can be re-triggered on a second rerun.
+  el.classList.add('rw-new-item');
+  // Remove the animation attribute after it completes; the class persists for filtering.
   setTimeout(() => el.removeAttribute('data-changed'), 2500);
+}
+
+/** Inject a "Show only changed (N)" toggle button into the rewrite tally bar after a re-run. */
+function _injectRewriteFilterToggle(count) {
+  const tally = document.getElementById('rewrite-tally');
+  if (!tally || document.getElementById('rw-changed-filter-btn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'rw-changed-filter-btn';
+  btn.className = 'rw-bulk-btn';
+  btn.setAttribute('aria-pressed', 'false');
+  btn.textContent = `⬡ Changed (${count})`;
+  btn.title = 'Show only items that changed in this re-run';
+  btn.addEventListener('click', () => {
+    const active = btn.getAttribute('aria-pressed') === 'true';
+    btn.setAttribute('aria-pressed', String(!active));
+    btn.textContent = !active ? '✕ Show all' : `⬡ Changed (${count})`;
+    document.getElementById('rewrite-cards')?.classList.toggle('filter-changed-only', !active);
+  });
+  const submitBtn = tally.querySelector('#submit-rewrites-btn');
+  submitBtn ? tally.insertBefore(btn, submitBtn) : tally.appendChild(btn);
 }
 
 // ── Bullet reorder modal ──────────────────────────────────────────────────────

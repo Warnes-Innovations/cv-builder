@@ -1349,6 +1349,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 
 /* Prevent layout shift while async content loads into these containers */
 #rewrite-cards { min-height: 120px; }
+#rewrite-cards.filter-changed-only .rewrite-card:not(.rw-new-item) { display: none; }
+#rw-changed-filter-btn[aria-pressed="true"] { background: var(--cv-accent); color: var(--cv-white); border-color: var(--cv-accent); }
 #skills-table-container { min-height: 120px; }
 
 .icon-btn .icon-glyph {

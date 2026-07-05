@@ -8,7 +8,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Power User Review Status
 
-**Last Updated:** 2026-07-04 (Gap D stale correction cycle 66)
+**Last Updated:** 2026-07-04 (Gap D partial fix cycle 69 — rewrite filter toggle)
 **Branch:** feature/multi-user-deployment (HEAD: 5aedf24)
 **Reviewer role:** Power User (US-W1, US-W2, US-W3)
 
@@ -64,14 +64,14 @@ For commercial licensing, contact greg@warnes-innovations.com
 | --- | --------- | ------ | -------- |
 | W3.1 | Re-run affordances are discoverable for supported stages | ✅ Pass | The ↻ re-run button is injected into every completed step pill that supports LLM re-execution (analysis, customizations, rewrite, spell — `RE_RUN_STEPS` in `workflow-steps.js`). At rest the button renders at low opacity; it rises to full opacity on `:hover` and `:focus-within` and has `aria-label="Re-run …"`. A downstream-aware confirmation modal (`_showReRunConfirmModal()`, `workflow-steps.js:138–188`) lists completed stages that remain intact and notes "All existing approvals and rewrites are preserved as context." For analysis re-runs, the clarification-amend modal (`_showAnalysisClarificationAmendModal()`, `workflow-steps.js:277–380`) lets the user update or keep prior clarification answers before proceeding. Layout staleness is communicated via the "Layout outdated" / "Files outdated" chip in the position bar (`state-manager.js:145–175`). |
 | W3.2 | Re-entry into earlier stages preserves useful downstream context | ✅ Pass | `_build_downstream_context()` in `conversation_manager.py` collects approved rewrites, experience/skill decisions, and accepted spell fixes and injects them into the re-run LLM prompt. `backToPhase()` at `workflow-steps.js:98` calls `/api/back-to-phase` and logs "Prior decisions and approvals are preserved." `reRunPhase()` clears per-phase caches (`_spellCheckCache`, `_rewritePanelCache`) so the UI fetches fresh results while backend context is carried forward. Downstream steps gain `.stale` class without erasing prior content. |
-| W3.3 | The app minimises redundant work during iteration | ⚠️ Partial | `_countChangedItems()` + `_highlightChangedItems()` (`workflow-steps.js`) mark changed items and now quantify them in the assistant message (e.g. "changed items are highlighted (3 of 12 items changed)" — cycle 63). No "show only changed" filter exists. The changed count is surfaced as a summary but per-item filter remains absent. |
+| W3.3 | The app minimises redundant work during iteration | ⚠️ Partial | `_countChangedItems()` + `_highlightChangedItems()` (`workflow-steps.js`) mark changed items and quantify them in the assistant message (cycle 63). Cycle 69: a "⬡ Changed (N)" toggle button is now injected into `#rewrite-tally` after a rewrite re-run when some (but not all) cards changed (`_injectRewriteFilterToggle()`, `workflow-steps.js`); clicking it applies `.filter-changed-only` to `#rewrite-cards`, hiding non-`rw-new-item` cards. Experience/skill table filtering after customizations re-run is not yet implemented. |
 
 **Failure modes guard-against check:**
 
 - **Reruns feel equivalent to starting over:** Well-mitigated. Confirmation modal names intact downstream stages. Stale badges appear on downstream step pills. Downstream context passes into the LLM prompt. Re-run message in chat explicitly states approvals are preserved.
 - **Re-run affordance discoverability:** ↻ button persistently visible (dim at rest), focusable with Tab, rises to full opacity on hover/focus-within. Keyboard shortcut (`Ctrl+Enter`) also works from completed step pill click interactions.
 
-**Net: W3.1 and W3.2 pass fully. W3.3 remains partial — changed-item count IS now surfaced in the re-run assistant message since cycle 63 (`workflow-steps.js:412–418`). The remaining gap is the absence of a "show only changed" filter toggle; all changed items are highlighted but cannot be isolated from unchanged ones.**
+**Net: W3.1 and W3.2 pass fully. W3.3 remains partial — cycle 69 added a "show only changed" toggle for the rewrite tab; customizations (experience/skill rows) filter not yet implemented.**
 
 ---
 
@@ -105,11 +105,11 @@ The sessions modal has sortable columns, a Recents strip, status badges, and inl
 
 ---
 
-### Gap D — No "show only changed" filter toggle after re-run (W3.3)
+### Gap D — "Show only changed" filter toggle — PARTIAL FIX (cycle 69)
 
-The changed-item count IS now appended to the re-run assistant message (e.g. "changed items are highlighted (3 of 12 items changed)") since cycle 63 (`workflow-steps.js:412–418`). However, no filter toggle exists to isolate changed items from unchanged ones in the review tables. A power user re-running analysis on a 30-item experience section must scroll through all 30 rows to find the 5 that changed, despite the "New" badge on each changed row.
+Cycle 69: `_markChanged()` now also adds class `rw-new-item` (persistent) alongside the animation `data-changed` attribute. After a rewrite re-run, `_injectRewriteFilterToggle(count)` injects a "⬡ Changed (N)" button into `#rewrite-tally` when some (but not all) cards changed. The button toggles `.filter-changed-only` on `#rewrite-cards`; CSS at `styles.css` hides `.rewrite-card:not(.rw-new-item)` when the class is active. "✕ Show all" text appears when filter is active; `aria-pressed` reflects state. Filter resets on each subsequent re-run.
 
-**Proposed:** Add a "Show only changed" toggle button in the review table header after a re-run completes. When enabled, rows lacking the `.rw-marked-changed` class (or equivalent changed-item marker) are hidden.
+**Remaining:** Experience table (`#experience-review-table tr[data-exp-id]`) and skills table (`#skills-review-table tr[data-skill]`) filter not yet implemented — DataTables row visibility management may conflict with CSS `display:none`.
 
 ---
 
