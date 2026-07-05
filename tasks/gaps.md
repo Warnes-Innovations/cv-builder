@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 65)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 66)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,22 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+
+## 2026-07-04 (Cycle 66) Reconciliation Notes
+
+GAP-UX-09 partial fix: workflow nav scroll UX at narrow widths; power-user Gap D stale finding corrected.
+
+- **`web/styles.css`** — Three CSS improvements for GAP-UX-09 (workflow nav narrow-width scroll UX):
+  1. Added `scrollbar-width: thin` to the base `.workflow-steps` rule so the horizontal scrollbar is less intrusive on all screens.
+  2. Added `justify-content: flex-start` to the `@media (max-width: 1400px)` block — this fixes the "center + overflow = leftmost steps cut off" bug. Previously, using `justify-content: center` with `overflow-x: auto` caused the first workflow steps (Job Input, Analysis) to be unreachable when the nav overflowed.
+  3. Added `.workflow-steps { gap: 10px }` and `.step { padding: 6px 10px; gap: 8px; font-size: 0.9em }` at `max-width: 1280px` to compress step pills at narrower widths. No bundle rebuild needed (CSS-only change).
+- **`tasks/review-status/ux-expert.md`** — GAP-UX-09 updated to reflect cycle 66 partial fix; US-U8 Criterion 1 updated.
+- **`tasks/review-status/power-user.md`** — Gap D stale finding corrected:
+  - The "count absent from assistant message" description was stale — `_countChangedItems()` at `workflow-steps.js:412–418` already appends "N of M items changed" to the re-run message (cycle 63 fix).
+  - Gap D renamed to "No show-only-changed filter toggle" and description updated to reflect the actual remaining gap.
+  - W3.3 "Net" summary updated to say count IS present; remaining partial is the filter toggle.
+  - Evidence references updated.
+- **Test suite:** No Python code changes — no test run needed. Prior test suite (1435 passed) remains valid.
 
 ## 2026-07-04 (Cycle 65) Reconciliation Notes
 

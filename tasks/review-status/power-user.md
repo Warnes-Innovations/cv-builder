@@ -8,7 +8,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Power User Review Status
 
-**Last Updated:** 2026-07-01
+**Last Updated:** 2026-07-04 (Gap D stale correction cycle 66)
 **Branch:** feature/multi-user-deployment (HEAD: 5aedf24)
 **Reviewer role:** Power User (US-W1, US-W2, US-W3)
 
@@ -71,7 +71,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 - **Reruns feel equivalent to starting over:** Well-mitigated. Confirmation modal names intact downstream stages. Stale badges appear on downstream step pills. Downstream context passes into the LLM prompt. Re-run message in chat explicitly states approvals are preserved.
 - **Re-run affordance discoverability:** ↻ button persistently visible (dim at rest), focusable with Tab, rises to full opacity on hover/focus-within. Keyboard shortcut (`Ctrl+Enter`) also works from completed step pill click interactions.
 
-**Net: W3.1 and W3.2 pass fully. W3.3 remains partial — changed-item count after re-run is present at the per-item badge level but not summarised as a total in the assistant message.**
+**Net: W3.1 and W3.2 pass fully. W3.3 remains partial — changed-item count IS now surfaced in the re-run assistant message since cycle 63 (`workflow-steps.js:412–418`). The remaining gap is the absence of a "show only changed" filter toggle; all changed items are highlighted but cannot be isolated from unchanged ones.**
 
 ---
 
@@ -105,11 +105,11 @@ The sessions modal has sortable columns, a Recents strip, status badges, and inl
 
 ---
 
-### Gap D — No changed-item count summary after re-run (W3.3)
+### Gap D — No "show only changed" filter toggle after re-run (W3.3)
 
-After `reRunPhase()` completes, the assistant message (`workflow-steps.js:412`) says "changed items are highlighted" without a count. Per-item "New" badges are rendered in the skills/experience review tables (`skills-review.js:730`, `experience-review.js:232`), but no aggregate count (e.g. "3 of 12 recommendations changed") is shown to the user.
+The changed-item count IS now appended to the re-run assistant message (e.g. "changed items are highlighted (3 of 12 items changed)") since cycle 63 (`workflow-steps.js:412–418`). However, no filter toggle exists to isolate changed items from unchanged ones in the review tables. A power user re-running analysis on a 30-item experience section must scroll through all 30 rows to find the 5 that changed, despite the "New" badge on each changed row.
 
-**Proposed:** Append a count to the assistant message — e.g., "3 of 12 experience recommendations changed — highlighted in the table."
+**Proposed:** Add a "Show only changed" toggle button in the review table header after a re-run completes. When enabled, rows lacking the `.rw-marked-changed` class (or equivalent changed-item marker) are hidden.
 
 ---
 
@@ -170,9 +170,9 @@ The application's terminology is generally accurate and consistent:
 - **W2.3 pass:** three active-session signals → `web/index.html:41,80–85`; `buildSessionSwitcherLabel()` → `web/session-manager.js`; `_updateSessionSwitcherHeader()` → `web/session-switcher-ui.js:146–158`
 - **W3.1 pass:** ↻ button + confirmation modal → `web/workflow-steps.js:133–191`; clarification-amend modal → `web/workflow-steps.js:277–380`; layout freshness chip → `web/state-manager.js:145–175`
 - **W3.2 pass:** downstream context injection → `scripts/utils/conversation_manager.py`; stale-step marking → `web/workflow-steps.js`; cache clearing after re-run → `web/workflow-steps.js`
-- **W3.3 partial:** per-item change badges exist → `web/skills-review.js:730`, `web/experience-review.js:232`; count absent from assistant message → `web/workflow-steps.js:412`
+- **W3.3 partial:** per-item change badges → `web/skills-review.js:730`, `web/experience-review.js:232`; count IS in assistant message → `web/workflow-steps.js:412–418`; no show-only-changed filter toggle
 - **Gap C (open):** no session filter input → `web/session-switcher-ui.js` (no `<input>` for search)
-- **Gap D (open):** count not surfaced → `web/workflow-steps.js:412`
+- **Gap D (open):** no show-only-changed filter; count already present → `web/workflow-steps.js:412–418`
 - **Gap E (open):** no bulk-decision undo → `web/rewrite-review.js`, `web/experience-review.js`
 - **Gap A (closed):** `Ctrl+Enter` → `web/keyboard-shortcuts.js:186–190`; shortcut help panel → `web/keyboard-shortcuts.js:130–173`
 

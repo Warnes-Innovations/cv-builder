@@ -259,7 +259,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 
 /* ===== WORKFLOW STEPS ===== */
 .workflow { background: var(--cv-white); border-bottom: 1px solid var(--cv-border); padding: 20px 24px; }
-.workflow-steps { display: flex; align-items: center; justify-content: center; gap: 32px; overflow-x: auto; }
+.workflow-steps { display: flex; align-items: center; justify-content: center; gap: 32px; overflow-x: auto; scrollbar-width: thin; }
 .step { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-radius: 20px; background: var(--cv-bg-subtle); color: var(--cv-text-secondary); flex-shrink: 0; }
 .step.active { background: var(--cv-info-bg-md); color: var(--cv-accent-hover); cursor: pointer; }
 .step.active:hover { filter: brightness(0.93); }
@@ -1645,11 +1645,13 @@ details.rewrite-rationale summary { cursor: pointer; color: var(--cv-gray-700); 
 .instruction-summary { color: var(--cv-text-secondary); font-style: italic; margin-bottom: 6px; }
 
 @media (max-width: 1400px) {
-  .workflow-steps { gap: 16px; }
+  .workflow-steps { gap: 16px; justify-content: flex-start; }
   .workflow { padding: 14px 16px; }
 }
 
 @media (max-width: 1280px) {
+  .workflow-steps { gap: 10px; }
+  .step { padding: 6px 10px; gap: 8px; font-size: 0.9em; }
   .layout-instruction-panel { gap: 16px; }
   .layout-input-pane { width: 300px; flex-basis: 300px; }
 }

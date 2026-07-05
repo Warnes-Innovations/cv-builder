@@ -5,7 +5,7 @@
 
 # UX Expert Review
 
-**Date:** 2026-07-04 (status corrections cycle 64)
+**Date:** 2026-07-04 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66)
 **Reviewer:** ux-expert persona
 **Source files examined:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, web/job-input.js, web/rewrite-review.js, web/keyboard-shortcuts.js, web/layout-instruction.js, web/workflow-steps.js
 
@@ -185,7 +185,7 @@
 ### US-U8: Responsive Behaviour and Loading Performance
 
 **Criterion 1 — Minimum viable layout at 1280×800**
-⚠️ Partial — `styles.css:163` makes `.workflow-steps` overflow-x:auto, so the 12-step workflow nav scrolls horizontally rather than wrapping. The tab bar also scrolls (`styles.css:633–643`). No media query collapses the workflow nav below a threshold; the 12-step bar will require horizontal scroll at 1280px with long labels.
+⚠️ Partial — The 12-step workflow nav scrolls horizontally. Cycle 66 added `justify-content: flex-start` at `max-width:1400px` (prevents left-items cut-off on scroll), reduced step pill padding/gap/font at `max-width:1280px`, and `scrollbar-width: thin` globally. The bar still requires horizontal scroll at 1280×800; full collapse or step-label abbreviation is not yet implemented.
 
 **Criterion 2 — Column collapsing in tables**
 ⚠️ Partial — No `@media` query hides review table columns at narrow widths. The session manager table hides on mobile (`styles.css:338–343` at `max-width:700px`), but review tables lack this pattern.
@@ -246,8 +246,8 @@ Review tables show High/Medium/Low confidence badges but no explicit legend (e.g
 **GAP-UX-08: intake-field-row focus outline** **— RESOLVED (stale)**
 `styles.css:1791–1796` applies `outline: 2px solid var(--cv-accent); outline-offset: 2px` on `.intake-field-row input:focus`. WCAG 2.1 AA compliant. US-U7 Criterion 2 ✅.
 
-**GAP-UX-09: Workflow nav horizontal scroll at narrow widths**
-The 12-step workflow bar overflows horizontally without collapsing. At 1280×800, the workflow may require horizontal scrolling — particularly problematic with long step labels and emoji decorators (US-U8 Criterion 1).
+**GAP-UX-09: Workflow nav horizontal scroll at narrow widths — PARTIAL FIX (cycle 66)**
+`styles.css` now: (1) switches `.workflow-steps` to `justify-content: flex-start` at `max-width:1400px` so scrollable content is not cut off on the left; (2) reduces step pill padding to `6px 10px`, gap to `10px`, and font to `0.9em` at `max-width:1280px`; (3) adds `scrollbar-width: thin` globally. The 12-step bar still requires horizontal scroll at 1280×800 but the scroll now starts from step 1 (not mid-bar) and pills are more compact. Full nav collapse/abbreviation at very narrow widths remains unimplemented (US-U8 Criterion 1).
 
 **GAP-UX-10: Layout review two-button proceed path needs explanation**
 The "Confirm Layout" → "Generate Final Files" two-step path is not explained to new users. A tooltip or inline note clarifying the two-stage intent would reduce confusion (US-U9 Criterion 6).
