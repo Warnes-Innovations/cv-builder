@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 67)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-04 (cycle 68)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,21 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+
+## 2026-07-04 (Cycle 68) Reconciliation Notes
+
+Named step-sequence progress labels during final generation (US-U6 Criterion 1 partial fix).
+
+- **`web/layout-instruction.js`** — `generateFinalOutputs()` updated:
+  - Added `const _STEP_LABELS = ['Step 1 of 3: Rendering HTML…', 'Step 2 of 3: Generating PDF…', 'Step 3 of 3: Building DOCX files…']` and `let _stepTimer = null` before `try`.
+  - Changed `showProcessing(true, 'Generating final files…')` to `showProcessing(true, _STEP_LABELS[0])`.
+  - Added `setInterval` that advances `_stepIdx` at 1800ms intervals, updating the `#processing-indicator` label through all three step labels while the `POST /api/cv/generate-final` call is in-flight.
+  - Added `if (_stepTimer) clearInterval(_stepTimer)` in the `finally` block before `showProcessing(false)`.
+- **`web/bundle.js`** — Rebuilt after JS change.
+- **`tasks/review-status/ux-expert.md`** — US-U6 Criterion 1 updated to "PARTIAL (cycle 68)"; GAP-UX-06 note updated; Evidence Summary updated.
+- **GAP-UX-02 stale finding corrected in `tasks/review-status/ux-expert.md`**:
+  - Previous review said "clicking a completed workflow step does not warn about downstream effects." Source-verified STALE: `handleStepClick()` (`workflow-steps.js:1111–1123`) already calls `_showReRunConfirmModal(step, 'back-nav', doNavigate)` when back-navigating to a completed step with downstream completed stages. US-U1 Criterion 3 ✅.
+- **Test suite:** 1435 passed ✅ (219s).
 
 ## 2026-07-04 (Cycle 67) Reconciliation Notes
 

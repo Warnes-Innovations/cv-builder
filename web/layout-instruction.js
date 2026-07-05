@@ -1340,8 +1340,19 @@ async function generateFinalOutputs() {
    *   - ui:workflow.refinement
    *   notes: Generates the final human-readable outputs from the confirmed preview and advances the UI into file review/finalise with the new artifact set.
    */
+  const _STEP_LABELS = [
+    'Step 1 of 3: Rendering HTML…',
+    'Step 2 of 3: Generating PDF…',
+    'Step 3 of 3: Building DOCX files…',
+  ];
+  let _stepTimer = null;
   try {
-    showProcessing(true, 'Generating final files…');
+    showProcessing(true, _STEP_LABELS[0]);
+    let _stepIdx = 0;
+    _stepTimer = setInterval(() => {
+      _stepIdx = Math.min(_stepIdx + 1, _STEP_LABELS.length - 1);
+      showProcessing(true, _STEP_LABELS[_stepIdx]);
+    }, 1800);
 
     const freshness = stateManager.getLayoutFreshness();
     const generationState = stateManager.getGenerationState();
@@ -1380,6 +1391,7 @@ async function generateFinalOutputs() {
   } catch (error) {
     appendMessage('system', `❌ Could not generate final files. Try clicking Generate again. If layout confirmation is needed first, click Confirm Layout, then try again.`);
   } finally {
+    if (_stepTimer) clearInterval(_stepTimer);
     showProcessing(false);
   }
 }

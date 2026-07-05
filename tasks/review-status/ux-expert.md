@@ -5,7 +5,7 @@
 
 # UX Expert Review
 
-**Date:** 2026-07-04 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66)
+**Date:** 2026-07-04 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66; US-U6 C1 partial fix, GAP-UX-02 stale correction cycle 68)
 **Reviewer:** ux-expert persona
 **Source files examined:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, web/job-input.js, web/rewrite-review.js, web/keyboard-shortcuts.js, web/layout-instruction.js, web/workflow-steps.js
 
@@ -22,7 +22,7 @@
 ✅ Pass — `workflow-steps.js:854–906` applies `.active` (blue), `.completed` (green/`#dcfce7`), `.upcoming` (muted grey), `.stale` (amber), and `.forward-skip` (dashed blue) classes. CSS at `styles.css:165–173` gives each distinct visual treatment with explicit background and text colour differences. Screen-reader text is appended as `.sr-only` spans with state descriptions.
 
 **Criterion 3 — Back-navigation safety**
-⚠️ Partial — Completed steps are clickable (`ui-core.js:1827–1924`). Re-running a phase uses `confirmReRunPhase()` which triggers a modal confirmation before discarding downstream state. However, clicking a completed step in the workflow nav does not explicitly warn about downstream effects; the warning only appears for the ↻ re-run button. A user could jump backwards by clicking a completed step without realising it might invalidate later-stage content.
+✅ Pass — Completed steps are clickable (`ui-core.js:1827–1924`). Both the ↻ re-run button and clicking a completed step in the workflow nav call `_showReRunConfirmModal`. `handleStepClick()` (`workflow-steps.js:1111–1123`) checks whether any downstream steps are completed and, if so, calls `_showReRunConfirmModal(step, 'back-nav', doNavigate)`, which shows the modal titled "← Navigate back to {step}?" listing all downstream completed stages with Cancel / Proceed buttons, focus-trapped and Escape-dismissable. Previous review said only the ↻ button triggered the warning — source-verified RESOLVED (cycle 68).
 
 **Criterion 4 — Session restoration context**
 ✅ Pass — `session-manager.js:498` (`restoreSession`) restores the session; the position bar (index.html:78–87) shows the job title and company name via `#position-title` / `#position-company`. `#header-session-name` (index.html:41) shows the session identifier. `updateWorkflowSteps()` in `workflow-steps.js` is called after status fetch to restore step state.
@@ -116,7 +116,7 @@
 ### US-U6: Generation and Output State Feedback
 
 **Criterion 1 — Generation progress feedback**
-⚠️ Partial — The `#llm-busy-overlay` shows a spinner with elapsed time and a label, but does not show named step-by-step progress (e.g. "Step 1 of 3: Generating HTML… Step 2: Converting to PDF…"). Generation progress is logged in the conversation panel via messages, but no dedicated step-labelled progress bar with checkmarks is visible.
+⚠️ Partial — Cycle 68: `generateFinalOutputs()` (`layout-instruction.js:1343+`) now shows cycling step labels in `#processing-indicator`: "Step 1 of 3: Rendering HTML…" → "Step 2 of 3: Generating PDF…" → "Step 3 of 3: Building DOCX files…" at 1800ms intervals via `setInterval`. Labels advance automatically while the single `POST /api/cv/generate-final` call is in-flight and are cleared in `finally`. No dedicated step-labelled progress bar with checkmarks (only the existing `#processing-indicator` spinner panel is updated). A true multi-step progress bar with explicit checkmarks remains unimplemented.
 
 **Criterion 2 — Output preview**
 ✅ Pass — Layout review (`layout-instruction.js:296`) renders an `<iframe id="layout-preview">` that shows the CV HTML inline. The download tab provides file links with in-browser access.
@@ -225,8 +225,8 @@
 **GAP-UX-01: Session age not shown on restoration**
 When a user returns to a persisted session, the header shows the job title but not when the session was last active. A "Last edited 3h ago" line below the position title would immediately orient returning users (US-U1 Criterion 4 partial).
 
-**GAP-UX-02: Back-navigation on completed steps lacks destructive-action warning**
-Clicking a completed step in the workflow nav does not confirm before navigating back. Only the ↻ re-run icon triggers a confirmation. A user clicking "Customise" from "Spell Check" should receive a confirmation if navigating back would invalidate downstream work (US-U1 Criterion 3).
+**GAP-UX-02: Back-navigation on completed steps lacks destructive-action warning — RESOLVED (stale, cycle 68)**
+Source-verified: `handleStepClick()` (`workflow-steps.js:1111–1123`) already shows `_showReRunConfirmModal(step, 'back-nav', doNavigate)` when back-navigating to a completed step with downstream completed stages. Modal titled "← Navigate back to {step}?" lists affected stages and requires explicit Proceed. US-U1 Criterion 3 ✅.
 
 **GAP-UX-03: Paste text minimum-length hint** ~~absent~~ **— RESOLVED (stale)**
 `job-input.js:322–345` implements `PASTE_MIN_CHARS = 200` with inline guidance in `_updatePasteCharCount()`. Minimum-length hint is present and live (US-U2 Criterion 5 ✅).
@@ -238,7 +238,7 @@ Clicking a completed step in the workflow nav does not confirm before navigating
 Review tables show High/Medium/Low confidence badges but no explicit legend (e.g. "High = >80%", "Low = <40%") or numeric equivalents. Users must infer the scale (US-U4 Criterion 6).
 
 **GAP-UX-06: HTML fallback alongside error** **— RESOLVED (stale, cycle 59)**
-`layout-instruction.js` adds "View HTML preview" link beside PDF failure. Remaining gap: no named step-sequence progress (HTML render → PDF → Done) — still open (US-U6 Criterion 1 ⚠️).
+`layout-instruction.js` adds "View HTML preview" link beside PDF failure. Remaining gap (cycle 68 partial): named step-sequence labels now cycle in `#processing-indicator` during generation, but no dedicated progress bar with explicit checkmarks exists (US-U6 Criterion 1 ⚠️ Partial).
 
 **GAP-UX-07: Colour-only rewrite card state** **— RESOLVED (stale)**
 `rewrite-review.js:508–512` shows persistent "✓ Accepted" / "✗ Rejected" text badge. US-U7 Criterion 5 ✅.
@@ -261,12 +261,12 @@ Content areas show no skeleton placeholders before LLM response arrives, causing
 
 | Story | Result | Key Evidence |
 | ------- | -------- | -------------- |
-| US-U1 Workflow orientation | ✅ / ⚠️ | index.html:122–148; workflow-steps.js:778+; styles.css:165–173; gap: no session age on restore, back-nav warning absent |
+| US-U1 Workflow orientation | ✅ | index.html:122–148; workflow-steps.js:778+; styles.css:165–173; back-nav modal RESOLVED (workflow-steps.js:1111–1123); gap: no session age on restore |
 | US-U2 Job input UX | ✅ | job-input.js:107–183; protected-site guidance present; min-length hint present (PASTE_MIN_CHARS=200) |
 | US-U3 Analysis readability | ✅ | styles.css:484–503; kw-badge rank numbers present; questions paged by GROUP_SIZE=3 |
 | US-U4 Review table interaction | ✅ / ⚠️ | styles.css:1199–1226; rewrite-review.js:274–275 (bulk); relevance badges lack numeric scale |
 | US-U5 Rewrite review | ✅ Pass | rewrite-review.js:370–371 (diff); keyboard-shortcuts.js (A/R/Up/Down); rationale via `<details>` |
-| US-U6 Generation feedback | ✅ / ⚠️ | CV filenames pass; HTML fallback alongside error fixed (cycle 59); no named step-sequence progress still open |
+| US-U6 Generation feedback | ✅ / ⚠️ | CV filenames pass; HTML fallback alongside error fixed (cycle 59); step labels cycle in #processing-indicator during generation (cycle 68); full step progress bar with checkmarks absent |
 | US-U7 Accessibility | ✅ | Focus trap in ui-core.js:249–346; ARIA labels throughout; intake focus outline corrected at styles.css:1791 |
 | US-U9 Layout review UX | ✅ / ⚠️ | Scope label present; undo stack implemented; two-button proceed path lacks new-user explanation |
 | US-U8 Responsive/performance | ⚠️ Partial | 12-step nav overflows at narrow widths; no skeleton placeholders; CDN blocking not assessed |
