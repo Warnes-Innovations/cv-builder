@@ -235,9 +235,9 @@
 
 ## Open Issues Identified
 
-**GAP-NEW-HM-01** — `🔲` No minimum-bullet-count enforcement (US-M2 AC2.2): The system does not warn or block when a job entry has fewer than 2 bullets. Add a check in `check_persuasion` or the pre-generation validation step.
+**GAP-NEW-HM-01** — `✅` Minimum-bullet-count advisory exists (US-M2 AC2.2) — stale; corrected cycle 71: `_detect_sparse_experiences()` at `cv_orchestrator.py:5100` detects entries with fewer than `min_bullets=2` bullets and surfaces a yellow warning card in the Download tab (`download-tab.js:417–426`). Generation is not blocked (advisory only), which is consistent with the acceptance criterion as stated.
 
-**GAP-NEW-HM-02** — `🔲` No bullet line-length enforcement (US-M2 AC2.3): No rendered-line-count check on individual bullets exists. Could be addressed by a word-count heuristic (e.g., >35 words suggests multi-line) as an approximation.
+**GAP-NEW-HM-02** — `✅` Long-bullet advisory exists (US-M2 AC2.3) — stale; corrected cycle 71: `_detect_long_bullets()` at `cv_orchestrator.py:5075` uses a `max_chars=200` character-count heuristic to detect over-long bullets and surfaces a yellow warning card in the Download tab (`download-tab.js:406–415`). The check is a character-count approximation (not a rendered-line-count), but the advisory mechanism exists.
 
 **GAP-NEW-HM-03** — `🔲` Skills section size not enforced (US-M3 AC3.4): No check verifies that the skills section fits within 1.5 sidebar columns. The `max_skills` parameter caps count but not rendered height.
 
