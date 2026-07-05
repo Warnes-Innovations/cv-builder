@@ -27,6 +27,11 @@ describe('showBulletReorder fallback behavior', () => {
     globalThis.appendRetryMessage = vi.fn()
     globalThis.appendMessage = vi.fn()
 
+    globalThis.trapFocus = vi.fn()
+    globalThis.restoreFocus = vi.fn()
+    globalThis.setInitialFocus = vi.fn()
+    globalThis._focusedElementBeforeModal = null
+
     // app.js references these in many paths; define safe stubs for load-time.
     globalThis.StorageKeys = {
       SESSION_ID: 'cv-builder-session-id',

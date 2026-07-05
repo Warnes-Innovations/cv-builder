@@ -1181,6 +1181,8 @@ function handleStepClick(step) {
 export {
   _STEP_ORDER,
   _STEP_DISPLAY,
+  _ACTION_LABELS,
+  _STEP_DESCRIPTIONS,
   backToPhase,
   _showReRunConfirmModal,
   _showAnalysisClarificationAmendModal,

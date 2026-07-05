@@ -148,7 +148,7 @@ describe('staged layout regressions', () => {
     expect(apiCall).not.toHaveBeenCalledWith('POST', '/api/layout-complete', expect.anything())
     expect(appendMessage).toHaveBeenCalledWith(
       'system',
-      expect.stringContaining('Final generation failed')
+      expect.stringContaining('Could not generate final files')
     )
     expect(stateManager.setPhase).not.toHaveBeenCalled()
     expect(switchTab).not.toHaveBeenCalled()

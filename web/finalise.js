@@ -538,4 +538,5 @@ export {
   finaliseApplication,
   showHarvestSection,
   _renderReadinessChecklist,
+  applyHarvestSelections,
 };

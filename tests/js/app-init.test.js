@@ -60,7 +60,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const STANDALONE_WEB_MODULES = new Set(['app.js', 'bundle.js'])
+const STANDALONE_WEB_MODULES = new Set(['bundle.js'])
 
 // ── Helper: check all exports in a namespace are non-null ─────────────────────
 

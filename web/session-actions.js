@@ -188,4 +188,4 @@ function updatePositionTitle(status = {}) {
 }
 
 // ── ES module exports ──────────────────────────────────────────────────────
-export { sendAction, saveSession, updatePositionTitle };
+export { sendAction, saveSession, updatePositionTitle, _ACTION_LABELS };

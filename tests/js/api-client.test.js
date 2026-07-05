@@ -131,7 +131,14 @@ describe('apiCall', () => {
   })
 
   it('throws "Session already active" on 409 Conflict', async () => {
-    fetchMock.mockResolvedValue({ status: 409, ok: false })
+    // Use phase_enforcement type so handle409Conflict returns false immediately
+    // (session_ownership type would open a banner and await user interaction).
+    const body = { conflict_type: 'phase_enforcement' }
+    fetchMock.mockResolvedValue({
+      status: 409, ok: false,
+      json: async () => body,
+      clone: () => ({ json: async () => body }),
+    })
     await expect(apiClient.apiCall('POST', '/api/action', {}))
       .rejects.toThrow('Session already active in another tab')
   })

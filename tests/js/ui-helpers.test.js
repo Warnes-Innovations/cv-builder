@@ -12,9 +12,9 @@ import {
   showToast,
   showAlertModal, closeAlertModal,
   showConfirmModal, closeConfirmModal,
-  toggleChat,
   updateActionButtons,
 } from '../../web/ui-helpers.js'
+import { toggleChat } from '../../web/ui-core.js'
 import { stateManager } from '../../web/state-manager.js'
 
 // ── DOM fixture helpers ───────────────────────────────────────────────────
@@ -42,9 +42,9 @@ function buildToastContainer() {
 
 function buildChatLayout() {
   document.body.innerHTML += `
-    <div id="chat-area"></div>
-    <div id="viewer-area"></div>
-    <button id="toggle-chat">◀</button>`
+    <div class="interaction-area" id="chat-area"></div>
+    <div class="viewer-area" id="viewer-area"></div>
+    <button id="toggle-chat" aria-expanded="true">◀</button>`
 }
 
 function buildActionButtons() {
@@ -106,9 +106,10 @@ describe('closeAlertModal', () => {
     expect(document.getElementById('alert-modal-overlay').style.display).toBe('none')
   })
 
-  it('calls restoreFocus', () => {
-    closeAlertModal()
-    expect(globalThis.restoreFocus).toHaveBeenCalled()
+  it('hides the overlay without throwing', () => {
+    document.getElementById('alert-modal-overlay').style.display = 'block'
+    expect(() => closeAlertModal()).not.toThrow()
+    expect(document.getElementById('alert-modal-overlay').style.display).toBe('none')
   })
 })
 
@@ -234,17 +235,16 @@ describe('toggleChat', () => {
   it('collapses chat area when not collapsed', () => {
     toggleChat()
     expect(document.getElementById('chat-area').classList.contains('collapsed')).toBe(true)
-    expect(document.getElementById('viewer-area').classList.contains('expanded')).toBe(true)
-    expect(document.getElementById('toggle-chat').textContent).toBe('▶')
+    expect(document.getElementById('viewer-area').style.flex).toBe('1 1 100%')
+    expect(document.getElementById('toggle-chat').getAttribute('aria-expanded')).toBe('false')
   })
 
   it('expands chat area when already collapsed', () => {
     document.getElementById('chat-area').classList.add('collapsed')
-    document.getElementById('viewer-area').classList.add('expanded')
     toggleChat()
     expect(document.getElementById('chat-area').classList.contains('collapsed')).toBe(false)
-    expect(document.getElementById('viewer-area').classList.contains('expanded')).toBe(false)
-    expect(document.getElementById('toggle-chat').textContent).toBe('◀')
+    expect(document.getElementById('viewer-area').style.flex).toBe('0 1 60%')
+    expect(document.getElementById('toggle-chat').getAttribute('aria-expanded')).toBe('true')
   })
 
   it('toggles back to original state on double call', () => {

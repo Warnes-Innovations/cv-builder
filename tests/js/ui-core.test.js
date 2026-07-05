@@ -9,17 +9,28 @@
  * Focused regression tests for web/ui-core.js event wiring.
  */
 
-vi.mock('../../web/api-client.js', () => ({
-  StorageKeys: { TAB_DATA: 'tabData' },
-  apiCall: vi.fn(),
-  fetchStatus: vi.fn(),
-  askPostAnalysisQuestions: vi.fn(),
-  sendMessage: vi.fn(),
-  fetchSettings: vi.fn(),
-  updateSettings: vi.fn(),
+// Use vi.hoisted so mock instances survive vi.resetModules() between tests
+const { _apiCall, _fetchStatus, _fetchSettings, _updateSettings } = vi.hoisted(() => ({
+  _apiCall: vi.fn(),
+  _fetchStatus: vi.fn(),
+  _fetchSettings: vi.fn(),
+  _updateSettings: vi.fn(),
 }))
 
-import { apiCall, fetchSettings, updateSettings } from '../../web/api-client.js'
+vi.mock('../../web/api-client.js', () => ({
+  StorageKeys: { TAB_DATA: 'tabData' },
+  apiCall: _apiCall,
+  fetchStatus: _fetchStatus,
+  askPostAnalysisQuestions: vi.fn(),
+  sendMessage: vi.fn(),
+  fetchSettings: _fetchSettings,
+  updateSettings: _updateSettings,
+}))
+
+// Alias to match the original names used throughout the tests
+const apiCall = _apiCall
+const fetchSettings = _fetchSettings
+const updateSettings = _updateSettings
 
 let mod
 
@@ -517,7 +528,11 @@ describe('settings modal', () => {
 
   it('loads settings into the modal fields', async () => {
     buildSettingsFixture()
-    fetchSettings.mockResolvedValue({
+    // After vi.resetModules() in loadModule(), get the fresh mock references
+    // that ui-core.js is actually using (same module cache entry).
+    const { fetchSettings: $fetchSettings, fetchStatus: $fetchStatus } = await import('../../web/api-client.js')
+    $fetchStatus.mockResolvedValue(null)
+    $fetchSettings.mockResolvedValue({
       ok: true,
       settings: {
         llm: {

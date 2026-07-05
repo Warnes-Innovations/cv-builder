@@ -24,6 +24,8 @@ import {
 // ── Global stubs ──────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  // jsdom does not implement scrollIntoView
+  Element.prototype.scrollIntoView = vi.fn()
   // CSS.escape may not be available or reliable in jsdom — always stub
   vi.stubGlobal('CSS', { escape: s => String(s) })
   vi.stubGlobal('escapeHtml', s => String(s ?? ''))
@@ -187,12 +189,14 @@ describe('applyRewriteAction', () => {
     expect(card.classList.contains('rejected')).toBe(true)
   })
 
-  it('on edit: shows the textarea and hides the diff', () => {
+  it('on edit: shows the textarea and keeps diff visible as reference', () => {
     applyRewriteAction('test1', 'edit')
     const afterEl = document.getElementById('rw-after-test1')
     const diffEl  = document.getElementById('rw-diff-test1')
     expect(afterEl.style.display).toBe('block')
-    expect(diffEl.style.display).toBe('none')
+    // Diff stays visible at reduced opacity as a reference for the user
+    expect(diffEl.style.display).toBe('')
+    expect(diffEl.style.opacity).toBe('0.55')
   })
 
   it('does not throw when card is absent', () => {

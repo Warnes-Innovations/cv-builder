@@ -240,8 +240,9 @@ describe('populateAnalysisTab', () => {
     expect(html).toContain('Docker')
   })
 
-  it('renders ATS keywords with rank badges', () => {
-    populateAnalysisTab({ title: 'Dev', required_skills: [], ats_keywords: ['ML', 'NLP'] })
+  it('renders ATS keywords with rank badges', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+    await populateAnalysisTab({ title: 'Dev', required_skills: [], ats_keywords: ['ML', 'NLP'] })
     const html = document.getElementById('document-content').innerHTML
     expect(html).toContain('#1')
     expect(html).toContain('ML')

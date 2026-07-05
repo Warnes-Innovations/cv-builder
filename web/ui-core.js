@@ -1973,6 +1973,8 @@ export {
   nextWizardStep, previousWizardStep,
   saveProviderApiKey, toggleApiKeyVisibility,
   _updateLlmStatusPill,
+  // Tab content loader
+  loadTabContent,
   // Settings modal
   openSettingsModal, closeSettingsModal, saveSettingsModal, reloadSettingsModal,
 };

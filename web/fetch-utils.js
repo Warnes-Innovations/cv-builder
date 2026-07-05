@@ -259,4 +259,5 @@ export {
   _updateLLMStatusBar,
   _updateLLMOverlay, _refreshContextStats,
   setLoading,
+  showSessionConflictBanner, conflictRetryNow, conflictDismiss,
 };
