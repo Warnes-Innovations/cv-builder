@@ -741,6 +741,24 @@ class TestSaveMasterHelper(unittest.TestCase):
             saved = json.loads(master_path.read_text(encoding='utf-8'))
             self.assertEqual(saved['personal_info']['name'], 'Old Name')
 
+    def test_save_master_git_add_failure_does_not_raise(self):
+        """When git-add returns non-zero the file is still saved and no exception is raised."""
+        import subprocess as _sp
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            data = {'personal_info': {'name': 'Test'}, 'skills': []}
+            failed_proc = _sp.CompletedProcess(
+                args=['git', 'add'],
+                returncode=1,
+                stdout=b'',
+                stderr=b'not a git repository',
+            )
+            with patch('scripts.web_app.subprocess.run', return_value=failed_proc):
+                _save_master(data, master_path)
+
+            saved = json.loads(master_path.read_text(encoding='utf-8'))
+            self.assertEqual(saved['personal_info']['name'], 'Test')
+
 
 class TestLoadMasterHelper(unittest.TestCase):
 

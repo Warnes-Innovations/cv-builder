@@ -10,7 +10,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Backend Developer Review Status
 
-**Last Updated:** 2026-04-20 (status corrections 2026-07-04 cycle 63)
+**Last Updated:** 2026-04-20 (status corrections 2026-07-04 cycle 63; path-traversal stale + git-add test added cycle 72)
 
 **Reviewer Persona:** Expert Back-End Developer
 
@@ -116,8 +116,8 @@ For commercial licensing, contact greg@warnes-innovations.com
 | Session persistence (file I/O) | ✅ Pass | `tests/test_session_registry.py`, `test_conversation_manager.py` | Load/save round-trip using temp dirs |
 | Concurrent session access | ✅ Pass | `tests/test_concurrent_sessions.py` | Concurrent create/lookup/eviction under threading |
 | URL fetch / SSRF protection | ⚠️ Partial | `tests/test_url_fetch.py`, `test_linkedin_url_handling.py` | Scheme blocking and protected-site detection covered; DNS-rebinding path (hostname resolution → private-IP rejection) has no dedicated test with mocked `socket.getaddrinfo` |
-| `static_routes` path traversal | 🔲 Not implemented | `scripts/routes/static_routes.py` | No test that verifies `/<path:filename>` rejects `../../` traversal attempts |
-| `_save_master` git-add failure path | 🔲 Not implemented | `master_data_routes.py:52` | No test that verifies behavior when `git add` subprocess fails |
+| `static_routes` path traversal | ✅ Pass (stale corrected cycle 72) | `tests/test_security_regression.py:120–145` | GAP-58 regression suite covers `../` and encoded traversal; `send_from_directory` uses Werkzeug `safe_join` internally |
+| `_save_master` git-add failure path | ✅ Pass (test added cycle 72) | `tests/test_master_data.py::TestSaveMasterHelper::test_save_master_git_add_failure_does_not_raise` | Verifies `web_app.py:_save_master` saves file and does not raise when git-add returns exit 1 |
 | CLI code in `ConversationManager` | 🔲 Not implemented | `conversation_manager.py:165–225` | `start_interactive`, `_get_multiline_input`, `_print_welcome` are untested (no CLI unit tests found) |
 | `auth_routes` dead `_auth_poll` | ✅ Pass | `web_app.py` — `_auth_poll` absent | Dead variable removed in cycle 58; no test needed (variable no longer exists). Was 🔲. |
 | Unit test directory | ⚠️ Partial | `tests/unit/` | Contains only `test_session_overrides.py`, `test_session_precedence.py` — unit coverage isolated from Flask app is thin; most unit tests are mixed with integration-style tests at the top level |
