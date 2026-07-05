@@ -9,7 +9,7 @@
 # Hiring Manager Persona Review
 
 **Persona:** US-M* — Hiring Manager / Department Head  
-**Cycle:** Source-first review, 2026-07-01  
+**Cycle:** Source-first review, 2026-07-01; stale AC2.2/AC2.3 corrected 2026-07-04 (cycle 71)  
 **Branch:** `feature/multi-user-deployment`
 
 ---
@@ -44,11 +44,11 @@
 
 **AC2.2** Each job entry has at least 2 bullets.
 
-🔲 **Not Implemented** — No check enforces a minimum of 2 bullets per job entry. `cv_orchestrator.py:4144–4218` (`check_persuasion`) iterates bullets but does not count per-entry bullet totals.
+✅ **Pass (stale — cycle 71)** — `_detect_sparse_experiences()` at `cv_orchestrator.py:5100` (`min_bullets=2`) returns warnings for entries with fewer than 2 selected bullets. Called at line 2114; results included in metadata at line 2258. `download-tab.js:417–426` renders a yellow warning card: "Sparse experience entries (N) — fewer than 2 bullets: {company · title — 0 or 1 bullet selected}. Include at least 2 bullets per role to demonstrate impact."
 
 **AC2.3** Bullets are ≤2 lines each.
 
-🔲 **Not Implemented** — No check measures rendered line height of individual bullets. The persuasion check (`cv_orchestrator.py:4200–4208`) flags bullets under 8 words as "too short" but has no upper-length-in-lines limit.
+✅ **Pass (stale — cycle 71)** — `_detect_long_bullets()` at `cv_orchestrator.py:5075` (`max_chars=200`) returns warnings for bullets exceeding 200 characters ("Long bullets typically wrap to 3+ lines in the generated DOCX"). Called at line 2111; results in metadata at line 2257. `download-tab.js:406–415` renders a yellow warning card: "Long bullet points detected (N) — may exceed 2 lines: {company · title (N chars) text}. Consider shortening — aim for ≤200 characters."
 
 **AC2.4** Job entries are not split across pages (`page-break-inside: avoid`).
 
@@ -199,8 +199,8 @@
 | US-M1 | Page 1 no overflow | ⚠️ Partial |
 | US-M1 | Page 1 no unbalanced whitespace | 🔲 Not Implemented |
 | US-M2 | Every bullet starts with strong action verb | ✅ Pass |
-| US-M2 | Each job entry has ≥2 bullets | 🔲 Not Implemented |
-| US-M2 | Bullets ≤2 lines each | 🔲 Not Implemented |
+| US-M2 | Each job entry has ≥2 bullets | ✅ Pass (stale corrected cycle 71) |
+| US-M2 | Bullets ≤2 lines each | ✅ Pass (stale corrected cycle 71) |
 | US-M2 | Job entries not split across pages | ✅ Pass |
 | US-M2 | Relevance-ordered bullets within each entry | ✅ Pass |
 | US-M2 | System warns if bullet lacks action verb | ✅ Pass |
