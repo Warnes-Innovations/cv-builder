@@ -8,7 +8,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Power User Review Status
 
-**Last Updated:** 2026-07-04 (Gap D partial fix cycle 69 — rewrite filter toggle)
+**Last Updated:** 2026-07-04 (Gap D partial fix cycle 69; Gap C partial fix cycle 70 — session search)
 **Branch:** feature/multi-user-deployment (HEAD: 5aedf24)
 **Reviewer role:** Power User (US-W1, US-W2, US-W3)
 
@@ -49,10 +49,10 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 **Failure modes guard-against check:**
 
-- **Rapid context switching without losing orientation:** Sessions modal is always accessible from the header pill. No text-search filter exists — with many saved sessions a power user must scroll or rely on the Recents strip. Gap C remains open.
+- **Rapid context switching without losing orientation:** Sessions modal is always accessible from the header pill. Cycle 70: a text search input now filters rows client-side by name, company, or phase as the user types (`_applySessionSearch()`, `session-switcher-ui.js`). Info bar updates to show "N of M sessions" when filtering. Filter resets each time the modal is opened fresh. Gap C substantially resolved; full-text notes search is not included.
 - **Currently active session identifiable throughout:** Three persistent, independently-updated signals are robust.
 
-**Net: W2 fully satisfies all acceptance criteria. Session-search (Gap C) is a scale limitation, not a story failure.**
+**Net: W2 fully satisfies all acceptance criteria. Session-search (Gap C) substantially resolved in cycle 70 — text filter input in sessions modal filters by name, company, phase.**
 
 ---
 
@@ -97,11 +97,9 @@ Assessment derived from source-code reading of generation and download paths.
 
 ## Open Gaps
 
-### Gap C — No session search/filter in the sessions modal (W2.1 at scale)
+### Gap C — Session search/filter — SUBSTANTIALLY RESOLVED (cycle 70)
 
-The sessions modal has sortable columns, a Recents strip, status badges, and inline edit widgets, but no text search input. With many sessions, a power user cannot locate a session by partial job title or company name without scrolling or relying on the 5-item Recents strip.
-
-**Proposed:** Add a text search input above the sessions table that filters rows client-side by name, phase, or company name.
+Cycle 70: `session-switcher-ui.js` now renders a `<input class="sm-search-input">` above the sessions table. As the user types, `_applySessionSearch()` shows/hides `.sm-tr[data-sm-search]` rows by matching against a pre-computed search string (`[row.name, row.company, phase].join(' ')`) stored as `data-sm-search` on each row. The info bar shows "N of M sessions" while filtering. Filter resets on each modal open (`_smSearchTerm = ''` in `openSessionsModal`). Notes field text is not included in the search string.
 
 ---
 

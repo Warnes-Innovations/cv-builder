@@ -32,6 +32,7 @@ let _smSortDir = (() => { try { return localStorage.getItem(_SM_STORAGE_DIR) || 
 
 let _smActiveCache = [];
 let _smSavedCache  = [];
+let _smSearchTerm  = '';
 
 // ── Render helpers ────────────────────────────────────────────────────────────
 
@@ -428,7 +429,8 @@ function _renderSessionTableRow(row) {
       })()
     : '';
 
-  return `<div class="${rowClass}">` +
+  const _smSearch = escapeHtml([row.name, row.company || '', formatSessionPhaseLabel(row.phase)].join(' ').toLowerCase());
+  return `<div class="${rowClass}" data-sm-search="${_smSearch}">` +
     `<span class="sm-td sm-td-name">${nameCell}</span>` +
     `<span class="sm-td sm-td-status">${statusPill}</span>` +
     `<span class="sm-td sm-td-phase"><span id="sm-phase-${row.idx}">${phaseLabel}${atsScoreLabel}${appStatusBadge}</span>${statusEditWidget}${notesPreview}${notesEditWidget}</span>` +
@@ -476,10 +478,47 @@ function _renderSessionTableFromCache() {
   body.innerHTML =
     _renderRecentsStrip(byDate.slice(0, 5)) +
     `<div class="sm-table-wrap">` +
-      `<div class="sm-table-info">${parts.join(' \u00b7 ')}</div>` +
+      `<div class="sm-search-wrap">` +
+        `<input id="sm-search-input" type="search" class="sm-search-input"` +
+               ` placeholder="Filter by name, company, or phase\u2026"` +
+               ` value="${escapeHtml(_smSearchTerm)}" aria-label="Filter sessions">` +
+      `</div>` +
+      `<div class="sm-table-info" id="sm-table-info">${parts.join(' \u00b7 ')}</div>` +
       _renderSessionTableHeader() +
       `<div class="sm-tbody">${sorted.map(_renderSessionTableRow).join('')}</div>` +
     `</div>`;
+
+  const searchInput = body.querySelector('#sm-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', e => {
+      _smSearchTerm = e.target.value;
+      _applySessionSearch();
+    });
+    if (_smSearchTerm) _applySessionSearch();
+  }
+}
+
+function _applySessionSearch() {
+  const term  = _smSearchTerm.trim().toLowerCase();
+  const tbody = document.querySelector('.sm-tbody');
+  if (!tbody) return;
+  let visible = 0;
+  tbody.querySelectorAll('.sm-tr[data-sm-search]').forEach(row => {
+    const match = !term || row.dataset.smSearch.includes(term);
+    row.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  const infoEl = document.getElementById('sm-table-info');
+  if (infoEl) {
+    const total  = tbody.querySelectorAll('.sm-tr[data-sm-search]').length;
+    const parts  = [
+      _smActiveCache.length ? `${_smActiveCache.length} active` : '',
+      _smSavedCache.length  ? `${_smSavedCache.length} saved`   : '',
+    ].filter(Boolean);
+    infoEl.textContent = term
+      ? `${visible} of ${total} sessions · ${parts.join(' · ')}`
+      : parts.join(' · ');
+  }
 }
 
 function _handleSessionModalClick(e) {
@@ -524,6 +563,7 @@ function _handleSessionModalKeydown(e) {
 async function openSessionsModal({ required = false } = {}) {
   const overlay = document.getElementById('sessions-modal-overlay');
   if (!overlay) return;
+  _smSearchTerm = '';
   overlay.dataset.dismissDisabled = required ? '1' : '';
   const closeX      = document.getElementById('sessions-modal-close-x');
   const closeFooter = document.getElementById('sessions-modal-close-footer');
