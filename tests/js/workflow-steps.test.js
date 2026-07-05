@@ -356,24 +356,36 @@ describe('reRunPhase', () => {
 // ── _getStepTooltip ───────────────────────────────────────────────────────────
 
 describe('_getStepTooltip', () => {
-  it('returns empty string for upcoming step', () => {
-    expect(_getStepTooltip('job', false, false, false, false, false, false)).toBe('')
+  it('returns step description for locked step', () => {
+    const tip = _getStepTooltip('job', false, false, false, false, false, false)
+    expect(tip).toContain('Paste a job description')
   })
 
-  it('returns "Current step" for active+viewing', () => {
-    expect(_getStepTooltip('analysis', true, true, false, false, false, false)).toBe('Current step')
+  it('returns empty string for locked step with no known description', () => {
+    expect(_getStepTooltip('unknown_step', false, false, false, false, false, false)).toBe('')
   })
 
-  it('returns click-to-return text when browsing away from active step', () => {
-    expect(_getStepTooltip('analysis', true, false, true, false, false, false)).toBe('Active step — click to return')
+  it('includes "Current step" for active+viewing', () => {
+    const tip = _getStepTooltip('analysis', true, true, false, false, false, false)
+    expect(tip).toContain('Current step')
+    expect(tip).toContain('Extracts job title')
   })
 
-  it('returns rerun prompt for completed+viewing', () => {
-    expect(_getStepTooltip('customizations', false, true, false, true, false, false)).toBe('Click ↻ to rerun from here')
+  it('includes click-to-return text when browsing away from active step', () => {
+    const tip = _getStepTooltip('analysis', true, false, true, false, false, false)
+    expect(tip).toContain('Active step — click to return')
   })
 
-  it('returns click-to-view for completed+not-viewing', () => {
-    expect(_getStepTooltip('customizations', false, false, false, true, false, false)).toBe('Click to view')
+  it('includes rerun prompt for completed+viewing', () => {
+    const tip = _getStepTooltip('customizations', false, true, false, true, false, false)
+    expect(tip).toContain('Click ↻ to rerun from here')
+    expect(tip).toContain('tailors content')
+  })
+
+  it('includes click-to-view for completed+not-viewing', () => {
+    const tip = _getStepTooltip('customizations', false, false, false, true, false, false)
+    expect(tip).toContain('Click to view')
+    expect(tip).toContain('tailors content')
   })
 
   it('includes stale-critical text when viewing', () => {

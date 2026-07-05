@@ -193,17 +193,34 @@ function confirmReRunPhase(step) {
 
 // ── View-cursor indicator ─────────────────────────────────────────────────────
 
+const _STEP_DESCRIPTIONS = {
+  job:            'Paste a job description to start tailoring your CV.',
+  analysis:       'Extracts job title, required skills, and ATS keywords from the job description.',
+  customizations: 'Select which experiences and skills to include — tailors content to this role.',
+  rewrite:        'Review and approve AI-proposed rewrites of your experience bullet points.',
+  spell:          'Review spelling and grammar before generating the final document.',
+  layout:         'Adjust margins, fonts, and column balance, then generate your final CV files.',
+  download:       'Download your tailored CV as PDF and DOCX.',
+  cover_letter:   'Generate a tailored cover letter for this application.',
+  screening:      'Prepare written answers for screening questions.',
+  interview_prep: 'Prepare talking points and stories for your interview.',
+  thank_you:      'Draft a thank-you note to send after the interview.',
+  harvest:        'Save refined bullets, new skills, and summary variants back to your Master CV for future applications.',
+};
+
 /**
  * Return a tooltip string for a step pill based on its combined state.
+ * Locked steps (neither active nor completed) show their description and an unlock hint.
  */
 function _getStepTooltip(step, isActive, isViewing, isBrowsingAway, isCompleted, isStale, isStaleCritical) {
-  if (isStaleCritical) return isViewing ? 'Critical changes — review required. Click ↻ to rerun.' : 'Critical changes — review required.';
-  if (isStale)         return isViewing ? 'Results may be outdated. Click ↻ to rerun.'           : 'Results may be outdated.';
-  if (isBrowsingAway)  return 'Active step — click to return';
-  if (isActive && isViewing)    return 'Current step';
-  if (isCompleted && isViewing) return 'Click ↻ to rerun from here';
-  if (isCompleted)              return 'Click to view';
-  return '';
+  const desc = _STEP_DESCRIPTIONS[step] || '';
+  if (isStaleCritical) return (isViewing ? 'Critical changes — review required. Click ↻ to rerun.' : 'Critical changes — review required.') + (desc ? ' · ' + desc : '');
+  if (isStale)         return (isViewing ? 'Results may be outdated. Click ↻ to rerun.'           : 'Results may be outdated.')           + (desc ? ' · ' + desc : '');
+  if (isBrowsingAway)  return 'Active step — click to return' + (desc ? ' · ' + desc : '');
+  if (isActive && isViewing)    return desc ? 'Current step · ' + desc : 'Current step';
+  if (isCompleted && isViewing) return desc ? desc + ' · Click ↻ to rerun from here' : 'Click ↻ to rerun from here';
+  if (isCompleted)              return desc ? desc + ' · Click to view' : 'Click to view';
+  return desc ? desc + ' · Unlocks as you complete earlier steps.' : '';
 }
 
 /**

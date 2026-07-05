@@ -8,7 +8,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # UI Review — First-Time User Persona
 **Reviewer:** First-Time User persona
-**Date:** 2026-07-01
+**Date:** 2026-07-01 (FTU-1/FTU-8 partial fix cycle 73)
 **Source files reviewed:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, web/session-manager.js, web/workflow-steps.js, web/download-tab.js, web/finalise.js, web/harvest.js, scripts/web_app.py, scripts/utils/conversation_manager.py
 
 ---
@@ -33,15 +33,19 @@ Each variant has a clear primary call-to-action button. The modal is reopenable 
 #### Criterion 2 — Key workflow concepts understandable without domain knowledge
 **PARTIAL**
 
-The onboarding modal avoids most jargon in its main body. However, the persistent workflow nav bar across the top of the page (12 steps: Job Input → Analysis → Customise → Rewrites → Spell Check → Layout Review → File Review → Cover Letter → Screening → Interview Prep → Thank You → Harvest) is fully visible immediately after the modal is dismissed. Several step names are unexplained on first encounter:
+The onboarding modal avoids most jargon in its main body. However, the persistent workflow nav bar across the top of the page (12 steps: Job Input → Analysis → Customise → Rewrites → Spell Check → Layout Review → File Review → Cover Letter → Screening → Interview Prep → Thank You → Harvest) is fully visible immediately after the modal is dismissed.
 
-- **Rewrites** — no tooltip explains this means "AI-proposed edits to your experience bullet points." The step tooltip reads "Rewrite review," still circular.
-- **Harvest** — hover tooltip says "Harvest improvements — save refined bullets, new skills, and summary variants back to your Master CV for future applications." This is adequate but only visible on hover.
-- **Customise** — tooltip is "Content customisation," which is circular. The concept of selecting which experiences and skills appear is not explained until the user reaches that stage.
+**Cycle 73 partial fix:** `_getStepTooltip` in `web/workflow-steps.js` now returns a per-step plain-English description for every state (active, completed, browsing-away, stale, and locked). Descriptions added to `_STEP_DESCRIPTIONS` map:
 
-The workflow step bar's locked (non-clickable) steps have no tooltip or text explaining they unlock as the user progresses. A new user may think the application is partially broken.
+- **Rewrites** → "Review and approve AI-proposed rewrites of your experience bullet points."
+- **Customise** → "Select which experiences and skills to include — tailors content to this role."
+- **Harvest** → "Save refined bullets, new skills, and summary variants back to your Master CV for future applications."
+- **Layout Review** → "Adjust margins, fonts, and column balance, then generate your final CV files."
+- All other steps: similarly described.
 
-**Failure mode found:** The story warns against "Terms like rewrites, customisations, layout review, or harvest appearing without context." All four terms appear in the nav bar on first load without context.
+Locked steps now show their description + "· Unlocks as you complete earlier steps." (FTU-8 fix).
+
+**Remaining gap:** Terms are tooltip-only — visible only on hover. They are not shown as visible body text or subtitle on first load. Step descriptions do not appear on the face of the nav pill itself.
 
 #### Criterion 3 — First stage makes clear what data is needed and why
 **PASS**
