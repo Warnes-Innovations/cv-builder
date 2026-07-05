@@ -8,7 +8,7 @@
 
 # Graphical Designer Review Status
 
-**Last Updated:** 2026-07-01
+**Last Updated:** 2026-07-04 (stale findings corrected cycle 67)
 **Reviewed by:** Source-verified review cycle (Graphical Designer persona, US-G*)
 **Sources read:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, templates/cv-style.css, templates/cv-template.html
 
@@ -44,7 +44,7 @@ The newly added `:root {}` block at `styles.css:18–27` introduces eight CSS cu
 
 - `--cv-border`, `--cv-accent`, `--cv-bg-light`, `--cv-text-secondary`, `--cv-text-primary`, `--cv-bg-subtle`, `--cv-text-muted`, `--cv-accent-hover`
 
-These tokens are actively consumed in many of the most-frequently-used selectors — borders, backgrounds, text colors on headings, modal elements, tabs, review cards, and action buttons. This is a real improvement over the previous state of zero tokens. However, a large number of color literals remain hardcoded in selectors not yet migrated: confidence badges, loading overlays, the LLM busy card, master-profile card gradient, cover-letter textarea, and all JS-generated HTML (download-tab.js, layout-instruction.js). The `@keyframes spin` duplicate remains (lines 930–933 and 1494) and `@keyframes llm-spin` (line 574) is still separate and functionally identical.
+These tokens are actively consumed in many of the most-frequently-used selectors — borders, backgrounds, text colors on headings, modal elements, tabs, review cards, and action buttons. This is a real improvement over the previous state of zero tokens. However, a large number of color literals remain hardcoded in selectors not yet migrated: confidence badges, loading overlays, the LLM busy card, master-profile card gradient, cover-letter textarea, and all JS-generated HTML (download-tab.js, layout-instruction.js). The `@keyframes spin` duplicate and the `@keyframes llm-spin` alias are both resolved — only one `@keyframes spin` definition exists (`styles.css:1051`). This was a stale finding from the original review.
 
 The overall aesthetic remains Tailwind/Slate — functional and clean but not aspirational. The color family reads as a developer-grade admin panel rather than a designed career product.
 
@@ -170,13 +170,13 @@ Font Awesome 6 Free is loaded (`index.html:23`) but the only FA usage observed i
 STATUS: OPEN — unchanged
 Four of six close buttons use raw inline styles instead of `.modal-close-btn`. No named modal-size modifier classes exist. The download tab generates entirely inline-styled HTML. The layout-instruction sidebar mixes named classes with inline control styles.
 
-**GAP-DESIGN-03: CSS design tokens — partial resolution only**
-STATUS: PARTIAL — 8 tokens added (GAP-133); full token coverage outstanding
-The eight new tokens cover the highest-frequency palette entries. Status/semantic colors (`--cv-success`, `--cv-danger`, `--cv-warning`) and their background variants are still hardcoded literals. JS-generated HTML cannot consume CSS tokens without architectural changes, so that vector of drift remains unaddressed.
+**GAP-DESIGN-03: CSS design tokens — styles.css RESOLVED; index.html inline styles deferred**
+STATUS: PARTIAL — `styles.css` COMPLETE (95 tokens, zero raw hex in rules); ~227 inline `style=""` in `index.html` deferred pending GAP-01 merge
+The `:root {}` block now has 95 CSS custom properties (cycle 52/63). All previously hardcoded hex literals in `styles.css` rules are replaced with `var()` references. The remaining drift is the ~227 `style=""` attributes in `index.html` which require per-element class extraction; deferred to avoid conflict with the active GAP-01 worktree. JS-generated inline HTML (download-tab.js, etc.) still uses inline styles, which is a separate architectural concern.
 
-**GAP-DESIGN-04: Duplicate `@keyframes spin` definitions**
-STATUS: OPEN — unchanged
-`@keyframes spin` is defined at `styles.css:930–933` and again at `styles.css:1494`. A third variant `@keyframes llm-spin` exists at `styles.css:574`. Consolidate to a single `@keyframes spin` definition and remove the `llm-spin` alias.
+**GAP-DESIGN-04: Duplicate `@keyframes spin` definitions — RESOLVED**
+STATUS: RESOLVED (cycle 63) — stale finding corrected 2026-07-04 (cycle 67)
+Source-verified: only one `@keyframes spin` definition exists at `styles.css:1051`. No second `@keyframes spin` at lines 930–933 or 1494, and no `@keyframes llm-spin` remains. All spin animation consumers use the single canonical `@keyframes spin` at line 1051.
 
 **GAP-DESIGN-05: Main two-panel layout has no responsive breakpoint**
 STATUS: OPEN — unchanged
@@ -211,7 +211,7 @@ STATUS: OPEN — unchanged
 
 **Summary counts:** 6 Pass / 6 Partial / 0 Fail / 0 Not Implemented / 0 N/A
 
-Score unchanged from previous cycle. The Inter font update in cv-style.css (GAP-DESIGN-06) improves generated-material credibility but the partial-token state of GAP-133 and the persistent inline-style drift keep US-G1.4 and US-G3.4 at Partial.
+Score unchanged. The `styles.css` token layer is now complete (95 tokens, GAP-133 styles.css RESOLVED), but the ~227 inline `style=""` attributes in `index.html` (deferred pending GAP-01) and JS-generated inline HTML keep US-G1.4 and US-G3.4 at Partial. GAP-DESIGN-04 (`@keyframes spin` duplicate) is now resolved.
 
 ---
 

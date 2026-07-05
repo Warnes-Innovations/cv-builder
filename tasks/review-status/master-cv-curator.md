@@ -7,7 +7,7 @@ For commercial licensing, contact greg@warnes-innovations.com
 -->
 
 # UI Review: Master CV Curator Persona
-**Review Date:** 2026-07-01
+**Review Date:** 2026-07-04 (stale findings corrected cycle 67)
 **Reviewer:** master-cv-curator persona
 **Source files read:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/routes/master_data_routes.py, scripts/routes/generation_routes.py, web/harvest.js, web/master-cv.js, web/publications-review.js
 
@@ -126,7 +126,7 @@ From a curator's perspective: the `POST /api/harvest/apply` route creates a time
 | "Refinement" | Backend phase name only | Opaque to users | Never surfaced in UI; curators see "Harvest" in the workflow step |
 | "Finalise" | Stale reference in master-cv.js achievement section; old tab still in HTML | Confusing | Old label no longer shown; stale text says "Finalise tab" |
 | "Promote" | Harvest candidate action label | Acceptable | Clear for a power user; "Add to Master CV" might be clearer for first-time curators |
-| "Post-job finalise window" | API 409 error message text | Confusing if seen | Maps to "Refinement" phase internally; maps to "Harvest" step in UI; message uses neither term correctly |
+| "Post-job finalise window" | API 409 error message text | **RESOLVED (stale)** | Current messages use "Harvest step" (`generation_routes.py:1340`, `master_data_routes.py:171–174`) |
 | "Session-scoped" | Governance banner paraphrase | Clear | Explains the boundary well |
 
 ---
@@ -145,4 +145,4 @@ From a curator's perspective: the `POST /api/harvest/apply` route creates a time
 1. **(Minor, stale label)** `web/master-cv.js` ~line 285: "The Harvest feature (Finalise tab) can add new ones" should read "Harvest tab."
 2. **(Advisory)** Phase-lock banner granularity: consider propagating the lock indicator to the Publications section header so curators deep in the page see the constraint without scrolling.
 3. **(Advisory)** Convert-then-import phase feedback: the Convert Text modal should note that importing will be blocked in non-writable phases, rather than letting the user generate BibTeX and fail with a 409 at import time.
-4. **(Terminology)** The 409 error message from phase-gate enforcement references "post-job finalise workflow" — a term that no longer appears in the UI. Aligning this to "Harvest step" or "Refinement phase" would reduce curator confusion if the error surfaces.
+4. ~~**(Terminology)**~~ **RESOLVED (stale)** — Source-verified: `_require_harvest_apply_phase` (`generation_routes.py:1340`) returns "Harvest write-back is only available from the Harvest step." and `_require_master_data_write_phase` (`master_data_routes.py:171–174`) returns "Master data can only be modified before job analysis begins or from the Harvest step." Neither message uses the old "post-job finalise workflow" wording.
