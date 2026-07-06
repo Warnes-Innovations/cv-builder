@@ -28,11 +28,9 @@ function _setModalText(el, message) {
   });
 }
 
-// Saved before the alert modal opens so we can restore on close (GAP-197).
-let _alertPreviousFocus = null;
-
 function showAlertModal(title, message) {
-  _alertPreviousFocus = document.activeElement;
+  // Push to shared focus stack so restoreFocus() works correctly when stacked with other modals (GAP-305).
+  if (typeof pushFocusStack === 'function') pushFocusStack();
   document.getElementById('alert-modal-title').textContent = title;
   _setModalText(document.getElementById('alert-modal-message'), message);
   document.getElementById('alert-modal-overlay').style.display = 'block';
@@ -42,10 +40,7 @@ function showAlertModal(title, message) {
 
 function closeAlertModal() {
   document.getElementById('alert-modal-overlay').style.display = 'none';
-  if (_alertPreviousFocus && typeof _alertPreviousFocus.focus === 'function') {
-    _alertPreviousFocus.focus();
-    _alertPreviousFocus = null;
-  }
+  if (typeof restoreFocus === 'function') restoreFocus();
 }
 
 // ---------------------------------------------------------------------------

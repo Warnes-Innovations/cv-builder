@@ -670,13 +670,26 @@ async function populateReviewTab(pane) {
 window._activeReviewPane = 'experiences';
 
 async function switchReviewSubtab(pane) {
-  // Update button states
+  // Ensure tablist role on the sub-tab container (one-time setup, GAP-303).
+  const firstBtn = document.querySelector('.review-subtab');
+  if (firstBtn?.parentElement && !firstBtn.parentElement.getAttribute('role')) {
+    firstBtn.parentElement.setAttribute('role', 'tablist');
+  }
+
+  // Update button states and ARIA attributes (GAP-303)
   document.querySelectorAll('.review-subtab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.pane === pane);
+    const isActive = btn.dataset.pane === pane;
+    btn.classList.toggle('active', isActive);
+    if (!btn.getAttribute('role')) btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', String(isActive));
+    btn.setAttribute('aria-controls', `review-pane-${btn.dataset.pane}`);
   });
 
-  // Hide all panes, show the selected one
-  document.querySelectorAll('.review-pane').forEach(p => p.style.display = 'none');
+  // Hide all panes, show the selected one; ensure tabpanel roles (GAP-303)
+  document.querySelectorAll('.review-pane').forEach(p => {
+    p.style.display = 'none';
+    if (!p.getAttribute('role')) p.setAttribute('role', 'tabpanel');
+  });
   const target = document.getElementById(`review-pane-${pane}`);
   if (target) target.style.display = 'block';
 

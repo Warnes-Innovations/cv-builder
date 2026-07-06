@@ -180,8 +180,17 @@ function _restoreCoverLetterFormState() {
   const resultEl  = document.getElementById('cl-result-section');
   const letterEl  = document.getElementById('cl-letter-textarea');
 
-  if (toneEl && _coverLetterFormState.tone)
+  if (toneEl && _coverLetterFormState.tone) {
     toneEl.value = _coverLetterFormState.tone;
+  } else if (toneEl) {
+    // Auto-suggest tone from job analysis domain when no preference is saved (GAP-315).
+    const _analysis = window._lastAnalysisData || window.pendingRecommendations?.job_analysis || {};
+    const _domain = ((_analysis.domain || '') + ' ' + (_analysis.role_level || '')).toLowerCase();
+    if (/pharma|biotech|pharmaceutical/.test(_domain))          toneEl.value = 'pharma/biotech';
+    else if (/academ|research|faculty|professor|postdoc/.test(_domain)) toneEl.value = 'academia';
+    else if (/financ|banking|invest/.test(_domain))             toneEl.value = 'financial';
+    else if (/exec|vp|vice.?president|c-level|chief|director/.test(_domain)) toneEl.value = 'leadership';
+  }
   if (openingEl && _coverLetterFormState.openingStyle)
     openingEl.value = _coverLetterFormState.openingStyle;
   if (hmEl && _coverLetterFormState.hiringManager)

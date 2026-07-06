@@ -10,6 +10,10 @@
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325.
 
+## 2026-07-06 (Cycle 85) Implementation Notes
+
+Cycle 85 addressed 4 gaps: GAP-303 (ARIA tab semantics on review sub-tabs), GAP-305 (alert modal focus stack), GAP-313 (file timestamps in Generated Files tab), GAP-315 (cover letter tone auto-suggest).
+
 ## 2026-07-06 (Cycle 84) Implementation Notes
 
 Cycle 84 addressed 6 gaps from cycle 82 review: GAP-300 (anti-fabrication instruction), GAP-314 (welcome modal active session), GAP-316 (cover letter word count), GAP-317 (zero-bullet guard), GAP-318 (first-author publication bonus), GAP-320 (summary density check).
@@ -3637,7 +3641,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-303: Review Sub-Tab Buttons Missing Tab ARIA Semantics
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 85) — Added `role="tablist"` on container, `role="tab"` + `aria-selected` + `aria-controls` on each `.review-subtab` button, and `role="tabpanel"` on `.review-pane` elements in `switchReviewSubtab()` (`web/review-table-base.js`).
 **Discovered:** 2026-07-06 (cycle 82) by accessibility-specialist.
 **Description:** The customization stage sub-tabs (Experiences, Skills, Achievements, Summary, Publications, etc.) are `<button>` elements with a `.active` CSS class toggle but no `role="tab"`, `aria-selected`, or `aria-controls` attributes (`review-table-base.js:672–676`). Screen readers cannot determine which sub-tab is selected or navigate using AT tab-list patterns (arrow keys, tab/role semantics). The main workflow tab bar correctly uses `role="tab"` and `aria-selected` (`review-table-base.js:136–148`), but the customization stage sub-tabs within the viewer do not follow the same pattern.
 **Affected stories:** US-X4 (proposed), US-X3
@@ -3659,7 +3663,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-305: Alert Modal Uses Separate Focus Stack From Other Modals
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 85) — Replaced `_alertPreviousFocus` variable with `pushFocusStack()`/`restoreFocus()` in `showAlertModal()`/`closeAlertModal()` in `web/ui-helpers.js`.
 **Discovered:** 2026-07-06 (cycle 82) by accessibility-specialist.
 **Description:** `showAlertModal()` in `ui-helpers.js:34–49` calls `trapFocus()` and `setInitialFocus()` but does not push to `_focusStack` (unlike `openSettingsModal()` which calls `_focusStack.push(document.activeElement)` before opening). `closeAlertModal()` uses its own `_alertPreviousFocus` variable rather than `restoreFocus()`. This means if an alert opens while another modal is already focus-trapped, the `_focusTrapStack` and `_focusStack` can diverge: the trap listener from the underlying modal may be consumed incorrectly by the alert's close path. In practice, closing the alert may fail to restore focus to the intended element inside the underlying modal.
 **Affected stories:** US-X8 (proposed), US-X2
@@ -3747,7 +3751,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-313: Generated Files Tab Shows No File Timestamps
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 85) — Added generation timestamp next to the "Generated Files" heading in `populateFinalGenerateTab()` (`web/final-generate.js`) using `stateManager.getGenerationState().finalGeneratedAt`.
 **Discovered:** 2026-07-06 (cycle 82) by returning-user.
 **Description:** `populateFinalGenerateTab()` (`final-generate.js:107–200`) renders each downloadable file as an icon + label + description + Download button. No generation timestamp is shown alongside the file. The `finalGeneratedAt` field is stored in `generationState` (`state-manager.js:333`) and restored from the backend on session load (`session-manager.js:686`), but is not injected into the tab render. A returning user who made content changes in a prior session sees download links that look identical regardless of whether the files pre-date or post-date their most recent edits. The position-bar freshness chip covers the boolean "outdated vs current" case but does not appear within the Generated Files tab itself.
 **Affected stories:** US-S5 (proposed), US-S3
@@ -3769,7 +3773,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-315: Cover Letter Tone Defaults to `startup/tech` Regardless of Job Domain
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 85) — Added domain-to-tone auto-select in `_restoreCoverLetterFormState()` (`web/cover-letter.js`): pharma/biotech, academia, financial, and leadership domains pre-select the matching tone when no user preference is saved.
 **Discovered:** 2026-07-06 (cycle 82) by hiring-manager.
 **Description:** The cover letter tone dropdown defaults to `startup/tech` via `cover-letter.js:246`: `|| 'startup/tech'`. The 5-tone guidance dict exists (`master_data_routes.py:97–103`) and the job analysis already extracts `domain` and `culture_indicators` (`master_data_routes.py:1604`). A user generating a cover letter for a pharma/biotech role will receive `startup/tech` tone framing unless they manually change the dropdown. No auto-suggestion or pre-selection based on job analysis domain is implemented.
 **Affected stories:** US-M6, US-A7

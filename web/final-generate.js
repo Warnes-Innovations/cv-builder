@@ -131,7 +131,14 @@ async function populateFinalGenerateTab(cvData = {}) {
 
   const htmlPreviewFile = _htmlPreviewFile(files);
 
-  let html = '<h1>📄 Generated Files</h1>';
+  // Show generation timestamp if available (GAP-313).
+  const genState = stateManager.getGenerationState();
+  const generatedAt = genState?.finalGeneratedAt;
+  const generatedAtHtml = generatedAt
+    ? `<span style="font-size:0.83em;color:#64748b;">Generated: ${new Date(generatedAt).toLocaleString()}</span>`
+    : '';
+
+  let html = `<h1>📄 Generated Files ${generatedAtHtml}</h1>`;
   html += '<p style="color:#475569;margin-bottom:8px;">Your CV files are ready to download. Preview the HTML version below, then click <strong>Proceed to Download Review</strong> to run ATS validation and archive your application.</p>';
   html += '<p style="font-size:0.83em;color:#94a3b8;margin-bottom:20px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0;">💡 <em>This tab lets you download files immediately. The <strong>File Review</strong> sub-tab in Finalise runs ATS checks, confirms the package is complete, and lets you archive the application.</em></p>';
 
