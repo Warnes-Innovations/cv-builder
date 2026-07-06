@@ -2877,7 +2877,7 @@ function _showMasterCvImportPreviewModal(sections) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
   const changedSections = sections.filter((s) => s.changed);
   const rows = sections.map((s) => `
-    <tr style="${s.changed ? 'background:var(--cv-warning-bg, #fffbeb);' : ''}">
+    <tr style="${s.changed ? 'background:var(--cv-warn-bg, #fffbeb);' : ''}">
       <td style="padding:6px 8px;color:#1e293b;">${escapeHtml(s.section)}</td>
       <td style="padding:6px 8px;text-align:center;color:#64748b;">${s.current_count}</td>
       <td style="padding:6px 8px;text-align:center;color:#64748b;">${s.new_count}</td>
