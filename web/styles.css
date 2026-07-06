@@ -1355,6 +1355,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 #rewrite-cards.filter-changed-only .rewrite-card:not(.rw-new-item) { display: none; }
 #rw-changed-filter-btn[aria-pressed="true"] { background: var(--cv-accent); color: var(--cv-white); border-color: var(--cv-accent); }
 #skills-table-container { min-height: 120px; }
+/* Customizations step show-only-changed filter */
+#experience-review-table.filter-cust-changed tr[data-exp-id]:not(.rw-new-item) { display: none !important; }
+#skills-review-table.filter-cust-changed tr[data-skill]:not(.rw-new-item) { display: none !important; }
+.cust-changed-filter-btn[aria-pressed="true"] { background: var(--cv-accent); color: var(--cv-white); border-color: var(--cv-accent); }
 
 .icon-btn .icon-glyph {
   width: 18px;

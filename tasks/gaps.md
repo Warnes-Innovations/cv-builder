@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-05 (cycle 74)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-05 (cycle 75)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,18 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+
+## 2026-07-05 (Cycle 75) Reconciliation Notes
+
+Power-user Gap D fully resolved; two stale ux-expert findings corrected.
+
+- **`web/workflow-steps.js`** — Added `_injectCustomizationsFilterToggle(expCount, skillCount)` and `_injectTableFilterBtn(tableId, containerId, count)`. After a customizations re-run, `_highlightChangedItems` now calls the filter inject (via `setTimeout(0)`) with the count of changed experience/skill rows. Each table's bulk-toolbar gets a "⬡ Changed (N)" button when some (but not all) rows changed; button toggles `.filter-cust-changed` class on the table. `_executeReRunPhase` clears `.cust-changed-filter-btn` buttons and `.filter-cust-changed` class on subsequent re-runs. New exports: `_injectCustomizationsFilterToggle`, `_injectTableFilterBtn`.
+- **`web/styles.css`** — Three rules added: `#experience-review-table.filter-cust-changed tr[data-exp-id]:not(.rw-new-item) { display: none !important; }`, same for skills table, and active state for `.cust-changed-filter-btn[aria-pressed="true"]`. `!important` overrides DataTables' inline `display: table-row` management.
+- **`web/bundle.js`** — Rebuilt.
+- **`tests/js/workflow-steps.test.js`** — Added imports for new functions; added 10 new tests: 4 for `_highlightChangedItems (customizations step)`, 6 for `_injectTableFilterBtn`. Test count: 1175 (was 1165).
+- **`tasks/review-status/power-user.md`** — Gap D updated to RESOLVED (cycle 75); W3.3 updated to ✅ Pass; executive summary updated. Gap E (bulk undo) remains open.
+- **`tasks/review-status/ux-expert.md`** — Four stale corrections: US-U9 C6 (layout two-step hint ✅, GAP-291 cycle 31), US-U8 C4 (min-height placeholders ✅, GAP-290 cycle 31), GAP-UX-10 and GAP-UX-11 marked as resolved. Date updated.
+- **Python tests:** 1436 pass (unchanged). **JS tests:** 1175 pass (10 new).
 
 ## 2026-07-05 (Cycle 74) Reconciliation Notes
 

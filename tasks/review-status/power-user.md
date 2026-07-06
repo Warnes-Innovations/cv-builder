@@ -8,11 +8,11 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Power User Review Status
 
-**Last Updated:** 2026-07-04 (Gap D partial fix cycle 69; Gap C partial fix cycle 70 — session search)
-**Branch:** feature/multi-user-deployment (HEAD: 5aedf24)
+**Last Updated:** 2026-07-05 (Gap D RESOLVED cycle 75 — experience/skill show-only-changed filter; Gap C RESOLVED cycle 70 — session search)
+**Branch:** feature/multi-user-deployment
 **Reviewer role:** Power User (US-W1, US-W2, US-W3)
 
-**Executive Summary:** All three stories are substantially satisfied. US-W2 (Session Switching) and US-W3 (Efficient Iteration) fully pass all acceptance criteria. US-W1 (High-Throughput Workflow Efficiency) now passes all three criteria — Gap A (keyboard shortcut for primary action) was resolved by `keyboard-shortcuts.js` which implements `Ctrl+Enter` → primary action and `A`/`R`/arrow navigation for review cards. Three open gaps remain: Gap C (no session text-search filter), Gap D (changed-item count not surfaced in assistant message after re-run), and Gap E (no bulk-decision undo). Gap A from the prior review is CLOSED.
+**Executive Summary:** All three stories fully pass all acceptance criteria. Gap A (keyboard shortcut) was resolved by `keyboard-shortcuts.js`; Gap C (session text-search) resolved in cycle 70; Gap D (show-only-changed filter) fully resolved in cycles 69+75 for both rewrite and customizations tabs. Only Gap E (bulk-decision undo) remains open — a complex enhancement with low urgency.
 
 ---
 
@@ -64,14 +64,14 @@ For commercial licensing, contact greg@warnes-innovations.com
 | --- | --------- | ------ | -------- |
 | W3.1 | Re-run affordances are discoverable for supported stages | ✅ Pass | The ↻ re-run button is injected into every completed step pill that supports LLM re-execution (analysis, customizations, rewrite, spell — `RE_RUN_STEPS` in `workflow-steps.js`). At rest the button renders at low opacity; it rises to full opacity on `:hover` and `:focus-within` and has `aria-label="Re-run …"`. A downstream-aware confirmation modal (`_showReRunConfirmModal()`, `workflow-steps.js:138–188`) lists completed stages that remain intact and notes "All existing approvals and rewrites are preserved as context." For analysis re-runs, the clarification-amend modal (`_showAnalysisClarificationAmendModal()`, `workflow-steps.js:277–380`) lets the user update or keep prior clarification answers before proceeding. Layout staleness is communicated via the "Layout outdated" / "Files outdated" chip in the position bar (`state-manager.js:145–175`). |
 | W3.2 | Re-entry into earlier stages preserves useful downstream context | ✅ Pass | `_build_downstream_context()` in `conversation_manager.py` collects approved rewrites, experience/skill decisions, and accepted spell fixes and injects them into the re-run LLM prompt. `backToPhase()` at `workflow-steps.js:98` calls `/api/back-to-phase` and logs "Prior decisions and approvals are preserved." `reRunPhase()` clears per-phase caches (`_spellCheckCache`, `_rewritePanelCache`) so the UI fetches fresh results while backend context is carried forward. Downstream steps gain `.stale` class without erasing prior content. |
-| W3.3 | The app minimises redundant work during iteration | ⚠️ Partial | `_countChangedItems()` + `_highlightChangedItems()` (`workflow-steps.js`) mark changed items and quantify them in the assistant message (cycle 63). Cycle 69: a "⬡ Changed (N)" toggle button is now injected into `#rewrite-tally` after a rewrite re-run when some (but not all) cards changed (`_injectRewriteFilterToggle()`, `workflow-steps.js`); clicking it applies `.filter-changed-only` to `#rewrite-cards`, hiding non-`rw-new-item` cards. Experience/skill table filtering after customizations re-run is not yet implemented. |
+| W3.3 | The app minimises redundant work during iteration | ✅ Pass | `_countChangedItems()` + `_highlightChangedItems()` (`workflow-steps.js`) mark changed items and quantify them in the assistant message (cycle 63). Cycle 69: "⬡ Changed (N)" toggle injected into `#rewrite-tally` after rewrite re-run (`_injectRewriteFilterToggle()`). Cycle 75: "⬡ Changed (N)" toggle also injected into experience/skills bulk-toolbars after customizations re-run (`_injectTableFilterBtn()`); `styles.css` hides `tr:not(.rw-new-item)` via `!important` override on `.filter-cust-changed` table. |
 
 **Failure modes guard-against check:**
 
 - **Reruns feel equivalent to starting over:** Well-mitigated. Confirmation modal names intact downstream stages. Stale badges appear on downstream step pills. Downstream context passes into the LLM prompt. Re-run message in chat explicitly states approvals are preserved.
 - **Re-run affordance discoverability:** ↻ button persistently visible (dim at rest), focusable with Tab, rises to full opacity on hover/focus-within. Keyboard shortcut (`Ctrl+Enter`) also works from completed step pill click interactions.
 
-**Net: W3.1 and W3.2 pass fully. W3.3 remains partial — cycle 69 added a "show only changed" toggle for the rewrite tab; customizations (experience/skill rows) filter not yet implemented.**
+**Net: W3.1, W3.2, and W3.3 now all pass fully — rewrite, experience, and skills show-only-changed filters all implemented.**
 
 ---
 
@@ -103,11 +103,11 @@ Cycle 70: `session-switcher-ui.js` now renders a `<input class="sm-search-input"
 
 ---
 
-### Gap D — "Show only changed" filter toggle — PARTIAL FIX (cycle 69)
+### Gap D — "Show only changed" filter toggle — RESOLVED (cycle 75)
 
-Cycle 69: `_markChanged()` now also adds class `rw-new-item` (persistent) alongside the animation `data-changed` attribute. After a rewrite re-run, `_injectRewriteFilterToggle(count)` injects a "⬡ Changed (N)" button into `#rewrite-tally` when some (but not all) cards changed. The button toggles `.filter-changed-only` on `#rewrite-cards`; CSS at `styles.css` hides `.rewrite-card:not(.rw-new-item)` when the class is active. "✕ Show all" text appears when filter is active; `aria-pressed` reflects state. Filter resets on each subsequent re-run.
+Cycle 69: Rewrite tab filter implemented.
 
-**Remaining:** Experience table (`#experience-review-table tr[data-exp-id]`) and skills table (`#skills-review-table tr[data-skill]`) filter not yet implemented — DataTables row visibility management may conflict with CSS `display:none`.
+Cycle 75: Experience and skills table filters implemented. `_injectCustomizationsFilterToggle(expCount, skillCount)` is called from `_highlightChangedItems('customizations', ...)` after marking rows. `_injectTableFilterBtn(tableId, containerId, count)` injects a "⬡ Changed (N)" button into each table's bulk-toolbar when some (but not all) rows changed. Clicking toggles `.filter-cust-changed` on the `<table>` element. CSS at `styles.css` hides `tr[data-exp-id]:not(.rw-new-item)` and `tr[data-skill]:not(.rw-new-item)` with `!important` to override DataTables' inline `display: table-row`. "✕ Show all" text appears when active; `aria-pressed` reflects state. Filter resets on each subsequent re-run (cleared in `_executeReRunPhase`). 10 new unit tests added in `tests/js/workflow-steps.test.js`.
 
 ---
 

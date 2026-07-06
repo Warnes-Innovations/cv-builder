@@ -452,6 +452,9 @@ async function _executeReRunPhase(step) {
     document.querySelectorAll('.rw-new-item').forEach(el => el.classList.remove('rw-new-item'));
     document.getElementById('rw-changed-filter-btn')?.remove();
     document.getElementById('rewrite-cards')?.classList.remove('filter-changed-only');
+    document.querySelectorAll('.cust-changed-filter-btn').forEach(el => el.remove());
+    document.getElementById('experience-review-table')?.classList.remove('filter-cust-changed');
+    document.getElementById('skills-review-table')?.classList.remove('filter-cust-changed');
 
     // Mark changed DOM elements after the tab has rendered.
     if (data.prior_output && data.new_output) {
@@ -582,8 +585,48 @@ function _highlightChangedItems(step, priorOutput, newOutput) {
         _markChanged(el);
       }
     }
+
+    // Offer a filter toggle when some (but not all) rows changed.
+    setTimeout(() => {
+      const expChanged   = document.querySelectorAll('tr[data-exp-id].rw-new-item').length;
+      const skillChanged = document.querySelectorAll('tr[data-skill].rw-new-item').length;
+      _injectCustomizationsFilterToggle(expChanged, skillChanged);
+    }, 0);
     return;
   }
+}
+
+/** Inject "Show only changed (N)" filter buttons into the experience and/or skills toolbar. */
+function _injectCustomizationsFilterToggle(expCount, skillChanged) {
+  _injectTableFilterBtn('experience-review-table', 'experience-table-container', expCount);
+  _injectTableFilterBtn('skills-review-table',     'skills-table-container',     skillChanged);
+}
+
+function _injectTableFilterBtn(tableId, containerId, count) {
+  if (count === 0) return;
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const toolbar = container.querySelector('.bulk-toolbar');
+  if (!toolbar || toolbar.querySelector('.cust-changed-filter-btn')) return;
+
+  const table     = document.getElementById(tableId);
+  const selector  = tableId === 'experience-review-table' ? 'tr[data-exp-id]' : 'tr[data-skill]';
+  const allCount  = table ? table.querySelectorAll(selector).length : 0;
+  if (allCount > 0 && count >= allCount) return; // all rows changed — filter adds no value
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'bulk-btn cust-changed-filter-btn';
+  btn.setAttribute('aria-pressed', 'false');
+  btn.textContent = `⬡ Changed (${count})`;
+  btn.title = 'Show only rows that changed in this re-run';
+  btn.addEventListener('click', () => {
+    const active = btn.getAttribute('aria-pressed') === 'true';
+    btn.setAttribute('aria-pressed', String(!active));
+    btn.textContent = !active ? '✕ Show all' : `⬡ Changed (${count})`;
+    table?.classList.toggle('filter-cust-changed', !active);
+  });
+  toolbar.appendChild(btn);
 }
 
 /** Apply data-changed attribute and a persistent rw-new-item class for the show-changed filter. */
@@ -1193,6 +1236,8 @@ export {
   _updateViewingIndicator,
   _highlightChangedItems,
   _markChanged,
+  _injectCustomizationsFilterToggle,
+  _injectTableFilterBtn,
   applyLayoutFreshnessNavigationState,
   applyDirtyPhaseNavigationState,
   showBulletReorder,

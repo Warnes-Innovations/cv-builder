@@ -15,6 +15,8 @@ import {
   _ACTION_LABELS,
   _markChanged,
   _highlightChangedItems,
+  _injectCustomizationsFilterToggle,
+  _injectTableFilterBtn,
   _applyBulletOrder,
   moveBullet,
   _updateBulletArrows,
@@ -133,6 +135,112 @@ describe('_highlightChangedItems (rewrite step)', () => {
   it('does nothing for analysis step (no per-entity targeting)', () => {
     document.body.innerHTML = '<div id="rw-card-rw1"></div>'
     expect(() => _highlightChangedItems('analysis', {}, {})).not.toThrow()
+  })
+})
+
+// ── _highlightChangedItems — customizations step ──────────────────────────
+
+describe('_highlightChangedItems (customizations step)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    document.body.innerHTML = `
+      <table id="experience-review-table">
+        <tbody>
+          <tr data-exp-id="exp1"></tr>
+          <tr data-exp-id="exp2"></tr>
+        </tbody>
+      </table>
+      <table id="skills-review-table">
+        <tbody>
+          <tr data-skill="python"></tr>
+          <tr data-skill="java"></tr>
+        </tbody>
+      </table>`
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('marks a new experience row as changed', () => {
+    const prior = { customizations: { experience_recommendations: [], skill_recommendations: [] } }
+    const next  = { customizations: { experience_recommendations: [{ id: 'exp1', recommendation: 'include' }], skill_recommendations: [] } }
+    _highlightChangedItems('customizations', prior, next)
+    expect(document.querySelector('tr[data-exp-id="exp1"]').getAttribute('data-changed')).toBe('true')
+  })
+
+  it('marks an experience row as changed when recommendation changes', () => {
+    const prior = { customizations: { experience_recommendations: [{ id: 'exp1', recommendation: 'include' }], skill_recommendations: [] } }
+    const next  = { customizations: { experience_recommendations: [{ id: 'exp1', recommendation: 'exclude' }], skill_recommendations: [] } }
+    _highlightChangedItems('customizations', prior, next)
+    expect(document.querySelector('tr[data-exp-id="exp1"]').getAttribute('data-changed')).toBe('true')
+  })
+
+  it('does not mark an unchanged experience row', () => {
+    const prior = { customizations: { experience_recommendations: [{ id: 'exp1', recommendation: 'include' }], skill_recommendations: [] } }
+    const next  = { customizations: { experience_recommendations: [{ id: 'exp1', recommendation: 'include' }], skill_recommendations: [] } }
+    _highlightChangedItems('customizations', prior, next)
+    expect(document.querySelector('tr[data-exp-id="exp1"]').getAttribute('data-changed')).toBeNull()
+  })
+
+  it('marks a new skill row as changed', () => {
+    const prior = { customizations: { experience_recommendations: [], skill_recommendations: [] } }
+    const next  = { customizations: { experience_recommendations: [], skill_recommendations: [{ skill: 'Python', recommendation: 'include' }] } }
+    _highlightChangedItems('customizations', prior, next)
+    expect(document.querySelector('tr[data-skill="python"]').getAttribute('data-changed')).toBe('true')
+  })
+})
+
+// ── _injectTableFilterBtn ─────────────────────────────────────────────────
+
+describe('_injectTableFilterBtn', () => {
+  function buildExpContainer(rowCount = 3, changedCount = 1) {
+    const rows = Array.from({ length: rowCount }, (_, i) =>
+      `<tr data-exp-id="exp${i}"${i < changedCount ? ' class="rw-new-item"' : ''}></tr>`
+    ).join('')
+    document.body.innerHTML = `
+      <div id="experience-table-container">
+        <div class="bulk-toolbar"><span>Bulk:</span></div>
+        <table id="experience-review-table"><tbody>${rows}</tbody></table>
+      </div>`
+  }
+
+  it('injects a filter button into the bulk-toolbar', () => {
+    buildExpContainer(3, 1)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 1)
+    expect(document.querySelector('.cust-changed-filter-btn')).not.toBeNull()
+  })
+
+  it('button text shows the changed count', () => {
+    buildExpContainer(3, 2)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 2)
+    expect(document.querySelector('.cust-changed-filter-btn').textContent).toContain('Changed (2)')
+  })
+
+  it('toggles filter-cust-changed class on the table when clicked', () => {
+    buildExpContainer(3, 1)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 1)
+    const btn = document.querySelector('.cust-changed-filter-btn')
+    btn.click()
+    expect(document.getElementById('experience-review-table').classList.contains('filter-cust-changed')).toBe(true)
+    btn.click()
+    expect(document.getElementById('experience-review-table').classList.contains('filter-cust-changed')).toBe(false)
+  })
+
+  it('does not inject when count is 0', () => {
+    buildExpContainer(3, 0)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 0)
+    expect(document.querySelector('.cust-changed-filter-btn')).toBeNull()
+  })
+
+  it('does not inject when all rows are changed', () => {
+    buildExpContainer(3, 3)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 3)
+    expect(document.querySelector('.cust-changed-filter-btn')).toBeNull()
+  })
+
+  it('does not inject a second button on repeat call', () => {
+    buildExpContainer(3, 1)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 1)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 1)
+    expect(document.querySelectorAll('.cust-changed-filter-btn').length).toBe(1)
   })
 })
 

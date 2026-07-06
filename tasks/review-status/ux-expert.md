@@ -5,7 +5,7 @@
 
 # UX Expert Review
 
-**Date:** 2026-07-04 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66; US-U6 C1 partial fix, GAP-UX-02 stale correction cycle 68)
+**Date:** 2026-07-05 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66; US-U6 C1 partial fix, GAP-UX-02 stale correction cycle 68; GAP-UX-10, GAP-UX-11, US-U9 C6, US-U8 C4 stale corrections cycle 75)
 **Reviewer:** ux-expert persona
 **Source files examined:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, web/job-input.js, web/rewrite-review.js, web/keyboard-shortcuts.js, web/layout-instruction.js, web/workflow-steps.js
 
@@ -175,7 +175,7 @@
 ✅ Pass — `layout-instruction.js:49–51` implements `_layoutUndoStack` (capped at 20 entries). `renderInstructionHistory()` (`layout-instruction.js:1043+`) renders each history entry with individual Undo buttons (sequential — only the most recent can be undone at a time, noted in the `disabled` title at line 1056).
 
 **Criterion 6 — Single proceed action**
-⚠️ Partial — Two distinct proceed buttons exist: `#confirm-layout-btn` ("Confirm Layout") and `#proceed-to-finalise-btn` ("Generate Final Files"), with visibility controlled by layout state. The two-stage flow is logical but requires users to understand the distinction between confirming layout and triggering final generation. No inline explanation for new users is present.
+✅ Pass — `layout-instruction.js:380` renders `<p id="layout-two-step-hint">` below the instruction textarea. `refreshLayoutReviewState()` shows/hides it alongside `#confirm-layout-btn`. Text: "Once the preview looks right, confirm the layout — then generate your final submission files." GAP-291 resolved in cycle 31. (Previously ⚠️ — stale; source-verified resolved 2026-07-05.)
 
 **Criterion 7 — Content safety assurance**
 ✅ Pass — The `.layout-scope-label` states "Text content is finalised — content edits are not applied here." This notice is visible before the user types any instruction.
@@ -194,7 +194,7 @@
 — Not Verified — Cannot assess runtime performance from static code review. CSS uses CDN-hosted Bootstrap, Font Awesome, DataTables, jQuery, and marked.js — all loaded synchronously or with `defer`. Bundle.js is a local build.
 
 **Criterion 4 — No layout shift during async loads**
-⚠️ Partial — The `#document-content` area shows an empty state and a loading spinner during `showLoadJobPanel()`. However, no skeleton screens or dimensioned placeholders are used for main content areas — height is undefined before content loads, which can cause cumulative layout shift when async content arrives.
+✅ Pass — `styles.css:1354,1357` sets `min-height: 120px` on `#rewrite-cards` and `#skills-table-container`, preventing cumulative layout shift while async content loads. GAP-290 resolved in cycle 31. (Previously ⚠️ — stale; source-verified resolved 2026-07-05.)
 
 **Criterion 5 — Long table scroll performance**
 — Not Verified — No virtual scrolling or CSS containment was found for the skills review table. Performance depends on runtime rendering of 30+ row tables.
@@ -249,11 +249,11 @@ Review tables show High/Medium/Low confidence badges but no explicit legend (e.g
 **GAP-UX-09: Workflow nav horizontal scroll at narrow widths — PARTIAL FIX (cycle 66)**
 `styles.css` now: (1) switches `.workflow-steps` to `justify-content: flex-start` at `max-width:1400px` so scrollable content is not cut off on the left; (2) reduces step pill padding to `6px 10px`, gap to `10px`, and font to `0.9em` at `max-width:1280px`; (3) adds `scrollbar-width: thin` globally. The 12-step bar still requires horizontal scroll at 1280×800 but the scroll now starts from step 1 (not mid-bar) and pills are more compact. Full nav collapse/abbreviation at very narrow widths remains unimplemented (US-U8 Criterion 1).
 
-**GAP-UX-10: Layout review two-button proceed path needs explanation**
-The "Confirm Layout" → "Generate Final Files" two-step path is not explained to new users. A tooltip or inline note clarifying the two-stage intent would reduce confusion (US-U9 Criterion 6).
+**GAP-UX-10: Layout review two-button proceed path** — RESOLVED (stale, cycle 31)
+`layout-instruction.js:380` renders `<p id="layout-two-step-hint">` shown/hidden alongside `#confirm-layout-btn`. US-U9 Criterion 6 ✅.
 
-**GAP-UX-11: No skeleton placeholders for async content areas**
-Content areas show no skeleton placeholders before LLM response arrives, causing cumulative layout shift when content populates (US-U8 Criterion 4).
+**GAP-UX-11: No skeleton placeholders for async content areas** — RESOLVED (stale, cycle 31)
+`styles.css:1354,1357` sets `min-height: 120px` on `#rewrite-cards` and `#skills-table-container`. US-U8 Criterion 4 ✅.
 
 ---
 
@@ -268,5 +268,5 @@ Content areas show no skeleton placeholders before LLM response arrives, causing
 | US-U5 Rewrite review | ✅ Pass | rewrite-review.js:370–371 (diff); keyboard-shortcuts.js (A/R/Up/Down); rationale via `<details>` |
 | US-U6 Generation feedback | ✅ / ⚠️ | CV filenames pass; HTML fallback alongside error fixed (cycle 59); step labels cycle in #processing-indicator during generation (cycle 68); full step progress bar with checkmarks absent |
 | US-U7 Accessibility | ✅ | Focus trap in ui-core.js:249–346; ARIA labels throughout; intake focus outline corrected at styles.css:1791 |
-| US-U9 Layout review UX | ✅ / ⚠️ | Scope label present; undo stack implemented; two-button proceed path lacks new-user explanation |
-| US-U8 Responsive/performance | ⚠️ Partial | 12-step nav overflows at narrow widths; no skeleton placeholders; CDN blocking not assessed |
+| US-U9 Layout review UX | ✅ | Scope label present; undo stack implemented; `#layout-two-step-hint` resolved (cycle 31); clarification panel resolved (GAP-295, cycle 32) |
+| US-U8 Responsive/performance | ⚠️ Partial | 12-step nav overflows at narrow widths (cycle 66 partial); min-height placeholders present (cycle 31); CDN blocking not assessed |
